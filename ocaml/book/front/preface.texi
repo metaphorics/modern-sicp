@@ -224,14 +224,16 @@ Unofficial Texinfo Format version @value{utfversion} (@value{utfversiondate})
 
 The language of this book
 
-* 0.1::              Running this book
-* 0.2::              Values, names, and functions
-* 0.3::              Recursion and the call stack
-* 0.4::              Data
-* 0.5::              Mutation and ownership
-* 0.6::              Errors as values
-* 0.7::              Testing
-* 0.8::              Reading this book
+* 0.1::              Toolchain
+* 0.2::              Expressions, values, and types
+* 0.3::              Bindings, functions, and modules
+* 0.4::              Pattern matching and variants
+* 0.5::              Lists and higher-order functions
+* 0.6::              Records, mutable fields, and refs
+* 0.7::              Closures and lexical scope
+* 0.8::              Errors
+* 0.9::              Modules as values
+* 0.10::             Testing and formatting
 
 Programming in Lisp
 
@@ -980,14 +982,16 @@ from @abbr{DARPA}, made possible by Bob Kahn.
 
 @menu
 
-* 0.1::              Running this book
-* 0.2::              Values, names, and functions
-* 0.3::              Recursion and the call stack
-* 0.4::              Data
-* 0.5::              Mutation and ownership
-* 0.6::              Errors as values
-* 0.7::              Testing
-* 0.8::              Reading this book
+* 0.1::              Toolchain
+* 0.2::              Expressions, values, and types
+* 0.3::              Bindings, functions, and modules
+* 0.4::              Pattern matching and variants
+* 0.5::              Lists and higher-order functions
+* 0.6::              Records, mutable fields, and refs
+* 0.7::              Closures and lexical scope
+* 0.8::              Errors
+* 0.9::              Modules as values
+* 0.10::             Testing and formatting
 
 @end menu
 

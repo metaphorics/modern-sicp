@@ -1,0 +1,13 @@
+(executables
+ (names test_replay test_solutions)
+ (libraries sicp_ch0 sicp_ch0_solutions alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_replay.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_solutions.exe)))

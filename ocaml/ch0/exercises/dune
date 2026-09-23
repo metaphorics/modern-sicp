@@ -1,0 +1,54 @@
+(library
+ (name sicp_ch0_exercises)
+ (libraries sicp_common)
+ (modules ex_0_01 ex_0_02 ex_0_03 ex_0_04 ex_0_05))
+
+(executable
+ (name scaffold_ex_0_01)
+ (modules scaffold_ex_0_01)
+ (libraries sicp_ch0_exercises))
+
+(executable
+ (name scaffold_ex_0_02)
+ (modules scaffold_ex_0_02)
+ (libraries sicp_ch0_exercises))
+
+(executable
+ (name scaffold_ex_0_03)
+ (modules scaffold_ex_0_03)
+ (libraries sicp_ch0_exercises))
+
+(executable
+ (name scaffold_ex_0_04)
+ (modules scaffold_ex_0_04)
+ (libraries sicp_ch0_exercises))
+
+(executable
+ (name scaffold_ex_0_05)
+ (modules scaffold_ex_0_05)
+ (libraries sicp_ch0_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_ex_0_01.exe)))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_ex_0_02.exe)))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_ex_0_03.exe)))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_ex_0_04.exe)))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_ex_0_05.exe)))

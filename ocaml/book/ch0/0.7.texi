@@ -1,4 +1,120 @@
 @node	0.7, 0.8, Chapter 0, Chapter 0
-@section Testing
+@section Closures and lexical scope
 
-This section covers the test framework, property tests, how solutions are checked, and the pending marker.
+@noindent
+A function defined inside another captures the bindings visible where it is
+defined, not where it is later called, and keeps them alive for as long as
+the function itself exists. This is a @newterm{closure}, and it is the same
+lexical scoping rule Scheme uses for its own inner @code{lambda}s:
+
+@example
+# let make_adder n = fun x -> x + n;;
+val make_adder : int -> int -> int = <fun>
+# let add_five = make_adder 5;;
+val add_five : int -> int = <fun>
+# add_five 1;;
+- : int = 6
+@end example
+
+@noindent
+@code{make_adder 5} returns a function that still remembers @code{n = 5}
+long after @code{make_adder} itself has returned; @code{add_five} is that
+function, and every call to it sees the same captured @code{5}. Nothing
+about @code{n} is passed to @code{add_five} at call time — it is baked into
+the function value itself, the way a Scheme closure over @code{n} would be.
+
+@subsubheading Functions as values
+
+Because functions are ordinary values, one function can take another as an
+argument or return one as a result with no special syntax beyond what
+already defines a function:
+
+@example
+# let compose f g = fun x -> f (g x);;
+val compose : ('a -> 'b) -> ('c -> 'a) -> 'c -> 'b = <fun>
+# let doubled_and_shifted = compose (fun x -> x * 2) (fun x -> x + 3);;
+val doubled_and_shifted : int -> int = <fun>
+# doubled_and_shifted 4;;
+- : int = 14
+@end example
+
+@noindent
+@code{compose f g} applies @code{g} first and @code{f} second, so
+@code{doubled_and_shifted} adds three, then doubles the result: @code{(4 +
+3) * 2 = 14}. No object system, method table, or special ``function type''
+declaration was needed to make this work; @code{'a -> 'b} already is a type,
+and functions of that type are values like any other.
+
+@subsubheading What function equality does not have, and closures do have
+
+Two closures built from the same source expression are never
+@code{==}-identical if each captured its own fresh state, because each call
+to the outer function that builds them allocates a fresh cell for whatever
+it captures. There is, in fact, no way to compare two functions for equality
+at all in OCaml — @code{=} on a function type is a runtime error, not a
+sound implementation of ``do these functions compute the same thing''
+(@code{Stdlib} raises @code{Invalid_argument} rather than approximate an
+answer no general algorithm can give). What a closure @emph{does} have,
+reliably, is the identity of whatever mutable cell it captured, exactly the
+@code{==} from section 0.6 applied to that cell:
+
+@example
+# let make_withdraw initial =
+    let balance = ref initial in
+    fun amount ->
+      if !balance < amount
+      then None
+      else (
+        balance := !balance - amount;
+        Some !balance);;
+val make_withdraw : int -> int -> int option = <fun>
+# let w = make_withdraw 100;;
+val w : int -> int option = <fun>
+# w 60;;
+- : int option = Some 40
+# w 60;;
+- : int option = None
+@end example
+
+@noindent
+This is this book's translation of the original @code{make-withdraw}: each
+call to @code{make_withdraw} allocates its own private @code{balance} cell,
+and the returned function is a closure over that one cell. The first
+withdrawal of @code{60} succeeds, leaving @code{40}; the second, from the
+same @code{w}, fails, because @code{40 < 60}, and the failed attempt leaves
+the cell untouched — @code{None} carries no balance, by design, so a failed
+withdrawal cannot be mistaken for a successful one that happened to return
+zero.
+
+@subsubheading Independent private state, one closure at a time
+
+Two calls to @code{make_withdraw} allocate two distinct cells, so the two
+withdrawers returned never interfere with each other, exactly the way two
+calls to @code{fresh_counter} in section 0.6 would build two independent
+counters:
+
+@example
+# let w1 = make_withdraw 100;;
+val w1 : int -> int option = <fun>
+# let w2 = make_withdraw 100;;
+val w2 : int -> int option = <fun>
+# w1 20;;
+- : int option = Some 80
+# w2 30;;
+- : int option = Some 70
+# w1 80;;
+- : int option = Some 0
+@end example
+
+@noindent
+@code{w1} and @code{w2} both started at @code{100}, but withdrawing through
+@code{w2} never touches @code{w1}'s balance: @code{w1}'s final withdrawal of
+@code{80} finds the balance still at @code{80}, unaffected by @code{w2}'s
+withdrawal of @code{30} in between. This is the object-oriented idea chapter
+3 develops formally — an object as a bundle of private mutable state plus
+the operations that touch it — built here from nothing but closures and
+@code{ref}. A record whose fields are themselves closures over one shared
+cell is the next step, combining this section with section 0.6's records:
+exercise 0.4's @code{make_account} bundles @code{deposit}, @code{withdraw},
+and @code{balance} into one such record, so a single account value offers
+all three as one unit.

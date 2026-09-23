@@ -1,4 +1,143 @@
 @node	0.1, 0.2, Chapter 0, Chapter 0
-@section Running this book
+@section Toolchain
 
-This section covers the pinned toolchain, the just recipes, the layout of examples/, exercises/, and solutions/, and how a test proves an exercise.
+@noindent
+This edition is written against OCaml 5.5.1 and Dune 3.24, pinned exactly in
+@file{ocaml/dune-project}. ``Pinned exactly'' means the version numbers in that
+file are not minimums: @code{opam switch} for this project must resolve to
+5.5.1, and every listing in this book was run against that compiler and no
+other. Two OCaml releases apart can print a float differently or accept a
+syntax the other rejects, so a pinned switch is what makes ``type this in and
+get this'' a promise the book can keep.
+
+@subsubheading Creating and using the switch
+
+An opam switch is a self-contained installation of the compiler and its
+libraries, the same idea as a Python virtualenv or a Node version manager's
+pinned version. Create one for this project and select it once:
+
+@example
+opam switch create 5.5.1
+opam install . --deps-only --with-test --with-dev-setup
+@end example
+
+@noindent
+Every command in this book that invokes the compiler, Dune, or a formatter is
+prefixed with @code{opam exec --switch 5.5.1 --} in this edition's own
+tooling, so the right switch is used even when the shell's default switch is
+something else. Interactively, @code{eval $(opam env)} inside a shell already
+attached to the 5.5.1 switch drops the prefix; both spellings reach the same
+compiler.
+
+@subsubheading The interpreter
+
+Type @code{ocaml} at a shell prompt and a read-eval-print loop starts:
+
+@example
+$ ocaml
+        OCaml version 5.5.1
+
+# 1 + 1;;
+- : int = 2
+@end example
+
+@noindent
+The @code{#} is the interpreter's prompt, not something to type. Every phrase
+ends with @code{;;}, and the interpreter replies with the phrase's inferred
+type and its value, in the form @code{- : @var{type} = @var{value}}. A
+top-level @code{let} names the value instead of discarding it, and the reply
+changes shape to name it:
+
+@example
+# let square x = x * x;;
+val square : int -> int = <fun>
+# square 21;;
+- : int = 441
+@end example
+
+This book's transcripts use the plain @code{ocaml} interpreter throughout,
+not @code{utop}. That is a deliberate departure from the usual OCaml
+convention, where @code{utop} is the everyday choice: history, completion,
+and colored output make it pleasant to use. Against the pinned 5.5.1 switch
+in this project's environment, however, @code{utop} fails on ordinary code
+before this chapter's exercises can even use it:
+
+@example
+$ echo '10.0 /. 3.0;;' | utop
+        OCaml version 5.5.1
+
+# Line 1, characters 5-7:
+Error: Unbound value (/.)
+@end example
+
+@noindent
+@code{/.} is float division, defined by @code{Stdlib} and available with no
+setup in every OCaml program ever written; a toplevel that cannot find it is
+not usable for a book of verified transcripts. The plain @code{ocaml}
+interpreter has none of @code{utop}'s comforts, but it evaluates standard
+OCaml with no surprises, which is the one property this book actually needs.
+Once a project is built through Dune, an editor with @code{ocaml-lsp-server}
+recovers most of what @code{utop} would otherwise add (inline types, jump to
+definition), so the loss is confined to the interpreter transcripts in this
+book.
+
+@subsubheading Building this edition
+
+Dune is this edition's build system: it compiles every chapter's library,
+runs its tests, and can reformat its source. Three commands recur through
+every chapter of this book, run from the @file{ocaml/} directory:
+
+@example
+opam exec --switch 5.5.1 -- dune build
+opam exec --switch 5.5.1 -- dune runtest
+opam exec --switch 5.5.1 -- dune fmt
+@end example
+
+@noindent
+@code{dune build} compiles every library and executable and fails on the
+first type error or unused-value warning; this edition treats warnings as
+errors, so a build that finishes has no loose ends. @code{dune runtest} runs
+every chapter's tests, including the small executable behind each section of
+this chapter that reproduces its listings and checks them against the values
+printed here. @code{dune fmt} reformats every source file to one consistent
+style (JaneStreet, 90 columns) and is safe to run at any time; it changes
+whitespace only, never behavior.
+
+@subsubheading How a chapter's directory is laid out
+
+Chapter 0's own supporting code sits under @file{ocaml/ch0/}, and every later
+chapter repeats the same shape:
+
+@table @file
+@item lib/
+The chapter's running examples: one module per section (@code{sec_0_1},
+@code{sec_0_2}, and so on), plus a small executable per section that
+replays its listings and checks each result. Running
+@code{dune runtest} runs every one of these executables; a failure there
+means this book's own printed output is wrong, and the build refuses to
+pass until it is fixed.
+@item exercises/
+One module per exercise (@code{ex_0_01} through @code{ex_0_05} in this
+chapter), each exposing the signature the exercise asks for with a body
+that raises @code{Sicp_common.Pending.Pending_solution}. The @code{scaffold}
+alias (@code{dune build @@scaffold}) runs every stub and confirms each one
+still raises that exception, i.e., is still unsolved.
+@item solutions/
+The reference solution for each exercise, under the same module names,
+built against the same signatures as @file{exercises/}, plus a short
+@file{.md} file per exercise explaining the reasoning. A chapter's test
+suite links against @file{solutions/}, never @file{exercises/}, so an
+unsolved exercise never breaks the build.
+@end table
+
+@noindent
+A test earns its place in this book only by checking an actual result. The
+convention that makes that checkable is @code{Sicp_ch0.Replay.expect}: it
+prints a value and exits with a nonzero status if that value differs from
+what the section's executable claims. Section 0.10 covers testing itself in
+detail, once the pieces this chapter needs (pattern matching, exceptions,
+records) are in place to explain how it works.
+
+With the switch pinned, the three commands above green, and the directory
+layout in view, the rest of this chapter introduces exactly the language this
+book uses, section by section.

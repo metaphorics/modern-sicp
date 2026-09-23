@@ -1,0 +1,181 @@
+@node	0.9, 0.10, Chapter 0, Chapter 0
+@section Modules as values
+
+@noindent
+Section 0.3 introduced modules as a namespace, reached with a dot. A module
+can also satisfy a stated contract, be built generically from another
+module, and even be passed around as an ordinary value — three ideas this
+section introduces in turn, because chapter 2's typed-arithmetic appendix and
+chapter 5's register-machine simulator both lean on them.
+
+@subsubheading A signature is a contract
+
+@code{module type} names a signature: a list of the types and values a
+module must provide, with no implementation attached. Any module ascribed
+against it must provide at least that much, at least as general as stated:
+
+@example
+# module type NUMBER = sig
+    type t
+    val zero : t
+    val add : t -> t -> t
+    val to_string : t -> string
+  end;;
+module type NUMBER =
+  sig
+    type t
+    val zero : t
+    val add : t -> t -> t
+    val to_string : t -> string
+  end
+@end example
+
+@noindent
+@code{NUMBER} says nothing about what @code{t} actually is — only that
+@emph{some} type @code{t} exists, with a zero, an addition, and a way to
+render it. Two unrelated representations can both satisfy it:
+
+@example
+# module Int_number : NUMBER with type t = int = struct
+    type t = int
+    let zero = 0
+    let add = ( + )
+    let to_string = string_of_int
+  end;;
+module Int_number :
+  sig
+    type t = int
+    val zero : t
+    val add : t -> t -> t
+    val to_string : t -> string
+  end
+@end example
+
+@noindent
+@code{NUMBER with type t = int} ascribes the module against @code{NUMBER}
+while additionally stating that @code{t} is @code{int}, not merely some
+unnamed type satisfying the signature. Without the @code{with type t = int}
+clause, @code{Int_number.t} would be @newterm{abstract} outside this
+module — provably equal to @code{int} inside the @code{struct}, but opaque
+to any code that only sees the ascribed signature. This edition adds the
+clause here specifically so that later code can call, for instance,
+@code{Int_number.add} directly on ordinary @code{int}s; leaving @code{t}
+abstract is the right choice exactly when the point is to hide the
+representation, which section 2.4's typed-arithmetic appendix does
+deliberately.
+
+@subsubheading A functor: a module parameterized by another module
+
+A @newterm{functor} is a function from modules to modules — written like an
+ordinary function definition, but over module-level arguments instead of
+value-level ones:
+
+@example
+# module Summer (M : NUMBER) = struct
+    let sum xs = List.fold_left M.add M.zero xs
+  end;;
+module Summer : (M : NUMBER) -> sig val sum : M.t list -> M.t end
+# module Float_number : NUMBER with type t = float = struct
+    type t = float
+    let zero = 0.0
+    let add = ( +. )
+    let to_string = Printf.sprintf "%g"
+  end;;
+module Float_number :
+  sig
+    type t = float
+    val zero : t
+    val add : t -> t -> t
+    val to_string : t -> string
+  end
+# module Int_summer = Summer (Int_number);;
+module Int_summer : sig val sum : Int_number.t list -> Int_number.t end
+# module Float_summer = Summer (Float_number);;
+module Float_summer : sig val sum : Float_number.t list -> Float_number.t end
+# Int_summer.sum [ 1; 2; 3 ];;
+- : Int_number.t = 6
+# Float_summer.sum [ 1.5; 2.5 ];;
+- : Float_number.t = 4.
+@end example
+
+@noindent
+@code{Summer} is written exactly once and works over @emph{any} module
+satisfying @code{NUMBER}; @code{Int_summer} and @code{Float_summer} are the
+same code, instantiated twice. This is functors' whole purpose: one
+algorithm, many representations, checked once against the abstract
+signature rather than once per concrete instantiation. Note that the raw
+toplevel above reports @code{Int_summer.sum}'s result at type
+@code{Int_number.t}, not bare @code{int} — @code{Int_number.t = int} is
+known here, but the type checker still prefers to print the more specific
+name it has in scope. This edition's own @file{ch0/lib/sec_0_9.mli} seals
+@code{Int_summer} behind a stated signature, @code{sig val sum : int list
+-> int end}, so a reader of that library sees plain @code{int}
+throughout, never @code{Int_number.t} — a small, concrete demonstration of
+what ascribing a module against an interface actually buys.
+
+@subsubheading A module packed as a value
+
+@code{(module @var{M} : @var{S})} packs a module satisfying signature
+@code{S} into an ordinary value of type @code{(module @var{S})}, which can
+be stored in a record field, put in a list, or passed to a function like any
+other value — the same idea, at the module level, that closures gave
+functions in section 0.7:
+
+@example
+# type number_package = (module NUMBER);;
+type number_package = (module NUMBER)
+# let int_package : number_package = (module Int_number);;
+val int_package : number_package = <module>
+# let float_package : number_package = (module Float_number);;
+val float_package : number_package = <module>
+@end example
+
+@noindent
+Once packed, a @code{number_package} value has forgotten which concrete
+module it came from — @code{int_package} and @code{float_package} are both
+just @code{number_package}, and nothing about their type alone reveals
+whether either hides @code{int} or @code{float}. Reading the package back
+out uses the matching pattern @code{(module @var{M} : @var{S})}, which
+un-hides its contents only inside the scope where it is unpacked:
+
+@example
+# let describe_zero (module M : NUMBER) = M.to_string M.zero;;
+val describe_zero : (module NUMBER) -> string = <fun>
+# describe_zero int_package;;
+- : string = "0"
+# describe_zero float_package;;
+- : string = "0"
+@end example
+
+@noindent
+@code{describe_zero} works on either package with no knowledge of which one
+it is handed, because its result, a @code{string}, does not depend on the
+hidden @code{M.t}. A function whose result type genuinely needs to be tied
+to which module was supplied — @code{sum_with} below folds a list of
+@code{M.t} and renders the total — must instead take its module as a
+@emph{literal} module expression at each call site, not as a value read out
+of a variable, since only a literal @code{(module @dots{})} at the call site
+lets the type checker resolve @code{M.t} for that one call:
+
+@example
+# let sum_with (module M : NUMBER) xs = M.to_string (List.fold_left M.add M.zero xs);;
+val sum_with : (module M : NUMBER) -> M.t list -> string = <fun>
+# sum_with (module Int_number) [ 1; 2; 3 ];;
+- : string = "6"
+# sum_with (module Float_number) [ 1.5; 2.5 ];;
+- : string = "4"
+@end example
+
+@noindent
+@code{sum_with}'s inferred type, @code{(module M : NUMBER) -> M.t list ->
+string}, is a @newterm{dependent function type}: its second argument's type
+depends on which module the first argument names. This is a genuine, if
+narrow, OCaml feature; it is also the reason the packed values
+@code{int_package} and @code{float_package} above could only be consumed by
+a function like @code{describe_zero} whose result stays independent of the
+hidden type, never by one like @code{sum_with} that needs its second
+argument's element type tied to the module's own @code{M.t}. Chapter 2's
+typed-arithmetic appendix and chapter 5's simulator both choose, case by
+case, between a functor (one static representation per instantiation) and a
+first-class package (one representation chosen at runtime), exactly along
+this line.

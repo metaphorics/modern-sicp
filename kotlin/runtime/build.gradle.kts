@@ -8,4 +8,5 @@ configure<KotlinJvmProjectExtension> {
 
 dependencies {
     "api"(libs.arrow.core)
+    "api"(libs.immutable)
 }

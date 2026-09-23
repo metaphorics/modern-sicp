@@ -43,8 +43,8 @@ Every pin was read at its release channel on 2026-09-22. Rule: latest stable LTS
 |@biomejs/biome|2.5.14|2026-09-16|Lint and format|https://registry.npmjs.org/@biomejs/biome|
 |Node.js|24.21.0 Active LTS|2026-09-08, EOL 2028-04-30|`.node-version` and `engines.node`|https://endoflife.date/api/v1/products/nodejs/|
 |pnpm|12.5.1|2026-09-18|`packageManager` field|https://registry.npmjs.org/pnpm|
-|@types/node|resolved at A2|resolved at A2|Highest `24.x`|https://registry.npmjs.org/@types/node|
-|fast-check|resolved at A2|resolved at A2|Property tests|https://registry.npmjs.org/fast-check|
+|@types/node|24.13.6|2026-09-19|Highest `24.x`, resolved 2026-09-23|https://registry.npmjs.org/@types/node|
+|fast-check|4.10.2|2026-09-19|Latest stable, resolved 2026-09-23|https://registry.npmjs.org/fast-check|
 
 ## Kotlin
 
@@ -72,12 +72,17 @@ Every pin was read at its release channel on 2026-09-22. Rule: latest stable LTS
 |epubcheck|resolved at A2||Mandatory in `just books` and in CI|https://github.com/w3c/epubcheck|
 |GitHub Actions|commit SHAs resolved at A5||Each action pinned to a commit SHA with its tag beside it (D34)|https://github.com/actions|
 
-## Settled at A3
+## Math conversion
 
 |Variable|Value|Reason|
 |---|---|---|
-|`T4H_MATH_CONVERSION`|settled at A3|D36|
-|`T4H_TEX_CONVERSION`|settled at A3|D36|
+|`T4H_MATH_CONVERSION`|`tex`|D36. Plain TeX defines `\eqalign`, `\cases`, `\matrix` and `\over`; the `latex` path fails on them, because texi2any's tex4ht extension emits a bare `\documentclass{article}` with no packages and offers no preamble hook.|
+|`T4H_TEX_CONVERSION`|`tex`|D36. Same conversion for `@tex` blocks as for math.|
+
+Every edition recipe calls `tools/texi2any_html.sh`, which sets both variables and
+puts `tools/tex4ht` first on PATH. Those wrappers pass tex4ht the `mathml` option,
+which the extension itself never supplies (`tex4ht.pm`: `my $options = '';`), leaving
+tex4ht in its default mode that renders math as PNG images.
 
 ## GitHub Actions pins
 

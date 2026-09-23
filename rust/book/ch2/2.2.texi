@@ -94,10 +94,12 @@ combining things with that operation can themselves be combined using the same
 operation.@footnote{The use of the word ``closure'' here comes from abstract
 algebra, where a set of elements is said to be closed under an operation if
 applying the operation to elements in the set produces an element that is again
-an element of the set.  The Lisp community also (unfortunately) uses the word
-``closure'' to describe a totally unrelated concept: A closure is an
-implementation technique for representing procedures with free variables.  We
-do not use the word ``closure'' in this second sense in this book.  } Closure
+an element of the set.  Rust also (quite reasonably) uses the word
+``closure'' to describe a totally unrelated concept: a closure is an anonymous
+function that captures free variables from its environment, and this book has
+been using the word in that sense since @ref{1.3}.  The closure property of
+@code{cons} has nothing to do with Rust's function closures; context and the
+phrase ``closure property'' keep the two apart.} Closure
 is the key to power in any means of combination because it permits us to create
 @newterm{hierarchical} structures---structures made up of parts, which
 themselves are made up of parts, and so on.
@@ -116,14 +118,14 @@ elements by assembling them into arrays---but one cannot form arrays whose
 elements are themselves arrays.  Pascal and C admit structures whose elements
 are structures.  However, this requires that the programmer manipulate pointers
 explicitly, and adhere to the restriction that each field of a structure can
-contain only elements of a prespecified form.  Unlike Lisp with its pairs,
-these languages have no built-in general-purpose glue that makes it easy to
-manipulate compound data in a uniform way.  This limitation lies behind Alan
-Perlis's comment in his foreword to this book: ``In Pascal the plethora of
-declarable data structures induces a specialization within functions that
-inhibits and penalizes casual cooperation.  It is better to have 100 functions
-operate on one data structure than to have 10 functions operate on 10 data
-structures.''}
+contain only elements of a prespecified form.  Rust is a pleasant
+counterexample: a @code{Vec} may hold anything, including other @code{Vec}s,
+and generic containers compose without pointer ceremony.  This limitation of
+the older languages lies behind Alan Perlis's comment in his foreword to this
+book: ``In Pascal the plethora of declarable data structures induces a
+specialization within functions that inhibits and penalizes casual cooperation.
+It is better to have 100 functions operate on one data structure than to have
+10 functions operate on 10 data structures.''}
 
 @menu
 * 2.2.1::            Representing Sequences
@@ -143,16 +145,17 @@ sequence 1, 2, 3, 4 is represented as a chain of pairs.  The @code{car} of each
 pair is the corresponding item in the chain, and the @code{cdr} of the pair is
 the next pair in the chain.  The @code{cdr} of the final pair signals the end
 of the sequence by pointing to a distinguished value that is not a pair,
-represented in box-and-pointer diagrams as a diagonal line and in programs as
-the value of the variable @code{nil}.  The entire sequence is constructed by
-nested @code{cons} operations:
+represented in box-and-pointer diagrams as a diagonal line and in this
+edition's programs as the @code{List::Nil} variant of the runtime's
+persistent list.  The entire sequence is constructed by nested @code{cons}
+operations:
 
-@lisp
-(cons 1
-      (cons 2
-            (cons 3
-                  (cons 4 nil))))
-@end lisp
+@example rust
+let one_through_four = List::cons(
+    1,
+    &List::cons(2, &List::cons(3, &List::cons(4, &List::Nil))),
+);
+@end example
 
 @float
 @anchor{Figure 2.4}
@@ -184,46 +187,48 @@ nested @code{cons} operations:
 
 @noindent
 Such a sequence of pairs, formed by nested @code{cons}es, is called a
-@newterm{list}, and Scheme provides a primitive called @code{list} to help in
-constructing lists.@footnote{In this book, we use @newterm{list} to mean a
+@newterm{list}, and this edition provides it as the generic type
+@code{List<T>}, so a helper constructor builds the chain in one
+expression.@footnote{In this book, we use @newterm{list} to mean a
 chain of pairs terminated by the end-of-list marker.  In contrast, the term
 @newterm{list structure} refers to any data structure made out of pairs, not
-just to lists.}  The above sequence could be produced by @code{(list 1 2 3 4)}.
-In general,
+just to lists.}  The above sequence could be produced by
+@code{List::from_iter([1, 2, 3, 4])}.  In general,
 
-@lisp
-(list ⟨@var{a₁}⟩ ⟨@var{a₂}⟩ @r{…} ⟨@var{aₙ}⟩)
-@end lisp
+@example rust
+let list = List::from_iter([a1, a2, @dots{}, an]);
+@end example
 
 @noindent
 is equivalent to
 
-@lisp
-(cons ⟨@var{a₁}⟩
-      (cons ⟨@var{a₂}⟩
-            (cons @r{…}
-                  (cons ⟨@var{aₙ}⟩
-                        nil)@r{…})))
-@end lisp
+@example rust
+let list = List::cons(
+    a1,
+    &List::cons(a2, &List::cons(@r{@dots{}}, &List::cons(an, &List::Nil))),
+);
+@end example
 
 @noindent
 Lisp systems conventionally print lists by printing the sequence of elements,
-enclosed in parentheses.  Thus, the data object in @ref{Figure 2.4} is printed
-as @code{(1 2 3 4)}:
+enclosed in parentheses, and this edition's @code{List} displays itself the
+same way.  Thus, the data object in @ref{Figure 2.4} is displayed as
+@code{(1 2 3 4)}:
 
-@lisp
-(define one-through-four (list 1 2 3 4))
+@example rust
+let one_through_four: List<i128> = List::from_iter([1, 2, 3, 4]);
 
-one-through-four
-@i{(1 2 3 4)}
-@end lisp
+println!("{one_through_four}");
+// => (1 2 3 4)
+@end example
 
 @noindent
-Be careful not to confuse the expression @code{(list 1 2 3 4)} with the list
-@code{(1 2 3 4)}, which is the result obtained when the expression is
-evaluated.  Attempting to evaluate the expression @code{(1 2 3 4)} will signal
-an error when the interpreter tries to apply the procedure @code{1} to
-arguments @code{2}, @code{3}, @code{4}.
+Be careful not to confuse the expression @code{List::from_iter([1, 2, 3, 4])}
+with the list @code{(1 2 3 4)}, which is the value obtained when the
+expression is evaluated.  Scheme blurs the distinction because an unevaluated
+expression can itself be taken as data; Rust draws the line in the type
+system, and the list of @ref{Figure 2.4} is a value of type
+@code{List<i128>}, never a piece of program.
 
 We can think of @code{car} as selecting the first item in the list, and of
 @code{cdr} as selecting the sublist consisting of all but the first item.
@@ -231,51 +236,50 @@ Nested applications of @code{car} and @code{cdr} can be used to extract the
 second, third, and subsequent items in the list.@footnote{Since nested
 applications of @code{car} and @code{cdr} are cumbersome to write, Lisp
 dialects provide abbreviations for them---for instance,
+@code{(cadr ⟨@var{arg}⟩)} is @code{(car (cdr ⟨@var{arg}⟩))}.  Rust provides no
+such abbreviations, and neither does this edition: a chain of
+@code{car}/@code{cdr} steps that can fail is spelled out step by step, with
+@code{?} carrying the failure outward, as exercise 2.25 shows.} The
+constructor @code{cons} makes a list like the original one, but with an
+additional item at the beginning.
 
-@lisp
-(cadr ⟨@var{arg}⟩) = (car (cdr ⟨@var{arg}⟩))
-@end lisp
+@example rust
+println!("{}", one_through_four.car().copied().expect("cons cell"));
+// => 1
 
-The names of all such procedures start with @code{c} and end with @code{r}.
-Each @code{a} between them stands for a @code{car} operation and each @code{d}
-for a @code{cdr} operation, to be applied in the same order in which they
-appear in the name.  The names @code{car} and @code{cdr} persist because simple
-combinations like @code{cadr} are pronounceable.} The constructor @code{cons}
-makes a list like the original one, but with an additional item at the
-beginning.
+println!("{}", one_through_four.cdr().expect("cons cell"));
+// => (2 3 4)
 
-@lisp
-(car one-through-four)
-@i{1}
+println!(
+    "{}",
+    one_through_four
+        .cdr()
+        .and_then(List::car)
+        .copied()
+        .expect("cons cell"),
+);
+// => 2
 
-(cdr one-through-four)
-@i{(2 3 4)}
+println!("{}", List::cons(10, &one_through_four));
+// => (10 1 2 3 4)
 
-(car (cdr one-through-four))
-@i{2}
-
-(cons 10 one-through-four)
-@i{(10 1 2 3 4)}
-
-(cons 5 one-through-four)
-@i{(5 1 2 3 4)}
-@end lisp
+println!("{}", List::cons(5, &one_through_four));
+// => (5 1 2 3 4)
+@end example
 
 @noindent
-The value of @code{nil}, used to terminate the chain of pairs, can be thought
-of as a sequence of no elements, the @newterm{empty list}.  The word
+The value of @code{List::Nil}, used to terminate the chain of pairs, can be
+thought of as a sequence of no elements, the @newterm{empty list}.  The word
 @newterm{nil} is a contraction of the Latin word @emph{nihil}, which means
-``nothing.''@footnote{It's remarkable how much energy in the standardization of
-Lisp dialects has been dissipated in arguments that are literally over nothing:
-Should @code{nil} be an ordinary name?  Should the value of @code{nil} be a
-symbol?  Should it be a list?  Should it be a pair?  In Scheme, @code{nil} is
-an ordinary name, which we use in this section as a variable whose value is the
-end-of-list marker (just as @code{true} is an ordinary variable that has a true
-value).  Other dialects of Lisp, including Common Lisp, treat @code{nil} as a
-special symbol.  The authors of this book, who have endured too many language
-standardization brawls, would like to avoid the entire issue.  Once we have
-introduced quotation in @ref{2.3}, we will denote the empty list as
-@code{'()} and dispense with the variable @code{nil} entirely.}
+``nothing.''@footnote{It's remarkable how much energy in the standardization
+of Lisp dialects has been dissipated in arguments that are literally over
+nothing: Should @code{nil} be an ordinary name?  Should the value of
+@code{nil} be a symbol?  Should it be a list?  Should it be a pair?  This
+edition sidesteps the entire issue the way the languages born after the
+brawls do: the empty list is a variant, @code{List::Nil}, and the type system
+knows which values are lists and which are not.  Chapter @ref{2.3} introduces
+the symbolic data that motivates Scheme's own notation for the empty list;
+this edition's lists stay constructed values throughout.}
 
 @subsubheading List operations
 
@@ -297,38 +301,47 @@ Otherwise, @code{list-ref} should return  the @math{{(n - 1)}}-st item of the
 
 @end itemize
 
-@lisp
-(define (list-ref items n)
-  (if (= n 0)
-      (car items)
-      (list-ref (cdr items) 
-                (- n 1))))
+@example rust
+pub fn list_ref<T: Clone>(
+    items: &List<T>,
+    n: usize,
+) -> Result<T, SchemeError> @{
+    match (items, n) @{
+        (List::Cons(x, _), 0) => Ok(x.clone()),
+        (List::Cons(_, rest), _) => list_ref(rest, n - 1),
+        (List::Nil, _) => @{
+            Err(SchemeError::TypeMismatch("list-ref: index past the end".into()))
+        @}
+    @}
+@}
 
-(define squares 
-  (list 1 4 9 16 25))
+let squares: List<i128> = List::from_iter([1, 4, 9, 16, 25]);
 
-(list-ref squares 3)
-@i{16}
-@end lisp
+println!("{}", list_ref(&squares, 3)?);
+// => 16
+@end example
 
 @noindent
-Often we @code{cdr} down the whole list.  To aid in this, Scheme includes a
-primitive predicate @code{null?}, which tests whether its argument is the empty
-list.  The procedure @code{length}, which returns the number of items in a
-list, illustrates this typical pattern of use:
+Often we @code{cdr} down the whole list.  To aid in this, the book's Scheme
+primitive @code{null?} tests whether its argument is the empty list; this
+edition spells the test as the @code{is_empty} method on @code{List}, which
+the type system admits only for lists in the first place.  The procedure
+@code{length}, which returns the number of items in a list, illustrates this
+typical pattern of use:
 
-@lisp
-(define (length items)
-  (if (null? items)
-      0
-      (+ 1 (length (cdr items)))))
+@example rust
+pub fn length<T>(items: &List<T>) -> usize @{
+    match items @{
+        List::Nil => 0,
+        List::Cons(_, rest) => 1 + length(rest),
+    @}
+@}
 
-(define odds
-  (list 1 3 5 7))
+let odds: List<i128> = List::from_iter([1, 3, 5, 7]);
 
-(length odds)
-@i{4}
-@end lisp
+println!("{}", length(&odds));
+// => 4
+@end example
 
 @noindent
 The @code{length} procedure implements a simple recursive plan. The reduction
@@ -353,30 +366,33 @@ The @code{length} of the empty list is 0.
 @end itemize
 
 @noindent
-We could also compute @code{length} in an iterative style:
+We could also compute @code{length} in an iterative style, which Rust writes
+as the loop it is:
 
-@lisp
-(define (length items)
-  (define (length-iter a count)
-    (if (null? a)
-        count
-        (length-iter (cdr a) 
-                     (+ 1 count))))
-  (length-iter items 0))
-@end lisp
+@example rust
+pub fn length_iter<T>(items: &List<T>) -> usize @{
+    let mut count = 0;
+    let mut cursor = Some(items);
+    while let Some(List::Cons(_, rest)) = cursor @{
+        count += 1;
+        cursor = Some(rest);
+    @}
+    count
+@}
+@end example
 
 @noindent
 Another conventional programming technique is to ``@code{cons} up'' an answer
 list while @code{cdr}ing down a list, as in the procedure @code{append}, which
 takes two lists as arguments and combines their elements to make a new list:
 
-@lisp
-(append squares odds)
-@i{(1 4 9 16 25 1 3 5 7)}
+@example rust
+println!("{}", append(&squares, &odds));
+// => (1 4 9 16 25 1 3 5 7)
 
-(append odds squares)
-@i{(1 3 5 7 1 4 9 16 25)}
-@end lisp
+println!("{}", append(&odds, &squares));
+// => (1 3 5 7 1 4 9 16 25)
+@end example
 
 @noindent
 @code{Append} is also implemented using a recursive plan.  To @code{append}
@@ -393,24 +409,27 @@ Otherwise, @code{append} the @code{cdr} of @code{list1} and @code{list2}, and
 
 @end itemize
 
-@lisp
-(define (append list1 list2)
-  (if (null? list1)
-      list2
-      (cons (car list1) 
-            (append (cdr list1) 
-                    list2))))
-@end lisp
+@example rust
+pub fn append<T: Clone>(list1: &List<T>, list2: &List<T>) -> List<T> @{
+    match list1 @{
+        List::Nil => list2.clone(),
+        List::Cons(x, rest) => List::cons(x.clone(), &append(rest, list2)),
+    @}
+@}
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.17}Exercise 2.17:} Define a procedure
 @code{last-pair} that returns the list that contains only the last element of a
 given (nonempty) list:
 
-@lisp
-(last-pair (list 23 72 149 34))
-@i{(34)}
-@end lisp
+@example rust
+last_pair(&List::from_iter([23, 72, 149, 34]));
+// => (34)
+
+last_pair(&List::from_iter([5]));
+// => (5)
+@end example
 @end quotation
 
 @quotation
@@ -418,10 +437,10 @@ given (nonempty) list:
 that takes a list as argument and returns a list of the same elements in
 reverse order:
 
-@lisp
-(reverse (list 1 4 9 16 25))
-@i{(25 16 9 4 1)}
-@end lisp
+@example rust
+reverse(&List::from_iter([1, 4, 9, 16, 25]));
+// => (25 16 9 4 1)
+@end example
 @end quotation
 
 @quotation
@@ -436,45 +455,39 @@ able to supply a list of coins to be used for making change.
 
 We want to rewrite the procedure @code{cc} so that its second argument is a
 list of the values of the coins to use rather than an integer specifying which
-coins to use.  We could then have lists that defined each kind of currency:
+coins to use.  We could then have lists that defined each kind of currency
+(amounts are integer pence, so the book's half-pound coin, worth 50 pence,
+would merely duplicate the 50-pence coin and is left out):
 
-@lisp
-(define us-coins 
-  (list 50 25 10 5 1))
+@example rust
+let us_coins: List<i128> = List::from_iter([50, 25, 10, 5, 1]);
 
-(define uk-coins 
-  (list 100 50 20 10 5 2 1 0.5))
-@end lisp
+let uk_coins: List<i128> = List::from_iter([100, 50, 20, 10, 5, 2, 1]);
+@end example
 
 We could then call @code{cc} as follows:
 
-@lisp
-(cc 100 us-coins)
-@i{292}
-@end lisp
+@example rust
+cc(100, &us_coins);
+// => 292
+@end example
 
 To do this will require changing the program @code{cc} somewhat.  It will still
 have the same form, but it will access its second argument differently, as
 follows:
 
-@lisp
-(define (cc amount coin-values)
-  (cond ((= amount 0) 
-         1)
-        ((or (< amount 0) 
-             (no-more? coin-values)) 
-         0)
-        (else
-         (+ (cc 
-             amount
-             (except-first-denomination 
-              coin-values))
-            (cc 
-             (- amount
-                (first-denomination 
-                 coin-values))
-             coin-values)))))
-@end lisp
+@example rust
+fn cc(amount: i128, coin_values: &List<i128>) -> i128 @{
+    if amount == 0 @{
+        return 1;
+    @}
+    if amount < 0 || no_more(coin_values) @{
+        return 0;
+    @}
+    cc(amount, &except_first_denomination(coin_values))
+        + cc(amount - first_denomination(coin_values), coin_values)
+@}
+@end example
 
 Define the procedures @code{first-denomination},
 @code{except-first-denomination} and @code{no-more?} in terms of primitive
@@ -485,63 +498,44 @@ affect the answer produced by @code{cc}?  Why or why not?
 @quotation
 @strong{@anchor{Exercise 2.20}Exercise 2.20:} The procedures @code{+},
 @code{*}, and @code{list} take arbitrary numbers of arguments. One way to
-define such procedures is to use @code{define} with @newterm{dotted-tail notation}.  
-In a procedure definition, a parameter list that has a dot before
-the last parameter name indicates that, when the procedure is called, the
-initial parameters (if any) will have as values the initial arguments, as
-usual, but the final parameter's value will be a @newterm{list} of any
-remaining arguments.  For instance, given the definition
+define such procedures in Scheme is to use @code{define} with
+@newterm{dotted-tail notation}.  Rust has no variadic functions, and this
+edition's replacement for the mechanism is the rest parameter: a fixed
+argument followed by a slice parameter that binds the remaining arguments
+as a @newterm{list}, which is the same two-part shape the dot gives Scheme.  For instance, given
+the definition
 
-@lisp
-(define (f x y . z) ⟨@var{body}⟩)
-@end lisp
+@example rust
+fn f(x: i128, y: i128, z: &[i128]) -> i128 @{ @r{⟨@var{body}⟩} @}
+@end example
 
 @noindent
 the procedure @code{f} can be called with two or more arguments.  If we
 evaluate
 
-@lisp
-(f 1 2 3 4 5 6)
-@end lisp
+@example rust
+f(1, 2, 3, 4, 5, 6);
+@end example
 
 @noindent
 then in the body of @code{f}, @code{x} will be 1, @code{y} will be 2, and
-@code{z} will be the list @code{(3 4 5 6)}.  Given the definition
+@code{z} will be the slice @code{[3, 4, 5, 6]}.@footnote{Scheme would also
+allow a procedure of @emph{no} fixed arguments, @code{(define (g . w) ...)},
+binding @emph{all} the arguments to @code{w}.  Rust's rest parameter needs at
+least one fixed argument in front; a procedure that accepts any number of
+arguments including zero takes the whole list as one slice parameter, as
+@code{fn g(w: &[i128])} does.}  Use this notation to write a procedure
+@code{same-parity} that takes one integer and any number of further integers
+and returns a list of all the arguments that have the same even-odd parity as
+the first.  For example,
 
-@lisp
-(define (g . w) ⟨@var{body}⟩)
-@end lisp
+@example rust
+same_parity(1, &[2, 3, 4, 5, 6, 7]);
+// => (1 3 5 7)
 
-@noindent
-the procedure @code{g} can be called with zero or more arguments.  If we
-evaluate
-
-@lisp
-(g 1 2 3 4 5 6)
-@end lisp
-
-@noindent
-then in the body of @code{g}, @code{w} will be the list @code{(1 2 3 4 5
-6)}.@footnote{To define @code{f} and @code{g} using @code{lambda} we would
-write
-
-@lisp
-(define f (lambda (x y . z) ⟨@var{body}⟩))
-(define g (lambda w ⟨@var{body}⟩))
-@end lisp
-}
-
-Use this notation to write a procedure @code{same-parity} that takes one or
-more integers and returns a list of all the arguments that have the same
-even-odd parity as the first argument.  For example,
-
-@lisp
-(same-parity 1 2 3 4 5 6 7)
-@i{(1 3 5 7)}
-
-(same-parity 2 3 4 5 6 7)
-@i{(2 4 6)}
-@end lisp
+same_parity(2, &[3, 4, 5, 6, 7]);
+// => (2 4 6)
+@end example
 @end quotation
 
 @subsubheading Mapping over lists
@@ -550,66 +544,73 @@ One extremely useful operation is to apply some transformation to each element
 in a list and generate the list of results.  For instance, the following
 procedure scales each number in a list by a given factor:
 
-@lisp
-(define (scale-list items factor)
-  (if (null? items)
-      nil
-      (cons (* (car items) factor)
-            (scale-list (cdr items) 
-                        factor))))
+@example rust
+pub fn scale_list(
+    items: &List<i128>,
+    factor: i128,
+) -> Result<List<i128>, SchemeError> @{
+    match items @{
+        List::Nil => Ok(List::Nil),
+        List::Cons(x, rest) => @{
+            let head = x.checked_mul(factor).ok_or(SchemeError::Overflow)?;
+            Ok(List::cons(head, &scale_list(rest, factor)?))
+        @}
+    @}
+@}
 
-(scale-list (list 1 2 3 4 5) 10)
-@i{(10 20 30 40 50)}
-@end lisp
+scale_list(&List::from_iter([1, 2, 3, 4, 5]), 10)?;
+// => (10 20 30 40 50)
+@end example
 
 @noindent
 We can abstract this general idea and capture it as a common pattern expressed
 as a higher-order procedure, just as in @ref{1.3}.  The higher-order
 procedure here is called @code{map}.  @code{Map} takes as arguments a procedure
 of one argument and a list, and returns a list of the results produced by
-applying the procedure to each element in the list:@footnote{@anchor{Footnote 78}
-Scheme standardly provides a @code{map} procedure that
-is more general than the one described here.  This more general @code{map}
-takes a procedure of @math{n} arguments, together with @math{n} lists, and applies
-the procedure to all the first elements of the lists, all the second elements
-of the lists, and so on, returning a list of the results.  For example:
+applying the procedure to each element in the list:@footnote{Scheme
+standardly provides a @code{map} procedure that is more general than the one
+described here.  This more general @code{map} takes a procedure of @math{n}
+arguments, together with @math{n} lists, and applies the procedure to all the
+first elements of the lists, all the second elements of the lists, and so on,
+returning a list of the results.  For example, it computes the column sums of
+equal-length rows, which exercise 2.36 builds over matrices, and exercise
+2.37's @code{dot-product} uses.  Rust expresses that multi-sequence walk with
+@code{zip}: @code{v.iter().zip(w).map(|(a, b)| a * b)}.}
 
-@lisp
-(map + 
-     (list 1 2 3) 
-     (list 40 50 60) 
-     (list 700 800 900))
-@i{(741 852 963)}
+@example rust
+pub fn map_list<T, U: Clone>(
+    f: impl Fn(&T) -> U,
+    items: &List<T>,
+) -> List<U> @{
+    match items @{
+        List::Nil => List::Nil,
+        List::Cons(x, rest) => List::cons(f(x), &map_list(f, rest)),
+    @}
+@}
 
-(map (lambda (x y) (+ x (* 2 y)))
-     (list 1 2 3)
-     (list 4 5 6))
-@i{(9 12 15)}
-@end lisp
-}
+let absolute: List<f64> = map_list(|x| x.abs(), &List::from_iter([-10.0, 2.5, -11.6, 17.0]));
+println!("{absolute}");
+// => (10 2.5 11.6 17)
 
-@lisp
-(define (map proc items)
-  (if (null? items)
-      nil
-      (cons (proc (car items))
-            (map proc (cdr items)))))
-
-(map abs (list -10 2.5 -11.6 17))
-@i{(10 2.5 11.6 17)}
-
-(map (lambda (x) (* x x)) (list 1 2 3 4))
-@i{(1 4 9 16)}
-@end lisp
+println!("{}", map_list(|x| x * x, &List::from_iter([1, 2, 3, 4])));
+// => (1 4 9 16)
+@end example
 
 @noindent
 Now we can give a new definition of @code{scale-list} in terms of @code{map}:
 
-@lisp
-(define (scale-list items factor)
-  (map (lambda (x) (* x factor))
-       items))
-@end lisp
+@example rust
+pub fn scale_list(
+    items: &List<i128>,
+    factor: i128,
+) -> Result<List<i128>, SchemeError> @{
+    items
+        .iter()
+        .map(|x| x.checked_mul(factor).ok_or(SchemeError::Overflow))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|scaled| scaled.into_iter().collect())
+@}
+@end example
 
 @noindent
 @code{Map} is an important construct, not only because it captures a common
@@ -634,23 +635,26 @@ as a framework for organizing programs.
 takes a list of numbers as argument and returns a list of the squares of those
 numbers.
 
-@lisp
-(square-list (list 1 2 3 4))
-@i{(1 4 9 16)}
-@end lisp
+@example rust
+square_list(&List::from_iter([1, 2, 3, 4]));
+// => (1 4 9 16)
+@end example
 
 Here are two different definitions of @code{square-list}.  Complete both of
 them by filling in the missing expressions:
 
-@lisp
-(define (square-list items)
-  (if (null? items)
-      nil
-      (cons ⟨??⟩ ⟨??⟩)))
+@example rust
+fn square_list_direct(items: &List<i128>) -> List<i128> @{
+    match items @{
+        List::Nil => List::Nil,
+        List::Cons(x, rest) => List::cons(@r{⟨??⟩}, &square_list_direct(rest)),
+    @}
+@}
 
-(define (square-list items)
-  (map ⟨??⟩ ⟨??⟩))
-@end lisp
+fn square_list_map(items: &List<i128>) -> List<i128> @{
+    map_list(@r{⟨??⟩}, items)
+@}
+@end example
 @end quotation
 
 @quotation
@@ -658,35 +662,32 @@ them by filling in the missing expressions:
 the first @code{square-list} procedure of @ref{Exercise 2.21} so that it
 evolves an iterative process:
 
-@lisp
-(define (square-list items)
-  (define (iter things answer)
-    (if (null? things)
-        answer
-        (iter (cdr things)
-              (cons (square (car things))
-                    answer))))
-  (iter items nil))
-@end lisp
+@example rust
+fn square_list_iter(items: &List<i128>) -> List<i128> @{
+    let mut answer = List::Nil;
+    let mut cursor = Some(items);
+    while let Some(List::Cons(x, rest)) = cursor @{
+        answer = List::cons(x * x, &answer);
+        cursor = Some(rest);
+    @}
+    answer
+@}
+@end example
 
 Unfortunately, defining @code{square-list} this way produces the answer list in
 the reverse order of the one desired.  Why?
 
 Louis then tries to fix his bug by interchanging the arguments to @code{cons}:
 
-@lisp
-(define (square-list items)
-  (define (iter things answer)
-    (if (null? things)
-        answer
-        (iter (cdr things)
-              (cons answer
-                    (square 
-                     (car things))))))
-  (iter items nil))
-@end lisp
+@example rust
+answer = List::cons(&answer, x * x);
+@end example
 
-This doesn't work either.  Explain.
+This doesn't work either.  In Scheme it produces a hopelessly misnested
+structure instead of a flat list; in Rust the literal translation is worse
+than wrong: it does not compile, because @code{List::cons} takes its element
+by value and a list is not an @code{i128}.  Explain what Louis's program
+would build in Scheme, and why the type system rejects it here.
 @end quotation
 
 @quotation
@@ -698,15 +699,14 @@ The values returned by applying the procedure to the elements are not used at
 all---@code{for-each} is used with procedures that perform an action, such as
 printing.  For example,
 
-@lisp
-(for-each 
- (lambda (x) (newline) (display x))
- (list 57 321 88))
-
-@i{57}
-@i{321}
-@i{88}
-@end lisp
+@example rust
+for_each(&List::from_iter([57, 321, 88]), |x| @{
+    println!("{x}");
+@});
+// 57
+// 321
+// 88
+@end example
 
 The value returned by the call to @code{for-each} (not illustrated above) can
 be something arbitrary, such as true.  Give an implementation of
@@ -718,16 +718,16 @@ be something arbitrary, such as true.  Give an implementation of
 
 The representation of sequences in terms of lists generalizes naturally to
 represent sequences whose elements may themselves be sequences.  For example,
-we can regard the object @code{((1 2) 3 4)} constructed by
+we can regard the object constructed by
 
-@lisp
-(cons (list 1 2) (list 3 4))
-@end lisp
+@example rust
+sub(&[sub(&[leaf(1), leaf(2)]), leaf(3), leaf(4)]);
+@end example
 
 @noindent
 as a list of three items, the first of which is itself a list, @code{(1 2)}.
 Indeed, this is suggested by the form in which the result is printed by the
-interpreter.  @ref{Figure 2.5} shows the representation of
+edition's @code{Display}.  @ref{Figure 2.5} shows the representation of
 this structure in terms of pairs.
 
 @float
@@ -803,30 +803,38 @@ often reduce operations on trees to operations on their branches, which reduce
 in turn to operations on the branches of the branches, and so on, until we
 reach the leaves of the tree.  As an example, compare the @code{length}
 procedure of @ref{2.2.1} with the @code{count-leaves} procedure, which
-returns the total number of leaves of a tree:
+returns the total number of leaves of a tree.  This edition carries the
+nested structure in the recursive type @code{Nest<T>}---a leaf holding a
+value, or a branch holding a @code{List} of subtrees---so @code{count-leaves}
+takes one argument of that type:
 
-@lisp
-(define x (cons (list 1 2) (list 3 4)))
-@end lisp
+@example rust
+let x: Nest<i128> = sub(&[sub(&[leaf(1), leaf(2)]), leaf(3), leaf(4)]);
+@end example
 
-@lisp
-(length x)
-@i{3}
-@end lisp
+@example rust
+if let Nest::Sub(items) = &x @{
+    println!("{}", length(items));
+@}
+// => 3
+@end example
 
-@lisp
-(count-leaves x)
-@i{4}
+@example rust
+println!("{}", count_leaves(&x));
+// => 4
 
-(list x x)
-@i{(((1 2) 3 4) ((1 2) 3 4))}
+let doubled: Nest<i128> = sub(&[x.clone(), x.clone()]);
+println!("{doubled}");
+// => (((1 2) 3 4) ((1 2) 3 4))
 
-(length (list x x))
-@i{2}
+if let Nest::Sub(items) = &doubled @{
+    println!("{}", length(items));
+@}
+// => 2
 
-(count-leaves (list x x))
-@i{8}
-@end lisp
+println!("{}", count_leaves(&doubled));
+// => 8
+@end example
 
 @noindent
 To implement @code{count-leaves}, recall the recursive plan for computing
@@ -879,93 +887,107 @@ case:
 
 @noindent
 To aid in writing recursive procedures on trees, Scheme provides the primitive
-predicate @code{pair?}, which tests whether its argument is a pair.  Here is
-the complete procedure:@footnote{The order of the first two clauses in the
-@code{cond} matters, since the empty list satisfies @code{null?} and also is
-not a pair.}
+predicate @code{pair?}, which tests whether its argument is a pair.  This
+edition needs no predicate: the @code{Nest} variants name the cases, and the
+compiler's exhaustiveness check on @code{match} proves the recursion handles
+every tree.  Here is the complete procedure:@footnote{The order of the first
+two cases in the book's @code{cond} matters, since the empty list satisfies
+@code{null?} and also is not a pair.  In a @code{match} the compiler enforces
+the same care from the other side: every variant must be handled exactly once,
+and forgetting the empty-branch case is a compile error rather than a
+silent wrong answer.}
 
-@lisp
-(define (count-leaves x)
-  (cond ((null? x) 0)
-        ((not (pair? x)) 1)
-        (else (+ (count-leaves (car x))
-                 (count-leaves (cdr x))))))
-@end lisp
+@example rust
+pub fn count_leaves<T>(tree: &Nest<T>) -> u64 @{
+    match tree @{
+        Nest::Leaf(_) => 1,
+        Nest::Sub(items) => match items.as_ref() @{
+            List::Nil => 0,
+            List::Cons(first, rest) => @{
+                count_leaves(first) + count_leaves(&Nest::Sub(Rc::clone(rest)))
+            @}
+        @},
+    @}
+@}
+@end example
 
 @quotation
-@strong{@anchor{Exercise 2.24}Exercise 2.24:} Suppose we evaluate the
-expression @code{(list 1 (list 2 (list 3 4)))}.  Give the result printed by the
-interpreter, the corresponding box-and-pointer structure, and the
-interpretation of this as a tree (as in @ref{Figure 2.6}).
+@strong{@anchor{Exercise 2.24}Exercise 2.24:} @emph{SICP exercise 2.24 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  Build the expression
+@code{sub(&[leaf(1), sub(&[leaf(2), sub(&[leaf(3), leaf(4)])])])}, which is
+this edition's @code{list(1, list(2, list(3, 4)))}.  Give the result printed
+by its @code{Display}, the corresponding box-and-pointer structure, and the
+interpretation of this structure as a tree (as in @ref{Figure 2.6}).
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.25}Exercise 2.25:} Give combinations of @code{car}s
-and @code{cdr}s that will pick 7 from each of the following lists:
+@strong{@anchor{Exercise 2.25}Exercise 2.25:} @emph{SICP exercise 2.25 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  Give combinations of
+@code{car}s and @code{cdr}s---typed accessor chains, as in the section---that
+will pick 7 from each of the following nested lists:
 
-@lisp
-(1 3 (5 7) 9)
-((7))
-(1 (2 (3 (4 (5 (6 7))))))
-@end lisp
+@example rust
+sub(&[leaf(1), leaf(3), sub(&[leaf(5), leaf(7)]), leaf(9)]);
+sub(&[sub(&[leaf(7)])]);
+sub(&[leaf(1), sub(&[leaf(2), sub(&[leaf(3), sub(&[leaf(4), sub(&[leaf(5), sub(&[leaf(6), leaf(7)])])])])])]);
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.26}Exercise 2.26:} Suppose we define @code{x} and
+@strong{@anchor{Exercise 2.26}Exercise 2.26:} @emph{SICP exercise 2.26 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  Suppose we define @code{x} and
 @code{y} to be two lists:
 
-@lisp
-(define x (list 1 2 3))
-(define y (list 4 5 6))
-@end lisp
+@example rust
+let x: List<i128> = List::from_iter([1, 2, 3]);
+let y: List<i128> = List::from_iter([4, 5, 6]);
+@end example
 
-What result is printed by the interpreter in response to evaluating each of the
-following expressions:
-
-@lisp
-(append x y)
-(cons x y)
-(list x y)
-@end lisp
+What type does each of @code{append(x, y)}, @code{cons(x, y)}, and
+@code{list(x, y)} produce, and what result is printed by the edition's
+@code{Display} in response to each?  For @code{cons(x, y)} consider carefully
+what a single homogeneous @code{List<T>} can hold, and where the tree type of
+this subsection takes over.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.27}Exercise 2.27:} Modify your @code{reverse}
 procedure of @ref{Exercise 2.18} to produce a @code{deep-reverse} procedure
-that takes a list as argument and returns as its value the list with its
-elements reversed and with all sublists deep-reversed as well.  For example,
+that takes a tree as argument and returns as its value the tree with its
+branches reversed and with all sublists deep-reversed as well.  For example,
 
-@lisp
-(define x 
-  (list (list 1 2) (list 3 4)))
+@example rust
+let x: Nest<i128> = sub(&[sub(&[leaf(1), leaf(2)]), sub(&[leaf(3), leaf(4)])]);
 
-x
-@i{((1 2) (3 4))}
+println!("{x}");
+// => ((1 2) (3 4))
 
-(reverse x)
-@i{((3 4) (1 2))}
+println!("{x}");
+// reverse(x) is ((3 4) (1 2))
 
-(deep-reverse x)
-@i{((4 3) (2 1))}
-@end lisp
+println!("{}", deep_reverse(&x));
+// => ((4 3) (2 1))
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.28}Exercise 2.28:} Write a procedure @code{fringe}
-that takes as argument a tree (represented as a list) and returns a list whose
-elements are all the leaves of the tree arranged in left-to-right order.  For
-example,
+that takes as argument a tree (represented as a @code{Nest}) and returns a
+list whose elements are all the leaves of the tree arranged in left-to-right
+order.  For example,
 
-@lisp
-(define x 
-  (list (list 1 2) (list 3 4)))
+@example rust
+let x: Nest<i128> = sub(&[sub(&[leaf(1), leaf(2)]), sub(&[leaf(3), leaf(4)])]);
 
-(fringe x)
-@i{(1 2 3 4)}
+println!("{}", fringe(&x));
+// => (1 2 3 4)
 
-(fringe (list x x))
-@i{(1 2 3 4 1 2 3 4)}
-@end lisp
+println!("{}", fringe(&sub(&[x.clone(), x])));
+// => (1 2 3 4 1 2 3 4)
+@end example
 @end quotation
 
 @quotation
@@ -973,21 +995,31 @@ example,
 branches, a left branch and a right branch.  Each branch is a rod of a certain
 length, from which hangs either a weight or another binary mobile.  We can
 represent a binary mobile using compound data by constructing it from two
-branches (for example, using @code{list}):
+branches:
 
-@lisp
-(define (make-mobile left right)
-  (list left right))
-@end lisp
+@example rust
+pub fn make_mobile(left: Branch, right: Branch) -> Mobile @{
+    Mobile @{ left, right @}
+@}
+@end example
 
 A branch is constructed from a @code{length} (which must be a number) together
 with a @code{structure}, which may be either a number (representing a simple
-weight) or another mobile:
+weight) or another mobile.  This edition gives the structure its recursive
+variant type, which is what makes a mobile a mobile:
 
-@lisp
-(define (make-branch length structure)
-  (list length structure))
-@end lisp
+@example rust
+pub fn make_branch(length: i128, structure: BranchStructure) -> Branch @{
+    Branch @{ length, structure @}
+@}
+
+pub enum BranchStructure @{
+    /// A simple weight.
+    Weight(i128),
+    /// Another binary mobile hanging off this branch.
+    Submobile(Box<Mobile>),
+@}
+@end example
 
 @enumerate a
 
@@ -1011,13 +1043,11 @@ mobile is balanced.
 @item
 Suppose we change the representation of mobiles so that the constructors are
 
-@lisp
-(define (make-mobile left right)
-  (cons left right))
+@example rust
+pub struct PairMobile(Branch, Branch);
 
-(define (make-branch length structure)
-  (cons length structure))
-@end lisp
+pub struct PairBranch(i128, BranchStructure);
+@end example
 
 How much do you need to change your programs to convert to the new
 representation?
@@ -1035,24 +1065,30 @@ and a tree whose leaves are numbers.  It returns a tree of the same shape,
 where each number is multiplied by the factor.  The recursive plan for
 @code{scale-tree} is similar to the one for @code{count-leaves}:
 
-@lisp
-(define (scale-tree tree factor)
-  (cond ((null? tree) nil)
-        ((not (pair? tree)) 
-         (* tree factor))
-        (else
-         (cons (scale-tree (car tree) 
-                           factor)
-               (scale-tree (cdr tree) 
-                           factor)))))
+@example rust
+pub fn scale_tree(
+    tree: &Nest<i128>,
+    factor: i128,
+) -> Result<Nest<i128>, SchemeError> @{
+    match tree @{
+        Nest::Leaf(x) => Ok(Nest::Leaf(x.checked_mul(factor).ok_or(SchemeError::Overflow)?)),
+        Nest::Sub(items) => @{
+            let scaled: Result<Vec<_>, _> =
+                items.iter().map(|t| scale_tree(t, factor)).collect();
+            Ok(Nest::Sub(Rc::new(scaled?.into_iter().collect())))
+        @}
+    @}
+@}
 
-(scale-tree (list 1 
-                  (list 2 (list 3 4) 5) 
-                  (list 6 7))
-            10)
+let tree: Nest<i128> = sub(&[
+    leaf(1),
+    sub(&[leaf(2), sub(&[leaf(3), leaf(4)]), leaf(5)]),
+    sub(&[leaf(6), leaf(7)]),
+]);
 
-@i{(10 (20 (30 40) 50) (60 70))}
-@end lisp
+scale_tree(&tree, 10)?;
+// => (10 (20 (30 40) 50) (60 70))
+@end example
 
 @noindent
 Another way to implement @code{scale-tree} is to regard the tree as a sequence
@@ -1060,14 +1096,26 @@ of sub-trees and use @code{map}.  We map over the sequence, scaling each
 sub-tree in turn, and return the list of results.  In the base case, where the
 tree is a leaf, we simply multiply by the factor:
 
-@lisp
-(define (scale-tree tree factor)
-  (map (lambda (sub-tree)
-         (if (pair? sub-tree)
-             (scale-tree sub-tree factor)
-             (* sub-tree factor)))
-       tree))
-@end lisp
+@example rust
+pub fn scale_tree_map(
+    tree: &Nest<i128>,
+    factor: i128,
+) -> Result<Nest<i128>, SchemeError> @{
+    match tree @{
+        Nest::Leaf(x) => Ok(Nest::Leaf(x.checked_mul(factor).ok_or(SchemeError::Overflow)?)),
+        Nest::Sub(items) => @{
+            let mapped: Result<Vec<_>, _> = items
+                .iter()
+                .map(|sub_tree| match sub_tree @{
+                    Nest::Sub(_) => scale_tree_map(sub_tree, factor),
+                    leaf @ Nest::Leaf(_) => scale_tree(leaf, factor),
+                @})
+                .collect();
+            Ok(Nest::Sub(Rc::new(mapped?.into_iter().collect())))
+        @}
+    @}
+@}
+@end example
 
 @noindent
 Many tree operations can be implemented by similar combinations of sequence
@@ -1078,13 +1126,14 @@ operations and recursion.
 @code{square-tree} analogous to the @code{square-list} procedure of
 @ref{Exercise 2.21}.  That is, @code{square-tree} should behave as follows:
 
-@lisp
-(square-tree
- (list 1
-       (list 2 (list 3 4) 5)
-       (list 6 7)))
-@i{(1 (4 (9 16) 25) (36 49))}
-@end lisp
+@example rust
+square_tree(&sub(&[
+    leaf(1),
+    sub(&[leaf(2), sub(&[leaf(3), leaf(4)]), leaf(5)]),
+    sub(&[leaf(6), leaf(7)]),
+]));
+// => (1 (4 (9 16) 25) (36 49))
+@end example
 
 Define @code{square-tree} both directly (i.e., without using any higher-order
 procedures) and also by using @code{map} and recursion.
@@ -1095,10 +1144,11 @@ procedures) and also by using @code{map} and recursion.
 @ref{Exercise 2.30} to produce a procedure @code{tree-map} with the property
 that @code{square-tree} could be defined as
 
-@lisp
-(define (square-tree tree) 
-  (tree-map square tree))
-@end lisp
+@example rust
+fn square_tree(tree: &Nest<i128>) -> Nest<i128> @{
+    tree_map(|x| x * x, tree)
+@}
+@end example
 @end quotation
 
 @quotation
@@ -1109,13 +1159,18 @@ all subsets is @code{(() (3) (2) (2 3) (1) (1 3) (1 2) (1 2 3))}.  Complete the
 following definition of a procedure that generates the set of subsets of a set
 and give a clear explanation of why it works:
 
-@lisp
-(define (subsets s)
-  (if (null? s)
-      (list nil)
-      (let ((rest (subsets (cdr s))))
-        (append rest (map ⟨??⟩ rest)))))
-@end lisp
+@example rust
+fn subsets(s: &List<i128>) -> List<List<i128>> @{
+    match s @{
+        List::Nil => List::cons(List::Nil, &List::Nil),
+        List::Cons(x, rest) => @{
+            let rest_subsets = subsets(rest);
+            let extended = map_list(@r{⟨??⟩}, &rest_subsets);
+            append(&rest_subsets, &extended)
+        @}
+    @}
+@}
+@end example
 @end quotation
 
 @node	2.2.3, 2.2.4, 2.2.2, 2.2
@@ -1136,33 +1191,45 @@ structures.  Consider, for example, the following procedure, analogous to the
 @code{count-leaves} procedure of @ref{2.2.2}, which takes a tree as
 argument and computes the sum of the squares of the leaves that are odd:
 
-@lisp
-(define (sum-odd-squares tree)
-  (cond ((null? tree) 0)
-        ((not (pair? tree))
-         (if (odd? tree) (square tree) 0))
-        (else (+ (sum-odd-squares 
-                  (car tree))
-                 (sum-odd-squares 
-                  (cdr tree))))))
-@end lisp
+@example rust
+fn sum_odd_squares_walk(tree: &Nest<i128>) -> i128 @{
+    match tree @{
+        Nest::Leaf(x) => @{
+            if x % 2 != 0 @{
+                x * x
+            @} else @{
+                0
+            @}
+        @}
+        Nest::Sub(items) => @{
+            items.iter().map(sum_odd_squares_walk).sum()
+        @}
+    @}
+@}
+@end example
 
 @noindent
 On the surface, this procedure is very different from the following one, which
 constructs a list of all the even Fibonacci numbers @math{{\hbox{Fib}(k)}}, where
 @math{k} is less than or equal to a given integer @math{n}:
 
-@lisp
-(define (even-fibs n)
-  (define (next k)
-    (if (> k n)
-        nil
-        (let ((f (fib k)))
-          (if (even? f)
-              (cons f (next (+ k 1)))
-              (next (+ k 1))))))
-  (next 0))
-@end lisp
+@example rust
+fn even_fibs_walk(n: u32) -> List<i128> @{
+    fn next(k: u32, n: u32) -> List<i128> @{
+        if k > n @{
+            List::Nil
+        @} else @{
+            let f = fib(k);
+            if f % 2 == 0 @{
+                List::cons(f, &next(k + 1, n))
+            @} else @{
+                next(k + 1, n)
+            @}
+        @}
+    @}
+    next(0, n)
+@}
+@end example
 
 @noindent
 Despite the fact that these two procedures are structurally very different, a
@@ -1252,10 +1319,10 @@ the commonality between the two programs.
 @noindent
 Unfortunately, the two procedure definitions above fail to exhibit this
 signal-flow structure.  For instance, if we examine the @code{sum-odd-squares}
-procedure, we find that the enumeration is implemented partly by the
-@code{null?} and @code{pair?} tests and partly by the tree-recursive structure
-of the procedure.  Similarly, the accumulation is found partly in the tests and
-partly in the addition used in the recursion.  In general, there are no
+procedure, we find that the enumeration is implemented partly by the variant
+tests and partly by the tree-recursive structure of the procedure.  Similarly,
+the accumulation is found partly in the tests and partly in the addition used in
+the recursion.  In general, there are no
 distinct parts of either procedure that correspond to the elements in the
 signal-flow description.  Our two procedures decompose the computations in a
 different way, spreading the enumeration over the program and mingling it with
@@ -1267,76 +1334,86 @@ would increase the conceptual clarity of the resulting code.
 
 The key to organizing programs so as to more clearly reflect the signal-flow
 structure is to concentrate on the ``signals'' that flow from one stage in the
-process to the next.  If we represent these signals as lists, then we can use
-list operations to implement the processing at each of the stages.  For
-instance, we can implement the mapping stages of the signal-flow diagrams using
-the @code{map} procedure from @ref{2.2.1}:
+process to the next.  If we represent these signals as sequences, then we can
+use sequence operations to implement the processing at each of the stages.
+For flat sequences this edition uses slices of @code{Vec}s, and the two
+workhorse stages are the iterator adapters @code{map} and @code{filter}.  For
+instance, we can implement the mapping stage of the signal-flow diagrams with
+the @code{map} adapter:
 
-@lisp
-(map square (list 1 2 3 4 5))
-@i{(1 4 9 16 25)}
-@end lisp
+@example rust
+let mapped: Vec<i128> = [1, 2, 3, 4, 5].iter().map(|x| x * x).copied().collect();
+println!("{mapped:?}");
+// => [1, 4, 9, 16, 25]
+@end example
 
 @noindent
 Filtering a sequence to select only those elements that satisfy a given
 predicate is accomplished by
 
-@lisp
-(define (filter predicate sequence)
-  (cond ((null? sequence) nil)
-        ((predicate (car sequence))
-         (cons (car sequence)
-               (filter predicate 
-                       (cdr sequence))))
-        (else  (filter predicate 
-                       (cdr sequence)))))
-@end lisp
+@example rust
+pub fn filter<T: Clone>(
+    predicate: impl Fn(&T) -> bool,
+    sequence: &[T],
+) -> Vec<T> @{
+    sequence
+        .iter()
+        .filter(|x| predicate(x))
+        .cloned()
+        .collect()
+@}
+@end example
 
 @noindent
 For example,
 
-@lisp
-(filter odd? (list 1 2 3 4 5))
-@i{(1 3 5)}
-@end lisp
+@example rust
+let odd: Vec<i128> = filter(|x| x % 2 != 0, &[1, 2, 3, 4, 5]);
+println!("{odd:?}");
+// => [1, 3, 5]
+@end example
 
 @noindent
 Accumulations can be implemented by
 
-@lisp
-(define (accumulate op initial sequence)
-  (if (null? sequence)
-      initial
-      (op (car sequence)
-          (accumulate op 
-                      initial 
-                      (cdr sequence)))))
+@example rust
+pub fn accumulate<T, A>(
+    op: impl Fn(&T, A) -> A,
+    initial: A,
+    sequence: &[T],
+) -> A @{
+    fn go<T, A>(op: &impl Fn(&T, A) -> A, initial: A, sequence: &[T]) -> A @{
+        match sequence @{
+            [] => initial,
+            [first, rest @ ..] => op(first, go(op, initial, rest)),
+        @}
+    @}
+    go(&op, initial, sequence)
+@}
 
-(accumulate + 0 (list 1 2 3 4 5))
-@i{15}
-(accumulate * 1 (list 1 2 3 4 5))
-@i{120}
-(accumulate cons nil (list 1 2 3 4 5))
-@i{(1 2 3 4 5)}
-@end lisp
+println!("{}", accumulate(|x, acc: i128| acc + x, 0, &[1, 2, 3, 4, 5]));
+// => 15
+println!("{}", accumulate(|x, acc: i128| acc * x, 1, &[1, 2, 3, 4, 5]));
+// => 120
+let rebuilt: List<i128> =
+    accumulate(|x, acc: List<i128>| List::cons(*x, &acc), List::Nil, &[1, 2, 3, 4, 5]);
+println!("{rebuilt}");
+// => (1 2 3 4 5)
+@end example
 
 @noindent
 All that remains to implement signal-flow diagrams is to enumerate the sequence
 of elements to be processed.  For @code{even-fibs}, we need to generate the
-sequence of integers in a given range, which we can do as follows:
+sequence of integers in a given range.  This edition states the translation
+outright: an enumeration of consecutive integers is a range expression, and
+the pipelines use it directly, so @code{(enumerate-interval low high)} is
+@code{low..=high}:
 
-@lisp
-(define (enumerate-interval low high)
-  (if (> low high)
-      nil
-      (cons low 
-            (enumerate-interval 
-             (+ low 1) 
-             high))))
-
-(enumerate-interval 2 7)
-@i{(2 3 4 5 6 7)}
-@end lisp
+@example rust
+let interval: Vec<i64> = (2..=7).collect();
+println!("{interval:?}");
+// => [2, 3, 4, 5, 6, 7]
+@end example
 
 @noindent
 To enumerate the leaves of a tree, we can use@footnote{This is, in fact,
@@ -1344,17 +1421,24 @@ precisely the @code{fringe} procedure from @ref{Exercise 2.28}.  Here we've
 renamed it to emphasize that it is part of a family of general
 sequence-manipulation procedures.}
 
-@lisp
-(define (enumerate-tree tree)
-  (cond ((null? tree) nil)
-        ((not (pair? tree)) (list tree))
-        (else (append 
-               (enumerate-tree (car tree))
-               (enumerate-tree (cdr tree))))))
+@example rust
+pub fn enumerate_tree<T: Clone>(tree: &Nest<T>) -> List<T> @{
+    match tree @{
+        Nest::Leaf(x) => List::cons(x.clone(), &List::Nil),
+        Nest::Sub(items) => match items.as_ref() @{
+            List::Nil => List::Nil,
+            List::Cons(first, rest) => append(
+                &enumerate_tree(first),
+                &enumerate_tree(&Nest::Sub(Rc::clone(rest))),
+            ),
+        @},
+    @}
+@}
 
-(enumerate-tree (list 1 (list 2 (list 3 4)) 5))
-@i{(1 2 3 4 5)}
-@end lisp
+let tree = sub(&[leaf(1), sub(&[leaf(2), sub(&[leaf(3), leaf(4)])]), leaf(5)]);
+println!("{}", enumerate_tree(&tree));
+// => (1 2 3 4 5)
+@end example
 
 @noindent
 Now we can reformulate @code{sum-odd-squares} and @code{even-fibs} as in the
@@ -1362,30 +1446,29 @@ signal-flow diagrams.  For @code{sum-odd-squares}, we enumerate the sequence of
 leaves of the tree, filter this to keep only the odd numbers in the sequence,
 square each element, and sum the results:
 
-@lisp
-(define (sum-odd-squares tree)
-  (accumulate 
-   +
-   0
-   (map square
-        (filter odd?
-                (enumerate-tree tree)))))
-@end lisp
+@example rust
+pub fn sum_odd_squares(tree: &Nest<i128>) -> Result<i128, SchemeError> @{
+    enumerate_tree(tree)
+        .iter()
+        .filter(|x| *x % 2 != 0)
+        .try_fold(0_i128, |acc, x| @{
+            let square = x.checked_mul(*x).ok_or(SchemeError::Overflow)?;
+            acc.checked_add(square).ok_or(SchemeError::Overflow)
+        @})
+@}
+@end example
 
 @noindent
 For @code{even-fibs}, we enumerate the integers from 0 to @math{n}, generate the
 Fibonacci number for each of these integers, filter the resulting sequence to
 keep only the even elements, and accumulate the results into a list:
 
-@lisp
-(define (even-fibs n)
-  (accumulate 
-   cons
-   nil
-   (filter even?
-           (map fib
-                (enumerate-interval 0 n)))))
-@end lisp
+@example rust
+pub fn even_fibs(n: u32) -> Result<List<i128>, SchemeError> @{
+    let fibs: Result<Vec<_>, _> = (0..=n).map(fib).collect();
+    Ok(fibs?.into_iter().filter(|f| f % 2 == 0).collect())
+@}
+@end example
 
 @noindent
 The value of expressing programs as sequence operations is that this helps us
@@ -1403,55 +1486,66 @@ match.  For instance, we can reuse pieces from the @code{sum-odd-squares} and
 @code{even-fibs} procedures in a program that constructs a list of the squares
 of the first @math{{n + 1}} Fibonacci numbers:
 
-@lisp
-(define (list-fib-squares n)
-  (accumulate 
-   cons
-   nil
-   (map square
-        (map fib
-             (enumerate-interval 0 n)))))
+@example rust
+pub fn list_fib_squares(n: u32) -> Result<List<i128>, SchemeError> @{
+    let fibs: Result<Vec<_>, _> = (0..=n).map(fib).collect();
+    let squares: Result<Vec<_>, _> = fibs?
+        .iter()
+        .map(|f| f.checked_mul(*f).ok_or(SchemeError::Overflow))
+        .collect();
+    Ok(squares?.into_iter().collect())
+@}
 
-(list-fib-squares 10)
-@i{(0 1 1 4 9 25 64 169 441 1156 3025)}
-@end lisp
+println!("{}", list_fib_squares(10)?);
+// => (0 1 1 4 9 25 64 169 441 1156 3025)
+@end example
 
 @noindent
 We can rearrange the pieces and use them in computing the product of the squares of the odd
 integers in a sequence:
 
-@lisp
-(define 
-  (product-of-squares-of-odd-elements
-   sequence)
-  (accumulate 
-   *
-   1
-   (map square (filter odd? sequence))))
+@example rust
+pub fn product_of_squares_of_odd_elements(
+    sequence: &[i128],
+) -> Result<i128, SchemeError> @{
+    sequence
+        .iter()
+        .filter(|x| *x % 2 != 0)
+        .try_fold(1_i128, |acc, x| @{
+            let square = x.checked_mul(*x).ok_or(SchemeError::Overflow)?;
+            acc.checked_mul(square).ok_or(SchemeError::Overflow)
+        @})
+@}
 
-(product-of-squares-of-odd-elements 
- (list 1 2 3 4 5))
-@i{225}
-@end lisp
+println!("{}", product_of_squares_of_odd_elements(&[1, 2, 3, 4, 5])?);
+// => 225
+@end example
 
 @noindent
 We can also formulate conventional data-processing applications in terms of
 sequence operations.  Suppose we have a sequence of personnel records and we
 want to find the salary of the highest-paid programmer.  Assume that we have a
 selector @code{salary} that returns the salary of a record, and a predicate
-@code{programmer?} that tests if a record is for a programmer.  Then we can
-write
+@code{programmer?} that tests if a record is for a programmer.  In this
+edition a record is a plain struct, and the selector and the predicate are its
+public fields:
 
-@lisp
-(define 
-  (salary-of-highest-paid-programmer
-   records)
-  (accumulate 
-   max
-   0
-   (map salary
-        (filter programmer? records))))
-@end lisp
+@example rust
+pub struct Record @{
+    /// Whether the record's person is a programmer.
+    pub programmer: bool,
+    /// The person's salary.
+    pub salary: i128,
+@}
+
+pub fn salary_of_highest_paid_programmer(records: &[Record]) -> i128 @{
+    records
+        .iter()
+        .filter(|record| record.programmer)
+        .map(|record| record.salary)
+        .fold(0, i128::max)
+@}
+@end example
 
 @noindent
 These examples give just a hint of the vast range of operations that can be
@@ -1466,13 +1560,13 @@ language APL owes much of its power and appeal to a similar choice. In APL all
 data are represented as arrays, and there is a universal and convenient set of
 generic operators for all sorts of array operations.}
 
-Sequences, implemented here as lists, serve as a conventional interface that
-permits us to combine processing modules.  Additionally, when we uniformly
-represent structures as sequences, we have localized the data-structure
-dependencies in our programs to a small number of sequence operations.  By
-changing these, we can experiment with alternative representations of
-sequences, while leaving the overall design of our programs intact.  We will
-exploit this capability in @ref{3.5}, when we generalize the
+Sequences, implemented here as lists and slices, serve as a conventional
+interface that permits us to combine processing modules.  Additionally, when we
+uniformly represent structures as sequences, we have localized the
+data-structure dependencies in our programs to a small number of sequence
+operations.  By changing these, we can experiment with alternative
+representations of sequences, while leaving the overall design of our programs
+intact.  We will exploit this capability in @ref{3.5}, when we generalize the
 sequence-processing paradigm to admit infinite sequences.
 
 @quotation
@@ -1480,17 +1574,19 @@ sequence-processing paradigm to admit infinite sequences.
 to complete the following definitions of some basic list-manipulation
 operations as accumulations:
 
-@lisp
-(define (map p sequence)
-  (accumulate (lambda (x y) ⟨??⟩) 
-              nil sequence))
+@example rust
+fn map_acc<T, U: Clone>(p: impl Fn(&T) -> U, sequence: &[T]) -> List<U> @{
+    accumulate(|x, acc: List<U>| @r{⟨??⟩}, List::Nil, sequence)
+@}
 
-(define (append seq1 seq2)
-  (accumulate cons ⟨??⟩ ⟨??⟩))
+fn append_acc(seq1: &[i128], seq2: &List<i128>) -> List<i128> @{
+    accumulate(cons, @r{⟨??⟩}, @r{⟨??⟩})
+@}
 
-(define (length sequence)
-  (accumulate ⟨??⟩ 0 sequence))
-@end lisp
+fn length_acc<T>(sequence: &[T]) -> usize @{
+    accumulate(@r{⟨??⟩}, 0, sequence)
+@}
+@end example
 @end quotation
 
 @quotation
@@ -1542,32 +1638,37 @@ Fill in the following template to produce a procedure that evaluates a
 polynomial using Horner's rule.  Assume that the coefficients of the polynomial
 are arranged in a sequence, from @math{a_0} through @math{a_n}.
 
-@lisp
-(define 
-  (horner-eval x coefficient-sequence)
-  (accumulate 
-   (lambda (this-coeff higher-terms)
-     ⟨??⟩)
-   0
-   coefficient-sequence))
-@end lisp
+@example rust
+fn horner_eval(
+    x: i128,
+    coefficient_sequence: &[i128],
+) -> Result<i128, SchemeError> @{
+    accumulate(
+        |this_coeff, higher_terms| @r{⟨??⟩},
+        0,
+        coefficient_sequence,
+    )
+@}
+@end example
 
 For example, to compute @math{{1 + 3x} + {5x^3 + x^5}} at @math{{x = 2}} you
 would evaluate
 
-@lisp
-(horner-eval 2 (list 1 3 0 5 0 1))
-@end lisp
+@example rust
+horner_eval(2, &[1, 3, 0, 5, 0, 1]);
+// => 79
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.35}Exercise 2.35:} Redefine @code{count-leaves} from
 @ref{2.2.2} as an accumulation:
 
-@lisp
-(define (count-leaves t)
-  (accumulate ⟨??⟩ ⟨??⟩ (map ⟨??⟩ ⟨??⟩)))
-@end lisp
+@example rust
+fn count_leaves(tree: &Nest<i128>) -> u64 @{
+    accumulate(@r{⟨??⟩}, @r{⟨??⟩}, &leaves_of(tree))
+@}
+@end example
 @end quotation
 
 @quotation
@@ -1582,13 +1683,28 @@ sequence containing four sequences, @code{((1 2 3) (4 5 6) (7 8 9) (10 11
 @code{(22 26 30)}.  Fill in the missing expressions in the following definition
 of @code{accumulate-n}:
 
-@lisp
-(define (accumulate-n op init seqs)
-  (if (null? (car seqs))
-      nil
-      (cons (accumulate op init ⟨??⟩)
-            (accumulate-n op init ⟨??⟩))))
-@end lisp
+@example rust
+fn accumulate_n<T: Clone, A: Clone>(
+    op: impl Fn(&T, A) -> A,
+    initial: A,
+    seqs: &[Vec<T>],
+) -> Option<Vec<A>> @{
+    match seqs.first() @{
+        @r{⟨??⟩} => @r{⟨??⟩},
+        Some(first) => @{
+            if first.is_empty() @{
+                return @r{⟨??⟩};
+            @}
+            let cars: Vec<T> = @r{⟨??⟩};
+            let cdrs: Vec<Vec<T>> = @r{⟨??⟩};
+            let mut heads = vec![accumulate(op, initial.clone(), &cars)];
+            let tails = accumulate_n(op, initial, &cdrs)?;
+            heads.extend(tails);
+            Some(heads)
+        @}
+    @}
+@}
+@end example
 @end quotation
 
 @quotation
@@ -1650,26 +1766,31 @@ any book on matrix algebra) are the following:
 We can define the dot product as@footnote{This definition uses the extended
 version of @code{map} described in @ref{Footnote 78}.}
 
-@lisp
-(define (dot-product v w)
-  (accumulate + 0 (map * v w)))
-@end lisp
+@example rust
+fn dot_product(v: &Vector, w: &Vector) -> i64 @{
+    let products: Vec<i64> = v.iter().zip(w).map(|(a, b)| a * b).collect();
+    accumulate(|p, acc: i64| acc + p, 0, &products)
+@}
+@end example
 
 Fill in the missing expressions in the following procedures for computing the
 other matrix operations.  (The procedure @code{accumulate-n} is defined in
 @ref{Exercise 2.36}.)
 
-@lisp
-(define (matrix-*-vector m v)
-  (map ⟨??⟩ m))
+@example rust
+fn matrix_star_vector(m: &Matrix, v: &Vector) -> Vector @{
+    m.iter().map(@r{⟨??⟩}).collect()
+@}
 
-(define (transpose mat)
-  (accumulate-n ⟨??⟩ ⟨??⟩ mat))
+fn transpose(mat: &Matrix) -> Matrix @{
+    accumulate_n(@r{⟨??⟩}, @r{⟨??⟩}, mat).unwrap_or_default()
+@}
 
-(define (matrix-*-matrix m n)
-  (let ((cols (transpose n)))
-    (map ⟨??⟩ m)))
-@end lisp
+fn matrix_star_matrix(m: &Matrix, n: &Matrix) -> Matrix @{
+    let cols = transpose(n);
+    m.iter().map(@r{⟨??⟩}).collect()
+@}
+@end example
 @end quotation
 
 @quotation
@@ -1679,24 +1800,28 @@ the sequence with the result of combining all the elements to the right.  There
 is also a @code{fold-left}, which is similar to @code{fold-right}, except that
 it combines elements working in the opposite direction:
 
-@lisp
-(define (fold-left op initial sequence)
-  (define (iter result rest)
-    (if (null? rest)
-        result
-        (iter (op result (car rest))
-              (cdr rest))))
-  (iter initial sequence))
-@end lisp
+@example rust
+fn fold_left<T, A>(
+    op: impl Fn(A, &T) -> A,
+    initial: A,
+    sequence: &[T],
+) -> A @{
+    let mut acc = initial;
+    for x in sequence @{
+        acc = op(acc, x);
+    @}
+    acc
+@}
+@end example
 
 What are the values of
 
-@lisp
-(fold-right / 1 (list 1 2 3))
-(fold-left  / 1 (list 1 2 3))
-(fold-right list nil (list 1 2 3))
-(fold-left  list nil (list 1 2 3))
-@end lisp
+@example rust
+accumulate(|x, acc: f64| x / acc, 1.0, &[1.0, 2.0, 3.0]);
+fold_left(|acc, x: &f64| acc / x, 1.0, &[1.0, 2.0, 3.0]);
+accumulate(|x, acc: Nest<i128>| nest_pair(x, acc), sub(&[]), &[1, 2, 3]);
+fold_left(|acc, x: &i128| nest_pair(x, acc), sub(&[]), &[1, 2, 3]);
+@end example
 
 Give a property that @code{op} should satisfy to guarantee that
 @code{fold-right} and @code{fold-left} will produce the same values for any
@@ -1708,15 +1833,15 @@ sequence.
 definitions of @code{reverse} (@ref{Exercise 2.18}) in terms of
 @code{fold-right} and @code{fold-left} from @ref{Exercise 2.38}:
 
-@lisp
-(define (reverse sequence)
-  (fold-right 
-   (lambda (x y) ⟨??⟩) nil sequence))
+@example rust
+fn reverse_right(sequence: &[i128]) -> List<i128> @{
+    accumulate(|x, acc: List<i128>| @r{⟨??⟩}, List::Nil, sequence)
+@}
 
-(define (reverse sequence)
-  (fold-left 
-   (lambda (x y) ⟨??⟩) nil sequence))
-@end lisp
+fn reverse_left(sequence: &[i128]) -> List<i128> @{
+    fold_left(|acc, x| @r{⟨??⟩}, List::Nil, sequence)
+@}
+@end example
 @end quotation
 
 @subsubheading Nested Mappings
@@ -1757,34 +1882,31 @@ that passes through the filter, produce the triple @math{{(i, j, i + j)}}.
 Here is a way to generate the sequence of pairs: For each integer @math{{i \le n}}, 
 enumerate the integers @math{{j < i}}, and for each such @math{i} and @math{j}
 generate the pair @math{{(i, j)}}.  In terms of sequence operations, we map along
-the sequence @code{(enumerate-interval 1 n)}.  For each @math{i} in this sequence,
-we map along the sequence @code{(enumerate-interval 1 (- i 1))}.  For each
-@math{j} in this latter sequence, we generate the pair @code{(list i j)}.  This
+the range @code{1..=n}.  For each @math{i} in this sequence,
+we map along the range @code{1..(i)}.  For each
+@math{j} in this latter sequence, we generate the pair @code{(i, j)} as a
+tuple.  This
 gives us a sequence of pairs for each @math{i}.  Combining all the sequences for
 all the @math{i} (by accumulating with @code{append}) produces the required
-sequence of pairs:@footnote{We're representing a pair here as a list of two
-elements rather than as a Lisp pair.  Thus, the ``pair'' @math{{(i, j)}} is
-represented as @code{(list i j)}, not @code{(cons i j)}.}
+sequence of pairs:@footnote{We're representing a pair here as a tuple rather
+than as a Lisp pair.  The ``pair'' @math{{(i, j)}} is @code{(i, j)}, the
+two-element tuple, not a cons cell.}
 
-@lisp
-(accumulate 
- append
- nil
- (map (lambda (i)
-        (map (lambda (j) 
-               (list i j))
-             (enumerate-interval 1 (- i 1))))
-      (enumerate-interval 1 n)))
-@end lisp
+@example rust
+(1..=n)
+    .flat_map(|i| (1..i).map(move |j| (i, j)))
+    .collect::<Vec<_>>()
+@end example
 
 @noindent
 The combination of mapping and accumulating with @code{append} is so common in
 this sort of program that we will isolate it as a separate procedure:
 
-@lisp
-(define (flatmap proc seq)
-  (accumulate append nil (map proc seq)))
-@end lisp
+@example rust
+pub fn flatmap<T, U>(proc: impl Fn(&T) -> Vec<U>, sequence: &[T]) -> Vec<U> @{
+    sequence.iter().flat_map(proc).collect()
+@}
+@end example
 
 @noindent
 Now filter this sequence of pairs to find those whose sum is prime. The filter
@@ -1792,40 +1914,31 @@ predicate is called for each element of the sequence; its argument is a pair
 and it must extract the integers from the pair.  Thus, the predicate to apply
 to each element in the sequence is
 
-@lisp
-(define (prime-sum? pair)
-  (prime? (+ (car pair) (cadr pair))))
-@end lisp
+@example rust
+|&(i, j)| is_prime(i + j)
+@end example
 
 @noindent
 Finally, generate the sequence of results by mapping over the filtered pairs
 using the following procedure, which constructs a triple consisting of the two
 elements of the pair along with their sum:
 
-@lisp
-(define (make-pair-sum pair)
-  (list (car pair) 
-        (cadr pair) 
-        (+ (car pair) (cadr pair))))
-@end lisp
+@example rust
+|(i, j)| (i, j, i + j)
+@end example
 
 @noindent
 Combining all these steps yields the complete procedure:
 
-@lisp
-(define (prime-sum-pairs n)
-  (map make-pair-sum
-       (filter 
-        prime-sum?
-        (flatmap
-         (lambda (i)
-           (map (lambda (j) 
-                  (list i j))
-                (enumerate-interval 
-                 1 
-                 (- i 1))))
-         (enumerate-interval 1 n)))))
-@end lisp
+@example rust
+pub fn prime_sum_pairs(n: i64) -> Vec<(i64, i64, i64)> @{
+    (1..=n)
+        .flat_map(|i| (1..i).map(move |j| (i, j)))
+        .filter(|(i, j)| is_prime(i + j))
+        .map(|(i, j)| (i, j, i + j))
+        .collect()
+@}
+@end example
 
 @noindent
 Nested mappings are also useful for sequences other than those that enumerate
@@ -1838,38 +1951,45 @@ permutations of @math{{S - x}},@footnote{The set @math{{S - x}} is the set of al
 elements of @math{S}, excluding @math{x}.} and adjoin @math{x} to the front of each one.
 This yields, for each @math{x} in @math{S}, the sequence of permutations of @math{S}
 that begin with @math{x}.  Combining these sequences for all @math{x} gives all the
-permutations of @math{S}:@footnote{Semicolons in Scheme code are used to introduce
-@newterm{comments}.  Everything from the semicolon to the end of the line is
-ignored by the interpreter.  In this book we don't use many comments; we try to
+permutations of @math{S}:@footnote{Comments in Rust code are introduced with
+@code{//}: everything from the double slash to the end of the line is ignored
+by the compiler. The double slash is the language's @newterm{comment} marker.  In this book we don't use many comments; we try to
 make our programs self-documenting by using descriptive names.}
 
-@lisp
-(define (permutations s)
-  (if (null? s)   @r{; empty set?}
-      (list nil)  @r{; sequence containing empty set}
-      (flatmap (lambda (x)
-                 (map (lambda (p) 
-                        (cons x p))
-                      (permutations 
-                       (remove x s))))
-               s)))
-@end lisp
+@example rust
+pub fn permutations<T: Clone + PartialEq>(s: &[T]) -> Vec<Vec<T>> @{
+    // empty sequence?
+    if s.is_empty() @{
+        // sequence containing the empty sequence
+        return vec![Vec::new()];
+    @}
+    let mut out = Vec::new();
+    for (i, x) in s.iter().enumerate() @{
+        let mut rest = s.to_vec();
+        rest.remove(i);
+        for mut p in permutations(&rest) @{
+            p.insert(0, x.clone());
+            out.push(p);
+        @}
+    @}
+    out
+@}
+@end example
 
 @noindent
 Notice how this strategy reduces the problem of generating permutations of
 @math{S} to the problem of generating the permutations of sets with fewer elements
-than @math{S}.  In the terminal case, we work our way down to the empty list,
-which represents a set of no elements.  For this, we generate @code{(list
-nil)}, which is a sequence with one item, namely the set with no elements.  The
-@code{remove} procedure used in @code{permutations} returns all the items in a
-given sequence except for a given item.  This can be expressed as a simple
+than @math{S}.  In the terminal case, we work our way down to the empty sequence,
+which represents a set of no elements.  For this, we generate a
+sequence with one item, namely the set with no elements.  The
+@code{remove} step used in @code{permutations} returns all the items in a given sequence except for a given item.  This can be expressed as a simple
 filter:
 
-@lisp
-(define (remove item sequence)
-  (filter (lambda (x) (not (= x item)))
-          sequence))
-@end lisp
+@example rust
+fn remove<T: PartialEq + Clone>(item: &T, sequence: &[T]) -> Vec<T> @{
+    filter(|x| x != item, sequence)
+@}
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.40}Exercise 2.40:} Define a procedure
@@ -1940,29 +2060,29 @@ We implement this solution as a procedure @code{queens}, which returns a
 sequence of all solutions to the problem of placing @math{n} queens on an
 @math{{n \times n}} chessboard.  @code{Queens} has an internal procedure
 @code{queen-cols} that returns the sequence of all ways to place queens in the
-first @math{k} columns of the board.
+first @math{k} columns of the board.  This edition represents a set of board
+positions as one row index per occupied column, in column order, so a new
+position is appended by pushing the row; the column is the index the row lands
+at.
 
-@lisp
-(define (queens board-size)
-  (define (queen-cols k)
-    (if (= k 0)
-        (list empty-board)
-        (filter
-         (lambda (positions) 
-           (safe? k positions))
-         (flatmap
-          (lambda (rest-of-queens)
-            (map (lambda (new-row)
-                   (adjoin-position 
-                    new-row 
-                    k 
-                    rest-of-queens))
-                 (enumerate-interval 
-                  1 
-                  board-size)))
-          (queen-cols (- k 1))))))
-  (queen-cols board-size))
-@end lisp
+@example rust
+fn queens(board_size: usize) -> Vec<Positions> @{
+    fn queen_cols(k: usize, board_size: usize) -> Vec<Positions> @{
+        if k == 0 @{
+            return empty_board();
+        @}
+        queen_cols(k - 1, board_size)
+            .iter()
+            .flat_map(|rest_of_queens| @{
+                (0..board_size)
+                    .map(move |new_row| adjoin_position(new_row, rest_of_queens))
+            @})
+            .filter(|positions| is_safe(positions))
+            .collect()
+    @}
+    queen_cols(board_size, board_size)
+@}
+@end example
 
 In this procedure @code{rest-of-queens} is a way to place @math{{k - 1}} queens in
 the first @math{{k - 1}} columns, and @code{new-row} is a proposed row in which to
@@ -1984,15 +2104,18 @@ enough for it to solve even the @math{{6\times6}} case.)  When Louis asks Eva Lu
 help, she points out that he has interchanged the order of the nested mappings
 in the @code{flatmap}, writing it as
 
-@lisp
-(flatmap
- (lambda (new-row)
-   (map (lambda (rest-of-queens)
-          (adjoin-position 
-           new-row k rest-of-queens))
-        (queen-cols (- k 1))))
- (enumerate-interval 1 board-size))
-@end lisp
+@example rust
+(0..board_size)
+    .flat_map(|new_row| @{
+        queen_cols(k - 1, board_size)
+            .into_iter()
+            .map(move |mut positions| @{
+                positions.push(new_row);
+                positions
+            @})
+    @})
+    .collect()
+@end example
 
 Explain why this interchange makes the program run slowly.  Estimate how long
 it will take Louis's program to solve the eight-queens puzzle, assuming that
@@ -2005,17 +2128,18 @@ the program in @ref{Exercise 2.42} solves the puzzle in time @math{T}.
 This section presents a simple language for drawing pictures that illustrates
 the power of data abstraction and closure, and also exploits higher-order
 procedures in an essential way.  The language is designed to make it easy to
-experiment with patterns such as the ones in @ref{Figure 2.9}, which are
-composed of repeated elements that are shifted and scaled.@footnote{The picture
+experiment with patterns such as the ones in @ref{Figure 2.9}, which
+are composed of repeated elements that are shifted and scaled.@footnote{The picture
 language is based on the language Peter Henderson created to construct images
-like M.C. Escher's ``Square Limit'' woodcut (see @ref{Henderson 1982}).  The woodcut
-incorporates a repeated scaled pattern, similar to the arrangements drawn using
-the @code{square-limit} procedure in this section.} In this language, the data
-objects being combined are represented as procedures rather than as list
-structure.  Just as @code{cons}, which satisfies the closure property, allowed
-us to easily build arbitrarily complicated list structure, the operations in
-this language, which also satisfy the closure property, allow us to easily
-build arbitrarily complicated patterns.
+like M. C. Escher's ``Square Limit'' woodcut (see @ref{Henderson 1982}).  The woodcut
+incorporates a repeated scaled pattern, similar to the arrangements drawn on
+the @code{square-limit} procedure in this section's figures.}  In this
+language, the data objects being combined are represented as procedures rather
+than as list structure.
+Just as @code{cons}, which satisfies the closure property, allowed us to easily
+build arbitrarily complicated list structure, the operations in this language,
+which also satisfy the closure property, allow us to easily build arbitrarily
+complicated patterns.
 
 @float
 @anchor{Figure 2.9}
@@ -2023,7 +2147,9 @@ build arbitrarily complicated patterns.
 @quotation
 @strong{Figure 2.9:} Designs generated with the picture language.
 
-[two graphic images not included]
+@example
+Two graphic images not included.
+@end example
 @end quotation
 @end ifinfo
 @ifhtml
@@ -2036,108 +2162,124 @@ build arbitrarily complicated patterns.
 @caption{@strong{Figure 2.9:} Designs generated with the picture language.}
 @end float
 
+@float
+@caption{@strong{Figure 2.9 (this edition):} The @code{square-limit} of the
+@code{wave} painter, drawn by this edition's picture language into SVG.}
+
+@ifinfo
+(The rendered figure is the checked-in file
+@code{figures/generated/chap2/square_limit.std.svg}.)
+@end ifinfo
+@ifhtml
+@image{../figures/generated/chap2/square_limit,,60mm,Figure 2.9 (this edition): The square-limit of wave drawn as SVG.,.std.svg}
+@end ifhtml
+@iftex
+@image{../figures/generated/chap2/square_limit,,60mm,,.pdf}
+
+@end iftex
+@end float
+
 @subsubheading The picture language
 
 When we began our study of programming in @ref{1.1}, we emphasized the
 importance of describing a language by focusing on the language's primitives,
 its means of combination, and its means of abstraction.  We'll follow that
-framework here.
-
-Part of the elegance of this picture language is that there is only one kind of
-element, called a @newterm{painter}.  A painter draws an image that is shifted
-and scaled to fit within a designated parallelogram-shaped frame.  For example,
-there's a primitive painter we'll call @code{wave} that makes a crude line
-drawing, as shown in @ref{Figure 2.10}.  The actual shape of the drawing
-depends on the frame---all four images in figure 2.10 are produced by the
-same @code{wave} painter, but with respect to four different frames.  Painters
-can be more elaborate than this: The primitive painter called @code{rogers}
-paints a picture of @abbr{MIT}'s founder, William Barton Rogers, as shown in
+framework here.  Part of the elegance of this picture language is that there is
+only one kind of element, called a @newterm{painter}.  A painter draws an
+image that is shifted and scaled to fit within a designated parallelogram-shaped
+frame.  For example, there's a primitive painter we'll call @code{wave}
+that makes a crude line drawing, as shown in @ref{Figure 2.10}.  The actual shape of
+the drawing depends on the frame---all four images in figure 2.10 are
+produced by the same @code{wave} painter, but with respect to four different
+frames.  Painters can be more elaborate than this: The primitive painter called
+@code{rogers} paints a picture of @abbr{MIT}'s founder, William Barton Rogers, as shown in
 @ref{Figure 2.11}.@footnote{William Barton Rogers (1804-1882) was the founder
 and first president of @abbr{MIT}.  A geologist and talented teacher, he
 taught at William and Mary College and at the University of Virginia.  In 1859
 he moved to Boston, where he had more time for research, worked on a plan for
 establishing a ``polytechnic institute,'' and served as Massachusetts's first
-State Inspector of Gas Meters.
-
-When @abbr{MIT} was established in 1861, Rogers was elected its first
-president.  Rogers espoused an ideal of ``useful learning'' that was different
-from the university education of the time, with its overemphasis on the
-classics, which, as he wrote, ``stand in the way of the broader, higher and
+State Inspector of Gas Meters.  When @abbr{MIT} was established in 1861, Rogers was elected its
+first president.  Rogers espoused an ideal of ``useful learning'' that was
+different from the university education of the time, with its overemphasis on
+the classics, which, as he wrote, ``stand in the way of broader, higher and
 more practical instruction and discipline of the natural and social sciences.''
-This education was likewise to be different from narrow trade-school education.
-In Rogers's words:
-
-@quotation
-The world-enforced distinction between the practical and the scientific worker
-is utterly futile, and the whole experience of modern times has demonstrated
-its utter worthlessness.
-@end quotation
-
+This education was likewise to be different from narrow trade-school
+education.  In Rogers's words:@quotation ``The world-enforced distinction
+between the practical and the scientific worker is utterly futile, and the
+whole experience of modern times has demonstrated its utter worthlessness.@end quotation
 Rogers served as president of @abbr{MIT} until 1870, when he resigned due to
-ill health.  In 1878 the second president of @abbr{MIT}, John Runkle,
-resigned under the pressure of a financial crisis brought on by the Panic of
-1873 and strain of fighting off attempts by Harvard to take over @abbr{MIT}.
-Rogers returned to hold the office of president until 1881.
-
-Rogers collapsed and died while addressing @abbr{MIT}'s graduating class at
-the com@-men@-ce@-ment exercises of 1882.  Runkle quoted Rogers's last words in a
-me@-mo@-rial address delivered that same year:
-
-@quotation
-``As I stand here today and see what the Institute is, @dots{} I call to mind
-the beginnings of science.  I remember one hundred and fifty years ago Stephen
-Hales published a pamphlet on the subject of illuminating gas, in which he
-stated that his researches had demonstrated that 128 grains of bituminous coal
--- '' ``Bituminous coal,'' these were his last words on earth.  Here he bent
-forward, as if consulting some notes on the table before him, then slowly
-regaining an erect position, threw up his hands, and was translated from the
-scene of his earthly labors and triumphs to ``the tomorrow of death,'' where
-the mysteries of life are solved, and the disembodied spirit finds unending
-satisfaction in contemplating the new and still unfathomable mysteries of the
-infinite future.
-@end quotation
-
-In the words of Francis A. Walker (@abbr{MIT}'s third president):
-
-@quotation
-All his life he had borne himself most faithfully and heroically, and he died
-as so good a knight would surely have wished, in harness, at his post, and in
-the very part and act of public duty.
-@end quotation
-} The four images in figure 2.11 are drawn with respect to the same four
-frames as the @code{wave} images in figure 2.10.
+ill health.  In 1878, the second president of @abbr{MIT}, John Runkle, resigned under the
+pressure of a financial crisis brought on by the Panic of 1873 and strain of
+fighting off attempts by Harvard to take over @abbr{MIT}.  Rogers returned to hold the office of
+president until 1881.  Rogers collapsed and died while addressing @abbr{MIT}'s
+graduating class at the commencement ceremonies of 1882.  Runkle quoted
+Rogers's last words in a memo-rial address delivered that same
+year:@quotation ``As I stand here today and see what the Institute is, I call to
+mind the beginnings of science.  I remember one hundred and fifty years ago
+Stephen Hales published a pamphlet on the subject of illuminating gas, in
+which he stated that his researches had demonstrated that 128 grains of
+bituminous coal ---'' ``Bituminous coal,'' these were his last words on earth.
+Here he bent forward, as if consulting some notes on the table before him, then
+slowly regaining an erect position, threw up his hands, and was translated from
+the scene of his earthly labors and triumphs to ``the tomorrow of death,''
+where the mysteries of life are solved, and the disembodied spirit finds
+undisturbed satisfaction in contemplating the new and still unfathomable
+mysteries of the infinite future.@end quotation In the words of Francis A. Walker
+(@abbr{MIT}'s third president):@quotation ``All his life he had borne himself most
+faithfully and heroically, and he died as so good a knight would surely have
+wished, in harness, at his post, and in the very part and act of public duty.@end quotation}
 
 @float
 @anchor{Figure 2.10}
 @ifinfo
 @quotation
-@strong{Figure 2.10:} Images produced by the @code{wave}
-painter, with respect to four different frames.  The frames, shown with dotted
-lines, are not part of the images.
+@strong{Figure 2.10:} Images produced by the @code{wave} painter, with
+respect to four different frames. The frames, shown with dotted lines, are not
+part of the images.
 
-[four graphic images not included]
+@example
+Four graphic images not included.
+@end example
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.10,,58mm,Figure 2.10: Images produced by the wave painter@comma{} with respect to four different frames. The frames@comma{} shown with dotted lines@comma{} are not part of the images.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.10,,58mm,Figure 2.10: Images produced by the @code{wave} painter, with respect to four different frames. The frames, shown with dotted lines, are not part of the images.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap2/Fig2.10.std,,58mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 2.10:} Images produced by the @code{wave} painter, with respect to four different frames.  The frames, shown with dotted lines, are not part of the images.}
+@caption{@strong{Figure 2.10:} Images produced by the @code{wave} painter, with respect to four different frames. The frames, shown with dotted lines, are not part of the images.}
+@end float
+
+@float
+@caption{@strong{Figure 2.10 (this edition):} The @code{wave} painter drawn
+into one frame by this edition's picture language.}
+
+@ifinfo
+(The rendered figure is the checked-in file
+@code{figures/generated/chap2/wave.std.svg}.)
+@end ifinfo
+@ifhtml
+@image{../figures/generated/chap2/wave,,58mm,Figure 2.10 (this edition): The wave painter drawn as SVG.,.std.svg}
+@end ifhtml
+@iftex
+@image{../figures/generated/chap2/wave,,58mm,,.pdf}
+
+@end iftex
 @end float
 
 @float
 @anchor{Figure 2.11}
 @ifinfo
 @quotation
-@strong{Figure 2.11:} Images of William Barton Rogers,
-founder and first president of @abbr{MIT}, painted with respect to the same
-four frames as in @ref{Figure 2.10} (original image reprinted with the
-permission of the @abbr{MIT} Museum).
+@strong{Figure 2.11:} Images of William Barton Rogers, founder and first
+president of @abbr{MIT}, painted with respect to the same four frames as in
+@ref{Figure 2.10} (original image from Wikimedia Commons).
 
-[four graphic images not included]
+@example
+Four graphic images not included.
+@end example
 @end quotation
 @end ifinfo
 @ifhtml
@@ -2147,46 +2289,48 @@ permission of the @abbr{MIT} Museum).
 @image{../../text/original/figures/pdf/chap2/Fig2.11.std,,58mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 2.11:} Images of William Barton Rogers, founder and first president of @abbr{MIT}, painted with respect to the same four frames as in @ref{Figure 2.10} (original image from Wikimedia Commons).}
+@caption{@strong{Figure 2.11:} Images of William Barton Rogers@comma{} founder and first president of MIT@comma{} painted with respect to the same four frames as in @ref{Figure 2.10} (original image from Wikimedia Commons).}
 @end float
 
 @noindent
+Like all the images in this section, the @code{rogers} painter shades the
+points of a gray-level raster under the frame coordinate map; this edition's
+runnable listings draw line art into an SVG sink, so the figures it generates
+use @code{wave} and the segment painters of exercise 2.49, and the raster
+@code{rogers} stays a description in prose.
+
 To combine images, we use various operations that construct new painters from
-given painters.  For example, the @code{beside} operation takes two painters
-and produces a new, compound painter that draws the first painter's image in
-the left half of the frame and the second painter's image in the right half of
-the frame.  Similarly, @code{below} takes two painters and produces a compound
+given painters.  For example, the @code{beside} operation takes two painters and
+produces a new, compound painter that draws the first painter's image in the
+left half of the frame and the second painter's image in the right half of the
+frame.  Similarly, @code{below} takes two painters and produces a compound
 painter that draws the first painter's image below the second painter's image.
 Some operations transform a single painter to produce a new painter.  For
 example, @code{flip-vert} takes a painter and produces a painter that draws its
 image upside-down, and @code{flip-horiz} produces a painter that draws the
-original painter's image left-to-right reversed.
+original painter's image left-to-right reversed.  @ref{Figure 2.12} shows the
+drawing of a painter called @code{wave4} that is built up in two stages
+starting from @code{wave}:
 
-@ref{Figure 2.12} shows the drawing of a painter called
-@code{wave4} that is built up in two stages starting from @code{wave}:
-
-@lisp
-(define wave2 (beside wave (flip-vert wave)))
-(define wave4 (below wave2 wave2))
-@end lisp
+@example rust
+let wave2 = beside(&wave, &flip_vert(&wave));
+let wave4 = below(&wave2, &wave2);
+@end example
 
 @float
 @anchor{Figure 2.12}
 @ifinfo
 @quotation
-@strong{Figure 2.12:} Creating a complex figure, starting
-from the @code{wave} painter of @ref{Figure 2.10}.
+@strong{Figure 2.12:} Creating a complex figure, starting from the
+@code{wave} painter of @ref{Figure 2.10}.
 
-[two graphic images not included]
-
-@lisp
-(define wave2                      (define wave4
-  (beside wave (flip-vert wave)))    (below wave2 wave2))
-@end lisp
+@example
+Two graphic images not included.
+@end example
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.12,,118mm,Figure 2.12: Creating a complex figure@comma{} starting from the wave painter of Figure 2.10.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.12,,118mm,Figure 2.12: Creating a complex figure@comma{} starting from the @code{wave} painter of Figure 2.10.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap2/Fig2.12.std,,118mm,,.pdf}
@@ -2195,81 +2339,97 @@ from the @code{wave} painter of @ref{Figure 2.10}.
 @caption{@strong{Figure 2.12:} Creating a complex figure, starting from the @code{wave} painter of @ref{Figure 2.10}.}
 @end float
 
+@float
+@caption{@strong{Figure 2.12 (this edition):} The @code{wave4} figure built
+in the same two stages.}
+
+@ifinfo
+(The rendered figure is the checked-in file
+@code{figures/generated/chap2/wave4.std.svg}.)
+@end ifinfo
+@ifhtml
+@image{../figures/generated/chap2/wave4,,90mm,Figure 2.12 (this edition): The wave4 figure drawn as SVG.,.std.svg}
+@end ifhtml
+@iftex
+@image{../figures/generated/chap2/wave4,,90mm,,.pdf}
+
+@end iftex
+@end float
+
 @noindent
-In building up a complex image in this manner we are exploiting the fact that
+In building up a complex image in this manner, we are exploiting the fact that
 painters are closed under the language's means of combination.  The
-@code{beside} or @code{below} of two painters is itself a painter; therefore,
-we can use it as an element in making more complex painters.  As with building
-up list structure using @code{cons}, the closure of our data under the means of
+@code{beside} or @code{below} of two painters is itself a painter; therefore, we
+can use it as an element in making more complex painters.  As with building up
+list structure using @code{cons}, the closure of our data under the means of
 combination is crucial to the ability to create complex structures while using
-only a few operations.
+only a few operations.  Once we can combine painters, we would like to be able
+to abstract typical patterns of combining painters.  We will implement the
+painter operations as Rust procedures.  This means that we don't need any
+special abstraction mechanism in the picture language.  Since the means of
+combination are ordinary procedures, we automatically have the capability to do
+anything with painter operations that we can do with procedures.  For example,
+we can abstract the pattern in @code{wave4} as
 
-Once we can combine painters, we would like to be able to abstract typical
-patterns of combining painters.  We will implement the painter operations as
-Scheme procedures.  This means that we don't need a special abstraction
-mechanism in the picture language: Since the means of combination are ordinary
-Scheme procedures, we automatically have the capability to do anything with
-painter operations that we can do with procedures.  For example, we can
-abstract the pattern in @code{wave4} as
-
-@lisp
-(define (flipped-pairs painter)
-  (let ((painter2 
-         (beside painter 
-                 (flip-vert painter))))
-    (below painter2 painter2)))
-@end lisp
+@example rust
+fn flipped_pairs_procedure(painter: &Painter) -> Painter @{
+    let painter2 = beside(painter, &flip_vert(painter));
+    below(&painter2, &painter2)
+@}
+@end example
 
 @noindent
 and define @code{wave4} as an instance of this pattern:
 
-@lisp
-(define wave4 (flipped-pairs wave))
-@end lisp
+@example rust
+let wave4 = flipped_pairs_procedure(&wave);
+@end example
 
-@noindent
+@subsubheading Recursive painting operations
+
 We can also define recursive operations.  Here's one that makes painters split
-and branch towards the right as shown in @ref{Figure 2.13}
-and @ref{Figure 2.14}:
+and branch towards the right as shown in @ref{Figure 2.13} and
+@ref{Figure 2.14}:
 
-@lisp
-(define (right-split painter n)
-  (if (= n 0)
-      painter
-      (let ((smaller (right-split painter 
-                                  (- n 1))))
-        (beside painter 
-                (below smaller smaller)))))
-@end lisp
+@example rust
+pub fn right_split(painter: &Painter, n: u32) -> Painter @{
+    if n == 0 @{
+        return Rc::clone(painter);
+    @}
+    let smaller = right_split(painter, n - 1);
+    beside(painter, &below(&smaller, &smaller))
+@}
+@end example
 
 @float
 @anchor{Figure 2.13}
 @ifinfo
 @quotation
-@strong{Figure 2.13:} Recursive plans for @code{right-split} and @code{corner-split}.
+@strong{Figure 2.13:} Recursive plans for @code{right-split} and
+@code{corner-split}.
 
 @example
-+-------------+-------------+    +------+------+-------------+
-|             |             |    | up-  | up-  |             |
-|             | right-split |    | split| split| corner-split|
-|             |             |    |      |      |             |
-|             |     n-1     |    |  n-1 |  n-1 |     n-1     |
-|             |             |    |      |      |             |
-|  identity   +-------------+    +------+------+-------------+
-|             |             |    |             | right-split |
-|             | right-split |    |             |     n-1     |
-|             |             |    |  identity   +-------------+
-|             |     n-1     |    |             | right-split |
-|             |             |    |             |     n-1     |
-+-------------+-------------+    +-------------+-------------+
-
-       right-split n                    corner-split n
+     +---------+---------+            +---------+---------+
+     |          |        |            |          |         |
+     |          |        |            |          |         |
+     |          |        |            |          |         |
+  up |    up    | right  |      split |   right  | corner  |
+ split|  split   | split  |            |  split   |  split  |
+     |          |        |            |          |         |
+     |          |        |            |          |         |
+     +----------+--------+            +----+-----+-----+---+
+     |  right   | right  |            |    |           |
+     |  split   | split  |            +----+----+------+
+     |          |        |            | right  | corner
+     +----------+--------+            | split  | split
+          identity          n-1      +--------+------+
+                                      n-1  |   corner-split
+                                     identity
 @end example
-
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.13a,,132mm,Figure 2.13: Recursive plans for right-split and corner-split.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.13a,,132mm,Figure 2.13: Recursive plans for @code{right-split} and @code{corner-split}.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap2/Fig2.13a.std,,132mm,,.pdf}
@@ -2280,68 +2440,75 @@ and @ref{Figure 2.14}:
 
 @noindent
 We can produce balanced patterns by branching upwards as well as towards the
-right (see @ref{Exercise 2.44}, @ref{Figure 2.13} and @ref{Figure 2.14}):
+right (see @ref{Exercise 2.44}, @ref{Figure 2.13} and
+@ref{Figure 2.14}):
 
-@lisp
-(define (corner-split painter n)
-  (if (= n 0)
-      painter
-      (let ((up (up-split painter (- n 1)))
-            (right (right-split painter 
-                                (- n 1))))
-        (let ((top-left (beside up up))
-              (bottom-right (below right 
-                                   right))
-              (corner (corner-split painter 
-                                    (- n 1))))
-          (beside (below painter top-left)
-                  (below bottom-right 
-                         corner))))))
-@end lisp
+@example rust
+pub fn corner_split(painter: &Painter, n: u32) -> Painter @{
+    if n == 0 @{
+        return Rc::clone(painter);
+    @}
+    let top_left = beside(&up_split(painter, n - 1), painter);
+    let bottom_right = below(painter, &right_split(painter, n - 1));
+    let corner = corner_split(painter, n - 1);
+    beside(&below(painter, &top_left), &below(&bottom_right, &corner))
+@}
+@end example
 
 @float
 @anchor{Figure 2.14}
 @ifinfo
 @quotation
-@strong{Figure 2.14:} The recursive operations
-@code{right-split} and @code{corner-split} applied to the painters @code{wave}
-and @code{rogers}.  Combining four @code{corner-split} figures produces
-symmetric @code{square-limit} designs as shown in @ref{Figure 2.9}.
+@strong{Figure 2.14:} The recursive operations @code{right-split} and
+@code{corner-split} applied to the painters @code{wave} and @code{rogers}.
 
-[two graphic images not included]
-
-@lisp
-(right-split wave 4)         (right-split rogers 4)
-@end lisp
-
-[two graphic images not included]
-
-@lisp
-(corner-split wave 4)        (corner-split rogers 4)
-@end lisp
+@example
+Four graphic images not included.
+@end example
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.14b,,136mm,Figure 2.14: The recursive operations right-split and corner-split applied to the painters wave and rogers. Combining four corner-split figures produces symmetric square-limit designs as shown in Figure 2.9.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.14b,,136mm,Figure 2.14: The recursive operations @code{right-split} and @code{corner-split} applied to the painters @code{wave} and @code{rogers}.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap2/Fig2.14b.std,,136mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 2.14:} The recursive operations @code{right-split} and @code{corner-split} applied to the painters @code{wave} and @code{rogers}.  Combining four @code{corner-split} figures produces symmetric @code{square-limit} designs as shown in @ref{Figure 2.9}.}
+@caption{@strong{Figure 2.14:} The recursive operations @code{right-split} and @code{corner-split} applied to the painters @code{wave} and @code{rogers}.}
 @end float
 
-By placing four copies of a @code{corner-split} appropriately, we obtain a
-pattern called @code{square-limit}, whose application to @code{wave} and
+@float
+@caption{@strong{Figure 2.14 (this edition):} The recursive operations
+@code{right-split} and @code{corner-split} applied to the @code{wave} painter.}
+
+@ifinfo
+(The rendered figure is the checked-in file
+@code{figures/generated/chap2/corner_split.std.svg}.)
+@end ifinfo
+@ifhtml
+@image{../figures/generated/chap2/corner_split,,110mm,Figure 2.14 (this edition): right-split and corner-split of wave drawn as SVG.,.std.svg}
+@end ifhtml
+@iftex
+@image{../figures/generated/chap2/corner_split,,110mm,,.pdf}
+
+@end iftex
+@end float
+
+@noindent
+By placing four copies of a @code{corner-split} appropriately, we
+obtain a pattern called @code{square-limit}, whose application to @code{wave} and
 @code{rogers} is shown in @ref{Figure 2.9}:
 
-@lisp
-(define (square-limit painter n)
-  (let ((quarter (corner-split painter n)))
-    (let ((half (beside (flip-horiz quarter) 
-                        quarter)))
-      (below (flip-vert half) half))))
-@end lisp
+@example rust
+pub fn square_limit(painter: &Painter, n: u32) -> Painter @{
+    (square_of_four(
+        painter_op(flip_horiz),
+        identity_op(),
+        painter_op(rotate_180),
+        painter_op(flip_vert),
+    ))(&corner_split(painter, n))
+@}
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.44}Exercise 2.44:} Define the procedure
@@ -2368,62 +2535,73 @@ four operations and arranges the results in a square.  @code{Tl}, @code{tr},
 the top right copy, the bottom left copy, and the bottom right copy,
 respectively.
 
-@lisp
-(define (square-of-four tl tr bl br)
-  (lambda (painter)
-    (let ((top (beside (tl painter) 
-                       (tr painter)))
-          (bottom (beside (bl painter) 
-                          (br painter))))
-      (below bottom top))))
-@end lisp
+@example rust
+pub fn square_of_four(
+    tl: PainterOp,
+    tr: PainterOp,
+    bl: PainterOp,
+    br: PainterOp,
+) -> PainterOp @{
+    Rc::new(move |painter: &Painter| @{
+        let top = beside(&tl(painter), &tr(painter));
+        let bottom = beside(&bl(painter), &br(painter));
+        below(&bottom, &top)
+    @})
+@}
+@end example
 
 @noindent
 Then @code{flipped-pairs} can be defined in terms of @code{square-of-four} as
 follows:@footnote{Equivalently, we could write
 
-@lisp
-(define flipped-pairs
-  (square-of-four 
-   identity flip-vert identity flip-vert))
-@end lisp
+@example rust
+let flipped_pairs = square_of_four(
+    identity_op(),
+    painter_op(flip_vert),
+    identity_op(),
+    painter_op(flip_vert),
+);
+@end example
 }
 
-@lisp
-(define (flipped-pairs painter)
-  (let ((combine4 
-         (square-of-four identity 
-                         flip-vert
-                         identity 
-                         flip-vert)))
-    (combine4 painter)))
-@end lisp
+@example rust
+pub fn flipped_pairs(painter: &Painter) -> Painter @{
+    (square_of_four(
+        identity_op(),
+        painter_op(flip_vert),
+        identity_op(),
+        painter_op(flip_vert),
+    ))(painter)
+@}
+@end example
 
 @noindent
 and @code{square-limit} can be expressed as@footnote{@code{Rotate180} rotates a
 painter by 180 degrees (see @ref{Exercise 2.50}).  Instead of @code{rotate180}
-we could say @code{(compose flip-vert flip-horiz)}, using the @code{compose}
-procedure from @ref{Exercise 1.42}.}
+we could say the composition of @code{flip-vert} after @code{flip-horiz},
+using the @code{compose} procedure from @ref{Exercise 1.42}; the spine's
+@code{rotate_180} is defined exactly that way.}
 
-@lisp
-(define (square-limit painter n)
-  (let ((combine4 
-         (square-of-four flip-horiz 
-                         identity
-                         rotate180 
-                         flip-vert)))
-    (combine4 (corner-split painter n))))
-@end lisp
+@example rust
+pub fn square_limit(painter: &Painter, n: u32) -> Painter @{
+    (square_of_four(
+        painter_op(flip_horiz),
+        identity_op(),
+        painter_op(rotate_180),
+        painter_op(flip_vert),
+    ))(&corner_split(painter, n))
+@}
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.45}Exercise 2.45:} @code{Right-split} and
 @code{up-split} can be expressed as instances of a general splitting operation.
 Define a procedure @code{split} with the property that evaluating
 
-@lisp
-(define right-split (split beside below))
-(define up-split (split below beside))
-@end lisp
+@example rust
+let right_split = split(beside, below);
+let up_split = split(below, beside);
+@end example
 
 @noindent
 produces procedures @code{right-split} and @code{up-split} with the same
@@ -2508,33 +2686,32 @@ representation for vectors.  Because of data abstraction, it doesn't matter
 what this vector representation is, so long as the vector operations behave
 correctly.}
 
-@lisp
-(define (frame-coord-map frame)
-  (lambda (v)
-    (add-vect
-     (origin-frame frame)
-     (add-vect 
-      (scale-vect (xcor-vect v)
-                  (edge1-frame frame))
-      (scale-vect (ycor-vect v)
-                  (edge2-frame frame))))))
-@end lisp
+@example rust
+pub fn frame_coord_map(
+    frame: &Frame,
+) -> impl Fn(Vect) -> Vect + use<'_> @{
+    let origin = frame.origin;
+    let edge1 = frame.edge1;
+    let edge2 = frame.edge2;
+    move |v| origin + v.x * edge1 + v.y * edge2
+@}
+@end example
 
 @noindent
 Observe that applying @code{frame-coord-map} to a frame returns a procedure
 that, given a vector, returns a vector.  If the argument vector is in the unit
 square, the result vector will be in the frame.  For example,
 
-@lisp
-((frame-coord-map a-frame) (make-vect 0 0))
-@end lisp
+@example rust
+frame_coord_map(a_frame)(Vect::new(0.0, 0.0));
+@end example
 
 @noindent
 returns the same vector as
 
-@lisp
-(origin-frame a-frame)
-@end lisp
+@example rust
+a_frame.origin
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.46}Exercise 2.46:} A two-dimensional vector @math{\bf v}
@@ -2559,6 +2736,7 @@ subtraction, and multiplying a vector by a scalar:
 (x_1, y_1) - (x_2, y_2) = (x_1 - x_2, y_1 - y_2)
              s * (x, y) = (sx, sy)
 @end example
+
 @end ifinfo
 @end quotation
 
@@ -2566,13 +2744,19 @@ subtraction, and multiplying a vector by a scalar:
 @strong{@anchor{Exercise 2.47}Exercise 2.47:} Here are two possible
 constructors for frames:
 
-@lisp
-(define (make-frame origin edge1 edge2)
-  (list origin edge1 edge2))
+@example rust
+pub struct FrameAsList([Vect; 3]);
 
-(define (make-frame origin edge1 edge2)
-  (cons origin (cons edge1 edge2)))
-@end lisp
+pub fn make_frame_list(origin: Vect, edge1: Vect, edge2: Vect) -> FrameAsList @{
+    FrameAsList([origin, edge1, edge2])
+@}
+
+pub struct FrameAsPair(Pair<Vect, Pair<Vect, Vect>>);
+
+pub fn make_frame_pair(origin: Vect, edge1: Vect, edge2: Vect) -> FrameAsPair @{
+    FrameAsPair(cons(origin, cons(edge1, edge2)))
+@}
+@end example
 
 For each constructor supply the appropriate selectors to produce an
 implementation for frames.
@@ -2583,7 +2767,28 @@ implementation for frames.
 A painter is represented as a procedure that, given a frame as argument, draws
 a particular image shifted and scaled to fit the frame.  That is to say, if
 @code{p} is a painter and @code{f} is a frame, then we produce @code{p}'s image
-in @code{f} by calling @code{p} with @code{f} as argument.
+in @code{f} by calling @code{p} with @code{f} as argument.  In this edition a
+painter has the type
+
+@example rust
+pub type Painter = Rc<dyn Fn(&Frame, &mut dyn Sink)>;
+@end example
+
+@noindent
+where the sink receives the line segments the painter draws: the edition
+stands in for the book's graphics terminal with this one trait,
+
+@example rust
+pub trait Sink @{
+    /// Draws one line segment, in the frame's coordinates.
+    fn line(&mut self, a: Vect, b: Vect);
+@}
+@end example
+
+@noindent
+and an implementation of @code{Sink} that renders SVG line art writes the
+figures of this section into checked-in files under
+@code{figures/generated/chap2/}.
 
 The details of how primitive painters are implemented depend on the particular
 characteristics of the graphics system and the type of image to be drawn.  For
@@ -2594,18 +2799,16 @@ line segments as follows:@footnote{@code{Segments->painter} uses the
 representation for line segments described in @ref{Exercise 2.48} below.  It
 also uses the @code{for-each} procedure described in @ref{Exercise 2.23}.}
 
-@lisp
-(define (segments->painter segment-list)
-  (lambda (frame)
-    (for-each
-     (lambda (segment)
-       (draw-line
-        ((frame-coord-map frame) 
-         (start-segment segment))
-        ((frame-coord-map frame) 
-         (end-segment segment))))
-     segment-list)))
-@end lisp
+@example rust
+pub fn segments_painter(segments: Vec<Segment>) -> Painter @{
+    Rc::new(move |frame: &Frame, sink: &mut dyn Sink| @{
+        let m = frame_coord_map(frame);
+        for segment in &segments @{
+            sink.line(m(segment.start), m(segment.end));
+        @}
+    @})
+@}
+@end example
 
 @noindent
 The segments are given using coordinates with respect to the unit square.  For
@@ -2679,69 +2882,88 @@ first point specifies the new frame's origin and the other two specify the ends
 of its edge vectors.  Thus, arguments within the unit square specify a frame
 contained within the original frame.
 
-@lisp
-(define (transform-painter 
-         painter origin corner1 corner2)
-  (lambda (frame)
-    (let ((m (frame-coord-map frame)))
-      (let ((new-origin (m origin)))
-        (painter (make-frame new-origin
-                  (sub-vect (m corner1) 
-                            new-origin)
-                  (sub-vect (m corner2)
-                            new-origin)))))))
-@end lisp
+@example rust
+pub fn transform_painter(
+    painter: &Painter,
+    origin: Vect,
+    corner1: Vect,
+    corner2: Vect,
+) -> Painter @{
+    let painter = Rc::clone(painter);
+    Rc::new(move |frame: &Frame, sink: &mut dyn Sink| @{
+        let m = frame_coord_map(frame);
+        let new_origin = m(origin);
+        let new_frame = Frame::new(
+            new_origin,
+            m(corner1) - new_origin,
+            m(corner2) - new_origin,
+        );
+        painter(&new_frame, sink);
+    @})
+@}
+@end example
 
 @noindent
 Here's how to flip painter images vertically:
 
-@lisp
-(define (flip-vert painter)
-  (transform-painter 
-   painter
-   (make-vect 0.0 1.0)   @r{; new @code{origin}}
-   (make-vect 1.0 1.0)   @r{; new end of @code{edge1}}
-   (make-vect 0.0 0.0))) @r{; new end of @code{edge2}}
-@end lisp
+@example rust
+pub fn flip_vert(painter: &Painter) -> Painter @{
+    transform_painter(
+        painter,
+        Vect::new(0.0, 1.0),
+        Vect::new(1.0, 1.0),
+        Vect::new(0.0, 0.0),
+    )
+@}
+@end example
 
 @noindent
 Using @code{transform-painter}, we can easily define new transformations.
 For example, we can define a painter that shrinks its image to the
 upper-right quarter of the frame it is given:
 
-@lisp
-(define (shrink-to-upper-right painter)
-  (transform-painter painter
-                     (make-vect 0.5 0.5)
-                     (make-vect 1.0 0.5)
-                     (make-vect 0.5 1.0)))
-@end lisp
+@example rust
+pub fn shrink_to_upper_right(painter: &Painter) -> Painter @{
+    transform_painter(
+        painter,
+        Vect::new(0.5, 0.5),
+        Vect::new(1.0, 0.5),
+        Vect::new(0.5, 1.0),
+    )
+@}
+@end example
 
 @noindent
 Other transformations rotate images counterclockwise by 90
 degrees@footnote{@code{Rotate90} is a pure rotation only for square frames,
 because it also stretches and shrinks the image to fit into the rotated frame.}
 
-@lisp
-(define (rotate90 painter)
-  (transform-painter painter
-                     (make-vect 1.0 0.0)
-                     (make-vect 1.0 1.0)
-                     (make-vect 0.0 0.0)))
-@end lisp
+@example rust
+pub fn rotate_90(painter: &Painter) -> Painter @{
+    transform_painter(
+        painter,
+        Vect::new(1.0, 0.0),
+        Vect::new(1.0, 1.0),
+        Vect::new(0.0, 0.0),
+    )
+@}
+@end example
 
 @noindent
 or squash images towards the center of the frame:@footnote{The diamond-shaped
 images in @ref{Figure 2.10} and @ref{Figure 2.11} were created with
 @code{squash-inwards} applied to @code{wave} and @code{rogers}.}
 
-@lisp
-(define (squash-inwards painter)
-  (transform-painter painter
-                     (make-vect 0.0 0.0)
-                     (make-vect 0.65 0.35)
-                     (make-vect 0.35 0.65)))
-@end lisp
+@example rust
+pub fn squash_inwards(painter: &Painter) -> Painter @{
+    transform_painter(
+        painter,
+        Vect::new(0.0, 0.0),
+        Vect::new(0.65, 0.35),
+        Vect::new(0.35, 0.65),
+    )
+@}
+@end example
 
 @noindent
 Frame transformation is also the key to defining means of combining two or more
@@ -2752,23 +2974,26 @@ is given a frame, it calls the first transformed painter to paint in the left
 half of the frame and calls the second transformed painter to paint in the
 right half of the frame:
 
-@lisp
-(define (beside painter1 painter2)
-  (let ((split-point (make-vect 0.5 0.0)))
-    (let ((paint-left  (transform-painter 
-                        painter1
-                        (make-vect 0.0 0.0)
-                        split-point
-                        (make-vect 0.0 1.0)))
-          (paint-right (transform-painter
-                        painter2
-                        split-point
-                        (make-vect 1.0 0.0)
-                        (make-vect 0.5 1.0))))
-      (lambda (frame)
-        (paint-left frame)
-        (paint-right frame)))))
-@end lisp
+@example rust
+pub fn beside(painter1: &Painter, painter2: &Painter) -> Painter @{
+    let left = transform_painter(
+        painter1,
+        Vect::new(0.0, 0.0),
+        Vect::new(0.5, 0.0),
+        Vect::new(0.0, 1.0),
+    );
+    let right = transform_painter(
+        painter2,
+        Vect::new(0.5, 0.0),
+        Vect::new(1.0, 0.0),
+        Vect::new(0.5, 1.0),
+    );
+    Rc::new(move |frame: &Frame, sink: &mut dyn Sink| @{
+        left(frame, sink);
+        right(frame, sink);
+    @})
+@}
+@end example
 
 @noindent
 Observe how the painter data abstraction, and in particular the representation
@@ -2791,6 +3016,18 @@ and with the second painter in the top.  Define @code{below} in two different
 ways---first by writing a procedure that is analogous to the @code{beside}
 procedure given above, and again in terms of @code{beside} and suitable
 rotation operations (from @ref{Exercise 2.50}).
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.51a}Exercise 2.51a:} @emph{Exercise 2.51a is added by
+this edition and extends exercise 2.51; SICP numbers stop at 2.51.}  Exercise
+2.51's two constructions can be checked for agreement on a tiny probe pair of
+painters.  Push the check harder: render the direct and the rotation-composed
+@code{below} of the @code{wave} painter into SVG line art and prove the two
+documents byte-identical, then stack @code{wave} over the X painter of
+exercise 2.49 and verify that the wave lands in the bottom half of the frame
+and the X in the top half.  The order-of-arguments check is the one a
+symmetric example cannot make.
 @end quotation
 
 @subsubheading Levels of language for robust design
@@ -2867,4 +3104,3 @@ the big Mr. Rogers look outward from each corner of the square.)
 
 @end enumerate
 @end quotation
-

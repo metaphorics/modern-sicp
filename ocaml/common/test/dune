@@ -1,9 +1,51 @@
-(executable
- (name test_random)
- (modules test_random)
- (libraries sicp_common alcotest))
+(executables
+ (names
+  prop_env
+  prop_reader
+  test_ast
+  test_env
+  test_eval_error
+  test_random
+  test_reader
+  test_value)
+ (libraries sicp_common alcotest qcheck-core qcheck-core.runner))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./prop_env.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./prop_reader.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_ast.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_env.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_eval_error.exe)))
 
 (rule
  (alias runtest)
  (action
   (run ./test_random.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_reader.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_value.exe)))

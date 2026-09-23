@@ -55,16 +55,16 @@ their programs.  Well-designed computational systems, like well-designed
 automobiles or nuclear reactors, are designed in a modular manner, so that the
 parts can be constructed, replaced, and debugged separately.
 
-@subsubheading Programming in Lisp
+@subsubheading Programming in Lisp and in Rust
 
-We need an appropriate language for describing processes, and we will use for
-this purpose the programming language Lisp.  Just as our everyday thoughts are
-usually expressed in our natural language (such as English, French, or
-Japanese), and descriptions of quantitative phenomena are expressed with
-mathematical notations, our procedural thoughts will be expressed in Lisp.
-Lisp was invented in the late 1950s as a formalism for reasoning about the use
-of certain kinds of logical expressions, called @newterm{recursion equations},
-as a model for computation.  The language was conceived by John McCarthy and is
+The original book needed a language for describing processes, and it used the
+programming language Lisp: its procedural thoughts were expressed in Lisp.
+This edition expresses the same thoughts in Rust, a compiled language with a
+static type system, so every program in these pages runs natively on the
+machine rather than under an interpreter for a teaching dialect.  Lisp itself
+was invented in the late 1950s as a formalism for reasoning about the use of
+certain kinds of logical expressions, called @newterm{recursion equations}, as
+a model for computation.  The language was conceived by John McCarthy and is
 based on his paper ``Recursive Functions of Symbolic Expressions and Their
 Computation by Machine'' (@ref{McCarthy 1960}).
 
@@ -93,7 +93,7 @@ conception, has enabled Lisp, which is the second oldest language in widespread
 use today (only Fortran is older), to continually adapt to encompass the most
 modern ideas about program design.  Thus, Lisp is by now a family of dialects,
 which, while sharing most of the original features, may differ from one another
-in significant ways.  The dialect of Lisp used in this book is called
+in significant ways.  The dialect of Lisp used in the original book is called
 Scheme.@footnote{The two dialects in which most major Lisp programs of the
 1970s were written are MacLisp (@ref{Moon 1978}; @ref{Pitman 1983}), developed at the
 @abbr{MIT} Project @abbr{MAC}, and Interlisp (@ref{Teitelman 1974}), developed
@@ -103,14 +103,15 @@ be easily portable between different machines.  MacLisp spawned a number of
 subdialects, such as Franz Lisp, which was developed at the University of
 California at Berkeley, and Zetalisp (@ref{Moon and Weinreb 1981}), which was based on a
 special-purpose processor designed at the @abbr{MIT} Artificial Intelligence
-Laboratory to run Lisp very efficiently.  The Lisp dialect used in this book,
-called Scheme (@ref{Steele and Sussman 1975}), was invented in 1975 by Guy Lewis Steele Jr. and
-Gerald Jay Sussman of the @abbr{MIT} Artificial Intelligence Laboratory and
-later reimplemented for instructional use at @abbr{MIT}.  Scheme became an
-@abbr{IEEE} standard in 1990 (@ref{IEEE 1990}).  The Common Lisp dialect
-(@ref{Steele 1982}, @ref{Steele 1990}) was developed by the Lisp community to combine
-features from the earlier Lisp dialects to make an industrial standard for
-Lisp.  Common Lisp became an @abbr{ANSI} standard in 1994 (@ref{ANSI 1994}).}
+Laboratory to run Lisp very efficiently.  The Lisp dialect used in the
+original book, called Scheme (@ref{Steele and Sussman 1975}), was invented in
+1975 by Guy Lewis Steele Jr. and Gerald Jay Sussman of the @abbr{MIT}
+Artificial Intelligence Laboratory and later reimplemented for instructional
+use at @abbr{MIT}.  Scheme became an @abbr{IEEE} standard in 1990
+(@ref{IEEE 1990}).  The Common Lisp dialect (@ref{Steele 1982},
+@ref{Steele 1990}) was developed by the Lisp community to combine features from
+the earlier Lisp dialects to make an industrial standard for Lisp.  Common Lisp
+became an @abbr{ANSI} standard in 1994 (@ref{ANSI 1994}).}
 
 Because of its experimental character and its emphasis on symbol manipulation,
 Lisp was at first very inefficient for numerical computations, at least in
@@ -130,21 +131,19 @@ is not the central concern.  For example, Lisp has become a language of choice
 for operating-system shell languages and for extension languages for editors
 and computer-aided design systems.
 
-If Lisp is not a mainstream language, why are we using it as the framework for
-our discussion of programming?  Because the language possesses unique features
-that make it an excellent medium for studying important programming constructs
-and data structures and for relating them to the linguistic features that
-support them.  The most significant of these features is the fact that Lisp
-descriptions of processes, called @newterm{procedures}, can themselves be
-represented and manipulated as Lisp data.  The importance of this is that there
-are powerful program-design techniques that rely on the ability to blur the
-traditional distinction between ``passive'' data and ``active'' processes.  As
-we shall discover, Lisp's flexibility in handling procedures as data makes it
-one of the most convenient languages in existence for exploring these
-techniques.  The ability to represent procedures as data also makes Lisp an
-excellent language for writing programs that must manipulate other programs as
-data, such as the interpreters and compilers that support computer languages.
-Above and beyond these considerations, programming in Lisp is great fun.
+The original book chose Lisp as its framework because the language possesses
+unique features that make it an excellent medium for studying important
+programming constructs and data structures and for relating them to the
+linguistic features that support them.  The most significant of these features
+is the fact that Lisp descriptions of processes, called @newterm{procedures},
+can themselves be represented and manipulated as Lisp data.  That idea
+survives the change of language, and it is why this edition can keep the
+book's program-design lessons intact in Rust: Rust procedures are values too
+(from 1.3 on), the programs of chapters 2 and 3 are built out of them, and
+chapter 4 implements the book's own interpreter, in Rust, as an ordinary Rust
+program that manipulates other programs as data.  Where the book's mechanism
+is a property of Lisp rather than of the ideas, this edition says so plainly
+and shows the Rust mechanism that plays the same role.
 
 @menu
 * 1.1::              The Elements of Programming
@@ -218,129 +217,130 @@ same rules allow us to build procedures to manipulate compound data as well.
 @subsection Expressions
 
 One easy way to get started at programming is to examine some typical
-interactions with an interpreter for the Scheme dialect of Lisp.  Imagine that
-you are sitting at a computer terminal.  You type an @newterm{expression}, and
-the interpreter responds by displaying the result of its @newterm{evaluating}
-that expression.
+fragments of a program in action.  Rust has no interactive
+@newterm{read-eval-print loop}: a Rust program is compiled as a whole and
+then run, so this book shows
+what Scheme's interpreter transcript showed as runnable example programs,
+each one printed at the point its book transcript appeared.  In each listing,
+the printed results appear as comment lines beginning with @code{// =>}, and
+the same values are asserted in the example's code, so every transcript in
+this book is true by construction.  You type an @newterm{expression} into a
+source file, the compiler checks it, and the running program displays the
+result of its @newterm{evaluating} that expression.
 
-One kind of primitive expression you might type is a number.  (More precisely,
-the expression that you type consists of the numerals that represent the number
-in base 10.)  If you present Lisp with a number
+One kind of primitive expression you might write is a number.  (More precisely,
+the expression that you write consists of the numerals that represent the number
+in base 10.)  If you present Rust with a number
 
-@lisp
+@example rust
 486
-@end lisp
+@end example
 
 @noindent
-the interpreter will respond by printing@footnote{Throughout this book, when
-we wish to emphasize the distinction between the input typed by the user and
-the response printed by the interpreter, we will show the latter in slanted
-characters.}
+the program will respond by printing@footnote{Throughout this book, when
+we wish to emphasize the distinction between the expression written in the
+source and the response printed by the running program, we will show the
+latter as a @code{// =>} comment line.}
 
-@lisp
-@i{486}
-@end lisp
+@example rust
+println!("@{486@}");
+// => 486
+@end example
 
 @noindent
 Expressions representing numbers may be combined with an expression
-representing a primitive procedure (such as @code{+} or @code{*}) to form a
-compound expression that represents the application of the procedure to those
+representing a primitive operation (such as @code{+} or @code{*}) to form a
+compound expression that represents the application of the operation to those
 numbers.  For @w{example}:
 
-@lisp
-(+ 137 349)
-@i{486}
+@example rust
+println!("@{@}", 137 + 349);
+// => 486
 
-(- 1000 334)
-@i{666}
+println!("@{@}", 1000 - 334);
+// => 666
 
-(* 5 99)
-@i{495}
+println!("@{@}", 5 * 99);
+// => 495
 
-(/ 10 5)
-@i{2}
+println!("@{@}", 10 / 5);
+// => 2
 
-(+ 2.7 10)
-@i{12.7}
-@end lisp
-
-@noindent
-Expressions such as these, formed by delimiting a list of expressions within
-parentheses in order to denote procedure application, are called
-@newterm{combinations}.  The leftmost element in the list is called the
-@newterm{operator}, and the other elements are called @newterm{operands}.  The
-value of a combination is obtained by applying the procedure specified by the
-operator to the @newterm{arguments} that are the values of the operands.
-
-The convention of placing the operator to the left of the operands is known as
-@newterm{prefix notation}, and it may be somewhat confusing at first because it
-departs significantly from the customary mathematical convention.  Prefix
-notation has several advantages, however.  One of them is that it can
-accommodate procedures that may take an arbitrary number of arguments, as in
-the following examples:
-
-@lisp
-(+ 21 35 12 7)
-@i{75}
-
-(* 25 4 12)
-@i{1200}
-@end lisp
+println!("@{@}", 2.7 + 10.0);
+// => 12.7
+@end example
 
 @noindent
-No ambiguity can arise, because the operator is always the leftmost element and
-the entire combination is delimited by the parentheses.
+Expressions such as these, formed by writing an operator between the
+expressions that denote its arguments, are the closest Rust comes to the
+book's @newterm{combinations}.  The vocabulary differs from Lisp's in one
+visible way: Lisp writes every combination in @newterm{prefix notation},
+with the operator leftmost, while Rust writes its primitive arithmetic
+operators in the customary infix position (@code{137 + 349}, not
+@code{(+ 137 349)}).  A function call is prefix-shaped the way a Lisp
+combination is---the operator's name comes first,
+@code{sum_of_squares(3, 4)}---but the operators proper are written between
+their operands, and each function and operator takes a fixed number of
+arguments, so the book's variadic forms such as @code{(+ 21 35 12 7)} become
+@code{21 + 35 + 12 + 7}, one operator repeated.  What matters for this
+chapter is what the two notations share: in both, the value of a compound
+expression is obtained by applying the procedure specified by the
+@newterm{operator} to the @newterm{arguments} that are the values of the
+@newterm{operands}, and in both
+the notation is unambiguous about which operator applies to which operands.
 
-A second advantage of prefix notation is that it extends in a straightforward
-way to allow combinations to be @i{nested}, that is, to have combinations whose
-elements are themselves combinations:
+A further advantage the book claims for prefix notation is that it extends in
+a straightforward way to allow combinations to be @i{nested}, that is, to have
+combinations whose elements are themselves combinations.  Rust nests the same
+way:
 
-@lisp
-(+ (* 3 5) (- 10 6))
-@i{19}
-@end lisp
+@example rust
+println!("@{@}", (3 * 5) + (10 - 6));
+// => 19
+@end example
 
 @noindent
 There is no limit (in principle) to the depth of such nesting and to the
-overall complexity of the expressions that the Lisp interpreter can evaluate.
-It is we humans who get confused by still relatively simple expressions such as
+overall complexity of the expressions that the Rust compiler will accept and
+evaluate.  It is we humans who get confused by still relatively simple
+expressions such as
 
-@lisp
-(+ (* 3 (+ (* 2 4) (+ 3 5))) (+ (- 10 7) 6))
-@end lisp
+@example rust
+3 * (2 * 4 + (3 + 5)) + (10 - 7 + 6)
+@end example
 
 @noindent
-which the interpreter would readily evaluate to be 57.  We can help ourselves
-by writing such an expression in the form
+which the compiler will accept and the program will evaluate to be 57.  We
+can help ourselves by writing such an expression in the form
 
-@lisp
-(+ (* 3
-      (+ (* 2 4)
-         (+ 3 5)))
-   (+ (- 10 7)
-      6))
-@end lisp
+@example rust
+3 * (2 * 4
+     + (3 + 5))
+   + (10 - 7
+      + 6)
+@end example
 
 @noindent
 following a formatting convention known as @newterm{pretty-printing}, in which
-each long combination is written so that the operands are aligned vertically.
+each long expression is written so that the operands are aligned vertically.
 The resulting indentations display clearly the structure of the
-expression.@footnote{Lisp systems typically provide features to aid the user in
-formatting expressions.  Two especially useful features are one that
-automatically indents to the proper pretty-print position whenever a new line
-is started and one that highlights the matching left parenthesis whenever a
-right parenthesis is typed.}
+expression.@footnote{Rust systems provide a tool that automates this
+formatting: @code{cargo fmt} lays every expression out in the community's
+pretty-print convention, so no programmer in this book's examples formats an
+expression by hand or argues about indentation.  Editors likewise highlight
+the matching parenthesis or brace as you type.}
 
-Even with complex expressions, the interpreter always operates in the same
-basic cycle: It reads an expression from the terminal, evaluates the
-expression, and prints the result.  This mode of operation is often expressed
-by saying that the interpreter runs in a @newterm{read-eval-print loop}.
-Observe in particular that it is not necessary to explicitly instruct the
-interpreter to print the value of the expression.@footnote{Lisp obeys the
-convention that every expression has a value. This convention, together with
-the old reputation of Lisp as an inefficient language, is the source of the
-quip by Alan Perlis (paraphrasing Oscar Wilde) that ``Lisp programmers know the
-value of everything but the cost of nothing.''}
+Even with complex expressions, the compiled program always operates in the
+same basic cycle: it fetches the next instruction, evaluates it, and moves
+on; there is no moment where an interpreter stops to print anything unless
+the source asks it to.  Observe in particular that it is not necessary to
+explicitly instruct the program to compute the value of an expression; the
+value is what evaluation produces.@footnote{In Rust, as in Lisp, every
+expression has a value, and @code{if}, @code{match}, and a block
+@code{@{}...@code{@}} are themselves expressions that produce the value of
+the branch or block taken.  The one deliberate exception is the statement:
+an expression followed by a semicolon is evaluated for its effect, and its
+value is discarded.}
 
 @node	1.1.2, 1.1.3, 1.1.1, 1.1
 @subsection Naming and the Environment
@@ -349,64 +349,67 @@ A critical aspect of a programming language is the means it provides for using
 names to refer to computational objects.  We say that the name identifies a
 @newterm{variable} whose @newterm{value} is the object.
 
-In the Scheme dialect of Lisp, we name things with @code{define}.  Typing
+In Rust, we name things with @code{let}.  Writing
 
-@lisp
-(define size 2)
-@end lisp
+@example rust
+let size = 2;
+@end example
 
 @noindent
-causes the interpreter to associate the value 2 with the name
-@code{size}.@footnote{In this book, we do not show the interpreter's response
-to evaluating definitions, since this is highly implementation-dependent.} Once
+causes the program to associate the value 2 with the name
+@code{size}.@footnote{A @code{let} binding in Rust is a compile-time
+construct: the compiler checks every later use of the name against the type
+of the value it names, and the running program simply uses the value.} Once
 the name @code{size} has been associated with the number 2, we can refer to the
 value 2 by name:
 
-@lisp
-size
-@i{2}
+@example rust
+println!("@{size@}");
+// => 2
 
-(* 5 size)
-@i{10}
-@end lisp
-
-@noindent
-Here are further examples of the use of @code{define}:
-
-@lisp
-(define pi 3.14159)
-(define radius 10)
-
-(* pi (* radius radius))
-@i{314.159}
-
-(define circumference (* 2 pi radius))
-
-circumference
-@i{62.8318}
-@end lisp
+println!("@{@}", 5 * size);
+// => 10
+@end example
 
 @noindent
-@code{Define} is our language's simplest means of abstraction, for it allows us
+Here are further examples of the use of @code{let}:
+
+@example rust
+let pi = 3.14159;
+let radius = 10.0;
+
+println!("@{@}", pi * radius * radius);
+// => 314.159
+
+let circumference = 2.0 * pi * radius;
+
+println!("@{circumference@}");
+// => 62.8318
+@end example
+
+@noindent
+@code{Let} is our language's simplest means of abstraction, for it allows us
 to use simple names to refer to the results of compound operations, such as the
 @code{circumference} computed above.  In general, computational objects may
 have very complex structures, and it would be extremely inconvenient to have to
 remember and repeat their details each time we want to use them.  Indeed,
 complex programs are constructed by building, step by step, computational
-objects of increasing complexity. The interpreter makes this step-by-step
-program construction particularly convenient because name-object associations
-can be created incrementally in successive interactions.  This feature
-encourages the incremental development and testing of programs and is largely
-responsible for the fact that a Lisp program usually consists of a large number
-of relatively simple procedures.
+objects of increasing complexity.  Where the book's Lisp session builds this
+way one interaction at a time, a Rust program grows the same way in the
+source: each new name is written down once, checked by the compiler, and
+thereafter available by name, which gives the incremental style a guarantee
+the interactive session never had.
 
-It should be clear that the possibility of associating values with symbols and
-later retrieving them means that the interpreter must maintain some sort of
-memory that keeps track of the name-object pairs.  This memory is called the
+It should be clear that the possibility of associating values with names and
+later retrieving them means that some sort of bookkeeping must keep track of
+the name-object pairs.  This bookkeeping is called the
 @newterm{environment} (more precisely the @newterm{global environment}, since
 we will see later that a computation may involve a number of different
-environments).@footnote{@ref{Chapter 3} will show that this notion of
-environment is crucial, both for understanding how the interpreter works and
+environments).  In Rust the environment of a program is its set of scopes:
+each block, function, and module is a scope in which names are bound, and the
+``global'' names of a program are the items of its crate, organized into
+modules as described in @ref{0.9}.@footnote{@ref{Chapter 3} will show that this notion of
+environment is crucial, both for understanding how programs work and
 for implementing interpreters.}
 
 @node	1.1.3, 1.1.4, 1.1.2, 1.1
@@ -414,7 +417,7 @@ for implementing interpreters.}
 
 One of our goals in this chapter is to isolate issues about thinking
 procedurally.  As a case in point, let us consider that, in evaluating
-combinations, the interpreter is itself following a procedure.
+combinations, the language implementation is itself following a procedure.
 
 @quotation
 To evaluate a combination, do the following:
@@ -450,9 +453,9 @@ Notice how succinctly the idea of recursion can be used to express what, in the
 case of a deeply nested combination, would otherwise be viewed as a rather
 complicated process.  For example, evaluating
 
-@lisp
-(* (+ 2 (* 4 6)) (+ 3 5 7))
-@end lisp
+@example rust
+(2 + 4 * 6) * (3 + 5 + 7)
+@end example
 
 @noindent
 requires that the evaluation rule be applied to four different combinations.
@@ -519,48 +522,48 @@ environment.
 
 @noindent
 We may regard the second rule as a special case of the third one by stipulating
-that symbols such as @code{+} and @code{*} are also included in the global
-environment, and are associated with the sequences of machine instructions that
+that names such as @code{+} and @code{*} are also part of what the
+environment makes available, associated with the sequences of machine instructions that
 are their ``values.''  The key point to notice is the role of the environment
-in determining the meaning of the symbols in expressions.  In an interactive
-language such as Lisp, it is meaningless to speak of the value of an expression
-such as @code{(+ x 1)} without specifying any information about the environment
-that would provide a meaning for the symbol @code{x} (or even for the symbol
-@code{+}).  As we shall see in @ref{Chapter 3}, the general notion of the
-environment as providing a context in which evaluation takes place will play an
-important role in our understanding of program execution.
+in determining the meaning of the names in expressions.  It is meaningless to
+speak of the value of an expression such as @code{x + 1} without specifying
+any information about the environment
+that would provide a meaning for the name @code{x}.  Rust settles this
+question once and for all at compile time: every name's meaning is fixed by
+the scope in which it is written, which is why @ref{Chapter 3} must
+introduce environments explicitly when it builds interpreters that decide
+such questions at run time.
 
 Notice that the evaluation rule given above does not handle definitions.  For
-instance, evaluating @code{(define x 3)} does not apply @code{define} to two
-arguments, one of which is the value of the symbol @code{x} and the other of
-which is 3, since the purpose of the @code{define} is precisely to associate
-@code{x} with a value.  (That is, @code{(define x 3)} is not a combination.)
+instance, evaluating @code{let x = 3;} does not apply some operation to two
+arguments, one of which is the value of the name @code{x} and the other of
+which is 3, since the purpose of the @code{let} is precisely to associate
+@code{x} with a value.  (That is, @code{let x = 3;} is not an expression.)
 
 Such exceptions to the general evaluation rule are called @newterm{special forms}.  
-@code{Define} is the only example of a special form that we have seen
-so far, but we will meet others shortly.  Each special form has its own
+@code{Let}, along with the function definition @code{fn} we are about to
+meet, is an example of a special form; we will meet others shortly.  Each special form has its own
 evaluation rule. The various kinds of expressions (each with its associated
-evaluation rule) constitute the syntax of the programming language.  In
-comparison with most other programming languages, Lisp has a very simple
-syntax; that is, the evaluation rule for expressions can be described by a
-simple general rule together with specialized rules for a small number of
-special forms.@footnote{Special syntactic forms that are simply convenient
+evaluation rule) constitute the syntax of the programming language.  Rust's
+syntax is much larger than Lisp's; that is, the evaluation rule for
+expressions is described by a general rule together with specialized rules
+for a larger set of special forms and declarations, most of which
+(@code{match}, @code{if}, @code{loop}, and their companions) the chapter 0
+primer already introduced.@footnote{Special syntactic forms that are simply convenient
 alternative surface structures for things that can be written in more uniform
 ways are sometimes called @newterm{syntactic sugar}, to use a phrase coined by
-Peter Landin.  In comparison with users of other languages, Lisp programmers,
-as a rule, are less concerned with matters of syntax.  (By contrast, examine
-any Pascal manual and notice how much of it is devoted to descriptions of
-syntax.)  This disdain for syntax is due partly to the flexibility of Lisp,
-which makes it easy to change surface syntax, and partly to the observation
-that many ``convenient'' syntactic constructs, which make the language less
-uniform, end up causing more trouble than they are worth when programs become
-large and complex.  In the words of Alan Perlis, ``Syntactic sugar causes
-cancer of the semicolon.''}
+Peter Landin.  In comparison with Lisp, whose surface syntax is nearly
+nonexistent, Rust carries a good deal of syntactic sugar---method-call
+syntax, range expressions, the @code{?} operator---each of which the
+compiler expands to a more uniform underlying form.  In the words of Alan
+Perlis, ``Syntactic sugar causes cancer of the semicolon.''; Rust manages the
+dose by making every expansion checkable and by refusing to evaluate anything
+the compiler has not already typed.}
 
 @node	1.1.4, 1.1.5, 1.1.3, 1.1
 @subsection Compound Procedures
 
-We have identified in Lisp some of the elements that must appear in any
+We have identified in Rust some of the elements that must appear in any
 powerful programming language:
 
 @itemize @bullet
@@ -586,16 +589,18 @@ We begin by examining how to express the idea of ``squaring.''  We might say,
 ``To square something, multiply it by itself.''  This is expressed in our
 language as
 
-@lisp
-(define (square x) (* x x))
-@end lisp
+@example rust
+fn square(x: i64) -> i64 @{
+    x * x
+@}
+@end example
 
 @noindent
 We can understand this in the following way:
 
 @example
-(define (square x)    (*       x       x))
-  |      |      |      |       |       |
+fn square(x: i64) -> i64 @{    x * x    @}
+    |      |         |          |
  To square something, multiply it by itself.
 @end example
 
@@ -614,90 +619,95 @@ procedures that have already been created.  We will see how to do this in
 
 The general form of a procedure definition is
 
-@lisp
-(define (⟨@var{name}⟩ ⟨@var{formal parameters}⟩) ⟨@var{body}⟩)
-@end lisp
+@example rust
+fn @code{⟨}@var{name}@code{⟩}(@code{⟨}@var{parameters}@code{⟩}: @code{⟨}@var{parameter types}@code{⟩}) -> @code{⟨}@var{return type}@code{⟩} @{
+    @code{⟨}@var{body}@code{⟩}
+@}
+@end example
 
 @noindent
 The @code{⟨}@var{name}@code{⟩} is a symbol to be associated with the procedure definition in
 the environment.@footnote{Throughout this book, we will describe the general
 syntax of expressions by using italic symbols delimited by angle
 brackets---e.g., @code{⟨}@var{name}@code{⟩}---to denote the ``slots'' in the expression to be
-filled in when such an expression is actually used.} The @code{⟨}@var{@w{formal} @w{parameters}}@code{⟩} 
+filled in when such an expression is actually used.} The @code{⟨}@var{parameters}@code{⟩}
 are the names used within the body of the procedure to refer to
 the corresponding arguments of the procedure.  The @code{⟨}@var{body}@code{⟩} is an
 expression that will yield the value of the procedure application when the
 formal parameters are replaced by the actual arguments to which the procedure
 is applied.@footnote{More generally, the body of the procedure can be a
-sequence of expressions.  In this case, the interpreter evaluates each
-expression in the sequence in turn and returns the value of the final
-expression as the value of the procedure application.}  The @code{⟨}@var{name}@code{⟩} and
-the @code{⟨}@var{formal parameters}@code{⟩} are grouped within parentheses, just as they
-would be in an actual call to the procedure being defined.
+sequence of statements ending in an expression.  In this case, the program
+evaluates each statement in the sequence in turn and returns the value of the final
+expression as the value of the procedure application.}  Rust adds one
+requirement Lisp does not have: the compiler must also be told the types of
+the parameters and of the result, so that every application can be
+type-checked before the program ever runs.
 
 Having defined @code{square}, we can now use it:
 
-@lisp
-(square 21)
-@i{441}
+@example rust
+println!("@{@}", square(21));
+// => 441
 
-(square (+ 2 5))
-@i{49}
+println!("@{@}", square(2 + 5));
+// => 49
 
-(square (square 3))
-@i{81}
-@end lisp
+println!("@{@}", square(square(3)));
+// => 81
+@end example
 
 @noindent
 We can also use @code{square} as a building block in defining other procedures.
 For example, @math{x^2 + y^2} can be expressed as
 
-@lisp
-(+ (square x) (square y))
-@end lisp
+@example rust
+square(x) + square(y)
+@end example
 
 @noindent
-We can easily define a procedure @code{sum-of-squares} that, given any two
+We can easily define a procedure @code{sum_of_squares} that, given any two
 numbers as arguments, produces the sum of their squares:
 
-@lisp
-(define (sum-of-squares x y)
-  (+ (square x) (square y)))
+@example rust
+fn sum_of_squares(x: i64, y: i64) -> i64 @{
+    square(x) + square(y)
+@}
 
-(sum-of-squares 3 4)
-@i{25}
-@end lisp
+println!("@{@}", sum_of_squares(3, 4));
+// => 25
+@end example
 
 @noindent
-Now we can use @code{sum-of-squares} as a building block in constructing
+Now we can use @code{sum_of_squares} as a building block in constructing
 further procedures:
 
-@lisp
-(define (f a)
-  (sum-of-squares (+ a 1) (* a 2)))
+@example rust
+fn f(a: i64) -> i64 @{
+    sum_of_squares(a + 1, a * 2)
+@}
 
-(f 5)
-@i{136}
-@end lisp
+println!("@{@}", f(5));
+// => 136
+@end example
 
 @noindent
 Compound procedures are used in exactly the same way as primitive procedures.
-Indeed, one could not tell by looking at the definition of
-@code{sum-of-squares} given above whether @code{square} was built into the
-interpreter, like @code{+} and @code{*}, or defined as a compound procedure.
+Indeed, one could not tell by looking at the uses of
+@code{sum_of_squares} given above whether @code{square} was built into the
+standard library or defined here as a compound procedure.
 
 @node	1.1.5, 1.1.6, 1.1.4, 1.1
 @subsection The Substitution Model for Procedure Application
 
 To evaluate a combination whose operator names a compound procedure, the
-interpreter follows much the same process as for combinations whose operators
+language follows much the same process as for combinations whose operators
 name primitive procedures, which we described in @ref{1.1.3}.  That is,
-the interpreter evaluates the elements of the combination and applies the
+the program evaluates the elements of the combination and applies the
 procedure (which is the value of the operator of the combination) to the
 arguments (which are the values of the operands of the combination).
 
 We can assume that the mechanism for applying primitive procedures to arguments
-is built into the interpreter.  For compound procedures, the application
+is built into the implementation.  For compound procedures, the application
 process is as follows:
 
 @quotation
@@ -708,59 +718,59 @@ with each formal parameter replaced by the corresponding argument.
 @noindent
 To illustrate this process, let's evaluate the combination
 
-@lisp
-(f 5)
-@end lisp
+@example rust
+f(5)
+@end example
 
 @noindent
 where @code{f} is the procedure defined in @ref{1.1.4}.  We begin by
 retrieving the body of @code{f}:
 
-@lisp
-(sum-of-squares (+ a 1) (* a 2))
-@end lisp
+@example rust
+sum_of_squares(a + 1, a * 2)
+@end example
 
 @noindent
 Then we replace the formal parameter @code{a} by the argument 5:
 
-@lisp
-(sum-of-squares (+ 5 1) (* 5 2))
-@end lisp
+@example rust
+sum_of_squares(5 + 1, 5 * 2)
+@end example
 
 @noindent
 Thus the problem reduces to the evaluation of a combination with two operands
-and an operator @code{sum-of-squares}.  Evaluating this combination involves
+and an operator @code{sum_of_squares}.  Evaluating this combination involves
 three subproblems.  We must evaluate the operator to get the procedure to be
-applied, and we must evaluate the operands to get the arguments.  Now @code{(+
-5 1)} produces 6 and @code{(* 5 2)} produces 10, so we must apply the
-@code{sum-of-squares} procedure to 6 and 10.  These values are substituted for
+applied, and we must evaluate the operands to get the arguments.  Now @code{5
++ 1} produces 6 and @code{5 * 2} produces 10, so we must apply the
+@code{sum_of_squares} procedure to 6 and 10.  These values are substituted for
 the formal parameters @code{x} and @code{y} in the body of
-@code{sum-of-squares}, reducing the expression to
+@code{sum_of_squares}, reducing the expression to
 
-@lisp
-(+ (square 6) (square 10))
-@end lisp
+@example rust
+square(6) + square(10)
+@end example
 
 @noindent
 If we use the definition of @code{square}, this reduces to
 
-@lisp
-(+ (* 6 6) (* 10 10))
-@end lisp
+@example rust
+6 * 6 + 10 * 10
+@end example
 
 @noindent
 which reduces by multiplication to
 
-@lisp
-(+ 36 100)
-@end lisp
+@example rust
+36 + 100
+@end example
 
 @noindent
 and finally to
 
-@lisp
+@example rust
 136
-@end lisp
+@end example
 
 @noindent
 The process we have just described is called the @newterm{substitution model}
@@ -772,16 +782,17 @@ are concerned.  However, there are two points that should be stressed:
 
 @item
 The purpose of the substitution is to help us think about procedure
-application, not to provide a description of how the interpreter really works.
-Typical interpreters do not evaluate procedure applications by manipulating the
+application, not to provide a description of how the implementation really works.
+The Rust compiler does not evaluate procedure applications by manipulating the
 text of a procedure to substitute values for the formal parameters.  In
-practice, the ``substitution'' is accomplished by using a local environment for
-the formal parameters.  We will discuss this more fully in @ref{Chapter 3} and
+practice, the ``substitution'' is accomplished by the compiled code passing
+the arguments in registers or on the stack, and by a frame that carries the
+procedure's local names.  We will discuss this more fully in @ref{Chapter 3} and
 @ref{Chapter 4} when we examine the implementation of an interpreter in detail.
 
 @item
 Over the course of this book, we will present a sequence of increasingly
-elaborate models of how interpreters work, culminating with a complete
+elaborate models of how programs work, culminating with a complete
 implementation of an interpreter and compiler in @ref{Chapter 5}.  The
 substitution model is only the first of these models---a way to get started
 thinking formally about the evaluation process.  In general, when modeling
@@ -805,47 +816,44 @@ See @ref{Stoy 1977} for a careful discussion of substitution.}
 @subsubheading Applicative order versus normal order
 
 According to the description of evaluation given in @ref{1.1.3}, the
-interpreter first evaluates the operator and operands and then applies the
+implementation first evaluates the operator and operands and then applies the
 resulting procedure to the resulting arguments.  This is not the only way to
 perform evaluation.  An alternative evaluation model would not evaluate the
 operands until their values were needed.  Instead it would first substitute
 operand expressions for parameters until it obtained an expression involving
 only primitive operators, and would then perform the evaluation.  If we used
-this method, the evaluation of @code{(f 5)} would proceed according to the
+this method, the evaluation of @code{f(5)} would proceed according to the
 sequence of expansions
 
-@lisp
-(sum-of-squares (+ 5 1) (* 5 2))
+@example rust
+sum_of_squares(5 + 1, 5 * 2)
 
-(+ (square (+ 5 1)) 
-   (square (* 5 2)))
+square(5 + 1) + square(5 * 2)
 
-(+ (* (+ 5 1) (+ 5 1)) 
-   (* (* 5 2) (* 5 2)))
-@end lisp
+(5 + 1) * (5 + 1) + (5 * 2) * (5 * 2)
+@end example
 
 @noindent
 followed by the reductions
 
-@lisp
-(+ (* 6 6) 
-   (* 10 10))
+@example rust
+6 * 6 + 10 * 10
 
-(+ 36 100)
+36 + 100
 
 136
-@end lisp
+@end example
 
 @noindent
 This gives the same answer as our previous evaluation model, but the process is
-different.  In particular, the evaluations of @code{(+ 5 1)} and @code{(* 5 2)}
+different.  In particular, the evaluations of @code{5 + 1} and @code{5 * 2}
 are each performed twice here, corresponding to the reduction of the expression
-@code{(* x x)} with @code{x} replaced respectively by @code{(+ 5 1)} and
-@code{(* 5 2)}.
+@code{x * x} with @code{x} replaced respectively by @code{5 + 1} and
+@code{5 * 2}.
 
 This alternative ``fully expand and then reduce'' evaluation method is known as
 @newterm{normal-order evaluation}, in contrast to the ``evaluate the arguments
-and then apply'' method that the interpreter actually uses, which is called
+and then apply'' method that Rust actually uses, which is called
 @newterm{applicative-order evaluation}.  It can be shown that, for procedure
 applications that can be modeled using substitution (including all the
 procedures in the first two chapters of this book) and that yield legitimate
@@ -853,18 +861,20 @@ values, normal-order and applicative-order evaluation produce the same value.
 (See @ref{Exercise 1.5} for an instance of an ``illegitimate'' value where
 normal-order and applicative-order evaluation do not give the same result.)
 
-Lisp uses applicative-order evaluation, partly because of the additional
+Rust uses applicative-order evaluation, partly because of the additional
 efficiency obtained from avoiding multiple evaluations of expressions such as
-those illustrated with @code{(+ 5 1)} and @code{(* 5 2)} above and, more
+those illustrated with @code{5 + 1} and @code{5 * 2} above and, more
 significantly, because normal-order evaluation becomes much more complicated to
 deal with when we leave the realm of procedures that can be modeled by
 substitution.  On the other hand, normal-order evaluation can be an extremely
 valuable tool, and we will investigate some of its implications in @ref{Chapter
 3} and @ref{Chapter 4}.@footnote{In @ref{Chapter 3} we will introduce
 @newterm{stream processing}, which is a way of handling apparently ``infinite''
-data structures by incorporating a limited form of normal-order evaluation.  In
-@ref{4.2} we will modify the Scheme interpreter to produce a
-normal-order variant of Scheme.}
+data structures by incorporating a limited form of normal-order evaluation; in
+Rust, the iterator adapters of @ref{0.5} are the same tool under another
+name.  In @ref{4.2} we will modify the interpreter of @ref{Chapter 4} to
+evaluate the book's Scheme subset with normal-order delay, and the Rust
+closures of @ref{0.6} are the ordinary-language stand-in for a thunk.}
 
 @node	1.1.6, 1.1.7, 1.1.5, 1.1
 @subsection Conditional Expressions and Predicates
@@ -894,206 +904,262 @@ actions in the different cases according to the rule
 @end example
 
 @end ifinfo
-This construct is called a @newterm{case analysis}, and there is a special form
-in Lisp for notating such a case analysis.  It is called @code{cond} (which
-stands for ``conditional''), and it is used as follows:
+This construct is called a @newterm{case analysis}, and Rust notates such a
+case analysis with the @code{match} expression, which it uses as follows:
 
-@lisp
-(define (abs x)
-  (cond ((> x 0) x)
-        ((= x 0) 0)
-        ((< x 0) (- x))))
-@end lisp
+@example rust
+fn abs(x: i64) -> i64 @{
+    match x @{
+        y if y > 0 => y,
+        0 => 0,
+        _ => -x,
+    @}
+@}
+@end example
 
 @noindent
 The general form of a conditional expression is
 
-@lisp
-(cond (⟨@var{p₁}⟩ ⟨@var{e₁}⟩)
-      (⟨@var{p₂}⟩ ⟨@var{e₂}⟩)
-      @r{…}
-      (⟨@var{pₙ}⟩ ⟨@var{eₙ}⟩))
-@end lisp
+@example rust
+match @code{⟨}@var{subject}@code{⟩} @{
+    @code{⟨}@var{pattern₁}@code{⟩} @code{⟨}@var{guard₁}@code{⟩} => @code{⟨}@var{e₁}@code{⟩},
+    @code{⟨}@var{pattern₂}@code{⟩} @code{⟨}@var{guard₂}@code{⟩} => @code{⟨}@var{e₂}@code{⟩},
+    @r{…}
+    _ => @code{⟨}@var{eₙ}@code{⟩},
+@}
+@end example
 
 @noindent
-consisting of the symbol @code{cond} followed by parenthesized pairs of
-expressions
+consisting of the @code{match} keyword, a subject expression, and a sequence
+of @newterm{clauses}, one per line, each of the form
 
-@lisp
-(⟨@var{p}⟩ ⟨@var{e}⟩)
-@end lisp
+@example rust
+@code{⟨}@var{pattern}@code{⟩} => @code{⟨}@var{e}@code{⟩},
+@end example
 
 @noindent
-called @newterm{clauses}. The first expression in each pair is a
-@newterm{predicate}---that is, an expression whose value is interpreted as
-either true or false.@footnote{``Interpreted as either true or false'' means
-this: In Scheme, there are two distinguished values that are denoted by the
-constants @code{#t} and @code{#f}.  When the interpreter checks a predicate's
-value, it interprets @code{#f} as false.  Any other value is treated as true.
-(Thus, providing @code{#t} is logically unnecessary, but it is convenient.)  In
-this book we will use names @code{true} and @code{false}, which are associated
-with the values @code{#t} and @code{#f} respectively.}
+The clauses are tried in order; the first whose pattern matches the subject
+(and whose optional @code{if} @newterm{guard} holds) is taken.  The final
+@code{⟨}@var{e}@code{⟩} of the taken clause is the value of the whole
+@code{match}.  Whether a clause applies is decided by expressions whose value
+is interpreted as either true or false, and each such decision expression is
+a @newterm{predicate}---that is, an expression whose value is interpreted as
+either true or false.@footnote{Rust is stricter about this than Scheme: the
+type @code{bool} has exactly two values, @code{true} and @code{false}, and a
+condition or guard must be a @code{bool}.  Scheme accepts any value and
+treats every value but @code{#f} as true; Rust has no such truthiness, so a
+condition that would have relied on it must be written out, such as
+@code{x != 0} instead of a bare @code{x}.}
 
-Conditional expressions are evaluated as follows.  The predicate @math{{⟨p_1⟩}} is
-evaluated first.  If its value is false, then @math{{⟨p_2⟩}} is evaluated.  If
-@math{{⟨p_2⟩}}'s value is also false, then @math{{⟨p_3⟩}} is evaluated.  This process
-continues until a predicate is found whose value is true, in which case the
-interpreter returns the value of the corresponding @newterm{consequent expression} 
-@math{{⟨e⟩}} of the clause as the value of the conditional expression.
-If none of the @math{{⟨p⟩}}'s is found to be true, the value of the @code{cond} is
-undefined.
+Conditional expressions are evaluated as follows.  The patterns and guards of
+the clauses are examined in order.  If a clause's guard is false, the next
+clause is examined.  This process continues until a clause is found whose
+pattern matches and whose guard is true, in which case the value of the
+corresponding @newterm{consequent expression}
+@code{⟨}@var{e}@code{⟩} of the clause becomes the value of the conditional expression.
+Unlike Lisp's @code{cond}, a Rust @code{match} is never left without a
+taken clause: the compiler rejects the program unless the clauses
+collectively cover every possible subject, with @code{_} available for the
+catch-all.
 
-The word @newterm{predicate} is used for procedures that return true or false,
-as well as for expressions that evaluate to true or false.  The absolute-value
-procedure @code{abs} makes use of the primitive predicates @code{>}, @code{<},
-and @code{=}.@footnote{@code{Abs} also uses the ``minus'' operator @code{-},
-which, when used with a single operand, as in @code{(- x)}, indicates
+The word @newterm{predicate} is used for functions that return @code{bool},
+as well as for expressions that evaluate to @code{bool}.  The absolute-value
+procedure @code{abs} makes use of the primitive comparisons @code{>},
+@code{<}, and @code{==}.@footnote{@code{Abs} also uses the ``minus'' operator
+@code{-}, which, when written before its operand, as in @code{-x}, indicates
 negation.} These take two numbers as arguments and test whether the first
 number is, respectively, greater than, less than, or equal to the second
-number, returning true or false accordingly.
+number, returning @code{true} or @code{false} accordingly.
 
 Another way to write the absolute-value procedure is
 
-@lisp
-(define (abs x)
-  (cond ((< x 0) (- x))
-        (else x)))
-@end lisp
+@example rust
+fn abs(x: i64) -> i64 @{
+    match x @{
+        y if y < 0 => -y,
+        _ => x,
+    @}
+@}
+@end example
 
 @noindent
-which could be expressed in English as ``If @math{x} is less than zero return 
-@math{{-x}}; otherwise return @math{x}.''  @code{Else} is a special symbol that can be
-used in place of the @math{{⟨p⟩}} in the final clause of a @code{cond}.  This
-causes the @code{cond} to return as its value the value of the corresponding
-@math{{⟨e⟩}} whenever all previous clauses have been bypassed.  In fact, any
-expression that always evaluates to a true value could be used as the @math{{⟨p⟩}}
-here.
+which could be expressed in English as ``If @math{x} is less than zero return
+@math{{-x}}; otherwise return @math{x}.''  The @code{_} pattern plays the role
+of the book's @code{else}: it matches whatever the earlier clauses did not.
+This causes the @code{match} to return as its value the value of the corresponding
+@code{⟨}@var{e}@code{⟩} whenever all previous clauses have been bypassed.
 
 Here is yet another way to write the absolute-value procedure:
 
-@lisp
-(define (abs x)
-  (if (< x 0)
-      (- x)
-      x))
-@end lisp
+@example rust
+fn abs(x: i64) -> i64 @{
+    if x < 0 @{
+        -x
+    @} else @{
+        x
+    @}
+@}
+@end example
 
 @noindent
-This uses the special form @code{if}, a restricted type of conditional that can
+This uses the @code{if} expression, a restricted type of conditional that can
 be used when there are precisely two cases in the case analysis.  The general
 form of an @code{if} expression is
 
-@lisp
-(if ⟨@var{predicate}⟩ ⟨@var{consequent}⟩ ⟨@var{alternative}⟩)
-@end lisp
+@example rust
+if @code{⟨}@var{predicate}@code{⟩} @{
+    @code{⟨}@var{consequent}@code{⟩}
+@} else @{
+    @code{⟨}@var{alternative}@code{⟩}
+@}
+@end example
 
 @noindent
-To evaluate an @code{if} expression, the interpreter starts by evaluating the
+To evaluate an @code{if} expression, the program starts by evaluating the
 @code{⟨}@var{predicate}@code{⟩} part of the expression.  If the @code{⟨}@var{predicate}@code{⟩} evaluates
-to a true value, the interpreter then evaluates the @code{⟨}@var{consequent}@code{⟩} and
+to @code{true}, it then evaluates the @code{⟨}@var{consequent}@code{⟩} and
 returns its value.  Otherwise it evaluates the @code{⟨}@var{alternative}@code{⟩} and returns
-its value.@footnote{A minor difference between @code{if} and @code{cond} is
-that the @code{⟨}@var{e}@code{⟩} part of each @code{cond} clause may be a sequence of
-expressions.  If the corresponding @code{⟨}@var{p}@code{⟩} is found to be true, the
-expressions @code{⟨}@var{e}@code{⟩} are evaluated in sequence and the value of the final
-expression in the sequence is returned as the value of the @code{cond}.  In an
-@code{if} expression, however, the @code{⟨}@var{consequent}@code{⟩} and @code{⟨}@var{alternative}@code{⟩}
-must be single expressions.}
+its value.@footnote{A @code{match} clause's @code{⟨}@var{e}@code{⟩} and an
+@code{if} arm are both blocks or single expressions: a block may hold a
+sequence of statements, and the value of the block is the value of its final
+expression, which is what the conditional yields.  The two arms of an
+@code{if} must produce values of the same type, which the compiler checks.}
 
-In addition to primitive predicates such as @code{<}, @code{=}, and @code{>},
+In addition to primitive comparisons such as @code{<}, @code{==}, and @code{>},
 there are logical composition operations, which enable us to construct compound
 predicates.  The three most frequently used are these:
 
 @itemize @bullet
 
 @item
-@code{(and ⟨@var{e₁}⟩ @r{…} ⟨@var{eₙ}⟩)}
+@code{@code{⟨}@var{e₁}@code{⟩} && @r{…} && @code{⟨}@var{eₙ}@code{⟩}}
 
-The interpreter evaluates the expressions @code{⟨}@var{e}@code{⟩} one at a time, in
-left-to-right order.  If any @code{⟨}@var{e}@code{⟩} evaluates to false, the value of the
-@code{and} expression is false, and the rest of the @code{⟨}@var{e}@code{⟩}'s are not
-evaluated.  If all @code{⟨}@var{e}@code{⟩}'s evaluate to true values, the value of the
-@code{and} expression is the value of the last one.
-
-@item
-@code{(or ⟨@var{e₁}⟩ @r{…} ⟨@var{eₙ}⟩)}
-
-The interpreter evaluates the expressions @code{⟨}@var{e}@code{⟩} one at a time, in
-left-to-right order.  If any @code{⟨}@var{e}@code{⟩} evaluates to a true value, that value is
-returned as the value of the @code{or} expression, and the rest of the
-@code{⟨}@var{e}@code{⟩}'s are not evaluated.  If all @code{⟨}@var{e}@code{⟩}'s evaluate to false, the value
-of the @code{or} expression is false.
+The program evaluates the expressions @code{⟨}@var{e}@code{⟩} one at a time, in
+left-to-right order.  If any @code{⟨}@var{e}@code{⟩} evaluates to @code{false}, the value of the
+whole expression is @code{false}, and the rest of the @code{⟨}@var{e}@code{⟩}'s are not
+evaluated.  If all evaluate to @code{true}, the value is the value of the last one.
 
 @item
-@code{(not ⟨@var{e}⟩)}
+@code{@code{⟨}@var{e₁}@code{⟩} || @r{…} || @code{⟨}@var{eₙ}@code{⟩}}
 
-The value of a @code{not} expression is true when the expression @code{⟨}@var{e}@code{⟩}
-evaluates to false, and false otherwise.
+The program evaluates the expressions @code{⟨}@var{e}@code{⟩} one at a time, in
+left-to-right order.  If any @code{⟨}@var{e}@code{⟩} evaluates to @code{true}, that value is
+returned as the value of the whole expression, and the rest of the
+@code{⟨}@var{e}@code{⟩}'s are not evaluated.  If all evaluate to @code{false}, the value
+is @code{false}.
+
+@item
+@code{!@code{⟨}@var{e}@code{⟩}}
+
+The value of a @code{!} expression is @code{true} when the expression
+@code{⟨}@var{e}@code{⟩} evaluates to @code{false}, and @code{false} otherwise.
 
 @end itemize
 
 @noindent
-Notice that @code{and} and @code{or} are special forms, not procedures, because
-the subexpressions are not necessarily all evaluated.  @code{Not} is an
-ordinary procedure.
+Notice that @code{&&} and @code{||} are not ordinary calls: the right operand
+is not necessarily evaluated at all, which no ordinary procedure could
+arrange with eager arguments.  @code{!} is an ordinary operator.
 
 As an example of how these are used, the condition that a number @math{x} be in
 the range @math{5 < x < 10} may be expressed as
 
-@lisp
-(and (> x 5) (< x 10))
-@end lisp
+@example rust
+x > 5 && x < 10
+@end example
 
 @noindent
 As another example, we can define a predicate to test whether one number is
-greater than or equal to another as 
+greater than or equal to another as
 
-@lisp
-(define (>= x y) 
-  (or (> x y) (= x y)))
-@end lisp
+@example rust
+fn geq(x: i64, y: i64) -> bool @{
+    x > y || x == y
+@}
+@end example
 
 @noindent
-or alternatively as 
+or alternatively as
 
-@lisp
-(define (>= x y) 
-  (not (< x y)))
-@end lisp
+@example rust
+fn geq(x: i64, y: i64) -> bool @{
+    !(x < y)
+@}
+@end example
+
+@noindent
+(The runnable listing of the case-analysis forms and the logical operators in
+this subsection is @code{examples/sec_1_1_abs.rs}; the listings of the first
+three subsections are @code{examples/sec_1_1_expressions.rs},
+@code{examples/sec_1_1_naming.rs}, and @code{examples/sec_1_1_square.rs},
+which also carries the substitution walk of @code{f(5)}.)
 
 @quotation
 @strong{@anchor{Exercise 1.1}Exercise 1.1:} Below is a sequence of expressions.
-What is the result printed by the interpreter in response to each expression?
+What is the result produced by the program for each expression?
 Assume that the sequence is to be evaluated in the order in which it is
 presented.
 
-@lisp
+@example rust
 10
-(+ 5 3 4)
-(- 9 1)
-(/ 6 2)
-(+ (* 2 4) (- 4 6))
-(define a 3)
-(define b (+ a 1))
-(+ a b (* a b))
-(= a b)
-(if (and (> b a) (< b (* a b)))
+5 + 3 + 4
+9 - 1
+6 / 2
+2 * 4 + (4 - 6)
+let a = 3;
+let b = a + 1;
+a + b + a * b
+a == b
+if b > a && b < a * b @{
     b
-    a)
-(cond ((= a 4) 6)
-      ((= b 4) (+ 6 7 a))
-      (else 25))
-(+ 2 (if (> b a) b a))
-(* (cond ((> a b) a)
-         ((< a b) b)
-         (else -1))
-   (+ a 1))
-@end lisp
+@} else @{
+    a
+@}
+match a @{
+    _ if a == 4 => 6,
+    _ if b == 4 => 6 + 7 + a,
+    _ => 25,
+@}
+2 + if b > a @{ b @} else @{ a @}
+(if a > b @{
+    a
+@} else if a < b @{
+    b
+@} else @{
+    -1
+@}) * (a + 1)
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.2}Exercise 1.2:} Translate the following expression
-into prefix form:
+@emph{SICP exercise 1.2 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
+@strong{@anchor{Exercise 1.2}Exercise 1.2:} The book's exercise asks you to
+translate a fraction into Lisp's prefix form.  In Rust, the operators are
+already written between their operands, so the same skill---seeing an
+expression as a tree of operations, not a flat formula---is exercised by
+writing the fraction below as pure nested function calls, built from nothing
+but the four primitives
+
+@example rust
+fn add(a: f64, b: f64) -> f64 @{
+    a + b
+@}
+
+fn sub(a: f64, b: f64) -> f64 @{
+    a - b
+@}
+
+fn mul(a: f64, b: f64) -> f64 @{
+    a * b
+@}
+
+fn div(a: f64, b: f64) -> f64 @{
+    a / b
+@}
+@end example
+
+@noindent
+so that the call nesting mirrors the expression tree:
 @displaymath
 {{5 + 4 + (2 - (3 - (6 + {4 \over 5}))) \over 3(6 - 2)(2 - 7)}.}
 @end displaymath
@@ -1117,42 +1183,56 @@ numbers.
 @quotation
 @strong{@anchor{Exercise 1.4}Exercise 1.4:} Observe that our model of
 evaluation allows for combinations whose operators are compound expressions.
-Use this observation to describe the behavior of the following procedure:
+Rust's built-in operators are syntax rather than values, but functions are
+values with function type, so a conditional can choose which function to
+apply.  Use this observation to describe the behavior of the following procedure:
 
-@lisp
-(define (a-plus-abs-b a b)
-  ((if (> b 0) + -) a b))
-@end lisp
+@example rust
+fn a_plus_abs_b(a: i64, b: i64) -> i64 @{
+    let op: fn(i64, i64) -> i64 = if b > 0 @{
+        add
+    @} else @{
+        sub
+    @};
+    op(a, b)
+@}
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.5}Exercise 1.5:} Ben Bitdiddle has invented a test
-to determine whether the interpreter he is faced with is using
+to determine whether the language he is faced with is using
 applicative-order evaluation or normal-order evaluation.  He defines the
 following two procedures:
 
-@lisp
-(define (p) (p))
+@example rust
+fn p() -> ! @{
+    p()
+@}
 
-(define (test x y) 
-  (if (= x 0) 
-      0 
-      y))
-@end lisp
+fn test(x: i64, y: i64) -> i64 @{
+    if x == 0 @{
+        0
+    @} else @{
+        y
+    @}
+@}
+@end example
 
+@noindent
 Then he evaluates the expression
 
-@lisp
-(test 0 (p))
-@end lisp
+@example rust
+test(0, p())
+@end example
 
-What behavior will Ben observe with an interpreter that uses applicative-order
-evaluation?  What behavior will he observe with an interpreter that uses
-normal-order evaluation?  Explain your answer.  (Assume that the evaluation
-rule for the special form @code{if} is the same whether the interpreter is
+What behavior will Ben observe from a language that uses applicative-order
+evaluation?  What behavior would a language with normal-order evaluation
+show?  Explain your answer.  (Assume that the evaluation
+rule for @code{if} is the same whether the language is
 using normal or applicative order: The predicate expression is evaluated first,
 and the result determines whether to evaluate the consequent or the alternative
-expression.)
+expression.  Rust's @code{if} does exactly this.)
 @end quotation
 
 @anchor{Sec.1.1.7}
@@ -1182,13 +1262,13 @@ to recognize whether one number is the square root of another, or to derive
 facts about square roots in general.  On the other hand, the definition does
 not describe a procedure.  Indeed, it tells us almost nothing about how to
 actually find the square root of a given number.  It will not help matters to
-rephrase this definition in pseudo-Lisp:
+rephrase this definition in pseudo-Rust:
 
-@lisp
-(define (sqrt x)
-  (the y (and (>= y 0) 
-              (= (square y) x))))
-@end lisp
+@example rust
+// fn sqrt(x: f64) -> f64 @{
+//     the y such that y >= 0.0 && y * y == x
+// @}
+@end example
 
 @noindent
 This only begs the question.
@@ -1209,7 +1289,7 @@ subject has to do with negotiating the transition between imperative statements
 used to deduce things).  In a related vein, an important current area in
 programming-language design is the exploration of so-called very high-level
 languages, in which one actually programs in terms of declarative statements.
-The idea is to make interpreters sophisticated enough so that, given ``what
+The idea is to make language implementations sophisticated enough so that, given ``what
 is'' knowledge specified by the programmer, they can generate ``how to''
 knowledge automatically.  This cannot be done in general, but there are
 important areas where progress has been made.  We shall revisit this idea in
@@ -1223,7 +1303,7 @@ root) by averaging @math{y} with @math{{x / y}}.@footnote{This square-root algor
 is actually a special case of Newton's method, which is a general technique for
 finding roots of equations.  The square-root algorithm itself was developed by
 Heron of Alexandria in the first century @abbr{A.D.}  We will see how to
-express the general Newton's method as a Lisp procedure in @ref{1.3.4}.} 
+express the general Newton's method as a Rust procedure in @ref{1.3.4}.} 
 For example, we can compute the square root of 2 as follows.
 Suppose our initial guess is 1:
 
@@ -1251,141 +1331,158 @@ value for the guess.  If the guess is good enough for our purposes, we are
 done; if not, we must repeat the process with an improved guess.  We write this
 basic strategy as a procedure:
 
-@lisp
-(define (sqrt-iter guess x)
-  (if (good-enough? guess x)
-      guess
-      (sqrt-iter (improve guess x) x)))
-@end lisp
+@example rust
+fn sqrt_iter(guess: f64, x: f64) -> f64 @{
+    if good_enough(guess, x) @{
+        guess
+    @} else @{
+        sqrt_iter(improve(guess, x), x)
+    @}
+@}
+@end example
 
 @noindent
 A guess is improved by averaging it with the quotient of the radicand and the
 old guess:
 
-@lisp
-(define (improve guess x)
-  (average guess (/ x guess)))
-@end lisp
+@example rust
+fn improve(guess: f64, x: f64) -> f64 @{
+    average(guess, x / guess)
+@}
+@end example
 
 @noindent
 where
 
-@lisp
-(define (average x y) 
-  (/ (+ x y) 2))
-@end lisp
+@example rust
+fn average(x: f64, y: f64) -> f64 @{
+    (x + y) / 2.0
+@}
+@end example
 
 @noindent
 We also have to say what we mean by ``good enough.''  The following will do for
 illustration, but it is not really a very good test.  (See @ref{Exercise 1.7}.)  
 The idea is to improve the answer until it is close
 enough so that its square differs from the radicand by less than a
-predetermined tolerance (here 0.001):@footnote{We will usually give predicates
-names ending with question marks, to help us remember that they are predicates.
-This is just a stylistic convention.  As far as the interpreter is concerned,
-the question mark is just an ordinary character.}
+predetermined tolerance (here 0.001):@footnote{The book names predicates in
+the Lisp style, with a trailing question mark: @code{good-enough?}.  Rust
+identifiers cannot contain @code{?}, so this edition writes
+@code{good_enough}.  The underscore takes the place of the hyphen, and the
+name is still a predicate: it returns a @code{bool}.}
 
-@lisp
-(define (good-enough? guess x)
-  (< (abs (- (square guess) x)) 0.001))
-@end lisp
+@example rust
+fn good_enough(guess: f64, x: f64) -> bool @{
+    abs(square(guess) - x) < 0.001
+@}
+@end example
 
 @noindent
 Finally, we need a way to get started.  For instance, we can always guess that
 the square root of any number is 1:@footnote{Observe that we express our
-initial guess as 1.0 rather than 1.  This would not make any difference in many
-Lisp implementations.  @abbr{MIT} Scheme, however, distinguishes between
-exact integers and decimal values, and dividing two integers produces a
-rational number rather than a decimal.  For example, dividing 10 by 6 yields
-5/3, while dividing 10.0 by 6.0 yields 1.6666666666666667.  (We will learn how
-to implement arithmetic on rational numbers in @ref{2.1.1}.)  If we
-start with an initial guess of 1 in our square-root program, and @math{x} is an
-exact integer, all subsequent values produced in the square-root computation
-will be rational numbers rather than decimals.  Mixed operations on rational
-numbers and decimals always yield decimals, so starting with an initial guess
-of 1.0 forces all subsequent values to be decimals.}
+initial guess as @code{1.0} rather than @code{1}.  In Rust this makes a real
+difference, unlike in Scheme: @code{1} is an integer literal and @code{1.0}
+a floating-point literal, and the parameters of @code{sqrt_iter} are
+@code{f64}, so the integer form would not even compile.  Dividing two
+integers in Rust performs integer division (@code{10 / 6} is @code{1}, not
+@code{5/3} and not @code{1.6666...}); to divide exactly, at least one
+operand must be a floating-point value.  We will learn how to implement
+arithmetic on exact rational numbers in @ref{2.1.1}.}
 
-@lisp
-(define (sqrt x)
-  (sqrt-iter 1.0 x))
-@end lisp
+@example rust
+fn sqrt(x: f64) -> f64 @{
+    sqrt_iter(1.0, x)
+@}
+@end example
 
 @noindent
-If we type these definitions to the interpreter, we can use @code{sqrt} just as
-we can use any procedure:
+With these definitions compiled into the example program, we can use
+@code{sqrt} just as we can use any procedure:
 
-@lisp
-(sqrt 9)
-@i{3.00009155413138}
+@example rust
+println!("@{@}", sqrt(9.0));
+// => 3.00009155413138
 
-(sqrt (+ 100 37))
-@i{11.704699917758145}
+println!("@{@}", sqrt(100.0 + 37.0));
+// => 11.704699917758145
 
-(sqrt (+ (sqrt 2) (sqrt 3)))
-@i{1.7739279023207892}
+println!("@{@}", sqrt(sqrt(2.0) + sqrt(3.0)));
+// => 1.7739279023207892
 
-(square (sqrt 1000))
-@i{1000.000369924366}
-@end lisp
+println!("@{@}", square(sqrt(1000.0)));
+// => 1000.000369924366
+@end example
 
 @noindent
 The @code{sqrt} program also illustrates that the simple procedural language we
 have introduced so far is sufficient for writing any purely numerical program
 that one could write in, say, C or Pascal.  This might seem surprising, since
 we have not included in our language any iterative (looping) constructs that
-direct the computer to do something over and over again.  @code{Sqrt-iter}, on
+direct the computer to do something over and over again.  @code{Sqrt_iter}, on
 the other hand, demonstrates how iteration can be accomplished using no special
 construct other than the ordinary ability to call a procedure.@footnote{Readers
 who are worried about the efficiency issues involved in using procedure calls
-to implement iteration should note the remarks on ``tail recursion'' in 
-@ref{1.2.1}.}
+to implement iteration should note the remarks on ``tail recursion'' in
+@ref{1.2.1}; the Rust-specific version of the same warning is in @ref{0.2}:
+a Rust compiler does not in general reuse the stack frame of a call in tail
+position, so @code{sqrt_iter} here consumes one stack frame per iteration.
+For the handful of iterations Newton's method needs on ordinary inputs this
+is harmless, and the loop form of @ref{0.2} is the fallback when the number
+of iterations is not small.}  The runnable listing of this subsection is
+@code{examples/sec_1_1_sqrt.rs}, whose printed transcript is exactly the one
+shown above.
 
 @quotation
 @strong{@anchor{Exercise 1.6}Exercise 1.6:} Alyssa P. Hacker doesn't see why
 @code{if} needs to be provided as a special form.  ``Why can't I just define it
-as an ordinary procedure in terms of @code{cond}?'' she asks.  Alyssa's friend
+as an ordinary procedure?'' she asks.  Alyssa's friend
 Eva Lu Ator claims this can indeed be done, and she defines a new version of
 @code{if}:
 
-@lisp
-(define (new-if predicate 
-                then-clause 
-                else-clause)
-  (cond (predicate then-clause)
-        (else else-clause)))
-@end lisp
+@example rust
+fn new_if<T>(predicate: bool, then_clause: T, else_clause: T) -> T @{
+    if predicate @{
+        then_clause
+    @} else @{
+        else_clause
+    @}
+@}
+@end example
 
 Eva demonstrates the program for Alyssa:
 
-@lisp
-(new-if (= 2 3) 0 5)
-@i{5}
+@example rust
+println!("@{@}", new_if(2 == 3, 0, 5));
+// => 5
 
-(new-if (= 1 1) 0 5)
-@i{0}
-@end lisp
+println!("@{@}", new_if(1 == 1, 0, 5));
+// => 0
+@end example
 
-Delighted, Alyssa uses @code{new-if} to rewrite the square-root program:
+Delighted, Alyssa uses @code{new_if} to rewrite the square-root program:
 
-@lisp
-(define (sqrt-iter guess x)
-  (new-if (good-enough? guess x)
-          guess
-          (sqrt-iter (improve guess x) x)))
-@end lisp
+@example rust
+fn sqrt_iter(guess: f64, x: f64) -> f64 @{
+    new_if(
+        good_enough(guess, x),
+        guess,
+        sqrt_iter(improve(guess, x), x),
+    )
+@}
+@end example
 
 What happens when Alyssa attempts to use this to compute square roots?
 Explain.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.7}Exercise 1.7:} The @code{good-enough?} test used
+@strong{@anchor{Exercise 1.7}Exercise 1.7:} The @code{good_enough} test used
 in computing square roots will not be very effective for finding the square
 roots of very small numbers.  Also, in real computers, arithmetic operations
 are almost always performed with limited precision.  This makes our test
 inadequate for very large numbers.  Explain these statements, with examples
 showing how the test fails for small and large numbers.  An alternative
-strategy for implementing @code{good-enough?} is to watch how @code{guess}
+strategy for implementing @code{good_enough} is to watch how @code{guess}
 changes from one iteration to the next and to stop when the change is a very
 small fraction of the guess.  Design a square-root procedure that uses this
 kind of end test.  Does this work better for small and large numbers?
@@ -1408,8 +1505,8 @@ x/y^2 + 2y
 
 @end ifinfo
 @noindent
-Use this formula to implement a cube-root procedure analogous to the
-square-root procedure.  (In @ref{1.3.4} we will see how to implement
+Use this formula to implement a @code{cube_root} procedure analogous to the
+@code{sqrt} procedure.  (In @ref{1.3.4} we will see how to implement
 Newton's method in general as an abstraction of these square-root and cube-root
 procedures.)
 @end quotation
@@ -1418,7 +1515,7 @@ procedures.)
 @subsection Procedures as Black-Box Abstractions
 
 @code{Sqrt} is our first example of a process defined by a set of mutually
-defined procedures.  Notice that the definition of @code{sqrt-iter} is
+defined procedures.  Notice that the definition of @code{sqrt_iter} is
 @newterm{recursive}; that is, the procedure is defined in terms of itself.  The
 idea of being able to define a procedure in terms of itself may be disturbing;
 it may seem unclear how such a ``circular'' definition could make sense at all,
@@ -1464,12 +1561,12 @@ dividing the program into parts.  After all, we could take any large program
 and divide it into parts---the first ten lines, the next ten lines, the next
 ten lines, and so on.  Rather, it is crucial that each procedure accomplishes
 an identifiable task that can be used as a module in defining other procedures.
-For example, when we define the @code{good-enough?} procedure in terms of
+For example, when we define the @code{good_enough} procedure in terms of
 @code{square}, we are able to regard the @code{square} procedure as a ``black
 box.''  We are not at that moment concerned with @emph{how} the procedure
 computes its result, only with the fact that it computes the square.  The
 details of how the square is computed can be suppressed, to be considered at a
-later time.  Indeed, as far as the @code{good-enough?} procedure is concerned,
+later time.  Indeed, as far as the @code{good_enough} procedure is concerned,
 @code{square} is not quite a procedure but rather an abstraction of a
 procedure, a so-called @newterm{procedural abstraction}.  At this level of
 abstraction, any procedure that computes the square is equally good.
@@ -1483,14 +1580,19 @@ depends upon the hardware available.  There are machines for which the
 has extensive tables of logarithms and antilogarithms stored in a very
 efficient manner.}
 
-@lisp
-(define (square x) (* x x))
+@example rust
+fn square(x: f64) -> f64 @{
+    x * x
+@}
 
-(define (square x) 
-  (exp (double (log x))))
+fn square_by_log(x: f64) -> f64 @{
+    double(x.ln()).exp()
+@}
 
-(define (double x) (+ x x))
-@end lisp
+fn double(x: f64) -> f64 @{
+    x + x
+@}
+@end example
 
 @noindent
 So a procedure definition should be able to suppress detail.  The users of the
@@ -1505,41 +1607,47 @@ of the procedure is the implementer's choice of names for the procedure's
 formal parameters.  Thus, the following procedures should not be
 distinguishable:
 
-@lisp
-(define (square x) (* x x))
-(define (square y) (* y y))
-@end lisp
+@example rust
+fn square(x: f64) -> f64 @{
+    x * x
+@}
+
+fn square(y: f64) -> f64 @{
+    y * y
+@}
+@end example
 
 @noindent
 This principle---that the meaning of a procedure should be independent of the
 parameter names used by its author---seems on the surface to be self-evident,
 but its consequences are profound.  The simplest consequence is that the
 parameter names of a procedure must be local to the body of the procedure.  For
-example, we used @code{square} in the definition of @code{good-enough?} in our
+example, we used @code{square} in the definition of @code{good_enough} in our
 square-root procedure:
 
-@lisp
-(define (good-enough? guess x)
-  (< (abs (- (square guess) x)) 0.001))
-@end lisp
+@example rust
+fn good_enough(guess: f64, x: f64) -> bool @{
+    abs(square(guess) - x) < 0.001
+@}
+@end example
 
 @noindent
-The intention of the author of @code{good-enough?} is to determine if the
+The intention of the author of @code{good_enough} is to determine if the
 square of the first argument is within a given tolerance of the second
-argument.  We see that the author of @code{good-enough?} used the name
+argument.  We see that the author of @code{good_enough} used the name
 @code{guess} to refer to the first argument and @code{x} to refer to the second
 argument.  The argument of @code{square} is @code{guess}.  If the author of
 @code{square} used @code{x} (as above) to refer to that argument, we see that
-the @code{x} in @code{good-enough?} must be a different @code{x} than the one
+the @code{x} in @code{good_enough} must be a different @code{x} than the one
 in @code{square}.  Running the procedure @code{square} must not affect the
-value of @code{x} that is used by @code{good-enough?}, because that value of
-@code{x} may be needed by @code{good-enough?} after @code{square} is done
+value of @code{x} that is used by @code{good_enough}, because that value of
+@code{x} may be needed by @code{good_enough} after @code{square} is done
 computing.
 
 If the parameters were not local to the bodies of their respective procedures,
 then the parameter @code{x} in @code{square} could be confused with the
-parameter @code{x} in @code{good-enough?}, and the behavior of
-@code{good-enough?} would depend upon which version of @code{square} we used.
+parameter @code{x} in @code{good_enough}, and the behavior of
+@code{good_enough} would depend upon which version of @code{square} we used.
 Thus, @code{square} would not be the black box we desired.
 
 A formal parameter of a procedure has a very special role in the procedure
@@ -1555,17 +1663,21 @@ The set of expressions for which a binding defines a name is called the
 declared as the formal parameters of the procedure have the body of the
 procedure as their scope.
 
-In the definition of @code{good-enough?} above, @code{guess} and @code{x} are
-bound variables but @code{<}, @code{-}, @code{abs}, and @code{square} are free.
-The meaning of @code{good-enough?} should be independent of the names we choose
+In the definition of @code{good_enough} above, @code{guess} and @code{x} are
+bound variables but @code{abs} and @code{square} are free (the comparison and
+arithmetic operators are syntax, not names, so they are neither bound nor
+free).  The meaning of @code{good_enough} should be independent of the names we choose
 for @code{guess} and @code{x} so long as they are distinct and different from
-@code{<}, @code{-}, @code{abs}, and @code{square}.  (If we renamed @code{guess}
+@code{abs} and @code{square}.  (If we renamed @code{guess}
 to @code{abs} we would have introduced a bug by @newterm{capturing} the
-variable @code{abs}.  It would have changed from free to bound.)  The meaning
-of @code{good-enough?} is not independent of the names of its free variables,
+name @code{abs}: the parameter would shadow the procedure in the body, and
+the call @code{abs(guess)} would be an application of a number, which the
+compiler rejects as a type error.  In Lisp the same mistake compiles and
+fails at run time; in Rust the black box refuses to close.)  The meaning
+of @code{good_enough} is not independent of the names of its free variables,
 however.  It surely depends upon the fact (external to this definition) that
-the symbol @code{abs} names a procedure for computing the absolute value of a
-number.  @code{Good-enough?} will compute a different function if we substitute
+the name @code{abs} refers to a procedure for computing the absolute value of a
+number.  @code{Good_enough} will compute a different function if we substitute
 @code{cos} for @code{abs} in its definition.
 
 @subsubheading Internal definitions and block structure
@@ -1575,89 +1687,127 @@ parameters of a procedure are local to the body of the procedure.  The
 square-root program illustrates another way in which we would like to control
 the use of names.  The existing program consists of separate procedures:
 
-@lisp
-(define (sqrt x) 
-  (sqrt-iter 1.0 x))
+@example rust
+fn sqrt(x: f64) -> f64 @{
+    sqrt_iter(1.0, x)
+@}
 
-(define (sqrt-iter guess x)
-  (if (good-enough? guess x)
-      guess
-      (sqrt-iter (improve guess x) x)))
+fn sqrt_iter(guess: f64, x: f64) -> f64 @{
+    if good_enough(guess, x) @{
+        guess
+    @} else @{
+        sqrt_iter(improve(guess, x), x)
+    @}
+@}
 
-(define (good-enough? guess x)
-  (< (abs (- (square guess) x)) 0.001))
+fn good_enough(guess: f64, x: f64) -> bool @{
+    abs(square(guess) - x) < 0.001
+@}
 
-(define (improve guess x)
-  (average guess (/ x guess)))
-@end lisp
+fn improve(guess: f64, x: f64) -> f64 @{
+    average(guess, x / guess)
+@}
+@end example
 
 @noindent
 The problem with this program is that the only procedure that is important to
-users of @code{sqrt} is @code{sqrt}.  The other procedures (@code{sqrt-iter},
-@code{good-enough?}, and @code{improve}) only clutter up their minds.  They may
-not define any other procedure called @code{good-enough?} as part of another
+users of @code{sqrt} is @code{sqrt}.  The other procedures (@code{sqrt_iter},
+@code{good_enough}, and @code{improve}) only clutter up their minds.  They may
+not define any other procedure called @code{good_enough} as part of another
 program to work together with the square-root program, because @code{sqrt}
 needs it.  The problem is especially severe in the construction of large
 systems by many separate programmers.  For example, in the construction of a
 large library of numerical procedures, many numerical functions are computed as
 successive approximations and thus might have procedures named
-@code{good-enough?} and @code{improve} as auxiliary procedures.  We would like
+@code{good_enough} and @code{improve} as auxiliary procedures.  We would like
 to localize the subprocedures, hiding them inside @code{sqrt} so that
 @code{sqrt} could coexist with other successive approximations, each having its
-own private @code{good-enough?} procedure.  To make this possible, we allow a
+own private @code{good_enough} procedure.  To make this possible, we allow a
 procedure to have internal definitions that are local to that procedure.  For
 example, in the square-root problem we can write
 
-@lisp
-(define (sqrt x)
-  (define (good-enough? guess x)
-    (< (abs (- (square guess) x)) 0.001))
-  (define (improve guess x)
-    (average guess (/ x guess)))
-  (define (sqrt-iter guess x)
-    (if (good-enough? guess x)
-        guess
-        (sqrt-iter (improve guess x) x)))
-  (sqrt-iter 1.0 x))
-@end lisp
+@example rust
+fn sqrt_block(x: f64) -> f64 @{
+    fn good_enough(guess: f64, x: f64) -> bool @{
+        abs(square(guess) - x) < 0.001
+    @}
+    fn improve(guess: f64, x: f64) -> f64 @{
+        average(guess, x / guess)
+    @}
+    fn sqrt_iter(guess: f64, x: f64) -> f64 @{
+        if good_enough(guess, x) @{
+            guess
+        @} else @{
+            sqrt_iter(improve(guess, x), x)
+        @}
+    @}
+    sqrt_iter(1.0, x)
+@}
+@end example
 
 @noindent
 Such nesting of definitions, called @newterm{block structure}, is basically the
-right solution to the simplest name-packaging problem.  But there is a better
+right solution to the simplest name-packaging problem: the nested procedures
+exist only inside @code{sqrt_block}, cannot collide with anything outside, and are
+invisible to other code.  But there is a better
 idea lurking here.  In addition to internalizing the definitions of the
 auxiliary procedures, we can simplify them.  Since @code{x} is bound in the
-definition of @code{sqrt}, the procedures @code{good-enough?}, @code{improve},
-and @code{sqrt-iter}, which are defined internally to @code{sqrt}, are in the
-scope of @code{x}.  Thus, it is not necessary to pass @code{x} explicitly to
-each of these procedures.  Instead, we allow @code{x} to be a free variable in
-the internal definitions, as shown below. Then @code{x} gets its value from the
-argument with which the enclosing procedure @code{sqrt} is called.  This
-discipline is called @newterm{lexical scoping}.@footnote{Lexical scoping dictates 
-that free variables in a procedure are taken to refer to bindings made by enclosing 
+definition of @code{sqrt_block}, the procedures @code{good_enough}, @code{improve},
+and @code{sqrt_iter}, which are defined internally to @code{sqrt_block}, are in the
+scope of @code{x}.  Thus, it should not be necessary to pass @code{x} explicitly to
+each of these procedures; @code{x} should be a free variable in the internal
+definitions, getting its value from the
+argument with which the enclosing procedure is called.  This
+discipline is called @newterm{lexical scoping}.@footnote{Lexical scoping dictates
+that free variables in a procedure are taken to refer to bindings made by enclosing
 procedure definitions; that is, they are looked up in the environment in which the
-procedure was defined. We will see how this works in detail in chapter 3 when we study 
-environments and the detailed behavior of the interpreter.@anchor{Footnote 28}}
+procedure was defined. We will see how this works in detail in chapter 3 when we study
+environments and the detailed behavior of interpreters.@anchor{Footnote 28}}
 
-@lisp
-(define (sqrt x)
-  (define (good-enough? guess)
-    (< (abs (- (square guess) x)) 0.001))
-  (define (improve guess)
-    (average guess (/ x guess)))
-  (define (sqrt-iter guess)
-    (if (good-enough? guess)
-        guess
-        (sqrt-iter (improve guess))))
-  (sqrt-iter 1.0))
-@end lisp
+Rust draws the line between the two ideas in a place Lisp does not.  A
+nested @code{fn} is an item: it can call the other items of the same body,
+but it cannot read the enclosing function's parameters, so the block-structured
+@code{sqrt_block} above still passes @code{x} to each helper.  The construct that
+actually reads @code{x} for free is the @newterm{closure}, a procedure value
+introduced in @ref{0.6} that captures the free variables of the scope where
+it is written:
+
+@example rust
+fn sqrt_lexical(x: f64) -> f64 @{
+    fn iter(
+        guess: f64,
+        good_enough: impl Fn(f64) -> bool,
+        improve: impl Fn(f64) -> f64,
+    ) -> f64 @{
+        if good_enough(guess) @{
+            guess
+        @} else @{
+            iter(improve(guess), good_enough, improve)
+        @}
+    @}
+    let good_enough = |guess: f64| abs(square(guess) - x) < 0.001;
+    let improve = |guess: f64| average(guess, x / guess);
+    iter(1.0, good_enough, improve)
+@}
+@end example
+
+@noindent
+The closures read @code{x} from the enclosing scope, exactly the lexical
+scoping the book is after; the recursive driver stays a named procedure
+because a closure cannot call itself by name, and it receives the helpers as
+arguments, which keeps the recursion expressible.  Both versions are in this
+section's code under the names shown here, and the runnable listing is
+@code{examples/sec_1_1_block_structure.rs}, which also demonstrates the two
+indistinguishable squares.
 
 @noindent
 We will use block structure extensively to help us break up large
-programs into tractable pieces.@footnote{Embedded definitions must come
-first in a procedure body. The management is not responsible for the
-consequences of running programs that intertwine definition and use.}
-The idea of block structure originated with the programming language
-Algol 60. It appears in most advanced programming languages and is an
-important tool for helping to organize the construction of large
-programs.
-
+programs into tractable pieces.@footnote{Nested items in a Rust function
+body may be written anywhere in that body and used anywhere in it, so Rust
+does not repeat Lisp's requirement that embedded definitions come first.
+A closure, however, can only capture bindings that are already in scope
+where it is written, so the @code{let} of a capturing closure must come
+after the binding it captures.}  The idea of block structure originated with
+the programming language Algol 60. It appears in most advanced programming
+languages and is an important tool for helping to organize the construction
+of large programs.

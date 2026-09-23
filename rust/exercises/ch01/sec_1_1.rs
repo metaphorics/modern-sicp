@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffolds of section 1.1, one module and one ignored test per
-//! exercise.
+//! The pending scaffold of exercise 1.1: the stub and the exercise-named
+//! test share one module so both carry the exercise's name.
 
-/// The pending scaffold of exercise 1.1: the stub and the exercise-named
-/// test share one module so both carry the exercise's name.
 mod ex_1_01 {
     /// The typed pending report of an unsolved scaffold: the body returns
     /// this instead of panicking, so the failure names its origin.
@@ -18,7 +16,7 @@ mod ex_1_01 {
     /// Exercise 1.1: evaluate a sequence of expressions in order
     ///
     /// Yields the ten numeric values the sequence prints, in book order; the
-    /// two `define` lines and the `#f` comparison carry no number.
+    /// two `let` lines and the `a == b` comparison carry no number.
     pub fn ex_1_01() -> Result<Vec<i64>, Pending> {
         Err(Pending { exercise: "1.1" })
     }

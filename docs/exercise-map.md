@@ -75,7 +75,7 @@ Counts, summing to 20 per language: Rust 10 T / 9 A / 1 R; OCaml 15 / 4 / 1; Typ
 | 1.30 | iterative sum fill-in | A: iterative loop, no fill-in | T | A: iterative loop, no fill-in | T | |
 | 1.31 | product abstraction, Wallis formula | A: iterative variant as loop | T | A: iterative variant as loop | T | |
 | 1.32 | accumulate general combiner | A: iterative variant as loop | T | A: iterative variant as loop | T | |
-| 1.33 | filtered accumulate with predicate | T | T | T | T | 1.33a: re-express filter and accumulate with fold |
+| 1.33 | filtered accumulate with predicate | T | T | T | T | 1.33a: re-express filter and accumulate with fold (chosen: rust) |
 | 1.34 | apply procedure to itself | A: type checker rejects it | A: type checker rejects it | A: type checker rejects it | A: type checker rejects it | 1.34a: compare compile rejection with runtime failure |
 | 1.35 | golden ratio fixed point | T | T | T | T | |
 | 1.36 | printed fixed-point iterations | T | T | T | T | |
@@ -85,10 +85,10 @@ Counts, summing to 20 per language: Rust 10 T / 9 A / 1 R; OCaml 15 / 4 / 1; Typ
 | 1.40 | cubic for Newton's method | T | T | T | T | 1.40a: solve specified equations end to end |
 | 1.41 | double combinator puzzle | T | T | T | T | |
 | 1.42 | function composition | T | T | T | T | |
-| 1.43 | n-fold repeated application | T | T | T | T | 1.43a: compose by squaring for logarithmic repeated (chosen: kotlin, rust) |
+| 1.43 | n-fold repeated application | T | T | T | T | 1.43a: compose by squaring for logarithmic repeated (chosen: kotlin) |
 | 1.44 | smoothing and n-fold smoothing | T | T | T | T | 1.44a: denoise synthetic noisy samples |
 | 1.45 | n-th roots, repeated damping | T | T | T | T | 1.45a: record convergence failures of under-damped roots |
-| 1.46 | iterative improvement abstraction | A: recursive closure needs helper | T | A: loop inside returned function | T | 1.46a: return lazy sequence of successive guesses |
+| 1.46 | iterative improvement abstraction | A: recursive closure needs helper | T | A: loop inside returned function | T | 1.46a: return lazy sequence of successive guesses (chosen: ocaml) |
 
 Counts, summing to 18 per language: Rust 12 T / 6 A / 0 R; OCaml 17 / 1 / 0; TypeScript 12 / 6 / 0; Kotlin 17 / 1 / 0.
 
@@ -144,7 +144,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 2.1 | Sign-normalizing make-rat | T | T | T | T | allow mixed-sign make-rat inputs |
+| 2.1 | Sign-normalizing make-rat | T | T | T | T | allow mixed-sign make-rat inputs (chosen: rust) |
 | 2.2 | Line segments from points | T | T | T | T | |
 | 2.3 | Two rectangle representations | T | T | T | T | |
 | 2.4 | Procedural cons, car, cdr | A: closures as pairs need function traits | A: closures as pairs need function records | A: closure pairs need function pair type | A: closures as pairs need function types | verify cons identity law property test (chosen: kotlin) |
@@ -155,7 +155,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.9 | Interval width algebra | A: width forces interval invariant decision | A: width forces interval invariant decision | A: width forces interval invariant decision | A: width forces interval invariant decision | forbid zero-width interval construction |
 | 2.10 | Divide by zero-spanning interval | T | T | T | T | |
 | 2.11 | Nine-case multiplication | T | T | T | T | |
-| 2.12 | Center-percent constructor | T | T | T | T | |
+| 2.12 | Center-percent constructor | T | T | T | T | compare endpoint and center-width interval interfaces (chosen: ocaml) |
 | 2.13 | Percentage tolerance formula | T | T | T | T | |
 | 2.14 | Repeated uncertain variables | T | T | T | T | track interval dependency through formulas |
 | 2.15 | Par1 versus par2 | T | T | T | T | |
@@ -199,8 +199,8 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.48 | Segment from vectors | T | T | T | T | |
 | 2.49 | Primitive painters | T | T | T | T | painter output as SVG strings |
 | 2.50 | Flip and rotations | T | T | T | T | |
-| 2.51 | Below two ways | A: below needs painter function, two constructions | A: below needs painter function, adapts | A: below needs painter function type | A: below needs painter function type | below via rotate composition check |
-| 2.52 | Square limit variations | T | T | T | T | euler square-limit variant |
+| 2.51 | Below two ways | A: below needs painter function, two constructions | A: below needs painter function, adapts | A: below needs painter function type | A: below needs painter function type | below via rotate composition check (chosen: rust) |
+| 2.52 | Square limit variations | T | T | T | T | euler square-limit variant chosen: ocaml |
 
 ### Section 2.3 (exercises 2.53 to 2.72, 20 rows)
 

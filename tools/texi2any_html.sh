@@ -31,9 +31,26 @@ die() {
 
 tools_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || die "cannot resolve script directory"
 
-PATH="$tools_dir/tex4ht:$PATH"
-export PATH
 
+# Prefer a prefix-installed Texinfo 7.3 (`just setup-books`, CONTRIBUTING
+# step 6) over the distribution's older texi2any. MODERN_SICP_PREFIX wins;
+# otherwise ~/.local and the documented cache fallback are tried in order.
+prefix="${MODERN_SICP_PREFIX:-}"
+if [ -z "$prefix" ]; then
+    for candidate in "$HOME/.local" "$HOME/.cache/modern-sicp/opt"; do
+        if [ -x "$candidate/bin/texi2any" ] \
+            && "$candidate/bin/texi2any" --version 2>/dev/null | head -1 | grep -q '7\.3'; then
+            prefix="$candidate"
+            break
+        fi
+    done
+fi
+if [ -n "$prefix" ] && [ -x "$prefix/bin/texi2any" ]; then
+    PATH="$tools_dir/tex4ht:$prefix/bin:$PATH"
+else
+    PATH="$tools_dir/tex4ht:$PATH"
+fi
+export PATH
 T4H_MATH_CONVERSION="${T4H_MATH_CONVERSION:-tex}"
 T4H_TEX_CONVERSION="${T4H_TEX_CONVERSION:-tex}"
 export T4H_MATH_CONVERSION T4H_TEX_CONVERSION

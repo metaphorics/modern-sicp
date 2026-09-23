@@ -26,7 +26,7 @@ An edition whose `justfile` is absent fails these gates rather than being skippe
 
 Two gates guard the book build specifically. `tools/math_check.py` compares the math fragments `texi2any` requested against the MathML in the delivered pages, because `texi2any` exits 0 even when the TeX run dies and drops every equation. `tools/scheme_corpus_check.py` re-runs every Scheme corpus program through `spec/scheme-subset/runner.scm` and compares it to its expected file, so an expected file that no longer matches its program is caught.
 
-`just setup-books` is not implemented in the root `justfile` yet; install the book toolchain by following step 6 above directly.
+`tools/texi2any_html.sh` prefers a prefix-installed Texinfo 7.3, checking `MODERN_SICP_PREFIX`, then `~/.local`, then the `~/.cache/modern-sicp/opt` fallback, so `just books` needs no manual PATH changes after `just setup-books`.
 
 ## One exercise, end to end
 

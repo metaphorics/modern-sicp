@@ -48,24 +48,21 @@ available as procedures:
 @itemize @bullet
 
 @item
-@code{(make-rat ⟨@var{n}⟩ ⟨@var{d}⟩)} returns the rational number whose numerator 
-is the integer @code{⟨@var{n}⟩} and whose denominator is the integer 
-@code{⟨@var{d}⟩}.
+@code{make_rat n d} returns the rational number whose numerator is the integer
+@code{n} and whose denominator is the integer @code{d}.
 
 @item
-@code{(numer ⟨@var{x}⟩)} returns the numerator of the rational number 
-@code{⟨@var{x}⟩}.
+@code{numer x} returns the numerator of the rational number @code{x}.
 
 @item
-@code{(denom ⟨@var{x}⟩)} returns the denominator of the rational number 
-@code{⟨@var{x}⟩}.
+@code{denom x} returns the denominator of the rational number @code{x}.
 
 @end itemize
 
 @noindent
 We are using here a powerful strategy of synthesis: @newterm{wishful thinking}.
 We haven't yet said how a rational number is represented, or how the procedures
-@code{numer}, @code{denom}, and @code{make-rat} should be implemented.  Even
+@code{numer}, @code{denom}, and @code{make_rat} should be implemented.  Even
 so, if we did have these three procedures, we could then add, subtract,
 multiply, divide, and test equality by using the following relations:
 @displaymath
@@ -105,196 +102,229 @@ d_1   d_2
 
 @end ifinfo
 @noindent
-We can express these rules as procedures:
+We can express these rules as procedures. OCaml resolves every name where it is
+written, though, so a file cannot state a wish before granting it the way a
+Scheme session can: nothing stops @code{(add-rat ...)} from being typed at a
+Scheme REPL before @code{make-rat} exists, so long as @code{make-rat} exists by
+the time @code{add-rat} is actually called. This edition keeps the wish
+anyway, spelled out as a signature with no implementation attached:
 
-@lisp
-(define (add-rat x y)
-  (make-rat (+ (* (numer x) (denom y))
-               (* (numer y) (denom x)))
-            (* (denom x) (denom y))))
+@example ocaml
+module type Rational_number = sig
+  type t
+  val make_rat : int -> int -> t
+  val numer : t -> int
+  val denom : t -> int
+end;;
+@end example
 
-(define (sub-rat x y)
-  (make-rat (- (* (numer x) (denom y))
-               (* (numer y) (denom x)))
-            (* (denom x) (denom y))))
+@noindent
+and states the five operations once, as a function of that wish rather than of
+any particular representation, so that applying it to a genuine
+representation later needs no change to this code at all:
 
-(define (mul-rat x y)
-  (make-rat (* (numer x) (numer y))
-            (* (denom x) (denom y))))
+@example ocaml
+module Rational_arithmetic (R : Rational_number) = struct
+  let add_rat x y =
+    R.make_rat
+      ((R.numer x * R.denom y) + (R.numer y * R.denom x))
+      (R.denom x * R.denom y)
+  ;;
 
-(define (div-rat x y)
-  (make-rat (* (numer x) (denom y))
-            (* (denom x) (numer y))))
+  let sub_rat x y =
+    R.make_rat
+      ((R.numer x * R.denom y) - (R.numer y * R.denom x))
+      (R.denom x * R.denom y)
+  ;;
 
-(define (equal-rat? x y)
-  (= (* (numer x) (denom y))
-     (* (numer y) (denom x))))
-@end lisp
+  let mul_rat x y = R.make_rat (R.numer x * R.numer y) (R.denom x * R.denom y)
+  let div_rat x y = R.make_rat (R.numer x * R.denom y) (R.denom x * R.numer y)
+  let equal_rat x y = R.numer x * R.denom y = R.numer y * R.denom x
+end;;
+@end example
 
 @noindent
 Now we have the operations on rational numbers defined in terms of the selector
-and constructor procedures @code{numer}, @code{denom}, and @code{make-rat}.
+and constructor procedures @code{numer}, @code{denom}, and @code{make_rat}.
 But we haven't yet defined these.  What we need is some way to glue together a
 numerator and a denominator to form a rational number.
 
 @subsubheading Pairs
 
-To enable us to implement the concrete level of our data abstraction, our
-language provides a compound structure called a @newterm{pair}, which can be
-constructed with the primitive procedure @code{cons}.  This procedure takes two
-arguments and returns a compound data object that contains the two arguments as
-parts.  Given a pair, we can extract the parts using the primitive procedures
-@code{car} and @code{cdr}.@footnote{The name @code{cons} stands for
-``construct.''  The names @code{car} and @code{cdr} derive from the original
-implementation of Lisp on the IBM 704.  That machine had an addressing scheme
-that allowed one to reference the ``address'' and ``decrement'' parts of a
-memory location.  @code{Car} stands for ``Contents of Address part of
-Register'' and @code{cdr} (pronounced ``could-er'') stands for ``Contents of
-Decrement part of Register.''} Thus, we can use @code{cons}, @code{car}, and
-@code{cdr} as follows:
+To enable us to implement the concrete level of our data abstraction, OCaml
+provides a compound structure called a @newterm{pair}, most directly its
+built-in @newterm{tuple}: writing two values separated by a comma, inside
+parentheses, builds a pair holding both.  Given a pair, we can extract the
+parts using the primitive procedures @code{fst} and @code{snd}.@footnote{Scheme
+instead builds its pair with the primitive procedure @code{cons} (which stands
+for ``construct'') and extracts its parts with @code{car} and @code{cdr},
+names that derive from the original implementation of Lisp on the IBM 704.
+That machine had an addressing scheme that allowed one to reference the
+``address'' and ``decrement'' parts of a memory location.  @code{Car} stands
+for ``Contents of Address part of Register'' and @code{cdr} (pronounced
+``could-er'') stands for ``Contents of Decrement part of Register.''  OCaml's
+tuple needs no such procedure: writing @code{(a, b)} @emph{is} the pair, with
+no function call to name.} Thus, we can use tuples, @code{fst}, and @code{snd}
+as follows:
 
-@lisp
-(define x (cons 1 2))
+@example ocaml
+let x = (1, 2);;
 
-(car x)
-@i{1}
+fst x;;
+(* => 1 *)
 
-(cdr x)
-@i{2}
-@end lisp
+snd x;;
+(* => 2 *)
+@end example
 
 @noindent
 Notice that a pair is a data object that can be given a name and manipulated,
-just like a primitive data object.  Moreover, @code{cons} can be used to form
-pairs whose elements are pairs, and so on:
+just like a primitive data object.  Moreover, a tuple can hold pairs as its own
+elements, and so on:
 
-@lisp
-(define x (cons 1 2))
-(define y (cons 3 4))
-(define z (cons x y))
+@example ocaml
+let x = (1, 2);;
+let y = (3, 4);;
+let z = (x, y);;
 
-(car (car z))
-@i{1}
+fst (fst z);;
+(* => 1 *)
 
-(car (cdr z))
-@i{3}
-@end lisp
+fst (snd z);;
+(* => 3 *)
+@end example
 
 @noindent
-In @ref{2.2} we will see how this ability to combine pairs means that
-pairs can be used as general-purpose building blocks to create all sorts of
-complex data structures.  The single compound-data primitive @newterm{pair},
-implemented by the procedures @code{cons}, @code{car}, and @code{cdr}, is the
-only glue we need.  Data objects constructed from pairs are called
-@newterm{list-structured} data.
+In @ref{2.2} we will see how this ability to nest pairs inside pairs means
+that pairs can be used as general-purpose building blocks to create all sorts
+of complex data structures.  The single compound-data primitive
+@newterm{pair}, OCaml's tuple, is the only glue we need.  Data objects
+constructed from pairs are called @newterm{list-structured} data.
 
 @subsubheading Representing rational numbers
 
 Pairs offer a natural way to complete the rational-number system.  Simply
 represent a rational number as a pair of two integers: a numerator and a
-denominator.  Then @code{make-rat}, @code{numer}, and @code{denom} are readily
-implemented as follows:@footnote{Another way to define the selectors and
-constructor is
+denominator.  Then @code{make_rat}, @code{numer}, and @code{denom} are readily
+implemented as follows, in a representation that satisfies the wish stated
+above:@footnote{In Scheme, a selector or constructor can be defined as a
+direct alias for a primitive procedure: @code{(define make-rat cons)} binds
+the name @code{make-rat} straight to the value of @code{cons}, so calling
+@code{make-rat} calls @code{cons} directly, with no wrapper procedure in
+between, at the cost of debugging tools no longer being able to watch
+@code{make-rat} being called without also watching every call to @code{cons}.
+OCaml's tuple constructor @code{(n, d)} is syntax, not a value @code{make_rat}
+could be bound to directly, so this edition's @code{make_rat n d = (n, d)} is
+already as direct a definition as OCaml allows; there is no more primitive
+procedure underneath it left to alias instead.}
 
-@lisp
-(define make-rat cons)
-(define numer car)
-(define denom cdr)
-@end lisp
+@example ocaml
+module Unreduced : Rational_number = struct
+  type t = int * int
 
-The first definition associates the name @code{make-rat} with the value of the
-expression @code{cons}, which is the primitive procedure that constructs pairs.
-Thus @code{make-rat} and @code{cons} are names for the same primitive
-constructor.
+  let make_rat n d = (n, d)
+  let numer (n, _) = n
+  let denom (_, d) = d
+end;;
 
-Defining selectors and constructors in this way is efficient: Instead of
-@code{make-rat} @emph{calling} @code{cons}, @code{make-rat} @emph{is}
-@code{cons}, so there is only one procedure called, not two, when
-@code{make-rat} is called.  On the other hand, doing this defeats debugging
-aids that trace procedure calls or put breakpoints on procedure calls: You may
-want to watch @code{make-rat} being called, but you certainly don't want to
-watch every call to @code{cons}.
-
-We have chosen not to use this style of definition in this book.}
-
-@lisp
-(define (make-rat n d) (cons n d))
-(define (numer x) (car x))
-(define (denom x) (cdr x))
-@end lisp
+module Unreduced_ops = Rational_arithmetic (Unreduced);;
+@end example
 
 @noindent
 Also, in order to display the results of our computations, we can print
-rational numbers by printing the numerator, a slash, and the
-denominator:@footnote{@code{Display} is the Scheme primitive for printing data.
-The Scheme primitive @code{newline} starts a new line for printing.  Neither of
-these procedures returns a useful value, so in the uses of @code{print-rat}
-below, we show only what @code{print-rat} prints, not what the interpreter
-prints as the value returned by @code{print-rat}.}
+rational numbers by printing the numerator, a slash, and the denominator, one
+more operation joining @code{Rational_arithmetic} alongside the five
+above:@footnote{OCaml's @code{Printf.printf} is one way to print data; unlike
+Scheme's @code{display} and @code{newline}, it returns @code{unit}, not a
+useful value, so in the uses of @code{print_rat} below we show only what it
+prints, not what a REPL would print as its own return value.}
 
-@lisp
-(define (print-rat x)
-  (newline)
-  (display (numer x))
-  (display "/")
-  (display (denom x)))
-@end lisp
+@example ocaml
+let print_rat x = Printf.printf "%d/%d\n" (R.numer x) (R.denom x)
+@end example
 
 @noindent
 Now we can try our rational-number procedures:
 
-@lisp
-(define one-half (make-rat 1 2))
-(print-rat one-half)
-@i{1/2}
+@example ocaml
+let one_half = Unreduced.make_rat 1 2;;
 
-(define one-third (make-rat 1 3))
-(print-rat
- (add-rat one-half one-third))
-@i{5/6}
+Unreduced_ops.print_rat one_half;;
+(* 1/2 *)
 
-(print-rat
- (mul-rat one-half one-third))
-@i{1/6}
+let one_third = Unreduced.make_rat 1 3;;
 
-(print-rat
- (add-rat one-third one-third))
-@i{6/9}
-@end lisp
+Unreduced_ops.print_rat (Unreduced_ops.add_rat one_half one_third);;
+(* 5/6 *)
+
+Unreduced_ops.print_rat (Unreduced_ops.mul_rat one_half one_third);;
+(* 1/6 *)
+
+Unreduced_ops.print_rat (Unreduced_ops.add_rat one_third one_third);;
+(* 6/9 *)
+@end example
 
 @noindent
 As the final example shows, our rational-number implementation does not reduce
 rational numbers to lowest terms.  We can remedy this by changing
-@code{make-rat}. If we have a @code{gcd} procedure like the one in 
-@ref{1.2.5} that produces the greatest common divisor of two integers, we can
-use @code{gcd} to reduce the numerator and the denominator to lowest terms
-before constructing the pair:
+@code{Unreduced} for a representation whose @code{make_rat} does the
+reducing.  If we have a @code{gcd} procedure like the one in @ref{1.2.5} that
+produces the greatest common divisor of two integers, we can use @code{gcd} to
+reduce the numerator and the denominator to lowest terms before constructing
+the pair:
 
-@lisp
-(define (make-rat n d)
-  (let ((g (gcd n d)))
-    (cons (/ n g) 
-          (/ d g))))
-@end lisp
+@example ocaml
+module Reduced : Rational_number = struct
+  type t = int * int
+
+  let make_rat n d =
+    let g = Sicp_ch1.Sec_1_2.Gcd.gcd (abs n) (abs d) in
+    (n / g, d / g)
+  ;;
+
+  let numer (n, _) = n
+  let denom (_, d) = d
+end;;
+
+module Reduced_ops = Rational_arithmetic (Reduced);;
+@end example
+
+@noindent
+This edition takes the @code{gcd} of absolute values before dividing:
+@ref{1.2.5}'s own @code{gcd} was only ever exercised on positive integers
+there, and read literally on a negative argument it is not guaranteed
+non-negative the way Scheme's built-in @code{gcd} is; dividing by a negative
+divisor would flip a sign this @code{make_rat} never promised to touch.
 
 @noindent
 Now we have
 
-@lisp
-(print-rat 
- (add-rat one-third one-third))
-@i{2/3}
-@end lisp
+@example ocaml
+let one_third = Reduced.make_rat 1 3;;
+
+Reduced_ops.print_rat (Reduced_ops.add_rat one_third one_third);;
+(* 2/3 *)
+@end example
 
 @noindent
-as desired.  This modification was accomplished by changing the constructor
-@code{make-rat} without changing any of the procedures (such as @code{add-rat}
-and @code{mul-rat}) that implement the actual operations.
+as desired.  This modification was accomplished by changing the
+representation @code{Reduced} without changing any of the procedures (such as
+@code{add_rat} and @code{mul_rat}) that implement the actual operations:
+@code{Rational_arithmetic} above is applied to @code{Reduced} exactly as it
+was applied to @code{Unreduced}, its own body untouched.  In Scheme, this
+claim rests on trust: redefining @code{make-rat} at the top level silently
+updates every earlier call to it, because Scheme looks up a name's value anew
+each time it is used.  OCaml resolves a name once, where it is written, so
+simply redefining a free-standing @code{make_rat} would leave an already
+compiled @code{add_rat} still wired to the old one; stating the operations as
+a function of the representation, rather than as free-standing procedures
+naming a fixed @code{make_rat}, is what makes reuse a fact the compiler checks
+rather than a claim taken on faith.
 
 @quotation
 @strong{@anchor{Exercise 2.1}Exercise 2.1:} Define a better version of
-@code{make-rat} that handles both positive and negative arguments.
-@code{Make-rat} should normalize the sign so that if the rational number is
+@code{make_rat} that handles both positive and negative arguments.
+@code{Make_rat} should normalize the sign so that if the rational number is
 positive, both the numerator and denominator are positive, and if the rational
 number is negative, only the numerator is negative.
 @end quotation
@@ -305,7 +335,7 @@ number is negative, only the numerator is negative.
 Before continuing with more examples of compound data and data abstraction, let
 us consider some of the issues raised by the rational-number example.  We
 defined the rational-number operations in terms of a constructor
-@code{make-rat} and selectors @code{numer} and @code{denom}.  In general, the
+@code{make_rat} and selectors @code{numer} and @code{denom}.  In general, the
 underlying idea of data abstraction is to identify for each type of data object
 a basic set of operations in terms of which all manipulations of data objects
 of that type will be expressed, and then to use only those operations in
@@ -317,13 +347,13 @@ that isolate different ``levels'' of the system.  At each level, the
 barrier separates the programs (above) that use the data abstraction from the
 programs (below) that implement the data abstraction.  Programs that use
 rational numbers manipulate them solely in terms of the procedures supplied
-``for public use'' by the rational-number package: @code{add-rat},
-@code{sub-rat}, @code{mul-rat}, @code{div-rat}, and @code{equal-rat?}. These,
+``for public use'' by the rational-number package: @code{add_rat},
+@code{sub_rat}, @code{mul_rat}, @code{div_rat}, and @code{equal_rat}. These,
 in turn, are implemented solely in terms of the constructor and selectors
-@code{make-rat}, @code{numer}, and @code{denom}, which themselves are
+@code{make_rat}, @code{numer}, and @code{denom}, which themselves are
 implemented in terms of pairs.  The details of how pairs are implemented are
 irrelevant to the rest of the rational-number package so long as pairs can be
-manipulated by the use of @code{cons}, @code{car}, and @code{cdr}.  In effect,
+manipulated by the use of a tuple, @code{fst}, and @code{snd}.  In effect,
 procedures at each level are the interfaces that define the abstraction
 barriers and connect the different levels.
 
@@ -339,15 +369,15 @@ barriers and connect the different levels.
         +------------------------------------+
           Rational numbers in problem domain
             +---------------------------+
-------------|   add-rat  sub-rat  ...   |-------------
+------------|   add_rat  sub_rat  ...   |-------------
             +---------------------------+
    Rational numbers as numerators and denominators
               +------------------------+
---------------| make-rat  numer  denom |--------------
+--------------|   make  numer  denom   |--------------
               +------------------------+
               Rational numbers as pairs
                   +----------------+
-------------------| cons  car  cdr |------------------
+------------------| tuple  fst  snd |------------------
                   +----------------+
             However pairs are implemented
 @end example
@@ -376,21 +406,25 @@ few program modules.
 
 For example, an alternate way to address the problem of reducing rational
 numbers to lowest terms is to perform the reduction whenever we access the
-parts of a rational number, rather than when we construct it.  This leads to
-different constructor and selector procedures:
+parts of a rational number, rather than when we construct it.  This leads to a
+different representation, satisfying the same signature:
 
-@lisp
-(define (make-rat n d)
-  (cons n d))
+@example ocaml
+module Lazy_reduced : Rational_number = struct
+  type t = int * int
 
-(define (numer x)
-  (let ((g (gcd (car x) (cdr x))))
-    (/ (car x) g)))
+  let make_rat n d = (n, d)
+  let numer (n, d) = n / Sicp_ch1.Sec_1_2.Gcd.gcd (abs n) (abs d)
+  let denom (n, d) = d / Sicp_ch1.Sec_1_2.Gcd.gcd (abs n) (abs d)
+end;;
 
-(define (denom x)
-  (let ((g (gcd (car x) (cdr x))))
-    (/ (cdr x) g)))
-@end lisp
+module Lazy_reduced_ops = Rational_arithmetic (Lazy_reduced);;
+
+let one_third = Lazy_reduced.make_rat 1 3;;
+
+Lazy_reduced_ops.print_rat (Lazy_reduced_ops.add_rat one_third one_third);;
+(* 2/3 *)
+@end example
 
 @noindent
 The difference between this implementation and the previous one lies in when we
@@ -399,41 +433,102 @@ the numerators and denominators of the same rational numbers many times, it
 would be preferable to compute the @code{gcd} when the rational numbers are
 constructed.  If not, we may be better off waiting until access time to compute
 the @code{gcd}.  In any case, when we change from one representation to the
-other, the procedures @code{add-rat}, @code{sub-rat}, and so on do not have to
-be modified at all.
+other, @code{Rational_arithmetic} does not have to be modified at all: the
+three representations above, @code{Unreduced}, @code{Reduced}, and
+@code{Lazy_reduced}, are the only place the representation choice lives, and
+applying the same functor to any of them, as this section has now done three
+times, is this edition's check on that claim.
 
-Constraining the dependence on the representation to a few interface procedures
-helps us design programs as well as modify them, because it allows us to
-maintain the flexibility to consider alternate implementations.  To continue
-with our simple example, suppose we are designing a rational-number package and
-we can't decide initially whether to perform the @code{gcd} at construction
-time or at selection time.  The data-abstraction methodology gives us a way to
-defer that decision without losing the ability to make progress on the rest of
-the system.
+Constraining the dependence on the representation to a few interface
+procedures helps us design programs as well as modify them, because it allows
+us to maintain the flexibility to consider alternate implementations.  To
+continue with our simple example, suppose we are designing a rational-number
+package and we can't decide initially whether to perform the @code{gcd} at
+construction time or at selection time.  The data-abstraction methodology
+gives us a way to defer that decision without losing the ability to make
+progress on the rest of the system.
+
+This edition draws the boundary @ref{Figure 2.1} shows as an actual module
+boundary rather than a diagram: a rational number's only way to go wrong is a
+zero denominator, so that is the one error the sealed representation below can
+raise.
+
+@example ocaml
+module Rational_error = struct
+  type t = Zero_denominator of { n : int }
+
+  let to_string = function
+    | Zero_denominator { n } -> Printf.sprintf "make %d 0: zero denominator" n
+  ;;
+end;;
+@end example
+
+@noindent
+The sealed representation itself, this section's representative program,
+refuses that one failure at the door rather than letting it surface later,
+silently, from inside @code{numer} or @code{denom}: OCaml's integer division
+never checks its divisor, so an unrefused zero denominator would either raise
+an unchecked exception the first time @code{gcd} tried to divide by it, or,
+worse, quietly build a rational that every later @code{numer}/@code{denom}
+call treats as ordinary.
+
+@example ocaml
+module Rational : sig
+  type t
+
+  val make : int -> int -> (t, Rational_error.t) result
+  val numer : t -> int
+  val denom : t -> int
+end = struct
+  type t =
+    { n : int
+    ; d : int
+    }
+
+  let make n d =
+    if d = 0
+    then Error (Rational_error.Zero_denominator { n })
+    else (
+      let g = Sicp_ch1.Sec_1_2.Gcd.gcd (abs n) (abs d) in
+      Ok { n = n / g; d = d / g })
+  ;;
+
+  let numer r = r.n
+  let denom r = r.d
+end;;
+@end example
+
+@example ocaml
+(match Rational.make 6 9 with
+ | Ok r -> Printf.printf "%d/%d\n" (Rational.numer r) (Rational.denom r)
+ | Error e -> print_endline (Rational_error.to_string e));;
+(* 2/3 *)
+
+(match Rational.make 6 0 with
+ | Ok _ -> ()
+ | Error e -> print_endline (Rational_error.to_string e));;
+(* make 6 0: zero denominator *)
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.2}Exercise 2.2:} Consider the problem of
 representing line segments in a plane.  Each segment is represented as a pair
 of points: a starting point and an ending point.  Define a constructor
-@code{make-segment} and selectors @code{start-segment} and @code{end-segment}
+@code{make_segment} and selectors @code{start_segment} and @code{end_segment}
 that define the representation of segments in terms of points.  Furthermore, a
 point can be represented as a pair of numbers: the @math{x} coordinate and the
-@math{y} coordinate.  Accordingly, specify a constructor @code{make-point} and
-selectors @code{x-point} and @code{y-point} that define this representation.
+@math{y} coordinate.  Accordingly, specify a constructor @code{make_point} and
+selectors @code{x_point} and @code{y_point} that define this representation.
 Finally, using your selectors and constructors, define a procedure
-@code{midpoint-segment} that takes a line segment as argument and returns its
+@code{midpoint_segment} that takes a line segment as argument and returns its
 midpoint (the point whose coordinates are the average of the coordinates of the
 endpoints).  To try your procedures, you'll need a way to print points:
 
-@lisp
-(define (print-point p)
-  (newline)
-  (display "(")
-  (display (x-point p))
-  (display ",")
-  (display (y-point p))
-  (display ")"))
-@end lisp
+@example ocaml
+let print_point p =
+  Printf.printf "(%g,%g)\n" (x_point p) (y_point p)
+;;
+@end example
 @end quotation
 
 @quotation
@@ -449,10 +544,10 @@ using either representation?
 @node	2.1.3, 2.1.4, 2.1.2, 2.1
 @subsection What Is Meant by Data?
 
-We began the rational-number implementation in @ref{2.1.1} by
-implementing the rational-number operations @code{add-rat}, @code{sub-rat}, and
-so on in terms of three unspecified procedures: @code{make-rat}, @code{numer},
-and @code{denom}.  At that point, we could think of the operations as being
+We began the rational-number implementation in @ref{2.1.1} by implementing the
+rational-number operations @code{add_rat}, @code{sub_rat}, and so on in terms
+of three unspecified procedures: @code{make_rat}, @code{numer}, and
+@code{denom}.  At that point, we could think of the operations as being
 defined in terms of data objects---numerators, denominators, and rational
 numbers---whose behavior was specified by the latter three procedures.
 
@@ -463,9 +558,9 @@ for the rational-number implementation.  We need to guarantee that, if we
 construct a rational number @code{x} from a pair of integers @code{n} and
 @code{d}, then extracting the @code{numer} and the @code{denom} of @code{x} and
 dividing them should yield the same result as dividing @code{n} by @code{d}.
-In other words, @code{make-rat}, @code{numer}, and @code{denom} must satisfy
+In other words, @code{make_rat}, @code{numer}, and @code{denom} must satisfy
 the condition that, for any integer @code{n} and any non-zero integer @code{d},
-if @code{x} is @code{(make-rat n d)}, then
+if @code{x} is @code{make_rat n d}, then
 @displaymath
 {\hbox{(numer x)} \over \hbox{(denom x)}} = {{\hbox{n} \over \hbox{d}}.}
 @end displaymath
@@ -478,7 +573,7 @@ if @code{x} is @code{(make-rat n d)}, then
 @end example
 
 @end ifinfo
-In fact, this is the only condition @code{make-rat}, @code{numer}, and
+In fact, this is the only condition @code{make_rat}, @code{numer}, and
 @code{denom} must fulfill in order to form a suitable basis for a
 rational-number representation.  In general, we can think of data as defined by
 some collection of selectors and constructors, together with specified
@@ -505,33 +600,33 @@ by @ref{Liskov and Zilles (1975)}.}
 This point of view can serve to define not only ``high-level'' data objects,
 such as rational numbers, but lower-level objects as well.  Consider the notion
 of a pair, which we used in order to define our rational numbers.  We never
-actually said what a pair was, only that the language supplied procedures
-@code{cons}, @code{car}, and @code{cdr} for operating on pairs.  But the only
-thing we need to know about these three operations is that if we glue two
-objects together using @code{cons} we can retrieve the objects using @code{car}
-and @code{cdr}.  That is, the operations satisfy the condition that, for any
-objects @code{x} and @code{y}, if @code{z} is @code{(cons x y)} then @code{(car
-z)} is @code{x} and @code{(cdr z)} is @code{y}.  Indeed, we mentioned that
-these three procedures are included as primitives in our language.  However,
-any triple of procedures that satisfies the above condition can be used as the
-basis for implementing pairs.  This point is illustrated strikingly by the fact
-that we could implement @code{cons}, @code{car}, and @code{cdr} without using
-any data structures at all but only using procedures.  Here are the
-definitions:
+actually said what a pair was, only that OCaml supplies a tuple constructor and
+the procedures @code{fst} and @code{snd} for operating on pairs.  But the only
+thing we need to know about these operations is that if we glue two objects
+together using a tuple we can retrieve the objects using @code{fst} and
+@code{snd}.  That is, the operations satisfy the condition that, for any
+objects @code{x} and @code{y}, if @code{z} is @code{(x, y)} then @code{fst z}
+is @code{x} and @code{snd z} is @code{y}.  Indeed, we mentioned that a tuple
+and its accessors are included as primitives in our language.  However, any
+triple of procedures that satisfies the above condition can be used as the
+basis for implementing pairs.  This point is illustrated strikingly by the
+fact that we could implement pair-manipulation procedures, which we will name
+@code{cons}, @code{car}, and @code{cdr} after Lisp's own, without using
+OCaml's tuple at all, only functions:
 
-@lisp
-(define (cons x y)
-  (define (dispatch m)
-    (cond ((= m 0) x)
-          ((= m 1) y)
-          (else 
-           (error "Argument not 0 or 1:
-                   CONS" m))))
-  dispatch)
+@example ocaml
+module Procedural_pairs = struct
+  let cons x y m =
+    match m with
+    | 0 -> x
+    | 1 -> y
+    | _ -> invalid_arg "Argument not 0 or 1: CONS"
+  ;;
 
-(define (car z) (z 0))
-(define (cdr z) (z 1))
-@end lisp
+  let car z = z 0
+  let cdr z = z 1
+end;;
+@end example
 
 @noindent
 This use of procedures corresponds to nothing like our intuitive notion of what
@@ -539,44 +634,51 @@ data should be.  Nevertheless, all we need to do to show that this is a valid
 way to represent pairs is to verify that these procedures satisfy the condition
 given above.
 
-The subtle point to notice is that the value returned by @code{(cons x y)} is a
-procedure---namely the internally defined procedure @code{dispatch}, which
-takes one argument and returns either @code{x} or @code{y} depending on whether
-the argument is 0 or 1.  Correspondingly, @code{(car z)} is defined to apply
-@code{z} to 0.  Hence, if @code{z} is the procedure formed by @code{(cons x
-y)}, then @code{z} applied to 0 will yield @code{x}. Thus, we have shown that
-@code{(car (cons x y))} yields @code{x}, as desired.  Similarly, @code{(cdr
-(cons x y))} applies the procedure returned by @code{(cons x y)} to 1, which
-returns @code{y}.  Therefore, this procedural implementation of pairs is a
-valid implementation, and if we access pairs using only @code{cons},
-@code{car}, and @code{cdr} we cannot distinguish this implementation from one
-that uses ``real'' data structures.
+The subtle point to notice is that the value returned by @code{Procedural_pairs.cons x y} is
+a procedure---namely the anonymous function matching its argument @code{m}
+against 0 or 1 and returning @code{x} or @code{y}.  Correspondingly,
+@code{car z} is defined to apply @code{z} to 0.  Hence, if @code{z} is the
+procedure formed by @code{cons x y}, then @code{z} applied to 0 will yield
+@code{x}.  Thus, we have shown that @code{car (cons x y)} yields @code{x}, as
+desired.  Similarly, @code{cdr (cons x y)} applies the procedure returned by
+@code{cons x y} to 1, which returns @code{y}.  Therefore, this procedural
+implementation of pairs is a valid implementation, and if we access pairs
+using only @code{cons}, @code{car}, and @code{cdr} we cannot distinguish this
+implementation from one that uses ``real'' data structures.
+
+@code{Procedural_pairs.cons} does reach a limit Scheme's own @code{cons} does
+not: because @code{dispatch}'s two branches must return the same type,
+@code{x} and @code{y} have to share one type.  Every pair this section
+actually builds already satisfies that (a rational's numerator and denominator
+are both @code{int}), so the restriction costs nothing here, but this
+@code{cons} cannot stand in for OCaml's own tuple in general, the way Scheme's
+untyped @code{cons} really can pair values of two different types.
 
 The point of exhibiting the procedural representation of pairs is not that our
-language works this way (Scheme, and Lisp systems in general, implement pairs
-directly, for efficiency reasons) but that it could work this way.  The
-procedural representation, although obscure, is a perfectly adequate way to
-represent pairs, since it fulfills the only conditions that pairs need to
-fulfill.  This example also demonstrates that the ability to manipulate
-procedures as objects automatically provides the ability to represent compound
-data.  This may seem a curiosity now, but procedural representations of data
-will play a central role in our programming repertoire.  This style of
-programming is often called @newterm{message passing}, and we will be using it
-as a basic tool in @ref{Chapter 3} when we address the issues of modeling and
-simulation.
+language works this way (OCaml, like Scheme and Lisp systems in general,
+implements tuples directly, for efficiency reasons) but that it could work
+this way.  The procedural representation, although obscure, is a perfectly
+adequate way to represent pairs, since it fulfills the only conditions that
+pairs need to fulfill.  This example also demonstrates that the ability to
+manipulate procedures as objects automatically provides the ability to
+represent compound data.  This may seem a curiosity now, but procedural
+representations of data will play a central role in our programming
+repertoire.  This style of programming is often called @newterm{message
+passing}, and we will be using it as a basic tool in @ref{Chapter 3} when we
+address the issues of modeling and simulation.
 
 @quotation
 @strong{@anchor{Exercise 2.4}Exercise 2.4:} Here is an alternative procedural
-representation of pairs.  For this representation, verify that @code{(car (cons
-x y))} yields @code{x} for any objects @code{x} and @code{y}.
+representation of pairs, using OCaml's own function values directly rather
+than a numeric dispatch.  For this representation, verify that
+@code{car (cons x y)} yields @code{x} for any objects @code{x} and @code{y} of
+one shared type.
 
-@lisp
-(define (cons x y) 
-  (lambda (m) (m x y)))
+@example ocaml
+let cons x y = fun m -> m x y
 
-(define (car z) 
-  (z (lambda (p q) p)))
-@end lisp
+let car z = z (fun p _q -> p)
+@end example
 
 What is the corresponding definition of @code{cdr}? (Hint: To verify that this
 works, make use of the substitution model of @ref{1.1.5}.)
@@ -592,25 +694,24 @@ Give the corresponding definitions of the procedures @code{cons},
 
 @quotation
 @strong{@anchor{Exercise 2.6}Exercise 2.6:} In case representing pairs as
-procedures wasn't mind-boggling enough, consider that, in a language that can
-manipulate procedures, we can get by without numbers (at least insofar as
+functions wasn't mind-boggling enough, consider that, in a language that can
+manipulate functions, we can get by without numbers (at least insofar as
 nonnegative integers are concerned) by implementing 0 and the operation of
 adding 1 as
 
-@lisp
-(define zero (lambda (f) (lambda (x) x)))
+@example ocaml
+let zero = fun f -> fun x -> x
 
-(define (add-1 n)
-  (lambda (f) (lambda (x) (f ((n f) x)))))
-@end lisp
+let add_1 n = fun f -> fun x -> f (n f x)
+@end example
 
 This representation is known as @newterm{Church numerals}, after its inventor,
 Alonzo Church, the logician who invented the λ-calculus.
 
 Define @code{one} and @code{two} directly (not in terms of @code{zero} and
-@code{add-1}).  (Hint: Use substitution to evaluate @code{(add-1 zero)}).  Give
-a direct definition of the addition procedure @code{+} (not in terms of
-repeated application of @code{add-1}).
+@code{add_1}).  (Hint: Use substitution to evaluate @code{add_1 zero}).  Give
+a direct definition of a Church-numeral addition procedure (not in terms of
+repeated application of @code{add_1}).
 @end quotation
 
 @node	2.1.4, 2.2, Chapter 2, 2.1
@@ -656,69 +757,105 @@ range of the result.
 Alyssa postulates the existence of an abstract object called an ``interval''
 that has two endpoints: a lower bound and an upper bound.  She also presumes
 that, given the endpoints of an interval, she can construct the interval using
-the data constructor @code{make-interval}.  Alyssa first writes a procedure for
+the data constructor @code{make_interval}.  Alyssa first writes a procedure for
 adding two intervals.  She reasons that the minimum value the sum could be is
 the sum of the two lower bounds and the maximum value it could be is the sum of
 the two upper bounds:
 
-@lisp
-(define (add-interval x y)
-  (make-interval (+ (lower-bound x) 
-                    (lower-bound y))
-                 (+ (upper-bound x) 
-                    (upper-bound y))))
-@end lisp
+@example ocaml
+let add_interval x y =
+  make_interval (lower_bound x +. lower_bound y) (upper_bound x +. upper_bound y)
+;;
+@end example
 
 @noindent
 Alyssa also works out the product of two intervals by finding the minimum and
 the maximum of the products of the bounds and using them as the bounds of the
-resulting interval.  (@code{Min} and @code{max} are primitives that find the
-minimum or maximum of any number of arguments.)
+resulting interval.  (@code{Float.min} and @code{Float.max} take two
+arguments each; the book's variadic @code{min} and @code{max} become nested
+calls here.)
 
-@lisp
-(define (mul-interval x y)
-  (let ((p1 (* (lower-bound x) 
-               (lower-bound y)))
-        (p2 (* (lower-bound x) 
-               (upper-bound y)))
-        (p3 (* (upper-bound x) 
-               (lower-bound y)))
-        (p4 (* (upper-bound x) 
-               (upper-bound y))))
-    (make-interval (min p1 p2 p3 p4)
-                   (max p1 p2 p3 p4))))
-@end lisp
+@example ocaml
+let mul_interval x y =
+  let p1 = lower_bound x *. lower_bound y in
+  let p2 = lower_bound x *. upper_bound y in
+  let p3 = upper_bound x *. lower_bound y in
+  let p4 = upper_bound x *. upper_bound y in
+  make_interval
+    (Float.min (Float.min p1 p2) (Float.min p3 p4))
+    (Float.max (Float.max p1 p2) (Float.max p3 p4))
+;;
+@end example
 
 @noindent
 To divide two intervals, Alyssa multiplies the first by the reciprocal of the
 second.  Note that the bounds of the reciprocal interval are the reciprocal of
 the upper bound and the reciprocal of the lower bound, in that order.
 
-@lisp
-(define (div-interval x y)
-  (mul-interval x 
-                (make-interval 
-                 (/ 1.0 (upper-bound y)) 
-                 (/ 1.0 (lower-bound y)))))
-@end lisp
+@example ocaml
+let div_interval x y =
+  mul_interval x (make_interval (1.0 /. upper_bound y) (1.0 /. lower_bound y))
+;;
+@end example
+
+@noindent
+As in @ref{2.1.1}, this edition states @code{make_interval}, @code{lower_bound},
+and @code{upper_bound} as a wish before any representation exists:
+
+@example ocaml
+module type Interval_number = sig
+  type t
+  val make_interval : float -> float -> t
+  val lower_bound : t -> float
+  val upper_bound : t -> float
+end;;
+@end example
+
+@noindent
+and Alyssa's three operations as a function of that wish, exactly as
+@code{Rational_arithmetic} was in @ref{2.1.1}:
+
+@example ocaml
+module Interval_arithmetic (I : Interval_number) = struct
+  let add_interval x y =
+    I.make_interval
+      (I.lower_bound x +. I.lower_bound y)
+      (I.upper_bound x +. I.upper_bound y)
+  ;;
+
+  let mul_interval x y =
+    let p1 = I.lower_bound x *. I.lower_bound y in
+    let p2 = I.lower_bound x *. I.upper_bound y in
+    let p3 = I.upper_bound x *. I.lower_bound y in
+    let p4 = I.upper_bound x *. I.upper_bound y in
+    I.make_interval
+      (Float.min (Float.min p1 p2) (Float.min p3 p4))
+      (Float.max (Float.max p1 p2) (Float.max p3 p4))
+  ;;
+
+  let div_interval x y =
+    mul_interval x (I.make_interval (1.0 /. I.upper_bound y) (1.0 /. I.lower_bound y))
+  ;;
+end;;
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.7}Exercise 2.7:} Alyssa's program is incomplete
 because she has not specified the implementation of the interval abstraction.
 Here is a definition of the interval constructor:
 
-@lisp
-(define (make-interval a b) (cons a b))
-@end lisp
+@example ocaml
+let make_interval a b = (a, b)
+@end example
 
-Define selectors @code{upper-bound} and @code{lower-bound} to complete the
+Define selectors @code{upper_bound} and @code{lower_bound} to complete the
 implementation.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.8}Exercise 2.8:} Using reasoning analogous to
 Alyssa's, describe how the difference of two intervals may be computed.  Define
-a corresponding subtraction procedure, called @code{sub-interval}.
+a corresponding subtraction procedure, called @code{sub_interval}.
 @end quotation
 
 @quotation
@@ -743,7 +880,7 @@ check for this condition and to signal an error if it occurs.
 @quotation
 @strong{@anchor{Exercise 2.11}Exercise 2.11:} In passing, Ben also cryptically
 comments: ``By testing the signs of the endpoints of the intervals, it is
-possible to break @code{mul-interval} into nine cases, only one of which
+possible to break @code{mul_interval} into nine cases, only one of which
 requires more than two multiplications.''  Rewrite this procedure using Ben's
 suggestion.
 
@@ -754,20 +891,13 @@ example, he wants to work with intervals such as 3.5 @math{\pm} 0.15 rather than
 [3.35, 3.65].  Alyssa returns to her desk and fixes this problem by supplying
 an alternate constructor and alternate selectors:
 
-@lisp
-(define (make-center-width c w)
-  (make-interval (- c w) (+ c w)))
+@example ocaml
+let make_center_width c w = make_interval (c -. w) (c +. w)
 
-(define (center i)
-  (/ (+ (lower-bound i) 
-        (upper-bound i)) 
-     2))
+let center i = (lower_bound i +. upper_bound i) /. 2.0
 
-(define (width i)
-  (/ (- (upper-bound i) 
-        (lower-bound i)) 
-     2))
-@end lisp
+let width i = (upper_bound i -. lower_bound i) /. 2.0
+@end example
 
 Unfortunately, most of Alyssa's users are engineers.  Real engineering
 situations usually involve measurements with only a small uncertainty, measured
@@ -778,10 +908,23 @@ as in the resistor specifications given earlier.
 
 @quotation
 @strong{@anchor{Exercise 2.12}Exercise 2.12:} Define a constructor
-@code{make-center-percent} that takes a center and a percentage tolerance and
+@code{make_center_percent} that takes a center and a percentage tolerance and
 produces the desired interval.  You must also define a selector @code{percent}
 that produces the percentage tolerance for a given interval.  The @code{center}
 selector is the same as the one shown above.
+@end quotation
+
+@quotation
+@emph{Exercise 2.12a is added by this edition and extends exercise 2.12; SICP
+numbers stop at 2.12.} @strong{@anchor{Exercise 2.12a}Exercise 2.12a:}
+Exercise 2.9 already shows that @code{width (add_interval x y)} is
+@code{width x +. width y}; @code{center (add_interval x y)} is
+@code{center x +. center y} by the same kind of reasoning.  Define
+@code{add_interval_by_center_width}, restating interval addition directly
+from those two facts instead of from endpoints, and confirm that it agrees
+with @code{add_interval} on a variety of intervals: this section's endpoint
+interface and this exercise's center-percent interface are two ways of
+describing the same interval, and the operations built on them should agree.
 @end quotation
 
 @quotation
@@ -825,20 +968,16 @@ and
 He has written the following two programs, each of which computes the
 parallel-resistors formula differently:
 
-@lisp
-(define (par1 r1 r2)
-  (div-interval 
-   (mul-interval r1 r2)
-   (add-interval r1 r2)))
+@example ocaml
+let par1 r1 r2 =
+  div_interval (mul_interval r1 r2) (add_interval r1 r2)
+;;
 
-(define (par2 r1 r2)
-  (let ((one (make-interval 1 1)))
-    (div-interval 
-     one
-     (add-interval 
-      (div-interval one r1) 
-      (div-interval one r2)))))
-@end lisp
+let par2 r1 r2 =
+  let one = make_interval 1.0 1.0 in
+  div_interval one (add_interval (div_interval one r1) (div_interval one r2))
+;;
+@end example
 
 Lem complains that Alyssa's program gives different answers for the two ways of
 computing. This is a serious complaint.
@@ -869,5 +1008,3 @@ equivalent algebraic expressions may lead to different answers.  Can you devise
 an interval-arithmetic package that does not have this shortcoming, or is this
 task impossible?  (Warning: This problem is very difficult.)
 @end quotation
-
-

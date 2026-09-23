@@ -79,16 +79,19 @@ Thus, we can compute @math{{n!}} by computing @math{{(n - 1)!}} and multiplying 
 result by @math{n}.  If we add the stipulation that 1! is equal to 1, this
 observation translates directly into a procedure:
 
-@lisp
-(define (factorial n)
-  (if (= n 1) 
-      1 
-      (* n (factorial (- n 1)))))
-@end lisp
+@example rust
+fn factorial(n: u64) -> i128 @{
+    if n == 1 @{
+        1
+    @} else @{
+        i128::from(n) * factorial(n - 1)
+    @}
+@}
+@end example
 
 @noindent
-We can use the substitution model of @ref{1.1.5} to watch this
-procedure in action computing 6!, as shown in @ref{Figure 1.3}.
+We can watch this procedure in action computing 6!, as shown in
+@ref{Figure 1.3}.
 
 @float
 @anchor{Figure 1.3}
@@ -97,17 +100,17 @@ procedure in action computing 6!, as shown in @ref{Figure 1.3}.
 @strong{Figure 1.3:} A linear recursive process for computing 6!.
 
 @example
-(factorial 6)        ----------------
-(* 6 (factorial 5))                   \
-(* 6 (* 5 (factorial 4)))               \
-(* 6 (* 5 (* 4 (factorial 3))))           \
-(* 6 (* 5 (* 4 (* 3 (factorial 2)))))       \
-(* 6 (* 5 (* 4 (* 3 (* 2 (factorial 1))))))  |
-(* 6 (* 5 (* 4 (* 3 (* 2 1)))))             /
-(* 6 (* 5 (* 4 (* 3 2))))                 /
-(* 6 (* 5 (* 4 6)))                     /
-(* 6 (* 5 24))                        /
-(* 6 120)                           /
+factorial(6)        ----------------
+6 * factorial(5)                    \
+6 * (5 * factorial(4))                \
+6 * (5 * (4 * factorial(3)))            \
+6 * (5 * (4 * (3 * factorial(2))))        \
+6 * (5 * (4 * (3 * (2 * factorial(1)))))   |
+6 * (5 * (4 * (3 * (2 * 1))))             /
+6 * (5 * (4 * (3 * 2)))                 /
+6 * (5 * (4 * 6))                     /
+6 * (5 * 24)                        /
+6 * 120                           /
 720          <---------------------
 @end example
 @end quotation
@@ -141,34 +144,43 @@ and stipulating that @math{{n!}} is the value of the product when the counter
 exceeds @math{n}.
 
 Once again, we can recast our description as a procedure for computing
-factorials:@footnote{In a real program we would probably use the block
-structure introduced in the last section to hide the definition of
-@code{fact-iter}:
+factorials.  Scheme expresses this as tail recursion, and a tail-recursive
+Scheme implementation runs it in constant space no matter how large @math{n}
+is.  Rust makes no such promise: a call in tail position gets no discount
+from the compiler, so the procedure that carries this rule forward has to
+be a loop, not a function that calls itself.@footnote{In a real program we
+would probably use the block structure introduced in the last section to
+hide the definition of @code{fact_iter}:
 
-@lisp
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
+@example rust
+fn factorial(n: u64) -> i128 @{
+    fn iter(mut product: i128, mut counter: u64, max_count: u64) -> i128 @{
+        while counter <= max_count @{
+            product *= i128::from(counter);
+            counter += 1;
+        @}
         product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
-@end lisp
+    @}
+    iter(1, 1, n)
+@}
+@end example
 
 We avoided doing this here so as to minimize the number of things to think
 about at once.}
 
-@lisp
-(define (factorial n) 
-  (fact-iter 1 1 n))
+@example rust
+fn factorial(n: u64) -> i128 @{
+    fact_iter(1, 1, n)
+@}
 
-(define (fact-iter product counter max-count)
-  (if (> counter max-count)
-      product
-      (fact-iter (* counter product)
-                 (+ counter 1)
-                 max-count)))
-@end lisp
+fn fact_iter(mut product: i128, mut counter: u64, max_count: u64) -> i128 @{
+    while counter <= max_count @{
+        product *= i128::from(counter);
+        counter += 1;
+    @}
+    product
+@}
+@end example
 
 @noindent
 As before, we can use the substitution model to visualize the process of
@@ -181,14 +193,14 @@ computing 6!, as shown in @ref{Figure 1.4}.
 @strong{Figure 1.4:} A linear iterative process for computing 6!.
 
 @example
-(factorial 6)   -----.
-(fact-iter   1 1 6)  |
-(fact-iter   1 2 6)  |
-(fact-iter   2 3 6)  |
-(fact-iter   6 4 6)  |
-(fact-iter  24 5 6)  |
-(fact-iter 120 6 6)  |
-(fact-iter 720 7 6)  V
+factorial(6)   -----.
+fact_iter(  1, 1, 6) |
+fact_iter(  1, 2, 6) |
+fact_iter(  2, 3, 6) |
+fact_iter(  6, 4, 6) |
+fact_iter( 24, 5, 6) |
+fact_iter(120, 6, 6) |
+fact_iter(720, 7, 6) V
 720
 @end example
 @end quotation
@@ -215,19 +227,20 @@ differently.
 Consider the first process.  The substitution model reveals a shape of
 expansion followed by contraction, indicated by the arrow in @ref{Figure 1.3}.
 The expansion occurs as the process builds up a chain of @newterm{deferred operations} 
-(in this case, a chain of multiplications).  The contraction occurs
+(in this case, a chain of multiplications, one stack frame per pending
+multiplication).  The contraction occurs
 as the operations are actually performed.  This type of process, characterized
 by a chain of deferred operations, is called a @newterm{recursive process}.
-Carrying out this process requires that the interpreter keep track of the
+Carrying out this process requires the running program to keep track of the
 operations to be performed later on.  In the computation of @math{{n!}}, the length
-of the chain of deferred multiplications, and hence the amount of information
+of the chain of deferred multiplications, and hence the amount of stack space
 needed to keep track of it, grows linearly with @math{n} (is proportional to
 @math{n}), just like the number of steps.  Such a process is called a
 @newterm{linear recursive process}.
 
 By contrast, the second process does not grow and shrink.  At each step, all we
 need to keep track of, for any @math{n}, are the current values of the variables
-@code{product}, @code{counter}, and @code{max-count}.  We call this an
+@code{product}, @code{counter}, and @code{max_count}.  We call this an
 @newterm{iterative process}.  In general, an iterative process is one whose
 state can be summarized by a fixed number of @newterm{state variables},
 together with a fixed rule that describes how the state variables should be
@@ -240,9 +253,9 @@ The contrast between the two processes can be seen in another way.  In the
 iterative case, the program variables provide a complete description of the
 state of the process at any point.  If we stopped the computation between
 steps, all we would need to do to resume the computation is to supply the
-interpreter with the values of the three program variables.  Not so with the
+values of the three program variables.  Not so with the
 recursive process.  In this case there is some additional ``hidden''
-information, maintained by the interpreter and not contained in the program
+information, maintained on the stack and not contained in the program
 variables, which indicates ``where the process is'' in negotiating the chain of
 deferred operations.  The longer the chain, the more information must be
 maintained.@footnote{When we discuss the implementation of procedures on
@@ -258,21 +271,22 @@ referring to the syntactic fact that the procedure definition refers (either
 directly or indirectly) to the procedure itself.  But when we describe a
 process as following a pattern that is, say, linearly recursive, we are
 speaking about how the process evolves, not about the syntax of how a procedure
-is written.  It may seem disturbing that we refer to a recursive procedure such
-as @code{fact-iter} as generating an iterative process.  However, the process
-really is iterative: Its state is captured completely by its three state
-variables, and an interpreter need keep track of only three variables in order
-to execute the process.
+is written.
 
-One reason that the distinction between process and procedure may be confusing
-is that most implementations of common languages (including Ada, Pascal, and C)
-are designed in such a way that the interpretation of any recursive procedure
-consumes an amount of memory that grows with the number of procedure calls,
-even when the process described is, in principle, iterative.  As a consequence,
-these languages can describe iterative processes only by resorting to
-special-purpose ``looping constructs'' such as @code{do}, @code{repeat},
-@code{until}, @code{for}, and @code{while}.  The implementation of Scheme we
-shall consider in @ref{Chapter 5} does not share this defect.  It will execute
+Rust makes the syntax-versus-process distinction concrete in a way plain
+prose cannot: @code{fact_iter} above is not even a recursive procedure
+syntactically, because it is a loop, and its process is iterative because
+its state fits in three variables that a loop updates in place.  A
+recursive Rust procedure, by contrast, consumes an amount of stack space
+that grows with the number of procedure calls, even when the process it
+describes is, in principle, iterative---the frame is real regardless of
+where in the call the recursion happens.  As a consequence, Rust,
+like most common languages (including Ada, Pascal, and C), can describe
+iterative processes only by resorting to
+special-purpose ``looping constructs'' such as @code{while}, @code{for},
+and @code{loop}.  This is the Rust-specific version of the warning stated
+in @ref{0.2}.  The implementation of Scheme discussed in @ref{Chapter 5} does not
+share this defect: it will execute
 an iterative process in constant space, even if the iterative process is
 described by a recursive procedure.  An implementation with this property is
 called @newterm{tail-recursive}.  With a tail-recursive implementation,
@@ -285,65 +299,112 @@ shall discuss in @ref{Chapter 3}.  Inspired by this, Gerald Jay Sussman and Guy
 Lewis Steele Jr. (see @ref{Steele and Sussman 1975}) constructed a tail-recursive interpreter for
 Scheme.  Steele later showed how tail recursion is a consequence of the natural
 way to compile procedure calls (@ref{Steele 1977}).  The @abbr{IEEE} standard for
-Scheme requires that Scheme implementations be tail-recursive.}
+Scheme requires that Scheme implementations be tail-recursive.  Rust's
+specification makes no such requirement, so a Rust compiler is free to
+eliminate a tail call when it can prove the optimization safe, and free not
+to.}
+
+(The runnable listing of this subsection is
+@code{examples/sec_1_2_linear_recursion.rs}.)
 
 @quotation
 @strong{@anchor{Exercise 1.9}Exercise 1.9:} Each of the following two
-procedures defines a method for adding two positive integers in terms of the
-procedures @code{inc}, which increments its argument by 1, and @code{dec},
+functions defines a method for adding two positive integers in terms of the
+functions @code{inc}, which increments its argument by 1, and @code{dec},
 which decrements its argument by 1.
 
-@lisp
-(define (+ a b)
-  (if (= a 0) 
-      b 
-      (inc (+ (dec a) b))))
+@example rust
+fn plus(a: i64, b: i64) -> i64 @{
+    if a == 0 @{
+        b
+    @} else @{
+        inc(plus(dec(a), b))
+    @}
+@}
 
-(define (+ a b)
-  (if (= a 0) 
-      b 
-      (+ (dec a) (inc b))))
-@end lisp
+fn plus(a: i64, b: i64) -> i64 @{
+    if a == 0 @{
+        b
+    @} else @{
+        plus(dec(a), inc(b))
+    @}
+@}
+@end example
 
 Using the substitution model, illustrate the process generated by each
-procedure in evaluating @code{(+ 4 5)}.  Are these processes iterative or
-recursive?
+function in evaluating @code{plus(4, 5)}.  Are these processes iterative or
+recursive?  In Scheme the second would run in constant space; Rust performs
+no tail-call optimization, so which of the two, if either, can run for
+arguments in the millions without exhausting the stack, and what would you
+have to change to make it do so?
+@end quotation
+
+@quotation
+@emph{Exercise 1.9a is added by this edition and extends exercise 1.9; SICP numbers stop at 1.9.}
+@strong{@anchor{Exercise 1.9a}Exercise 1.9a:} Rust compiles a call in tail
+position the way it compiles any other call: the optimizer may reuse the
+frame, but the language guarantees nothing.  Measure the guarantee's
+absence.  Run the two functions of @ref{Exercise 1.9} on a thread with a
+fixed, small stack (@code{std::thread::Builder::stack_size}), and probe the
+stack rather than crashing into it: take the address of a local in each
+frame, and stop recursing once the frames have consumed a fixed budget of
+the stack.  Report how many frames the deferred-@code{inc} version and the
+tail-shaped version reach for two or three stack sizes, and run the loop
+form of the second function on the same stack with an argument of one
+million.  What does the comparison say about frames per call, and about
+which spelling Rust can run without a stack budget in mind?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.10}Exercise 1.10:} The following procedure computes
 a mathematical function called Ackermann's function.
 
-@lisp
-(define (A x y)
-  (cond ((= y 0) 0)
-        ((= x 0) (* 2 y))
-        ((= y 1) 2)
-        (else (A (- x 1)
-                 (A x (- y 1))))))
-@end lisp
+@example rust
+fn a(x: u64, y: u64) -> u64 @{
+    if y == 0 @{
+        0
+    @} else if x == 0 @{
+        2 * y
+    @} else if y == 1 @{
+        2
+    @} else @{
+        a(x - 1, a(x, y - 1))
+    @}
+@}
+@end example
 
 What are the values of the following expressions?
 
-@lisp
-(A 1 10)
-(A 2 4)
-(A 3 3)
-@end lisp
+@example rust
+a(1, 10);
+a(2, 4);
+a(3, 3);
+@end example
 
-Consider the following procedures, where @code{A} is the procedure
+Consider the following functions, where @code{a} is the function
 defined above:
 
-@lisp
-(define (f n) (A 0 n))
-(define (g n) (A 1 n))
-(define (h n) (A 2 n))
-(define (k n) (* 5 n n))
-@end lisp
+@example rust
+fn f(n: u64) -> u64 @{
+    a(0, n)
+@}
+
+fn g(n: u64) -> u64 @{
+    a(1, n)
+@}
+
+fn h(n: u64) -> u64 @{
+    a(2, n)
+@}
+
+fn k(n: u64) -> u64 @{
+    5 * n * n
+@}
+@end example
 
 Give concise mathematical definitions for the functions computed by the
-procedures @code{f}, @code{g}, and @code{h} for positive integer values of
-@math{n}.  For example, @code{(k n)} computes @math{{5n^2}}.
+functions @code{f}, @code{g}, and @code{h} for positive integer values of
+@math{n}.  For example, @code{k(n)} computes @math{{5n^2}}.
 @end quotation
 
 @node	1.2.2, 1.2.3, 1.2.1, 1.2
@@ -379,18 +440,20 @@ Fib(n) = <  1                        if n = 1
 We can immediately translate this definition into a recursive procedure for
 computing Fibonacci numbers:
 
-@lisp
-(define (fib n)
-  (cond ((= n 0) 0)
-        ((= n 1) 1)
-        (else (+ (fib (- n 1))
-                 (fib (- n 2))))))
-@end lisp
+@example rust
+fn fib(n: u64) -> i128 @{
+    match n @{
+        0 => 0,
+        1 => 1,
+        _ => fib(n - 1) + fib(n - 2),
+    @}
+@}
+@end example
 
 @noindent
-Consider the pattern of this computation.  To compute @code{(fib 5)}, we
-compute @code{(fib 4)} and @code{(fib 3)}.  To compute @code{(fib 4)}, we
-compute @code{(fib 3)} and @code{(fib 2)}.  In general, the evolved process
+Consider the pattern of this computation.  To compute @code{fib(5)}, we
+compute @code{fib(4)} and @code{fib(3)}.  To compute @code{fib(4)}, we
+compute @code{fib(3)} and @code{fib(2)}.  In general, the evolved process
 looks like a tree, as shown in @ref{Figure 1.5}.  Notice that the branches
 split into two at each level (except at the bottom); this reflects the fact
 that the @code{fib} procedure calls itself twice each time it is invoked.
@@ -398,7 +461,7 @@ that the @code{fib} procedure calls itself twice each time it is invoked.
 @float
 @anchor{Figure 1.5}
 @ifinfo
-@strong{Figure 1.5:} The tree-recursive process generated in computing @code{(fib 5)}.
+@strong{Figure 1.5:} The tree-recursive process generated in computing @code{fib(5)}.
 
 @example
 
@@ -429,16 +492,16 @@ V     /  . \   . 1  .  . 1  .  . 0  .  . 1  .  . 0  ..
 @image{../../text/original/figures/pdf/chap1/Fig1.5d.std,,147mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 1.5:} The tree-recursive process generated in computing @code{(fib 5)}.}
+@caption{@strong{Figure 1.5:} The tree-recursive process generated in computing @code{fib(5)}.}
 @end float
 
 @noindent
 This procedure is instructive as a prototypical tree recursion, but it is a
 terrible way to compute Fibonacci numbers because it does so much redundant
 computation.  Notice in @ref{Figure 1.5} that the entire computation of
-@code{(fib 3)}---almost half the work---is duplicated.  In fact, it is not hard
-to show that the number of times the procedure will compute @code{(fib 1)} or
-@code{(fib 0)} (the number of leaves in the above tree, in general) is
+@code{fib(3)}---almost half the work---is duplicated.  In fact, it is not hard
+to show that the number of times the procedure will compute @code{fib(1)} or
+@code{fib(0)} (the number of leaves in the above tree, in general) is
 precisely @math{{\hbox{Fib}(n+1)}}.  To get an idea of how bad this is, one can
 show that the value of @math{{\hbox{Fib}(n)}} grows exponentially with @math{n}.  More
 precisely (see @ref{Exercise 1.13}), @math{{\hbox{Fib}(n)}} is the closest integer
@@ -468,7 +531,8 @@ is the @newterm{golden ratio}, which satisfies the equation
 Thus, the process uses a number of steps that grows exponentially with the
 input.  On the other hand, the space required grows only linearly with the
 input, because we need keep track only of which nodes are above us in the tree
-at any point in the computation.  In general, the number of steps required by a
+at any point in the computation---in Rust terms, the stack depth is bounded by
+the tree's height, not its size.  In general, the number of steps required by a
 tree-recursive process will be proportional to the number of nodes in the tree,
 while the space required will be proportional to the maximum depth of the tree.
 
@@ -495,17 +559,21 @@ b <- a
 It is not hard to show that, after applying this transformation @math{n} times,
 @math{a} and @math{b} will be equal, respectively, to @math{{\hbox{Fib}(n+1)}} and
 @math{{\hbox{Fib}(n)}}.  Thus, we can compute Fibonacci numbers iteratively using
-the procedure
+the loop
 
-@lisp
-(define (fib n) 
-  (fib-iter 1 0 n))
+@example rust
+fn fib(n: u64) -> i128 @{
+    fib_iter(1, 0, n)
+@}
 
-(define (fib-iter a b count)
-  (if (= count 0)
-      b
-      (fib-iter (+ a b) a (- count 1))))
-@end lisp
+fn fib_iter(mut a: i128, mut b: i128, mut count: u64) -> i128 @{
+    while count != 0 @{
+        (a, b) = (a + b, a);
+        count -= 1;
+    @}
+    b
+@}
+@end example
 
 @noindent
 This second method for computing @math{{\hbox{Fib}(n)}} is a linear iteration.  The
@@ -516,12 +584,13 @@ small inputs.
 One should not conclude from this that tree-recursive processes are useless.
 When we consider processes that operate on hierarchically structured data
 rather than numbers, we will find that tree recursion is a natural and powerful
-tool.@footnote{An example of this was hinted at in @ref{1.1.3}. The
-interpreter itself evaluates expressions using a tree-recursive process.} But
+tool.@footnote{An example of this was hinted at in @ref{1.1.3}.  The evaluator
+built in @ref{Chapter 4} itself evaluates expressions using a tree-recursive
+process.} But
 even in numerical operations, tree-recursive processes can be useful in helping
 us to understand and design programs.  For instance, although the first
 @code{fib} procedure is much less efficient than the second one, it is more
-straightforward, being little more than a translation into Lisp of the
+straightforward, being little more than a translation into Rust of the
 definition of the Fibonacci sequence.  To formulate the iterative algorithm
 required noticing that the computation could be recast as an iteration with
 three state variables.
@@ -585,45 +654,50 @@ If @math{n} is 0, we should count that as 0 ways to make change.
 @noindent
 We can easily translate this description into a recursive procedure:
 
-@lisp
-(define (count-change amount)
-  (cc amount 5))
+@example rust
+fn count_change(amount: i64) -> i64 @{
+    cc(amount, 5)
+@}
 
-(define (cc amount kinds-of-coins)
-  (cond ((= amount 0) 1)
-        ((or (< amount 0) 
-             (= kinds-of-coins 0)) 
-         0)
-        (else 
-         (+ (cc amount (- kinds-of-coins 1))
-            (cc (- amount (first-denomination 
-                           kinds-of-coins))
-                kinds-of-coins)))))
+fn cc(amount: i64, kinds_of_coins: i64) -> i64 @{
+    if amount == 0 @{
+        1
+    @} else if amount < 0 || kinds_of_coins == 0 @{
+        0
+    @} else @{
+        cc(amount, kinds_of_coins - 1)
+            + cc(amount - first_denomination(kinds_of_coins), kinds_of_coins)
+    @}
+@}
 
-(define (first-denomination kinds-of-coins)
-  (cond ((= kinds-of-coins 1) 1)
-        ((= kinds-of-coins 2) 5)
-        ((= kinds-of-coins 3) 10)
-        ((= kinds-of-coins 4) 25)
-        ((= kinds-of-coins 5) 50)))
-@end lisp
+fn first_denomination(kinds_of_coins: i64) -> i64 @{
+    match kinds_of_coins @{
+        1 => 1,
+        2 => 5,
+        3 => 10,
+        4 => 25,
+        _ => 50,
+    @}
+@}
+@end example
 
 @noindent
-(The @code{first-denomination} procedure takes as input the number of kinds of
+(The @code{first_denomination} function takes as input the number of kinds of
 coins available and returns the denomination of the first kind.  Here we are
 thinking of the coins as arranged in order from largest to smallest, but any
 order would do as well.)  We can now answer our original question about
 changing a dollar:
 
-@lisp
-(count-change 100)
-@i{292}
-@end lisp
+@example rust
+println!("@{@}", count_change(100));
+// => 292
+@end example
 
 @noindent
-@code{Count-change} generates a tree-recursive process with redundancies
+@code{count_change} generates a tree-recursive process with redundancies
 similar to those in our first implementation of @code{fib}.  (It will take
-quite a while for that 292 to be computed.)  On the other hand, it is not
+quite a while for that 292 to be computed---by hand; the running program
+returns it instantly.)  On the other hand, it is not
 obvious how to design a better algorithm for computing the result, and we leave
 this problem as a challenge.  The observation that a tree-recursive process may
 be highly inefficient but often easy to specify and understand has led people
@@ -637,14 +711,19 @@ in the table, in which case we avoid performing the redundant computation.
 This strategy, known as @newterm{tabulation} or @newterm{memoization}, can be
 implemented in a straightforward way.  Tabulation can sometimes be used to
 transform processes that require an exponential number of steps (such as
-@code{count-change}) into processes whose space and time requirements grow
+@code{count_change}) into processes whose space and time requirements grow
 linearly with the input.  See @ref{Exercise 3.27}.}
+
+(The runnable listing of this subsection is
+@code{examples/sec_1_2_tree_recursion.rs}.)
 
 @quotation
 @strong{@anchor{Exercise 1.11}Exercise 1.11:} A function @math{f} is defined by
 the rule that @math{{f(n) = n}} if @math{{n < 3}} and @math{{f(n)} = {f(n-1)} + {2f(n-2)} + {3f(n-3)}} if @math{{n \ge 3}}.  
-Write a procedure that computes @math{f} by means of a recursive process.  Write a procedure that
-computes @math{f} by means of an iterative process.
+Write a procedure that computes @math{f} by means of a recursive process.
+Write a second procedure, expressed as a Rust loop rather than a
+tail-recursive call, that computes @math{f} by means of an iterative
+process.
 @end quotation
 
 @quotation
@@ -746,7 +825,7 @@ constant amount.
 
 @quotation
 @strong{@anchor{Exercise 1.14}Exercise 1.14:} Draw the tree illustrating the
-process generated by the @code{count-change} procedure of @ref{1.2.2}
+process generated by the @code{count_change} procedure of @ref{1.2.2}
 in making change for 11 cents.  What are the orders of growth of the space and
 number of steps used by this process as the amount to be changed increases?
 @end quotation
@@ -772,27 +851,36 @@ sin x = 3 sin --- - 4 sin^3 ---
 to reduce the size of the argument of sin.  (For purposes of this
 exercise an angle is considered ``sufficiently small'' if its magnitude is not
 greater than 0.1 radians.) These ideas are incorporated in the following
-procedures:
+functions:
 
-@lisp
-(define (cube x) (* x x x))
-(define (p x) (- (* 3 x) (* 4 (cube x))))
-(define (sine angle)
-   (if (not (> (abs angle) 0.1))
-       angle
-       (p (sine (/ angle 3.0)))))
-@end lisp
+@example rust
+fn cube(x: f64) -> f64 @{
+    x * x * x
+@}
+
+fn p(x: f64) -> f64 @{
+    3.0 * x - 4.0 * cube(x)
+@}
+
+fn sine(angle: f64) -> f64 @{
+    if angle.abs() <= 0.1 @{
+        angle
+    @} else @{
+        p(sine(angle / 3.0))
+    @}
+@}
+@end example
 
 @enumerate a
 
 @item
-How many times is the procedure @code{p} applied when @code{(sine 12.15)} is
+How many times is the function @code{p} applied when @code{sine(12.15)} is
 evaluated?
 
 @item
 What is the order of growth in space and number of steps (as a function of
-@math{a}) used by the process generated by the @code{sine} procedure when
-@code{(sine a)} is evaluated?
+@math{a}) used by the process generated by the @code{sine} function when
+@code{sine(a)} is evaluated?
 
 @end enumerate
 @end quotation
@@ -820,29 +908,32 @@ b^0 = 1
 @end ifinfo
 which translates readily into the procedure
 
-@lisp
-(define (expt b n)
-  (if (= n 0) 
-      1 
-      (* b (expt b (- n 1)))))
-@end lisp
+@example rust
+fn expt(b: i128, n: u64) -> i128 @{
+    if n == 0 @{
+        1
+    @} else @{
+        b * expt(b, n - 1)
+    @}
+@}
+@end example
 
 @noindent
 This is a linear recursive process, which requires @math{{\Theta(n)}} steps and
 @math{{\Theta(n)}} space.  Just as with factorial, we can readily formulate an
-equivalent linear iteration:
+equivalent linear iteration, again as a loop rather than a tail-recursive
+function:
 
-@lisp
-(define (expt b n) 
-  (expt-iter b n 1))
-
-(define (expt-iter b counter product)
-  (if (= counter 0)
-      product
-      (expt-iter b
-                 (- counter 1)
-                 (* b product))))
-@end lisp
+@example rust
+fn expt_iter(b: i128, n: u64) -> i128 @{
+    let (mut counter, mut product) = (n, 1_i128);
+    while counter != 0 @{
+        product *= b;
+        counter -= 1;
+    @}
+    product
+@}
+@end example
 
 @noindent
 This version requires @math{{\Theta(n)}} steps and @math{{\Theta(1)}} space.
@@ -895,29 +986,32 @@ b^n = b * b^(n - 1)  if n is odd
 @end ifinfo
 We can express this method as a procedure:
 
-@lisp
-(define (fast-expt b n)
-  (cond ((= n 0) 
-         1)
-        ((even? n) 
-         (square (fast-expt b (/ n 2))))
-        (else 
-         (* b (fast-expt b (- n 1))))))
-@end lisp
+@example rust
+fn fast_expt(b: i128, n: u64) -> i128 @{
+    if n == 0 @{
+        1
+    @} else if n.is_multiple_of(2) @{
+        let half = fast_expt(b, n / 2);
+        half * half
+    @} else @{
+        b * fast_expt(b, n - 1)
+    @}
+@}
+@end example
 
 @noindent
-where the predicate to test whether an integer is even is defined in terms of
-the primitive procedure @code{remainder} by
+where the test for whether an integer is even is written directly as
 
-@lisp
-(define (even? n)
-  (= (remainder n 2) 0))
-@end lisp
+@example rust
+fn is_even(n: u64) -> bool @{
+    n.is_multiple_of(2)
+@}
+@end example
 
 @noindent
-The process evolved by @code{fast-expt} grows logarithmically with @math{n} in
+The process evolved by @code{fast_expt} grows logarithmically with @math{n} in
 both space and number of steps.  To see this, observe that computing
-@math{b^{2n}} using @code{fast-expt} requires only one more multiplication
+@math{b^{2n}} using @code{fast_expt} requires only one more multiplication
 than computing @math{b^n}.  The size of the exponent we can compute therefore
 doubles (approximately) with every new multiplication we are allowed.  Thus,
 the number of multiplications required for an exponent of @math{n} grows about as
@@ -932,8 +1026,11 @@ processes are described as @math{{\Theta(\log n)}}.}
 
 The difference between @math{{\Theta(\log n)}} growth and
 @math{{\Theta(n)}} growth becomes striking as @math{n} becomes large.  For
-example, @code{fast-expt} for @math{n} = 1000 requires only 14
-multiplications.@footnote{You may wonder why anyone would care about raising
+example, @code{fast_expt} for @math{n} = 1000 requires only 14
+multiplications by this formula (15 walking the exponent's binary digits
+from the low end the way @code{fast_expt} does, one bit at a time; either
+way, a handful of multiplications where the recursive @code{expt} needs a
+thousand).@footnote{You may wonder why anyone would care about raising
 numbers to the 1000th power.  See @ref{1.2.6}.} It is also possible to
 use the idea of successive squaring to devise an iterative algorithm that
 computes exponentials with a logarithmic number of steps (see @ref{Exercise 1.16}), 
@@ -944,10 +1041,16 @@ iterative algorithm is ancient.  It appears in the @cite{Chandah-sutra} by
 4.6.3, for a full discussion and analysis of this and other methods of
 exponentiation.}
 
+(The runnable listing of this subsection is
+@code{examples/sec_1_2_exponentiation.rs}.)
+
 @quotation
-@strong{@anchor{Exercise 1.16}Exercise 1.16:} Design a procedure that evolves
+@strong{@anchor{Exercise 1.16}Exercise 1.16:} Design a function that evolves
 an iterative exponentiation process that uses successive squaring and uses a
-logarithmic number of steps, as does @code{fast-expt}.  (Hint: Using the
+logarithmic number of steps, as does @code{fast_expt}, expressed as a Rust
+loop rather than a tail-recursive call (Rust performs no tail-call
+optimization, so a recursive spelling of an iterative process here would
+just grow the stack).  (Hint: Using the
 observation that @math{{(b^{n / 2})^2} = {(b^2)^{n / 2}}}, keep, along with
 the exponent @math{n} and the base @math{b}, an additional state variable @math{a}, and
 define the state transformation in such a way that the product @math{{ab^n}} 
@@ -966,23 +1069,27 @@ means of repeated addition.  The following multiplication procedure (in which
 it is assumed that our language can only add, not multiply) is analogous to the
 @code{expt} procedure:
 
-@lisp
-(define (* a b)
-  (if (= b 0)
-      0
-      (+ a (* a (- b 1)))))
-@end lisp
+@example rust
+fn times(a: i64, b: i64) -> i64 @{
+    if b == 0 @{
+        0
+    @} else @{
+        a + times(a, b - 1)
+    @}
+@}
+@end example
 
 This algorithm takes a number of steps that is linear in @code{b}.  Now suppose
 we include, together with addition, operations @code{double}, which doubles an
 integer, and @code{halve}, which divides an (even) integer by 2.  Using these,
-design a multiplication procedure analogous to @code{fast-expt} that uses a
+design a multiplication procedure analogous to @code{fast_expt} that uses a
 logarithmic number of steps.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.18}Exercise 1.18:} Using the results of
-@ref{Exercise 1.16} and @ref{Exercise 1.17}, devise a procedure that generates
+@ref{Exercise 1.16} and @ref{Exercise 1.17}, devise a function, expressed
+as a Rust loop, that generates
 an iterative process for multiplying two integers in terms of adding, doubling,
 and halving and uses a logarithmic number of steps.@footnote{This algorithm,
 which is sometimes known as the ``Russian peasant method'' of multiplication,
@@ -994,7 +1101,7 @@ oldest mathematical documents in existence, written about 1700 @abbr{B.C.}
 @quotation
 @strong{@anchor{Exercise 1.19}Exercise 1.19:} There is a clever algorithm for
 computing the Fibonacci numbers in a logarithmic number of steps.  Recall the
-transformation of the state variables @math{a} and @math{b} in the @code{fib-iter}
+transformation of the state variables @math{a} and @math{b} in the @code{fib_iter}
 process of @ref{1.2.2}: @math{a \gets a + b} and @math{b \gets a}.
 Call this transformation @math{T}, and observe that applying @math{T} over and over
 again @math{n} times, starting with 1 and 0, produces the pair @math{{\hbox{Fib}(n+1)}} and 
@@ -1008,34 +1115,28 @@ Show that if we apply such a transformation @math{T_{pq}} twice, the
 effect is the same as using a single transformation @math{T_{p'q'}} of the
 same form, and compute @math{p'\!} and @math{q'\!} in terms of @math{p} and @math{q}.  This
 gives us an explicit way to square these transformations, and thus we can
-compute @math{T^n} using successive squaring, as in the @code{fast-expt}
+compute @math{T^n} using successive squaring, as in the @code{fast_expt}
 procedure.  Put this all together to complete the following procedure, which
-runs in a logarithmic number of steps:@footnote{This exercise was suggested to
+runs in a logarithmic number of steps, carrying the state in @code{i128}
+because the pair @math{(\hbox{Fib}(n+1), \hbox{Fib}(n))} outgrows a 64-bit
+integer near @math{n = 93}:@footnote{This exercise was suggested to
 us by Joe Stoy, based on an example in @ref{Kaldewaij 1990}.}
 
-@lisp
-(define (fib n)
-  (fib-iter 1 0 0 1 n))
+@example rust
+fn fib(n: u64) -> i128 @{
+    fib_iter(1, 0, 0, 1, n)
+@}
 
-(define (fib-iter a b p q count)
-  (cond ((= count 0) 
-         b)
-        ((even? count)
-         (fib-iter a
-                   b
-                   ⟨??⟩  ;compute @var{p'}
-                   ⟨??⟩  ;compute @var{q'}
-                   (/ count 2)))
-        (else 
-         (fib-iter (+ (* b q) 
-                      (* a q) 
-                      (* a p))
-                   (+ (* b p) 
-                      (* a q))
-                   p
-                   q
-                   (- count 1)))))
-@end lisp
+fn fib_iter(a: i128, b: i128, p: i128, q: i128, count: u64) -> i128 @{
+    if count == 0 @{
+        b
+    @} else if count.is_multiple_of(2) @{
+        fib_iter(a, b, ⟨??⟩, ⟨??⟩, count / 2) // compute p' and q'
+    @} else @{
+        fib_iter(b * q + a * q + a * p, b * p + a * q, p, q, count - 1)
+    @}
+@}
+@end example
 @end quotation
 
 @node	1.2.5, 1.2.6, 1.2.4, 1.2
@@ -1087,14 +1188,21 @@ surely older, but, as Knuth explains, Euclid's algorithm is the oldest known to
 have been presented as a general algorithm, rather than as a set of illustrative
 examples.}
 
-It is easy to express Euclid's Algorithm as a procedure:
+It is easy to express Euclid's Algorithm as a loop: the state variables
+@math{a} and @math{b} step to @math{b} and @math{{a \bmod b}} each pass, and
+this edition writes that step as a loop rather than a tail-recursive
+procedure, for the reason given in @ref{1.2.1}.
 
-@lisp
-(define (gcd a b)
-  (if (= b 0)
-      a
-      (gcd b (remainder a b))))
-@end lisp
+@example rust
+fn gcd(mut a: u64, mut b: u64) -> u64 @{
+    while b != 0 @{
+        let r = a % b;
+        a = b;
+        b = r;
+    @}
+    a
+@}
+@end example
 
 @noindent
 This generates an iterative process, whose number of steps grows as the
@@ -1104,209 +1212,221 @@ The fact that the number of steps required by Euclid's Algorithm has
 logarithmic growth bears an interesting relation to the Fibonacci numbers:
 
 @quotation
-@strong{Lam@'e's Theorem:} If Euclid's Algorithm requires @math{k} steps to
-compute the @abbr{GCD} of some pair, then the smaller number in the pair
-must be greater than or equal to the @math{k^{\hbox{th}}} Fibonacci number.@footnote{This
-theorem was proved in 1845 by Gabriel Lam@'e, a French mathematician and
-engineer known chiefly for his contributions to mathematical physics.  To prove
-the theorem, we consider pairs @math{{(a_k, b_k)}}, where @math{{a_k \ge b_k}}, 
-for which Euclid's Algorithm terminates in @math{k} steps.  The proof
-is based on the claim that, if @math{{(a_{k+1}, b_{k+1})} \to {(a_k, b_k)} \to {(a_{k-1}, b_{k-1})}} 
-are three successive pairs 
-in the reduction process, then we must have @math{b_{k+1} \ge b_k + b_{k-1}}.  
-To verify the claim, consider that a reduction step is defined by applying the 
-transformation @math{{a_{k-1} = b_k}}, @math{{b_{k-1} =}} remainder of @math{a_k} 
-divided by @math{b_k}.  The second equation means that @math{a_k = {qb_k} + {b_{k-1}}} 
-for some positive integer @math{q}.  And since @math{q} must be at least 1 we have 
-@math{a_k = {qb_k} + b_{k-1} \ge b_k + b_{k-1}}.  But in the previous reduction 
-step we have @math{b_{k+1} = a_k}.  Therefore, @math{b_{k+1} = a_k \ge b_k + b_{k-1}}.
-This verifies the claim.  Now we can prove the theorem by induction on @math{k}, 
-the number of steps that the algorithm requires to terminate.  The result is true for 
-@math{{k = 1}}, since this merely requires that @math{b} be at least as large as @math{{\hbox{Fib}(1) = 1}}.  
-Now, assume that the result is true for all integers less than or equal
-to @math{k} and establish the result for @math{{k + 1}}.  
-Let @math{{(a_{k+1}, b_{k+1})} \to {(a_k, b_k)} \to {(a_{k-1}, b_{k-1})}} 
-be successive pairs in the reduction 
-process.  By our induction hypotheses, we have @math{b_{k-1} \ge {\hbox{Fib}(k - 1)}} 
-and @math{b_k \ge {\hbox{Fib}(k)}}.  Thus, applying the claim we just proved together with 
-the definition of the Fibonacci numbers gives 
-@math{b_{k+1} \ge b_k + b_{k-1} \ge {\hbox{Fib}(k)} + {\hbox{Fib}(k-1)} = {\hbox{Fib}(k+1)}}, 
+@strong{Lam@'e's Theorem:}  If Euclid's Algorithm
+requires @math{k} steps to compute the @abbr{GCD} of some pair, then the smaller
+number in the pair must be greater than or equal to the @math{{k^{\hbox{th}}}}
+Fibonacci number.@footnote{This theorem was proved in 1845 by Gabriel Lam@'e, a
+French mathematician and engineer known chiefly for his contributions to
+mathematical physics.  To prove the theorem, we consider pairs
+@math{{(a_k, b_k)}}, where @math{{a_k \ge b_k}}, for which Euclid's Algorithm
+terminates in @math{k} steps.  The proof is based on the claim that, if
+@math{{(a_{k+1}, b_{k+1})} \to {(a_k, b_k)}} to @math{{(a_{k-1}, b_{k-1})}} are
+three successive pairs in the reduction process, then we must have
+@math{{b_{k+1} \ge b_k + b_{k-1}}}.  To verify this claim, consider that a
+reduction step is defined by applying the transformation
+@math{{a_{k-1} = b_k}}, @math{{b_{k-1} = }} remainder of @math{{a_k}} divided
+by @math{{b_k}}.  The second equation means that @math{{a_k = qb_k +
+b_{k-1}}} for some positive integer @math{q}.  And since @math{q} must be at
+least 1 we have @math{{a_k = {qb_k} + {b_{k-1}} \ge {b_k} + {b_{k-1}}}}.  But
+in the previous reduction step we have @math{{b_{k+1} = a_k}}.  Therefore,
+@math{{b_{k+1} = a_k \ge b_k + b_{k-1}}}.  This verifies the claim.  Now we
+can prove the theorem by induction on @math{k}, the number of steps that the
+algorithm requires to terminate.  The result is true for @math{{k = 1}},
+since this merely requires that @math{b} be at least as large as
+@math{{\hbox{Fib}(1) = 1}}.  Now, assume that the result is true for all
+integers less than or equal to @math{k}, and establish the result for
+@math{{k + 1}}.  Let @math{{(a_{k+1}, b_{k+1})} \to {(a_k, b_k)} \to
+{(a_{k-1}, b_{k-1})}} be successive pairs in the reduction process.  By our
+induction hypotheses, we have @math{{b_{k-1} \ge \hbox{Fib}(k - 1)}} and
+@math{{b_k \ge \hbox{Fib}(k)}}.  Thus, applying the claim we just proved
+together with the definition of the Fibonacci numbers gives @math{{b_{k+1}
+\ge b_k + b_{k-1} \ge \hbox{Fib}(k) + \hbox{Fib}(k-1)} = {\hbox{Fib}(k+1)}},
 which completes the proof of Lam@'e's Theorem.}
 @end quotation
 
 @noindent
 We can use this theorem to get an order-of-growth estimate for Euclid's
-Algorithm.  Let @math{n} be the smaller of the two inputs to the procedure.  If
-the process takes @math{k} steps, then we must have 
-@math{n \ge {\hbox{Fib}(k)} \approx {\varphi^k / \sqrt{5}}}.  Therefore the number of steps @math{k}
-grows as the logarithm (to the base @math{\varphi}) of @math{n}.  Hence, the order of
+Algorithm.  Let @math{n} be the smaller of the two inputs to the process.  If
+the process takes @math{k} steps, then we must have @math{n \ge \hbox{Fib}(k)
+\approx \varphi^k / \sqrt{5}}.  Therefore the number of steps @math{k} grows as
+the logarithm (to the base @math{\varphi}) of @math{n}.  Hence, the order of
 growth is @math{{\Theta(\log n)}}.
 
 @quotation
+@emph{SICP exercise 1.20 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
 @strong{@anchor{Exercise 1.20}Exercise 1.20:} The process that a procedure
-generates is of course dependent on the rules used by the interpreter.  As an
-example, consider the iterative @code{gcd} procedure given above.  Suppose we
-were to interpret this procedure using normal-order evaluation, as discussed in
-@ref{1.1.5}.  (The normal-order-evaluation rule for @code{if} is
-described in @ref{Exercise 1.5}.)  Using the substitution method (for normal
-order), illustrate the process generated in evaluating @code{(gcd 206 40)} and
-indicate the @code{remainder} operations that are actually performed.  How many
-@code{remainder} operations are actually performed in the normal-order
-evaluation of @code{(gcd 206 40)}?  In the applicative-order evaluation?
+generates depends on the rules the language uses to evaluate calls.  The
+@code{gcd} loop of @ref{1.2.5} is evaluated eagerly here: Rust evaluates
+the arguments of every call before the call happens, once, exactly as
+Scheme's applicative order does.  Instrument the loop: carry a counter
+that records every time a remainder is computed, run it on
+@code{gcd(206, 40)}, and report both the value and the count.  Then use the
+substitution method to argue what the count would be under normal-order
+evaluation, the substitute-then-evaluate rule of @ref{Exercise 1.5}, where
+the argument expressions are textually inserted and re-evaluated at every
+use.
 @end quotation
 
 @node	1.2.6, 1.3, 1.1, 1.2
 @subsection Example: Testing for Primality
 
 This section describes two methods for checking the primality of an integer
-@math{n}, one with order of growth @math{{\Theta(\sqrt{n})}}, and a
-``probabilistic'' algorithm with order of growth @math{{\Theta(\log n)}}.
-The exercises at the end of this section suggest programming projects based on
+@math{n}, one with order of growth @math{{\Theta(\sqrt n)}}, and a
+``probabilistic'' algorithm with order of growth @math{{\Theta(\log n)}}.  The
+exercises at the end of this section suggest programming projects based on
 these algorithms.
 
 @subsubheading Searching for divisors
 
 Since ancient times, mathematicians have been fascinated by problems concerning
 prime numbers, and many people have worked on the problem of determining ways
-to test if numbers are prime.  One way to test if a number is prime is to find
+to test if a number is prime.  One way to test if a number is prime is to find
 the number's divisors.  The following program finds the smallest integral
 divisor (greater than 1) of a given number @math{n}.  It does this in a
-straightforward way, by testing @math{n} for divisibility by successive integers
-starting with 2.
+straightforward way, by testing @math{n} for divisibility by successive
+integers starting with 2.
 
-@lisp
-(define (smallest-divisor n)
-  (find-divisor n 2))
+@example rust
+fn smallest_divisor(n: u64) -> u64 @{
+    find_divisor(n, 2)
+@}
 
-(define (find-divisor n test-divisor)
-  (cond ((> (square test-divisor) n) 
-         n)
-        ((divides? test-divisor n) 
-         test-divisor)
-        (else (find-divisor 
-               n 
-               (+ test-divisor 1)))))
+fn find_divisor(n: u64, test_divisor: u64) -> u64 @{
+    if test_divisor * test_divisor > n @{
+        n
+    @} else if divides(test_divisor, n) @{
+        test_divisor
+    @} else @{
+        find_divisor(n, test_divisor + 1)
+    @}
+@}
 
-(define (divides? a b)
-  (= (remainder b a) 0))
-@end lisp
-
-@noindent
-We can test whether a number is prime as follows: @math{n} is prime if and only if
-@math{n} is its own smallest divisor.
-
-@lisp
-(define (prime? n)
-  (= n (smallest-divisor n)))
-@end lisp
+fn divides(a: u64, b: u64) -> bool @{
+    b.is_multiple_of(a)
+@}
+@end example
 
 @noindent
-The end test for @code{find-divisor} is based on the fact that if @math{n} is not
-prime it must have a divisor less than or equal to
-@math{\sqrt{n}}.@footnote{If @math{d} is a divisor of @math{n}, then so is
-@math{{n \,/\, d}}.  But @math{d} and @math{{n \,/\, d}} cannot both be greater than
-@math{\sqrt{n}}.}  This means that the algorithm need only test divisors
-between 1 and @math{\sqrt{n}}.  Consequently, the number of steps required
-to identify @math{n} as prime will have order of growth
-@math{{\Theta(\sqrt{n})}}.
+We can test whether a number is prime as follows: @math{n} is prime
+if and only if @math{n} is its own smallest divisor.
+
+@example rust
+fn is_prime(n: u64) -> bool @{
+    n == smallest_divisor(n)
+@}
+@end example
+
+@noindent
+The end test for @code{find_divisor} is based on the fact that if @math{n} is not
+prime it must have a divisor less than or equal to @math{\sqrt{n}}.@footnote{If
+@math{d} is a divisor of @math{n}, then so is @math{{n \,/\, d}}.  But @math{d} and
+@math{{n \,/\, d}} cannot both be greater than @math{\sqrt{n}}.} This means that the
+algorithm need only test divisors between 1 and @math{\sqrt{n}}.  Consequently,
+the number of steps required to identify @math{n} as prime will have order of
+growth @math{{\Theta(\sqrt n)}}.
 
 @subsubheading The Fermat test
 
-The @math{{\Theta(\log n)}} primality test is based on a result from
-number theory known as Fermat's Little Theorem.@footnote{Pierre de Fermat
-(1601-1665) is considered to be the founder of modern number theory.  He
-obtained many important number-theoretic results, but he usually announced just
-the results, without providing his proofs.  Fermat's Little Theorem was stated
-in a letter he wrote in 1640.  The first published proof was given by Euler in
+The @math{{\Theta(\log n)}} primality test is based on a result from number
+theory known as Fermat's Little Theorem.@footnote{Pierre de Fermat (1601-1665)
+is considered to be the founder of modern number theory.  He obtained many
+important number-theoretic results, but he usually announced just the results,
+without providing his proofs.  The first published proof was given by Euler in
 1736 (and an earlier, identical proof was discovered in the unpublished
 manuscripts of Leibniz).  The most famous of Fermat's results---known as
 Fermat's Last Theorem---was jotted down in 1637 in his copy of the book
 @cite{Arithmetic} (by the third-century Greek mathematician Diophantus) with
 the remark ``I have discovered a truly remarkable proof, but this margin is too
 small to contain it.''  Finding a proof of Fermat's Last Theorem became one of
-the most famous challenges in number theory.  A complete solution was finally
+the most famous challenges in mathematics.  A complete solution was finally
 given in 1995 by Andrew Wiles of Princeton University.}
 
 @quotation
 @strong{Fermat's Little Theorem:} If @math{n} is a prime number and @math{a} is any
-positive integer less than @math{n}, then @math{a} raised to the @math{n^{\hbox{th}}} power is
-congruent to @math{a} modulo @math{n}.
+positive integer less than @math{n}, then @math{a} raised to the @math{{n^{\hbox{th}}}}
+power is congruent to @math{a} modulo @math{n}.
 @end quotation
 
 @noindent
-(Two numbers are said to be @newterm{congruent modulo} @math{n} if they both have
-the same remainder when divided by @math{n}.  The remainder of a number @math{a} when
-divided by @math{n} is also referred to as the @newterm{remainder of} @math{a}
-@newterm{modulo} @math{n}, or simply as @math{a} @newterm{modulo} @math{n}.)
+(Two numbers are said to be @newterm{congruent modulo} @math{n} if they both
+have the same remainder when divided by @math{n}.  The remainder of a number
+@math{a} when divided by @math{n} is also referred to as the @newterm{remainder}
+of @math{a} modulo @math{n}, or simply as @math{a} @newterm{modulo} @math{n}.)
 
-If @math{n} is not prime, then, in general, most of the numbers @math{{a < n}} will
-not satisfy the above relation.  This leads to the following algorithm for
-testing primality: Given a number @math{n}, pick a random number @math{{a < n}} and
-compute the remainder of @math{a^n} modulo @math{n}.  If the result is not equal
-to @math{a}, then @math{n} is certainly not prime.  If it is @math{a}, then chances are
-good that @math{n} is prime.  Now pick another random number @math{a} and test it
-with the same method.  If it also satisfies the equation, then we can be even
-more confident that @math{n} is prime.  By trying more and more values of @math{a},
-we can increase our confidence in the result.  This algorithm is known as the
-Fermat test.
+If @math{n} is not prime, then, in general, most of the numbers @math{{a < n}}
+will not satisfy the above relation.  This leads to the following algorithm for
+testing primality: Given a number @math{n}, pick a random number @math{{a < n}}
+and compute the remainder of @math{a^n} modulo @math{n}.  If the result is not
+equal to @math{a}, then @math{n} is certainly not prime.  If it is @math{a}, then
+chances are good that @math{n} is prime.  Now pick another random number
+@math{a} and test it with the same method.  If it also satisfies the equation,
+then we can be even more confident that @math{n} is prime.  By trying more and
+more values of @math{a}, we can increase our confidence in the result.  This
+algorithm is known as the Fermat test.
 
-To implement the Fermat test, we need a procedure that computes the exponential
-of a number modulo another number:
+To implement the Fermat test, we need a function that computes the
+exponential of a number modulo another number:
 
-@lisp
-(define (expmod base exp m)
-  (cond ((= exp 0) 1)
-        ((even? exp)
-         (remainder 
-          (square (expmod base (/ exp 2) m))
-          m))
-        (else
-         (remainder 
-          (* base (expmod base (- exp 1) m))
-          m))))
-@end lisp
+@example rust
+fn expmod(base: i128, exp: i128, m: i128) -> i128 @{
+    if exp == 0 @{
+        1
+    @} else if exp.is_multiple_of(2) @{
+        let half = expmod(base, exp / 2, m);
+        (half * half) % m
+    @} else @{
+        (base * expmod(base, exp - 1, m)) % m
+    @}
+@}
+@end example
 
 @noindent
-This is very similar to the @code{fast-expt} procedure of @ref{1.2.4}.
-It uses successive squaring, so that the number of steps grows logarithmically
+This is very similar to the @code{fast_expt} procedure of @ref{1.2.4}.  It
+uses successive squaring, so that the number of steps grows logarithmically
 with the exponent.@footnote{The reduction steps in the cases where the exponent
-@math{e} is greater than 1 are based on the fact that, for any integers @math{x},
-@math{y}, and @math{m}, we can find the remainder of @math{x} times @math{y} modulo @math{m}
-by computing separately the remainders of @math{x} modulo @math{m} and @math{y} modulo
-@math{m}, multiplying these, and then taking the remainder of the result modulo
-@math{m}.  For instance, in the case where @math{e} is even, we compute the remainder
-of @math{b^{e / 2}} modulo @math{m}, square this, and take the remainder modulo
-@math{m}.  This technique is useful because it means we can perform our
-computation without ever having to deal with numbers much larger than @math{m}.
-(Compare @ref{Exercise 1.25}.)}
+@math{e} is greater than 1 are based on the fact that, for any integers
+@math{x}, @math{y}, and @math{m}, we can find the remainder of @math{x} times
+@math{y} modulo @math{m} by computing separately the remainders of @math{x}
+modulo @math{m} and @math{y} modulo @math{m}, multiplying these, and then taking
+the remainder of the result modulo @math{m}.  For instance, in the case where
+@math{e} is even, we compute the remainder of @math{{b^{e / 2}}} modulo
+@math{m}, square this, and take the remainder modulo @math{m}.  This technique
+is useful because it means we can perform our computation without ever having
+to deal with numbers much larger than @math{m}.  (Compare @ref{Exercise 1.25}.)}
+The residues stay in @code{i128}, whose square fits while @math{m} stays
+below about @math{{10^{19}}}, so the intermediates never grow toward the
+full size of @math{{base^{exp}}}.
 
-The Fermat test is performed by choosing at random a number @math{a} between 1 and
-@math{{n-1}} inclusive and checking whether the remainder modulo @math{n} of the
-@math{n^{\hbox{th}}} power of @math{a} is equal to @math{a}.  The random number @math{a} is chosen
-using the procedure @code{random}, which we assume is included as a primitive
-in Scheme. @code{Random} returns a nonnegative integer less than its integer
-input.  Hence, to obtain a random number between 1 and @math{{n-1}}, we call
-@code{random} with an input of @math{{n-1}} and add 1 to the result:
+Every runtime in this edition ships a seeded @code{Random}, this edition's
+stand-in for the book's primitive @code{random}: @code{random(n)} returns a
+nonnegative integer less than @math{n}, and a fixed seed keeps every run
+reproducible across machines.@footnote{The book assumes @code{random} is
+included as a primitive in Scheme; this edition draws it from the seeded
+generator every runtime ships, so that a run stays reproducible across
+machines instead of depending on the host's own random-number source.}
+Hence, to obtain a
+random number between 1 and @math{{n - 1}}, we call random with an input of
+@math{{n - 1}} and add 1 to the result:
 
-@lisp
-(define (fermat-test n)
-  (define (try-it a)
-    (= (expmod a n n) a))
-  (try-it (+ 1 (random (- n 1)))))
-@end lisp
+@example rust
+fn fermat_test(n: i128, rng: &mut Random) -> bool @{
+    fn try_it(a: i128, n: i128) -> bool @{
+        expmod(a, n, n) == a
+    @}
+    try_it(random_below(rng, n - 1) + 1, n)
+@}
+@end example
 
 @noindent
-The following procedure runs the test a given number of times, as specified by
-a parameter.  Its value is true if the test succeeds every time, and false
+The following function runs the test a given number of times, as specified
+by a parameter.  Its value is true if the test succeeds every time, and false
 otherwise.
 
-@lisp
-(define (fast-prime? n times)
-  (cond ((= times 0) true)
-        ((fermat-test n) 
-         (fast-prime? n (- times 1)))
-        (else false)))
-@end lisp
+@example rust
+fn fast_prime(n: i128, times: u32, rng: &mut Random) -> bool @{
+    (0..times).all(|_| fermat_test(n, rng))
+@}
+@end example
 
 @subsubheading Probabilistic methods
 
@@ -1316,36 +1436,34 @@ obtained is only probably correct.  More precisely, if @math{n} ever fails the
 Fermat test, we can be certain that @math{n} is not prime.  But the fact that
 @math{n} passes the test, while an extremely strong indication, is still not a
 guarantee that @math{n} is prime.  What we would like to say is that for any
-number @math{n}, if we perform the test enough times and find that @math{n} always
-passes the test, then the probability of error in our primality test can be
-made as small as we like.
+number @math{n}, if we perform the test enough times and find that @math{n}
+always passes the test, then the probability of error in our primality test can
+be made as small as we like.
 
 Unfortunately, this assertion is not quite correct.  There do exist numbers
 that fool the Fermat test: numbers @math{n} that are not prime and yet have the
-property that @math{a^n} is congruent to @math{a} modulo @math{n} for all integers
-@math{{a < n}}.  Such numbers are extremely rare, so the Fermat test is quite
-reliable in practice.@footnote{@anchor{Footnote 47} Numbers
-that fool the Fermat test are called @newterm{Carmichael numbers}, and little
-is known about them other than that they are extremely rare.  There are 255
-Carmichael numbers below 100,000,000.  The smallest few are 561, 1105, 1729,
-2465, 2821, and 6601.  In testing primality of very large numbers chosen at
-random, the chance of stumbling upon a value that fools the Fermat test is less
-than the chance that cosmic radiation will cause the computer to make an error
-in carrying out a ``correct'' algorithm.  Considering an algorithm to be
-inadequate for the first reason but not for the second illustrates the
-difference between mathematics and engineering.}
-
-There are variations of the Fermat test that cannot be fooled.  In these tests,
-as with the Fermat method, one tests the primality of an integer @math{n} by
-choosing a random integer @math{{a < n}} and checking some condition that depends
-upon @math{n} and @math{a}.  (See @ref{Exercise 1.28} for an example of such a test.)
-On the other hand, in contrast to the Fermat test, one can prove that, for any
-@math{n}, the condition does not hold for most of the integers @math{{a < n}} unless
-@math{n} is prime.  Thus, if @math{n} passes the test for some random choice of
-@math{a}, the chances are better than even that @math{n} is prime.  If @math{n} passes
-the test for two random choices of @math{a}, the chances are better than 3 out of
-4 that @math{n} is prime. By running the test with more and more randomly chosen
-values of @math{a} we can make the probability of error as small as we like.
+property that @math{a^n} is congruent to @math{a} modulo @math{n} for all
+integers @math{{a < n}}.  Such numbers are extremely rare, so the Fermat test
+is quite reliable in practice.@footnote{@anchor{Footnote 47} Numbers that fool
+the Fermat test are called @newterm{Carmichael numbers}, and little is known
+about them other than that they are extremely rare.  There are 255 Carmichael
+numbers below 100,000,000.  The smallest few are 561, 1105, 1729, 2465, 2821,
+and 6601.  In testing primality of very large numbers chosen at random, the
+chance of stumbling upon a value that fools the Fermat test is less likely than
+the chance that cosmic radiation will cause the computer to make an error in
+carrying out a ``correct'' algorithm.  Considering an algorithm to be inadequate
+for the first reason but not for the second illustrates the difference between
+mathematics and engineering.}  There are variations of the Fermat test that
+cannot be fooled.  In these tests, as with the Fermat method, one tests the
+primality of an integer @math{n} by choosing a random integer @math{{a < n}} and
+checking some condition that depends upon @math{n} and @math{a}.  (See
+@ref{Exercise 1.28} for an example of such a test.)  On the other hand, in
+contrast to the Fermat test, one can prove that, for any @math{n}, the condition
+does not hold for most of the integers @math{{a < n}} unless @math{n} is prime.
+Thus, if @math{n} passes the test for some random choice of @math{a}, the
+chances are better than 3 out of 4 that @math{n} is prime.  By running the test
+with more and more randomly chosen values of @math{a} we can make the
+probability of error as small as we like.
 
 The existence of tests for which one can prove that the chance of error becomes
 arbitrarily small has sparked interest in algorithms of this type, which have
@@ -1356,162 +1474,175 @@ applications of probabilistic prime testing has been to the field of
 cryptography.  Although it is now computationally infeasible to factor an
 arbitrary 200-digit number, the primality of such a number can be checked in a
 few seconds with the Fermat test.  This fact forms the basis of a technique for
-constructing ``unbreakable codes'' suggested by @ref{Rivest et al. (1977)}.  
-The resulting @newterm{RSA algorithm} has become a widely used
-technique for enhancing the security of electronic communications.  Because of
-this and related developments, the study of prime numbers, once considered the
+constructing ``unbreakable codes'' suggested by @ref{Rivest et al. (1977)}.  The
+resulting @newterm{RSA algorithm} has become a widely used technique for
+enhancing the security of electronic communications.  Because of this and
+related developments, the study of prime numbers, once considered to be the
 epitome of a topic in ``pure'' mathematics to be studied only for its own sake,
 now turns out to have important practical applications to cryptography,
 electronic funds transfer, and information retrieval.}
 
+(The runnable listing of this subsection is
+@code{examples/sec_1_2_primality.rs}.)
+
 @quotation
-@strong{@anchor{Exercise 1.21}Exercise 1.21:} Use the @code{smallest-divisor}
-procedure to find the smallest divisor of each of the following numbers: 199,
-1999, 19999.
+@strong{@anchor{Exercise 1.21}Exercise 1.21:} Use the @code{smallest_divisor}
+function to find the smallest divisor of each of the following numbers:
+199, 1999, 19999.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.22}Exercise 1.22:} Most Lisp implementations include
-a primitive called @code{runtime} that returns an integer that specifies the
-amount of time the system has been running (measured, for example, in
-microseconds).  The following @code{timed-prime-test} procedure, when called
-with an integer @math{n}, prints @math{n} and checks to see if @math{n} is prime.  If
-@math{n} is prime, the procedure prints three asterisks followed by the amount of
-time used in performing the test.
+@strong{@anchor{Exercise 1.22}Exercise 1.22:} Rust's standard library
+measures elapsed time with @code{Instant}: @code{Instant::now()} returns a
+point on the machine's monotonic clock, and @code{Instant::elapsed()}
+reports the time since.  The following @code{timed_prime_test} function,
+when called with an integer @math{n}, prints @math{n} and checks to see if
+@math{n} is prime.  If @math{n} is prime, the function prints three
+asterisks followed by the amount of time used in performing the test.
 
-@lisp
-(define (timed-prime-test n)
-  (newline)
-  (display n)
-  (start-prime-test n (runtime)))
-@end lisp
+@example rust
+fn timed_prime_test(n: u64) @{
+    println!("@{n@}");
+    start_prime_test(n, Instant::now());
+@}
 
-@lisp
-(define (start-prime-test n start-time)
-  (if (prime? n)
-      (report-prime (- (runtime) 
-                       start-time))))
-@end lisp
+fn start_prime_test(n: u64, start_time: Instant) @{
+    if is_prime(n) @{
+        report_prime(start_time.elapsed());
+    @}
+@}
 
-@lisp
-(define (report-prime elapsed-time)
-  (display " *** ")
-  (display elapsed-time))
-@end lisp
+fn report_prime(elapsed_time: Duration) @{
+    println!(" *** @{@}", elapsed_time.as_micros());
+@}
+@end example
 
-Using this procedure, write a procedure @code{search-for-primes} that checks
+Using this function, write a function @code{search_for_primes} that checks
 the primality of consecutive odd integers in a specified range.  Use your
-procedure to find the three smallest primes larger than 1000; larger than
-10,000; larger than 100,000; larger than 1,000,000.  Note the time needed to
-test each prime.  Since the testing algorithm has order of growth of
-@math{{\Theta(\sqrt{n})}}, you should expect that testing for primes
-around 10,000 should take about @math{\sqrt{10}} times as long as testing for
-primes around 1000.  Do your timing data bear this out?  How well do the data
-for 100,000 and 1,000,000 support the @math{{\Theta(\sqrt{n})}} prediction?  Is your
-result compatible with the notion that programs on your machine run in time
-proportional to the number of steps required for the computation?
+function to find the three smallest primes larger than 1000; larger than
+10,000; larger than 100,000; larger than 1,000,000.  Note the time needed
+to test each prime.  Since the testing algorithm has order of growth
+@math{{\Theta(\sqrt n)}}, you should expect that testing for primes around
+10,000 should take about @math{\sqrt{10}} times as long as testing for
+primes around 1000.  Do your timing data bear this out?  How well do the
+data for 100,000 and 1,000,000 support the @math{{\Theta(\sqrt n)}}
+prediction?  Is your result compatible with the notion that programs on
+your machine run in time proportional to the number of steps required for
+the computation?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.23}Exercise 1.23:} The @code{smallest-divisor}
-procedure shown at the start of this section does lots of needless testing:
+@strong{@anchor{Exercise 1.23}Exercise 1.23:} The @code{smallest_divisor}
+function shown at the start of this section does lots of needless testing:
 After it checks to see if the number is divisible by 2 there is no point in
-checking to see if it is divisible by any larger even numbers.  This suggests
-that the values used for @code{test-divisor} should not be 2, 3, 4, 5, 6,
-@dots{}, but rather 2, 3, 5, 7, 9, @dots{}.  To implement this change, define a
-procedure @code{next} that returns 3 if its input is equal to 2 and otherwise
-returns its input plus 2.  Modify the @code{smallest-divisor} procedure to use
-@code{(next test-divisor)} instead of @code{(+ test-divisor 1)}.  With
-@code{timed-prime-test} incorporating this modified version of
-@code{smallest-divisor}, run the test for each of the 12 primes found in
-@ref{Exercise 1.22}.  Since this modification halves the number of test steps,
-you should expect it to run about twice as fast.  Is this expectation
-confirmed?  If not, what is the observed ratio of the speeds of the two
-algorithms, and how do you explain the fact that it is different from 2?
+checking to see if it is divisible by any larger even numbers.  This
+suggests that the values used for @code{test_divisor} should not be 2, 3, 4,
+5, 6, @dots{}, but rather 2, 3, 5, 7, 9, @dots{}.  To implement this change,
+define a function @code{next} that returns 3 if its input is equal to 2 and
+otherwise returns its input plus 2.  Modify the @code{smallest_divisor}
+function to use @code{next(test_divisor)} instead of
+@code{test_divisor + 1}.  With @ref{Exercise 1.22}'s @code{timed_prime_test}
+incorporating this modified version of @code{smallest_divisor}, run the
+test on each of the 12 primes found in that exercise.  Since this
+modification halves the number of test steps, you should expect it to run
+about twice as fast.  Is this expectation confirmed?  If not, what is the
+observed ratio of the speeds of the two algorithms, and how do you explain
+the fact that it is different from 2?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.24}Exercise 1.24:} Modify the
-@code{timed-prime-test} procedure of @ref{Exercise 1.22} to use
-@code{fast-prime?} (the Fermat method), and test each of the 12 primes you
-found in that exercise.  Since the Fermat test has @math{{\Theta(\log n)}}
-growth, how would you expect the time to test primes near 1,000,000 to
-compare with the time needed to test primes near 1000?  Do your data bear this
-out?  Can you explain any discrepancy you find?
+@code{timed_prime_test} function of @ref{Exercise 1.22} to use
+@code{fast_prime} (the Fermat method), fed by the seeded generator of
+@ref{1.2.6} rather than a host random-number source, and test each of the
+12 primes you found in that exercise.  Since the Fermat test has
+@math{{\Theta(\log n)}} growth, how would you expect the time to test primes
+near 1,000,000 to compare with the time needed to test primes near 1000?
+Do your data bear this out?  Can you explain any discrepancy you find?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.25}Exercise 1.25:} Alyssa P. Hacker complains that
-we went to a lot of extra work in writing @code{expmod}.  After all, she says,
-since we already know how to compute exponentials, we could have simply written
+we went to a lot of extra work in writing @code{expmod}.  After all, she
+says, since we already know how to compute exponentials, we could have
+simply written
 
-@lisp
-(define (expmod base exp m)
-  (remainder (fast-expt base exp) m))
-@end lisp
+@example rust
+fn expmod(base: i128, exp: i128, m: i128) -> i128 @{
+    fast_expt(base, exp) % m
+@}
+@end example
 
-Is she correct?  Would this procedure serve as well for our fast prime tester?
-Explain.
+Is she correct?  Would this function serve as well for our fast prime
+tester?  Explain.  The book's arithmetic is unbounded; Rust's @code{i128}
+is not, and it is enough to hold @code{fast_expt}'s answer for the small
+inputs this section's other exercises use, but @code{fast_expt(base, exp)}
+itself is the full value @math{{base^{exp}}}, with as many digits as
+@math{{exp \cdot \log_{10} base}}---for the sizes @ref{Exercise 1.24} needs, that
+overflows long before a checked multiplication can finish.  Write Alyssa's
+version with checked multiplication and report exactly where it fails for
+a prime-sized input, then contrast that with @code{expmod} above, whose
+intermediates never leave the neighborhood of @math{m}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.26}Exercise 1.26:} Louis Reasoner is having great
-difficulty doing @ref{Exercise 1.24}.  His @code{fast-prime?} test seems to run
-more slowly than his @code{prime?} test.  Louis calls his friend Eva Lu Ator
-over to help.  When they examine Louis's code, they find that he has rewritten
-the @code{expmod} procedure to use an explicit multiplication, rather than
-calling @code{square}:
+difficulty doing @ref{Exercise 1.24}.  His @code{fast_prime} test seems to
+run more slowly than his @code{is_prime} test.  Louis calls his friend Eva
+Lu Ator over to help.  When they examine Louis's code, they find that he
+has rewritten the @code{expmod} function to use an explicit
+multiplication, rather than reusing the recursive call's value:
 
-@lisp
-(define (expmod base exp m)
-  (cond ((= exp 0) 1)
-        ((even? exp)
-         (remainder 
-          (* (expmod base (/ exp 2) m)
-             (expmod base (/ exp 2) m))
-          m))
-        (else
-         (remainder 
-          (* base 
-             (expmod base (- exp 1) m))
-          m))))
-@end lisp
+@example rust
+fn expmod(base: i128, exp: i128, m: i128) -> i128 @{
+    if exp == 0 @{
+        1
+    @} else if exp.is_multiple_of(2) @{
+        (expmod(base, exp / 2, m) * expmod(base, exp / 2, m)) % m
+    @} else @{
+        (base * expmod(base, exp - 1, m)) % m
+    @}
+@}
+@end example
 
-``I don't see what difference that could make,'' says Louis.  @w{``I do.''}  says
-Eva.  ``By writing the procedure like that, you have transformed the
+``I don't see what difference that could make,'' says Louis.  @w{``I do,''}
+says Eva.  ``By writing the function like that, you have transformed the
 @math{{\Theta(\log n)}} process into a @math{{\Theta(n)}} process.''
-Explain.
+Explain.  Counting the calls makes the point measurable: instrument both
+versions with a call counter and compare the counts for, say,
+@code{expmod(2, 1000, 251)}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.27}Exercise 1.27:} Demonstrate that the Carmichael
-numbers listed in @ref{Footnote 47} really do fool the Fermat test.  That is,
-write a procedure that takes an integer @math{n} and tests whether @math{a^n} is
-congruent to @math{a} modulo @math{n} for every @math{{a < n}}, and try your procedure
-on the given Carmichael numbers.
+numbers listed in @ref{Footnote 47} really do fool the Fermat test.  That
+is, write a procedure that takes an integer @math{n} and tests whether
+@math{a^n} is congruent to @math{a} modulo @math{n} for every @math{{a < n}}, and
+try your procedure on the given Carmichael numbers.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.28}Exercise 1.28:} One variant of the Fermat test
-that cannot be fooled is called the @newterm{Miller-Rabin test} (@ref{Miller 1976};
-@ref{Rabin 1980}).  This starts from an alternate form of Fermat's Little Theorem,
-which states that if @math{n} is a prime number and @math{a} is any positive integer
-less than @math{n}, then @math{a} raised to the @math{{(n-1)}}-st power is congruent to 1
-modulo @math{n}.  To test the primality of a number @math{n} by the Miller-Rabin
-test, we pick a random number @math{{a < n}} and raise @math{a} to the @math{{(n-1)}}-st
-power modulo @math{n} using the @code{expmod} procedure.  However, whenever we
+that cannot be fooled is called the @newterm{Miller-Rabin test}
+(@ref{Rabin 1980}).  This starts from an alternate form of Fermat's Little
+Theorem, which states that if @math{n} is a prime number and @math{a} is any
+positive integer less than @math{n}, then @math{a} raised to the
+@math{{(n-1)}}-st power is congruent to 1 modulo @math{n}.  To test the
+primality of a number @math{n} by the Miller-Rabin test, we pick a random
+number @math{{a < n}} and raise @math{a} to the @math{{(n-1)}}-st power
+modulo @math{n} using the @code{expmod} procedure.  However, whenever we
 perform the squaring step in @code{expmod}, we check to see if we have
-discovered a ``nontrivial square root of 1 modulo @math{n},'' that is, a number
-not equal to 1 or @math{{n-1}} whose square is equal to 1 modulo @math{n}.  It is
-possible to prove that if such a nontrivial square root of 1 exists, then @math{n}
-is not prime.  It is also possible to prove that if @math{n} is an odd number that
-is not prime, then, for at least half the numbers @math{{a < n}}, computing
-@math{a^{n-1}} in this way will reveal a nontrivial square root of 1 modulo
-@math{n}.  (This is why the Miller-Rabin test cannot be fooled.)  Modify the
-@code{expmod} procedure to signal if it discovers a nontrivial square root of
-1, and use this to implement the Miller-Rabin test with a procedure analogous
-to @code{fermat-test}.  Check your procedure by testing various known primes
-and non-primes.  Hint: One convenient way to make @code{expmod} signal is to
-have it return 0.
+discovered a ``nontrivial square root of 1 modulo @math{n},'' that is, a
+number not equal to 1 or @math{{n - 1}} whose square is equal to 1 modulo
+@math{n}.  It is possible to prove that if such a nontrivial square root of
+1 exists, then @math{n} is not prime.  It is also possible to prove that if
+@math{n} is an odd number that is not prime, then, for at least half the
+numbers @math{{a < n}}, computing @math{{a^{n-1}}} in this way will reveal
+a nontrivial square root of 1 modulo @math{n}.  (This is why the
+Miller-Rabin test cannot be fooled.)  Modify the @code{expmod} procedure to
+signal if it discovers a nontrivial square root of 1, and use this to
+implement the Miller-Rabin test with a procedure analogous to
+@code{fermat_test}.  Check your procedure by testing various known primes
+and non-primes.  Hint: One convenient way to make @code{expmod} signal is
+to have it return 0.
 @end quotation
-

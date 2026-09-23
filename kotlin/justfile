@@ -1,0 +1,53 @@
+# Kotlin edition: gates and the pending-scaffold report.
+
+setup:
+    ./gradlew --version
+
+fmt:
+    ./gradlew ktlintCheck
+
+lint:
+    ./gradlew build
+
+test:
+    ./gradlew test examplesTest solutionsTest
+
+# Exits nonzero while a scaffold is unsolved; the disabled tests are the report.
+scaffold:
+    ./gradlew exercisesTest --continue
+
+# The edition book build; the book tree is created in Phase A3.
+book-html-epub:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f book/main.texi ]; then
+        echo "kotlin/book/main.texi is missing; the edition book tree is created in Phase A3" >&2
+        exit 1
+    fi
+    uv run --directory .. tools/build_css.py --assets text/assets/css --out kotlin/book
+    cd book
+    rm -rf _build/html
+    mkdir -p _build/html
+    ../../tools/texi2any_html.sh --html --split=section -c HIGHLIGHT_SYNTAX=pygments \
+        --css-include=book.css -o _build/html main.texi
+    uv run --directory ../.. tools/edition_switcher.py --html kotlin/book/_build/html --edition kotlin
+    uv run --directory ../.. tools/check_html_assets.py --html kotlin/book/_build/html --site-root .
+    uv run --directory ../.. tools/math_check.py --html kotlin/book/_build/html --source kotlin/book
+    ../../tools/texi2any_html.sh --epub3 -c HIGHLIGHT_SYNTAX=pygments \
+        --css-include=book-epub.css -o _build/kotlin-sicp.epub main.texi
+    uv run --directory ../.. tools/epub_manifest_fix.py --epub kotlin/book/_build/kotlin-sicp.epub
+    epubcheck _build/kotlin-sicp.epub
+
+book-pdf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f book/main.texi ]; then
+        echo "kotlin/book/main.texi is missing" >&2
+        exit 1
+    fi
+    uv run --directory .. tools/figures_pdf.py --src text/original/figures --out text/original/figures/pdf
+    cd book
+    mkdir -p _build
+    texi2dvi --expand --pdf --batch --build=local -o _build/kotlin-sicp.pdf main.texi
+
+book: book-html-epub book-pdf

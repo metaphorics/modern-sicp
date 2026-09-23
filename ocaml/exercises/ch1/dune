@@ -1,0 +1,14 @@
+(library
+ (name sicp_ch1_exercises)
+ (libraries sicp_common)
+ (modules sec_1_1))
+
+(executable
+ (name scaffold_sec_1_1)
+ (modules scaffold_sec_1_1)
+ (libraries sicp_ch1_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_1_1.exe)))

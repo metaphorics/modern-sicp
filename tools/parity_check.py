@@ -14,6 +14,13 @@ from split_texi import compare, join
 from texi_indexes import anchors, source_files
 
 
+def image_ref(ref: str) -> str:
+    """Reduce an @image path to its figure identity across source layouts."""
+    ref = re.sub(r"\.std$", "", ref)
+    ref = ref.rsplit("figures/", 1)[-1]
+    return ref.removeprefix("fig/").removeprefix("pdf/")
+
+
 def counts(text: str) -> dict[str, int]:
     """Measure source constructs before macro expansion."""
     return {
@@ -22,7 +29,7 @@ def counts(text: str) -> dict[str, int]:
         "floats": len(re.findall(r"^@float(?:\s|$)", text, re.MULTILINE)),
         "displaymath": len(re.findall(r"^@displaymath(?:\s|$)", text, re.MULTILINE)),
         "raw_tex": len(re.findall(r"^@tex$", text, re.MULTILINE)),
-        "image_refs": len(set(re.findall(r"@image\{([^,}]+)", text))),
+        "image_refs": len({image_ref(ref) for ref in re.findall(r"@image\{([^,}]+)", text)}),
         "footnotes": text.count("@footnote{"),
         "index_entries": len(re.findall(r"^@cindex\b", text, re.MULTILINE))
         + text.count("@newterm{"),

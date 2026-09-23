@@ -82,6 +82,7 @@ setup-kotlin:
 books-prefix := env_var_or_default("MODERN_SICP_PREFIX", env_var("HOME") / ".local")
 texinfo-sha256 := "51f74eb0f51cfa9873b85264dfdd5d46e8957ec95b88f0fb762f63d9e164c72e"
 epubcheck-sha256 := "33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c"
+archive-zip-sha256 := "984e185d785baf6129c6e75f8eb44411745ac00bf6122fb1c8e822a3861ec650"
 librsvg2-bin-version := "2.61.3+dfsg-3"
 
 setup-books:
@@ -99,6 +100,14 @@ setup-books:
         ./configure --prefix="$prefix"
         make -j"$(nproc)"
         make install
+    fi
+
+    if ! PERL5LIB="$prefix/lib/perl5" perl -MArchive::Zip -e 1 >/dev/null 2>&1; then
+        cd "$prefix/src"
+        curl -fsSLO https://www.cpan.org/modules/by-module/Archive/Archive-Zip-1.68.tar.gz
+        echo '{{archive-zip-sha256}}  Archive-Zip-1.68.tar.gz' | sha256sum -c -
+        tar xf Archive-Zip-1.68.tar.gz
+        (cd Archive-Zip-1.68 && perl Makefile.PL INSTALL_BASE="$prefix" && make -j"$(nproc)" && make install)
     fi
 
     if ! [ -x "$prefix/bin/epubcheck" ]; then

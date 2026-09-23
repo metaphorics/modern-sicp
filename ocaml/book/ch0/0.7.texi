@@ -1,0 +1,4 @@
+@node	0.7, 0.8, Chapter 0, Chapter 0
+@section Testing
+
+This section covers the test framework, property tests, how solutions are checked, and the pending marker.

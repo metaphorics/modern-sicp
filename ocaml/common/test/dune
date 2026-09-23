@@ -1,0 +1,9 @@
+(executable
+ (name test_random)
+ (modules test_random)
+ (libraries sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_random.exe)))

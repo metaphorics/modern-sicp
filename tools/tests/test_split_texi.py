@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from split_texi import join, main
+from split_texi import join, main, plain_alt
 
 SOURCE = r"""\input texinfo
 @node Top
@@ -50,8 +50,17 @@ def test_split_join_preserves_bytes_and_renders_figures(tmp_path: Path) -> None:
     assert "@displaymath\nx^2\n@end displaymath\n@ifinfo" in section
     assert "@tex\n" not in section
     assert "@ifhtml\n@image{" in section
-    assert "Figure 1.1: A @code{nested} caption@comma{} with a comma." in section
+    assert "Figure 1.1: A nested caption@comma{} with a comma." in section
     assert section.count("@caption{") == 1
+
+
+def test_plain_alt_reduces_caption_markup_to_text() -> None:
+    """The @image alt carries no markup: elements inside attributes break XML."""
+    assert (
+        plain_alt("set @math{{\\{1@comma{} 3\\}}} seen in @ref{Figure 2.5}")
+        == "set @{1@comma{} 3@} seen in Figure 2.5"
+    )
+    assert plain_alt("a @code{car} cell") == "a car cell"
 
 
 TWO_EDITS = r"""\input texinfo

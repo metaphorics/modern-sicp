@@ -1,0 +1,4 @@
+@node	0.6, 0.7, Chapter 0, Chapter 0
+@section Errors as values
+
+This section covers the edition's error type and how this book uses it.

@@ -31,10 +31,10 @@ containing the @code{cdr}.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.2e,,57mm,Figure 2.2: Box-and-pointer representation of @code{(cons 1 2)}.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.2e,,57mm,Figure 2.2: Box-and-pointer representation of (cons 1 2).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.2e,,57mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.2e.std,,57mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.2:} Box-and-pointer representation of @code{(cons 1 2)}.}
@@ -79,7 +79,7 @@ numbers 1, 2, 3, and 4.
 @image{../../text/original/figures/chap2/Fig2.3e,,147mm,Figure 2.3: Two ways to combine 1@comma{} 2@comma{} 3@comma{} and 4 using pairs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.3e,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.3e.std,,147mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.3:} Two ways to combine 1, 2, 3, and 4 using pairs.}
@@ -176,7 +176,7 @@ nested @code{cons} operations:
 @image{../../text/original/figures/chap2/Fig2.4e,,125mm,Figure 2.4: The sequence 1@comma{} 2@comma{} 3@comma{} 4 represented as a chain of pairs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.4e,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.4e.std,,125mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.4:} The sequence 1, 2, 3, 4 represented as a chain of pairs.}
@@ -757,10 +757,10 @@ this structure in terms of pairs.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.5e,,140mm,Figure 2.5: Structure formed by @code{(cons (list 1 2) (list 3 4))}.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.5e,,140mm,Figure 2.5: Structure formed by (cons (list 1 2) (list 3 4)).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.5e,,140mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.5e.std,,140mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.5:} Structure formed by @code{(cons (list 1 2) (list 3 4))}.}
@@ -788,10 +788,10 @@ shows the structure in @ref{Figure 2.5} viewed as a tree.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.6b,,40mm,Figure 2.6: The list structure in @ref{Figure 2.5} viewed as a tree.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.6b,,40mm,Figure 2.6: The list structure in Figure 2.5 viewed as a tree.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.6b,,40mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.6b.std,,40mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.6:} The list structure in @ref{Figure 2.5} viewed as a tree.}
@@ -1240,10 +1240,10 @@ the commonality between the two programs.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.7e,,147mm,Figure 2.7: The signal-flow plans for the procedures @code{sum-odd-squares} (top) and @code{even-fibs} (bottom) reveal the commonality between the two programs.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.7e,,147mm,Figure 2.7: The signal-flow plans for the procedures sum-odd-squares (top) and even-fibs (bottom) reveal the commonality between the two programs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.7e,,147mm,,.pdf} 
+@image{../../text/original/figures/pdf/chap2/Fig2.7e.std,,147mm,,.pdf} 
 
 @end iftex
 @caption{@strong{Figure 2.7:} The signal-flow plans for the procedures @code{sum-odd-squares} (top) and @code{even-fibs} (bottom) reveal the commonality between the two programs.}
@@ -1930,7 +1930,7 @@ produce not only one solution, but all solutions to the puzzle.
 @image{../../text/original/figures/chap2/Fig2.8c,,73mm,Figure 2.8: A solution to the eight-queens puzzle.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.8c,,73mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.8c.std,,73mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.8:} A solution to the eight-queens puzzle.}
@@ -2030,7 +2030,7 @@ build arbitrarily complicated patterns.
 @image{../../text/original/figures/chap2/Fig2.9,,60mm,Figure 2.9: Designs generated with the picture language.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.9,,60mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.9.std,,60mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.9:} Designs generated with the picture language.}
@@ -2119,10 +2119,10 @@ lines, are not part of the images.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.10,,58mm,Figure 2.10: Images produced by the @code{wave} painter@comma{} with respect to four different frames. The frames@comma{} shown with dotted lines@comma{} are not part of the images.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.10,,58mm,Figure 2.10: Images produced by the wave painter@comma{} with respect to four different frames. The frames@comma{} shown with dotted lines@comma{} are not part of the images.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.10,,58mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.10.std,,58mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.10:} Images produced by the @code{wave} painter, with respect to four different frames.  The frames, shown with dotted lines, are not part of the images.}
@@ -2141,10 +2141,10 @@ permission of the @abbr{MIT} Museum).
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.11,,58mm,Figure 2.11: Images of William Barton Rogers@comma{} founder and first president of @abbr{MIT}@comma{} painted with respect to the same four frames as in @ref{Figure 2.10} (original image from Wikimedia Commons).,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.11,,58mm,Figure 2.11: Images of William Barton Rogers@comma{} founder and first president of MIT@comma{} painted with respect to the same four frames as in Figure 2.10 (original image from Wikimedia Commons).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.11,,58mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.11.std,,58mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.11:} Images of William Barton Rogers, founder and first president of @abbr{MIT}, painted with respect to the same four frames as in @ref{Figure 2.10} (original image from Wikimedia Commons).}
@@ -2186,10 +2186,10 @@ from the @code{wave} painter of @ref{Figure 2.10}.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.12,,118mm,Figure 2.12: Creating a complex figure@comma{} starting from the @code{wave} painter of @ref{Figure 2.10}.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.12,,118mm,Figure 2.12: Creating a complex figure@comma{} starting from the wave painter of Figure 2.10.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.12,,118mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.12.std,,118mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.12:} Creating a complex figure, starting from the @code{wave} painter of @ref{Figure 2.10}.}
@@ -2269,10 +2269,10 @@ and @ref{Figure 2.14}:
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.13a,,132mm,Figure 2.13: Recursive plans for @code{right-split} and @code{corner-split}.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.13a,,132mm,Figure 2.13: Recursive plans for right-split and corner-split.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.13a,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.13a.std,,132mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.13:} Recursive plans for @code{right-split} and @code{corner-split}.}
@@ -2322,10 +2322,10 @@ symmetric @code{square-limit} designs as shown in @ref{Figure 2.9}.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.14b,,136mm,Figure 2.14: The recursive operations @code{right-split} and @code{corner-split} applied to the painters @code{wave} and @code{rogers}. Combining four @code{corner-split} figures produces symmetric @code{square-limit} designs as shown in @ref{Figure 2.9}.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.14b,,136mm,Figure 2.14: The recursive operations right-split and corner-split applied to the painters wave and rogers. Combining four corner-split figures produces symmetric square-limit designs as shown in Figure 2.9.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.14b,,136mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.14b.std,,136mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.14:} The recursive operations @code{right-split} and @code{corner-split} applied to the painters @code{wave} and @code{rogers}.  Combining four @code{corner-split} figures produces symmetric @code{square-limit} designs as shown in @ref{Figure 2.9}.}
@@ -2476,7 +2476,7 @@ vector    \    __--        edge1
 @image{../../text/original/figures/chap2/Fig2.15a,,78mm,Figure 2.15: A frame is described by three vectors --- an origin and two edges.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap2/Fig2.15a,,78mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.15a.std,,78mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.15:} A frame is described by three vectors --- an origin and two edges.}

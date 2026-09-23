@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Structure and Interpretation of Computer Programs, in four languages</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header>
+<h1>Structure and Interpretation of Computer Programs</h1>
+<p class="subtitle">Four editions: Rust, OCaml, TypeScript, Kotlin</p>
+</header>
+
+<main>
+<section id="lineage">
+<p>Harold Abelson and Gerald Jay Sussman with Julie Sussman wrote <cite>Structure
+and Interpretation of Computer Programs</cite> (second edition, 1996); this
+project adapts the book, with its section and exercise numbers kept one to one,
+into four modern editions. The text and figures are adapted from the
+unofficial Texinfo edition of the original, which is licensed CC&nbsp;BY-SA&nbsp;4.0.
+The adaptation notice and the full attribution chain are in
+<a href="https://github.com/metaphorics/modern-sicp/blob/master/NOTICE.md">NOTICE.md</a>.</p>
+</section>
+
+<section id="editions">
+<h2>The editions</h2>
+<table>
+<thead>
+<tr><th>Edition</th><th>Toolchain</th><th>Read</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>Rust</td>
+<td>Rust 1.98.1, edition 2024</td>
+<td><a href="rust/index.html">HTML</a> &middot;
+<a href="rust/book/_build/rust-sicp.epub">EPUB 3</a> &middot;
+<a href="rust/book/_build/rust-sicp.pdf">PDF</a></td>
+</tr>
+<tr>
+<td>OCaml</td>
+<td>OCaml 5.5.1, Dune 3.24</td>
+<td><a href="ocaml/index.html">HTML</a> &middot;
+<a href="ocaml/book/_build/ocaml-sicp.epub">EPUB 3</a> &middot;
+<a href="ocaml/book/_build/ocaml-sicp.pdf">PDF</a></td>
+</tr>
+<tr>
+<td>TypeScript</td>
+<td>TypeScript 7.0.2, Effect 4, Node 24 LTS</td>
+<td><a href="typescript/index.html">HTML</a> &middot;
+<a href="typescript/book/_build/typescript-sicp.epub">EPUB 3</a> &middot;
+<a href="typescript/book/_build/typescript-sicp.pdf">PDF</a></td>
+</tr>
+<tr>
+<td>Kotlin</td>
+<td>Kotlin 2.4.20, Arrow 2.2.3, JDK 25</td>
+<td><a href="kotlin/index.html">HTML</a> &middot;
+<a href="kotlin/book/_build/kotlin-sicp.epub">EPUB 3</a> &middot;
+<a href="kotlin/book/_build/kotlin-sicp.pdf">PDF</a></td>
+</tr>
+</tbody>
+</table>
+</section>
+
+<section id="differences">
+<h2>How the editions differ</h2>
+<p>Every edition keeps SICP's section and exercise numbers and solves all 356
+exercises in its own language. Three sections are re-cut because the host
+language changes the lesson: <b>3.2</b> (the environment model, redrawn for each
+language's closures), <b>3.4</b> (concurrency, on each language's own primitives),
+and <b>4.3</b> (nondeterministic evaluation, rebuilt on each language's own search
+mechanism). The full list of tailored additions and replacements is in the
+<a href="https://github.com/metaphorics/modern-sicp/blob/master/docs/exercise-map.md">exercise map</a>.</p>
+</section>
+
+<section id="how-to-read">
+<h2>How to read</h2>
+<p>Each edition opens with a Chapter 0 primer that teaches only the language
+subset the book uses. Section 0.8, <i>Reading this book</i>, explains the
+interaction convention used in every listing and how exercise numbers map to
+SICP's; start there:
+<a href="rust/0_002e8.html">Rust</a> &middot;
+<a href="ocaml/0_002e8.html">OCaml</a> &middot;
+<a href="typescript/0_002e8.html">TypeScript</a> &middot;
+<a href="kotlin/0_002e8.html">Kotlin</a>.</p>
+</section>
+</main>
+
+<footer>
+<p>Adapted from <cite>Structure and Interpretation of Computer Programs</cite>,
+second edition, by Harold Abelson, Gerald Jay Sussman, and Julie Sussman (MIT
+Press, 1996), through the unofficial Texinfo edition. Text and figures:
+CC&nbsp;BY-SA&nbsp;4.0. Examples, exercises, and solutions: GPL-3.0-only. See
+<a href="https://github.com/metaphorics/modern-sicp/blob/master/NOTICE.md">NOTICE.md</a>
+for the complete attribution chain.</p>
+</footer>
+</body>
+</html>

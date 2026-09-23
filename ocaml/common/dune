@@ -1,0 +1,3 @@
+(library
+ (name sicp_common)
+ (modules error pending random))

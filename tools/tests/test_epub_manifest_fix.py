@@ -8,7 +8,7 @@ import pytest
 from epub_manifest_fix import main
 
 CONTAINER = b"""<?xml version="1.0" encoding="UTF-8"?>
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container:1.0">
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
   <rootfiles>
     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
   </rootfiles>
@@ -73,7 +73,9 @@ def test_fixes_svg_media_type_and_adds_mathml(
     epub = tmp_path / "book.epub"
     build_epub(epub)
     assert main(["--epub", str(epub)]) == 0
-    assert capsys.readouterr().out == "svg_items=2 mathml_docs=2\n"
+    assert capsys.readouterr().out == (
+        "svg_items=2 mathml_docs=2 closed_dups=0 svg_css=0 css_items=0\n"
+    )
     items = opf_items(epub)
     assert items["fig1.svg"]["media-type"] == "image/svg+xml"
     assert items["fig2.svg"]["media-type"] == "image/svg+xml"
@@ -114,7 +116,10 @@ def test_second_run_is_byte_identical(tmp_path: Path, capsys: pytest.CaptureFixt
     first = read_zip(epub)
     assert main(["--epub", str(epub)]) == 0
     assert read_zip(epub) == first
-    assert capsys.readouterr().out == "svg_items=2 mathml_docs=2\nsvg_items=2 mathml_docs=2\n"
+    assert capsys.readouterr().out == (
+        "svg_items=2 mathml_docs=2 closed_dups=0 svg_css=0 css_items=0\n"
+        "svg_items=2 mathml_docs=2 closed_dups=0 svg_css=0 css_items=0\n"
+    )
 
 
 def test_missing_container_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

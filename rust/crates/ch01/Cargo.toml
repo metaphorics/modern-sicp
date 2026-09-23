@@ -1,0 +1,19 @@
+[package]
+name = "ch01"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+autoexamples = false
+autotests = false
+
+[lib]
+path = "src/lib.rs"
+
+[[test]]
+name = "scaffold_sec_1_1"
+path = "../../exercises/ch01/sec_1_1.rs"
+
+[lints]
+workspace = true

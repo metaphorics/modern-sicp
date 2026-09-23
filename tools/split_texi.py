@@ -479,33 +479,86 @@ REWRITES: dict[str, str] = {
         "\\]\n"
     ): (
         "\\matrix{\n"
-        "⟨\\kern0.1em{seq_1}⟩                     &\n"
+        "\\hbox{⟨}\\kern0.1em{seq_1}\\hbox{⟩}                     &\n"
         "\\hbox{(save}                            &\n"
         "\\hbox{(save}                            &\n"
-        "\\hbox{(save} \\kern1ex ⟨\\kern0.1em{reg_2}⟩\\hbox{)}    \\cr\n"
-        "⟨\\kern0.1em{seq_2}⟩  \t\t        &\n"
-        "\\kern1ex ⟨\\kern0.1em{reg_1}⟩\\hbox{)}    &\n"
-        "\\kern1ex ⟨\\kern0.1em{reg_2}⟩\\hbox{)}    &\n"
-        "\\hbox{(save} \\kern1ex ⟨\\kern0.1em{reg_1}⟩\\hbox{)}    \\cr\n"
+        "\\hbox{(save} \\kern1ex \\hbox{⟨}\\kern0.1em{reg_2}\\hbox{⟩}\\hbox{)}    \\cr\n"
+        "\\hbox{⟨}\\kern0.1em{seq_2}\\hbox{⟩}  \t\t        &\n"
+        "\\kern1ex \\hbox{⟨}\\kern0.1em{reg_1}\\hbox{⟩}\\hbox{)}    &\n"
+        "\\kern1ex \\hbox{⟨}\\kern0.1em{reg_2}\\hbox{⟩}\\hbox{)}    &\n"
+        "\\hbox{(save} \\kern1ex \\hbox{⟨}\\kern0.1em{reg_1}\\hbox{⟩}\\hbox{)}    \\cr\n"
         "                                        &\n"
-        "⟨\\kern0.1em{seq_1}⟩                     &\n"
-        "⟨\\kern0.1em{seq_1}⟩                     &\n"
-        "⟨\\kern0.1em{seq_1}⟩                                  \\cr\n"
+        "\\hbox{⟨}\\kern0.1em{seq_1}\\hbox{⟩}                     &\n"
+        "\\hbox{⟨}\\kern0.1em{seq_1}\\hbox{⟩}                     &\n"
+        "\\hbox{⟨}\\kern0.1em{seq_1}\\hbox{⟩}                                  \\cr\n"
         "                                        &\n"
         "\\hbox{(restore}                         &\n"
         "\\hbox{(restore}                         &\n"
-        "\\hbox{(restore} \\kern1ex ⟨\\kern0.1em{reg_1}⟩\\hbox{)} \\cr\n"
+        "\\hbox{(restore} \\kern1ex \\hbox{⟨}\\kern0.1em{reg_1}\\hbox{⟩}\\hbox{)} \\cr\n"
         "                                        &\n"
-        "\\kern1ex ⟨\\kern0.1em{reg_1}⟩\\hbox{)}    &\n"
-        "\\kern1ex ⟨\\kern0.1em{reg_2}⟩\\hbox{)}    &\n"
-        "\\hbox{(restore} \\kern1ex ⟨\\kern0.1em{reg_2}⟩\\hbox{)} \\cr\n"
+        "\\kern1ex \\hbox{⟨}\\kern0.1em{reg_1}\\hbox{⟩}\\hbox{)}    &\n"
+        "\\kern1ex \\hbox{⟨}\\kern0.1em{reg_2}\\hbox{⟩}\\hbox{)}    &\n"
+        "\\hbox{(restore} \\kern1ex \\hbox{⟨}\\kern0.1em{reg_2}\\hbox{⟩}\\hbox{)} \\cr\n"
         "                                        &\n"
-        "⟨\\kern0.1em{seq_2}⟩                     &\n"
-        "⟨\\kern0.1em{seq_2}⟩                     &\n"
-        "⟨\\kern0.1em{seq_2}⟩\n"
+        "\\hbox{⟨}\\kern0.1em{seq_2}\\hbox{⟩}                     &\n"
+        "\\hbox{⟨}\\kern0.1em{seq_2}\\hbox{⟩}                     &\n"
+        "\\hbox{⟨}\\kern0.1em{seq_2}\\hbox{⟩}\n"
         "}"
     ),
 }
+
+
+def split_args(body: str) -> list[str]:
+    """Split one command body at top-level commas."""
+    args: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for char in body:
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        if char == "," and depth == 0:
+            args.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    args.append("".join(current))
+    return args
+
+
+def plain_alt(text: str) -> str:
+    """Reduce caption markup to the plain text an @image alt may carry.
+
+    Markup inside the alt argument expands into elements inside an attribute,
+    which no strict XML reader accepts, and texi2any warns on @ref there.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        if text[i] != "@":
+            out.append(text[i])
+            i += 1
+            continue
+        command = re.match(r"@([a-zA-Z]+)\{", text[i:])
+        if command is None:
+            out.append(text[i])
+            i += 1
+            continue
+        body, end = braced(text, i + command.end())
+        name = command[1]
+        if name == "math":
+            plain = body[1:-1] if body.startswith("{") and body.endswith("}") else body
+            out.append(plain.replace("\\{", "@{").replace("\\}", "@}"))
+        elif name == "comma":
+            out.append("@comma{}")
+        elif name == "ref":
+            args = [arg.strip() for arg in split_args(body)]
+            out.append(args[1] if len(args) > 1 and args[1] else args[0])
+        else:
+            out.append(body)
+        i = end
+    return "".join(out)
 
 
 @dataclass(frozen=True, slots=True)
@@ -558,10 +611,14 @@ def figure(match: re.Match[str]) -> str:
     size = height or width
     alt = re.sub(r"@strong\{(Figure [^}]+)\}", r"\1", caption)
     alt = " ".join(alt.split()).replace(",", "@comma{}")
+    alt = plain_alt(alt)
     html = f"@ifhtml\n@image{{{path},,{size},{alt},.std.svg}}\n@end ifhtml\n"
-    pdf = f"@image{{{path},,{size},,.pdf}}"
+    pdf_path = re.sub(r"(figures)/", r"\1/pdf/", path, count=1)
+    pdf = f"@image{{{pdf_path}.std,,{size},,.pdf}}"
     text = text[:caption_start] + text[caption_end:]
     text = text.replace(image[0], pdf, 1)
+    if "@iftex\n" not in text:
+        raise ValueError("Figure float lacks an @iftex anchor for the HTML twin")
     text = text.replace("@iftex\n", html + "@iftex\n", 1)
     return text.replace("@end float", f"@caption{{{caption}}}\n@end float", 1)
 
@@ -643,9 +700,25 @@ def replace_fractions(text: str, edits: list[Substitution]) -> str:
     return text
 
 
+def inline_image(match: re.Match[str]) -> str:
+    """Give an inline SVG image a TeX-only twin that names the PDF variant."""
+    path, width, height, alt = match[1], match[2], match[3], match[4]
+    pdf_path = re.sub(r"(figures)/", r"\1/pdf/", path, count=1)
+    return (
+        f"@ifhtml\n@image{{{path},{width},{height},{alt},.std.svg}}\n@end ifhtml\n"
+        f"@iftex\n@image{{{pdf_path}.std,{width},{height},,.pdf}}\n@end iftex"
+    )
+
+
 def transform(text: str, figures_rel: str) -> tuple[str, list[Substitution]]:
     """Apply only the seven declared source transformations."""
     edits: list[Substitution] = []
+    text = replace_matches(
+        text,
+        r"@image\{fig/",
+        lambda _: f"@image{{{figures_rel.rstrip('/')}/",
+        edits,
+    )
     text = replace_matches(text, r"^@float[^\n]*\n.*?^@end float\n", figure, edits)
     text = replace_matches(
         text,
@@ -655,8 +728,8 @@ def transform(text: str, figures_rel: str) -> tuple[str, list[Substitution]]:
     )
     text = replace_matches(
         text,
-        r"@image\{fig/",
-        lambda _: f"@image{{{figures_rel.rstrip('/')}/",
+        r"(?<!@ifhtml\n)@image\{([^}\n]+),([^}\n]*),([^}\n]*),([^}\n]*),\.std\.svg\}",
+        inline_image,
         edits,
     )
     # Plain TeX defines neither macro; either one aborts the TeX math run, and
@@ -665,9 +738,7 @@ def transform(text: str, figures_rel: str) -> tuple[str, list[Substitution]]:
     text = replace_matches(text, r"\\text\{", lambda _: "\\hbox{", edits)
     # A directive for the pocket edition's customized texi2any 5.1; stock
     # Texinfo errors on it, and stock contents replace what it ordered.
-    text = replace_matches(
-        text, r"^@setshortcontentsaftertitlepage\n", lambda _: "", edits
-    )
+    text = replace_matches(text, r"^@setshortcontentsaftertitlepage\n", lambda _: "", edits)
     # texi2any resolves @include against the master file's directory, so the
     # generated lists named by the back matter need their directory prefix.
     text = replace_matches(

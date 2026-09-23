@@ -1,0 +1,22 @@
+(lang dune 3.24)
+(generate_opam_files true)
+
+(package
+ (name modern-sicp)
+ (synopsis "Modern SICP, OCaml edition")
+ (description
+  "An OCaml edition of SICP: five chapters and 356 exercises, with examples, exercise scaffolds, and reference solutions per section.")
+ (allow_empty)
+ (depends
+  (ocaml (= "5.5.1"))
+  (dune (= "3.24.2"))
+  (base (= "v0.17.3"))
+  (core (= "v0.17.2"))
+  (ppx_jane (= "v0.17.0"))
+  (alcotest (and :with-test (= "1.9.1")))
+  (qcheck-core (and :with-test (= "0.91")))
+  (ppx_expect (and :with-test (= "v0.17.3")))
+  (ppx_inline_test (and :with-test (= "v0.17.1")))
+  (odoc (and :with-dev-setup (= "3.2.1")))
+  (ocamlformat (and :with-dev-setup (= "0.29.0")))
+  (ocaml-lsp-server (and :with-dev-setup (= "1.27.0")))))

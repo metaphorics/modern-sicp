@@ -1,0 +1,4 @@
+@node	0.1, 0.2, Chapter 0, Chapter 0
+@section Running this book
+
+This section covers the pinned toolchain, the just recipes, the layout of examples/, exercises/, and solutions/, and how a test proves an exercise.

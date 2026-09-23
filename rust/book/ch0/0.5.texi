@@ -1,0 +1,4 @@
+@node	0.5, 0.6, Chapter 0, Chapter 0
+@section Mutation and ownership
+
+This section covers the language's mutable cell, aliasing, and identity.

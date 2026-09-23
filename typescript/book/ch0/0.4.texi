@@ -1,0 +1,4 @@
+@node	0.4, 0.5, Chapter 0, Chapter 0
+@section Data
+
+This section covers tuples, lists, the language's sum type, pattern matching, and exhaustiveness.

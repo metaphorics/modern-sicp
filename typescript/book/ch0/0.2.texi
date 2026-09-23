@@ -1,0 +1,4 @@
+@node	0.2, 0.3, Chapter 0, Chapter 0
+@section Values, names, and functions
+
+This section covers literals, bindings, functions, closures, higher-order functions, booleans, comparison operators, conditionals, operator precedence, and the number model this book uses.

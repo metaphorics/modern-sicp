@@ -1,0 +1,4 @@
+@node	0.8, Chapter 1, Chapter 0, Chapter 0
+@section Reading this book
+
+This section covers the interaction convention, how exercises map to SICP's numbers, the signpost sentences, and the exercise map.

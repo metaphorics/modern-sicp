@@ -1,0 +1,57 @@
+# Rust edition of SICP: gates and the pending-scaffold report.
+toolchain := "1.98.1"
+nextest-version := "0.9.146"
+
+setup:
+    rustup toolchain install {{toolchain}} --component rustfmt clippy
+    cargo install cargo-nextest --locked --version {{nextest-version}}
+
+fmt:
+    cargo fmt --check
+
+lint:
+    cargo clippy --all-targets --all-features --locked -- -D warnings
+
+test:
+    cargo nextest run --workspace --locked
+    cargo test --doc --locked
+
+# Exits nonzero while a scaffold is unsolved; that is the report.
+scaffold:
+    cargo nextest run --workspace --run-ignored ignored-only --no-tests=pass
+
+book-html-epub:
+    #!/bin/sh
+    set -e
+    if [ ! -f book/main.texi ]; then
+        echo "rust/book/main.texi is absent: the edition book tree is created in Phase A3" \
+            "(docs/plan/technical-modern-sicp-editions.md, text pipeline step 5)" >&2
+        exit 1
+    fi
+    uv run --directory .. tools/build_css.py --assets text/assets/css --out rust/book
+    cd book
+    rm -rf _build/html
+    mkdir -p _build/html
+    ../../tools/texi2any_html.sh --html --split=section -c HIGHLIGHT_SYNTAX=pygments \
+        --css-include=book.css -o _build/html main.texi
+    uv run --directory ../.. tools/edition_switcher.py --html rust/book/_build/html --edition rust
+    uv run --directory ../.. tools/check_html_assets.py --html rust/book/_build/html --site-root .
+    uv run --directory ../.. tools/math_check.py --html rust/book/_build/html --source rust/book
+    ../../tools/texi2any_html.sh --epub3 -c HIGHLIGHT_SYNTAX=pygments \
+        --css-include=book-epub.css -o _build/rust-sicp.epub main.texi
+    uv run --directory ../.. tools/epub_manifest_fix.py --epub rust/book/_build/rust-sicp.epub
+    epubcheck _build/rust-sicp.epub
+
+book-pdf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f book/main.texi ]; then
+        echo "rust/book/main.texi is missing" >&2
+        exit 1
+    fi
+    uv run --directory .. tools/figures_pdf.py --src text/original/figures --out text/original/figures/pdf
+    cd book
+    mkdir -p _build
+    texi2dvi --expand --pdf --batch --build=local -o _build/rust-sicp.pdf main.texi
+
+book: book-html-epub book-pdf

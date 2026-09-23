@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/sicp-runtime",
+    "crates/ch00",
+    "crates/ch01",
+    "crates/ch02",
+    "crates/ch03",
+    "crates/ch04",
+    "crates/ch05",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.98"
+license = "GPL-3.0-only"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[workspace.lints.clippy]
+pedantic = "warn"
+
+[workspace.dependencies]
+thiserror = "=2.0.20"
+anyhow = "=1.0.104"
+proptest = "=1.11.0"
+insta = "=1.48.0"

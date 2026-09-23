@@ -36,6 +36,11 @@ tools_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || die "cannot resolve sc
 # step 6) over the distribution's older texi2any. MODERN_SICP_PREFIX wins;
 # otherwise ~/.local and the documented cache fallback are tried in order.
 prefix="${MODERN_SICP_PREFIX:-}"
+if [ -n "$prefix" ]; then
+    { [ -x "$prefix/bin/texi2any" ] \
+        && "$prefix/bin/texi2any" --version 2>/dev/null | head -1 | grep -q '7\.3'; } \
+        || die "MODERN_SICP_PREFIX=$prefix has no texi2any 7.3; run just setup-books"
+fi
 if [ -z "$prefix" ]; then
     for candidate in "$HOME/.local" "$HOME/.cache/modern-sicp/opt"; do
         if [ -x "$candidate/bin/texi2any" ] \
@@ -51,6 +56,13 @@ else
     PATH="$tools_dir/tex4ht:$PATH"
 fi
 export PATH
+
+# The prefix Texinfo needs Archive::Zip for EPUB output; setup-books
+# installs it under the same prefix.
+if [ -n "$prefix" ] && [ -d "$prefix/lib/perl5" ]; then
+    PERL5LIB="$prefix/lib/perl5${PERL5LIB:+:$PERL5LIB}"
+    export PERL5LIB
+fi
 T4H_MATH_CONVERSION="${T4H_MATH_CONVERSION:-tex}"
 T4H_TEX_CONVERSION="${T4H_TEX_CONVERSION:-tex}"
 export T4H_MATH_CONVERSION T4H_TEX_CONVERSION
@@ -83,3 +95,28 @@ while IFS= read -r log; do
     failed=1
 done < <(find . -name '*_tex4ht_*.log' -newer "$marker" -print)
 [ "$failed" -eq 0 ] || die "the TeX math run failed; the output is missing math"
+
+# The tex4ht extension leaves its working document beside the delivered pages
+# (main_tex4ht_tex.html and friends). It is not UTF-8 and not book content, so
+# downstream page tools must never see it.
+find . -name '*_tex4ht_*.html' -delete || die "cannot remove the tex4ht work pages"
+find . -name '*_tex4ht_tex.tex' -delete || die "cannot remove the tex4ht work TeX"
+find . \( -name '*_tex4ht_*.4ct' -o -name '*_tex4ht_*.4tc' -o -name '*_tex4ht_*.dvi' \
+    -o -name '*_tex4ht_*.idv' -o -name '*_tex4ht_*.lg' -o -name '*_tex4ht_*.log' \
+    -o -name '*_tex4ht_*.tmp' -o -name '*_tex4ht_*.xref' \) -delete \
+    || die "cannot remove the tex4ht work files"
+
+# Delivered pages carry site-root-absolute asset URLs (the convention the
+# prototype ticket records); texi2any writes the source tree's relative
+# figure prefix, which resolves from the .texi file, not from a served page.
+out=""
+prev=""
+for arg in "$@"; do
+    if [ "$prev" = "-o" ]; then out="$arg"; fi
+    prev="$arg"
+done
+if [ -n "$out" ] && printf '%s\n' "$@" | grep -q -- '--html'; then
+    find "$out" -name '*.html' -type f -exec \
+        sed -i 's|src="\(\.\./\)\+text/original/figures/|src="/text/original/figures/|g' {} + \
+        || die "cannot rewrite asset URLs under $out"
+fi

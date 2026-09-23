@@ -129,9 +129,24 @@
 @copyright{}1996 by The Massachusetts Institute of Technology
 
 @noindent
+@ifhtml
 @image{../../text/original/figures/icons/cc, 6mm,,,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/icons/cc.std, 6mm,,,.pdf}
+@end iftex
+@ifhtml
 @image{../../text/original/figures/icons/by, 6mm,,,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/icons/by.std, 6mm,,,.pdf}
+@end iftex
+@ifhtml
 @image{../../text/original/figures/icons/sa, 6mm,,,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/icons/sa.std, 6mm,,,.pdf}
+@end iftex
 
 @noindent
 This work is licensed under a Creative Commons Attribution-ShareAlike 4.0

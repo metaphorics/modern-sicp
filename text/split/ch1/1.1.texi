@@ -336,7 +336,7 @@ general kind of process known as @newterm{tree accumulation}.
 @image{../../text/original/figures/chap1/Fig1.1g,,58mm,Figure 1.1: Tree representation@comma{} showing the value of each subcombination.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap1/Fig1.1g,,58mm,,.pdf}
+@image{../../text/original/figures/pdf/chap1/Fig1.1g.std,,58mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 1.1:} Tree representation, showing the value of each subcombination.}
@@ -1295,10 +1295,10 @@ problem into subproblems.
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap1/Fig1.2,,38mm,Figure 1.2: Procedural decomposition of the @code{sqrt} program.,.std.svg}
+@image{../../text/original/figures/chap1/Fig1.2,,38mm,Figure 1.2: Procedural decomposition of the sqrt program.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/chap1/Fig1.2,,38mm,,.pdf}
+@image{../../text/original/figures/pdf/chap1/Fig1.2.std,,38mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 1.2:} Procedural decomposition of the @code{sqrt} program.}

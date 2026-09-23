@@ -644,7 +644,7 @@ def replace_fractions(text: str, edits: list[Substitution]) -> str:
 
 
 def transform(text: str, figures_rel: str) -> tuple[str, list[Substitution]]:
-    """Apply only the five declared source transformations."""
+    """Apply only the seven declared source transformations."""
     edits: list[Substitution] = []
     text = replace_matches(text, r"^@float[^\n]*\n.*?^@end float\n", figure, edits)
     text = replace_matches(
@@ -663,6 +663,19 @@ def transform(text: str, figures_rel: str) -> tuple[str, list[Substitution]]:
     # texi2any then reports success with every equation missing from the output.
     # Both appear only inside math in the source, never in `@example` or `@lisp`.
     text = replace_matches(text, r"\\text\{", lambda _: "\\hbox{", edits)
+    # A directive for the pocket edition's customized texi2any 5.1; stock
+    # Texinfo errors on it, and stock contents replace what it ordered.
+    text = replace_matches(
+        text, r"^@setshortcontentsaftertitlepage\n", lambda _: "", edits
+    )
+    # texi2any resolves @include against the master file's directory, so the
+    # generated lists named by the back matter need their directory prefix.
+    text = replace_matches(
+        text,
+        r"^@include (exercises|figures)\.texi$",
+        lambda m: f"@include back/{m[1]}.texi",
+        edits,
+    )
     return replace_fractions(text, edits), edits
 
 

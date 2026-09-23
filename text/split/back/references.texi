@@ -562,12 +562,12 @@ Kluwer Academic Publishers.
 @node    Exercises, Figures, References, Top
 @unnumbered List of Exercises
 
-@include exercises.texi
+@include back/exercises.texi
 
 @node    Figures, Term Index, Exercises, Top
 @unnumbered List of Figures
 
-@include figures.texi
+@include back/figures.texi
 
 @node    Term Index, Colophon, Figures, Top
 @unnumbered Term Index

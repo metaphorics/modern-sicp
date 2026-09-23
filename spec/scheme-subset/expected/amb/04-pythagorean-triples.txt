@@ -1,0 +1,13 @@
+;; SPDX-License-Identifier: GPL-3.0-only
+;; Adapted from SICP sections 4.1 to 5.2
+ok
+ok
+ok
+(3 4 5)
+(6 8 10)
+;;; There are no more values of
+(a-pythagorean-triple-between 1 10)
+ok
+(4 . 4)
+ok
+42

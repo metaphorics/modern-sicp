@@ -1,0 +1,10 @@
+;; SPDX-License-Identifier: GPL-3.0-only
+;; Adapted from SICP sections 4.1 to 5.2
+(and (job (Fect Cy D) (computer programmer)) (supervisor (Fect Cy D) (Bitdiddle Ben)))
+(and (job (Hacker Alyssa P) (computer programmer)) (supervisor (Hacker Alyssa P) (Bitdiddle Ben)))
+(and (supervisor (Aull DeWitt) (Warbucks Oliver)) (not (job (Aull DeWitt) (computer programmer))))
+(and (supervisor (Cratchet Robert) (Scrooge Eben)) (not (job (Cratchet Robert) (computer programmer))))
+(and (supervisor (Scrooge Eben) (Warbucks Oliver)) (not (job (Scrooge Eben) (computer programmer))))
+(and (supervisor (Bitdiddle Ben) (Warbucks Oliver)) (not (job (Bitdiddle Ben) (computer programmer))))
+(and (supervisor (Reasoner Louis) (Hacker Alyssa P)) (not (job (Reasoner Louis) (computer programmer))))
+(and (supervisor (Tweakit Lem E) (Bitdiddle Ben)) (not (job (Tweakit Lem E) (computer programmer))))

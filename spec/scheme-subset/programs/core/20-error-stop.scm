@@ -1,0 +1,7 @@
+(define (safe-div numerator denominator)
+  (if (= denominator 0)
+      (error "Division by zero:" numerator)
+      (/ numerator denominator)))
+(safe-div 10 2)
+(safe-div 1 0)
+(display "this line is never reached")

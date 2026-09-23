@@ -1,0 +1,12 @@
+;; SPDX-License-Identifier: GPL-3.0-only
+;; Adapted from SICP sections 4.1 to 5.2
+(lives-near (Aull DeWitt) (Bitdiddle Ben))
+(lives-near (Reasoner Louis) (Bitdiddle Ben))
+(wheel (Warbucks Oliver))
+(wheel (Warbucks Oliver))
+(wheel (Bitdiddle Ben))
+(wheel (Warbucks Oliver))
+(wheel (Warbucks Oliver))
+(outranked-by (Reasoner Louis) (Hacker Alyssa P))
+(outranked-by (Reasoner Louis) (Bitdiddle Ben))
+(outranked-by (Reasoner Louis) (Warbucks Oliver))

@@ -1,0 +1,7 @@
+(cons 1 2)
+(cons 'a (cons 'b 'c))
+(cons (cons 1 2) (cons 3 4))
+(define p (cons 'left 'right))
+(car p)
+(cdr p)
+(list (cons 1 2) (cons 3 4))

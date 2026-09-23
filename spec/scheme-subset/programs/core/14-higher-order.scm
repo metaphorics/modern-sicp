@@ -1,0 +1,16 @@
+(define (compose f g)
+  (lambda (x) (f (g x))))
+(define (square x) (* x x))
+(define (increment x) (+ x 1))
+((compose square increment) 6)
+((compose increment square) 6)
+(define (repeated f n)
+  (if (= n 1)
+      f
+      (compose f (repeated f (- n 1)))))
+((repeated square 2) 5)
+(define (sum term a next b)
+  (if (> a b)
+      0
+      (+ (term a) (sum term (next a) next b))))
+(sum square 1 increment 5)

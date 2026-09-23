@@ -1,0 +1,6 @@
+;; SPDX-License-Identifier: GPL-3.0-only
+;; Adapted from SICP sections 4.1 to 5.2
+done
+done
+done
+2

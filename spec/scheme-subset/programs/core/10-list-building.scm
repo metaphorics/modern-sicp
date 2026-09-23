@@ -1,0 +1,16 @@
+(define one-through-four (list 1 2 3 4))
+one-through-four
+(car one-through-four)
+(cdr one-through-four)
+(car (cdr one-through-four))
+(cons 10 one-through-four)
+(define (list-ref items n)
+  (if (= n 0)
+      (car items)
+      (list-ref (cdr items) (- n 1))))
+(list-ref one-through-four 2)
+(define (length items)
+  (if (null? items)
+      0
+      (+ 1 (length (cdr items)))))
+(length one-through-four)

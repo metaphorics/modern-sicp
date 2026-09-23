@@ -1,2 +1,34 @@
 (library
- (name sicp_ch1))
+ (name sicp_ch1)
+ (libraries sicp_common)
+ (modules replay sec_1_1 sec_1_2 sec_1_3))
+
+(executable
+ (name run_sec_1_1)
+ (modules run_sec_1_1)
+ (libraries sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_1_1.exe)))
+
+(executable
+ (name run_sec_1_2)
+ (modules run_sec_1_2)
+ (libraries sicp_ch1 sicp_common))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_1_2.exe)))
+
+(executable
+ (name run_sec_1_3)
+ (modules run_sec_1_3)
+ (libraries sicp_ch1 sicp_common))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_1_3.exe)))

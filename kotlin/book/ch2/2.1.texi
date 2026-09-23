@@ -48,16 +48,16 @@ available as procedures:
 @itemize @bullet
 
 @item
-@code{(make-rat ⟨@var{n}⟩ ⟨@var{d}⟩)} returns the rational number whose numerator 
-is the integer @code{⟨@var{n}⟩} and whose denominator is the integer 
+@code{makeRat(⟨@var{n}⟩, ⟨@var{d}⟩)} returns the rational number whose numerator
+is the integer @code{⟨@var{n}⟩} and whose denominator is the integer
 @code{⟨@var{d}⟩}.
 
 @item
-@code{(numer ⟨@var{x}⟩)} returns the numerator of the rational number 
+@code{numer(⟨@var{x}⟩)} returns the numerator of the rational number
 @code{⟨@var{x}⟩}.
 
 @item
-@code{(denom ⟨@var{x}⟩)} returns the denominator of the rational number 
+@code{denom(⟨@var{x}⟩)} returns the denominator of the rational number
 @code{⟨@var{x}⟩}.
 
 @end itemize
@@ -65,7 +65,7 @@ is the integer @code{⟨@var{n}⟩} and whose denominator is the integer
 @noindent
 We are using here a powerful strategy of synthesis: @newterm{wishful thinking}.
 We haven't yet said how a rational number is represented, or how the procedures
-@code{numer}, @code{denom}, and @code{make-rat} should be implemented.  Even
+@code{numer}, @code{denom}, and @code{makeRat} should be implemented.  Even
 so, if we did have these three procedures, we could then add, subtract,
 multiply, divide, and test equality by using the following relations:
 @displaymath
@@ -107,194 +107,183 @@ d_1   d_2
 @noindent
 We can express these rules as procedures:
 
-@lisp
-(define (add-rat x y)
-  (make-rat (+ (* (numer x) (denom y))
-               (* (numer y) (denom x)))
-            (* (denom x) (denom y))))
+@example kotlin
+fun addRat(x: Rational, y: Rational): Rational =
+    makeRat(x.numer * y.denom + y.numer * x.denom, x.denom * y.denom)
 
-(define (sub-rat x y)
-  (make-rat (- (* (numer x) (denom y))
-               (* (numer y) (denom x)))
-            (* (denom x) (denom y))))
+fun subRat(x: Rational, y: Rational): Rational =
+    makeRat(x.numer * y.denom - y.numer * x.denom, x.denom * y.denom)
 
-(define (mul-rat x y)
-  (make-rat (* (numer x) (numer y))
-            (* (denom x) (denom y))))
+fun mulRat(x: Rational, y: Rational): Rational =
+    makeRat(x.numer * y.numer, x.denom * y.denom)
 
-(define (div-rat x y)
-  (make-rat (* (numer x) (denom y))
-            (* (denom x) (numer y))))
+fun divRat(x: Rational, y: Rational): Rational =
+    makeRat(x.numer * y.denom, x.denom * y.numer)
 
-(define (equal-rat? x y)
-  (= (* (numer x) (denom y))
-     (* (numer y) (denom x))))
-@end lisp
+fun equalRat(x: Rational, y: Rational): Boolean =
+    x.numer * y.denom == y.numer * x.denom
+@end example
 
 @noindent
 Now we have the operations on rational numbers defined in terms of the selector
-and constructor procedures @code{numer}, @code{denom}, and @code{make-rat}.
+and constructor procedures @code{numer}, @code{denom}, and @code{makeRat}.
 But we haven't yet defined these.  What we need is some way to glue together a
 numerator and a denominator to form a rational number.
 
 @subsubheading Pairs
 
-To enable us to implement the concrete level of our data abstraction, our
-language provides a compound structure called a @newterm{pair}, which can be
-constructed with the primitive procedure @code{cons}.  This procedure takes two
-arguments and returns a compound data object that contains the two arguments as
-parts.  Given a pair, we can extract the parts using the primitive procedures
-@code{car} and @code{cdr}.@footnote{The name @code{cons} stands for
-``construct.''  The names @code{car} and @code{cdr} derive from the original
-implementation of Lisp on the IBM 704.  That machine had an addressing scheme
-that allowed one to reference the ``address'' and ``decrement'' parts of a
-memory location.  @code{Car} stands for ``Contents of Address part of
-Register'' and @code{cdr} (pronounced ``could-er'') stands for ``Contents of
-Decrement part of Register.''} Thus, we can use @code{cons}, @code{car}, and
-@code{cdr} as follows:
+To enable us to implement the concrete level of our data abstraction, Kotlin's
+standard library provides a compound structure called a @newterm{pair}, the
+type @code{Pair}, which can be constructed with @code{Pair(a, b)} or the infix
+form @code{a to b}.  Given a pair, we can extract the parts using the
+properties @code{first} and @code{second}, which play the role of Scheme's
+@code{car} and @code{cdr}.@footnote{Scheme's own names come from the original
+implementation of Lisp on the IBM 704, which had an addressing scheme that let
+one reference the ``address'' and ``decrement'' parts of a memory location:
+@code{car} stood for ``Contents of Address part of Register'' and @code{cdr}
+(pronounced ``could-er'') for ``Contents of Decrement part of Register.''  The
+name @code{cons} stood for ``construct.''  Kotlin's @code{first} and
+@code{second} carry no such history; they are ordinary property names.}
+Thus, we can use a pair as follows:
 
-@lisp
-(define x (cons 1 2))
+@example kotlin
+val x = 1L to 2L
 
-(car x)
-@i{1}
+x.first
+// => 1
 
-(cdr x)
-@i{2}
-@end lisp
+x.second
+// => 2
+@end example
 
 @noindent
 Notice that a pair is a data object that can be given a name and manipulated,
-just like a primitive data object.  Moreover, @code{cons} can be used to form
-pairs whose elements are pairs, and so on:
+just like a primitive data object.  Moreover, a pair can hold pairs as its own
+elements, and so on:
 
-@lisp
-(define x (cons 1 2))
-(define y (cons 3 4))
-(define z (cons x y))
+@example kotlin
+val x = 1L to 2L
+val y = 3L to 4L
+val z = x to y
 
-(car (car z))
-@i{1}
+z.first.first
+// => 1
 
-(car (cdr z))
-@i{3}
-@end lisp
+z.second.first
+// => 3
+@end example
 
 @noindent
 In @ref{2.2} we will see how this ability to combine pairs means that
 pairs can be used as general-purpose building blocks to create all sorts of
 complex data structures.  The single compound-data primitive @newterm{pair},
-implemented by the procedures @code{cons}, @code{car}, and @code{cdr}, is the
-only glue we need.  Data objects constructed from pairs are called
-@newterm{list-structured} data.
+Kotlin's own @code{Pair}, is enough glue for a great deal of this chapter, and
+where a named field reads better than @code{first} and @code{second}, a small
+data class serves the same role.  Data objects constructed from pairs are
+called @newterm{list-structured} data.
 
 @subsubheading Representing rational numbers
 
-Pairs offer a natural way to complete the rational-number system.  Simply
-represent a rational number as a pair of two integers: a numerator and a
-denominator.  Then @code{make-rat}, @code{numer}, and @code{denom} are readily
-implemented as follows:@footnote{Another way to define the selectors and
-constructor is
-
-@lisp
-(define make-rat cons)
-(define numer car)
-(define denom cdr)
-@end lisp
-
-The first definition associates the name @code{make-rat} with the value of the
-expression @code{cons}, which is the primitive procedure that constructs pairs.
-Thus @code{make-rat} and @code{cons} are names for the same primitive
-constructor.
-
-Defining selectors and constructors in this way is efficient: Instead of
-@code{make-rat} @emph{calling} @code{cons}, @code{make-rat} @emph{is}
-@code{cons}, so there is only one procedure called, not two, when
-@code{make-rat} is called.  On the other hand, doing this defeats debugging
-aids that trace procedure calls or put breakpoints on procedure calls: You may
-want to watch @code{make-rat} being called, but you certainly don't want to
-watch every call to @code{cons}.
-
+Pairs offer a natural way to complete the rational-number system.  Kotlin's
+data class groups a numerator and a denominator under names, so we represent a
+rational number as a small immutable record:@footnote{Another way to define
+the constructor is to make @code{makeRat} an alias for the class's own
+constructor reference, @code{val makeRat = ::Rational}, rather than a
+wrapping function.  Instead of @code{makeRat} @emph{calling} @code{Rational}'s
+constructor, @code{makeRat} @emph{is} that constructor reference, so there is
+only one call, not two, when @code{makeRat} is invoked.  On the other hand,
+doing this defeats debugging aids that trace function calls or set
+breakpoints on them: you may want to watch @code{makeRat} being called, but
+you certainly don't want to watch every construction of a @code{Rational}.
 We have chosen not to use this style of definition in this book.}
 
-@lisp
-(define (make-rat n d) (cons n d))
-(define (numer x) (car x))
-(define (denom x) (cdr x))
-@end lisp
+@example kotlin
+data class Rational(val numer: Long, val denom: Long)
+
+fun makeRat(n: Long, d: Long): Rational = Rational(n, d)
+@end example
+
+@noindent
+A data class's constructor arguments are already its named properties, so
+@code{numer} and @code{denom} need no separate selector bodies the way
+Scheme's @code{car} and @code{cdr} would; @code{x.numer} and @code{x.denom}
+are the selectors.
 
 @noindent
 Also, in order to display the results of our computations, we can print
 rational numbers by printing the numerator, a slash, and the
-denominator:@footnote{@code{Display} is the Scheme primitive for printing data.
-The Scheme primitive @code{newline} starts a new line for printing.  Neither of
-these procedures returns a useful value, so in the uses of @code{print-rat}
-below, we show only what @code{print-rat} prints, not what the interpreter
-prints as the value returned by @code{print-rat}.}
+denominator:@footnote{@code{println} is Kotlin's primitive for printing a line
+of data.  It returns no useful value, so in the uses of @code{printRat} below,
+we show only what @code{printRat} prints, not what the interpreter shows as
+the value @code{printRat} returns.}
 
-@lisp
-(define (print-rat x)
-  (newline)
-  (display (numer x))
-  (display "/")
-  (display (denom x)))
-@end lisp
+@example kotlin
+fun printRat(x: Rational) {
+    println("${x.numer}/${x.denom}")
+}
+@end example
 
 @noindent
 Now we can try our rational-number procedures:
 
-@lisp
-(define one-half (make-rat 1 2))
-(print-rat one-half)
-@i{1/2}
+@example kotlin
+val oneHalf = makeRat(1L, 2L)
+printRat(oneHalf)
+// 1/2
+// => ok
 
-(define one-third (make-rat 1 3))
-(print-rat
- (add-rat one-half one-third))
-@i{5/6}
+val oneThird = makeRat(1L, 3L)
+printRat(addRat(oneHalf, oneThird))
+// 5/6
+// => ok
 
-(print-rat
- (mul-rat one-half one-third))
-@i{1/6}
+printRat(mulRat(oneHalf, oneThird))
+// 1/6
+// => ok
 
-(print-rat
- (add-rat one-third one-third))
-@i{6/9}
-@end lisp
+printRat(addRat(oneThird, oneThird))
+// 6/9
+// => ok
+@end example
 
 @noindent
 As the final example shows, our rational-number implementation does not reduce
 rational numbers to lowest terms.  We can remedy this by changing
-@code{make-rat}. If we have a @code{gcd} procedure like the one in 
+@code{makeRat}.  If we have a @code{gcd} procedure like the one in
 @ref{1.2.5} that produces the greatest common divisor of two integers, we can
 use @code{gcd} to reduce the numerator and the denominator to lowest terms
-before constructing the pair:
+before constructing the pair.  Kotlin cannot rebind the top-level name
+@code{makeRat} the way a second Scheme @code{define} would, so this edition
+names the reducing version @code{makeRatReduced}; every section and exercise
+from here on that says ``@code{makeRat}'' means this one:
 
-@lisp
-(define (make-rat n d)
-  (let ((g (gcd n d)))
-    (cons (/ n g) 
-          (/ d g))))
-@end lisp
+@example kotlin
+fun makeRatReduced(n: Long, d: Long): Rational {
+    val g = gcd(n, d)
+    return Rational(n / g, d / g)
+}
+@end example
 
 @noindent
 Now we have
 
-@lisp
-(print-rat 
- (add-rat one-third one-third))
-@i{2/3}
-@end lisp
+@example kotlin
+printRat(makeRatReduced(6L, 9L))
+// 2/3
+// => ok
+@end example
 
 @noindent
-as desired.  This modification was accomplished by changing the constructor
-@code{make-rat} without changing any of the procedures (such as @code{add-rat}
-and @code{mul-rat}) that implement the actual operations.
+as desired: the pair @code{addRat(oneThird, oneThird)} builds, @code{(6, 9)},
+reduces to @code{2/3} once @code{makeRat} means @code{makeRatReduced}.  This
+modification was accomplished by changing the constructor @code{makeRat}
+without changing any of the procedures (such as @code{addRat} and
+@code{mulRat}) that implement the actual operations.
 
 @quotation
 @strong{@anchor{Exercise 2.1}Exercise 2.1:} Define a better version of
-@code{make-rat} that handles both positive and negative arguments.
-@code{Make-rat} should normalize the sign so that if the rational number is
+@code{makeRat} that handles both positive and negative arguments.
+@code{makeRat} should normalize the sign so that if the rational number is
 positive, both the numerator and denominator are positive, and if the rational
 number is negative, only the numerator is negative.
 @end quotation
@@ -305,25 +294,26 @@ number is negative, only the numerator is negative.
 Before continuing with more examples of compound data and data abstraction, let
 us consider some of the issues raised by the rational-number example.  We
 defined the rational-number operations in terms of a constructor
-@code{make-rat} and selectors @code{numer} and @code{denom}.  In general, the
+@code{makeRat} and selectors @code{numer} and @code{denom}.  In general, the
 underlying idea of data abstraction is to identify for each type of data object
 a basic set of operations in terms of which all manipulations of data objects
 of that type will be expressed, and then to use only those operations in
 manipulating the data.
 
-We can envision the structure of the rational-number system as shown in 
-@ref{Figure 2.1}.  The horizontal lines represent @newterm{abstraction barriers} 
+We can envision the structure of the rational-number system as shown in
+@ref{Figure 2.1}.  The horizontal lines represent @newterm{abstraction barriers}
 that isolate different ``levels'' of the system.  At each level, the
 barrier separates the programs (above) that use the data abstraction from the
 programs (below) that implement the data abstraction.  Programs that use
 rational numbers manipulate them solely in terms of the procedures supplied
-``for public use'' by the rational-number package: @code{add-rat},
-@code{sub-rat}, @code{mul-rat}, @code{div-rat}, and @code{equal-rat?}. These,
+``for public use'' by the rational-number package: @code{addRat},
+@code{subRat}, @code{mulRat}, @code{divRat}, and @code{equalRat}. These,
 in turn, are implemented solely in terms of the constructor and selectors
-@code{make-rat}, @code{numer}, and @code{denom}, which themselves are
-implemented in terms of pairs.  The details of how pairs are implemented are
-irrelevant to the rest of the rational-number package so long as pairs can be
-manipulated by the use of @code{cons}, @code{car}, and @code{cdr}.  In effect,
+@code{makeRat}, @code{numer}, and @code{denom}, which themselves are
+implemented in terms of a data class wrapping a pair of integers.  The details
+of how that representation is implemented are irrelevant to the rest of the
+rational-number package so long as it can be manipulated by the use of
+@code{makeRat}'s own construction and its two properties.  In effect,
 procedures at each level are the interfaces that define the abstraction
 barriers and connect the different levels.
 
@@ -377,20 +367,19 @@ few program modules.
 For example, an alternate way to address the problem of reducing rational
 numbers to lowest terms is to perform the reduction whenever we access the
 parts of a rational number, rather than when we construct it.  This leads to
-different constructor and selector procedures:
+different constructor and selector procedures, this time built directly over a
+@code{Pair<Long, Long>} rather than a named data class, so that
+@code{numerLazy} and @code{denomLazy} can each run their own @code{gcd}:
 
-@lisp
-(define (make-rat n d)
-  (cons n d))
+@example kotlin
+typealias RationalPair = Pair<Long, Long>
 
-(define (numer x)
-  (let ((g (gcd (car x) (cdr x))))
-    (/ (car x) g)))
+fun makeRatLazy(n: Long, d: Long): RationalPair = n to d
 
-(define (denom x)
-  (let ((g (gcd (car x) (cdr x))))
-    (/ (cdr x) g)))
-@end lisp
+fun numerLazy(x: RationalPair): Long = x.first / gcd(x.first, x.second)
+
+fun denomLazy(x: RationalPair): Long = x.second / gcd(x.first, x.second)
+@end example
 
 @noindent
 The difference between this implementation and the previous one lies in when we
@@ -399,7 +388,7 @@ the numerators and denominators of the same rational numbers many times, it
 would be preferable to compute the @code{gcd} when the rational numbers are
 constructed.  If not, we may be better off waiting until access time to compute
 the @code{gcd}.  In any case, when we change from one representation to the
-other, the procedures @code{add-rat}, @code{sub-rat}, and so on do not have to
+other, the procedures @code{addRat}, @code{subRat}, and so on do not have to
 be modified at all.
 
 Constraining the dependence on the representation to a few interface procedures
@@ -415,25 +404,21 @@ the system.
 @strong{@anchor{Exercise 2.2}Exercise 2.2:} Consider the problem of
 representing line segments in a plane.  Each segment is represented as a pair
 of points: a starting point and an ending point.  Define a constructor
-@code{make-segment} and selectors @code{start-segment} and @code{end-segment}
+@code{makeSegment} and selectors @code{startSegment} and @code{endSegment}
 that define the representation of segments in terms of points.  Furthermore, a
 point can be represented as a pair of numbers: the @math{x} coordinate and the
-@math{y} coordinate.  Accordingly, specify a constructor @code{make-point} and
-selectors @code{x-point} and @code{y-point} that define this representation.
+@math{y} coordinate.  Accordingly, specify a constructor @code{makePoint} and
+selectors @code{xPoint} and @code{yPoint} that define this representation.
 Finally, using your selectors and constructors, define a procedure
-@code{midpoint-segment} that takes a line segment as argument and returns its
+@code{midpointSegment} that takes a line segment as argument and returns its
 midpoint (the point whose coordinates are the average of the coordinates of the
 endpoints).  To try your procedures, you'll need a way to print points:
 
-@lisp
-(define (print-point p)
-  (newline)
-  (display "(")
-  (display (x-point p))
-  (display ",")
-  (display (y-point p))
-  (display ")"))
-@end lisp
+@example kotlin
+fun printPoint(p: Point) {
+    println("(${xPoint(p)},${yPoint(p)})")
+}
+@end example
 @end quotation
 
 @quotation
@@ -450,8 +435,8 @@ using either representation?
 @subsection What Is Meant by Data?
 
 We began the rational-number implementation in @ref{2.1.1} by
-implementing the rational-number operations @code{add-rat}, @code{sub-rat}, and
-so on in terms of three unspecified procedures: @code{make-rat}, @code{numer},
+implementing the rational-number operations @code{addRat}, @code{subRat}, and
+so on in terms of three unspecified procedures: @code{makeRat}, @code{numer},
 and @code{denom}.  At that point, we could think of the operations as being
 defined in terms of data objects---numerators, denominators, and rational
 numbers---whose behavior was specified by the latter three procedures.
@@ -463,22 +448,22 @@ for the rational-number implementation.  We need to guarantee that, if we
 construct a rational number @code{x} from a pair of integers @code{n} and
 @code{d}, then extracting the @code{numer} and the @code{denom} of @code{x} and
 dividing them should yield the same result as dividing @code{n} by @code{d}.
-In other words, @code{make-rat}, @code{numer}, and @code{denom} must satisfy
+In other words, @code{makeRat}, @code{numer}, and @code{denom} must satisfy
 the condition that, for any integer @code{n} and any non-zero integer @code{d},
-if @code{x} is @code{(make-rat n d)}, then
+if @code{x} is @code{makeRat(n, d)}, then
 @displaymath
-{\hbox{(numer x)} \over \hbox{(denom x)}} = {{\hbox{n} \over \hbox{d}}.}
+{\hbox{numer(x)} \over \hbox{denom(x)}} = {{\hbox{n} \over \hbox{d}}.}
 @end displaymath
 @ifinfo
 
 @example
-(numer x)    n
+numer(x)     n
 --------- = ---
-(denom x)    d
+denom(x)     d
 @end example
 
 @end ifinfo
-In fact, this is the only condition @code{make-rat}, @code{numer}, and
+In fact, this is the only condition @code{makeRat}, @code{numer}, and
 @code{denom} must fulfill in order to form a suitable basis for a
 rational-number representation.  In general, we can think of data as defined by
 some collection of selectors and constructors, together with specified
@@ -493,8 +478,8 @@ rational-number representation was stated in terms of facts about integers
 objects in terms of previously defined types of data objects.  Assertions about
 data objects can therefore be checked by reducing them to assertions about
 previously defined data objects.  Another approach, introduced by Zilles at
-@abbr{MIT}, by Goguen, Thatcher, Wagner, and Wright at IBM 
-(see @ref{Thatcher et al. 1978}), 
+@abbr{MIT}, by Goguen, Thatcher, Wagner, and Wright at IBM
+(see @ref{Thatcher et al. 1978}),
 and by Guttag at Toronto (see @ref{Guttag 1977}), is called
 @newterm{algebraic specification}.  It regards the ``procedures'' as elements
 of an abstract algebraic system whose behavior is specified by axioms that
@@ -504,113 +489,124 @@ by @ref{Liskov and Zilles (1975)}.}
 
 This point of view can serve to define not only ``high-level'' data objects,
 such as rational numbers, but lower-level objects as well.  Consider the notion
-of a pair, which we used in order to define our rational numbers.  We never
-actually said what a pair was, only that the language supplied procedures
-@code{cons}, @code{car}, and @code{cdr} for operating on pairs.  But the only
-thing we need to know about these three operations is that if we glue two
-objects together using @code{cons} we can retrieve the objects using @code{car}
-and @code{cdr}.  That is, the operations satisfy the condition that, for any
-objects @code{x} and @code{y}, if @code{z} is @code{(cons x y)} then @code{(car
-z)} is @code{x} and @code{(cdr z)} is @code{y}.  Indeed, we mentioned that
-these three procedures are included as primitives in our language.  However,
-any triple of procedures that satisfies the above condition can be used as the
-basis for implementing pairs.  This point is illustrated strikingly by the fact
-that we could implement @code{cons}, @code{car}, and @code{cdr} without using
-any data structures at all but only using procedures.  Here are the
-definitions:
+of a pair, which we used in order to define our rational numbers.  Kotlin's
+own @code{Pair} already fulfills this condition, but nothing about a pair
+requires it to be a data structure at all; the only thing we need to know
+about a pair's operations is that if we glue two objects together we can
+retrieve them again.  That is, the operations satisfy the condition that, for
+any objects @code{x} and @code{y}, if @code{z} is @code{cons(x, y)} then
+@code{car(z)} is @code{x} and @code{cdr(z)} is @code{y}.  Any triple of
+functions that satisfies this condition can be used as the basis for
+implementing pairs.  This point is illustrated strikingly by the fact that we
+could implement @code{cons}, @code{car}, and @code{cdr} without using any data
+structures at all but only using functions.  Here are the definitions:
 
-@lisp
-(define (cons x y)
-  (define (dispatch m)
-    (cond ((= m 0) x)
-          ((= m 1) y)
-          (else 
-           (error "Argument not 0 or 1:
-                   CONS" m))))
-  dispatch)
+@example kotlin
+fun cons(x: Long, y: Long): (Long) -> Long {
+    fun dispatch(m: Long): Long =
+        when (m) {
+            0L -> x
+            1L -> y
+            else -> error("Argument not 0 or 1: CONS $m")
+        }
+    return ::dispatch
+}
 
-(define (car z) (z 0))
-(define (cdr z) (z 1))
-@end lisp
+fun car(z: (Long) -> Long): Long = z(0L)
+
+fun cdr(z: (Long) -> Long): Long = z(1L)
+@end example
 
 @noindent
-This use of procedures corresponds to nothing like our intuitive notion of what
+This use of functions corresponds to nothing like our intuitive notion of what
 data should be.  Nevertheless, all we need to do to show that this is a valid
-way to represent pairs is to verify that these procedures satisfy the condition
+way to represent pairs is to verify that these functions satisfy the condition
 given above.
 
-The subtle point to notice is that the value returned by @code{(cons x y)} is a
-procedure---namely the internally defined procedure @code{dispatch}, which
+The subtle point to notice is that the value returned by @code{cons(x, y)} is a
+function---namely the locally defined function @code{dispatch}, which
 takes one argument and returns either @code{x} or @code{y} depending on whether
-the argument is 0 or 1.  Correspondingly, @code{(car z)} is defined to apply
-@code{z} to 0.  Hence, if @code{z} is the procedure formed by @code{(cons x
+the argument is 0 or 1.  Correspondingly, @code{car(z)} is defined to apply
+@code{z} to 0.  Hence, if @code{z} is the function formed by @code{cons(x,
 y)}, then @code{z} applied to 0 will yield @code{x}. Thus, we have shown that
-@code{(car (cons x y))} yields @code{x}, as desired.  Similarly, @code{(cdr
-(cons x y))} applies the procedure returned by @code{(cons x y)} to 1, which
+@code{car(cons(x, y))} yields @code{x}, as desired.  Similarly, @code{cdr(cons(x, y))}
+applies the function returned by @code{cons(x, y)} to 1, which
 returns @code{y}.  Therefore, this procedural implementation of pairs is a
 valid implementation, and if we access pairs using only @code{cons},
 @code{car}, and @code{cdr} we cannot distinguish this implementation from one
 that uses ``real'' data structures.
 
 The point of exhibiting the procedural representation of pairs is not that our
-language works this way (Scheme, and Lisp systems in general, implement pairs
-directly, for efficiency reasons) but that it could work this way.  The
-procedural representation, although obscure, is a perfectly adequate way to
-represent pairs, since it fulfills the only conditions that pairs need to
-fulfill.  This example also demonstrates that the ability to manipulate
-procedures as objects automatically provides the ability to represent compound
-data.  This may seem a curiosity now, but procedural representations of data
-will play a central role in our programming repertoire.  This style of
-programming is often called @newterm{message passing}, and we will be using it
-as a basic tool in @ref{Chapter 3} when we address the issues of modeling and
-simulation.
+language works this way (Kotlin's own @code{Pair}, like Scheme's built-in
+pairs, is implemented directly, for efficiency reasons) but that it could work
+this way.  The procedural representation, although obscure, is a perfectly
+adequate way to represent pairs, since it fulfills the only conditions that
+pairs need to fulfill.  This example also demonstrates that the ability to
+manipulate functions as objects automatically provides the ability to
+represent compound data.  This may seem a curiosity now, but procedural
+representations of data will play a central role in our programming
+repertoire.  This style of programming is often called @newterm{message
+passing}, and we will be using it as a basic tool in @ref{Chapter 3} when we
+address the issues of modeling and simulation.
 
 @quotation
 @strong{@anchor{Exercise 2.4}Exercise 2.4:} Here is an alternative procedural
-representation of pairs.  For this representation, verify that @code{(car (cons
-x y))} yields @code{x} for any objects @code{x} and @code{y}.
+representation of pairs.  For this representation, verify that
+@code{carFn(consFn(x, y))} yields @code{x} for any objects @code{x} and
+@code{y}.
 
-@lisp
-(define (cons x y) 
-  (lambda (m) (m x y)))
+@example kotlin
+fun <T> consFn(x: T, y: T): ((T, T) -> T) -> T = { m -> m(x, y) }
 
-(define (car z) 
-  (z (lambda (p q) p)))
-@end lisp
+fun <T> carFn(z: ((T, T) -> T) -> T): T = z { p, _ -> p }
+@end example
 
-What is the corresponding definition of @code{cdr}? (Hint: To verify that this
+What is the corresponding definition of @code{cdrFn}? (Hint: To verify that this
 works, make use of the substitution model of @ref{1.1.5}.)
+@end quotation
+
+@quotation
+@emph{Exercise 2.4a is added by this edition and extends exercise 2.4; SICP
+numbers stop at 2.4.} @strong{@anchor{Exercise 2.4a}Exercise 2.4a:} Exercise
+2.4 verifies the identity law @code{carFn(consFn(x, y)) == x} and
+@code{cdrFn(consFn(x, y)) == y} for one hand-picked pair, @code{(3, 4)}, by
+substitution.  Write a Kotest property test that checks the same law for
+every generated pair of @code{Long} values, not just one, using
+@code{checkAll}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.5}Exercise 2.5:} Show that we can represent pairs of
 nonnegative integers using only numbers and arithmetic operations if we
 represent the pair @math{a} and @math{b} as the integer that is the product @math{{2^a 3^b}}.
-Give the corresponding definitions of the procedures @code{cons},
-@code{car}, and @code{cdr}.
+Give the corresponding definitions of the procedures @code{consPow},
+@code{carPow}, and @code{cdrPow}.  A @code{Long} overflows for exponents past
+about 40, so use @code{java.math.BigInteger} instead.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.6}Exercise 2.6:} In case representing pairs as
-procedures wasn't mind-boggling enough, consider that, in a language that can
-manipulate procedures, we can get by without numbers (at least insofar as
+functions wasn't mind-boggling enough, consider that, in a language that can
+manipulate functions, we can get by without numbers (at least insofar as
 nonnegative integers are concerned) by implementing 0 and the operation of
 adding 1 as
 
-@lisp
-(define zero (lambda (f) (lambda (x) x)))
+@example kotlin
+typealias Church<T> = ((T) -> T) -> (T) -> T
 
-(define (add-1 n)
-  (lambda (f) (lambda (x) (f ((n f) x)))))
-@end lisp
+fun <T> churchZero(): Church<T> = { _ -> { x -> x } }
+
+fun <T> churchAddOne(n: Church<T>): Church<T> = { f -> { x -> f(n(f)(x)) } }
+@end example
 
 This representation is known as @newterm{Church numerals}, after its inventor,
 Alonzo Church, the logician who invented the λ-calculus.
 
-Define @code{one} and @code{two} directly (not in terms of @code{zero} and
-@code{add-1}).  (Hint: Use substitution to evaluate @code{(add-1 zero)}).  Give
-a direct definition of the addition procedure @code{+} (not in terms of
-repeated application of @code{add-1}).
+Define @code{churchOne} and @code{churchTwo} directly (not in terms of
+@code{churchZero} and @code{churchAddOne}).  (Hint: Use substitution to
+evaluate @code{churchAddOne(churchZero())}).  Give a direct definition of the
+addition procedure @code{plusChurch} (not in terms of repeated application of
+@code{churchAddOne}).
 @end quotation
 
 @node	2.1.4, 2.2, Chapter 2, 2.1
@@ -656,69 +652,59 @@ range of the result.
 Alyssa postulates the existence of an abstract object called an ``interval''
 that has two endpoints: a lower bound and an upper bound.  She also presumes
 that, given the endpoints of an interval, she can construct the interval using
-the data constructor @code{make-interval}.  Alyssa first writes a procedure for
+the data constructor @code{makeInterval}.  Alyssa first writes a procedure for
 adding two intervals.  She reasons that the minimum value the sum could be is
 the sum of the two lower bounds and the maximum value it could be is the sum of
 the two upper bounds:
 
-@lisp
-(define (add-interval x y)
-  (make-interval (+ (lower-bound x) 
-                    (lower-bound y))
-                 (+ (upper-bound x) 
-                    (upper-bound y))))
-@end lisp
+@example kotlin
+fun addInterval(x: Interval, y: Interval): Interval =
+    makeInterval(x.lowerBound + y.lowerBound, x.upperBound + y.upperBound)
+@end example
 
 @noindent
 Alyssa also works out the product of two intervals by finding the minimum and
 the maximum of the products of the bounds and using them as the bounds of the
-resulting interval.  (@code{Min} and @code{max} are primitives that find the
-minimum or maximum of any number of arguments.)
+resulting interval.  (@code{minOf} and @code{maxOf} are Kotlin standard-library
+functions that find the minimum or maximum of any number of arguments.)
 
-@lisp
-(define (mul-interval x y)
-  (let ((p1 (* (lower-bound x) 
-               (lower-bound y)))
-        (p2 (* (lower-bound x) 
-               (upper-bound y)))
-        (p3 (* (upper-bound x) 
-               (lower-bound y)))
-        (p4 (* (upper-bound x) 
-               (upper-bound y))))
-    (make-interval (min p1 p2 p3 p4)
-                   (max p1 p2 p3 p4))))
-@end lisp
+@example kotlin
+fun mulInterval(x: Interval, y: Interval): Interval {
+    val p1 = x.lowerBound * y.lowerBound
+    val p2 = x.lowerBound * y.upperBound
+    val p3 = x.upperBound * y.lowerBound
+    val p4 = x.upperBound * y.upperBound
+    return makeInterval(minOf(p1, p2, p3, p4), maxOf(p1, p2, p3, p4))
+}
+@end example
 
 @noindent
 To divide two intervals, Alyssa multiplies the first by the reciprocal of the
 second.  Note that the bounds of the reciprocal interval are the reciprocal of
 the upper bound and the reciprocal of the lower bound, in that order.
 
-@lisp
-(define (div-interval x y)
-  (mul-interval x 
-                (make-interval 
-                 (/ 1.0 (upper-bound y)) 
-                 (/ 1.0 (lower-bound y)))))
-@end lisp
+@example kotlin
+fun divInterval(x: Interval, y: Interval): Interval =
+    mulInterval(x, makeInterval(1.0 / y.upperBound, 1.0 / y.lowerBound))
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.7}Exercise 2.7:} Alyssa's program is incomplete
 because she has not specified the implementation of the interval abstraction.
 Here is a definition of the interval constructor:
 
-@lisp
-(define (make-interval a b) (cons a b))
-@end lisp
+@example kotlin
+fun makeInterval(a: Double, b: Double): Interval = Interval(a, b)
+@end example
 
-Define selectors @code{upper-bound} and @code{lower-bound} to complete the
+Define selectors @code{lowerBound} and @code{upperBound} to complete the
 implementation.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.8}Exercise 2.8:} Using reasoning analogous to
 Alyssa's, describe how the difference of two intervals may be computed.  Define
-a corresponding subtraction procedure, called @code{sub-interval}.
+a corresponding subtraction procedure, called @code{subInterval}.
 @end quotation
 
 @quotation
@@ -731,19 +717,23 @@ width of the combination is not a function of the widths of the argument
 intervals.  Show that the width of the sum (or difference) of two intervals is
 a function only of the widths of the intervals being added (or subtracted).
 Give examples to show that this is not true for multiplication or division.
+(A Kotlin @code{Interval} places no invariant on which bound is smaller, so a
+reversed pair produces a negative width rather than a rejected construction;
+this edition leaves that choice to the exercise's own solution rather than to
+@code{Interval} itself.)
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.10}Exercise 2.10:} Ben Bitdiddle, an expert systems
 programmer, looks over Alyssa's shoulder and comments that it is not clear what
 it means to divide by an interval that spans zero.  Modify Alyssa's code to
-check for this condition and to signal an error if it occurs.
+check for this condition and to raise an error if it occurs.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.11}Exercise 2.11:} In passing, Ben also cryptically
 comments: ``By testing the signs of the endpoints of the intervals, it is
-possible to break @code{mul-interval} into nine cases, only one of which
+possible to break @code{mulInterval} into nine cases, only one of which
 requires more than two multiplications.''  Rewrite this procedure using Ben's
 suggestion.
 
@@ -754,20 +744,18 @@ example, he wants to work with intervals such as 3.5 @math{\pm} 0.15 rather than
 [3.35, 3.65].  Alyssa returns to her desk and fixes this problem by supplying
 an alternate constructor and alternate selectors:
 
-@lisp
-(define (make-center-width c w)
-  (make-interval (- c w) (+ c w)))
+@example kotlin
+fun makeCenterWidth(c: Double, w: Double): Interval = makeInterval(c - w, c + w)
 
-(define (center i)
-  (/ (+ (lower-bound i) 
-        (upper-bound i)) 
-     2))
+fun center(i: Interval): Double = (i.lowerBound + i.upperBound) / 2.0
 
-(define (width i)
-  (/ (- (upper-bound i) 
-        (lower-bound i)) 
-     2))
-@end lisp
+fun width(i: Interval): Double = (i.upperBound - i.lowerBound) / 2.0
+@end example
+
+@example kotlin
+makeCenterWidth(3.5, 0.15)
+// => Interval(lowerBound=3.35, upperBound=3.65)
+@end example
 
 Unfortunately, most of Alyssa's users are engineers.  Real engineering
 situations usually involve measurements with only a small uncertainty, measured
@@ -778,7 +766,7 @@ as in the resistor specifications given earlier.
 
 @quotation
 @strong{@anchor{Exercise 2.12}Exercise 2.12:} Define a constructor
-@code{make-center-percent} that takes a center and a percentage tolerance and
+@code{makeCenterPercent} that takes a center and a percentage tolerance and
 produces the desired interval.  You must also define a selector @code{percent}
 that produces the percentage tolerance for a given interval.  The @code{center}
 selector is the same as the one shown above.
@@ -822,23 +810,26 @@ and
 @end example
 
 @end ifinfo
-He has written the following two programs, each of which computes the
+He has written the following two functions, each of which computes the
 parallel-resistors formula differently:
 
-@lisp
-(define (par1 r1 r2)
-  (div-interval 
-   (mul-interval r1 r2)
-   (add-interval r1 r2)))
+@example kotlin
+fun par1(r1: Interval, r2: Interval): Interval =
+    divInterval(mulInterval(r1, r2), addInterval(r1, r2))
 
-(define (par2 r1 r2)
-  (let ((one (make-interval 1 1)))
-    (div-interval 
-     one
-     (add-interval 
-      (div-interval one r1) 
-      (div-interval one r2)))))
-@end lisp
+fun par2(r1: Interval, r2: Interval): Interval {
+    val one = makeInterval(1.0, 1.0)
+    return divInterval(one, addInterval(divInterval(one, r1), divInterval(one, r2)))
+}
+@end example
+
+@example kotlin
+val r1 = makeInterval(6.12, 7.48)
+val r2 = makeInterval(4.465, 4.935)
+
+par1(r1, r2) == par2(r1, r2)
+// => false
+@end example
 
 Lem complains that Alyssa's program gives different answers for the two ways of
 computing. This is a serious complaint.
@@ -869,5 +860,3 @@ equivalent algebraic expressions may lead to different answers.  Can you devise
 an interval-arithmetic package that does not have this shortcoming, or is this
 task impossible?  (Warning: This problem is very difficult.)
 @end quotation
-
-

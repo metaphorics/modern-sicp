@@ -79,12 +79,9 @@ Thus, we can compute @math{{n!}} by computing @math{{(n - 1)!}} and multiplying 
 result by @math{n}.  If we add the stipulation that 1! is equal to 1, this
 observation translates directly into a procedure:
 
-@lisp
-(define (factorial n)
-  (if (= n 1) 
-      1 
-      (* n (factorial (- n 1)))))
-@end lisp
+@example kotlin
+public fun factorialRecursive(n: Long): Long = if (n == 1L) 1L else n * factorialRecursive(n - 1L)
+@end example
 
 @noindent
 We can use the substitution model of @ref{1.1.5} to watch this
@@ -97,18 +94,18 @@ procedure in action computing 6!, as shown in @ref{Figure 1.3}.
 @strong{Figure 1.3:} A linear recursive process for computing 6!.
 
 @example
-(factorial 6)        ----------------
-(* 6 (factorial 5))                   \
-(* 6 (* 5 (factorial 4)))               \
-(* 6 (* 5 (* 4 (factorial 3))))           \
-(* 6 (* 5 (* 4 (* 3 (factorial 2)))))       \
-(* 6 (* 5 (* 4 (* 3 (* 2 (factorial 1))))))  |
-(* 6 (* 5 (* 4 (* 3 (* 2 1)))))             /
-(* 6 (* 5 (* 4 (* 3 2))))                 /
-(* 6 (* 5 (* 4 6)))                     /
-(* 6 (* 5 24))                        /
-(* 6 120)                           /
-720          <---------------------
+factorialRecursive(6)                            ----------------
+6 * factorialRecursive(5)                                        \
+6 * (5 * factorialRecursive(4))                                    \
+6 * (5 * (4 * factorialRecursive(3)))                                \
+6 * (5 * (4 * (3 * factorialRecursive(2))))                            \
+6 * (5 * (4 * (3 * (2 * factorialRecursive(1)))))                        |
+6 * (5 * (4 * (3 * (2 * 1))))                                            /
+6 * (5 * (4 * (3 * 2)))                                                /
+6 * (5 * (4 * 6))                                                    /
+6 * (5 * 24)                                                       /
+6 * 120                                                          /
+720          <-------------------------------------------------
 @end example
 @end quotation
 @end ifinfo
@@ -142,33 +139,31 @@ exceeds @math{n}.
 
 Once again, we can recast our description as a procedure for computing
 factorials:@footnote{In a real program we would probably use the block
-structure introduced in the last section to hide the definition of
-@code{fact-iter}:
+structure introduced in the last section to hide the definition of the
+counting loop:
 
-@lisp
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
-@end lisp
+@example kotlin
+public fun factorialBlockStructured(n: Long): Long {
+    tailrec fun iter(
+        product: Long,
+        counter: Long,
+    ): Long = if (counter > n) product else iter(product * counter, counter + 1L)
+    return iter(1L, 1L)
+}
+@end example
 
 We avoided doing this here so as to minimize the number of things to think
 about at once.}
 
-@lisp
-(define (factorial n) 
-  (fact-iter 1 1 n))
+@example kotlin
+public tailrec fun factIter(
+    product: Long,
+    counter: Long,
+    maxCount: Long,
+): Long = if (counter > maxCount) product else factIter(counter * product, counter + 1L, maxCount)
 
-(define (fact-iter product counter max-count)
-  (if (> counter max-count)
-      product
-      (fact-iter (* counter product)
-                 (+ counter 1)
-                 max-count)))
-@end lisp
+public fun factorialIterative(n: Long): Long = factIter(1L, 1L, n)
+@end example
 
 @noindent
 As before, we can use the substitution model to visualize the process of
@@ -181,14 +176,14 @@ computing 6!, as shown in @ref{Figure 1.4}.
 @strong{Figure 1.4:} A linear iterative process for computing 6!.
 
 @example
-(factorial 6)   -----.
-(fact-iter   1 1 6)  |
-(fact-iter   1 2 6)  |
-(fact-iter   2 3 6)  |
-(fact-iter   6 4 6)  |
-(fact-iter  24 5 6)  |
-(fact-iter 120 6 6)  |
-(fact-iter 720 7 6)  V
+factorialIterative(6)   -----.
+factIter(  1, 1, 6)          |
+factIter(  1, 2, 6)          |
+factIter(  2, 3, 6)          |
+factIter(  6, 4, 6)          |
+factIter( 24, 5, 6)          |
+factIter(120, 6, 6)          |
+factIter(720, 7, 6)          V
 720
 @end example
 @end quotation
@@ -227,7 +222,7 @@ needed to keep track of it, grows linearly with @math{n} (is proportional to
 
 By contrast, the second process does not grow and shrink.  At each step, all we
 need to keep track of, for any @math{n}, are the current values of the variables
-@code{product}, @code{counter}, and @code{max-count}.  We call this an
+@code{product}, @code{counter}, and @code{maxCount}.  We call this an
 @newterm{iterative process}.  In general, an iterative process is one whose
 state can be summarized by a fixed number of @newterm{state variables},
 together with a fixed rule that describes how the state variables should be
@@ -259,25 +254,43 @@ directly or indirectly) to the procedure itself.  But when we describe a
 process as following a pattern that is, say, linearly recursive, we are
 speaking about how the process evolves, not about the syntax of how a procedure
 is written.  It may seem disturbing that we refer to a recursive procedure such
-as @code{fact-iter} as generating an iterative process.  However, the process
+as @code{factIter} as generating an iterative process.  However, the process
 really is iterative: Its state is captured completely by its three state
 variables, and an interpreter need keep track of only three variables in order
 to execute the process.
 
 One reason that the distinction between process and procedure may be confusing
-is that most implementations of common languages (including Ada, Pascal, and C)
-are designed in such a way that the interpretation of any recursive procedure
-consumes an amount of memory that grows with the number of procedure calls,
-even when the process described is, in principle, iterative.  As a consequence,
-these languages can describe iterative processes only by resorting to
-special-purpose ``looping constructs'' such as @code{do}, @code{repeat},
-@code{until}, @code{for}, and @code{while}.  The implementation of Scheme we
-shall consider in @ref{Chapter 5} does not share this defect.  It will execute
-an iterative process in constant space, even if the iterative process is
-described by a recursive procedure.  An implementation with this property is
-called @newterm{tail-recursive}.  With a tail-recursive implementation,
-iteration can be expressed using the ordinary procedure call mechanism, so that
-special iteration constructs are useful only as syntactic sugar.@footnote{Tail
+is that most implementations of common languages (including Ada, Pascal, C,
+and the JVM that Kotlin compiles to) are designed in such a way that the
+interpretation of any recursive procedure consumes an amount of memory that
+grows with the number of procedure calls, even when the process described is,
+in principle, iterative.  As a consequence, these languages can describe
+iterative processes only by resorting to special-purpose ``looping
+constructs'' such as @code{for} and @code{while}: left alone, the JVM would
+grow the call stack for @code{factIter} exactly as it does for
+@code{factorialRecursive}.  Kotlin narrows this gap for one important case
+rather than closing it outright, which is the marking that section 1.1.7's
+footnote on @code{tailrec} promised to take up here.  A function marked
+@code{tailrec} asks the compiler to verify that its only self-call sits in
+tail position — the last thing the function does, with nothing left
+pending once the call returns — and, once verified, compiles that self-call
+into an ordinary loop, so the process it describes runs in constant space no
+matter how deep the recursion goes.  @code{factIter} earns this marking, since
+its self-call is the entire value of the @code{else} branch;
+@code{factorialRecursive} could not, since its self-call is wrapped inside a
+multiplication still waiting for the result when the call returns.  This
+compiler-checked, per-function opt-in is not the blanket guarantee Scheme's own
+standard makes for every call in tail position, including a call from one
+procedure to a different one: Kotlin has no mechanism that turns a cycle of
+several mutually tail-calling functions into a loop, the way a fully
+tail-recursive implementation does (later chapters use an explicit
+@newterm{dispatch loop} where the book's evaluators would otherwise rely on
+that guarantee).  An implementation with the blanket property is called
+@newterm{tail-recursive}.  With a tail-recursive implementation, iteration can
+be expressed using the ordinary procedure call mechanism for every tail call;
+with Kotlin's narrower, single-function guarantee, only the self-recursive
+case gets this treatment, and every other iterative shape still needs
+@code{while} or @code{for}.@footnote{Tail
 recursion has long been known as a compiler optimization trick.  A coherent
 semantic basis for tail recursion was provided by Carl @ref{Hewitt (1977)}, who
 explained it in terms of the ``message-passing'' model of computation that we
@@ -289,61 +302,66 @@ Scheme requires that Scheme implementations be tail-recursive.}
 
 @quotation
 @strong{@anchor{Exercise 1.9}Exercise 1.9:} Each of the following two
-procedures defines a method for adding two positive integers in terms of the
-procedures @code{inc}, which increments its argument by 1, and @code{dec},
-which decrements its argument by 1.
+functions adds two positive integers in terms of @code{Long.inc()} (add
+one) and @code{Long.dec()} (subtract one).
 
-@lisp
-(define (+ a b)
-  (if (= a 0) 
-      b 
-      (inc (+ (dec a) b))))
+@example kotlin
+public fun plusRecursive(
+    a: Long,
+    b: Long,
+): Long = if (a == 0L) b else plusRecursive(a.dec(), b).inc()
 
-(define (+ a b)
-  (if (= a 0) 
-      b 
-      (+ (dec a) (inc b))))
-@end lisp
+public tailrec fun plusIterative(
+    a: Long,
+    b: Long,
+): Long = if (a == 0L) b else plusIterative(a.dec(), b.inc())
+@end example
 
-Using the substitution model, illustrate the process generated by each
-procedure in evaluating @code{(+ 4 5)}.  Are these processes iterative or
-recursive?
+Using the substitution model, illustrate the process each generates in
+evaluating @code{plusRecursive(4, 5)} and @code{plusIterative(4, 5)}.  Which
+self-call, if either, can the compiler verify as @code{tailrec}?  Are these
+processes iterative or recursive?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.10}Exercise 1.10:} The following procedure computes
+@strong{@anchor{Exercise 1.10}Exercise 1.10:} The following function computes
 a mathematical function called Ackermann's function.
 
-@lisp
-(define (A x y)
-  (cond ((= y 0) 0)
-        ((= x 0) (* 2 y))
-        ((= y 1) 2)
-        (else (A (- x 1)
-                 (A x (- y 1))))))
-@end lisp
+@example kotlin
+public fun ackermann(
+    x: Long,
+    y: Long,
+): Long =
+    when {
+        y == 0L -> 0L
+        x == 0L -> 2L * y
+        y == 1L -> 2L
+        else -> ackermann(x - 1L, ackermann(x, y - 1L))
+    }
+@end example
 
 What are the values of the following expressions?
 
-@lisp
-(A 1 10)
-(A 2 4)
-(A 3 3)
-@end lisp
+@example kotlin
+ackermann(1L, 10L)
+ackermann(2L, 4L)
+ackermann(3L, 3L)
+@end example
 
-Consider the following procedures, where @code{A} is the procedure
+Consider the following procedures, where @code{ackermann} is the procedure
 defined above:
 
-@lisp
-(define (f n) (A 0 n))
-(define (g n) (A 1 n))
-(define (h n) (A 2 n))
-(define (k n) (* 5 n n))
-@end lisp
+@example kotlin
+public fun ackermannF(n: Long): Long = ackermann(0L, n)
+public fun ackermannG(n: Long): Long = ackermann(1L, n)
+public fun ackermannH(n: Long): Long = ackermann(2L, n)
+public fun ackermannK(n: Long): Long = 5L * n * n
+@end example
 
 Give concise mathematical definitions for the functions computed by the
-procedures @code{f}, @code{g}, and @code{h} for positive integer values of
-@math{n}.  For example, @code{(k n)} computes @math{{5n^2}}.
+procedures @code{ackermannF}, @code{ackermannG}, and @code{ackermannH} for
+positive integer values of @math{n}.  For example, @code{ackermannK(n)}
+computes @math{{5n^2}}.
 @end quotation
 
 @node	1.2.2, 1.2.3, 1.2.1, 1.2
@@ -379,26 +397,27 @@ Fib(n) = <  1                        if n = 1
 We can immediately translate this definition into a recursive procedure for
 computing Fibonacci numbers:
 
-@lisp
-(define (fib n)
-  (cond ((= n 0) 0)
-        ((= n 1) 1)
-        (else (+ (fib (- n 1))
-                 (fib (- n 2))))))
-@end lisp
+@example kotlin
+public fun fibRecursive(n: Long): Long =
+    when {
+        n == 0L -> 0L
+        n == 1L -> 1L
+        else -> fibRecursive(n - 1L) + fibRecursive(n - 2L)
+    }
+@end example
 
 @noindent
-Consider the pattern of this computation.  To compute @code{(fib 5)}, we
-compute @code{(fib 4)} and @code{(fib 3)}.  To compute @code{(fib 4)}, we
-compute @code{(fib 3)} and @code{(fib 2)}.  In general, the evolved process
+Consider the pattern of this computation.  To compute @code{fibRecursive(5)}, we
+compute @code{fibRecursive(4)} and @code{fibRecursive(3)}.  To compute @code{fibRecursive(4)}, we
+compute @code{fibRecursive(3)} and @code{fibRecursive(2)}.  In general, the evolved process
 looks like a tree, as shown in @ref{Figure 1.5}.  Notice that the branches
 split into two at each level (except at the bottom); this reflects the fact
-that the @code{fib} procedure calls itself twice each time it is invoked.
+that @code{fibRecursive} calls itself twice each time it is invoked.
 
 @float
 @anchor{Figure 1.5}
 @ifinfo
-@strong{Figure 1.5:} The tree-recursive process generated in computing @code{(fib 5)}.
+@strong{Figure 1.5:} The tree-recursive process generated in computing @code{fibRecursive(5)}.
 
 @example
 
@@ -429,16 +448,16 @@ V     /  . \   . 1  .  . 1  .  . 0  .  . 1  .  . 0  ..
 @image{../../text/original/figures/pdf/chap1/Fig1.5d.std,,147mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 1.5:} The tree-recursive process generated in computing @code{(fib 5)}.}
+@caption{@strong{Figure 1.5:} The tree-recursive process generated in computing @code{fibRecursive(5)}.}
 @end float
 
 @noindent
 This procedure is instructive as a prototypical tree recursion, but it is a
 terrible way to compute Fibonacci numbers because it does so much redundant
 computation.  Notice in @ref{Figure 1.5} that the entire computation of
-@code{(fib 3)}---almost half the work---is duplicated.  In fact, it is not hard
-to show that the number of times the procedure will compute @code{(fib 1)} or
-@code{(fib 0)} (the number of leaves in the above tree, in general) is
+@code{fibRecursive(3)}---almost half the work---is duplicated.  In fact, it is not hard
+to show that the number of times the procedure will compute @code{fibRecursive(1)} or
+@code{fibRecursive(0)} (the number of leaves in the above tree, in general) is
 precisely @math{{\hbox{Fib}(n+1)}}.  To get an idea of how bad this is, one can
 show that the value of @math{{\hbox{Fib}(n)}} grows exponentially with @math{n}.  More
 precisely (see @ref{Exercise 1.13}), @math{{\hbox{Fib}(n)}} is the closest integer
@@ -497,15 +516,15 @@ It is not hard to show that, after applying this transformation @math{n} times,
 @math{{\hbox{Fib}(n)}}.  Thus, we can compute Fibonacci numbers iteratively using
 the procedure
 
-@lisp
-(define (fib n) 
-  (fib-iter 1 0 n))
+@example kotlin
+private tailrec fun fibIter(
+    a: Long,
+    b: Long,
+    count: Long,
+): Long = if (count == 0L) b else fibIter(a + b, a, count - 1L)
 
-(define (fib-iter a b count)
-  (if (= count 0)
-      b
-      (fib-iter (+ a b) a (- count 1))))
-@end lisp
+public fun fibIterative(n: Long): Long = fibIter(1L, 0L, n)
+@end example
 
 @noindent
 This second method for computing @math{{\hbox{Fib}(n)}} is a linear iteration.  The
@@ -519,9 +538,9 @@ rather than numbers, we will find that tree recursion is a natural and powerful
 tool.@footnote{An example of this was hinted at in @ref{1.1.3}. The
 interpreter itself evaluates expressions using a tree-recursive process.} But
 even in numerical operations, tree-recursive processes can be useful in helping
-us to understand and design programs.  For instance, although the first
-@code{fib} procedure is much less efficient than the second one, it is more
-straightforward, being little more than a translation into Lisp of the
+us to understand and design programs.  For instance, although
+@code{fibRecursive} is much less efficient than @code{fibIterative}, it is
+more straightforward, being little more than a translation into Kotlin of the
 definition of the Fibonacci sequence.  To formulate the iterative algorithm
 required noticing that the computation could be recast as an iteration with
 three state variables.
@@ -585,44 +604,44 @@ If @math{n} is 0, we should count that as 0 ways to make change.
 @noindent
 We can easily translate this description into a recursive procedure:
 
-@lisp
-(define (count-change amount)
-  (cc amount 5))
+@example kotlin
+private fun cc(
+    amount: Long,
+    kindsOfCoins: Int,
+): Long =
+    when {
+        amount == 0L -> 1L
+        amount < 0L || kindsOfCoins == 0 -> 0L
+        else -> cc(amount, kindsOfCoins - 1) + cc(amount - firstDenomination(kindsOfCoins), kindsOfCoins)
+    }
 
-(define (cc amount kinds-of-coins)
-  (cond ((= amount 0) 1)
-        ((or (< amount 0) 
-             (= kinds-of-coins 0)) 
-         0)
-        (else 
-         (+ (cc amount (- kinds-of-coins 1))
-            (cc (- amount (first-denomination 
-                           kinds-of-coins))
-                kinds-of-coins)))))
-
-(define (first-denomination kinds-of-coins)
-  (cond ((= kinds-of-coins 1) 1)
-        ((= kinds-of-coins 2) 5)
-        ((= kinds-of-coins 3) 10)
-        ((= kinds-of-coins 4) 25)
-        ((= kinds-of-coins 5) 50)))
-@end lisp
+private fun firstDenomination(kindsOfCoins: Int): Long =
+    when (kindsOfCoins) {
+        1 -> 1L
+        2 -> 5L
+        3 -> 10L
+        4 -> 25L
+        else -> 50L
+    }
+@end example
 
 @noindent
-(The @code{first-denomination} procedure takes as input the number of kinds of
+(@code{firstDenomination} takes as input the number of kinds of
 coins available and returns the denomination of the first kind.  Here we are
 thinking of the coins as arranged in order from largest to smallest, but any
 order would do as well.)  We can now answer our original question about
 changing a dollar:
 
-@lisp
-(count-change 100)
-@i{292}
-@end lisp
+@example kotlin
+public fun countChange(amount: Long): Long = cc(amount, 5)
+
+countChange(100L)
+// => 292
+@end example
 
 @noindent
-@code{Count-change} generates a tree-recursive process with redundancies
-similar to those in our first implementation of @code{fib}.  (It will take
+@code{countChange} generates a tree-recursive process with redundancies
+similar to those in our first implementation of @code{fibRecursive}.  (It will take
 quite a while for that 292 to be computed.)  On the other hand, it is not
 obvious how to design a better algorithm for computing the result, and we leave
 this problem as a challenge.  The observation that a tree-recursive process may
@@ -637,7 +656,7 @@ in the table, in which case we avoid performing the redundant computation.
 This strategy, known as @newterm{tabulation} or @newterm{memoization}, can be
 implemented in a straightforward way.  Tabulation can sometimes be used to
 transform processes that require an exponential number of steps (such as
-@code{count-change}) into processes whose space and time requirements grow
+@code{countChange}) into processes whose space and time requirements grow
 linearly with the input.  See @ref{Exercise 3.27}.}
 
 @quotation
@@ -746,7 +765,7 @@ constant amount.
 
 @quotation
 @strong{@anchor{Exercise 1.14}Exercise 1.14:} Draw the tree illustrating the
-process generated by the @code{count-change} procedure of @ref{1.2.2}
+process generated by the @code{countChange} procedure of @ref{1.2.2}
 in making change for 11 cents.  What are the orders of growth of the space and
 number of steps used by this process as the amount to be changed increases?
 @end quotation
@@ -774,25 +793,22 @@ exercise an angle is considered ``sufficiently small'' if its magnitude is not
 greater than 0.1 radians.) These ideas are incorporated in the following
 procedures:
 
-@lisp
-(define (cube x) (* x x x))
-(define (p x) (- (* 3 x) (* 4 (cube x))))
-(define (sine angle)
-   (if (not (> (abs angle) 0.1))
-       angle
-       (p (sine (/ angle 3.0)))))
-@end lisp
+@example kotlin
+private fun cube(x: Double): Double = x * x * x
+private fun p(x: Double): Double = 3.0 * x - 4.0 * cube(x)
+private fun sine(angle: Double): Double = if (!(abs(angle) > 0.1)) angle else p(sine(angle / 3.0))
+@end example
 
 @enumerate a
 
 @item
-How many times is the procedure @code{p} applied when @code{(sine 12.15)} is
+How many times is the procedure @code{p} applied when @code{sine(12.15)} is
 evaluated?
 
 @item
 What is the order of growth in space and number of steps (as a function of
-@math{a}) used by the process generated by the @code{sine} procedure when
-@code{(sine a)} is evaluated?
+@math{a}) used by the process generated when @code{sine(a)} is
+evaluated?
 
 @end enumerate
 @end quotation
@@ -820,29 +836,30 @@ b^0 = 1
 @end ifinfo
 which translates readily into the procedure
 
-@lisp
-(define (expt b n)
-  (if (= n 0) 
-      1 
-      (* b (expt b (- n 1)))))
-@end lisp
+@example kotlin
+public fun exptRecursive(
+    b: Long,
+    n: Long,
+): Long = if (n == 0L) 1L else b * exptRecursive(b, n - 1L)
+@end example
 
 @noindent
 This is a linear recursive process, which requires @math{{\Theta(n)}} steps and
 @math{{\Theta(n)}} space.  Just as with factorial, we can readily formulate an
 equivalent linear iteration:
 
-@lisp
-(define (expt b n) 
-  (expt-iter b n 1))
+@example kotlin
+private tailrec fun exptIter(
+    b: Long,
+    counter: Long,
+    product: Long,
+): Long = if (counter == 0L) product else exptIter(b, counter - 1L, b * product)
 
-(define (expt-iter b counter product)
-  (if (= counter 0)
-      product
-      (expt-iter b
-                 (- counter 1)
-                 (* b product))))
-@end lisp
+public fun exptIterative(
+    b: Long,
+    n: Long,
+): Long = exptIter(b, n, 1L)
+@end example
 
 @noindent
 This version requires @math{{\Theta(n)}} steps and @math{{\Theta(1)}} space.
@@ -895,29 +912,26 @@ b^n = b * b^(n - 1)  if n is odd
 @end ifinfo
 We can express this method as a procedure:
 
-@lisp
-(define (fast-expt b n)
-  (cond ((= n 0) 
-         1)
-        ((even? n) 
-         (square (fast-expt b (/ n 2))))
-        (else 
-         (* b (fast-expt b (- n 1))))))
-@end lisp
+@example kotlin
+private fun isEven(n: Long): Boolean = n % 2L == 0L
+
+public fun fastExpt(
+    b: Long,
+    n: Long,
+): Long =
+    when {
+        n == 0L -> 1L
+        isEven(n) -> square(fastExpt(b, n / 2L))
+        else -> b * fastExpt(b, n - 1L)
+    }
+@end example
 
 @noindent
-where the predicate to test whether an integer is even is defined in terms of
-the primitive procedure @code{remainder} by
-
-@lisp
-(define (even? n)
-  (= (remainder n 2) 0))
-@end lisp
-
-@noindent
-The process evolved by @code{fast-expt} grows logarithmically with @math{n} in
+where @code{square} is the @code{Long}-valued one of @ref{1.1.4}, and
+@code{isEven} tests whether an integer is even in terms of the primitive
+@code{%}.  The process evolved by @code{fastExpt} grows logarithmically with @math{n} in
 both space and number of steps.  To see this, observe that computing
-@math{b^{2n}} using @code{fast-expt} requires only one more multiplication
+@math{b^{2n}} using @code{fastExpt} requires only one more multiplication
 than computing @math{b^n}.  The size of the exponent we can compute therefore
 doubles (approximately) with every new multiplication we are allowed.  Thus,
 the number of multiplications required for an exponent of @math{n} grows about as
@@ -932,7 +946,7 @@ processes are described as @math{{\Theta(\log n)}}.}
 
 The difference between @math{{\Theta(\log n)}} growth and
 @math{{\Theta(n)}} growth becomes striking as @math{n} becomes large.  For
-example, @code{fast-expt} for @math{n} = 1000 requires only 14
+example, @code{fastExpt} for @math{n} = 1000 requires only 14
 multiplications.@footnote{You may wonder why anyone would care about raising
 numbers to the 1000th power.  See @ref{1.2.6}.} It is also possible to
 use the idea of successive squaring to devise an iterative algorithm that
@@ -947,7 +961,7 @@ exponentiation.}
 @quotation
 @strong{@anchor{Exercise 1.16}Exercise 1.16:} Design a procedure that evolves
 an iterative exponentiation process that uses successive squaring and uses a
-logarithmic number of steps, as does @code{fast-expt}.  (Hint: Using the
+logarithmic number of steps, as does @code{fastExpt}.  (Hint: Using the
 observation that @math{{(b^{n / 2})^2} = {(b^2)^{n / 2}}}, keep, along with
 the exponent @math{n} and the base @math{b}, an additional state variable @math{a}, and
 define the state transformation in such a way that the product @math{{ab^n}} 
@@ -963,20 +977,20 @@ powerful way to think about the design of iterative algorithms.)
 this section are based on performing exponentiation by means of repeated
 multiplication.  In a similar way, one can perform integer multiplication by
 means of repeated addition.  The following multiplication procedure (in which
-it is assumed that our language can only add, not multiply) is analogous to the
-@code{expt} procedure:
+it is assumed that our language can only add, not multiply) is analogous to
+@code{exptRecursive}:
 
-@lisp
-(define (* a b)
-  (if (= b 0)
-      0
-      (+ a (* a (- b 1)))))
-@end lisp
+@example kotlin
+public fun multiply(
+    a: Long,
+    b: Long,
+): Long = if (b == 0L) 0L else a + multiply(a, b - 1L)
+@end example
 
 This algorithm takes a number of steps that is linear in @code{b}.  Now suppose
 we include, together with addition, operations @code{double}, which doubles an
 integer, and @code{halve}, which divides an (even) integer by 2.  Using these,
-design a multiplication procedure analogous to @code{fast-expt} that uses a
+design a multiplication procedure analogous to @code{fastExpt} that uses a
 logarithmic number of steps.
 @end quotation
 
@@ -994,7 +1008,7 @@ oldest mathematical documents in existence, written about 1700 @abbr{B.C.}
 @quotation
 @strong{@anchor{Exercise 1.19}Exercise 1.19:} There is a clever algorithm for
 computing the Fibonacci numbers in a logarithmic number of steps.  Recall the
-transformation of the state variables @math{a} and @math{b} in the @code{fib-iter}
+transformation of the state variables @math{a} and @math{b} in the @code{fibIter}
 process of @ref{1.2.2}: @math{a \gets a + b} and @math{b \gets a}.
 Call this transformation @math{T}, and observe that applying @math{T} over and over
 again @math{n} times, starting with 1 and 0, produces the pair @math{{\hbox{Fib}(n+1)}} and 
@@ -1008,34 +1022,42 @@ Show that if we apply such a transformation @math{T_{pq}} twice, the
 effect is the same as using a single transformation @math{T_{p'q'}} of the
 same form, and compute @math{p'\!} and @math{q'\!} in terms of @math{p} and @math{q}.  This
 gives us an explicit way to square these transformations, and thus we can
-compute @math{T^n} using successive squaring, as in the @code{fast-expt}
-procedure.  Put this all together to complete the following procedure, which
-runs in a logarithmic number of steps:@footnote{This exercise was suggested to
+compute @math{T^n} using successive squaring, as in @code{fastExpt}.
+Put this all together to complete the following procedure, which
+runs in a logarithmic number of steps.  @code{Fib(93)} already exceeds
+@code{Long.MAX_VALUE}, so state this edition's @code{fibLog} over
+@code{java.math.BigInteger} rather than @code{Long}:@footnote{This exercise was suggested to
 us by Joe Stoy, based on an example in @ref{Kaldewaij 1990}.}
 
-@lisp
-(define (fib n)
-  (fib-iter 1 0 0 1 n))
+@example kotlin
+private tailrec fun fibIterLog(
+    a: BigInteger,
+    b: BigInteger,
+    p: BigInteger,
+    q: BigInteger,
+    count: Long,
+): BigInteger =
+    when {
+        count == 0L -> b
+        isEven(count) -> fibIterLog(a, b, TODO("compute p'"), TODO("compute q'"), count / 2L)
+        else -> fibIterLog(b * q + a * q + a * p, b * p + a * q, p, q, count - 1L)
+    }
 
-(define (fib-iter a b p q count)
-  (cond ((= count 0) 
-         b)
-        ((even? count)
-         (fib-iter a
-                   b
-                   ⟨??⟩  ;compute @var{p'}
-                   ⟨??⟩  ;compute @var{q'}
-                   (/ count 2)))
-        (else 
-         (fib-iter (+ (* b q) 
-                      (* a q) 
-                      (* a p))
-                   (+ (* b p) 
-                      (* a q))
-                   p
-                   q
-                   (- count 1)))))
-@end lisp
+public fun fibLog(n: Long): BigInteger = fibIterLog(BigInteger.ONE, BigInteger.ZERO, BigInteger.ZERO, BigInteger.ONE, n)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.19a}Exercise 1.19a:} @emph{Exercise 1.19a is
+added by this edition and extends exercise 1.19; SICP numbers stop at
+1.19.} @code{Fib(92)} itself still fits in a @code{Long}, since
+@code{Fib(92) = 7540113804746346429} is below @code{Long.MAX_VALUE =
+9223372036854775807}.  Restate @code{fibIterLog} and @code{fibLog} over
+checked @code{Long} arithmetic (@code{Math.addExact}/@code{Math.multiplyExact})
+instead of @code{BigInteger}, calling the result @code{fibLogChecked}.
+Find the exact @math{n} past which @code{fibLogChecked} throws
+@code{ArithmeticException}, and explain why it is not the same @math{n} at
+which @code{Fib(n)} itself first exceeds @code{Long.MAX_VALUE}.
 @end quotation
 
 @node	1.2.5, 1.2.6, 1.2.4, 1.2
@@ -1089,15 +1111,16 @@ examples.}
 
 It is easy to express Euclid's Algorithm as a procedure:
 
-@lisp
-(define (gcd a b)
-  (if (= b 0)
-      a
-      (gcd b (remainder a b))))
-@end lisp
+@example kotlin
+public tailrec fun gcd(
+    a: Long,
+    b: Long,
+): Long = if (b == 0L) a else gcd(b, a % b)
+@end example
 
 @noindent
-This generates an iterative process, whose number of steps grows as the
+This generates an iterative process, whose self-call is in tail position, so
+@code{gcd} compiles as @code{tailrec}; the number of steps grows as the
 logarithm of the numbers involved.
 
 The fact that the number of steps required by Euclid's Algorithm has
@@ -1143,16 +1166,20 @@ grows as the logarithm (to the base @math{\varphi}) of @math{n}.  Hence, the ord
 growth is @math{{\Theta(\log n)}}.
 
 @quotation
-@strong{@anchor{Exercise 1.20}Exercise 1.20:} The process that a procedure
-generates is of course dependent on the rules used by the interpreter.  As an
-example, consider the iterative @code{gcd} procedure given above.  Suppose we
-were to interpret this procedure using normal-order evaluation, as discussed in
-@ref{1.1.5}.  (The normal-order-evaluation rule for @code{if} is
-described in @ref{Exercise 1.5}.)  Using the substitution method (for normal
-order), illustrate the process generated in evaluating @code{(gcd 206 40)} and
-indicate the @code{remainder} operations that are actually performed.  How many
-@code{remainder} operations are actually performed in the normal-order
-evaluation of @code{(gcd 206 40)}?  In the applicative-order evaluation?
+@strong{@anchor{Exercise 1.20}Exercise 1.20:} @emph{SICP exercise 1.20 is about
+Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.} SICP's own exercise traces the iterative
+@code{gcd} procedure under normal-order evaluation, contrasted with applicative
+order, and asks how many @code{remainder} operations each performs while
+evaluating @code{gcd(206, 40)}; the substitution model for normal order defers
+every unevaluated argument until an @code{=} test forces it, so the same
+@code{remainder} expression can be substituted, unevaluated, into several
+later calls and then run once for each occurrence.  Kotlin, like every host
+language in this book, only evaluates its arguments eagerly, so no procedure
+here can be traced under normal order.  Instrument the eager @code{gcd} above
+to count every call it makes to @code{remainder} while evaluating
+@code{gcd(206, 40)}.  How many @code{remainder} operations does the eager
+evaluation actually perform?
 @end quotation
 
 @node	1.2.6, 1.3, 1.1, 1.2
@@ -1174,34 +1201,35 @@ divisor (greater than 1) of a given number @math{n}.  It does this in a
 straightforward way, by testing @math{n} for divisibility by successive integers
 starting with 2.
 
-@lisp
-(define (smallest-divisor n)
-  (find-divisor n 2))
+@example kotlin
+private fun divides(
+    a: Long,
+    b: Long,
+): Boolean = b % a == 0L
 
-(define (find-divisor n test-divisor)
-  (cond ((> (square test-divisor) n) 
-         n)
-        ((divides? test-divisor n) 
-         test-divisor)
-        (else (find-divisor 
-               n 
-               (+ test-divisor 1)))))
+private tailrec fun findDivisor(
+    n: Long,
+    testDivisor: Long,
+): Long =
+    when {
+        testDivisor * testDivisor > n -> n
+        divides(testDivisor, n) -> testDivisor
+        else -> findDivisor(n, testDivisor + 1L)
+    }
 
-(define (divides? a b)
-  (= (remainder b a) 0))
-@end lisp
+public fun smallestDivisor(n: Long): Long = findDivisor(n, 2L)
+@end example
 
 @noindent
 We can test whether a number is prime as follows: @math{n} is prime if and only if
 @math{n} is its own smallest divisor.
 
-@lisp
-(define (prime? n)
-  (= n (smallest-divisor n)))
-@end lisp
+@example kotlin
+public fun isPrime(n: Long): Boolean = n == smallestDivisor(n)
+@end example
 
 @noindent
-The end test for @code{find-divisor} is based on the fact that if @math{n} is not
+The end test for @code{findDivisor} is based on the fact that if @math{n} is not
 prime it must have a divisor less than or equal to
 @math{\sqrt{n}}.@footnote{If @math{d} is a divisor of @math{n}, then so is
 @math{{n \,/\, d}}.  But @math{d} and @math{{n \,/\, d}} cannot both be greater than
@@ -1253,21 +1281,23 @@ Fermat test.
 To implement the Fermat test, we need a procedure that computes the exponential
 of a number modulo another number:
 
-@lisp
-(define (expmod base exp m)
-  (cond ((= exp 0) 1)
-        ((even? exp)
-         (remainder 
-          (square (expmod base (/ exp 2) m))
-          m))
-        (else
-         (remainder 
-          (* base (expmod base (- exp 1) m))
-          m))))
-@end lisp
+@example kotlin
+private fun square(x: Long): Long = x * x
+
+public fun expmod(
+    base: Long,
+    exp: Long,
+    m: Long,
+): Long =
+    when {
+        exp == 0L -> 1L
+        exp % 2L == 0L -> square(expmod(base, exp / 2L, m)) % m
+        else -> (base * expmod(base, exp - 1L, m)) % m
+    }
+@end example
 
 @noindent
-This is very similar to the @code{fast-expt} procedure of @ref{1.2.4}.
+This is very similar to @code{fastExpt} of @ref{1.2.4}.
 It uses successive squaring, so that the number of steps grows logarithmically
 with the exponent.@footnote{The reduction steps in the cases where the exponent
 @math{e} is greater than 1 are based on the fact that, for any integers @math{x},
@@ -1283,30 +1313,40 @@ computation without ever having to deal with numbers much larger than @math{m}.
 The Fermat test is performed by choosing at random a number @math{a} between 1 and
 @math{{n-1}} inclusive and checking whether the remainder modulo @math{n} of the
 @math{n^{\hbox{th}}} power of @math{a} is equal to @math{a}.  The random number @math{a} is chosen
-using the procedure @code{random}, which we assume is included as a primitive
-in Scheme. @code{Random} returns a nonnegative integer less than its integer
+from the seeded generator this edition's runtime ships for exactly this
+purpose, so that the stochastic exercises of this section give the same
+transcript on every machine and every run (see @ref{0.7}):
+@code{sicp.runtime.Random} returns a nonnegative integer less than its integer
 input.  Hence, to obtain a random number between 1 and @math{{n-1}}, we call
-@code{random} with an input of @math{{n-1}} and add 1 to the result:
+@code{rng.random} with an input of @math{{n-1}} and add 1 to the result:
 
-@lisp
-(define (fermat-test n)
-  (define (try-it a)
-    (= (expmod a n n) a))
-  (try-it (+ 1 (random (- n 1)))))
-@end lisp
+@example kotlin
+public fun fermatTest(
+    n: Long,
+    rng: Random,
+): Boolean {
+    val a = 1L + rng.random(n - 1L)
+    return expmod(a, n, n) == a
+}
+@end example
 
 @noindent
 The following procedure runs the test a given number of times, as specified by
 a parameter.  Its value is true if the test succeeds every time, and false
 otherwise.
 
-@lisp
-(define (fast-prime? n times)
-  (cond ((= times 0) true)
-        ((fermat-test n) 
-         (fast-prime? n (- times 1)))
-        (else false)))
-@end lisp
+@example kotlin
+public tailrec fun fastPrime(
+    n: Long,
+    times: Int,
+    rng: Random,
+): Boolean =
+    when {
+        times == 0 -> true
+        fermatTest(n, rng) -> fastPrime(n, times - 1, rng)
+        else -> false
+    }
+@end example
 
 @subsubheading Probabilistic methods
 
@@ -1365,41 +1405,32 @@ now turns out to have important practical applications to cryptography,
 electronic funds transfer, and information retrieval.}
 
 @quotation
-@strong{@anchor{Exercise 1.21}Exercise 1.21:} Use the @code{smallest-divisor}
+@strong{@anchor{Exercise 1.21}Exercise 1.21:} Use the @code{smallestDivisor}
 procedure to find the smallest divisor of each of the following numbers: 199,
 1999, 19999.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.22}Exercise 1.22:} Most Lisp implementations include
-a primitive called @code{runtime} that returns an integer that specifies the
-amount of time the system has been running (measured, for example, in
-microseconds).  The following @code{timed-prime-test} procedure, when called
-with an integer @math{n}, prints @math{n} and checks to see if @math{n} is prime.  If
-@math{n} is prime, the procedure prints three asterisks followed by the amount of
-time used in performing the test.
+@strong{@anchor{Exercise 1.22}Exercise 1.22:} The @abbr{JVM} exposes
+@code{System.nanoTime}, an integer that specifies the amount of time the
+system has been running, measured in nanoseconds.  The following
+@code{timedPrimeTest} function, when called with an integer @math{n}, checks to
+see if @math{n} is prime, and if so, reports the elapsed time used in performing
+the test.
 
-@lisp
-(define (timed-prime-test n)
-  (newline)
-  (display n)
-  (start-prime-test n (runtime)))
-@end lisp
+@example kotlin
+public data class TimedPrimeResult(
+    val n: Long,
+    val elapsedNanos: Long,
+)
 
-@lisp
-(define (start-prime-test n start-time)
-  (if (prime? n)
-      (report-prime (- (runtime) 
-                       start-time))))
-@end lisp
+public fun timedPrimeTest(n: Long): TimedPrimeResult? {
+    val start = System.nanoTime()
+    return if (isPrime(n)) TimedPrimeResult(n, System.nanoTime() - start) else null
+}
+@end example
 
-@lisp
-(define (report-prime elapsed-time)
-  (display " *** ")
-  (display elapsed-time))
-@end lisp
-
-Using this procedure, write a procedure @code{search-for-primes} that checks
+Using this procedure, write a procedure @code{searchForPrimes} that checks
 the primality of consecutive odd integers in a specified range.  Use your
 procedure to find the three smallest primes larger than 1000; larger than
 10,000; larger than 100,000; larger than 1,000,000.  Note the time needed to
@@ -1413,17 +1444,17 @@ proportional to the number of steps required for the computation?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.23}Exercise 1.23:} The @code{smallest-divisor}
+@strong{@anchor{Exercise 1.23}Exercise 1.23:} The @code{smallestDivisor}
 procedure shown at the start of this section does lots of needless testing:
 After it checks to see if the number is divisible by 2 there is no point in
 checking to see if it is divisible by any larger even numbers.  This suggests
-that the values used for @code{test-divisor} should not be 2, 3, 4, 5, 6,
+that the values used for @code{testDivisor} should not be 2, 3, 4, 5, 6,
 @dots{}, but rather 2, 3, 5, 7, 9, @dots{}.  To implement this change, define a
 procedure @code{next} that returns 3 if its input is equal to 2 and otherwise
-returns its input plus 2.  Modify the @code{smallest-divisor} procedure to use
-@code{(next test-divisor)} instead of @code{(+ test-divisor 1)}.  With
-@code{timed-prime-test} incorporating this modified version of
-@code{smallest-divisor}, run the test for each of the 12 primes found in
+returns its input plus 2.  Modify @code{findDivisor} to use
+@code{next(testDivisor)} instead of @code{testDivisor + 1}.  With
+@code{timedPrimeTest} incorporating this modified version of
+@code{findDivisor}, run the test for each of the 12 primes found in
 @ref{Exercise 1.22}.  Since this modification halves the number of test steps,
 you should expect it to run about twice as fast.  Is this expectation
 confirmed?  If not, what is the observed ratio of the speeds of the two
@@ -1432,8 +1463,8 @@ algorithms, and how do you explain the fact that it is different from 2?
 
 @quotation
 @strong{@anchor{Exercise 1.24}Exercise 1.24:} Modify the
-@code{timed-prime-test} procedure of @ref{Exercise 1.22} to use
-@code{fast-prime?} (the Fermat method), and test each of the 12 primes you
+@code{timedPrimeTest} procedure of @ref{Exercise 1.22} to use
+@code{fastPrime} (the Fermat method), and test each of the 12 primes you
 found in that exercise.  Since the Fermat test has @math{{\Theta(\log n)}}
 growth, how would you expect the time to test primes near 1,000,000 to
 compare with the time needed to test primes near 1000?  Do your data bear this
@@ -1445,10 +1476,13 @@ out?  Can you explain any discrepancy you find?
 we went to a lot of extra work in writing @code{expmod}.  After all, she says,
 since we already know how to compute exponentials, we could have simply written
 
-@lisp
-(define (expmod base exp m)
-  (remainder (fast-expt base exp) m))
-@end lisp
+@example kotlin
+public fun expmodSimplified(
+    base: Long,
+    exp: Long,
+    m: Long,
+): Long = exptRecursive(base, exp) % m
+@end example
 
 Is she correct?  Would this procedure serve as well for our fast prime tester?
 Explain.
@@ -1456,29 +1490,27 @@ Explain.
 
 @quotation
 @strong{@anchor{Exercise 1.26}Exercise 1.26:} Louis Reasoner is having great
-difficulty doing @ref{Exercise 1.24}.  His @code{fast-prime?} test seems to run
-more slowly than his @code{prime?} test.  Louis calls his friend Eva Lu Ator
+difficulty doing @ref{Exercise 1.24}.  His @code{fastPrime} test seems to run
+more slowly than his @code{isPrime} test.  Louis calls his friend Eva Lu Ator
 over to help.  When they examine Louis's code, they find that he has rewritten
-the @code{expmod} procedure to use an explicit multiplication, rather than
+@code{expmod} to use an explicit multiplication, rather than
 calling @code{square}:
 
-@lisp
-(define (expmod base exp m)
-  (cond ((= exp 0) 1)
-        ((even? exp)
-         (remainder 
-          (* (expmod base (/ exp 2) m)
-             (expmod base (/ exp 2) m))
-          m))
-        (else
-         (remainder 
-          (* base 
-             (expmod base (- exp 1) m))
-          m))))
-@end lisp
+@example kotlin
+public fun expmodExplicit(
+    base: Long,
+    exp: Long,
+    m: Long,
+): Long =
+    when {
+        exp == 0L -> 1L
+        exp % 2L == 0L -> (expmodExplicit(base, exp / 2L, m) * expmodExplicit(base, exp / 2L, m)) % m
+        else -> (base * expmodExplicit(base, exp - 1L, m)) % m
+    }
+@end example
 
-``I don't see what difference that could make,'' says Louis.  @w{``I do.''}  says
-Eva.  ``By writing the procedure like that, you have transformed the
+``I don't see what difference that could make,'' says Louis.  Eva says,
+``By writing the procedure like that, you have transformed the
 @math{{\Theta(\log n)}} process into a @math{{\Theta(n)}} process.''
 Explain.
 @end quotation
@@ -1499,7 +1531,7 @@ which states that if @math{n} is a prime number and @math{a} is any positive int
 less than @math{n}, then @math{a} raised to the @math{{(n-1)}}-st power is congruent to 1
 modulo @math{n}.  To test the primality of a number @math{n} by the Miller-Rabin
 test, we pick a random number @math{{a < n}} and raise @math{a} to the @math{{(n-1)}}-st
-power modulo @math{n} using the @code{expmod} procedure.  However, whenever we
+power modulo @math{n} using @code{expmod}.  However, whenever we
 perform the squaring step in @code{expmod}, we check to see if we have
 discovered a ``nontrivial square root of 1 modulo @math{n},'' that is, a number
 not equal to 1 or @math{{n-1}} whose square is equal to 1 modulo @math{n}.  It is
@@ -1507,11 +1539,9 @@ possible to prove that if such a nontrivial square root of 1 exists, then @math{
 is not prime.  It is also possible to prove that if @math{n} is an odd number that
 is not prime, then, for at least half the numbers @math{{a < n}}, computing
 @math{a^{n-1}} in this way will reveal a nontrivial square root of 1 modulo
-@math{n}.  (This is why the Miller-Rabin test cannot be fooled.)  Modify the
-@code{expmod} procedure to signal if it discovers a nontrivial square root of
+@math{n}.  (This is why the Miller-Rabin test cannot be fooled.)  Modify
+@code{expmod} to signal (by returning 0) if it discovers a nontrivial square root of
 1, and use this to implement the Miller-Rabin test with a procedure analogous
-to @code{fermat-test}.  Check your procedure by testing various known primes
-and non-primes.  Hint: One convenient way to make @code{expmod} signal is to
-have it return 0.
+to @code{fermatTest}.  Check your procedure by testing various known primes
+and non-primes.
 @end quotation
-

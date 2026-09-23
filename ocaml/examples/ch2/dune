@@ -1,0 +1,24 @@
+(library
+ (name sicp_ch2)
+ (libraries sicp_common sicp_ch1)
+ (modules sec_2_1 sec_2_2))
+
+(executable
+ (name run_sec_2_1)
+ (modules run_sec_2_1)
+ (libraries sicp_ch2 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_2_1.exe)))
+
+(executable
+ (name run_sec_2_2)
+ (modules run_sec_2_2)
+ (libraries sicp_ch2 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_2_2.exe)))

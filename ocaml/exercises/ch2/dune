@@ -1,0 +1,76 @@
+(library
+ (name sicp_ch2_exercises)
+ (libraries sicp_common)
+ (modules
+  sec_2_1
+  sec_2_2
+  sec_2_3
+  sec_2_4
+  sec_2_5
+  sec_2_6
+  sec_2_7
+  sec_2_8
+  sec_2_9
+  sec_2_10
+  sec_2_11
+  sec_2_12
+  sec_2_13
+  sec_2_14
+  sec_2_15
+  sec_2_16
+  sec_2_17
+  sec_2_18
+  sec_2_19
+  sec_2_20
+  sec_2_21
+  sec_2_22
+  sec_2_23
+  sec_2_24
+  sec_2_25
+  sec_2_26
+  sec_2_27
+  sec_2_28
+  sec_2_29
+  sec_2_30
+  sec_2_31
+  sec_2_32
+  sec_2_33
+  sec_2_34
+  sec_2_35
+  sec_2_36
+  sec_2_37
+  sec_2_38
+  sec_2_39
+  sec_2_40
+  sec_2_41
+  sec_2_42
+  sec_2_43
+  sec_2_44
+  sec_2_45
+  sec_2_46
+  sec_2_47
+  sec_2_48
+  sec_2_49
+  sec_2_50
+  sec_2_51
+  sec_2_52))
+
+(executable
+ (name scaffold_sec_2_1)
+ (modules scaffold_sec_2_1)
+ (libraries sicp_ch2_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_2_1.exe)))
+
+(executable
+ (name scaffold_sec_2_2)
+ (modules scaffold_sec_2_2)
+ (libraries sicp_ch2_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_2_2.exe)))

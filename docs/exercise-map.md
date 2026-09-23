@@ -44,17 +44,17 @@ Counts, summing to 8 per language: Rust 5 T / 2 A / 1 R; OCaml 7 / 0 / 1; TypeSc
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 1.9 | substitution model, recursive vs iterative | A: no tail-call guarantee | T | A: no tail-call guarantee | T | 1.9a: measure stack depth until overflow, compare versions |
+| 1.9 | substitution model, recursive vs iterative | A: no tail-call guarantee | T | A: no tail-call guarantee | T | 1.9a: measure stack depth until overflow, compare versions (chosen: rust) |
 | 1.10 | Ackermann function values | T | T | T | T | |
 | 1.11 | recursive and iterative function | A: iterative form as loop | T | A: iterative form as loop | T | |
 | 1.12 | Pascal triangle recursion | T | T | T | T | |
 | 1.13 | Fibonacci induction proof | T | T | T | T | |
-| 1.14 | count-change tree and growth | T | T | T | T | 1.14a: check predicted growth with doubling measurements |
+| 1.14 | count-change tree and growth | T | T | T | T | 1.14a: check predicted growth with doubling measurements (chosen: ocaml) |
 | 1.15 | sine reduction steps, growth | T | T | T | T | |
 | 1.16 | invariant-based fast exponentiation | A: loop replaces tail recursion | T | A: loop replaces tail recursion | T | |
 | 1.17 | fast multiplication, double halve | T | T | T | T | |
 | 1.18 | iterative Russian peasant multiplication | A: loop replaces tail recursion | T | A: loop replaces tail recursion | T | 1.18a: verify loop against built-in multiplication |
-| 1.19 | transform squaring Fibonacci | A: integer width forces choice | A: 63-bit int overflows fast | A: number precision, use bigint | A: Long overflow, use BigInteger | 1.19a: probe overflow boundary of native integers |
+| 1.19 | transform squaring Fibonacci | A: integer width forces choice | A: 63-bit int overflows fast | A: number precision, use bigint | A: Long overflow, use BigInteger | 1.19a: probe overflow boundary of native integers (chosen: kotlin) |
 | 1.20 | normal order remainder count | R: count remainder calls in traced eager gcd | R: count remainder calls in traced eager gcd | R: count remainder calls in traced eager gcd | R: count remainder calls in traced eager gcd | |
 | 1.21 | smallest divisors of three numbers | T | T | T | T | |
 | 1.22 | timed prime search ranges | A: Instant replaces runtime | A: Sys.time replaces runtime | A: performance.now replaces runtime | A: System.nanoTime replaces runtime | 1.22a: time with warmup, report median timings |
@@ -85,7 +85,7 @@ Counts, summing to 20 per language: Rust 10 T / 9 A / 1 R; OCaml 15 / 4 / 1; Typ
 | 1.40 | cubic for Newton's method | T | T | T | T | 1.40a: solve specified equations end to end |
 | 1.41 | double combinator puzzle | T | T | T | T | |
 | 1.42 | function composition | T | T | T | T | |
-| 1.43 | n-fold repeated application | T | T | T | T | 1.43a: compose by squaring for logarithmic repeated |
+| 1.43 | n-fold repeated application | T | T | T | T | 1.43a: compose by squaring for logarithmic repeated (chosen: kotlin, rust) |
 | 1.44 | smoothing and n-fold smoothing | T | T | T | T | 1.44a: denoise synthetic noisy samples |
 | 1.45 | n-th roots, repeated damping | T | T | T | T | 1.45a: record convergence failures of under-damped roots |
 | 1.46 | iterative improvement abstraction | A: recursive closure needs helper | T | A: loop inside returned function | T | 1.46a: return lazy sequence of successive guesses |
@@ -144,10 +144,10 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 2.1 | Sign-normalizing make-rat | R: parse number input strings | R: parse number input strings | R: parse number input strings | R: parse number input strings | allow mixed-sign make-rat inputs |
+| 2.1 | Sign-normalizing make-rat | T | T | T | T | allow mixed-sign make-rat inputs |
 | 2.2 | Line segments from points | T | T | T | T | |
 | 2.3 | Two rectangle representations | T | T | T | T | |
-| 2.4 | Procedural cons, car, cdr | A: closures as pairs need function traits | A: closures as pairs need function records | A: closure pairs need function pair type | A: closures as pairs need function types | verify cons identity law property test |
+| 2.4 | Procedural cons, car, cdr | A: closures as pairs need function traits | A: closures as pairs need function records | A: closure pairs need function pair type | A: closures as pairs need function types | verify cons identity law property test (chosen: kotlin) |
 | 2.5 | Pairs as 2^a 3^b | A: 2^a 3^b overflows i64, needs bigint | A: 2^a 3^b overflows int, needs Z | A: 2^a 3^b overflows number, needs bigint | A: 2^a 3^b overflows Long, needs BigInteger | |
 | 2.6 | Church numerals | A: church numerals need function-typed traits | A: church numerals need function encoding | A: church numerals need function-encoded zero | A: church numerals need function-encoded zero | arithmetic on three plus successor |
 | 2.7 | Interval selectors | T | T | T | T | |

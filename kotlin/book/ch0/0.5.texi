@@ -1,4 +1,115 @@
-@node	0.5, 0.6, Chapter 0, Chapter 0
+@node	0.5, 0.6, 0.4, Chapter 0
 @section Mutation and ownership
 
 This section covers the language's mutable cell, aliasing, and identity.
+Kotlin has neither Rust's ownership rules nor OCaml's ref cells as separate
+beings: the mutable cell is a @code{var}, and the interesting questions are
+when this book permits one and what it costs.
+
+@heading The captured @code{var}
+
+A @code{var} declared in a function body is one mutable cell, and a lambda
+that mentions it closes over the cell itself, not a copy. Two closures
+made by the same call share one cell; two calls make two cells. That is
+exactly the mechanism section @ref{3.1} exists to teach, which is why this
+edition writes it with a plain @code{var} rather than hiding the cell
+inside a class:
+
+@example kotlin
+public fun makeCounter(start: Int): () -> Int {
+    var n = start
+    return {
+        n += 1
+        n
+    }
+}
+
+public fun makeWithdrawer(balance: Long): (Long) -> Long {
+    var b = balance
+    return { amount ->
+        b -= amount
+        b
+    }
+}
+
+val c1 = makeCounter(0)
+val c2 = makeCounter(0)
+c1()
+// => 1
+
+c1()
+// => 2
+
+c2()
+// => 1
+
+val w = makeWithdrawer(100L)
+w(30L)
+// => 70
+
+w(20L)
+// => 50
+@end example
+
+@noindent
+The house rule follows from this: a @code{val} everywhere is the default,
+and a captured @code{var} appears only where the book itself assigns, which
+in this edition means the closure state of @ref{3.1} and @ref{3.2}, the
+simulator internals of chapters 4 and 5, and the one table and queue
+implementation of @ref{3.3}. Everywhere else the listings are
+assignment-free.
+
+@heading Aliasing and identity
+
+Mutating one cell is visible through every name that holds it. The
+runtime's interpreted pair @code{VPair} is the book's mutable pair of
+@ref{3.3.1}: @code{cons} builds it, and @code{setCar} and @code{setCdr}
+mutate the one cell that every alias sees. Because identity is the question
+@code{eq?} asks, the runtime's pairs compare with @code{==} by identity,
+and @code{===} traces the aliasing directly:
+
+@example kotlin
+val p = cons(VInt(1), VSym("x"))
+val alias = p
+p.setCar(VInt(9))
+alias.car
+// => 9
+
+alias === p
+// => true
+@end example
+
+@noindent
+This is the price and the point of chapter 3: two names for one mutable
+pair behave as one object, and the persistent lists of @ref{0.4} exist
+precisely so that the rest of the book never has to reason about such
+sharing.
+
+@heading The environment chain, once concretely
+
+The runtime's @code{Env} is a frame of bindings and a parent link. The
+frame is a persistent map held in a @code{var}, so a definition rebinds
+that one node's map and every holder of the node observes the new binding,
+while the maps themselves are values that are never edited in place:
+
+@example kotlin
+val global = Env.global()
+val inner = Env.child(global)
+inner.define("x", VInt(1))
+either { inner.lookup("x") }
+// => Either.Right(1)
+
+inner.set("x", VInt(99))
+either { global.lookup("x") }
+// => Either.Right(99)
+@end example
+
+@noindent
+The interpreted @code{define} and @code{set!} of @ref{3.2} run on exactly
+this chain, and @ref{4.3}'s backtracking evaluator takes a snapshot of the
+chain to abandon a branch's effects, which persistent maps make cheap.
+Ownership, in the sense of Rust's edition, has no Kotlin counterpart: the
+collector reclaims unreachable cells, and the book's aliasing arguments are
+made with @code{===}, not with lifetimes.
+
+@cindex Env

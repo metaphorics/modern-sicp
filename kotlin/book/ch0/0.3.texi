@@ -1,4 +1,160 @@
-@node	0.3, 0.4, Chapter 0, Chapter 0
+@node	0.3, 0.4, 0.2, Chapter 0
 @section Recursion and the call stack
 
-This section covers recursive and iterative processes in this language, and how tail calls or loops express them.
+This section covers recursive and iterative processes in this language, and
+how tail calls or loops express them. It is the grounding for @ref{1.2},
+where the book first separates a recursive process from an iterative one,
+and for @ref{3.5}, whose streams defer work this section defers in miniature.
+
+@heading Recursion takes a stack
+
+A plain recursive call takes a stack frame and holds it until the calls it
+spawned return. The tree-recursive @code{fib} of @ref{1.2.2} fans out
+exactly this way:
+
+@example kotlin
+public fun factorial(n: Long): Long = if (n <= 1L) 1L else n * factorial(n - 1L)
+
+public fun fib(n: Int): Long = if (n < 2) n.toLong() else fib(n - 1) + fib(n - 2)
+
+factorial(20)
+// => 2432902008176640000
+
+fib(10)
+// => 55
+@end example
+
+@noindent
+Kotlin gives the book's processes no automatic tail-call optimization. A
+linear-recursive @code{factorial} written as above is a linear-recursive
+process here too, and the JVM's stack bounds how deep it may run.
+
+@heading @code{tailrec} makes the loop
+
+The iterative process of @ref{1.2.1} is expressed with @code{tailrec}: the
+compiler checks that every call is a tail call, rewrites the self-call into
+a loop, and refuses to compile a function whose self-calls are not
+actually in tail position:
+
+@example kotlin
+public tailrec fun factorialIter(n: Long, acc: Long = 1L): Long =
+    if (n <= 1L) acc else factorialIter(n - 1L, acc * n)
+
+factorialIter(20)
+// => 2432902008176640000
+@end example
+
+@noindent
+A @code{while} states the loop directly when no recursion is wanted, and it
+carries its state in local variables:
+
+@example kotlin
+public fun sumTo(n: Long): Long {
+    var total = 0L
+    var k = 1L
+    while (k <= n) {
+        total += k
+        k += 1
+    }
+    return total
+}
+
+sumTo(100)
+// => 5050
+@end example
+
+@noindent
+Two limits shape the rest of the book. A @code{tailrec} function can only
+rewrite a call to itself, so two mutually tail-recursive functions cannot
+be expressed as such; the evaluators of @ref{4.1} are built as one
+dispatch loop for exactly this reason. And deep recursion that is not
+tail recursion, such as the tree walks of @ref{1.2} and @ref{2.2.2}, uses
+@code{DeepRecursiveFunction}, which keeps the frame state on the heap, when
+the default stack would not suffice.
+
+@heading Deferring work: @code{lazy} and @code{Sequence}
+
+A @code{lazy} value records how to compute itself and runs that work at
+most once, at the first read. Every later read returns the memoized result:
+
+@example kotlin
+public var lazyCalls: Int = 0
+
+public val expensiveAnswer: Long by lazy {
+    lazyCalls += 1
+    40L + 2L
+}
+
+expensiveAnswer
+// => 42
+
+expensiveAnswer
+// => 42
+
+lazyCalls
+// => 1
+@end example
+
+@noindent
+A @code{Sequence} is a cold, composable pipeline. @code{generateSequence}
+builds one from a step function, the @code{sequence @{ @}} builder writes a
+generator as a suspended loop, and intermediate steps such as @code{map}
+and @code{filter} record work without doing any of it. A terminal operation
+such as @code{take(n)} or @code{toList()} drives the pipeline:
+
+@example kotlin
+public fun naturals(): Sequence<Long> = generateSequence(1L) { it + 1L }
+
+public fun squaresSeq(): Sequence<Long> = naturals().map { x -> x * x }
+
+public fun evens(): Sequence<Long> =
+    sequence {
+        var n = 0L
+        while (true) {
+            yield(n)
+            n += 2L
+        }
+    }
+
+squaresSeq().take(5).toList()
+// => [1, 4, 9, 16, 25]
+
+evens().take(3).toList()
+// => [0, 2, 4]
+@end example
+
+@noindent
+Cold means recomputing: a sequence holds a recipe, not a row of results, so
+walking it a second time runs the recipe again from the start. Exercise 0.5
+below makes that measurable.
+
+@heading Where @code{Sequence} is not enough
+
+The streams of @ref{3.5} need two properties a @code{Sequence} does not
+have. They are memoized, so two cursors over one stream force each element
+once; and they permit self-reference, where a tail must capture the very
+stream being defined. The runtime therefore ships a second type,
+@code{LStream}, the memoized node pair of @ref{3.5.1}: a computed head and
+a tail that computes at most once.
+
+@example kotlin
+public fun squareStream(n: Long): LStream<Long> = consStream(n * n) { squareStream(n + 1L) }
+
+squareStream(1L).take(5)
+// => [1, 4, 9, 16, 25]
+@end example
+
+@noindent
+The rule this book follows from @ref{3.5} onward: a @code{Sequence} carries
+a pipeline whose elements are consumed as they are produced, and an
+@code{LStream} carries a shared, memoized structure that may observe and
+reuse its own past.
+
+@strong{@anchor{Exercise 0.5}Exercise 0.5:} Build the infinite
+@code{Sequence} of squares and the memoized @code{LStream} of squares, each
+taking a @code{force: () -> Unit} callback that the pipeline calls once per
+element computation. Then write a probe that builds one of each, walks each
+one twice with @code{take(5)}, and reports the two force counts. The
+sequence should charge the second walk in full; the stream should charge it
+nothing. Note that the runtime's @code{take(n)} forces one tail beyond the
+@code{n}-th head, and make your expected stream count state that.

@@ -1,4 +1,154 @@
-@node	0.4, 0.5, Chapter 0, Chapter 0
+@node	0.4, 0.5, 0.3, Chapter 0
 @section Data
 
-This section covers tuples, lists, the language's sum type, pattern matching, and exhaustiveness.
+This section covers tuples, lists, the language's sum type, pattern
+matching, and exhaustiveness. The data abstractions of @ref{2.1} onward
+stand on these forms, and the interpreted data of the runtime
+(@code{Value} and its variants) is one sealed hierarchy of exactly the kind
+built here.
+
+@heading Products: data classes
+
+A @code{data class} declares a product: its constructor parameters are the
+parts, and the compiler generates content equality, hashing, a printable
+form, and a @code{copy} function from them.
+
+@example kotlin
+public data class Frac(
+    val num: Long,
+    val den: Long,
+)
+
+Frac(1L, 2L)
+// => Frac(num=1, den=2)
+
+Frac(1L, 2L) == Frac(1L, 2L)
+// => true
+@end example
+
+@noindent
+The standard library also has @code{Pair} and @code{Triple}, and this book
+uses @code{Pair} where a pair of coordinates or a lookup key is genuinely
+anonymous. Where the parts have meaning, a data class with those names
+replaces them; that is the lesson of @ref{2.1} read in Kotlin. Constructor
+parameters can be pulled apart again by destructuring, which the book's
+listings use for @code{Pair} rows and @code{Map} entries:
+
+@example kotlin
+val (num, den) = Frac(3L, 4L)
+num
+// => 3
+@end example
+
+A @code{@@JvmInline} @newterm{value class} wraps one value with no
+allocation at runtime. It gives the book's tagged scalars their host form:
+the runtime's exact integers and symbols are value classes over @code{Long}
+and @code{String}.
+
+@example kotlin
+@@JvmInline
+public value class Money(
+    public val cents: Long,
+)
+
+Money(250L)
+// => Money(cents=250)
+@end example
+
+@heading Sums: sealed hierarchies and exhaustive @code{when}
+
+A @code{sealed interface} declares a sum: a closed set of variants, known
+at compile time, all declared in the same package. The @code{when} that
+dispatches on a sealed value as an expression must cover every variant, and
+writing no @code{else} is what buys that guarantee from the compiler:
+
+@example kotlin
+public sealed interface Shape
+
+public data class Circle(
+    val r: Double,
+) : Shape
+
+public data class Rect(
+    val w: Double,
+    val h: Double,
+) : Shape
+
+public fun area(s: Shape): Double =
+    when (s) {
+        is Circle -> PI * s.r * s.r
+        is Rect -> s.w * s.h
+    }
+
+area(Circle(1.0))
+// => 3.141592653589793
+
+area(Rect(2.0, 3.0))
+// => 6.0
+@end example
+
+@noindent
+The @code{is} test both discriminates the variant and binds its parts,
+which is this book's pattern matching. The guarantee is the point, and
+exercise 0.3 turns it into a compile experiment: add a variant, and every
+@code{when} over the type stops compiling until its case is written. Data
+directed dispatch, where the set of types must stay open at runtime, is a
+different mechanism for a different job; @ref{2.4} builds it as a registry
+for exactly that reason.
+
+@heading Lists and persistence
+
+A @code{List<T>} is the default sequence: random access, content equality,
+and no mutation operations. Where the book needs a value whose versions
+persist, the lists are @code{PersistentList<T>} from
+@file{kotlinx.collections.immutable}: every operation returns a new list
+that shares its structure with the old one, and the old one stays intact.
+
+@example kotlin
+val xs = persistentListOf(1L, 2L)
+val ys = xs.adding(3L)
+
+xs
+// => [1, 2]
+
+ys
+// => [1, 2, 3]
+@end example
+
+@noindent
+This is the everyday form for the environments of @ref{3.2} and @ref{4.1}
+and the tables of @ref{3.3.3}, which are persistent maps on the same
+principle. The interpreted lists of the runtime are a different beast
+again: the cons cells of @ref{2.2.1}, whose pairs are mutable in chapter 3
+(@ref{0.5}).
+
+@heading @code{==} and @code{===}
+
+Kotlin separates the two equalities the book needs. @code{==} is content
+equality: for a data class it compares part by part. @code{===} is
+identity: it asks whether two names hold the very same object.
+
+@example kotlin
+Frac(1L, 2L) == Frac(1L, 2L)
+// => true
+
+Frac(1L, 2L) === Frac(1L, 2L)
+// => false
+@end example
+
+@noindent
+The book's @code{equal?} maps to @code{==} on the data types, and its
+@code{eq?} maps to @code{===} where identity is the question. Chapter 3
+makes identity observable on purpose: the runtime's mutable pairs compare
+by identity, so @code{eq?} on pairs and @code{===} agree by construction
+(@ref{0.5}).
+
+@strong{@anchor{Exercise 0.3}Exercise 0.3:} Model a small binary tree as a
+sealed hierarchy with a @code{Leaf} holding a value and a @code{Node}
+holding two subtrees. Write an exhaustive @code{when} that computes the
+depth of a tree in levels: a leaf has depth 1, and a node has one more than
+its deeper child. Then add a third variant of your choosing to the
+hierarchy and rebuild: the walker must fail to compile with an
+exhaustiveness error naming the missing variant. Record the compiler's
+message, restore the two-variant tree, and say in one sentence what the
+compiler bought you.

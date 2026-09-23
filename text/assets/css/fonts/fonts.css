@@ -82,16 +82,6 @@
     font-style: normal;
 }
 
-/* Computer Modern math font for extended symbols */
-/* (Figure 3.33 uses this for integral sign) */
-
-@font-face {
-  font-family: 'jsMath-cmex10';
-  src: url('jsMath-cmex10-subset.woff');
-  font-weight: normal;
-  font-style: normal;
-}
-
 /* STIX fonts */
 
 @font-face {

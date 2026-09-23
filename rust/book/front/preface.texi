@@ -978,16 +978,36 @@ from @abbr{DARPA}, made possible by Bob Kahn.
 @node    Chapter 0, 0.1, Acknowledgments, Top
 @chapter The language of this book
 
+This edition assumes a reader who already knows how to program, and does
+not assume Rust. The chapters that follow adapt every listing, exercise,
+and design discussion in the original book into Rust, but they do not stop
+to explain Rust itself along the way; that explanation happens once, here,
+covering exactly the subset of the language the rest of the book uses and
+no more. Rust's full surface (macros beyond @code{println!}, unsafe code,
+async, generics beyond what a handful of standard-library types need) never
+appears in these pages, because the book never needs it.
+
+Two of this chapter's nine sections are unlike anything the original text
+has to teach. Scheme has automatic memory management and no static type
+checking to speak of; Rust has neither, by design, and @ref{0.3} and
+@ref{0.7} exist to give ownership, borrowing, and their escape hatches the
+same careful treatment the book gives every other idea it introduces before
+relying on it. Section @ref{0.9} closes the chapter with the one thing this
+book adds that the original never needed: how to run this edition's code,
+where its exercises live, and how a printed result in these pages relates to
+a passing test.
+
 @menu
 
-* 0.1::              Running this book
-* 0.2::              Values, names, and functions
-* 0.3::              Recursion and the call stack
-* 0.4::              Data
-* 0.5::              Mutation and ownership
-* 0.6::              Errors as values
-* 0.7::              Testing
-* 0.8::              Reading this book
+* 0.1::              Values, numbers, and bindings
+* 0.2::              Functions, recursion, and iteration
+* 0.3::              Ownership, moves, and borrowing
+* 0.4::              Product and sum data
+* 0.5::              Collections and iterators
+* 0.6::              Closures and trait objects
+* 0.7::              Shared ownership and interior mutability
+* 0.8::              Errors and tests
+* 0.9::              Modules, crates, and reading this book
 
 @end menu
 

@@ -11,5 +11,142 @@ autotests = false
 [lib]
 path = "src/lib.rs"
 
+[[example]]
+name = "sec_0_1_bindings"
+path = "examples/sec_0_1_bindings.rs"
+
+[[example]]
+name = "sec_0_1_checked_arithmetic"
+path = "examples/sec_0_1_checked_arithmetic.rs"
+
+[[example]]
+name = "sec_0_2_recursion_vs_iteration"
+path = "examples/sec_0_2_recursion_vs_iteration.rs"
+
+[[example]]
+name = "sec_0_2_loops"
+path = "examples/sec_0_2_loops.rs"
+
+[[example]]
+name = "sec_0_3_ownership"
+path = "examples/sec_0_3_ownership.rs"
+
+[[example]]
+name = "sec_0_4_shapes"
+path = "examples/sec_0_4_shapes.rs"
+
+[[example]]
+name = "sec_0_4_boxed_list"
+path = "examples/sec_0_4_boxed_list.rs"
+
+[[example]]
+name = "sec_0_5_iterators"
+path = "examples/sec_0_5_iterators.rs"
+
+[[example]]
+name = "sec_0_5_vecdeque"
+path = "examples/sec_0_5_vecdeque.rs"
+
+[[example]]
+name = "sec_0_6_closures"
+path = "examples/sec_0_6_closures.rs"
+
+[[example]]
+name = "sec_0_6_fn_mut"
+path = "examples/sec_0_6_fn_mut.rs"
+
+[[example]]
+name = "sec_0_7_shared_state"
+path = "examples/sec_0_7_shared_state.rs"
+
+[[example]]
+name = "sec_0_8_errors_and_tests"
+path = "examples/sec_0_8_errors_and_tests.rs"
+
+[[example]]
+name = "sec_0_9_workspace"
+path = "examples/sec_0_9_workspace.rs"
+
+[[test]]
+name = "scaffold_sec_0_1"
+path = "../../exercises/ch00/sec_0_1.rs"
+
+[[test]]
+name = "scaffold_sec_0_2"
+path = "../../exercises/ch00/sec_0_2.rs"
+
+[[test]]
+name = "scaffold_sec_0_3"
+path = "../../exercises/ch00/sec_0_3.rs"
+
+[[test]]
+name = "scaffold_sec_0_4"
+path = "../../exercises/ch00/sec_0_4.rs"
+
+[[test]]
+name = "scaffold_sec_0_5"
+path = "../../exercises/ch00/sec_0_5.rs"
+
+[[test]]
+name = "scaffold_sec_0_6"
+path = "../../exercises/ch00/sec_0_6.rs"
+
+[[test]]
+name = "scaffold_sec_0_7"
+path = "../../exercises/ch00/sec_0_7.rs"
+
+[[test]]
+name = "scaffold_sec_0_8"
+path = "../../exercises/ch00/sec_0_8.rs"
+
+[[test]]
+name = "scaffold_sec_0_9"
+path = "../../exercises/ch00/sec_0_9.rs"
+
+[[test]]
+name = "solution_sec_0_1"
+path = "../../solutions/ch00/sec_0_1.rs"
+
+[[test]]
+name = "solution_sec_0_2"
+path = "../../solutions/ch00/sec_0_2.rs"
+
+[[test]]
+name = "solution_sec_0_3"
+path = "../../solutions/ch00/sec_0_3.rs"
+
+[[test]]
+name = "solution_sec_0_4"
+path = "../../solutions/ch00/sec_0_4.rs"
+
+[[test]]
+name = "solution_sec_0_5"
+path = "../../solutions/ch00/sec_0_5.rs"
+
+[[test]]
+name = "solution_sec_0_6"
+path = "../../solutions/ch00/sec_0_6.rs"
+
+[[test]]
+name = "solution_sec_0_7"
+path = "../../solutions/ch00/sec_0_7.rs"
+
+[[test]]
+name = "solution_sec_0_8"
+path = "../../solutions/ch00/sec_0_8.rs"
+
+[[test]]
+name = "solution_sec_0_9"
+path = "../../solutions/ch00/sec_0_9.rs"
+
+[dependencies]
+sicp-runtime = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+proptest = { workspace = true }
+insta = { workspace = true }
+
 [lints]
 workspace = true

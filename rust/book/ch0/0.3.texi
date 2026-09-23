@@ -1,4 +1,144 @@
-@node	0.3, 0.4, Chapter 0, Chapter 0
-@section Recursion and the call stack
+@node	0.3, 0.4, 0.2, Chapter 0
+@section Ownership, moves, and borrowing
 
-This section covers recursive and iterative processes in this language, and how tail calls or loops express them.
+Scheme has a garbage collector: a value stays alive as long as something can
+reach it, and the language never asks who is responsible for it. Rust has no
+garbage collector, and instead gives every value exactly one
+@newterm{owner} at a time, decided at compile time. When the owner goes out
+of scope, the value is dropped; when the owner is a binding that gets
+assigned to another binding, the value @newterm{moves} and the old binding
+can no longer be used.
+
+@example rust
+let words = vec![String::from("borrow"), String::from("checker")];
+let moved = words;
+println!("@{@}", moved.len());
+// => 2
+@end example
+
+After the second line, @code{words} has moved into @code{moved}; using
+@code{words} again is a compile error, not a stale reference or a use-after-
+free. This is the ownership half of the story the later chapters keep coming
+back to: chapter 3's environment model (@ref{0.3}, re-cut around this
+mechanism) explains sharing in terms of who owns what, and @ref{0.7}
+introduces the escape hatch (@code{Rc}) for values that genuinely need more
+than one owner.
+
+Moving everything, always, would make functions unpleasant to call: passing a
+@code{Vec} to a function that only needs to read it would give that value
+away for good. @newterm{Borrowing} lends access without transferring
+ownership. A shared borrow, @code{&T}, lets any number of readers look at a
+value at once; a mutable borrow, @code{&mut T}, lets exactly one writer
+change it, and the compiler never allows a mutable borrow to coexist with any
+other borrow of the same value.
+
+@example rust
+fn total_len(words: &[String]) -> usize @{
+    words.iter().map(String::len).sum()
+@}
+
+let words = vec![String::from("borrow"), String::from("checker")];
+let len = total_len(&words);
+println!("@{len@}");
+// => 13
+println!("@{@}", words.len());
+// => 2
+@end example
+
+@code{total_len} takes @code{&[String]}, a borrowed slice, so the caller
+keeps @code{words} afterward. A mutable borrow works the same way but grants
+exclusive access:
+
+@example rust
+fn append(words: &mut Vec<String>, word: impl Into<String>) @{
+    words.push(word.into());
+@}
+
+let mut words = words;
+append(&mut words, "words");
+println!("@{words:?@}");
+// => ["borrow", "checker", "words"]
+@end example
+
+While @code{append}'s @code{&mut words} borrow is alive, no other borrow of
+@code{words}, shared or mutable, may coexist with it; the compiler enforces
+this at every call site, not only inside @code{append} itself. The runnable
+listing combining all three examples above,
+@code{examples/sec_0_3_ownership.rs}, also contrasts borrowing with a fourth
+function that takes @code{Vec<String>} by value and consumes it outright,
+the way none of the three above do.
+
+@newterm{The borrow checker} is the part of the compiler that enforces these
+rules; refusing to compile a program that could conceivably violate them is
+not a false alarm, it is the point. Five short cases below fix the rules this
+book relies on afterward; each is also a doctest on
+@code{crates/ch00/src/sec_0_3.rs}, so the verdicts are the compiler's, not an
+author's claim.
+
+@table @asis
+@item Case A --- a move, then a read of the moved-from binding
+@example rust
+let a = String::from("case a");
+let b = a;
+println!("@{a@} @{b@}");
+@end example
+Rejected: @code{a} moved into @code{b} on the previous line.
+
+@item Case B --- a shared borrow, read, then a mutation
+@example rust
+let mut v = vec![1, 2, 3];
+let first = &v[0];
+println!("@{first@}");
+v.push(4);
+@end example
+Accepted: @code{first}'s last use is the @code{println!}, so its borrow has
+already ended by the time @code{push} needs @code{v} mutably. This is
+non-lexical borrow checking: a borrow's scope is where it is last used, not
+the enclosing block.
+
+@item Case C --- the same shared borrow, read after the mutation
+@example rust
+let mut v = vec![1, 2, 3];
+let first = &v[0];
+v.push(4);
+println!("@{first@}");
+@end example
+Rejected: now @code{first} has to stay valid across the @code{push}, which
+needs @code{v} mutably while @code{first} still borrows it immutably.
+
+@item Case D --- a reference into data the function is about to drop
+@example rust
+fn shout() -> &str @{
+    let s = String::from("hi");
+    &s
+@}
+@end example
+Rejected, and not because of a lifetime annotation you forgot to write:
+@code{s} is a local that this function drops on return, and no lifetime
+could make a reference to it outlive the function.
+
+@item Case E --- clone instead of move
+@example rust
+let a = String::from("case e");
+let b = a.clone();
+println!("@{a@} @{b@}");
+@end example
+Accepted: @code{clone} makes an independent copy, so both bindings stay
+valid. Cloning has a real cost (an allocation and a copy here); reach for it
+when you genuinely need two independent values, not as a reflex for
+appeasing the compiler.
+@end table
+
+@subheading Exercise
+
+@quotation
+@strong{@anchor{Exercise 0.3}Exercise 0.3:} For each of the five cases above,
+write down your own prediction --- compiles, or rejected, and why --- before
+reading the answer just given. Then encode your five verdicts as a
+@code{[bool; 5]}, in order A through E, and check them against
+@code{ch00::sec_0_3::verdicts}.
+@end quotation
+
+The scaffold is @code{exercises/ch00/sec_0_3.rs}; the reference solution and
+its reasoning are @code{solutions/ch00/sec_0_3.rs} and
+@code{solutions/ch00/ex_0_03.md}.

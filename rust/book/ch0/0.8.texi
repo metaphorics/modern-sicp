@@ -1,4 +1,116 @@
-@node	0.8, Chapter 1, Chapter 0, Chapter 0
-@section Reading this book
+@node	0.8, 0.9, 0.7, Chapter 0
+@section Errors and tests
 
-This section covers the interaction convention, how exercises map to SICP's numbers, the signpost sentences, and the exercise map.
+@code{Result<T, E>} (@ref{0.4}) is how a Rust function that can fail says so
+in its type: @code{Ok(T)} on success, @code{Err(E)} on failure, checked by
+the compiler at every call site. This book gives each edition exactly one
+error enum, derived once with the @code{thiserror} crate so every variant
+gets a @code{Display} message from a single attribute:
+
+@example rust
+use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+enum ArithError @{
+    #[error("division by zero")]
+    DivideByZero,
+@}
+
+fn safe_div(dividend: i128, divisor: i128) -> Result<i128, ArithError> @{
+    if divisor == 0 @{
+        Err(ArithError::DivideByZero)
+    @} else @{
+        Ok(dividend / divisor)
+    @}
+@}
+@end example
+
+Calling a function that returns @code{Result} and handling the error
+yourself means a @code{match} on every call; the @code{?} operator collapses
+that into one character where the caller's own function also returns a
+compatible @code{Result}: @code{?} unwraps an @code{Ok} and continues, or
+returns the @code{Err} immediately from the enclosing function.
+
+@example rust
+fn main() -> Result<(), ArithError> @{
+    let quotient = safe_div(10, 2)?;
+    println!("@{quotient@}");
+    // => 5
+
+    let failure = safe_div(1, 0);
+    println!("@{failure:?@}");
+    // => Err(DivideByZero)
+    Ok(())
+@}
+@end example
+
+This is the shape of every fallible function from chapter 1 on: the book's
+one @code{SchemeError} enum plays the role @code{ArithError} plays here, and
+@code{?} is how every interpreter and machine in this book propagates a
+failure without hand-written checks cluttering the procedure that triggers
+it. The runnable listing above is
+@code{examples/sec_0_8_errors_and_tests.rs}.
+
+@subheading Testing
+
+@code{#[test]} marks a function as a test; @code{cargo nextest run} is this
+book's test runner (doctests, the fenced code blocks inside doc comments,
+run separately with @code{cargo test --doc}, since nextest does not execute
+them). @code{assert_eq!} and @code{assert!} are the ordinary assertions, and
+they are how this book proves a listing prints what it claims to print and an
+exercise's solution computes what its statement promises.
+
+Two more tools appear where a single hand-picked example is not enough
+proof. @newterm{Property testing}, via the @code{proptest} crate, checks that
+a stated property holds across many generated inputs instead of one:
+
+@example rust
+use proptest::prelude::*;
+
+proptest! @{
+    #[test]
+    fn safe_div_agrees_with_ordinary_division(a in 1i128..1000, b in 1i128..1000) @{
+        prop_assert_eq!(safe_div(a, b), Ok(a / b));
+    @}
+@}
+@end example
+
+@code{proptest!} generates hundreds of @code{(a, b)} pairs in the stated
+ranges and runs the body against each; a failing case is automatically
+@newterm{shrunk} to the smallest input that still fails before proptest
+reports it, so the counterexample you see is close to minimal. This one
+sketch is illustrative rather than a listing this book asserts against; the
+edition's own property tests, checked exactly as shown, begin in chapter 1.
+
+@newterm{Snapshot testing}, via the @code{insta} crate, pins a large or
+generated output (an interpreter transcript, a rendered picture, a compiled
+instruction sequence) against a saved reference file with @code{assert_snapshot!}
+or @code{assert_debug_snapshot!}, and fails loudly if a change alters that
+output unexpectedly; @code{cargo insta review} is how a genuine, intended
+change gets accepted into a new reference file. Both tools appear from
+chapter 1 on wherever a plain @code{assert_eq!} would be too narrow (one
+example proves too little) or too verbose (the expected value is pages long)
+to write by hand; this section is only the tour.
+
+Every exercise in this book ships three files: a scaffold under
+@code{exercises/} whose test is deliberately failing --- more on this in
+@ref{0.9} --- until solved, a reference solution with a passing test under
+@code{solutions/}, and that solution's reasoning in an adjacent Markdown
+file. @code{cargo nextest run --workspace} runs every solved test in the
+edition in one pass.
+
+@subheading Exercise
+
+@quotation
+@strong{@anchor{Exercise 0.5}Exercise 0.5:} Implement @code{sum_cubes(a, b)},
+the sum @math{a^3 + (a+1)^3 + \cdots + b^3}, twice: once as a recursive
+function, once as an iterator chain over @code{a..=b} (@ref{0.5}). The two
+must agree. Then write a function that divides that sum by the count of
+terms to get the mean cube, returning a @code{Result} from @code{safe_div}
+and propagating it with @code{?}, from both the recursive and the iterative
+sum.
+@end quotation
+
+The scaffold is @code{exercises/ch00/sec_0_8.rs}; the reference solution and
+its reasoning are @code{solutions/ch00/sec_0_8.rs} and
+@code{solutions/ch00/ex_0_05.md}.

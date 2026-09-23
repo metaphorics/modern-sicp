@@ -1,4 +1,84 @@
-@node	0.5, 0.6, Chapter 0, Chapter 0
-@section Mutation and ownership
+@node	0.5, 0.6, 0.4, Chapter 0
+@section Collections and iterators
 
-This section covers the language's mutable cell, aliasing, and identity.
+Three collection types cover most of what this book needs beyond a bare
+@code{struct} or @code{enum}. @code{Vec<T>} is a growable, owned, contiguous
+list; @code{&[T]}, a @newterm{slice}, borrows a run of elements from a
+@code{Vec} (or an array, or another slice) without owning them, and is almost
+always the right parameter type for a function that only reads a sequence.
+@code{HashMap<K, V>} maps keys to values with no ordering guarantee, the
+book's association lists made efficient.
+
+@example rust
+fn word_lengths(text: &str) -> Vec<usize> @{
+    text.split_whitespace().map(str::len).collect()
+@}
+
+let lengths = word_lengths("ready set go");
+println!("@{lengths:?@}");
+// => [5, 3, 2]
+@end example
+
+@code{split_whitespace} and @code{map} are @newterm{iterator adapters}: each
+one describes a step of a walk over the data without doing any work yet.
+Nothing runs until something finally consumes the iterator, here
+@code{collect}, which is why chaining ten adapters costs no more intermediate
+storage than chaining two. This @newterm{laziness} is unlike Scheme's
+eagerly-evaluated @code{map}, and closer to the book's own streams
+(@ref{3.5}, `` `map`/`filter`/`accumulate` exist twice''): section 3.5
+compares the two explicitly once streams are on the table, since a single
+@code{Iterator} cursor cannot replace a @code{Stream} everywhere a stream's
+sharing matters.
+
+@example rust
+use std::collections::HashMap;
+
+fn word_counts<'a>(words: &[&'a str]) -> HashMap<&'a str, usize> @{
+    let mut counts = HashMap::new();
+    for &word in words @{
+        *counts.entry(word).or_insert(0) += 1;
+    @}
+    counts
+@}
+
+let words = ["ready", "set", "go", "set"];
+let counts = word_counts(&words);
+println!("@{@}", counts["set"]);
+// => 2
+@end example
+
+@code{entry} looks up a key and, in one step, inserts a default if it was
+absent; @code{*counts.entry(word).or_insert(0) += 1} reads as ``the count for
+@code{word}, starting from zero if this is the first time, plus one.'' This
+pattern (`` `entry`, `or_insert`, then mutate'') recurs whenever this book
+builds up a table incrementally, including the operation-and-tag tables of
+@ref{2.4} and the memoization tables of @ref{3.3.3}.
+
+The runnable listing above is @code{examples/sec_0_5_iterators.rs}.
+
+@subheading A fourth collection: @code{VecDeque}
+
+@code{VecDeque<T>} is a double-ended queue: unlike @code{Vec}, it can push
+and pop from @emph{either} end in constant time, at the cost of no longer
+guaranteeing its elements sit in one contiguous block of memory.
+
+@example rust
+use std::collections::VecDeque;
+
+let mut queue: VecDeque<i32> = VecDeque::new();
+queue.push_back(1);
+queue.push_back(2);
+queue.push_front(0);
+println!("@{queue:?@}");
+// => [0, 1, 2]
+
+let front = queue.pop_front();
+println!("@{front:?@}");
+// => Some(0)
+@end example
+
+This book reaches for @code{VecDeque} only where a queue's two-ended shape
+matters specifically, most visibly chapter 3's message queues (@ref{3.3.2})
+and the agenda that drives the digital-circuit simulator (@ref{3.3.4}); a
+plain @code{Vec} is the right default everywhere else. The runnable listing
+above is @code{examples/sec_0_5_vecdeque.rs}.

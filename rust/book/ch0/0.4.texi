@@ -1,4 +1,115 @@
-@node	0.4, 0.5, Chapter 0, Chapter 0
-@section Data
+@node	0.4, 0.5, 0.3, Chapter 0
+@section Product and sum data
 
-This section covers tuples, lists, the language's sum type, pattern matching, and exhaustiveness.
+A @code{struct} bundles named fields that all exist at once, the way the
+book's pairs and records do; it is a @newterm{product type}, one instance
+per combination of its fields' values.
+
+@example rust
+struct Rectangle @{
+    width: f64,
+    height: f64,
+@}
+@end example
+
+An @code{enum} instead names a fixed set of alternatives, called
+@newterm{variants}; exactly one variant is active in any given value, and
+different variants may carry different data. It is a @newterm{sum type}: the
+number of possible values is the sum, not the product, of what each variant
+can hold.
+
+@example rust
+enum Shape @{
+    Circle @{ radius: f64 @},
+    Rectangle @{ width: f64, height: f64 @},
+@}
+@end example
+
+@code{match} takes a value apart by variant, and the compiler checks
+@newterm{exhaustiveness}: every variant needs an arm, or the program does not
+compile. This is the book's `` `cond` on the type of the data'' made
+mechanical, and it is why chapter 2's tagged data (@ref{2.4}, sketched with
+this section's constructs) can be represented as a closed enum here even
+though the book installs new tags into an open dispatch table at runtime; the
+two designs and their tradeoff are the subject of that section's opening
+notes.
+
+@example rust
+impl Shape @{
+    fn area(&self) -> f64 @{
+        match *self @{
+            Shape::Circle @{ radius @} => std::f64::consts::PI * radius * radius,
+            Shape::Rectangle @{ width, height @} => width * height,
+        @}
+    @}
+@}
+
+let circle = Shape::Circle @{ radius: 2.0 @};
+let area = circle.area();
+println!("@{area:.2@}");
+// => 12.57
+@end example
+
+Two sum types are so common the standard library predefines them rather than
+leaving every program to write its own. @code{Option<T>} is a value that
+might be absent: @code{Some(T)} or @code{None}, with no null pointer anywhere
+in the picture. @code{Result<T, E>} is a computation that might fail:
+@code{Ok(T)} or @code{Err(E)}, explicit in the type of every function that
+can fail. Section @ref{0.1} already used @code{Option} for a checked
+multiplication; @ref{0.8} gives @code{Result} its full treatment, including
+the @code{?} operator for propagating an @code{Err} without writing the check
+by hand.
+
+@example rust
+fn first_even(xs: &[i64]) -> Option<i64> @{
+    xs.iter().copied().find(|n| n % 2 == 0)
+@}
+
+let found = first_even(&[1, 3, 4, 5]);
+println!("@{found:?@}");
+// => Some(4)
+
+let none = first_even(&[1, 3, 5]);
+println!("@{none:?@}");
+// => None
+@end example
+
+The runnable listing above is @code{examples/sec_0_4_shapes.rs}.
+
+@subheading Recursive data and @code{Box}
+
+An enum variant that holds another value of the same enum type describes a
+type of unbounded size --- exactly the shape of the book's own lists and
+trees --- and Rust needs every type to have a size known at compile time.
+@code{Box<T>} breaks the cycle: it is an owned pointer to a heap allocation,
+one pointer wide regardless of what it points to, so a self-referential
+variant can hold a @code{Box} of the enclosing type instead of the type
+itself.
+
+@example rust
+enum List @{
+    Cons(i64, Box<List>),
+    Nil,
+@}
+
+fn list_sum(list: &List) -> i64 @{
+    match list @{
+        List::Cons(value, rest) => value + list_sum(rest),
+        List::Nil => 0,
+    @}
+@}
+
+let list = List::Cons(1, Box::new(List::Cons(2, Box::new(List::Cons(3, Box::new(List::Nil))))));
+let sum = list_sum(&list);
+println!("@{sum@}");
+// => 6
+@end example
+
+This is the same trick the book relies on for its own pointer-structured
+data, made explicit rather than implicit: chapter 2's binary trees
+(@ref{2.2.2}) and Huffman trees (@ref{2.3.4}) are both @code{Box}-linked
+enums built from exactly this section's two constructs, and chapter 3's
+mutable pairs (@ref{3.3}) reach for @code{Rc} (@ref{0.7}) instead of
+@code{Box} only because they additionally need more than one owner.
+
+The runnable listing above is @code{examples/sec_0_4_boxed_list.rs}.

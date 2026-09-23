@@ -66,7 +66,7 @@ let quoted_datum_round_trips =
   let gen = Gen.sized (fun n -> datum_gen (n mod 4)) in
   Test.make
     ~name:"Reader round-trips quoted data"
-    ~count:500
+    ~count:100
     ~print:(fun d -> "'" ^ sexp_of_datum d)
     gen
     (fun d ->

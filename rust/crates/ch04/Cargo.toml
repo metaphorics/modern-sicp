@@ -11,5 +11,45 @@ autotests = false
 [lib]
 path = "src/lib.rs"
 
+[[test]]
+name = "scaffold_sec_4_1"
+path = "../../exercises/ch04/sec_4_1.rs"
+
+[[test]]
+name = "scaffold_sec_4_2"
+path = "../../exercises/ch04/sec_4_2.rs"
+
+[[test]]
+name = "scaffold_sec_4_3"
+path = "../../exercises/ch04/sec_4_3.rs"
+
+[[test]]
+name = "scaffold_sec_4_4"
+path = "../../exercises/ch04/sec_4_4.rs"
+
+[[test]]
+name = "solution_sec_4_1"
+path = "../../solutions/ch04/sec_4_1.rs"
+
+[[test]]
+name = "solution_sec_4_2"
+path = "../../solutions/ch04/sec_4_2.rs"
+
+[[test]]
+name = "solution_sec_4_3"
+path = "../../solutions/ch04/sec_4_3.rs"
+
+[[test]]
+name = "solution_sec_4_4"
+path = "../../solutions/ch04/sec_4_4.rs"
+
+[dependencies]
+sicp-runtime = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+proptest = { workspace = true }
+insta = { workspace = true }
+
 [lints]
 workspace = true

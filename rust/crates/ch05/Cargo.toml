@@ -11,5 +11,53 @@ autotests = false
 [lib]
 path = "src/lib.rs"
 
+[[test]]
+name = "scaffold_sec_5_1"
+path = "../../exercises/ch05/sec_5_1.rs"
+
+[[test]]
+name = "scaffold_sec_5_2"
+path = "../../exercises/ch05/sec_5_2.rs"
+
+[[test]]
+name = "scaffold_sec_5_3"
+path = "../../exercises/ch05/sec_5_3.rs"
+
+[[test]]
+name = "scaffold_sec_5_4"
+path = "../../exercises/ch05/sec_5_4.rs"
+
+[[test]]
+name = "scaffold_sec_5_5"
+path = "../../exercises/ch05/sec_5_5.rs"
+
+[[test]]
+name = "solution_sec_5_1"
+path = "../../solutions/ch05/sec_5_1.rs"
+
+[[test]]
+name = "solution_sec_5_2"
+path = "../../solutions/ch05/sec_5_2.rs"
+
+[[test]]
+name = "solution_sec_5_3"
+path = "../../solutions/ch05/sec_5_3.rs"
+
+[[test]]
+name = "solution_sec_5_4"
+path = "../../solutions/ch05/sec_5_4.rs"
+
+[[test]]
+name = "solution_sec_5_5"
+path = "../../solutions/ch05/sec_5_5.rs"
+
+[dependencies]
+sicp-runtime = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+proptest = { workspace = true }
+insta = { workspace = true }
+
 [lints]
 workspace = true

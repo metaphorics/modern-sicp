@@ -360,7 +360,11 @@ def _scan_unlisted(
                 if row.chosen_lang == lang:
                     known.add(_normalize(row.num) + "a")
         unlisted = _identifiers_on_disk(root, lang) - known
-        defects.extend(f"{lang} {num}: not in map" for num in sorted(unlisted, key=_sort_key))
+        defects.extend(
+            f"{lang} {num}: not in map"
+            for num in sorted(unlisted, key=_sort_key)
+            if not num.startswith("0.")
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -9,17 +9,15 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
 val chapter: String = project.name
 
+val examplesSet = sourceSets.create("examples")
+val exercisesSet = sourceSets.create("exercises")
+val solutionsSet = sourceSets.create("solutions")
+
 configure<KotlinJvmProjectExtension> {
     sourceSets {
-        create("examples") {
-            kotlin.srcDir("../examples/$chapter")
-        }
-        create("exercises") {
-            kotlin.srcDir("../exercises/$chapter")
-        }
-        create("solutions") {
-            kotlin.srcDir("../solutions/$chapter")
-        }
+        getByName("examples") { kotlin.srcDir("../examples/$chapter") }
+        getByName("exercises") { kotlin.srcDir("../exercises/$chapter") }
+        getByName("solutions") { kotlin.srcDir("../solutions/$chapter") }
     }
 }
 
@@ -41,19 +39,21 @@ dependencies {
     "solutionsImplementation"(libs.kotest.property)
 }
 
-val examplesTest = tasks.register<Test>("examplesTest") {
-    description = "Runs the examples tests of this chapter."
-    group = "verification"
-    testClassesDirs = sourceSets.getByName("examples").output.classesDirs
-    classpath = sourceSets.getByName("examples").runtimeClasspath
-}
+val examplesTest =
+    tasks.register<Test>("examplesTest") {
+        description = "Runs the examples tests of this chapter."
+        group = "verification"
+        testClassesDirs = sourceSets.getByName("examples").output.classesDirs
+        classpath = sourceSets.getByName("examples").runtimeClasspath
+    }
 
-val solutionsTest = tasks.register<Test>("solutionsTest") {
-    description = "Runs the solutions tests of this chapter."
-    group = "verification"
-    testClassesDirs = sourceSets.getByName("solutions").output.classesDirs
-    classpath = sourceSets.getByName("solutions").runtimeClasspath
-}
+val solutionsTest =
+    tasks.register<Test>("solutionsTest") {
+        description = "Runs the solutions tests of this chapter."
+        group = "verification"
+        testClassesDirs = sourceSets.getByName("solutions").output.classesDirs
+        classpath = sourceSets.getByName("solutions").runtimeClasspath
+    }
 
 tasks.register<Test>("exercisesTest") {
     description = "Runs the exercises tests of this chapter; pending scaffolds are disabled tests."
@@ -65,9 +65,9 @@ tasks.register<Test>("exercisesTest") {
 tasks.named("check") {
     dependsOn(examplesTest, solutionsTest)
     dependsOn(
-        tasks.named("compileKotlin"),
-        tasks.named("compileExamplesKotlin"),
-        tasks.named("compileExercisesKotlin"),
-        tasks.named("compileSolutionsKotlin"),
+        sourceSets.getByName("main").output,
+        sourceSets.getByName("examples").output,
+        sourceSets.getByName("exercises").output,
+        sourceSets.getByName("solutions").output,
     )
 }

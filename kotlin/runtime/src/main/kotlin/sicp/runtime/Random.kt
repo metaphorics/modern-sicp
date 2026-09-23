@@ -9,7 +9,9 @@ import arrow.core.Either
  * The seeded xorshift64* generator of decision 0001: the book's `random` is
  * this generator, so the stochastic sections stay comparable across editions.
  */
-public class Random private constructor(private var state: ULong) {
+public class Random private constructor(
+    private var state: ULong,
+) {
     /**
      * Returns the next unsigned 64-bit word: the xorshift steps update the
      * state, the state keeps the stepped word, and the returned word is the

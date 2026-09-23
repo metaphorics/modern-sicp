@@ -167,6 +167,11 @@ def _chapter_dir(lang: str, chapter: str) -> str:
     return f"ch{chapter}"
 
 
+def _book_dir(chapter: str) -> str:
+    """Book-tree chapter directory: plain ``chN`` in every edition."""
+    return f"ch{int(chapter)}"
+
+
 def _token(num: str) -> str:
     """Return the rust/ocaml exercise identifier for ``num`` (``ex_1_02a``)."""
     chapter, digits, suffix = _num_parts(num)
@@ -208,12 +213,11 @@ def _solution_path(root: Path, lang: str, num: str) -> Path:
     return _code_path(root, lang, num, "solutions")
 
 
-def _statement_path(root: Path, lang: str, num: str) -> Path:
-    """Section TeXinfo file holding the ``@anchor{Exercise num}`` statement."""
-    chapter, digits, _ = _num_parts(num)
-    plain = f"{chapter}.{int(digits)}"
-    book_dir = root / lang / "book" / _chapter_dir(lang, chapter)
-    return book_dir / f"{plain}.texi"
+def _statement_path(root: Path, lang: str, section: str) -> Path:
+    """Section TeXinfo file holding the section's exercise statements."""
+    chapter, _, digits = section.partition(".")
+    book_dir = root / lang / "book" / _book_dir(chapter)
+    return book_dir / f"{int(chapter)}.{int(digits)}.texi"
 
 
 def _rationale_path(root: Path, lang: str, num: str) -> Path:
@@ -223,9 +227,9 @@ def _rationale_path(root: Path, lang: str, num: str) -> Path:
     return solutions_dir / f"{_token(num)}.md"
 
 
-def _statement_ok(root: Path, lang: str, num: str) -> bool:
-    """Whether the statement file exists and anchors ``num``."""
-    path = _statement_path(root, lang, num)
+def _statement_ok(root: Path, lang: str, section: str, num: str) -> bool:
+    """Whether the section file exists and anchors ``num``."""
+    path = _statement_path(root, lang, section)
     if not path.is_file():
         return False
     try:
@@ -251,10 +255,10 @@ def _solution_ok(root: Path, lang: str, num: str) -> bool:
     return path.is_file() and _token_in(path, _token(num))
 
 
-def _missing_artifacts(root: Path, lang: str, num: str) -> list[str]:
+def _missing_artifacts(root: Path, lang: str, section: str, num: str) -> list[str]:
     """Defect lines for the statement, scaffold, solution, and rationale."""
     problems: list[str] = []
-    if not _statement_ok(root, lang, num):
+    if not _statement_ok(root, lang, section, num):
         problems.append(f"{lang} {num}: missing statement")
     if not _scaffold_ok(root, lang, num):
         problems.append(f"{lang} {num}: missing scaffold")
@@ -277,7 +281,7 @@ def _check_row(root: Path, lang: str, row: Row, defects: list[str]) -> int:
             if not _rationale_path(root, lang, num).is_file():
                 defects.append(f"{lang} {num}: missing rationale")
             continue
-        defects.extend(_missing_artifacts(root, lang, num))
+        defects.extend(_missing_artifacts(root, lang, row.section, num))
     return checked
 
 

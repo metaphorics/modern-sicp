@@ -11,6 +11,7 @@ public class E1_01Test :
         test("Exercise 1.1: evaluate a sequence of expressions in order").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            org.junit.jupiter.api.Assertions.assertEquals(listOf(10L, 20L), ex_1_01())
+            org.junit.jupiter.api.Assertions
+                .assertEquals(listOf(10L, 20L), ex_1_01())
         }
     })

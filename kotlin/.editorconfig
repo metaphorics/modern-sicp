@@ -1,0 +1,12 @@
+root = true
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+
+# Exercise and listing file names carry the book's section numbers
+# (E1_10Ackermann.kt, S1_1_7Sqrt.kt); the stock ktlint naming rules cannot
+# express that convention, so they are off project-wide.
+ktlint_standard_filename = disabled
+ktlint_standard_function-naming = disabled
+ktlint_standard_class-naming = disabled

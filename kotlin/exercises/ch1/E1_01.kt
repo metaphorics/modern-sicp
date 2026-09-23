@@ -13,6 +13,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the list of values the exercise's ten expression lines
  * display, in order; the statement lives in the section 1.1 chapter text.
  */
-public fun ex_1_01(): List<Long> {
-    throw PendingSolution()
-}
+public fun ex_1_01(): List<Long> = throw PendingSolution()

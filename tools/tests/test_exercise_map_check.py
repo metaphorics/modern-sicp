@@ -18,6 +18,7 @@ sys.modules.setdefault("exercise_map_check", exercise_map_check)
 _SPEC.loader.exec_module(exercise_map_check)
 
 main = exercise_map_check.main
+parse_map = exercise_map_check.parse_map
 
 LANGS = ("rust", "ocaml", "typescript", "kotlin")
 HEADER = "| Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |"
@@ -48,13 +49,17 @@ def chapter_dir(lang: str, chapter: str) -> str:
     return f"ch{int(chapter):02d}" if lang == "rust" else f"ch{chapter}"
 
 
-def exercise_paths(root: Path, lang: str, num: str) -> tuple[Path, Path, Path, Path]:
+def exercise_paths(
+    root: Path, lang: str, num: str, section: str | None = None
+) -> tuple[Path, Path, Path, Path]:
     """Scaffold, solution, rationale, and statement paths for one exercise."""
     chapter, digits, suffix = split_num(num)
     token = f"ex_{chapter}_{digits}{suffix}"
     ch = chapter_dir(lang, chapter)
     base = root / lang
-    statement = base / "book" / ch / f"{chapter}.{int(digits)}.texi"
+    sec = section if section is not None else f"{chapter}.{int(digits)}"
+    schapter, _, sdigits = sec.partition(".")
+    statement = base / "book" / f"ch{int(schapter)}" / f"{int(schapter)}.{int(sdigits)}.texi"
     if lang == "typescript":
         scaffold = base / "exercises" / ch / f"{token}.ts"
         solution = base / "solutions" / ch / f"{token}.ts"
@@ -70,11 +75,11 @@ def exercise_paths(root: Path, lang: str, num: str) -> tuple[Path, Path, Path, P
     return scaffold, solution, rationale, statement
 
 
-def add_exercise(root: Path, lang: str, num: str) -> None:
+def add_exercise(root: Path, lang: str, num: str, section: str | None = None) -> None:
     """Create the four artifacts of one exercise; safe to call repeatedly."""
     chapter, digits, suffix = split_num(num)
     token = f"ex_{chapter}_{digits}{suffix}"
-    scaffold, solution, rationale, statement = exercise_paths(root, lang, num)
+    scaffold, solution, rationale, statement = exercise_paths(root, lang, num, section)
     for path in (scaffold, solution, rationale, statement):
         path.parent.mkdir(parents=True, exist_ok=True)
     with statement.open("a", encoding="utf-8") as handle:
@@ -125,9 +130,13 @@ def run(tmp_path: Path, *extra: str) -> int:
 def build_all(tmp_path: Path, *numbers: str, root: Path | None = None) -> None:
     """Build every artifact of the given exercises in all four editions."""
     target = tmp_path if root is None else root
+    sections = parse_map(map_path(tmp_path).read_text(encoding="utf-8"))
+    section_of = {row.num: name for name, sec in sections.items() for row in sec.rows}
     for lang in LANGS:
         for num in numbers:
-            add_exercise(target, lang, num)
+            add_exercise(target, lang, num, section_of.get(num))
+            if num.endswith("a"):
+                continue
 
 
 def test_help(capsys: pytest.CaptureFixture[str]) -> None:
@@ -223,7 +232,7 @@ def test_chosen_addition(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     ]
     write_map(tmp_path, [("1.1", 2, rows)])
     build_all(tmp_path, "1.1", "1.2")
-    add_exercise(tmp_path, "rust", "1.2a")
+    add_exercise(tmp_path, "rust", "1.2a", "1.1")
     code = run(tmp_path)
     out = capsys.readouterr().out
     assert code == 0

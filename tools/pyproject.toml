@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: MIT
+[project]
+name = "modern-sicp-tools"
+version = "0.1.0"
+description = "Build and verification tooling for the Modern SICP editions"
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pyright==1.1.414",
+    "pytest==9.1.1",
+    "ruff==0.16.8",
+    "ty==0.0.83",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+# Each ignore carries its justification; the list is closed, not a dumping ground.
+ignore = [
+  # The formatter owns these decisions; checking them fights ruff format.
+  "COM812", "ISC001", "Q000", "Q001", "Q002", "Q003", "W191", "E111", "E114", "E117", "D206",
+  # Conflicting docstring-style pairs: keep D211/D212, drop their twins.
+  "D203", "D213",
+  # CLI scripts print their report lines with print() by contract.
+  "T201",
+  # Standalone script modules, not importable packages; tests are pytest files.
+  "INP001",
+  # Fixed external binaries (texi2any, rsvg-convert) run with local path arguments.
+  "S603", "S607",
+  # CLI error messages are raised inline; wrapping each in a variable buys nothing.
+  "EM101", "EM102", "TRY003",
+  # SPDX identifies the license; a copyright banner is not a code gate.
+  "CPY001",
+  # Python 3.14 defers annotations; type-only stdlib imports need no guards.
+  "TC003",
+  # Moving a CLI error into a one-use wrapper does not improve its contract.
+  "TRY301",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  # pytest's contract is bare asserts.
+  "S101",
+  # Test names document themselves; one-line docstrings per test add noise.
+  "D103", "D100",
+  # Expected constants in tests are data, not magic.
+  "PLR2004",
+]
+
+# ty is still pre-1.0, so pyright is the typecheck gate; ty runs beside it.
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
+include = ["."]
+exclude = ["**/__pycache__", ".venv"]
+
+[tool.ty]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

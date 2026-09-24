@@ -732,16 +732,18 @@ pub fn up_split(painter: &Painter, n: u32) -> Painter {
     below(painter, &beside(&smaller, &smaller))
 }
 
-/// Places an `up-split` and the painter side by side over a painter and
-/// a `right-split`, recursing into the corner: the book's
-/// `corner-split`, which branches up and to the right at once.
+/// Branches an `up-split` upward and a `right-split` rightward, each
+/// split computed once and reused twice, over a recursive corner: the
+/// book's `corner-split`, which branches up and to the right at once.
 #[must_use]
 pub fn corner_split(painter: &Painter, n: u32) -> Painter {
     if n == 0 {
         return Rc::clone(painter);
     }
-    let top_left = beside(&up_split(painter, n - 1), painter);
-    let bottom_right = below(painter, &right_split(painter, n - 1));
+    let up = up_split(painter, n - 1);
+    let right = right_split(painter, n - 1);
+    let top_left = beside(&up, &up);
+    let bottom_right = below(&right, &right);
     let corner = corner_split(painter, n - 1);
     beside(&below(painter, &top_left), &below(&bottom_right, &corner))
 }
@@ -894,7 +896,7 @@ impl SvgSink {
         let _ = writeln!(
             out,
             "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {size:.0} {size:.0}\" \
-             width=\"{size:.0}\" height=\"{size:.0}\""
+             width=\"{size:.0}\" height=\"{size:.0}\">"
         );
         let _ = writeln!(
             out,

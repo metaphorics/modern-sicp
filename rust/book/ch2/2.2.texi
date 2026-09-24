@@ -2448,8 +2448,10 @@ pub fn corner_split(painter: &Painter, n: u32) -> Painter @{
     if n == 0 @{
         return Rc::clone(painter);
     @}
-    let top_left = beside(&up_split(painter, n - 1), painter);
-    let bottom_right = below(painter, &right_split(painter, n - 1));
+    let up = up_split(painter, n - 1);
+    let right = right_split(painter, n - 1);
+    let top_left = beside(&up, &up);
+    let bottom_right = below(&right, &right);
     let corner = corner_split(painter, n - 1);
     beside(&below(painter, &top_left), &below(&bottom_right, &corner))
 @}

@@ -116,6 +116,40 @@ fn square_limit_variant(painter: &Painter, n: u32) -> Painter {
 
 // --- the figure generator -----------------------------------------------
 
+/// Hand-rolled XML well-formedness probe for a generated figure: the
+/// document must open with the `<svg>` root and close with `</svg>`,
+/// every tag must carry a closing `>`, and every open tag must be
+/// closed (or self-close) so the whole document balances. Plain text
+/// and hand-written self-closing tags only, exactly what [`SvgSink`]
+/// emits; no XML dependency is pulled in for this.
+fn svg_well_formed(svg: &str) -> bool {
+    if !(svg.starts_with("<svg ") && svg.trim_end().ends_with("</svg>")) {
+        return false;
+    }
+    let mut depth: i64 = 0;
+    let mut rest = svg;
+    while let Some(open) = rest.find('<') {
+        rest = &rest[open + 1..];
+        let Some(close) = rest.find('>') else {
+            return false;
+        };
+        let tag = &rest[..close];
+        rest = &rest[close + 1..];
+        // A close tag (`</name>`) counts -1, a self-closing tag
+        // (`<name .../>`) counts 0, and any other open tag counts +1.
+        let delta: i64 = if tag.starts_with('/') {
+            -1
+        } else {
+            i64::from(!tag.ends_with('/'))
+        };
+        depth += delta;
+        if depth < 0 {
+            return false;
+        }
+    }
+    depth == 0
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let painter = wave();
 
@@ -155,6 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../book/figures/generated/chap2");
     std::fs::create_dir_all(&dir)?;
     for (name, svg) in &figures {
+        assert!(svg_well_formed(svg), "{name}: SVG is not well-formed XML");
         std::fs::write(dir.join(format!("{name}.std.svg")), svg)?;
         println!("wrote figures/generated/chap2/{name}.std.svg");
     }

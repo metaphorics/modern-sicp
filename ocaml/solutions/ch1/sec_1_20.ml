@@ -6,7 +6,9 @@
     [remainder] in a counter measures it directly. The normal-order
     count is an argument, not a measurement (OCaml has no
     substitute-then-evaluate mode to instrument), and is worked out
-    step by step in [ex_1_20.md]: 18. *)
+    step by step in [ex_1_20.md]: the four predicates containing
+    [remainder]s force 1, 2, 4, 7 calls, then the returned [a] is
+    forced once more for 4 — 18 in all. *)
 
 let remainder_calls = ref 0
 

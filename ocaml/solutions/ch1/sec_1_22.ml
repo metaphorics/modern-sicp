@@ -5,9 +5,9 @@
 (** Exercise 1.22: [timed_prime_test] returns [None] for a composite
     (mirroring the book's silent skip: nothing is printed) and
     [Some elapsed] for a prime, [elapsed] read from [Sys.time] around
-    the test. [search_for_primes] walks odd candidates upward,
-    collecting the primality checks that succeed; timing the individual
-    calls and reading whether the section's @math{{\Theta(\sqrt n)}}
+    the test. [search_for_primes] walks candidates upward, one integer
+    at a time, collecting the primality checks that succeed; timing the
+    individual calls and reading whether the section's @math{{\Theta(\sqrt n)}}
     prediction holds is [ex_1_22.md]'s job, since a single call is
     usually too fast for [Sys.time] to see. *)
 

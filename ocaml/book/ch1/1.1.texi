@@ -1686,10 +1686,11 @@ bound variables but @code{Float.abs}, @code{-}, and @code{square} are free.
 The meaning of @code{good_enough} should be independent of the names we choose
 for @code{guess} and @code{x} so long as they are distinct and different from
 @code{Float.abs}, @code{-}, and @code{square}.  (If we renamed @code{guess}
-to @code{abs} we would have introduced a bug by @newterm{capturing} the
-variable @code{abs}: our parameter would have hidden the library procedure
-behind it, and the definition would have changed from using a free
-@code{abs} to calling itself.  It would have changed from free to bound.)
+to @code{square} we would have introduced a bug by @newterm{capturing} the
+variable @code{square}: our parameter would have hidden the procedure
+@code{square} behind it, and the definition would have changed from calling
+the free @code{square} to applying the parameter to itself.  It would have
+changed from free to bound.)
 The meaning of @code{good_enough} is not independent of the names of its free
 variables, however.  It surely depends upon the fact (external to this
 definition) that the name @code{Float.abs} names a procedure for computing
@@ -1705,17 +1706,21 @@ square-root program illustrates another way in which we would like to control
 the use of names.  The existing program consists of separate procedures:
 
 @example ocaml
-let sqrt x = sqrt_iter 1.0 x;;
+let average x y = (x +. y) /. 2.0;;
+
+let improve guess x =
+  average guess (x /. guess);;
+
+let square x = x *. x;;
+
+let good_enough guess x =
+  Float.abs (square guess -. x) < 0.001;;
 
 let rec sqrt_iter guess x =
   if good_enough guess x then guess
   else sqrt_iter (improve guess x) x;;
 
-let good_enough guess x =
-  Float.abs (square guess -. x) < 0.001;;
-
-let improve guess x =
-  average guess (x /. guess);;
+let sqrt x = sqrt_iter 1.0 x;;
 @end example
 
 @noindent

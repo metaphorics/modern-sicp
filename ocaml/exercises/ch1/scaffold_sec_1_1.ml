@@ -1,11 +1,10 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(* The runner touches every exercise once. The two exercises whose
-   solved forms diverge by design ([ex_1_05_p] and
-   [ex_1_06_sqrt_iter]) are called only through their argument
-   positions that return immediately, never through the diverging
-   calls themselves. *)
+(* The runner touches every exercise once. [ex_1_05_p] and
+   [ex_1_06_sqrt_iter] diverge by design and are never called here.
+   Every other entry point terminates and is called only with
+   terminating arguments. *)
 
 let () =
   ignore (Sicp_ch1_exercises.Sec_1_1.ex_1_01 ());

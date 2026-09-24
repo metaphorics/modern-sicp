@@ -415,14 +415,14 @@ subsection's heading still uses for it).  Using @code{fun} we can describe
 what we want as
 
 @example ocaml
-fun x -> 1.0 /. (x *. (x +. 2.0));;
+fun x -> x + 4;;
 @end example
 
 @noindent
 and
 
 @example ocaml
-fun x -> x + 4;;
+fun x -> 1.0 /. (x *. (x +. 2.0));;
 @end example
 
 @noindent

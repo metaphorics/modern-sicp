@@ -6,7 +6,7 @@ such a way that much of a program can be specified independent of the choices
 involved in implementing the data objects that the program manipulates.  For
 example, we saw in @ref{2.1.1} how to separate the task of designing a
 program that uses rational numbers from the task of implementing rational
-numbers in terms of the computer language's primitive mechanisms for
+numbers in terms of the host language's primitive mechanisms for
 constructing compound data.  The key idea was to erect an abstraction barrier
 -- in this case, the selectors and constructors for rational numbers
 (@code{make-rat}, @code{numer}, @code{denom})---that isolates the way rational
@@ -50,7 +50,7 @@ In this section, we will learn how to cope with data that may be represented in
 different ways by different parts of a program.  This requires constructing
 @newterm{generic procedures}---procedures that can operate on data that may be
 represented in more than one way.  Our main technique for building generic
-procedures will be to work in terms of data objects that have @newterm{type tags}, 
+procedures will be to work in terms of data objects that have @newterm{type tags},
 that is, data objects that include explicit information about how they
 are to be processed.  We will also discuss @newterm{data-directed} programming,
 a powerful and convenient implementation strategy for additively assembling
@@ -77,16 +77,17 @@ and install alternative representations.
 @strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.
 
 @example
-           Programs that use complex numbers
-  +-------------------------------------------------+
---| add-complex sub-complex mul-complex div-complex |--
-  +-------------------------------------------------+
-              Complex arithmetic package
----------------------------+---------------------------
-          Rectangular      |         Polar
-        representation     |     representation
----------------------------+---------------------------
-    List structure and primitive machine arithmetic
+-----------------------------------------------
+Programs that use complex numbers
+-----------------------------------------------
+Complex arithmetic package
+add-complex sub-complex mul-complex div-complex
+-----------------------------------------------
+Rectangular             | Polar
+representation          | representation
+-----------------------------------------------
+List structure and primitive machine arithmetic
+-----------------------------------------------
 @end example
 @end quotation
 @end ifinfo
@@ -104,7 +105,7 @@ and install alternative representations.
 In @ref{2.5} we will show how to use type tags and data-directed style
 to develop a generic arithmetic package.  This provides procedures (@code{add},
 @code{mul}, and so on) that can be used to manipulate all sorts of ``numbers''
-and can be easily extended when a new kind of number is needed.  In 
+and can be easily extended when a new kind of number is needed.  In
 @ref{2.5.3}, we'll show how to use generic arithmetic in a system that performs
 symbolic algebra.
 
@@ -126,14 +127,14 @@ form is preferable to polar form most of the time because of roundoff errors in
 conversion between rectangular and polar form.  This is why the complex-number
 example is unrealistic.  Nevertheless, it provides a clear illustration of the
 design of a system using generic operations and a good introduction to the more
-substantial systems to be developed later in this chapter.}  
+substantial systems to be developed later in this chapter.}
 Section @ref{2.4.2} will show how both representations can be made to coexist in a
 single system through the use of type tags and generic operations.
 
 Like rational numbers, complex numbers are naturally represented as ordered
 pairs.  The set of complex numbers can be thought of as a two-dimensional space
 with two orthogonal axes, the ``real'' axis and the ``imaginary'' axis. (See
-@ref{Figure 2.20}.)  From this point of view, the complex number 
+@ref{Figure 2.20}.)  From this point of view, the complex number
 @math{{z = x + iy}} (where @math{{i^{\kern0.1em 2} = \hbox{−1}}}) can be thought of as the point in the plane
 whose real coordinate is @math{x} and whose imaginary coordinate is @math{y}.
 Addition of complex numbers reduces in this representation to addition of
@@ -156,36 +157,6 @@ Imaginary-part(z_1 + z_2) = Imaginary-part(z_1) + Imaginary-part(z_2)
 
 @end ifinfo
 
-@float
-@anchor{Figure 2.20}
-@ifinfo
-@strong{Figure 2.20:} Complex numbers as points in the plane.
-
-@example
- Imaginary
-    ^
-    |
-  y |.........................* z = x + ?y = r e^(?A)
-    |                    __-- .
-    |                __--     .
-    |          r __--         .
-    |        __--             .
-    |    __-- \               .
-    |__--    A |              .
-----+----------+-------------------> Real
-                              x
-@end example
-@end ifinfo
-@ifhtml
-@image{../../text/original/figures/chap2/Fig2.20,,147mm,Figure 2.20: Complex numbers as points in the plane.,.std.svg}
-@end ifhtml
-@iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.20.std,,147mm,,.pdf}
-
-@end iftex
-@caption{@strong{Figure 2.20:} Complex numbers as points in the plane.}
-@end float
-
 @noindent
 When multiplying complex numbers, it is more natural to think in terms of
 representing a complex number in polar form, as a magnitude and an angle (@math{r}
@@ -194,9 +165,9 @@ vector obtained by stretching one complex number by the length of the other and
 then rotating it through the angle of the other:
 @displaymath
 \eqalign{
-  \hbox{Magnitude} (z_1 \cdot z_2)  &= 
+  \hbox{Magnitude} (z_1 \cdot z_2)  &=
     \hbox{Magnitude} (z_1) \cdot \hbox{Magnitude} (z_2), \cr
-  \hbox{Angle} (z_1 \cdot z_2)      &= 
+  \hbox{Angle} (z_1 \cdot z_2)      &=
     \hbox{Angle} (z_1) + \hbox{Angle} (z_2).
 }
 @end displaymath
@@ -209,6 +180,36 @@ Angle(z_1 * z_2) = Angle(z_1) + Angle(z_2)
 @end example
 
 @end ifinfo
+
+@float
+@anchor{Figure 2.20}
+@ifinfo
+@quotation
+@strong{Figure 2.20:} Complex numbers as points in the plane.
+
+@example
+        Imaginary
+            |
+            |  z = x + iy
+            |     .
+          y |----/|
+            |   / |
+            |  /  |
+            | /A  |
+            |/____|_______ Real
+                x
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.20,,147mm,Figure 2.20: Complex numbers as points in the plane.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.20.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.20:} Complex numbers as points in the plane.}
+@end float
 
 @noindent
 Thus, there are two different representations for complex numbers, which are
@@ -224,25 +225,23 @@ specified by polar coordinates.
 To design such a system, we can follow the same data-abstraction strategy we
 followed in designing the rational-number package in @ref{2.1.1}.
 Assume that the operations on complex numbers are implemented in terms of four
-selectors: @code{real-part}, @code{imag-part}, @code{magnitude}, and
+selectors: @code{real_part}, @code{imag_part}, @code{magnitude}, and
 @code{angle}.  Also assume that we have two procedures for constructing complex
-numbers: @code{make-from-real-imag} returns a complex number with specified
-real and imaginary parts, and @code{make-from-mag-ang} returns a complex number
+numbers: @code{make_from_real_imag} returns a complex number with specified
+real and imaginary parts, and @code{make_from_mag_ang} returns a complex number
 with specified magnitude and angle.  These procedures have the property that,
 for any complex number @code{z}, both
 
-@lisp
-(make-from-real-imag (real-part z) 
-                     (imag-part z))
-@end lisp
+@example rust
+make_from_real_imag(real_part(z), imag_part(z))
+@end example
 
 @noindent
 and
 
-@lisp
-(make-from-mag-ang (magnitude z) 
-                   (angle z))
-@end lisp
+@example rust
+make_from_mag_ang(magnitude(z), angle(z))
+@end example
 
 @noindent
 produce complex numbers that are equal to @code{z}.
@@ -252,29 +251,36 @@ numbers using the ``abstract data'' specified by the constructors and
 selectors, just as we did for rational numbers in @ref{2.1.1}.  As
 shown in the formulas above, we can add and subtract complex numbers in terms
 of real and imaginary parts while multiplying and dividing complex numbers in
-terms of magnitudes and angles:
+terms of magnitudes and angles.  In this edition every complex-number
+selector and constructor threads the operation table that @ref{2.4.3}
+builds, since that table is what finally makes the four selectors below
+generic across whichever representation a number carries:
 
-@lisp
-(define (add-complex z1 z2)
-  (make-from-real-imag 
-   (+ (real-part z1) (real-part z2))
-   (+ (imag-part z1) (imag-part z2))))
+@example rust
+pub fn add_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> {
+    let re = as_real(&real_part(table, z1)?)? + as_real(&real_part(table, z2)?)?;
+    let im = as_real(&imag_part(table, z1)?)? + as_real(&imag_part(table, z2)?)?;
+    make_from_real_imag(table, re, im)
+}
 
-(define (sub-complex z1 z2)
-  (make-from-real-imag 
-   (- (real-part z1) (real-part z2))
-   (- (imag-part z1) (imag-part z2))))
+pub fn sub_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> {
+    let re = as_real(&real_part(table, z1)?)? - as_real(&real_part(table, z2)?)?;
+    let im = as_real(&imag_part(table, z1)?)? - as_real(&imag_part(table, z2)?)?;
+    make_from_real_imag(table, re, im)
+}
 
-(define (mul-complex z1 z2)
-  (make-from-mag-ang 
-   (* (magnitude z1) (magnitude z2))
-   (+ (angle z1) (angle z2))))
+pub fn mul_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> {
+    let r = as_real(&magnitude(table, z1)?)? * as_real(&magnitude(table, z2)?)?;
+    let a = as_real(&angle(table, z1)?)? + as_real(&angle(table, z2)?)?;
+    make_from_mag_ang(table, r, a)
+}
 
-(define (div-complex z1 z2)
-  (make-from-mag-ang 
-   (/ (magnitude z1) (magnitude z2))
-   (- (angle z1) (angle z2))))
-@end lisp
+pub fn div_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> {
+    let r = as_real(&magnitude(table, z1)?)? / as_real(&magnitude(table, z2)?)?;
+    let a = as_real(&angle(table, z1)?)? - as_real(&angle(table, z2)?)?;
+    make_from_mag_ang(table, r, a)
+}
+@end example
 
 @noindent
 To complete the complex-number package, we must choose a representation and we
@@ -314,29 +320,42 @@ y = r sin A     A = arctan(y,x)
 
 @noindent
 which relate the real and imaginary parts @math{{(x, y)}} to the magnitude and
-the angle @math{{(r, A)}}.@footnote{The arctangent function referred to here,
-computed by Scheme's @code{atan} procedure, is defined so as to take two
-arguments @math{y} and @math{x} and to return the angle whose tangent is @math{{y / x}}.
-The signs of the arguments determine the quadrant of the angle.}  Ben's
-representation is therefore given by the following selectors and constructors:
+the angle @math{{(r, A)}}.@footnote{The arctangent function referred to here is
+@code{f64::atan2}, defined so as to take two arguments @math{y} and @math{x} and to
+return the angle whose tangent is @math{{y / x}}.  The signs of the arguments
+determine the quadrant of the angle.}  Ben's representation is therefore
+given by the following selectors and constructors, working directly on a
+pair of reals:
 
-@lisp
-(define (real-part z) (car z))
-(define (imag-part z) (cdr z))
+@example rust
+fn rect_real_part(z: &Value) -> Result<Value, SchemeError> {
+    car(z)
+}
 
-(define (magnitude z)
-  (sqrt (+ (square (real-part z)) 
-           (square (imag-part z)))))
+fn rect_imag_part(z: &Value) -> Result<Value, SchemeError> {
+    cdr(z)
+}
 
-(define (angle z)
-  (atan (imag-part z) (real-part z)))
+fn rect_magnitude(z: &Value) -> Result<Value, SchemeError> {
+    let x = as_real(&car(z)?)?;
+    let y = as_real(&cdr(z)?)?;
+    Ok(Value::real((x * x + y * y).sqrt()))
+}
 
-(define (make-from-real-imag x y) 
-  (cons x y))
+fn rect_angle(z: &Value) -> Result<Value, SchemeError> {
+    let x = as_real(&car(z)?)?;
+    let y = as_real(&cdr(z)?)?;
+    Ok(Value::real(y.atan2(x)))
+}
 
-(define (make-from-mag-ang r a)
-  (cons (* r (cos a)) (* r (sin a))))
-@end lisp
+fn rect_make_from_real_imag(x: f64, y: f64) -> Value {
+    Value::Pair(cons_cell(Value::real(x), Value::real(y)))
+}
+
+fn rect_make_from_mag_ang(r: f64, a: f64) -> Value {
+    Value::Pair(cons_cell(Value::real(r * a.cos()), Value::real(r * a.sin())))
+}
+@end example
 
 @noindent
 Alyssa, in contrast, chooses to represent complex numbers in polar form.  For
@@ -344,35 +363,50 @@ her, selecting the magnitude and angle is straightforward, but she has to use
 the trigonometric relations to obtain the real and imaginary parts.  Alyssa's
 representation is:
 
-@lisp
-(define (real-part z)
-  (* (magnitude z) (cos (angle z))))
+@example rust
+fn polar_real_part(z: &Value) -> Result<Value, SchemeError> {
+    let r = as_real(&car(z)?)?;
+    let a = as_real(&cdr(z)?)?;
+    Ok(Value::real(r * a.cos()))
+}
 
-(define (imag-part z)
-  (* (magnitude z) (sin (angle z))))
+fn polar_imag_part(z: &Value) -> Result<Value, SchemeError> {
+    let r = as_real(&car(z)?)?;
+    let a = as_real(&cdr(z)?)?;
+    Ok(Value::real(r * a.sin()))
+}
 
-(define (magnitude z) (car z))
-(define (angle z) (cdr z))
+fn polar_magnitude(z: &Value) -> Result<Value, SchemeError> {
+    car(z)
+}
 
-(define (make-from-real-imag x y)
-  (cons (sqrt (+ (square x) (square y)))
-        (atan y x)))
+fn polar_angle(z: &Value) -> Result<Value, SchemeError> {
+    cdr(z)
+}
 
-(define (make-from-mag-ang r a) 
-  (cons r a))
-@end lisp
+fn polar_make_from_real_imag(x: f64, y: f64) -> Value {
+    Value::Pair(cons_cell(
+        Value::real((x * x + y * y).sqrt()),
+        Value::real(y.atan2(x)),
+    ))
+}
+
+fn polar_make_from_mag_ang(r: f64, a: f64) -> Value {
+    Value::Pair(cons_cell(Value::real(r), Value::real(a)))
+}
+@end example
 
 @noindent
 The discipline of data abstraction ensures that the same implementation of
-@code{add-complex}, @code{sub-complex}, @code{mul-complex}, and
-@code{div-complex} will work with either Ben's representation or Alyssa's
+@code{add_complex}, @code{sub_complex}, @code{mul_complex}, and
+@code{div_complex} will work with either Ben's representation or Alyssa's
 representation.
 
 @node	2.4.2, 2.4.3, 2.4.1, 2.4
 @subsection Tagged data
 
 One way to view data abstraction is as an application of the ``principle of
-least commitment.''  In implementing the complex-number system in 
+least commitment.''  In implementing the complex-number system in
 @ref{2.4.1}, we can use either Ben's rectangular representation or Alyssa's
 polar representation.  The abstraction barrier formed by the selectors and
 constructors permits us to defer to the last possible moment the choice of a
@@ -393,155 +427,155 @@ this distinction is to include a @newterm{type tag}---the symbol
 when we need to manipulate a complex number we can use the tag to decide which
 selector to apply.
 
-In order to manipulate tagged data, we will assume that we have procedures
-@code{type-tag} and @code{contents} that extract from a data object the tag and
-the actual contents (the polar or rectangular coordinates, in the case of a
-complex number).  We will also postulate a procedure @code{attach-tag} that
-takes a tag and contents and produces a tagged data object.  A straightforward
-way to implement this is to use ordinary list structure:
+In this edition the runtime already carries an @newterm{operation table}
+substrate for tagged data (@ref{2.4.3} names it): every dynamic value can be
+a @code{Value::Tagged}, and @code{type_tag}/@code{contents} extract from it
+the tag and the actual contents (the polar or rectangular coordinates, in the
+case of a complex number).  A straightforward way to implement this, and the
+way the runtime does, is to use an ordinary pair:
 
-@lisp
-(define (attach-tag type-tag contents)
-  (cons type-tag contents))
+@example rust
+pub fn attach_tag(type_tag: &str, contents: Value) -> Value {
+    Value::tagged(type_tag, contents)
+}
 
-(define (type-tag datum)
-  (if (pair? datum)
-      (car datum)
-      (error "Bad tagged datum: 
-              TYPE-TAG" datum)))
+pub fn type_tag(datum: &Value) -> Result<Symbol, SchemeError> {
+    match datum {
+        Value::Tagged { tag, .. } => Ok(Rc::clone(tag)),
+        other => Err(SchemeError::UserRaised {
+            message: "Bad tagged datum: TYPE-TAG".into(),
+            irritants: vec![other.clone()],
+        }),
+    }
+}
 
-(define (contents datum)
-  (if (pair? datum)
-      (cdr datum)
-      (error "Bad tagged datum: 
-              CONTENTS" datum)))
-@end lisp
+pub fn contents(datum: &Value) -> Result<Value, SchemeError> {
+    match datum {
+        Value::Tagged { data, .. } => Ok((**data).clone()),
+        other => Err(SchemeError::UserRaised {
+            message: "Bad tagged datum: CONTENTS".into(),
+            irritants: vec![other.clone()],
+        }),
+    }
+}
+@end example
 
 @noindent
-Using these procedures, we can define predicates @code{rectangular?}  and
-@code{polar?}, which recognize rectangular and polar numbers, respectively:
+Using these procedures, we can define predicates @code{is_rectangular}  and
+@code{is_polar}, which recognize rectangular and polar numbers, respectively:
 
-@lisp
-(define (rectangular? z)
-  (eq? (type-tag z) 'rectangular))
+@example rust
+pub fn is_rectangular(z: &Value) -> bool {
+    type_tag(z).is_ok_and(|tag| tag.as_ref() == "rectangular")
+}
 
-(define (polar? z)
-  (eq? (type-tag z) 'polar))
-@end lisp
+pub fn is_polar(z: &Value) -> bool {
+    type_tag(z).is_ok_and(|tag| tag.as_ref() == "polar")
+}
+@end example
 
 @noindent
 With type tags, Ben and Alyssa can now modify their code so that their two
 different representations can coexist in the same system.  Whenever Ben
 constructs a complex number, he tags it as rectangular.  Whenever Alyssa
-constructs a complex number, she tags it as polar.  In addition, Ben and Alyssa
-must make sure that the names of their procedures do not conflict.  One way to
-do this is for Ben to append the suffix @code{rectangular} to the name of each
-of his representation procedures and for Alyssa to append @code{polar} to the
-names of hers.  Here is Ben's revised rectangular representation from 
-@ref{2.4.1}:
+constructs a complex number, she tags it as polar.  In Scheme, Ben and Alyssa
+would also have had to rename their procedures to avoid a name clash; here
+the internal procedures of @ref{2.4.1} stay private free functions
+(@code{rect_real_part} and friends, @code{polar_real_part} and friends),
+already distinct by name and never exported, so the only new code is the
+tagged wrapper around each constructor:
 
-@lisp
-(define (real-part-rectangular z) (car z))
-(define (imag-part-rectangular z) (cdr z))
+@example rust
+pub fn rect_make_from_real_imag_tagged(x: f64, y: f64) -> Value {
+    attach_tag("rectangular", rect_make_from_real_imag(x, y))
+}
 
-(define (magnitude-rectangular z)
-  (sqrt (+ (square (real-part-rectangular z))
-           (square (imag-part-rectangular z)))))
-
-(define (angle-rectangular z)
-  (atan (imag-part-rectangular z)
-        (real-part-rectangular z)))
-
-(define (make-from-real-imag-rectangular x y)
-  (attach-tag 'rectangular (cons x y)))
-
-(define (make-from-mag-ang-rectangular r a)
-  (attach-tag 
-   'rectangular
-   (cons (* r (cos a)) (* r (sin a)))))
-@end lisp
+pub fn rect_make_from_mag_ang_tagged(r: f64, a: f64) -> Value {
+    attach_tag("rectangular", rect_make_from_mag_ang(r, a))
+}
+@end example
 
 @noindent
-and here is Alyssa's revised polar representation:
+and here are Alyssa's tagged constructors:
 
-@lisp
-(define (real-part-polar z)
-  (* (magnitude-polar z) 
-     (cos (angle-polar z))))
+@example rust
+pub fn polar_make_from_real_imag_tagged(x: f64, y: f64) -> Value {
+    attach_tag("polar", polar_make_from_real_imag(x, y))
+}
 
-(define (imag-part-polar z)
-  (* (magnitude-polar z) 
-     (sin (angle-polar z))))
-
-(define (magnitude-polar z) (car z))
-(define (angle-polar z) (cdr z))
-
-(define (make-from-real-imag-polar x y)
-  (attach-tag 
-   'polar
-   (cons (sqrt (+ (square x) (square y)))
-         (atan y x))))
-
-(define (make-from-mag-ang-polar r a)
-  (attach-tag 'polar (cons r a)))
-@end lisp
+pub fn polar_make_from_mag_ang_tagged(r: f64, a: f64) -> Value {
+    attach_tag("polar", polar_make_from_mag_ang(r, a))
+}
+@end example
 
 @noindent
 Each generic selector is implemented as a procedure that checks the tag of its
 argument and calls the appropriate procedure for handling data of that type.
-For example, to obtain the real part of a complex number, @code{real-part}
-examines the tag to determine whether to use Ben's @code{real-part-rectangular}
-or Alyssa's @code{real-part-polar}.  In either case, we use @code{contents} to
+For example, to obtain the real part of a complex number, @code{real_part_dispatch}
+examines the tag to determine whether to use Ben's @code{rect_real_part}
+or Alyssa's @code{polar_real_part}.  In either case, we use @code{contents} to
 extract the bare, untagged datum and send this to the rectangular or polar
 procedure as required:
 
-@lisp
-(define (real-part z)
-  (cond ((rectangular? z)
-         (real-part-rectangular (contents z)))
-        ((polar? z)
-         (real-part-polar (contents z)))
-        (else (error "Unknown type: 
-               REAL-PART" z))))
+@example rust
+pub fn real_part_dispatch(z: &Value) -> Result<Value, SchemeError> {
+    if is_rectangular(z) {
+        rect_real_part(&contents(z)?)
+    } else if is_polar(z) {
+        polar_real_part(&contents(z)?)
+    } else {
+        Err(SchemeError::UserRaised {
+            message: "Unknown type: REAL-PART".into(),
+            irritants: vec![z.clone()],
+        })
+    }
+}
 
-(define (imag-part z)
-  (cond ((rectangular? z)
-         (imag-part-rectangular (contents z)))
-        ((polar? z)
-         (imag-part-polar (contents z)))
-        (else (error "Unknown type: 
-               IMAG-PART" z))))
+pub fn imag_part_dispatch(z: &Value) -> Result<Value, SchemeError> {
+    if is_rectangular(z) {
+        rect_imag_part(&contents(z)?)
+    } else if is_polar(z) {
+        polar_imag_part(&contents(z)?)
+    } else {
+        Err(SchemeError::UserRaised {
+            message: "Unknown type: IMAG-PART".into(),
+            irritants: vec![z.clone()],
+        })
+    }
+}
 
-(define (magnitude z)
-  (cond ((rectangular? z)
-         (magnitude-rectangular (contents z)))
-        ((polar? z)
-         (magnitude-polar (contents z)))
-        (else (error "Unknown type: 
-               MAGNITUDE" z))))
+pub fn magnitude_dispatch(z: &Value) -> Result<Value, SchemeError> {
+    if is_rectangular(z) {
+        rect_magnitude(&contents(z)?)
+    } else if is_polar(z) {
+        polar_magnitude(&contents(z)?)
+    } else {
+        Err(SchemeError::UserRaised {
+            message: "Unknown type: MAGNITUDE".into(),
+            irritants: vec![z.clone()],
+        })
+    }
+}
 
-(define (angle z)
-  (cond ((rectangular? z)
-         (angle-rectangular (contents z)))
-        ((polar? z)
-         (angle-polar (contents z)))
-        (else (error "Unknown type: 
-               ANGLE" z))))
-@end lisp
+pub fn angle_dispatch(z: &Value) -> Result<Value, SchemeError> {
+    if is_rectangular(z) {
+        rect_angle(&contents(z)?)
+    } else if is_polar(z) {
+        polar_angle(&contents(z)?)
+    } else {
+        Err(SchemeError::UserRaised {
+            message: "Unknown type: ANGLE".into(),
+            irritants: vec![z.clone()],
+        })
+    }
+}
+@end example
 
 @noindent
 To implement the complex-number arithmetic operations, we can use the same
-procedures @code{add-complex}, @code{sub-complex}, @code{mul-complex}, and
-@code{div-complex} from @ref{2.4.1}, because the selectors they call
-are generic, and so will work with either representation.  For example, the
-procedure @code{add-complex} is still
-
-@lisp
-(define (add-complex z1 z2)
-  (make-from-real-imag 
-   (+ (real-part z1) (real-part z2))
-   (+ (imag-part z1) (imag-part z2))))
-@end lisp
+procedures @code{add_complex}, @code{sub_complex}, @code{mul_complex}, and
+@code{div_complex} from @ref{2.4.1}, because the selectors they call
+are generic, and so will work with either representation.
 
 @noindent
 Finally, we must choose whether to construct complex numbers using Ben's
@@ -549,16 +583,15 @@ representation or Alyssa's representation.  One reasonable choice is to
 construct rectangular numbers whenever we have real and imaginary parts and to
 construct polar numbers whenever we have magnitudes and angles:
 
-@lisp
-(define (make-from-real-imag x y)
-  (make-from-real-imag-rectangular x y))
-
-(define (make-from-mag-ang r a)
-  (make-from-mag-ang-polar r a))
-@end lisp
+@example rust
+let z = rect_make_from_real_imag_tagged(3.0, 4.0);
+// => (rectangular (3 . 4))
+let w = polar_make_from_mag_ang_tagged(1.0, std::f64::consts::FRAC_PI_2);
+// => (polar (1 . 1.5707963267948966))
+@end example
 
 @noindent
-The resulting complex-number system has the structure shown in @ref{Figure 2.21}.  
+The resulting complex-number system has the structure shown in @ref{Figure 2.21}.
 The system has been decomposed into three relatively independent parts:
 the complex-number-arithmetic operations, Alyssa's polar implementation, and
 Ben's rectangular implementation.  The polar and rectangular implementations
@@ -574,19 +607,16 @@ interface.
 @strong{Figure 2.21:} Structure of the generic complex-arithmetic system.
 
 @example
-    +-------------------------------------------------+
-----| add-complex sub-complex mul-complex div-complex |----
-    +-------------------------------------------------+
-                Complex arithmetic package
-                 +-----------------------+
-                 | real-part   imag-part |
------------------|                       |------------------
-                 | magnitude   angle     |
-                 +-----------+-----------+
-           Rectangular       |          Polar
-          representation     |     representation
------------------------------+------------------------------
-       List structure and primitive machine arithmetic
+-------------------------------------------------
+Complex arithmetic package
+add-complex sub-complex mul-complex div-complex
+-------------------------------------------------
+| real-part imag-part | magnitude angle
+| make-from-real-imag | make-from-mag-ang
+-------------------------------------------------
+Rectangular             | Polar
+representation          | representation
+-------------------------------------------------
 @end example
 @end quotation
 @end ifinfo
@@ -600,12 +630,13 @@ interface.
 @caption{@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.}
 @end float
 
+@noindent
 Since each data object is tagged with its type, the selectors operate on the
 data in a generic manner.  That is, each selector is defined to have a behavior
 that depends upon the particular type of data it is applied to.  Notice the
 general mechanism for interfacing the separate representations: Within a given
 representation implementation (say, Alyssa's polar package) a complex number is
-an untyped pair (magnitude, angle).  When a generic selector operates on a
+an untagged pair (magnitude, angle).  When a generic selector operates on a
 number of @code{polar} type, it strips off the tag and passes the contents on
 to Alyssa's code.  Conversely, when Alyssa constructs a number for general use,
 she tags it with a type so that it can be appropriately recognized by the
@@ -620,8 +651,8 @@ The general strategy of checking the type of a datum and calling an appropriate
 procedure is called @newterm{dispatching on type}.  This is a powerful strategy
 for obtaining modularity in system design.  On the other hand, implementing the
 dispatch as in @ref{2.4.2} has two significant weaknesses.  One
-weakness is that the generic interface procedures (@code{real-part},
-@code{imag-part}, @code{magnitude}, and @code{angle}) must know about all the
+weakness is that the generic interface procedures (@code{real_part},
+@code{imag_part}, @code{magnitude}, and @code{angle}) must know about all the
 different representations.  For instance, suppose we wanted to incorporate a
 new representation for complex numbers into our complex-number system.  We
 would need to identify this new representation with a type, and then add a
@@ -630,8 +661,11 @@ and apply the appropriate selector for that representation.
 
 Another weakness of the technique is that even though the individual
 representations can be designed separately, we must guarantee that no two
-procedures in the entire system have the same name.  This is why Ben and Alyssa
-had to change the names of their original procedures from @ref{2.4.1}.
+procedures in the entire system have the same name.  In Scheme this is why Ben
+and Alyssa had to change the names of their original procedures from
+@ref{2.4.1}; in this edition the module system already keeps their private
+functions apart, but the underlying issue is the same one section 2.4.2's
+tagged constructors already needed a wrapper for.
 
 The issue underlying both of these weaknesses is that the technique for
 implementing generic interfaces is not @newterm{additive}.  The person
@@ -649,7 +683,7 @@ representations.  The problem is real and must be addressed in such programs as
 large-scale data-base-management systems.
 
 What we need is a means for modularizing the system design even further.  This
-is provided by the programming technique known as @newterm{data-directed programming}.  
+is provided by the programming technique known as @newterm{data-directed programming}.
 To understand how data-directed programming works, begin with
 the observation that whenever we deal with a set of generic operations that are
 common to a set of different types we are, in effect, dealing with a
@@ -700,27 +734,28 @@ argument.  If we do this, then to add a new representation package to the
 system we need not change any existing procedures; we need only add new entries
 to the table.
 
-To implement this plan, assume that we have two procedures, @code{put} and
-@code{get}, for manipulating the operation-and-type table:
+To implement this plan, this edition's runtime ships a real table, an
+@code{OpTable}, keyed by the operation name plus the ordered list of type
+tags (D19 of the edition plan), with two operations:
 
 @itemize @bullet
 
 @item
-@code{(put ⟨@var{op}⟩ ⟨@var{type}⟩ ⟨@var{item}⟩)} installs the 
-@code{⟨}@var{item}@code{⟩} in the table, indexed by the 
-@code{⟨}@var{op}@code{⟩} and the @code{⟨}@var{type}@code{⟩}.
+@code{table.put(op, tags, handler)} installs the handler in the table,
+indexed by @code{op} and @code{tags}; a later @code{put} of the same pair
+overwrites the earlier one.
 
 @item
-@code{(get ⟨@var{op}⟩ ⟨@var{type}⟩)} looks up the @code{⟨}@var{op}@code{⟩}, 
-@code{⟨}@var{type}@code{⟩} entry in the table and returns the item found there.  
-If no item is found, @code{get} returns false.
+@code{table.get(op, tags)} looks up the @code{(op, tags)} entry in the table
+and returns the handler found there.  If no entry is found, @code{get}
+returns the absent option, @code{None}, never a false-ish sentinel.
 
 @end itemize
 
 @noindent
-For now, we can assume that @code{put} and @code{get} are included in our
-language.  In @ref{Chapter 3} (@ref{3.3.3}) we
-will see how to implement these and other operations for manipulating tables.
+@code{OpTable} lives in the runtime shared by every chapter from here on; it
+is not something Chapter 3's pairs-based tables (@ref{3.3.3}) build from
+scratch, though the two share the same put/get discipline.
 
 Here is how data-directed programming can be used in the complex-number system.
 Ben, who developed the rectangular representation, implements his code just as
@@ -729,135 +764,138 @@ he did originally.  He defines a collection of procedures, or a
 entries to the table that tell the system how to operate on rectangular
 numbers.  This is accomplished by calling the following procedure:
 
-@lisp
-(define (install-rectangular-package)
-  @r{;; internal procedures}
-  (define (real-part z) (car z))
-  (define (imag-part z) (cdr z))
-  (define (make-from-real-imag x y) 
-    (cons x y))
-  (define (magnitude z)
-    (sqrt (+ (square (real-part z))
-             (square (imag-part z)))))
-  (define (angle z)
-    (atan (imag-part z) (real-part z)))
-  (define (make-from-mag-ang r a)
-    (cons (* r (cos a)) (* r (sin a))))
-  @r{;; interface to the rest of the system}
-  (define (tag x) 
-    (attach-tag 'rectangular x))
-  (put 'real-part '(rectangular) real-part)
-  (put 'imag-part '(rectangular) imag-part)
-  (put 'magnitude '(rectangular) magnitude)
-  (put 'angle '(rectangular) angle)
-  (put 'make-from-real-imag 'rectangular
-       (lambda (x y) 
-         (tag (make-from-real-imag x y))))
-  (put 'make-from-mag-ang 'rectangular
-       (lambda (r a) 
-         (tag (make-from-mag-ang r a))))
-  'done)
-@end lisp
+@example rust
+fn selector_handler(f: fn(&Value) -> Result<Value, SchemeError>) -> Handler {
+    Rc::new(move |args| f(sole(args)?))
+}
+
+fn constructor_handler(f: fn(f64, f64) -> Value) -> Handler {
+    Rc::new(move |args| {
+        let (x, y) = as_real_pair(args)?;
+        Ok(f(x, y))
+    })
+}
+
+pub fn install_rectangular_package(table: &OpTable) {
+    let tag = tag_list_key(&["rectangular"]);
+    table.put(Key::sym("real-part"), tag.clone(), selector_handler(rect_real_part));
+    table.put(Key::sym("imag-part"), tag.clone(), selector_handler(rect_imag_part));
+    table.put(Key::sym("magnitude"), tag.clone(), selector_handler(rect_magnitude));
+    table.put(Key::sym("angle"), tag, selector_handler(rect_angle));
+    table.put(
+        Key::sym("make-from-real-imag"),
+        Key::sym("rectangular"),
+        constructor_handler(rect_make_from_real_imag_tagged),
+    );
+    table.put(
+        Key::sym("make-from-mag-ang"),
+        Key::sym("rectangular"),
+        constructor_handler(rect_make_from_mag_ang_tagged),
+    );
+}
+@end example
 
 @noindent
-Notice that the internal procedures here are the same procedures from 
+Notice that the internal procedures here are the same procedures from
 @ref{2.4.1} that Ben wrote when he was working in isolation.  No changes are
 necessary in order to interface them to the rest of the system.  Moreover,
-since these procedure definitions are internal to the installation procedure,
-Ben needn't worry about name conflicts with other procedures outside the
-rectangular package.  To interface these to the rest of the system, Ben
+since @code{rect_real_part} and friends are private free functions, Ben
+needn't worry about name conflicts with other procedures outside this module.
+To interface these to the rest of the system, Ben
 installs his @code{real-part} procedure under the operation name
-@code{real-part} and the type @code{(rectangular)}, and similarly for the other
-selectors.@footnote{We use the list @code{(rectangular)} rather than the symbol
-@code{rectangular} to allow for the possibility of operations with multiple
-arguments, not all of the same type.}  The interface also defines the
-constructors to be used by the external system.@footnote{The type the
+@code{real-part} and the tag list @code{(rectangular)}, and similarly for the other
+selectors.@footnote{We install under the one-element tag list
+@code{(rectangular)} rather than the bare symbol @code{rectangular} to allow
+for the possibility of operations with multiple arguments, not all of the
+same type.}  The interface also defines the
+constructors to be used by the external system.@footnote{The tag the
 constructors are installed under needn't be a list because a constructor is
 always used to make an object of one particular type.}  These are identical to
 Ben's internally defined constructors, except that they attach the tag.
 
 Alyssa's polar package is analogous:
 
-@lisp
-(define (install-polar-package)
-  @r{;; internal procedures}
-  (define (magnitude z) (car z))
-  (define (angle z) (cdr z))
-  (define (make-from-mag-ang r a) (cons r a))
-  (define (real-part z)
-    (* (magnitude z) (cos (angle z))))
-  (define (imag-part z)
-    (* (magnitude z) (sin (angle z))))
-  (define (make-from-real-imag x y)
-    (cons (sqrt (+ (square x) (square y)))
-          (atan y x)))
-  @r{;; interface to the rest of the system}
-  (define (tag x) (attach-tag 'polar x))
-  (put 'real-part '(polar) real-part)
-  (put 'imag-part '(polar) imag-part)
-  (put 'magnitude '(polar) magnitude)
-  (put 'angle '(polar) angle)
-  (put 'make-from-real-imag 'polar
-       (lambda (x y) 
-         (tag (make-from-real-imag x y))))
-  (put 'make-from-mag-ang 'polar
-       (lambda (r a) 
-         (tag (make-from-mag-ang r a))))
-  'done)
-@end lisp
+@example rust
+pub fn install_polar_package(table: &OpTable) {
+    let tag = tag_list_key(&["polar"]);
+    table.put(Key::sym("real-part"), tag.clone(), selector_handler(polar_real_part));
+    table.put(Key::sym("imag-part"), tag.clone(), selector_handler(polar_imag_part));
+    table.put(Key::sym("magnitude"), tag.clone(), selector_handler(polar_magnitude));
+    table.put(Key::sym("angle"), tag, selector_handler(polar_angle));
+    table.put(
+        Key::sym("make-from-real-imag"),
+        Key::sym("polar"),
+        constructor_handler(polar_make_from_real_imag_tagged),
+    );
+    table.put(
+        Key::sym("make-from-mag-ang"),
+        Key::sym("polar"),
+        constructor_handler(polar_make_from_mag_ang_tagged),
+    );
+}
+@end example
 
 @noindent
 Even though Ben and Alyssa both still use their original procedures defined
-with the same names as each other's (e.g., @code{real-part}), these definitions
-are now internal to different procedures (see @ref{1.1.8}), so there is
-no name conflict.
+with the same names as each other's (e.g., @code{real_part}), these definitions
+are private to different modules, so there is no name conflict.
 
 The complex-arithmetic selectors access the table by means of a general
-``operation'' procedure called @code{apply-generic}, which applies a generic
-operation to some arguments.  @code{Apply-generic} looks in the table under the
-name of the operation and the types of the arguments and applies the resulting
-procedure if one is present:@footnote{@code{Apply-generic} uses the dotted-tail
-notation described in @ref{Exercise 2.20}, because different generic operations
-may take different numbers of arguments.  In @code{apply-generic}, @code{op}
-has as its value the first argument to @code{apply-generic} and @code{args} has
-as its value a list of the remaining arguments.
+``operation'' procedure called @code{apply_generic}, which applies a generic
+operation to some arguments.  @code{apply_generic} looks in the table under the
+name of the operation and the tags of the arguments and applies the resulting
+handler if one is present:@footnote{The book's @code{apply-generic} uses the
+dotted-tail notation of @ref{Exercise 2.20} because different generic
+operations take different numbers of arguments; this edition's
+@code{apply_generic} takes the operation name and a slice of arguments
+directly, since a slice already stands for a list of arguments of any
+length, and the book's separate @code{apply} primitive becomes the ordinary
+call @code{handler(&bare)} against the contents slice.}
 
-@code{Apply-generic} also uses the primitive procedure @code{apply}, which
-takes two arguments, a procedure and a list.  @code{Apply} applies the
-procedure, using the elements in the list as arguments.  For example,
-
-@lisp
-(apply + (list 1 2 3 4))
-@end lisp
+@example rust
+pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SchemeError> {
+    let mut tag_keys = Vec::with_capacity(args.len());
+    let mut tag_values = Vec::with_capacity(args.len());
+    for arg in args {
+        let tag = type_tag(arg)?;
+        tag_values.push(Value::Sym(tag.clone()));
+        tag_keys.push(Key::Sym(tag));
+    }
+    let Some(handler) = table.get(&Key::sym(op), &key_tag_list(&tag_keys)) else {
+        return Err(SchemeError::UserRaised {
+            message: "No method for these types: APPLY-GENERIC".into(),
+            irritants: vec![Value::list(vec![Value::sym(op), Value::list(tag_values)])],
+        });
+    };
+    let bare: Vec<Value> = args.iter().map(contents).collect::<Result<_, _>>()?;
+    handler(&bare)
+}
+@end example
 
 @noindent
-returns 10.}
+A miss here does not fall through to a general-purpose error: it raises the
+edition's typed @code{SchemeError::UserRaised}, naming the operation and the
+tag list that had no handler, which is the concrete answer to what an
+extensible-at-runtime table costs that a closed trait cannot: the compiler
+cannot catch a missing combination the way it catches a missing @code{match}
+arm, so the table's own miss path has to.
 
-@lisp
-(define (apply-generic op . args)
-  (let ((type-tags (map type-tag args)))
-    (let ((proc (get op type-tags)))
-      (if proc
-          (apply proc (map contents args))
-          (error
-            "No method for these types: 
-             APPLY-GENERIC"
-            (list op type-tags))))))
-@end lisp
+Using @code{apply_generic}, we can define our generic selectors as follows:
 
-@noindent
-Using @code{apply-generic}, we can define our generic selectors as follows:
-
-@lisp
-(define (real-part z) 
-  (apply-generic 'real-part z))
-(define (imag-part z) 
-  (apply-generic 'imag-part z))
-(define (magnitude z) 
-  (apply-generic 'magnitude z))
-(define (angle z) 
-  (apply-generic 'angle z))
-@end lisp
+@example rust
+pub fn real_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+    apply_generic(table, "real-part", std::slice::from_ref(z))
+}
+pub fn imag_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+    apply_generic(table, "imag-part", std::slice::from_ref(z))
+}
+pub fn magnitude(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+    apply_generic(table, "magnitude", std::slice::from_ref(z))
+}
+pub fn angle(table: &OpTable, z: &Value) -> Result<Value, SchemeError> {
+    apply_generic(table, "angle", std::slice::from_ref(z))
+}
+@end example
 
 @noindent
 Observe that these do not change at all if a new representation is added to the
@@ -869,42 +907,71 @@ parts and from magnitudes and angles.  As in @ref{2.4.2}, we construct
 rectangular numbers whenever we have real and imaginary parts, and polar
 numbers whenever we have magnitudes and angles:
 
-@lisp
-(define (make-from-real-imag x y)
-  ((get 'make-from-real-imag 
-        'rectangular) 
-   x y))
+@example rust
+pub fn make_from_real_imag(table: &OpTable, x: f64, y: f64) -> Result<Value, SchemeError> {
+    let Some(handler) = table.get(&Key::sym("make-from-real-imag"), &Key::sym("rectangular"))
+    else {
+        return Err(SchemeError::UserRaised {
+            message: "make-from-real-imag is not installed for rectangular".into(),
+            irritants: vec![],
+        });
+    };
+    handler(&[Value::real(x), Value::real(y)])
+}
 
-(define (make-from-mag-ang r a)
-  ((get 'make-from-mag-ang 
-        'polar) 
-   r a))
-@end lisp
+pub fn make_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, SchemeError> {
+    let Some(handler) = table.get(&Key::sym("make-from-mag-ang"), &Key::sym("polar")) else {
+        return Err(SchemeError::UserRaised {
+            message: "make-from-mag-ang is not installed for polar".into(),
+            irritants: vec![],
+        });
+    };
+    handler(&[Value::real(r), Value::real(a)])
+}
+@end example
+
+@quotation
+@strong{In this language: runtime dispatch through the operation table.}
+
+Rust's traits close the set of participating types once the crate compiles,
+so the section's open, grow-at-runtime dispatch has to enter as data: the
+runtime's @code{OpTable} maps @code{(operation, tag-list)} keys to
+@code{Rc<dyn Fn>} handlers that return the edition's typed error, exactly
+like the book's own table.
+
+@example rust
+table.put(Key::sym("real-part"), tag_list_key(&["rectangular"]), handler);
+// => ()
+table.get(&Key::sym("real-part"), &tag_list_key(&["polar"]));
+// => None until Alyssa's package installs
+@end example
+
+The book's table still wins whenever packages are installed by code the
+compiler never saw together — plugins, or a second edition's crate loaded at
+run time.  When the type set is closed and known in advance, a plain
+@code{enum} with an exhaustive @code{match} is both faster and total, with
+the compiler proving every case handled; exercise 2.76 measures exactly that
+trade.
+@end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.73}Exercise 2.73:} @ref{2.3.2} described a
-program that performs symbolic differentiation:
+program that performs symbolic differentiation over the enum @code{Expr}:
 
-@lisp
-(define (deriv exp var)
-  (cond ((number? exp) 0)
-        ((variable? exp) 
-         (if (same-variable? exp var) 1 0))
-        ((sum? exp)
-         (make-sum (deriv (addend exp) var)
-                   (deriv (augend exp) var)))
-        ((product? exp)
-         (make-sum
-           (make-product 
-            (multiplier exp)
-            (deriv (multiplicand exp) var))
-           (make-product 
-            (deriv (multiplier exp) var)
-            (multiplicand exp))))
-        ⟨@var{more rules can be added here}⟩
-        (else (error "unknown expression type:
-                      DERIV" exp))))
-@end lisp
+@example rust
+pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+    match exp {
+        Expr::Num(_) => Ok(Expr::Num(0)),
+        Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
+        Expr::Sum(a1, a2) => make_sum(deriv(a1, var)?, deriv(a2, var)?),
+        Expr::Product(m1, m2) => {
+            let left = make_product((**m1).clone(), deriv(m2, var)?)?;
+            let right = make_product(deriv(m1, var)?, (**m2).clone())?;
+            make_sum(left, right)
+        }
+    }
+}
+@end example
 
 We can regard this program as performing a dispatch on the type of the
 expression to be differentiated.  In this situation the ``type tag'' of the
@@ -912,29 +979,46 @@ datum is the algebraic operator symbol (such as @code{+}) and the operation
 being performed is @code{deriv}.  We can transform this program into
 data-directed style by rewriting the basic derivative procedure as
 
-@lisp
-(define (deriv exp var)
-   (cond ((number? exp) 0)
-         ((variable? exp) 
-           (if (same-variable? exp var) 
-               1 
-               0))
-         (else ((get 'deriv (operator exp)) 
-                (operands exp) 
-                var))))
+@example rust
+pub fn deriv(exp: &Expr, var: &Symbol, table: &DerivTable) -> Result<Expr, SchemeError> {
+    match exp {
+        Expr::Num(_) => Ok(Expr::Num(0)),
+        Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
+        _ => {
+            let Some(op) = operator(exp) else {
+                return Err(unknown_expression(exp));
+            };
+            let Some(handler) = deriv_get(table, "deriv", op) else {
+                return Err(unknown_expression(exp));
+            };
+            handler(table, &operands(exp), var)
+        }
+    }
+}
 
-(define (operator exp) (car exp))
-(define (operands exp) (cdr exp))
-@end lisp
+pub fn operator(exp: &Expr) -> Option<&'static str> {
+    match exp {
+        Expr::Sum(..) => Some("+"),
+        Expr::Product(..) => Some("*"),
+        Expr::Num(_) | Expr::Var(_) => None,
+    }
+}
+pub fn operands(exp: &Expr) -> Vec<&Expr> {
+    match exp {
+        Expr::Sum(a, b) | Expr::Product(a, b) => vec![a, b],
+        Expr::Num(_) | Expr::Var(_) => vec![],
+    }
+}
+@end example
 
 @enumerate a
 
 @item
-Explain what was done above.  Why can't we assimilate the predicates
-@code{number?} and @code{variable?} into the data-directed dispatch?
+Explain what was done above.  Why can't we assimilate the cases
+@code{Expr::Num} and @code{Expr::Var} into the data-directed dispatch?
 
 @item
-Write the procedures for derivatives of sums and products, and the auxiliary
+Write the handlers for derivatives of sums and products, and the auxiliary
 code required to install them in the table used by the program above.
 
 @item
@@ -944,18 +1028,28 @@ system.
 
 @item
 In this simple algebraic manipulator the type of an expression is the algebraic
-operator that binds it together.  Suppose, however, we indexed the procedures
+operator that binds it together.  Suppose, however, we indexed the handlers
 in the opposite way, so that the dispatch line in @code{deriv} looked like
 
-@lisp
-((get (operator exp) 'deriv) 
- (operands exp) var)
-@end lisp
+@example rust
+let Some(handler) = deriv_get(table, op, "deriv") else { ... };
+@end example
 
 @noindent
 What corresponding changes to the derivative system are required?
 
 @end enumerate
+@end quotation
+
+@quotation
+@emph{Exercise 2.73a is added by this edition and extends exercise 2.73; SICP numbers stop at 2.73.}
+
+@strong{@anchor{Exercise 2.73a}Exercise 2.73a:} Choose a differentiation rule
+whose operator takes exactly one operand, such as the arctangent's
+@math{d(\arctan u)/dx = du/dx \, / \, (1 + u^2)}, and install it as a new
+@code{Expr} variant with its own table entry, alongside the rules of parts
+(b) and (c).  Confirm that no existing rule, handler, or match arm needed to
+change to add it.
 @end quotation
 
 @quotation
@@ -967,10 +1061,11 @@ network-interfacing scheme that makes the entire network appear to any user to
 be a single computer.  Insatiable's president, in her first attempt to exploit
 the ability of the network to extract administrative information from division
 files, is dismayed to discover that, although all the division files have been
-implemented as data structures in Scheme, the particular data structure used
-varies from division to division.  A meeting of division managers is hastily
-called to search for a strategy to integrate the files that will satisfy
-headquarters' needs while preserving the existing autonomy of the divisions.
+implemented as tagged data in this edition's style, the particular data
+structure used varies from division to division.  A meeting of division
+managers is hastily called to search for a strategy to integrate the files
+that will satisfy headquarters' needs while preserving the existing autonomy
+of the divisions.
 
 Show how such a strategy can be implemented with data-directed programming.  As
 an example, suppose that each division's personnel records consist of a single
@@ -983,23 +1078,23 @@ contains information keyed under identifiers such as @code{address} and
 @enumerate a
 
 @item
-Implement for headquarters a @code{get-record} procedure that retrieves a
-specified employee's record from a specified personnel file.  The procedure
+Implement for headquarters a @code{get_record} function that retrieves a
+specified employee's record from a specified personnel file.  The function
 should be applicable to any division's file.  Explain how the individual
 divisions' files should be structured.  In particular, what type information
 must be supplied?
 
 @item
-Implement for headquarters a @code{get-salary} procedure that returns the
+Implement for headquarters a @code{get_salary} function that returns the
 salary information from a given employee's record from any division's personnel
 file.  How should the record be structured in order to make this operation
 work?
 
 @item
-Implement for headquarters a @code{find-employee-record} procedure.  This
+Implement for headquarters a @code{find_employee_record} function.  This
 should search all the divisions' files for the record of a given employee and
-return the record.  Assume that this procedure takes as arguments an employee's
-name and a list of all the divisions' files.
+return the record.  Assume that this function takes as arguments an employee's
+name and a slice of all the divisions' files.
 
 @item
 When Insatiable takes over a new company, what changes must be made in order to
@@ -1012,7 +1107,7 @@ incorporate the new personnel information into the central system?
 
 The key idea of data-directed programming is to handle generic operations in
 programs by dealing explicitly with operation-and-type tables, such as the
-table in @ref{Figure 2.22}.  The style of programming we used in 
+table in @ref{Figure 2.22}.  The style of programming we used in
 @ref{2.4.2} organized the required dispatching on type by having each operation
 take care of its own dispatching.  In effect, this decomposes the
 operation-and-type table into rows, with each generic operation procedure
@@ -1022,38 +1117,46 @@ An alternative implementation strategy is to decompose the table into columns
 and, instead of using ``intelligent operations'' that dispatch on data types,
 to work with ``intelligent data objects'' that dispatch on operation names.  We
 can do this by arranging things so that a data object, such as a rectangular
-number, is represented as a procedure that takes as input the required
-operation name and performs the operation indicated.  In such a discipline,
-@code{make-from-real-imag} could be written as
+number, is represented as a closure that takes as input the required
+operation name and performs the operation indicated.  A
+@newterm{message object} of this kind answers a message by matching on the
+operation-name string it receives.  In such a discipline,
+@code{make_from_real_imag} could be written as
 
-@lisp
-(define (make-from-real-imag x y)
-  (define (dispatch op)
-    (cond ((eq? op 'real-part) x)
-          ((eq? op 'imag-part) y)
-          ((eq? op 'magnitude)
-           (sqrt (+ (square x) (square y))))
-          ((eq? op 'angle) (atan y x))
-          (else
-           (error "Unknown op: 
-            MAKE-FROM-REAL-IMAG" op))))
-  dispatch)
-@end lisp
+@example rust
+pub type MessageObject = Rc<dyn Fn(&str) -> Result<Value, SchemeError>>;
+
+pub fn make_from_real_imag_message_passing(x: f64, y: f64) -> MessageObject {
+    Rc::new(move |op| match op {
+        "real-part" => Ok(Value::real(x)),
+        "imag-part" => Ok(Value::real(y)),
+        "magnitude" => Ok(Value::real((x * x + y * y).sqrt())),
+        "angle" => Ok(Value::real(y.atan2(x))),
+        other => Err(SchemeError::UserRaised {
+            message: "Unknown op: MAKE-FROM-REAL-IMAG".into(),
+            irritants: vec![Value::sym(other)],
+        }),
+    })
+}
+@end example
 
 @noindent
-The corresponding @code{apply-generic} procedure, which applies a generic
+The corresponding @code{apply_generic} function, which applies a generic
 operation to an argument, now simply feeds the operation's name to the data
 object and lets the object do the work:@footnote{One limitation of this
 organization is it permits only generic procedures of one argument.}
 
-@lisp
-(define (apply-generic op arg) (arg op))
-@end lisp
+@example rust
+pub fn apply_generic_message_passing(op: &str, arg: &MessageObject) -> Result<Value, SchemeError> {
+    arg(op)
+}
+@end example
 
 @noindent
-Note that the value returned by @code{make-from-real-imag} is a procedure---the
-internal @code{dispatch} procedure.  This is the procedure that is invoked when
-@code{apply-generic} requests an operation to be performed.
+Note that the value returned by @code{make_from_real_imag_message_passing} is
+a closure — the returned @code{MessageObject} itself.  This is the closure
+that is invoked when @code{apply_generic_message_passing} requests an
+operation to be performed.
 
 This style of programming is called @newterm{message passing}.  The name comes
 from the image that a data object is an entity that receives the requested
@@ -1069,8 +1172,9 @@ simulation programs.
 
 @quotation
 @strong{@anchor{Exercise 2.75}Exercise 2.75:} Implement the constructor
-@code{make-from-mag-ang} in mes@-sage-pass@-ing style.  This procedure should be
-analogous to the @code{make-from-real-imag} procedure given above.
+@code{make_from_mag_ang} in message-passing style.  This function should be
+analogous to the @code{make_from_real_imag_message_passing} function given
+above.
 @end quotation
 
 @quotation
@@ -1081,6 +1185,9 @@ data-directed style, and message-passing-style---describe the changes that
 must be made to a system in order to add new types or new operations.  Which
 organization would be most appropriate for a system in which new types must
 often be added?  Which would be most appropriate for a system in which new
-operations must often be added?
+operations must often be added?  In Rust terms, compare the trade against a
+closed @code{enum} with an exhaustive @code{match} (explicit dispatch's
+natural host shape), against a trait object (a fixed operation set chosen at
+the trait's definition, one virtual call per object like message passing),
+and against the table.
 @end quotation
-

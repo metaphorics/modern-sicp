@@ -639,6 +639,54 @@ path = "../../exercises/ch02/sec_2_72.rs"
 name = "solution_sec_2_72"
 path = "../../solutions/ch02/sec_2_72.rs"
 
+[[example]]
+name = "sec_2_4_1_complex_arithmetic"
+path = "examples/sec_2_4_1_complex_arithmetic.rs"
+
+[[example]]
+name = "sec_2_4_2_tagged_data"
+path = "examples/sec_2_4_2_tagged_data.rs"
+
+[[example]]
+name = "sec_2_4_3_data_directed"
+path = "examples/sec_2_4_3_data_directed.rs"
+
+[[example]]
+name = "sec_2_4_3_message_passing"
+path = "examples/sec_2_4_3_message_passing.rs"
+
+[[test]]
+name = "scaffold_sec_2_73"
+path = "../../exercises/ch02/sec_2_73.rs"
+
+[[test]]
+name = "solution_sec_2_73"
+path = "../../solutions/ch02/sec_2_73.rs"
+
+[[test]]
+name = "scaffold_sec_2_74"
+path = "../../exercises/ch02/sec_2_74.rs"
+
+[[test]]
+name = "solution_sec_2_74"
+path = "../../solutions/ch02/sec_2_74.rs"
+
+[[test]]
+name = "scaffold_sec_2_75"
+path = "../../exercises/ch02/sec_2_75.rs"
+
+[[test]]
+name = "solution_sec_2_75"
+path = "../../solutions/ch02/sec_2_75.rs"
+
+[[test]]
+name = "scaffold_sec_2_76"
+path = "../../exercises/ch02/sec_2_76.rs"
+
+[[test]]
+name = "solution_sec_2_76"
+path = "../../solutions/ch02/sec_2_76.rs"
+
 
 [dev-dependencies]
 anyhow = { workspace = true }

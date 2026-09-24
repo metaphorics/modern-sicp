@@ -420,15 +420,16 @@ pub enum Expr {
 @end example
 
 @noindent
-The book's nine assumed procedures collapse into this one type: @code{sum?}
+The book's ten assumed procedures collapse into this one type: @code{sum?}
 and @code{product?} become the @code{Sum}/@code{Product} match arms below,
 @code{addend}/@code{augend} and @code{multiplier}/@code{multiplicand} become
 the two boxed fields those arms bind, and @code{make-sum}/@code{make-product}
 become the two closures @code{deriv_via} takes as parameters, so that changing
 how sums and products are built (the section's whole point, reached again
-below) never touches @code{deriv_via} itself.  Only @code{variable?} and
-@code{same-variable?} survive as named functions, because @code{Var}'s field
-is a value that still needs comparing, not merely a shape to match:
+below) never touches @code{deriv_via} itself.  @code{variable?} is absorbed
+into the @code{Var} match arm, and @code{same-variable?} survives as
+@code{is_same_variable} because @code{Var}'s field is a value that still
+needs comparing, not merely a shape to match:
 
 @example rust
 /// Checks whether an expression is equal to a given number: the book's

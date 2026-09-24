@@ -27,9 +27,12 @@ mod ex_2_72 {
         Symbol::from(s)
     }
 
-    /// `encode-symbol`, instrumented to count its dominant cost: at
-    /// every node, checking which branch holds `target` scans that
-    /// branch's symbol list, contributing its length in steps.
+    /// `encode-symbol`, instrumented to count its dominant cost under the
+    /// worst-case convention: at every node, checking which branch holds
+    /// `target` is charged that branch's full symbol-list length, as if the
+    /// scan ran to the end.  (The section's real `encode_symbol` early-exits
+    /// on a hit; the worst-case convention reproduces the canonical SICP
+    /// answer.)
     fn encode_symbol_steps(target: &Symbol, tree: &HuffmanTree, steps: &mut u64) {
         let Some(left) = tree.left_branch() else {
             return; // A leaf: encode_symbol takes no branch-membership step here.

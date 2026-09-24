@@ -155,3 +155,23 @@ and @code{b} are still @code{int} at that point. Section 0.3 covers
 @code{let} and function definitions properly; this section's point is
 narrower: every value here has exactly one type, decided at compile time, and
 that type is what the interpreter reports on the line above every value.
+
+@subsubheading Exercises
+
+@quotation
+@strong{@anchor{Exercise 0.1}Exercise 0.1:} Translate each of the five Scheme
+interactions below into OCaml and reproduce it in utop, writing each response
+exactly as the toplevel prints it, inferred type included: @code{(+ 2 (* 4
+6))}; the @code{square} definition together with the call @code{(square 7)};
+@code{(if (> 4 11) 4 11)}, generalized to a two-argument @code{larger}
+function and then specialized back to @code{larger_of_4_and_11}; and the
+anonymous square @code{((lambda (x) (* x x)) 5)}. Name the six results
+@code{sum_with_product}, @code{square}, @code{seven_squared}, @code{larger},
+@code{larger_of_4_and_11}, and @code{anonymous_square}.
+@end quotation
+
+@noindent
+A scaffold for it lives in @file{ch0/exercises/ex_0_01.mli}; the reference
+solution is @file{ch0/solutions/ex_0_01.ml}, with the reasoning in
+@file{ch0/solutions/ex_0_01.md} and its contract pinned by
+@file{ch0/test/test_solutions.ml}.

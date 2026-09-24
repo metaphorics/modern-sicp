@@ -1,12 +1,8 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 0.3: define a [shape] variant with an [area] function; then
-    add a constructor and let the compiler list every site that breaks.
-
-    The scaffold is the starting point: two constructors, both [area]
-    arms pending. The reference solution adds [Triangle]. The stub arms
-    raise [Sicp_common.Pending.Pending_solution] until solved. *)
+(** Exercise 0.3's statement is in the book, section 0.4; the shape type
+    and [area] below are the starting point it names. *)
 
 (** The starting shape type: circles carry a radius, rectangles a width
     and a height. *)

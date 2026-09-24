@@ -1,12 +1,8 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 0.5: chain three fallible steps with [Result.bind], then map
-    the error into a printable summary string.
-
-    The three steps: parse a year of age from a string, check that it
-    lies in [0] to [150], and describe it. The stubs raise
-    [Sicp_common.Pending.Pending_solution] until solved. *)
+(** Exercise 0.5's statement is in the book, section 0.8; the four vals
+    below are the chain it asks you to write. *)
 
 (** [parse_age s] is [Ok] the integer [s] denotes, or [Error] a message. *)
 val parse_age : string -> (int, string) result

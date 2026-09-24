@@ -1,13 +1,8 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 0.1: translate five Scheme interactions of section 1.1 into
-    OCaml and reproduce them in utop, reporting the inferred type of each.
-
-    The five interactions are [+ 2 ( * 4 6)], the [square] definition and
-    the call [(square 7)], [(if (> 4 11) 4 11)], and the anonymous square
-    [((lambda (x) ( * x x)) 5)]. The stub raises
-    [Sicp_common.Pending.Pending_solution] until it is solved. *)
+(** Exercise 0.1's statement is in the book, section 0.2; the six vals
+    below are the names it asks for. *)
 
 (** [sum_with_product] is [+ 2 ( * 4 6)] as an OCaml expression. *)
 val sum_with_product : int

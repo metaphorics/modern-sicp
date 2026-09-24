@@ -125,3 +125,18 @@ Exercise 0.5 is the same chain with every error already collapsed to plain
 @code{string}, and chapter 4's evaluator leans on this same
 @code{result}-chaining shape wherever a computation can fail for a reason
 the caller should see, not merely a reason the program should stop for.
+
+@subsubheading Exercise
+
+@quotation
+@strong{@anchor{Exercise 0.5}Exercise 0.5:} Chain three fallible steps with
+@code{Result.bind}: parse a year of age from a string, check that it lies
+between @code{0} and @code{150}, and describe it in a sentence. Then map
+whichever @code{Error} stops the chain into one printable summary string, so
+that a caller of @code{age_summary} sees a readable sentence either way.
+@end quotation
+
+@noindent
+A scaffold for it lives in @file{ch0/exercises/ex_0_05.mli}; the reference
+solution is @file{ch0/solutions/ex_0_05.ml}, with the reasoning in
+@file{ch0/solutions/ex_0_05.md}.

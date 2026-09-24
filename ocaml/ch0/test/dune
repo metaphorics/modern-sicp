@@ -1,6 +1,11 @@
 (executables
- (names test_replay test_solutions)
- (libraries sicp_ch0 sicp_ch0_solutions alcotest))
+ (names test_replay test_solutions prop_folds)
+ (libraries
+  sicp_ch0
+  sicp_ch0_solutions
+  alcotest
+  qcheck-core
+  qcheck-core.runner))
 
 (rule
  (alias runtest)
@@ -11,3 +16,8 @@
  (alias runtest)
  (action
   (run ./test_solutions.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./prop_folds.exe)))

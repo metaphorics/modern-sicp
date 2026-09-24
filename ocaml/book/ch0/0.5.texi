@@ -125,3 +125,22 @@ reads far more like a description of a process (``take these, square them,
 keep the odd ones'') than the equivalent nested calls would, and this book
 uses the pipeline form wherever a value passes through more than one
 transformation in sequence.
+
+@subsubheading Exercises
+
+@quotation
+@strong{@anchor{Exercise 0.2}Exercise 0.2:} @code{sum_cubes a b} is the sum
+of the cubes of the integers from @code{a} through @code{b} inclusive —
+@code{(sum-cubes 1 10)} is @code{3025} in the book. Implement it twice: once
+by plain recursion, and once by building the range with @code{List.init} and
+folding over it with @code{List.fold_left}, so the adding logic is one
+function of two arguments. Then state in one sentence when the fold version
+is preferable.
+@end quotation
+
+@noindent
+A scaffold for it lives in @file{ch0/exercises/ex_0_02.mli}; the reference
+solution is @file{ch0/solutions/ex_0_02.ml}, with the reasoning in
+@file{ch0/solutions/ex_0_02.md}. The two forms' agreement is not taken on
+faith: @file{ch0/test/prop_folds.ml} generates ranges and checks that both
+agree on every one of them, the property section 0.10 comes back to.

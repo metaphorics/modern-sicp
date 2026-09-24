@@ -144,3 +144,19 @@ recurses on, and both are exhaustive: @code{Nil}/@code{Leaf} is the base
 case, and the other constructor is the recursive case. This is the pattern
 every recursive function over this book's own data structures follows, from
 chapter 2's hierarchical data onward.
+
+@subsubheading Exercises
+
+@quotation
+@strong{@anchor{Exercise 0.3}Exercise 0.3:} Define a @code{shape} variant
+whose @code{Circle} constructor carries a radius and whose @code{Rectangle}
+constructor carries a width and a height, together with an @code{area}
+function that dispatches on the constructor. Then add a @code{Triangle}
+constructor carrying a base and a height, and let the compiler list every
+site that breaks before you fix each one.
+@end quotation
+
+@noindent
+A scaffold for it lives in @file{ch0/exercises/ex_0_03.mli}; the reference
+solution is @file{ch0/solutions/ex_0_03.ml}, with the reasoning in
+@file{ch0/solutions/ex_0_03.md}.

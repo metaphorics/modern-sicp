@@ -1,11 +1,8 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 0.4: build [make_account] returning a record of closures over
-    one [ref]; then break it by sharing the [ref] between two accounts and
-    explain the observed aliasing.
-
-    The stub raises [Sicp_common.Pending.Pending_solution] until solved. *)
+(** Exercise 0.4's statement is in the book, section 0.7; the account
+    record and [make_account] below are what it asks you to build. *)
 
 (** An account is a record of three closures over the same private
     balance: deposit an amount and get the new balance, withdraw an

@@ -91,6 +91,18 @@ examples could never be exhaustive: rational-number normalization, a
 Huffman-coding round trip, stream-prefix equivalence, and, in chapters 4 and
 5, agreement between the evaluator and the compiler on the same program.
 
+@noindent
+That listing is illustrative only: @code{dune runtest} does not run it,
+because — as the paragraph just said — @code{add}'s commutativity is too
+weak a property to defend anything; the point of the listing is the shape of
+a QCheck test, not this particular property. The property this edition
+actually runs is @file{ch0/test/prop_folds.ml}, wired into the
+@code{runtest} alias like every other executable in this chapter: it states
+that the recursive and @code{List.fold_left} forms of exercise 0.2's
+@code{sum_cubes} (@ref{0.5}) agree on every generated range, the kind of
+agreement a plausible refactor bug could silently break while every pinned
+Alcotest example still passes.
+
 @subsubheading Wiring tests into @code{dune runtest}
 
 Every section of this chapter's own library links a small executable that

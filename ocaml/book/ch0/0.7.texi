@@ -118,3 +118,20 @@ cell is the next step, combining this section with section 0.6's records:
 exercise 0.4's @code{make_account} bundles @code{deposit}, @code{withdraw},
 and @code{balance} into one such record, so a single account value offers
 all three as one unit.
+
+@subsubheading Exercise
+
+@quotation
+@strong{@anchor{Exercise 0.4}Exercise 0.4:} Build @code{make_account}, which
+returns a record of three closures over one @code{ref} of private balance:
+@code{deposit} an amount and get the new balance, @code{withdraw} an amount
+and get the new balance, and @code{balance} read it with no argument at all.
+Then break the abstraction on purpose with @code{make_shared_accounts}: build
+two accounts over a single shared @code{ref}, deposit through one, observe
+through the other, and explain in a sentence what you see and why.
+@end quotation
+
+@noindent
+A scaffold for it lives in @file{ch0/exercises/ex_0_04.mli}; the reference
+solution is @file{ch0/solutions/ex_0_04.ml}, with the reasoning in
+@file{ch0/solutions/ex_0_04.md}.

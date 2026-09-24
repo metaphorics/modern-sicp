@@ -2463,6 +2463,8 @@ pub fn corner_split(painter: &Painter, n: u32) -> Painter @{
 @quotation
 @strong{Figure 2.14:} The recursive operations @code{right-split} and
 @code{corner-split} applied to the painters @code{wave} and @code{rogers}.
+Combining four @code{corner-split} figures produces symmetric
+@code{square-limit} designs as shown in @ref{Figure 2.9}.
 
 @example
 Four graphic images not included.
@@ -2470,13 +2472,13 @@ Four graphic images not included.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.14b,,136mm,Figure 2.14: The recursive operations @code{right-split} and @code{corner-split} applied to the painters @code{wave} and @code{rogers}.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.14b,,136mm,Figure 2.14: The recursive operations right-split and corner-split applied to the painters wave and rogers. Combining four corner-split figures produces symmetric square-limit designs as shown in Figure 2.9.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap2/Fig2.14b.std,,136mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 2.14:} The recursive operations @code{right-split} and @code{corner-split} applied to the painters @code{wave} and @code{rogers}.}
+@caption{@strong{Figure 2.14:} The recursive operations @code{right-split} and @code{corner-split} applied to the painters @code{wave} and @code{rogers}. Combining four @code{corner-split} figures produces symmetric @code{square-limit} designs as shown in @ref{Figure 2.9}.}
 @end float
 
 @float

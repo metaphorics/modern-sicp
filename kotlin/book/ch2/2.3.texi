@@ -42,12 +42,12 @@ In order to manipulate symbols we need a new element in our language: the
 ability to @newterm{quote} a data object.  In Scheme this ability matters
 because @code{(a b c)} is otherwise ambiguous: it could be a call to a
 function named @code{a}, or a list of three symbols.  Kotlin's syntax never
-carries that ambiguity.  A call always looks like @code{a(b, c)}; a `Value`
+carries that ambiguity.  A call always looks like @code{a(b, c)}; a @code{Value}
 literal always looks like @code{vlist(VSym("a"), VSym("b"), VSym("c"))}.
 There is no reading of the second form under which it means anything other
 than a three-element list, so this edition needs nothing to quote:
 @code{vlist(VSym("a"), VSym("b"))} already, directly, is the list @code{(a
-b)}, with no separate mark disambiguating it from a function call.
+b)}, with no separate mark disambiguating it from a function call.@footnote{A Kotlin string literal such as @code{"a"} is a further, unrelated distinction the book does not need to draw at this point: @code{"a"} is a @code{String}, a sequence of characters meant to be printed, and @code{VSym("a")} is the conversion that turns it into the interned, @code{==}-comparable value this section manipulates as data.  The two are never confused, because Kotlin's double quotes always mean ``string'' and nothing else.}
 
 Scheme's confusion is well known in the context of natural languages, where
 words and sentences may be regarded either as semantic entities or as
@@ -134,7 +134,7 @@ definition skirts a deep issue that we are not yet ready to address: the
 meaning of ``sameness'' in a programming language more generally, for values
 that are not symbols.  We will return to this in @ref{Chapter 3}
 (@ref{3.1.3}).}  Using @code{==}, we can implement a useful procedure called
-@code{memq}.  This takes two arguments, an item and a `Value` chain.  If the
+@code{memq}.  This takes two arguments, an item and a @code{Value} chain.  If the
 item is not contained in the chain (i.e., is not @code{==} to any item in
 the chain), then @code{memq} returns @code{VBool(false)}.  Otherwise, it
 returns the sublist beginning with the first occurrence of the item:
@@ -167,7 +167,7 @@ memq(
 
 @noindent
 is @code{(apple pear)}: the first @code{apple} is buried inside a nested
-list, a different `Value` from the bare symbol @code{VSym("apple")} being
+list, a different @code{Value} from the bare symbol @code{VSym("apple")} being
 searched for, so it is skipped exactly as the book's untagged sublist is
 skipped by @code{eq?}.
 
@@ -196,7 +196,7 @@ memq(VSym("red"), vlist(VSym("red"), VSym("shoes"), VSym("blue"), VSym("socks"))
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.54}Exercise 2.54:} Two `Value` lists are said to
+@strong{@anchor{Exercise 2.54}Exercise 2.54:} Two @code{Value} lists are said to
 be @code{myEqual} if they contain equal elements arranged in the same order.
 For example,
 
@@ -241,7 +241,7 @@ reader, so @code{''abracadabra} is never something a running program types at
 a prompt, but the reader's expansion rule is simple enough to apply by hand:
 a single quote @code{'x} is sugar for the two-element list @code{(quote x)},
 so the doubled quote @code{''abracadabra} is sugar for @code{(quote (quote
-abracadabra))}.  Build the `Value` that @code{''abracadabra} would have read
+abracadabra))}.  Build the @code{Value} that @code{''abracadabra} would have read
 as, using only @code{vlist} and @code{VSym}, and give its car.  Explain, in
 terms of the value's own shape rather than by appealing to a reader, why that
 car is the symbol @code{quote} and not @code{abracadabra}.
@@ -847,31 +847,31 @@ significant speedup over the previous representations.
 Where the book represents trees as three-item lists (the entry, the left
 subtree, the right subtree), this edition closes the shape as a sealed
 hierarchy instead, so @code{entry}, @code{left}, and @code{right} are its own
-data-class fields rather than list positions read out by @code{car}/@code{cadr}/@code{caddr}:
+data-class fields rather than list positions read out by @code{car}/@code{cadr}/@code{caddr}:@footnote{We are representing sets in terms of trees, and trees directly as a Kotlin sealed interface---one data abstraction built on the host language's own sum types, rather than on a second, hand-rolled list encoding the way the book builds trees out of lists.  We can regard @code{entry}, @code{left}, @code{right}, and @code{makeTree} as isolating the abstraction of a ``binary tree'' from @code{SetTree}'s own representation, the same separation the book draws between a tree and the list structure that encodes it, one layer shorter since the data class already is the representation.}
 
 @example kotlin
-sealed interface Tree {
-    data object Empty : Tree
-    data class Node(val entry: Long, val left: Tree, val right: Tree) : Tree
+sealed interface SetTree {
+    data object Empty : SetTree
+    data class Node(val entry: Long, val left: SetTree, val right: SetTree) : SetTree
 }
 
-fun makeTree(entry: Long, left: Tree, right: Tree): Tree = Tree.Node(entry, left, right)
+fun makeTree(entry: Long, left: SetTree, right: SetTree): SetTree = SetTree.Node(entry, left, right)
 @end example
 
 @noindent
 @code{entry}, @code{left}, and @code{right} are simple examples of
 @newterm{generic procedures} (procedures that can handle more than one kind of
 data), which we will have much more to say about in @ref{2.4} and @ref{2.5};
-here they are simply the fields of @code{Tree.Node}, valid to read only once
+here they are simply the fields of @code{SetTree.Node}, valid to read only once
 the sealed @code{when} branch below has confirmed the tree is not
-@code{Tree.Empty}.  Now we can write the @code{elementOfSetTree} function
+@code{SetTree.Empty}.  Now we can write the @code{elementOfSetTree} function
 using the strategy described above:
 
 @example kotlin
-fun elementOfSetTree(x: Long, tree: Tree): Boolean =
+fun elementOfSetTree(x: Long, tree: SetTree): Boolean =
     when (tree) {
-        is Tree.Empty -> false
-        is Tree.Node ->
+        is SetTree.Empty -> false
+        is SetTree.Node ->
             when {
                 x == tree.entry -> true
                 x < tree.entry -> elementOfSetTree(x, tree.left)
@@ -892,10 +892,10 @@ empty tree, we generate a tree that has @code{x} as the entry and empty right
 and left branches.  Here is the function:
 
 @example kotlin
-fun adjoinSetTree(x: Long, tree: Tree): Tree =
+fun adjoinSetTree(x: Long, tree: SetTree): SetTree =
     when (tree) {
-        is Tree.Empty -> makeTree(x, Tree.Empty, Tree.Empty)
-        is Tree.Node ->
+        is SetTree.Empty -> makeTree(x, SetTree.Empty, SetTree.Empty)
+        is SetTree.Node ->
             when {
                 x == tree.entry -> tree
                 x < tree.entry -> makeTree(tree.entry, adjoinSetTree(x, tree.left), tree.right)
@@ -915,7 +915,7 @@ balanced?  Even if we start with a balanced tree, adding elements with
 newly adjoined element depends on how the element compares with the items
 already in the set, we can expect that if we add elements ``randomly'' the tree
 will tend to be balanced on the average.  But this is not a guarantee.  For
-example, if we start with @code{Tree.Empty} and adjoin the numbers 1 through 7
+example, if we start with @code{SetTree.Empty} and adjoin the numbers 1 through 7
 in sequence we end up with the highly unbalanced tree shown in @ref{Figure
 2.17}.  In this tree all the left subtrees are empty, so it has no advantage
 over a simple ordered list.  One way to solve this problem is to define an
@@ -964,17 +964,17 @@ on data structures devoted to this problem.  See @ref{Cormen et al. 1990}.}
 functions converts a binary tree to a list.
 
 @example kotlin
-fun treeToList1(tree: Tree): List<Long> =
+fun treeToList1(tree: SetTree): List<Long> =
     when (tree) {
-        is Tree.Empty -> emptyList()
-        is Tree.Node -> treeToList1(tree.left) + listOf(tree.entry) + treeToList1(tree.right)
+        is SetTree.Empty -> emptyList()
+        is SetTree.Node -> treeToList1(tree.left) + listOf(tree.entry) + treeToList1(tree.right)
     }
 
-fun treeToList2(tree: Tree): List<Long> {
-    fun copyToList(tree: Tree, result: List<Long>): List<Long> =
+fun treeToList2(tree: SetTree): List<Long> {
+    fun copyToList(tree: SetTree, result: List<Long>): List<Long> =
         when (tree) {
-            is Tree.Empty -> result
-            is Tree.Node -> copyToList(tree.left, listOf(tree.entry) + copyToList(tree.right, result))
+            is SetTree.Empty -> result
+            is SetTree.Node -> copyToList(tree.left, listOf(tree.entry) + copyToList(tree.right, result))
         }
     return copyToList(tree, emptyList())
 }
@@ -1011,10 +1011,10 @@ tree and whose second component is the list of elements not included in the
 tree.
 
 @example kotlin
-fun listToTree(elements: List<Long>): Tree = partialTree(elements, elements.size).first
+fun listToTree(elements: List<Long>): SetTree = partialTree(elements, elements.size).first
 
-fun partialTree(elts: List<Long>, n: Int): Pair<Tree, List<Long>> {
-    if (n == 0) return Tree.Empty to elts
+fun partialTree(elts: List<Long>, n: Int): Pair<SetTree, List<Long>> {
+    if (n == 0) return SetTree.Empty to elts
     val leftSize = (n - 1) / 2
     val (leftTree, nonLeftElts) = partialTree(elts, leftSize)
     val rightSize = n - (leftSize + 1)
@@ -1051,7 +1051,7 @@ to Paul Hilfinger.}
 @code{unionSetTree}/@code{intersectionSetTree} against a second,
 independently written balanced-tree set: the JDK's own
 @code{java.util.TreeSet<Long>}.  Write a function @code{treeOf} that builds
-this section's @code{Tree} from a @code{Set<Long>}, then, for at least one
+this section's @code{SetTree} from a @code{Set<Long>}, then, for at least one
 worked example, compute the union and intersection both ways and check that
 the two representations agree, ignoring order.  Use Kotest's @code{checkAll}
 property runner to check the same claim for many generated pairs of

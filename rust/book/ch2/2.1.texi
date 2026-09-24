@@ -608,12 +608,13 @@ programming repertoire.  This style of programming is often called
 @code{examples/sec_2_1_3_procedural_pairs.rs}.)
 
 @quotation
-@strong{@anchor{Exercise 2.4}Exercise 2.4:} Here is an alternative closure-based
+@strong{@anchor{Exercise 2.4}Exercise 2.4:} Here is the message-passing
 representation of pairs, in the style of the original @code{(lambda (m) (m x
-y))}.  Rust fixes a closure's return type once, at its own definition, so the
-same trick cannot be spelled as one literal closure that both @code{car} and
-@code{cdr} call for two different result types; the fix is a generic method
-that takes the selector as an argument instead:
+y))}: @code{cons} returns a value whose only operation is handing both parts to
+a selector.  Rust fixes a closure's return type once, at its own definition, so
+the dispatch below is written as a generic method that takes the selector as an
+argument, rather than as a single closure field, so that @code{car} and
+@code{cdr} can request two different result types from it:
 
 @example rust
 struct Cons<A, B> @{ x: A, y: B @}
@@ -679,7 +680,7 @@ This representation is known as @newterm{Church numerals}, after its inventor,
 Alonzo Church, the logician who invented the @math{\lambda}-calculus.  (The
 wrapper structs @code{Step} and @code{Church} are this edition's own addition:
 a bare type alias for a function type that both takes and returns itself
-cannot compile, since Rust needs a named type to break the cycle.  Define
+cannot compile, since Rust needs a named type to break the cycle.)  Define
 @code{one} and @code{two} directly (not in terms of @code{church_zero} and
 @code{church_succ}). (Hint: Use substitution to evaluate
 @code{church_succ(&church_zero())}). Give a direct definition of the addition
@@ -701,7 +702,7 @@ quantities.  It is sometimes necessary for them to compute the value of a
 parallel equivalent resistance @math{R_p} of two resistors @math{R_1} and
 @math{R_2} using the formula
 @displaymath
-R_p \,=\, \left({1 \over R_1} + {1 \over R_2}\right)^{-1}
+R_p \,=\, {{1 \over 1 / R_1 + 1 / R_2}.}
 @end displaymath
 @ifinfo
 @example
@@ -808,15 +809,15 @@ a corresponding subtraction function, called @code{sub_interval}.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.9}Exercise 2.9:} The width of an interval is half of
-the difference between its upper and lower bounds.  The width is a measure of
-the uncertainty of the number specified by the interval.  For some arithmetic
-operations the width of the result of combining two intervals is a function
-only of the widths of the argument intervals, whereas for others the width of
-the combination is not a function only of the widths of the argument intervals.
-Show that the width of the sum (or difference) of two intervals is a function
-only of the widths of the intervals being added (or subtracted).  Give
-examples to show that this is not true for multiplication or division.
+@strong{@anchor{Exercise 2.9}Exercise 2.9:} The @newterm{width} of an interval
+is half of the difference between its upper and lower bounds.  The width is a
+measure of the uncertainty of the number specified by the interval.  For some
+arithmetic operations the width of the result of combining two intervals is a
+function only of the widths of the argument intervals, whereas for others the
+width of the combination is not a function only of the widths of the argument
+intervals.  Show that the width of the sum (or difference) of two intervals is
+a function only of the widths of the intervals being added (or subtracted).
+Give examples to show that this is not true for multiplication or division.
 @end quotation
 
 @quotation
@@ -890,7 +891,7 @@ R_1 + R_2
 @end ifinfo
 and
 @displaymath
-{1 \over 1 / R_1 + 1 / R_2}
+{{1 \over 1 / R_1 + 1 / R_2}.}
 @end displaymath
 @ifinfo
 @example
@@ -920,7 +921,7 @@ of computing it.  This is a serious complaint.
 @strong{@anchor{Exercise 2.14}Exercise 2.14:} Demonstrate that Lem is right.
 Investigate the behavior of the system on a variety of arithmetic expressions.
 Make some intervals @math{A} and @math{B}, and use them in computing the
-expressions @math{A / A} and @math{B / B}.  You will get the most insight by
+expressions @math{A / A} and @math{A / B}.  You will get the most insight by
 using intervals whose width is a small percentage of the center value.
 Examine the results of the computation in center-percent form (see
 @ref{Exercise 2.12}).

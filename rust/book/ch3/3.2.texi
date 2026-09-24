@@ -1,14 +1,14 @@
 @node	3.2, 3.3, 3.1, Chapter 3
 @section The Environment Model of Evaluation
 
-When we introduced compound procedures in @ref{Chapter 1}, we used the
+When we introduced functions in @ref{Chapter 1}, we used the
 substitution model of evaluation (@ref{1.1.5}) to define what is meant
-by applying a procedure to arguments:
+by applying a function to arguments:
 
 @itemize @bullet
 
 @item
-To apply a compound procedure to arguments, evaluate the body of the procedure
+To apply a function to arguments, evaluate the body of the function
 with each formal parameter replaced by the corresponding argument.
 
 @end itemize
@@ -84,15 +84,19 @@ context in which an expression should be evaluated.  Indeed, one could say that
 expressions in a programming language do not, in themselves, have any meaning.
 Rather, an expression acquires a meaning only with respect to some environment
 in which it is evaluated.  Even the interpretation of an expression as
-straightforward as @code{(+ 1 1)} depends on an understanding that one is
+straightforward as @code{1 + 1} depends on an understanding that one is
 operating in a context in which @code{+} is the symbol for addition.  Thus, in
 our model of evaluation we will always speak of evaluating an expression with
-respect to some environment.  To describe interactions with the interpreter, we
-will suppose that there is a global environment, consisting of a single frame
-(with no enclosing environment) that includes values for the symbols associated
-with the primitive procedures.  For example, the idea that @code{+} is the
-symbol for addition is captured by saying that the symbol @code{+} is bound in
-the global environment to the primitive addition procedure.
+respect to some environment.  To describe programs, we will suppose that there
+is a global environment, consisting of a single frame (with no enclosing
+environment) that holds the program's top-level definitions.  In Rust this
+frame is the crate's collection of items, and the names in it are resolved
+when the program is compiled.  The frames that exist at run time, and the ones
+this chapter is about, are the ones that hold a function's parameters, local
+bindings, and captured variables.  For example, the idea that @code{+} is the
+symbol for addition is captured by saying that the operator belongs to the
+language itself, outside every frame; what an environment supplies is the
+meaning of each name that a function body merely uses.
 
 @menu
 * 3.2.1::            The Rules for Evaluation
@@ -104,29 +108,28 @@ the global environment to the primitive addition procedure.
 @node	3.2.1, 3.2.2, 3.2, 3.2
 @subsection The Rules for Evaluation
 
-The overall specification of how the interpreter evaluates a combination
+The overall specification of how a call is evaluated
 remains the same as when we first introduced it in @ref{1.1.3}:
 
 @itemize @bullet
 
 @item
-To evaluate a combination:
+To evaluate a function call:
 
 @end itemize
 
 @enumerate 1
 
 @item
-Evaluate the subexpressions of the combination.@footnote{Assignment introduces a
+Evaluate the subexpressions of the call.@footnote{Assignment introduces a
 subtlety into step 1 of the evaluation rule.  As shown in @ref{Exercise 3.8},
 the presence of assignment allows us to write expressions that will produce
 different values depending on the order in which the subexpressions in a
-combination are evaluated.  Thus, to be precise, we should specify an
-evaluation order in step 1 (e.g., left to right or right to left).  However,
-this order should always be considered to be an implementation detail, and one
-should never write programs that depend on some particular order.  For
-instance, a sophisticated compiler might optimize a program by varying the
-order in which subexpressions are evaluated.}
+call are evaluated.  Rust leaves the order in which a call's arguments are
+evaluated unspecified, for exactly the book's reason: the order is an
+implementation detail, and one should never write programs that depend on
+some particular order.  A sophisticated compiler might optimize a program by
+varying the order in which subexpressions are evaluated.}
 
 @item
 Apply the value of the operator subexpression to the values of the operand
@@ -136,43 +139,53 @@ subexpressions.
 
 @noindent
 The environment model of evaluation replaces the substitution model in
-specifying what it means to apply a compound procedure to arguments.
+specifying what it means to apply a function to arguments.
 
 In the environment model of evaluation, a procedure is always a pair consisting
 of some code and a pointer to an environment.  Procedures are created in one
-way only: by evaluating a λ-expression.  This produces a procedure
-whose code is obtained from the text of the λ-expression and whose
-environment is the environment in which the λ-expression was
-evaluated to produce the procedure.  For example, consider the procedure
-definition
+way only: by evaluating a function value.  In Rust the function values are
+@newterm{closures}.  The compiler gathers each variable that a closure body
+uses into a compiler-generated struct built for that one closure, and the
+struct is the procedure object: its fields are the environment part, and the
+call body the compiler generates for it is the code.  A @code{move} closure
+takes ownership of each binding it names.  When a binding lives behind an
+@code{Rc}, what moves is a clone of the pointer rather than the binding, so
+the closure and the rest of the program keep pointing at one shared frame;
+@code{Rc::clone} is the book's ``pointer to an environment'' made explicit in
+syntax.  For example, consider the function definition
 
-@lisp
-(define (square x)
-  (* x x))
-@end lisp
-
-@noindent
-evaluated in the global environment.  The procedure definition syntax is just
-syntactic sugar for an underlying implicit λ-expression.  It would
-have been equivalent to have used
-
-@lisp
-(define square
-  (lambda (x) (* x x)))
-@end lisp
+@example rust
+fn square(x: i128) -> i128 @{
+    x * x
+@}
+@end example
 
 @noindent
-which evaluates @code{(lambda (x) (* x x))} and binds @code{square} to the
-resulting value, all in the global environment.
+written in the global environment of a crate.  The @code{fn} syntax is the
+everyday spelling of a function.  It would have been equivalent to have used
+the closure form that builds a function value and binds a name to it,
 
-@ref{Figure 3.2} shows the result of evaluating this @code{define} expression.
+@example rust
+let square = |x: i128| x * x;
+@end example
+
+@noindent
+which evaluates the closure expression @code{|x: i128| x * x} and binds
+@code{square} to the resulting value, all in the environment that runs the
+binding.  The two forms differ in one respect that the model makes visible: a
+nested @code{fn} item is compiled like a top-level function and captures
+nothing, so its environment part is always the crate's global environment,
+while a closure carries whatever frame it was built in.
+
+@ref{Figure 3.2} shows the result of evaluating this @code{let} expression.
 The procedure object is a pair whose code specifies that the procedure has one
-formal parameter, namely @code{x}, and a procedure body @code{(* x x)}.  The
+formal parameter, namely @code{x}, and a procedure body @code{x * x}.  The
 environment part of the procedure is a pointer to the global environment, since
-that is the environment in which the λ-expression was evaluated to
+that is the environment in which the closure expression was evaluated to
 produce the procedure. A new binding, which associates the procedure object
 with the symbol @code{square}, has been added to the global frame.  In general,
-@code{define} creates definitions by adding bindings to frames.
+a @code{let} creates a binding in the frame that runs it, and the top-level
+items of a crate fill its global frame when the program is compiled.
 
 @float
 @anchor{Figure 3.2}
@@ -216,10 +229,14 @@ procedures are applied.  The environment model specifies: To apply a procedure
 to arguments, create a new environment containing a frame that binds the
 parameters to the values of the arguments.  The enclosing environment of this
 frame is the environment specified by the procedure.  Now, within this new
-environment, evaluate the procedure body.
+environment, evaluate the procedure body.  In Rust the new frame is the
+call's stack frame.  Its enclosing environment is whatever the procedure
+carries: a plain @code{fn} captures nothing, so the enclosing environment is
+the crate's global scope, while a closure's enclosing environment is the set
+of captured variables stored inside the closure object itself.
 
 To show how this rule is followed, @ref{Figure 3.3} illustrates the environment
-structure created by evaluating the expression @code{(square 5)} in the global
+structure created by evaluating the expression @code{square(5)} in the global
 environment, where @code{square} is the procedure generated in @ref{Figure 3.2}.  
 Applying the procedure results in the creation of a new environment,
 labeled E1 in the figure, that begins with a frame in which @code{x}, the
@@ -227,8 +244,13 @@ formal parameter for the procedure, is bound to the argument 5.  The pointer
 leading upward from this frame shows that the frame's enclosing environment is
 the global environment.  The global environment is chosen here, because this is
 the environment that is indicated as part of the @code{square} procedure
-object.  Within E1, we evaluate the body of the procedure, @code{(* x x)}.
-Since the value of @code{x} in E1 is 5, the result is @code{(* 5 5)}, or 25.
+object.  Within E1, we evaluate the body of the procedure, @code{x * x}.
+Since the value of @code{x} in E1 is 5, the result is @code{5 * 5}, or 25.
+
+@example rust
+square(5)
+// => 25
+@end example
 
 @float
 @anchor{Figure 3.3}
@@ -276,37 +298,43 @@ A procedure object is applied to a set of arguments by constructing a frame,
 binding the formal parameters of the procedure to the arguments of the call,
 and then evaluating the body of the procedure in the context of the new
 environment constructed.  The new frame has as its enclosing environment the
-environment part of the procedure object being applied.
+environment part of the procedure object being applied.  In Rust this frame is
+the call's stack frame, and the environment part is the closure's captured
+variables, or nothing at all for a plain @code{fn}.
 
 @item
-A procedure is created by evaluating a λ-expression relative to a
+A procedure is created by evaluating a closure expression relative to a
 given environment.  The resulting procedure object is a pair consisting of the
-text of the λ-expression and a pointer to the environment in which
-the procedure was created.
+body of the closure expression and the captured bindings, which are the
+pointer to the environment in which the procedure was created.
 
 @end itemize
 
 @noindent
-We also specify that defining a symbol using @code{define} creates a binding in
-the current environment frame and assigns to the symbol the indicated
+We also specify that binding a name with @code{let} creates a binding in
+the current environment frame and gives it the indicated
 value.@footnote{If there is already a binding for the variable in the current
-frame, then the binding is changed.  This is convenient because it allows
-redefinition of symbols; however, it also means that @code{define} can be used
-to change values, and this brings up the issues of assignment without
-explicitly using @code{set!}.  Because of this, some people prefer
-redefinitions of existing symbols to signal errors or warnings.} Finally, we
-specify the behavior of @code{set!}, the operation that forced us to introduce
-the environment model in the first place.  Evaluating the expression
-@code{(set! ⟨@var{variable}⟩ ⟨@var{value}⟩)} in some environment locates the
-binding of the variable in the environment and changes that binding to indicate
+frame, Rust resolves the matter differently from the book's @code{define}: a
+second @code{let} with the same name shadows the first, and changing
+the value of an existing binding requires declaring it with @code{mut}.  This
+keeps the issues of assignment visible in the source instead of letting
+redefinition change values silently.} Finally, we
+specify the behavior of assignment, the operation that forced us to introduce
+the environment model in the first place.  Assigning to
+@code{⟨@var{variable}⟩} in some environment locates
+the binding of the variable in the environment and changes that binding to indicate
 the new value.  That is, one finds the first frame in the environment that
-contains a binding for the variable and modifies that frame.  If the variable
-is unbound in the environment, then @code{set!} signals an error.
+contains a binding for the variable and modifies that frame; for a captured
+binding, that frame is the closure object holding it, so assignment through
+the closure reaches exactly the state the closure owns.  If the variable
+is unbound in the environment, the program does not compile: the model's error
+for assignment to an unbound variable is, in Rust, a compile-time error, and
+assignment never creates a binding.
 
 These evaluation rules, though considerably more complex than the substitution
 model, are still reasonably straightforward.  Moreover, the evaluation model,
-though abstract, provides a correct description of how the interpreter
-evaluates expressions.  In @ref{Chapter 4} we shall see how this model can
+though abstract, provides a correct description of how a Rust program
+evaluates a call.  In @ref{Chapter 4} we shall see how this model can
 serve as a blueprint for implementing a working interpreter.  The following
 sections elaborate the details of the model by analyzing some illustrative
 programs.
@@ -315,24 +343,30 @@ programs.
 @subsection Applying Simple Procedures
 
 When we introduced the substitution model in @ref{1.1.5} we showed how
-the combination @code{(f 5)} evaluates to 136, given the following procedure
+the call @code{f(5)} evaluates to 136, given the following function
 definitions:
 
-@lisp
-(define (square x)
-  (* x x))
-(define (sum-of-squares x y)
-  (+ (square x) (square y)))
-(define (f a)
-  (sum-of-squares (+ a 1) (* a 2)))
-@end lisp
+@example rust
+fn square(x: i128) -> i128 @{
+    x * x
+@}
+
+fn sum_of_squares(x: i128, y: i128) -> i128 @{
+    square(x) + square(y)
+@}
+
+fn f(a: i128) -> i128 @{
+    sum_of_squares(a + 1, a * 2)
+@}
+@end example
 
 @noindent
 We can analyze the same example using the environment model.  @ref{Figure 3.4}
 shows the three procedure objects created by evaluating the definitions of
-@code{f}, @code{square}, and @code{sum-of-squares} in the global environment.
+@code{f}, @code{square}, and @code{sum_of_squares} in the global environment.
 Each procedure object consists of some code, together with a pointer to the
-global environment.
+global environment.  These three are plain @code{fn} items, so the pointer is
+all there is: none of them captures anything.
 
 @float
 @anchor{Figure 3.4}
@@ -371,13 +405,13 @@ env       | f: --+                                     |
 
 @noindent
 In @ref{Figure 3.5} we see the environment structure created by evaluating the
-expression @code{(f 5)}.  The call to @code{f} creates a new environment E1
+expression @code{f(5)}.  The call to @code{f} creates a new environment E1
 beginning with a frame in which @code{a}, the formal parameter of @code{f}, is
 bound to the argument 5.  In E1, we evaluate the body of @code{f}:
 
-@lisp
-(sum-of-squares (+ a 1) (* a 2))
-@end lisp
+@example rust
+sum_of_squares(a + 1, a * 2)
+@end example
 
 @float
 @anchor{Figure 3.5}
@@ -411,28 +445,35 @@ env       +-----------------------------------------------------+
 @end float
 
 @noindent
-To evaluate this combination, we first evaluate the subexpressions.  The first
-subexpression, @code{sum-of-squares}, has a value that is a procedure object.
+To evaluate this call, we first evaluate the subexpressions.  The operator,
+@code{sum_of_squares}, has a value that is a procedure object.
 (Notice how this value is found: We first look in the first frame of E1, which
-contains no binding for @code{sum-of-squares}.  Then we proceed to the
+contains no binding for @code{sum_of_squares}.  Then we proceed to the
 enclosing environment, i.e. the global environment, and find the binding shown
-in @ref{Figure 3.4}.)  The other two subexpressions are evaluated by applying
-the primitive operations @code{+} and @code{*} to evaluate the two combinations
-@code{(+ a 1)} and @code{(* a 2)} to obtain 6 and 10, respectively.
+in @ref{Figure 3.4}; in a compiled Rust program this lookup has already
+happened, once and for all, when the program was built.)  The other two
+subexpressions are evaluated by applying
+the primitive operations @code{+} and @code{*} to the two operand
+expressions @code{a + 1} and @code{a * 2} to obtain 6 and 10, respectively.
+
+@example rust
+f(5)
+// => 136
+@end example
 
 @noindent
-Now we apply the procedure object @code{sum-of-squares} to the arguments 6 and
+Now we apply the procedure object @code{sum_of_squares} to the arguments 6 and
 10.  This results in a new environment E2 in which the formal parameters
 @code{x} and @code{y} are bound to the arguments.  Within E2 we evaluate the
-combination @code{(+ (square x) (square y))}.  This leads us to evaluate
-@code{(square x)}, where @code{square} is found in the global frame and
+body @code{square(x) + square(y)}.  This leads us to evaluate
+@code{square(x)}, where @code{square} is found in the global frame and
 @code{x} is 6.  Once again, we set up a new environment, E3, in which @code{x}
 is bound to 6, and within this we evaluate the body of @code{square}, which is
-@code{(* x x)}.  Also as part of applying @code{sum-of-squares}, we must
-evaluate the subexpression @code{(square y)}, where @code{y} is 10.  This
+@code{x * x}.  Also as part of applying @code{sum_of_squares}, we must
+evaluate the subexpression @code{square(y)}, where @code{y} is 10.  This
 second call to @code{square} creates another environment, E4, in which
 @code{x}, the formal parameter of @code{square}, is bound to 10.  And within E4
-we must evaluate @code{(* x x)}.
+we must evaluate @code{x * x}.
 
 The important point to observe is that each call to @code{square} creates a new
 environment containing a binding for @code{x}.  We can see here how the
@@ -449,40 +490,49 @@ passed from call to call; however, this is also an important aspect of the
 evaluation process, and we will return to it in detail in @ref{Chapter 5}.
 
 @quotation
-@strong{@anchor{Exercise 3.9}Exercise 3.9:} In @ref{1.2.1} we used the
-substitution model to analyze two procedures for computing factorials, a
+@strong{@anchor{Exercise 3.9}Exercise 3.9:} @emph{SICP exercise 3.9 is about
+Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  In @ref{1.2.1} we analyzed
+two functions for computing factorials, a
 recursive version
 
-@lisp
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* n (factorial (- n 1)))))
-@end lisp
+@example rust
+fn factorial(n: u64) -> u128 @{
+    if n <= 1 @{
+        1
+    @} else @{
+        u128::from(n) * factorial(n - 1)
+    @}
+@}
+@end example
 
 @noindent
 and an iterative version
 
-@lisp
-(define (factorial n)
-  (fact-iter 1 1 n))
+@example rust
+fn factorial_loop(n: u64) -> u128 @{
+    let mut product = 1;
+    for counter in 1..=n @{
+        product *= u128::from(counter);
+    @}
+    product
+@}
+@end example
 
-(define (fact-iter product 
-                   counter 
-                   max-count)
-  (if (> counter max-count)
-      product
-      (fact-iter (* counter product)
-                 (+ counter 1)
-                 max-count)))
-@end lisp
-
-Show the environment structures created by evaluating @code{(factorial 6)}
-using each version of the @code{factorial} procedure.@footnote{The environment
-model will not clarify our claim in @ref{1.2.1} that the interpreter
-can execute a procedure such as @code{fact-iter} in a constant amount of space
-using tail recursion.  We will discuss tail recursion when we deal with the
-control structure of the interpreter in @ref{5.4}.}
+@noindent
+Draw the stack of frames, in the style of @ref{Figure 3.5}, that exists at the
+deepest point of the call @code{factorial(6)}: one stack frame per call, each
+holding its own @code{n}, each returning into the frame that called it.  Then
+instrument both versions with a depth counter that records the greatest depth
+reached, and check your drawing: the recursive version should reach a depth of
+6, one frame per call from 6 down to 1, while the loop version should never
+leave depth 1.@footnote{The environment model will not clarify our claim in
+@ref{1.2.1} that a procedure such as @code{fact-iter} can run in a constant
+amount of space.  Rust makes no tail-call promise, so the loop is the only one
+of the two versions that is guaranteed to run in constant space; a recursive
+helper in tail position gives no such guarantee, and deep recursion on the
+default thread can exhaust the stack.  We will discuss how an interpreter can
+restore the guarantee in @ref{5.4}.}
 @end quotation
 
 @node	3.2.3, 3.2.4, 3.2.2, 3.2
@@ -491,39 +541,46 @@ control structure of the interpreter in @ref{5.4}.}
 We can turn to the environment model to see how procedures and assignment can
 be used to represent objects with local state.  As an example, consider the
 ``withdrawal processor'' from @ref{3.1.1} created by calling the
-procedure
+function
 
-@lisp
-(define (make-withdraw balance)
-  (lambda (amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds")))
-@end lisp
+@example rust
+fn make_withdraw(balance: i128) -> impl FnMut(i128) -> Reply @{
+    move |amount| @{
+        if balance >= amount @{
+            balance -= amount;
+            Reply::Balance(balance)
+        @} else @{
+            Reply::Message("Insufficient funds")
+        @}
+    @}
+@}
+@end example
 
 @noindent
 Let us describe the evaluation of
 
-@lisp
-(define W1 (make-withdraw 100))
-@end lisp
+@example rust
+let mut w1 = make_withdraw(100);
+@end example
 
 @noindent
 followed by
 
-@lisp
-(W1 50)
-@i{50}
-@end lisp
+@example rust
+w1(50)
+// => 50
+@end example
 
 @noindent
-@ref{Figure 3.6} shows the result of defining the @code{make-withdraw}
-procedure in the global environment.  This produces a procedure object that
+@ref{Figure 3.6} shows the result of defining the @code{make_withdraw}
+function in the global environment.  This produces a procedure object that
 contains a pointer to the global environment.  So far, this is no different
-from the examples we have already seen, except that the body of the procedure
-is itself a λ-expression.
+from the examples we have already seen, except that the body of the function
+builds and returns a closure, and the closure names a variable, @code{balance},
+that belongs to the call that built it.  The @code{move} in front of the
+closure is what the model calls the environment part: the closure takes
+ownership of @code{balance} instead of borrowing it, because the returned
+object must outlive the call that created it.
 
 @float
 @anchor{Figure 3.6}
@@ -563,23 +620,26 @@ env       +------------------|--------+
 @end float
 
 @noindent
-The interesting part of the computation happens when we apply the procedure
-@code{make-withdraw} to an argument:
+The interesting part of the computation happens when we apply the function
+@code{make_withdraw} to an argument:
 
-@lisp
-(define W1 (make-withdraw 100))
-@end lisp
+@example rust
+let mut w1 = make_withdraw(100);
+@end example
 
 @noindent
 We begin, as usual, by setting up an environment E1 in which the formal
 parameter @code{balance} is bound to the argument 100.  Within this
-environment, we evaluate the body of @code{make-withdraw}, namely the
-λ-expression.  This constructs a new procedure object, whose code
-is as specified by the @code{lambda} and whose environment is E1, the
-environment in which the @code{lambda} was evaluated to produce the procedure.
-The resulting procedure object is the value returned by the call to
-@code{make-withdraw}.  This is bound to @code{W1} in the global environment,
-since the @code{define} itself is being evaluated in the global environment.
+environment, we evaluate the body of @code{make_withdraw}, namely the
+closure expression.  This constructs a new procedure object, whose code
+is the generated body of the closure and whose environment is E1, the
+environment in which the closure was evaluated to produce the procedure.  In
+Rust, E1 is a concrete thing: it is the closure object itself, a
+compiler-generated struct with one field, the moved-in @code{balance}.  The
+resulting procedure object is the value returned by the call to
+@code{make_withdraw}.  The @code{let} binds it to the name @code{w1} in the
+frame that runs the binding, here the top-level frame of the @code{main}
+function.
 @ref{Figure 3.7} shows the resulting environment structure.
 
 @float
@@ -620,27 +680,31 @@ global -->|                                       |       |
 @caption{@strong{Figure 3.7:} Result of evaluating @code{(define W1 (make-withdraw 100))}.}
 @end float
 
-Now we can analyze what happens when @code{W1} is applied to an argument:
+Now we can analyze what happens when @code{w1} is applied to an argument:
 
-@lisp
-(W1 50)
-@i{50}
-@end lisp
+@example rust
+w1(50)
+// => 50
+@end example
 
 @noindent
 We begin by constructing a frame in which @code{amount}, the formal parameter
-of @code{W1}, is bound to the argument 50.  The crucial point to observe is
+of @code{w1}, is bound to the argument 50.  The crucial point to observe is
 that this frame has as its enclosing environment not the global environment,
 but rather the environment E1, because this is the environment that is
-specified by the @code{W1} procedure object.  Within this new environment, we
+specified by the @code{w1} procedure object; in Rust, the call's stack frame
+belongs to a body compiled with a pointer to the state stored inside the
+closure.  Within this new environment, we
 evaluate the body of the procedure:
 
-@lisp
-(if (>= balance amount)
-    (begin (set! balance (- balance amount))
-           balance)
-    "Insufficient funds")
-@end lisp
+@example rust
+if balance >= amount @{
+    balance -= amount;
+    Reply::Balance(balance)
+@} else @{
+    Reply::Message("Insufficient funds")
+@}
+@end example
 
 @noindent
 The resulting environment structure is shown in @ref{Figure 3.8}.  The
@@ -688,17 +752,18 @@ env       | W1: --+                                           |
 @caption{@strong{Figure 3.8:} Environments created by applying the procedure object @code{W1}.}
 @end float
 
-When the @code{set!} is executed, the binding of @code{balance} in E1 is
-changed.  At the completion of the call to @code{W1}, @code{balance} is 50, and
-the frame that contains @code{balance} is still pointed to by the procedure
-object @code{W1}.  The frame that binds @code{amount} (in which we executed the
-code that changed @code{balance}) is no longer relevant, since the procedure
-call that constructed it has terminated, and there are no pointers to that
-frame from other parts of the environment.  The next time @code{W1} is called,
+When the assignment is executed, the binding of @code{balance} in E1 is
+changed.  At the completion of the call to @code{w1}, @code{balance} is 50, and
+the frame that contains @code{balance} is still held by the closure bound to
+@code{w1}.  The frame that binds @code{amount} (in which we executed the
+code that changed @code{balance}) is gone, since the procedure
+call that constructed it has terminated; in Rust its stack space is reclaimed
+by the ordinary return of the call, and nothing outside the closure ever
+pointed at it.  The next time @code{w1} is called,
 this will build a new frame that binds @code{amount} and whose enclosing
 environment is E1.  We see that E1 serves as the ``place'' that holds the local
-state variable for the procedure object @code{W1}.  @ref{Figure 3.9} shows the
-situation after the call to @code{W1}.
+state variable for the procedure object @code{w1}.  @ref{Figure 3.9} shows the
+situation after the call to @code{w1}.
 
 @float
 @anchor{Figure 3.9}
@@ -737,25 +802,26 @@ env        | W1: --+                            |
 @end float
 
 Observe what happens when we create a second ``withdraw'' object by making
-another call to @code{make-withdraw}:
+another call to @code{make_withdraw}:
 
-@lisp
-(define W2 (make-withdraw 100))
-@end lisp
+@example rust
+let mut w2 = make_withdraw(100);
+@end example
 
 @noindent
 This produces the environment structure of @ref{Figure 3.10}, which shows that
-@code{W2} is a procedure object, that is, a pair with some code and an
-environment.  The environment E2 for @code{W2} was created by the call to
-@code{make-withdraw}.  It contains a frame with its own local binding for
-@code{balance}.  On the other hand, @code{W1} and @code{W2} have the same code:
-the code specified by the λ-expression in the body of
-@code{make-withdraw}.@footnote{Whether @code{W1} and @code{W2} share the same
+@code{w2} is a procedure object, that is, a pair with some code and an
+environment.  The environment E2 for @code{w2} was created by the call to
+@code{make_withdraw}.  It contains a frame with its own local binding for
+@code{balance}.  On the other hand, @code{w1} and @code{w2} have the same code:
+the code generated from the closure expression in the body of
+@code{make_withdraw}.@footnote{Whether @code{w1} and @code{w2} share the same
 physical code stored in the computer, or whether they each keep a copy of the
-code, is a detail of the implementation.  For the interpreter we implement in
-@ref{Chapter 4}, the code is in fact shared.} We see here why @code{W1} and
-@code{W2} behave as independent objects.  Calls to @code{W1} reference the
-state variable @code{balance} stored in E1, whereas calls to @code{W2}
+code, is a detail of the implementation.  In Rust it is always shared: there
+is one compiled body for the closure expression, and the two objects differ
+only in the captured @code{balance} each one carries.} We see here why @code{w1} and
+@code{w2} behave as independent objects.  Calls to @code{w1} reference the
+state variable @code{balance} stored in E1, whereas calls to @code{w2}
 reference the @code{balance} stored in E2. Thus, changes to the local state of
 one object do not affect the other object.
 
@@ -796,74 +862,132 @@ env      | W1: --+                        |                |
 @end float
 
 @quotation
-@strong{@anchor{Exercise 3.10}Exercise 3.10:} In the @code{make-withdraw}
-procedure, the local variable @code{balance} is created as a parameter of
-@code{make-withdraw}.  We could also create the local state variable
-explicitly, using @code{let}, as follows:
+@strong{@anchor{Exercise 3.10}Exercise 3.10:} @emph{SICP exercise 3.10 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  In the @code{make_withdraw}
+function, the local variable @code{balance} is created as a parameter of
+@code{make_withdraw}.  We could also create the local state variable
+explicitly, with an inner binding, as follows:
 
-@lisp
-(define (make-withdraw initial-amount)
-  (let ((balance initial-amount))
-    (lambda (amount)
-      (if (>= balance amount)
-          (begin (set! balance 
-                       (- balance amount))
-                 balance)
-          "Insufficient funds"))))
-@end lisp
+@example rust
+fn make_withdraw_let(initial_amount: i128) -> impl FnMut(i128) -> Reply @{
+    let mut balance = initial_amount;
+    move |amount| @{
+        if balance >= amount @{
+            balance -= amount;
+            Reply::Balance(balance)
+        @} else @{
+            Reply::Message("Insufficient funds")
+        @}
+    @}
+@}
+@end example
 
-Recall from @ref{1.3.2} that @code{let} is simply syntactic sugar for a
-procedure call:
-
-@lisp
-(let ((⟨@var{var}⟩ ⟨@var{exp}⟩)) ⟨@var{body}⟩)
-@end lisp
-
-@noindent
-is interpreted as an alternate syntax for
-
-@lisp
-((lambda (⟨@var{var}⟩) ⟨@var{body}⟩) ⟨@var{exp}⟩)
-@end lisp
-
-Use the environment model to analyze this alternate version of
-@code{make-withdraw}, drawing figures like the ones above to illustrate the
+Recall from @ref{1.3.2} the book's observation that its @code{let} is simply
+syntactic sugar for a procedure call; in the book's language the inner
+@code{let} builds a frame of its own, so the
+procedure object's environment pointer goes to the @code{let}'s frame and only
+from there to the factory call's frame.  Rust has no such rule: a @code{let}
+in the factory body is another name in the factory's own frame, and the
+closure captures the variable it actually names.  Use the environment model to
+analyze this alternate version of
+@code{make_withdraw_let}, drawing figures like the ones above to illustrate the
 interactions
 
-@lisp
-(define W1 (make-withdraw 100))
-(W1 50)
-(define W2 (make-withdraw 100))
-@end lisp
+@example rust
+let mut w1 = make_withdraw_let(100);
 
-Show that the two versions of @code{make-withdraw} create objects with the same
-behavior.  How do the environment structures differ for the two versions?
+w1(50)
+// => 50
+
+let mut w2 = make_withdraw_let(100);
+@end example
+
+Show that the two versions of @code{make_withdraw} create objects with the same
+behavior.  Then trace where @code{balance} lives in each version: which
+variables each closure captures, and what @code{std::mem::size_of_val}
+reports for a closure of each version.  How do the structures differ for the
+two versions, and what does the answer say about whether the extra
+@code{let} built an extra frame?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.10a}Exercise 3.10a:} @emph{Exercise 3.10a is added
+by this edition and extends exercise 3.10; SICP numbers stop at 3.10.}  The
+@code{move} closure of exercise 3.10 took ownership of a plain integer, so the
+capture copied the binding itself.  State often lives behind an @code{Rc}
+instead, and then the capture copies the pointer, not the binding.  Consider
+the shared-cell withdrawal processor:
+
+@example rust
+fn make_withdraw_cell(balance: Rc<Cell<i128>>) -> impl FnMut(i128) -> Reply @{
+    move |amount| @{
+        if balance.get() >= amount @{
+            balance.set(balance.get() - amount);
+            Reply::Balance(balance.get())
+        @} else @{
+            Reply::Message("Insufficient funds")
+        @}
+    @}
+@}
+@end example
+
+Build one cell holding 100 and two withdrawal processors over clones of it,
+then predict each answer before running:
+
+@example rust
+let cell = Rc::new(Cell::new(100));
+let mut w1 = make_withdraw_cell(Rc::clone(&cell));
+let mut w2 = make_withdraw_cell(Rc::clone(&cell));
+
+w1(30)
+// => 70
+
+w2(20)
+// => 50
+@end example
+
+Explain each answer: which of ``the pointer'' and ``the binding'' did each
+@code{Rc::clone} copy, and why the two objects behave as one account here
+while the two objects of exercise 3.10 behave as two.  Then compare
+@code{std::mem::size_of_val} on a closure of exercise 3.10 with one of this
+exercise, and state what the difference measures.  Finally, an outside
+@code{Rc} handle to the cell can watch the balance change across calls of
+@code{w1}; explain why no outside code can do the same for the closures of
+exercise 3.10, and which of the two shapes the book's figure E1 describes.
 @end quotation
 
 @node	3.2.4, 3.3, 3.1, 3.2
 @subsection Internal Definitions
 
 Section @ref{1.1.8} introduced the idea that procedures can have internal
-definitions, thus leading to a block structure as in the following procedure to
+definitions, thus leading to a block structure as in the following function to
 compute square roots:
 
-@lisp
-(define (sqrt x)
-  (define (good-enough? guess)
-    (< (abs (- (square guess) x)) 0.001))
-  (define (improve guess)
-    (average guess (/ x guess)))
-  (define (sqrt-iter guess)
-    (if (good-enough? guess)
-        guess
-        (sqrt-iter (improve guess))))
-  (sqrt-iter 1.0))
-@end lisp
+@example rust
+fn sqrt(x: f64) -> f64 @{
+    // The internal definitions, as closures that see `x`.
+    let good_enough = |guess: f64| (guess * guess - x).abs() < 0.001;
+    let improve = |guess: f64| f64::midpoint(guess, x / guess);
+    // The book's `sqrt-iter` recurses; a loop expresses the same
+    // iteration, because Rust has no tail-call guarantee (section 1.2.1).
+    let mut guess = 1.0;
+    while !good_enough(guess) @{
+        guess = improve(guess);
+    @}
+    guess
+@}
+@end example
 
 @noindent
 Now we can use the environment model to see why these internal definitions
-behave as desired.  @ref{Figure 3.11} shows the point in the evaluation of the
-expression @code{(sqrt 2)} where the internal procedure @code{good-enough?} has
+behave as desired.  One Rust fact makes the model sharper here: a nested
+@code{fn} item is compiled like a top-level function and cannot see the
+enclosing frame at all, so the internal definitions that need @code{x} must be
+closures.  Whether a procedure object has an environment part is a property
+the compiler checks.
+@ref{Figure 3.11} shows the point in the evaluation of the
+expression @code{sqrt(2)} where the internal procedure @code{good_enough} has
 been called for the first time with @code{guess} equal to 1.
 
 @float
@@ -907,43 +1031,45 @@ body: (define good-enough? ...)      | sqrt-iter: ... |      |
 @caption{@strong{Figure 3.11:} @code{Sqrt} procedure with internal definitions.}
 @end float
 
-Observe the structure of the environment.  @code{Sqrt} is a symbol in the
+Observe the structure of the environment.  @code{Sqrt} is a name in the
 global environment that is bound to a procedure object whose associated
 environment is the global environment.  When @code{sqrt} was called, a new
 environment E1 was formed, subordinate to the global environment, in which the
 parameter @code{x} is bound to 2.  The body of @code{sqrt} was then evaluated
 in E1.  Since the first expression in the body of @code{sqrt} is
 
-@lisp
-(define (good-enough? guess)
-  (< (abs (- (square guess) x)) 0.001))
-@end lisp
+@example rust
+let good_enough = |guess: f64| (guess * guess - x).abs() < 0.001;
+@end example
 
 @noindent
-evaluating this expression defined the procedure @code{good-enough?}  in the
-environment E1.  To be more precise, the symbol @code{good-enough?} was added
+evaluating this expression created the procedure @code{good_enough} as a value
+in the environment E1.  To be more precise, the name @code{good_enough} was added
 to the first frame of E1, bound to a procedure object whose associated
-environment is E1.  Similarly, @code{improve} and @code{sqrt-iter} were defined
-as procedures in E1.  For conciseness, @ref{Figure 3.11} shows only the
-procedure object for @code{good-enough?}.
+environment is E1: the closure carries a borrow of @code{x} out of that frame,
+and the compiler checks that the borrow cannot outlive the call.  Similarly, @code{improve} was created
+as a procedure in E1.  For conciseness, @ref{Figure 3.11} shows only the
+procedure object for @code{good_enough}.  The book's third internal procedure,
+@code{sqrt-iter}, recursed on itself; the loop keeps the same iteration with
+one frame slot for @code{guess} reused on every pass, because no tail call is
+guaranteed to reuse E1.
 
 @noindent
-After the local procedures were defined, the expression @code{(sqrt-iter 1.0)}
-was evaluated, still in environment E1.  So the procedure object bound to
-@code{sqrt-iter} in E1 was called with 1 as an argument.  This created an
-environment E2 in which @code{guess}, the parameter of @code{sqrt-iter}, is
-bound to 1.  @code{Sqrt-iter} in turn called @code{good-enough?} with the value
-of @code{guess} (from E2) as the argument for @code{good-enough?}.  This set up
-another environment, E3, in which @code{guess} (the parameter of
-@code{good-enough?}) is bound to 1.  Although @code{sqrt-iter} and
-@code{good-enough?} both have a parameter named @code{guess}, these are two
+After the local procedures were created, the iteration began with
+@code{guess} bound to 1, still in environment E1.  So the procedure object
+bound to @code{good_enough} in E1 was called with 1 as an argument.  This created an
+environment E2 in which @code{guess}, the parameter of @code{good_enough}, is
+bound to 1, and the call's stack frame holds it.  Each pass of the loop calls
+@code{improve} the same way, in the environment the figure labels E3.  Although @code{sqrt}
+and
+@code{good_enough} both have a variable named @code{guess}, these are two
 distinct local variables located in different frames.  Also, E2 and E3 both
-have E1 as their enclosing environment, because the @code{sqrt-iter} and
-@code{good-enough?} procedures both have E1 as their environment part.  One
+have E1 as their enclosing environment, because the @code{good_enough} and
+@code{improve} closures both carry their environment part out of E1.  One
 consequence of this is that the symbol @code{x} that appears in the body of
-@code{good-enough?} will reference the binding of @code{x} that appears in E1,
+@code{good_enough} will reference the binding of @code{x} that appears in E1,
 namely the value of @code{x} with which the original @code{sqrt} procedure was
-called.
+called; in Rust this is the borrow the compiler tracks.
 
 The environment model thus explains the two key properties that make local
 procedure definitions a useful technique for modularizing programs:
@@ -952,66 +1078,51 @@ procedure definitions a useful technique for modularizing programs:
 
 @item
 The names of the local procedures do not interfere with names external to the
-enclosing procedure, because the local procedure names will be bound in the
-frame that the procedure creates when it is run, rather than being bound in the
+enclosing function, because the local procedure names will be bound in the
+frame that the function creates when it is run, rather than being bound in the
 global environment.
 
 @item
-The local procedures can access the arguments of the enclosing procedure,
+The local procedures can access the arguments of the enclosing function,
 simply by using parameter names as free variables.  This is because the body of
 the local procedure is evaluated in an environment that is subordinate to the
-evaluation environment for the enclosing procedure.
+evaluation environment for the enclosing function.
 
 @end itemize
 
 @quotation
-@strong{@anchor{Exercise 3.11}Exercise 3.11:} In @ref{3.2.3} we saw how
+@strong{@anchor{Exercise 3.11}Exercise 3.11:} @emph{SICP exercise 3.11 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  In @ref{3.2.3} we saw how
 the environment model described the behavior of procedures with local state.
 Now we have seen how internal definitions work.  A typical message-passing
-procedure contains both of these aspects.  Consider the bank account procedure
-of @ref{3.1.1}:
+object contains both of these aspects.  Consider the bank account of
+@ref{3.1.1}, whose @code{send} dispatches on a request:
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance 
-                        amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (define (dispatch m)
-    (cond ((eq? m 'withdraw) withdraw)
-          ((eq? m 'deposit) deposit)
-          (else (error "Unknown request: 
-                        MAKE-ACCOUNT" 
-                       m))))
-  dispatch)
-@end lisp
+@example rust
+let acc = make_account(50);
 
-Show the environment structure generated by the sequence of interactions
+acc.send(Request::Deposit(40))
+// => 90
 
-@lisp
-(define acc (make-account 50))
+acc.send(Request::Withdraw(60))
+// => 30
 
-((acc 'deposit) 40)
-@i{90}
+let acc2 = make_account(100);
+@end example
 
-((acc 'withdraw) 60)
-@i{30}
-@end lisp
-
-Where is the local state for @code{acc} kept?  Suppose we define another
-account
-
-@lisp
-(define acc2 (make-account 100))
-@end lisp
-
-How are the local states for the two accounts kept distinct?  Which parts of
-the environment structure are shared between @code{acc} and @code{acc2}?
+Draw the environment structure this sequence generates: one account value per
+factory call, the state cell each one owns, and the compiled body of
+@code{send} that every account shares.  Then answer the book's three
+questions with experiments instead of the drawing alone.  @code{Account}
+already carries an identity test from @ref{3.1.1}, @code{same_object_as},
+which compares the state cells of two names with @code{Rc::ptr_eq}; use it
+to check a @code{clone} of @code{acc} against @code{acc}, and @code{acc}
+against @code{acc2}.  Deposit through the second name
+and read the balance through the first.  Where is the local state for
+@code{acc} kept, how are the local states for the two accounts kept distinct,
+and which parts of the structure are shared between @code{acc} and
+@code{acc2}?  Which of the two kinds of sharing can an experiment in Rust
+observe, and which one is settled by the compiler?
 @end quotation
 

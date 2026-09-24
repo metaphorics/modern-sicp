@@ -319,7 +319,7 @@ Cell key: `T` translate; `A: reason` adapt; `R: topic` replace.
 | 3.1 | accumulator keeps running sum | T | T | T | T | accumulator returning transaction history |
 | 3.2 | monitored procedure counts and resets | T | T | T | T | monitored reports min and max |
 | 3.3 | password-protected account dispatch | T | T | T | T |  |
-| 3.4 | lockout after seven bad passwords | T | T | T | T | lockout with audit log |
+| 3.4 | lockout after seven bad passwords | T | T | T | T | lockout with audit log (chosen: kotlin — implemented as 3.4a, an audit log recording every access attempt with its operation and outcome; see report) |
 | 3.5 | Monte Carlo integration via rand | T | T | T | T | seeded rand for reproducible tests (chosen: rust — implemented as 3.5a, seeded stream snapshot plus Cesaro estimates at 100/1,000/10,000 trials) |
 | 3.6 | rand with generate, reset messages | T | T | T | T |  |
 | 3.7 | make-joint shares one account | T | T | T | T | multi-signature joint account (chosen: ocaml — implemented as 3.7a, read-only account capability by record projection, not the literal "multi-signature joint account" text; see report) |
@@ -334,7 +334,7 @@ All three are environment-diagram exercises about Scheme frames, so all four edi
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
 | 3.9 | environment structures of two factorials | R: diagram call stack, no TCO | R: diagram stack growth, tail calls guaranteed | R: diagram call stack growth, no TCO | R: diagram tailrec compilation stack behavior |  |
-| 3.10 | let desugaring adds a frame | R: trace closure capture of balance | R: trace ref cell captured lifetime | R: trace captured binding lifetimes | R: trace captured var closure semantics |  |
+| 3.10 | let desugaring adds a frame | R: trace closure capture of balance | R: trace ref cell captured lifetime | R: trace captured binding lifetimes | R: trace captured var closure semantics | shared-cell capture: move copies the pointer, not the binding (chosen: rust — implemented as 3.10a, two withdrawal processors built over clones of one Rc Cell balance share state while the same processors over a copied integer stay independent; see report) |
 | 3.11 | where account state lives | R: diagram closure state sharing between accounts | R: diagram per-account closure state | R: diagram per-factory closure state | R: diagram per-factory closure state | object identity versus structural equality; chosen: ocaml |
 
 ### Section 3.3: Modeling with mutable data (26 rows)
@@ -342,7 +342,7 @@ All three are environment-diagram exercises about Scheme frames, so all four edi
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
 | 3.12 | append! mutates tail; missing car | A: shared mutable cells need Rc RefCell | A: mutable record cells replace pairs | T | T |  |
-| 3.13 | make-cycle builds circular structure | A: shared mutable cells need Rc RefCell | A: mutable record cells replace pairs | T | T | cycle-safe printing |
+| 3.13 | make-cycle builds circular structure | A: shared mutable cells need Rc RefCell | A: mutable record cells replace pairs | T | T | cycle-safe printing; chosen: ocaml |
 | 3.14 | mystery reverses pointers in place | A: in-place pair mutation via RefCell | A: mutable records replace set-car! | T | T |  |
 | 3.15 | set-to-wow diagrams show sharing | A: aliasing through Rc RefCell cells | A: aliasing through mutable records | T | T |  |
 | 3.16 | count-pairs double counts shared pairs | T | T | T | T |  |

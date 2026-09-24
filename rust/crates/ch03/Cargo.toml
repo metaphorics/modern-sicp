@@ -23,6 +23,22 @@ path = "examples/sec_3_1_2_benefits.rs"
 name = "sec_3_1_3_costs"
 path = "examples/sec_3_1_3_costs.rs"
 
+[[example]]
+name = "sec_3_2_1_rules"
+path = "examples/sec_3_2_1_rules.rs"
+
+[[example]]
+name = "sec_3_2_2_applying"
+path = "examples/sec_3_2_2_applying.rs"
+
+[[example]]
+name = "sec_3_2_3_frames"
+path = "examples/sec_3_2_3_frames.rs"
+
+[[example]]
+name = "sec_3_2_4_internal"
+path = "examples/sec_3_2_4_internal.rs"
+
 [[test]]
 name = "scaffold_sec_3_1"
 path = "../../exercises/ch03/sec_3_1.rs"
@@ -56,6 +72,18 @@ name = "scaffold_sec_3_8"
 path = "../../exercises/ch03/sec_3_8.rs"
 
 [[test]]
+name = "scaffold_sec_3_9"
+path = "../../exercises/ch03/sec_3_9.rs"
+
+[[test]]
+name = "scaffold_sec_3_10"
+path = "../../exercises/ch03/sec_3_10.rs"
+
+[[test]]
+name = "scaffold_sec_3_11"
+path = "../../exercises/ch03/sec_3_11.rs"
+
+[[test]]
 name = "solution_sec_3_1"
 path = "../../solutions/ch03/sec_3_1.rs"
 
@@ -86,6 +114,18 @@ path = "../../solutions/ch03/sec_3_7.rs"
 [[test]]
 name = "solution_sec_3_8"
 path = "../../solutions/ch03/sec_3_8.rs"
+
+[[test]]
+name = "solution_sec_3_9"
+path = "../../solutions/ch03/sec_3_9.rs"
+
+[[test]]
+name = "solution_sec_3_10"
+path = "../../solutions/ch03/sec_3_10.rs"
+
+[[test]]
+name = "solution_sec_3_11"
+path = "../../solutions/ch03/sec_3_11.rs"
 
 [dependencies]
 sicp-runtime = { workspace = true }

@@ -348,7 +348,7 @@ All three are environment-diagram exercises about Scheme frames, so all four edi
 | 3.16 | count-pairs double counts shared pairs | T | T | T | T |  |
 | 3.17 | count distinct pairs with history | T | A: identity set needs physical-equality scan | T | A: no identity set in stdlib | count distinct nodes in DAG |
 | 3.18 | detect cycle in list | T | A: identity set needs physical-equality scan | T | A: no identity set in stdlib |  |
-| 3.19 | tortoise-hare constant-space detection | T | T | T | T | shared suffix detection |
+| 3.19 | tortoise-hare constant-space detection | T | T | T | T | shared suffix detection; chosen: rust |
 | 3.20 | environment diagram of pair mutators | R: trace aliasing through closure dispatch | R: trace aliasing through closure dispatch | R: trace object aliasing via closures | R: trace shared state via closures |  |
 | 3.21 | print-queue for pointer-pair queue | A: queue nodes need Rc RefCell | A: mutable record nodes replace pairs | T | T | render queue as list view |
 | 3.22 | queue as message-passing closure | A: shared nodes and state via RefCell | A: mutable record nodes replace pairs | T | T |  |
@@ -385,7 +385,7 @@ Statements quote the book's `parallel-execute` and serializers; under the shared
 | 3.44 | transfer needs no joint lock | T | T | T | T |  |
 | 3.45 | double serialization deadlocks | T | T | T | T |  |
 | 3.46 | test-and-set race window | T | T | T | T | demonstrate race via stress test |
-| 3.47 | semaphore from mutex or test-and-set | T | T | A: Effect provides Semaphore; build anyway | A: kotlinx provides Semaphore; build anyway |  |
+| 3.47 | semaphore from mutex or test-and-set | T | T | A: Effect provides Semaphore; build anyway | A: kotlinx provides Semaphore; build anyway | chosen: ocaml |
 | 3.48 | deadlock avoidance by lock ordering | T | T | T | T |  |
 | 3.49 | ordering avoidance fails scenario | T | T | T | T | resource acquisition without known set |
 

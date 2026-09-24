@@ -127,6 +127,234 @@ path = "../../solutions/ch03/sec_3_10.rs"
 name = "solution_sec_3_11"
 path = "../../solutions/ch03/sec_3_11.rs"
 
+[[test]]
+name = "scaffold_sec_3_12"
+path = "../../exercises/ch03/sec_3_12.rs"
+
+[[test]]
+name = "scaffold_sec_3_13"
+path = "../../exercises/ch03/sec_3_13.rs"
+
+[[test]]
+name = "scaffold_sec_3_14"
+path = "../../exercises/ch03/sec_3_14.rs"
+
+[[test]]
+name = "scaffold_sec_3_15"
+path = "../../exercises/ch03/sec_3_15.rs"
+
+[[test]]
+name = "scaffold_sec_3_16"
+path = "../../exercises/ch03/sec_3_16.rs"
+
+[[test]]
+name = "scaffold_sec_3_17"
+path = "../../exercises/ch03/sec_3_17.rs"
+
+[[test]]
+name = "scaffold_sec_3_18"
+path = "../../exercises/ch03/sec_3_18.rs"
+
+[[test]]
+name = "scaffold_sec_3_19"
+path = "../../exercises/ch03/sec_3_19.rs"
+
+[[test]]
+name = "scaffold_sec_3_20"
+path = "../../exercises/ch03/sec_3_20.rs"
+
+[[test]]
+name = "scaffold_sec_3_21"
+path = "../../exercises/ch03/sec_3_21.rs"
+
+[[test]]
+name = "scaffold_sec_3_22"
+path = "../../exercises/ch03/sec_3_22.rs"
+
+[[test]]
+name = "scaffold_sec_3_23"
+path = "../../exercises/ch03/sec_3_23.rs"
+
+[[test]]
+name = "scaffold_sec_3_24"
+path = "../../exercises/ch03/sec_3_24.rs"
+
+[[test]]
+name = "scaffold_sec_3_25"
+path = "../../exercises/ch03/sec_3_25.rs"
+
+[[test]]
+name = "scaffold_sec_3_26"
+path = "../../exercises/ch03/sec_3_26.rs"
+
+[[test]]
+name = "scaffold_sec_3_27"
+path = "../../exercises/ch03/sec_3_27.rs"
+
+[[test]]
+name = "scaffold_sec_3_28"
+path = "../../exercises/ch03/sec_3_28.rs"
+
+[[test]]
+name = "scaffold_sec_3_29"
+path = "../../exercises/ch03/sec_3_29.rs"
+
+[[test]]
+name = "scaffold_sec_3_30"
+path = "../../exercises/ch03/sec_3_30.rs"
+
+[[test]]
+name = "scaffold_sec_3_31"
+path = "../../exercises/ch03/sec_3_31.rs"
+
+[[test]]
+name = "scaffold_sec_3_32"
+path = "../../exercises/ch03/sec_3_32.rs"
+
+[[test]]
+name = "scaffold_sec_3_33"
+path = "../../exercises/ch03/sec_3_33.rs"
+
+[[test]]
+name = "scaffold_sec_3_34"
+path = "../../exercises/ch03/sec_3_34.rs"
+
+[[test]]
+name = "scaffold_sec_3_35"
+path = "../../exercises/ch03/sec_3_35.rs"
+
+[[test]]
+name = "scaffold_sec_3_36"
+path = "../../exercises/ch03/sec_3_36.rs"
+
+[[test]]
+name = "scaffold_sec_3_37"
+path = "../../exercises/ch03/sec_3_37.rs"
+
+[[test]]
+name = "solution_sec_3_12"
+path = "../../solutions/ch03/sec_3_12.rs"
+
+[[test]]
+name = "solution_sec_3_13"
+path = "../../solutions/ch03/sec_3_13.rs"
+
+[[test]]
+name = "solution_sec_3_14"
+path = "../../solutions/ch03/sec_3_14.rs"
+
+[[test]]
+name = "solution_sec_3_15"
+path = "../../solutions/ch03/sec_3_15.rs"
+
+[[test]]
+name = "solution_sec_3_16"
+path = "../../solutions/ch03/sec_3_16.rs"
+
+[[test]]
+name = "solution_sec_3_17"
+path = "../../solutions/ch03/sec_3_17.rs"
+
+[[test]]
+name = "solution_sec_3_18"
+path = "../../solutions/ch03/sec_3_18.rs"
+
+[[test]]
+name = "solution_sec_3_19"
+path = "../../solutions/ch03/sec_3_19.rs"
+
+[[test]]
+name = "solution_sec_3_20"
+path = "../../solutions/ch03/sec_3_20.rs"
+
+[[test]]
+name = "solution_sec_3_21"
+path = "../../solutions/ch03/sec_3_21.rs"
+
+[[test]]
+name = "solution_sec_3_22"
+path = "../../solutions/ch03/sec_3_22.rs"
+
+[[test]]
+name = "solution_sec_3_23"
+path = "../../solutions/ch03/sec_3_23.rs"
+
+[[test]]
+name = "solution_sec_3_24"
+path = "../../solutions/ch03/sec_3_24.rs"
+
+[[test]]
+name = "solution_sec_3_25"
+path = "../../solutions/ch03/sec_3_25.rs"
+
+[[test]]
+name = "solution_sec_3_26"
+path = "../../solutions/ch03/sec_3_26.rs"
+
+[[test]]
+name = "solution_sec_3_27"
+path = "../../solutions/ch03/sec_3_27.rs"
+
+[[test]]
+name = "solution_sec_3_28"
+path = "../../solutions/ch03/sec_3_28.rs"
+
+[[test]]
+name = "solution_sec_3_29"
+path = "../../solutions/ch03/sec_3_29.rs"
+
+[[test]]
+name = "solution_sec_3_30"
+path = "../../solutions/ch03/sec_3_30.rs"
+
+[[test]]
+name = "solution_sec_3_31"
+path = "../../solutions/ch03/sec_3_31.rs"
+
+[[test]]
+name = "solution_sec_3_32"
+path = "../../solutions/ch03/sec_3_32.rs"
+
+[[test]]
+name = "solution_sec_3_33"
+path = "../../solutions/ch03/sec_3_33.rs"
+
+[[test]]
+name = "solution_sec_3_34"
+path = "../../solutions/ch03/sec_3_34.rs"
+
+[[test]]
+name = "solution_sec_3_35"
+path = "../../solutions/ch03/sec_3_35.rs"
+
+[[test]]
+name = "solution_sec_3_36"
+path = "../../solutions/ch03/sec_3_36.rs"
+
+[[test]]
+name = "solution_sec_3_37"
+path = "../../solutions/ch03/sec_3_37.rs"
+
+[[example]]
+name = "sec_3_3_1_mutation"
+path = "examples/sec_3_3_1_mutation.rs"
+
+[[example]]
+name = "sec_3_3_2_queues"
+path = "examples/sec_3_3_2_queues.rs"
+
+[[example]]
+name = "sec_3_3_3_tables"
+path = "examples/sec_3_3_3_tables.rs"
+
+[[example]]
+name = "sec_3_3_4_circuit"
+path = "examples/sec_3_3_4_circuit.rs"
+
+[[example]]
+name = "sec_3_3_5_constraints"
+path = "examples/sec_3_3_5_constraints.rs"
+
 [dependencies]
 sicp-runtime = { workspace = true }
 

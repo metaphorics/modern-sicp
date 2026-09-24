@@ -335,7 +335,7 @@ All three are environment-diagram exercises about Scheme frames, so all four edi
 |---|---|---|---|---|---|---|
 | 3.9 | environment structures of two factorials | R: diagram call stack, no TCO | R: diagram stack growth, tail calls guaranteed | R: diagram call stack growth, no TCO | R: diagram tailrec compilation stack behavior |  |
 | 3.10 | let desugaring adds a frame | R: trace closure capture of balance | R: trace ref cell captured lifetime | R: trace captured binding lifetimes | R: trace captured var closure semantics |  |
-| 3.11 | where account state lives | R: diagram closure state sharing between accounts | R: diagram per-account closure state | R: diagram per-factory closure state | R: diagram per-factory closure state | object identity versus structural equality |
+| 3.11 | where account state lives | R: diagram closure state sharing between accounts | R: diagram per-account closure state | R: diagram per-factory closure state | R: diagram per-factory closure state | object identity versus structural equality; chosen: ocaml |
 
 ### Section 3.3: Modeling with mutable data (26 rows)
 

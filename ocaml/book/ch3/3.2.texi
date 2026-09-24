@@ -17,9 +17,13 @@ with each formal parameter replaced by the corresponding argument.
 Once we admit assignment into our programming language, such a definition is no
 longer adequate.  In particular, @ref{3.1.3} argued that, in the
 presence of assignment, a variable can no longer be considered to be merely a
-name for a value.  Rather, a variable must somehow designate a ``place'' in
-which values can be stored.  In our new model of evaluation, these places will
-be maintained in structures called @newterm{environments}.
+name for a value.  In OCaml the point is at its sharpest for the ref cells
+introduced in @ref{3.1}: a name bound to a @code{ref} designates a cell whose
+contents can change, and reading the name with @code{!} asks for the cell's
+current contents, not for a value frozen when the name was bound.  A variable
+must somehow designate a ``place'' in which values can be stored.  In our new
+model of evaluation, these places will be maintained in structures called
+@newterm{environments}.
 
 An environment is a sequence of @newterm{frames}.  Each frame is a table
 (possibly empty) of @newterm{bindings}, which associate variable names with
@@ -84,15 +88,34 @@ context in which an expression should be evaluated.  Indeed, one could say that
 expressions in a programming language do not, in themselves, have any meaning.
 Rather, an expression acquires a meaning only with respect to some environment
 in which it is evaluated.  Even the interpretation of an expression as
-straightforward as @code{(+ 1 1)} depends on an understanding that one is
-operating in a context in which @code{+} is the symbol for addition.  Thus, in
-our model of evaluation we will always speak of evaluating an expression with
-respect to some environment.  To describe interactions with the interpreter, we
-will suppose that there is a global environment, consisting of a single frame
-(with no enclosing environment) that includes values for the symbols associated
-with the primitive procedures.  For example, the idea that @code{+} is the
-symbol for addition is captured by saying that the symbol @code{+} is bound in
-the global environment to the primitive addition procedure.
+straightforward as @code{x + 1} depends on an understanding that one is
+operating in a context in which @code{+} is the name for addition and
+@code{x} is bound somewhere within reach.  Thus, in our model of evaluation we
+will always speak of evaluating an expression with respect to some environment.
+To describe our programs, we will suppose that there is a global environment,
+consisting of a single frame (with no enclosing environment) that holds the
+bindings every expression in the program can use without any further local
+definition: the standard library's names, and the module's own earlier
+top-level definitions.  For example, the idea that @code{+} stands for integer
+addition is captured by saying that the name @code{+} is bound in the global
+environment to the standard library's addition function, and after the
+definitions of @ref{3.1.1}, the name @code{withdraw} is bound in the global
+environment to the withdrawal procedure.
+
+OCaml builds its function values in exactly the shape this structure
+describes.  Every closure carries its code together with the environment it
+was created in, and every name the code reads is resolved in that environment,
+frame by frame, exactly as the figure shows.  What an OCaml program cannot do
+is inspect this structure.  The layout of a closure is an implementation
+detail of the compiler, not a language guarantee, and no expression can ask a
+function value for its environment.@footnote{The model of this section is
+therefore judged by what it predicts about observable behavior: which cell a
+name designates, and when the contents of that cell change.  Every such
+prediction is a guarantee of the language.  Claims about the physical layout
+of frames and closures are not, and OCaml's compiler is free to arrange them
+however it likes, as long as the observable behavior stays the same.}  The
+diagrams in this section are the model's diagrams, not a description of
+run-time data structures.
 
 @menu
 * 3.2.1::            The Rules for Evaluation
@@ -104,7 +127,7 @@ the global environment to the primitive addition procedure.
 @node	3.2.1, 3.2.2, 3.2, 3.2
 @subsection The Rules for Evaluation
 
-The overall specification of how the interpreter evaluates a combination
+The overall specification of how a program evaluates a combination
 remains the same as when we first introduced it in @ref{1.1.3}:
 
 @itemize @bullet
@@ -121,12 +144,13 @@ Evaluate the subexpressions of the combination.@footnote{Assignment introduces a
 subtlety into step 1 of the evaluation rule.  As shown in @ref{Exercise 3.8},
 the presence of assignment allows us to write expressions that will produce
 different values depending on the order in which the subexpressions in a
-combination are evaluated.  Thus, to be precise, we should specify an
-evaluation order in step 1 (e.g., left to right or right to left).  However,
-this order should always be considered to be an implementation detail, and one
-should never write programs that depend on some particular order.  For
-instance, a sophisticated compiler might optimize a program by varying the
-order in which subexpressions are evaluated.}
+combination are evaluated.  OCaml leaves this order unspecified, both for the
+arguments of a function call and for the operands of operators such as
+@code{+}, so the subtlety is not a Scheme curiosity but a fact of this
+language too.  The order should always be considered to be an implementation
+detail, and one should never write programs that depend on some particular
+order.  For instance, a sophisticated compiler might optimize a program by
+varying the order in which subexpressions are evaluated.}
 
 @item
 Apply the value of the operator subexpression to the values of the operand
@@ -139,64 +163,63 @@ The environment model of evaluation replaces the substitution model in
 specifying what it means to apply a compound procedure to arguments.
 
 In the environment model of evaluation, a procedure is always a pair consisting
-of some code and a pointer to an environment.  Procedures are created in one
-way only: by evaluating a λ-expression.  This produces a procedure
-whose code is obtained from the text of the λ-expression and whose
-environment is the environment in which the λ-expression was
-evaluated to produce the procedure.  For example, consider the procedure
-definition
+of some code and a pointer to an environment.  OCaml's function values have
+exactly this shape: a closure carries the code of its @code{fun} expression
+together with the environment in which that expression was evaluated.
+Procedures are created in one way only: by evaluating a @code{fun} expression.
+This produces a closure whose code is obtained from the text of the
+@code{fun} expression and whose environment is the environment in which the
+@code{fun} expression was evaluated to produce the closure.  For example,
+consider the procedure definition
 
-@lisp
-(define (square x)
-  (* x x))
-@end lisp
-
-@noindent
-evaluated in the global environment.  The procedure definition syntax is just
-syntactic sugar for an underlying implicit λ-expression.  It would
-have been equivalent to have used
-
-@lisp
-(define square
-  (lambda (x) (* x x)))
-@end lisp
+@example ocaml
+let square x = x * x
+@end example
 
 @noindent
-which evaluates @code{(lambda (x) (* x x))} and binds @code{square} to the
-resulting value, all in the global environment.
+evaluated in the global environment.  The definition syntax is just syntactic
+sugar for an underlying @code{fun} expression.  It would have been equivalent
+to have used
 
-@ref{Figure 3.2} shows the result of evaluating this @code{define} expression.
-The procedure object is a pair whose code specifies that the procedure has one
-formal parameter, namely @code{x}, and a procedure body @code{(* x x)}.  The
-environment part of the procedure is a pointer to the global environment, since
-that is the environment in which the λ-expression was evaluated to
-produce the procedure. A new binding, which associates the procedure object
-with the symbol @code{square}, has been added to the global frame.  In general,
-@code{define} creates definitions by adding bindings to frames.
+@example ocaml
+let square = fun x -> x * x
+@end example
+
+@noindent
+which evaluates @code{fun x -> x * x} and binds @code{square} to the resulting
+closure, all in the global environment.
+
+@ref{Figure 3.2} shows the result of evaluating this @code{let} definition.
+The closure is a pair whose code specifies that the function has one formal
+parameter, namely @code{x}, and a function body @code{x * x}.  The environment
+part of the closure is a pointer to the global environment, since that is the
+environment in which the @code{fun} expression was evaluated to produce the
+closure.  A new binding, which associates the closure with the name
+@code{square}, has been added to the global frame.  In general, a @code{let}
+definition creates definitions by adding bindings to the current frame.
 
 @float
 @anchor{Figure 3.2}
 @ifinfo
 @quotation
 @strong{Figure 3.2:} Environment structure produced by
-evaluating @code{(define (square x) (* x x))} in the global environment.
+evaluating @code{let square x = x * x} in the global environment.
 
 @example
-           +----------------------+
-           | other variables      |
-global --->|                      |
-env        | square: --+          |
-           +-----------|----------+
+           +--------------------------------+
+           | other variables                |
+global --->|                                |
+env        | square: --+                    |
+           +-----------|--------------------+
                        |       ^
-(define (square x)     |       |
-  (* x x))             V       |
-                   .---.---.   |
-                   | O | O-+---+
-                   `-|-^---'
-                     |
-                     V
-                   parameters: x
-                   body: (* x x)
+                       |       |
+                       V       |
+                .--------------|--.
+                | closure      |  |
+                |  code:       |  |
+                |   fun x -> x * x |
+                |  env:   o----+--+
+                '------------------'
 @end example
 @end quotation
 @end ifinfo
@@ -207,35 +230,35 @@ env        | square: --+          |
 @image{../../text/original/figures/pdf/chap3/Fig3.2b.std,,81mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.2:} Environment structure produced by evaluating @code{(define (square x) (* x x))} in the global environment.}
+@caption{@strong{Figure 3.2:} Environment structure produced by evaluating @code{let square x = x * x} in the global environment.}
 @end float
 
 @noindent
-Now that we have seen how procedures are created, we can describe how
-procedures are applied.  The environment model specifies: To apply a procedure
-to arguments, create a new environment containing a frame that binds the
-parameters to the values of the arguments.  The enclosing environment of this
-frame is the environment specified by the procedure.  Now, within this new
-environment, evaluate the procedure body.
+Now that we have seen how closures are created, we can describe how they are
+applied.  The environment model specifies: To apply a procedure to arguments,
+create a new environment containing a frame that binds the parameters to the
+values of the arguments.  The enclosing environment of this frame is the
+environment specified by the closure.  Now, within this new environment,
+evaluate the function body.
 
 To show how this rule is followed, @ref{Figure 3.3} illustrates the environment
-structure created by evaluating the expression @code{(square 5)} in the global
-environment, where @code{square} is the procedure generated in @ref{Figure 3.2}.  
-Applying the procedure results in the creation of a new environment,
-labeled E1 in the figure, that begins with a frame in which @code{x}, the
-formal parameter for the procedure, is bound to the argument 5.  The pointer
-leading upward from this frame shows that the frame's enclosing environment is
-the global environment.  The global environment is chosen here, because this is
-the environment that is indicated as part of the @code{square} procedure
-object.  Within E1, we evaluate the body of the procedure, @code{(* x x)}.
-Since the value of @code{x} in E1 is 5, the result is @code{(* 5 5)}, or 25.
+structure created by evaluating the expression @code{square 5} in the global
+environment, where @code{square} is the closure generated in @ref{Figure 3.2}.
+Applying the closure results in the creation of a new environment, labeled E1
+in the figure, that begins with a frame in which @code{x}, the formal
+parameter for the function, is bound to the argument 5.  The pointer leading
+upward from this frame shows that the frame's enclosing environment is the
+global environment.  The global environment is chosen here, because this is
+the environment that is indicated as part of the @code{square} closure.
+Within E1, we evaluate the body of the function, @code{x * x}.  Since the
+value of @code{x} in E1 is 5, the result is @code{5 * 5}, or 25.
 
 @float
 @anchor{Figure 3.3}
 @ifinfo
 @quotation
 @strong{Figure 3.3:} Environment created by evaluating
-@code{(square 5)} in the global environment.
+@code{square 5} in the global environment.
 
 @example
           +------------------------------------+
@@ -244,15 +267,14 @@ global -->|                                    |
 env       | square: --+                        |
           +-----------|---------------------+--+
                       |       ^             ^
-(square 5)            |       |             |
+                      |       |             |
                       V       |             |
-                  .---.---.   |         +---+--+
-                  | O | O-+---+   E1 -->| x: 5 |
-                  `-|-^---'             +------+
-                    |
-                    V
-                  parameters: x
-                  body: (* x x)
+                .-----------. |         +---+--+
+                | closure   | |   E1 -->| x: 5 |
+                | code: fun | |         +------+
+                |  x -> x * x |
+                | env: o-----+-+
+                '-----------'
 @end example
 @end quotation
 @end ifinfo
@@ -263,7 +285,7 @@ env       | square: --+                        |
 @image{../../text/original/figures/pdf/chap3/Fig3.3b.std,,129mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.3:} Environment created by evaluating @code{(square 5)} in the global environment.}
+@caption{@strong{Figure 3.3:} Environment created by evaluating @code{square 5} in the global environment.}
 @end float
 
 @noindent
@@ -276,63 +298,70 @@ A procedure object is applied to a set of arguments by constructing a frame,
 binding the formal parameters of the procedure to the arguments of the call,
 and then evaluating the body of the procedure in the context of the new
 environment constructed.  The new frame has as its enclosing environment the
-environment part of the procedure object being applied.
+environment part of the closure being applied.
 
 @item
-A procedure is created by evaluating a λ-expression relative to a
-given environment.  The resulting procedure object is a pair consisting of the
-text of the λ-expression and a pointer to the environment in which
-the procedure was created.
+A procedure is created by evaluating a @code{fun} expression relative to a
+given environment.  The resulting closure is a pair consisting of the text of
+the @code{fun} expression and a pointer to the environment in which the
+closure was created.
 
 @end itemize
 
 @noindent
-We also specify that defining a symbol using @code{define} creates a binding in
-the current environment frame and assigns to the symbol the indicated
-value.@footnote{If there is already a binding for the variable in the current
-frame, then the binding is changed.  This is convenient because it allows
-redefinition of symbols; however, it also means that @code{define} can be used
-to change values, and this brings up the issues of assignment without
-explicitly using @code{set!}.  Because of this, some people prefer
-redefinitions of existing symbols to signal errors or warnings.} Finally, we
-specify the behavior of @code{set!}, the operation that forced us to introduce
-the environment model in the first place.  Evaluating the expression
-@code{(set! ⟨@var{variable}⟩ ⟨@var{value}⟩)} in some environment locates the
-binding of the variable in the environment and changes that binding to indicate
-the new value.  That is, one finds the first frame in the environment that
-contains a binding for the variable and modifies that frame.  If the variable
-is unbound in the environment, then @code{set!} signals an error.
+We also specify that defining a name with a @code{let} definition creates a
+binding in the current environment frame and assigns to the name the indicated
+value.@footnote{A second definition of the same name does not change the
+existing binding; it shadows it, in the sense of @ref{Figure 3.1}, adding a
+new binding that hides the old one for the rest of the scope.  Anything that
+captured the first binding, such as a closure built before the new definition,
+keeps reaching that first binding, so shadowing is not a hidden way to change
+what existing closures see.  What OCaml does not let a program do at all is
+change a binding once it exists.  Mutation goes through @code{ref} cells and
+@code{:=}, which makes every assignment visible in the type of the thing that
+gets mutated.}  Finally, we specify the behavior of the operation that forced
+us to introduce the environment model in the first place.  OCaml has no direct
+counterpart of Scheme's @code{set!}, which changes the binding of a variable
+in place.  What plays its role is the ref-cell assignment
+@code{balance := !balance - amount} of @ref{3.1.1}.  Evaluating such an
+assignment in some environment locates the binding of the name in the
+environment and changes the cell that the binding designates to indicate the
+new value.  That is, one finds the first frame in the environment that
+contains a binding for the name and modifies the contents of the ref cell it
+points to; the binding itself stays where it was.  If the name is unbound in
+the environment, or bound to something that is not a ref cell, the program
+does not type-check: OCaml rejects it before the program runs, where Scheme's
+@code{set!} signals an error while the program is running.
 
 These evaluation rules, though considerably more complex than the substitution
 model, are still reasonably straightforward.  Moreover, the evaluation model,
-though abstract, provides a correct description of how the interpreter
-evaluates expressions.  In @ref{Chapter 4} we shall see how this model can
-serve as a blueprint for implementing a working interpreter.  The following
-sections elaborate the details of the model by analyzing some illustrative
-programs.
+though abstract, provides a correct description of how the language evaluates
+expressions.  In @ref{Chapter 4} we shall see how this model can serve as a
+blueprint for implementing a working interpreter.  The following sections
+elaborate the details of the model by analyzing some illustrative programs.
 
 @node	3.2.2, 3.2.3, 3.2.1, 3.2
 @subsection Applying Simple Procedures
 
 When we introduced the substitution model in @ref{1.1.5} we showed how
-the combination @code{(f 5)} evaluates to 136, given the following procedure
+the combination @code{f 5} evaluates to 136, given the following procedure
 definitions:
 
-@lisp
-(define (square x)
-  (* x x))
-(define (sum-of-squares x y)
-  (+ (square x) (square y)))
-(define (f a)
-  (sum-of-squares (+ a 1) (* a 2)))
-@end lisp
+@example ocaml
+let square x = x * x
+
+let sum_of_squares x y = square x + square y
+
+let f a = sum_of_squares (a + 1) (a * 2)
+;;
+@end example
 
 @noindent
 We can analyze the same example using the environment model.  @ref{Figure 3.4}
-shows the three procedure objects created by evaluating the definitions of
-@code{f}, @code{square}, and @code{sum-of-squares} in the global environment.
-Each procedure object consists of some code, together with a pointer to the
-global environment.
+shows the three closures created by evaluating the definitions of
+@code{f}, @code{square}, and @code{sum_of_squares} in the global environment.
+Each closure consists of some code, together with a pointer to the global
+environment.
 
 @float
 @anchor{Figure 3.4}
@@ -340,23 +369,23 @@ global environment.
 @strong{Figure 3.4:} Procedure objects in the global frame.
 
 @example
-          +--------------------------------------------+
-          | sum-of-squares:                            |
-global -->| square:                                    |
-env       | f: --+                                     |
-          +------|--------------+--------------+-------+
-                 |     ^        |     ^        |     ^
-                 |     |        |     |        |     |
-                 V     |        V     |        V     |
-             .---.---. |    .---.---. |    .---.---. |
-             | O | O-+-+    | O | O-+-+    | O | O-+-+
-             `-|-^---'      `-|-^---'      `-|-^---'
-               |              |              |
-               V              V              V
-   parameters: a          parameters: x  parameters: x, y
-   body: (sum-of-squares  body: (* x x)  body: (+ (square x)
-           (+ a 1)                                (square y))
-           (* a 2))
+          +--------------------------------------------------+
+          | sum_of_squares:                                  |
+global -->| square:                                          |
+env       | f: --+                                           |
+          +------|---------------------+----------------+----+
+                 |     ^               |     ^          |     ^
+                 |     |               |     |          |     |
+                 V     |               V     |          V     |
+             .---.---. |           .---.---. |        .---.---. |
+             | O | O-+-+           | O | O-+-+        | O | O-+-+
+             `-|-^---'            `-|-^---'         `-|-^---'
+               |                    |                  |
+               V                    V                  V
+   parameters: a          parameters: x    parameters: x, y
+   body: sum_of_squares   body: x * x      body: square x
+           (a + 1)                           + square y
+           (a * 2)
 @end example
 @end ifinfo
 @ifhtml
@@ -371,33 +400,33 @@ env       | f: --+                                     |
 
 @noindent
 In @ref{Figure 3.5} we see the environment structure created by evaluating the
-expression @code{(f 5)}.  The call to @code{f} creates a new environment E1
+expression @code{f 5}.  The call to @code{f} creates a new environment E1
 beginning with a frame in which @code{a}, the formal parameter of @code{f}, is
 bound to the argument 5.  In E1, we evaluate the body of @code{f}:
 
-@lisp
-(sum-of-squares (+ a 1) (* a 2))
-@end lisp
+@example ocaml
+sum_of_squares (a + 1) (a * 2)
+@end example
 
 @float
 @anchor{Figure 3.5}
 @ifinfo
 @strong{Figure 3.5:} Environments created by evaluating
-@code{(f 5)} using the procedures in @ref{Figure 3.4}.
+@code{f 5} using the procedures in @ref{Figure 3.4}.
 
 @example
           +-----------------------------------------------------+
 global -->|                                                     |
 env       +-----------------------------------------------------+
             ^              ^                ^               ^
-(f 5)       |              |                |               |
+f 5         |              |                |               |
         +------+       +-------+        +------+        +-------+
   E1 -->| a: 5 |  E2 ->| x: 6  |  E3 -->| x: 6 |  E4 -->| x: 10 |
         |      |       | y: 10 |        |      |        |       |
         +------+       +-------+        +------+        +-------+
-   (sum-of-squares   (+ (square x)       (* x x)         (* x x)
-     (+ a 1)            (square u))
-     (+ a 2))
+   sum_of_squares   square x         x * x           x * x
+     (a + 1)        + square y
+     (a * 2)
 @end example
 @end ifinfo
 @ifhtml
@@ -407,82 +436,100 @@ env       +-----------------------------------------------------+
 @image{../../text/original/figures/pdf/chap3/Fig3.5b.std,,142mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.5:} Environments created by evaluating @code{(f 5)} @w{using} the procedures in @ref{Figure 3.4}.}
+@caption{@strong{Figure 3.5:} Environments created by evaluating @code{f 5} @w{using} the procedures in @ref{Figure 3.4}.}
 @end float
 
 @noindent
 To evaluate this combination, we first evaluate the subexpressions.  The first
-subexpression, @code{sum-of-squares}, has a value that is a procedure object.
+subexpression, @code{sum_of_squares}, has a value that is a closure.
 (Notice how this value is found: We first look in the first frame of E1, which
-contains no binding for @code{sum-of-squares}.  Then we proceed to the
+contains no binding for @code{sum_of_squares}.  Then we proceed to the
 enclosing environment, i.e. the global environment, and find the binding shown
 in @ref{Figure 3.4}.)  The other two subexpressions are evaluated by applying
 the primitive operations @code{+} and @code{*} to evaluate the two combinations
-@code{(+ a 1)} and @code{(* a 2)} to obtain 6 and 10, respectively.
+@code{a + 1} and @code{a * 2} to obtain 6 and 10, respectively.
 
 @noindent
-Now we apply the procedure object @code{sum-of-squares} to the arguments 6 and
+Now we apply the closure @code{sum_of_squares} to the arguments 6 and
 10.  This results in a new environment E2 in which the formal parameters
 @code{x} and @code{y} are bound to the arguments.  Within E2 we evaluate the
-combination @code{(+ (square x) (square y))}.  This leads us to evaluate
-@code{(square x)}, where @code{square} is found in the global frame and
+combination @code{square x + square y}.  This leads us to evaluate
+@code{square x}, where @code{square} is found in the global frame and
 @code{x} is 6.  Once again, we set up a new environment, E3, in which @code{x}
 is bound to 6, and within this we evaluate the body of @code{square}, which is
-@code{(* x x)}.  Also as part of applying @code{sum-of-squares}, we must
-evaluate the subexpression @code{(square y)}, where @code{y} is 10.  This
+@code{x * x}.  Also as part of applying @code{sum_of_squares}, we must
+evaluate the subexpression @code{square y}, where @code{y} is 10.  This
 second call to @code{square} creates another environment, E4, in which
 @code{x}, the formal parameter of @code{square}, is bound to 10.  And within E4
-we must evaluate @code{(* x x)}.
+we must evaluate @code{x * x}.
 
 The important point to observe is that each call to @code{square} creates a new
 environment containing a binding for @code{x}.  We can see here how the
 different frames serve to keep separate the different local variables all named
 @code{x}.  Notice that each frame created by @code{square} points to the global
 environment, since this is the environment indicated by the @code{square}
-procedure object.
+closure.
 
 After the subexpressions are evaluated, the results are returned.  The values
-generated by the two calls to @code{square} are added by @code{sum-of-squares},
-and this result is returned by @code{f}.  Since our focus here is on the
-environment structures, we will not dwell on how these returned values are
-passed from call to call; however, this is also an important aspect of the
-evaluation process, and we will return to it in detail in @ref{Chapter 5}.
+generated by the two calls to @code{square} are added by
+@code{sum_of_squares}, and this result is returned by @code{f}.  Since our
+focus here is on the environment structures, we will not dwell on how these
+returned values are passed from call to call; however, this is also an
+important aspect of the evaluation process, and we will return to it in detail
+in @ref{Chapter 5}.
 
 @quotation
-@strong{@anchor{Exercise 3.9}Exercise 3.9:} In @ref{1.2.1} we used the
-substitution model to analyze two procedures for computing factorials, a
-recursive version
+@emph{SICP exercise 3.9 is about Scheme itself, so this edition replaces it;
+the exercise below keeps the number and teaches the same section material.}
+@strong{@anchor{Exercise 3.9}Exercise 3.9:} In @ref{1.2.1} we analyzed two
+procedures for computing factorials, a recursive version
 
-@lisp
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* n (factorial (- n 1)))))
-@end lisp
+@example ocaml
+let rec factorial n =
+  if n = 1
+  then 1
+  else n * factorial (n - 1)
+@end example
 
 @noindent
 and an iterative version
 
-@lisp
-(define (factorial n)
-  (fact-iter 1 1 n))
+@example ocaml
+let factorial_iter n =
+  let rec fact_iter product counter =
+    if counter > n
+    then product
+    else fact_iter (counter * product)
+                   (counter + 1)
+  in
+  fact_iter 1 1
+;;
+@end example
 
-(define (fact-iter product 
-                   counter 
-                   max-count)
-  (if (> counter max-count)
-      product
-      (fact-iter (* counter product)
-                 (+ counter 1)
-                 max-count)))
-@end lisp
-
-Show the environment structures created by evaluating @code{(factorial 6)}
-using each version of the @code{factorial} procedure.@footnote{The environment
-model will not clarify our claim in @ref{1.2.1} that the interpreter
-can execute a procedure such as @code{fact-iter} in a constant amount of space
-using tail recursion.  We will discuss tail recursion when we deal with the
-control structure of the interpreter in @ref{5.4}.}
+@noindent
+Draw the growth of the call stack that evaluating @code{factorial 6} produces
+under each version.  The first version must keep one frame alive for each
+pending multiplication, so the stack grows linearly with @code{n}.  The
+second version's own call is its last action, so its frame takes the
+caller's place and the stack stays constant.  Instrument both versions so
+that each call returns the value it computes together with the depth of the
+deepest call frame that was live at any point during that call: the
+recursive instrument hands each nested call a depth one greater than its
+own, because the pending multiplication keeps the caller's frame alive,
+while the iterative instrument hands its tail call its own depth, because
+the callee's frame takes the caller's place.  Check the instrumented runs
+against your drawing: @code{factorial_traced 6} should report a deepest
+depth of 6, and @code{factorial_iter_traced 6} a deepest depth of 1; then
+run the uninstrumented iterative version at @code{n = 1000000}, a size at
+which the recursive version's own frames would long since have exhausted
+the stack, to see the guarantee deliver constant space in practice.@footnote{The
+environment model will not clarify our claim in @ref{1.2.1} that a procedure
+such as @code{fact_iter} can execute in a constant amount of space using tail
+recursion.  OCaml's compiler does guarantee that a call in tail position
+reuses the caller's frame, so the guarantee is a fact of this language and not
+merely of Scheme implementations; what the environment model cannot yet
+explain is how a compiler delivers it.  We will discuss the control structure
+behind that delivery in @ref{5.4}.}
 @end quotation
 
 @node	3.2.3, 3.2.4, 3.2.2, 3.2
@@ -493,62 +540,62 @@ be used to represent objects with local state.  As an example, consider the
 ``withdrawal processor'' from @ref{3.1.1} created by calling the
 procedure
 
-@lisp
-(define (make-withdraw balance)
-  (lambda (amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds")))
-@end lisp
+@example ocaml
+let make_withdraw balance =
+  let balance = ref balance in
+  fun amount ->
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+;;
+@end example
 
 @noindent
 Let us describe the evaluation of
 
-@lisp
-(define W1 (make-withdraw 100))
-@end lisp
+@example ocaml
+let w1 = make_withdraw 100;;
+@end example
 
 @noindent
 followed by
 
-@lisp
-(W1 50)
-@i{50}
-@end lisp
+@example ocaml
+w1 50;;
+(* => Balance 50 *)
+@end example
 
 @noindent
-@ref{Figure 3.6} shows the result of defining the @code{make-withdraw}
-procedure in the global environment.  This produces a procedure object that
-contains a pointer to the global environment.  So far, this is no different
-from the examples we have already seen, except that the body of the procedure
-is itself a λ-expression.
+@ref{Figure 3.6} shows the result of defining the @code{make_withdraw}
+function in the global environment.  This produces a closure that contains a
+pointer to the global environment.  So far, this is no different from the
+examples we have already seen, except that the body of the function is itself
+a @code{fun} expression under a @code{let} binding.
 
 @float
 @anchor{Figure 3.6}
 @ifinfo
 @quotation
-@strong{Figure 3.6:} Result of defining @code{make-withdraw} in the global environment.
+@strong{Figure 3.6:} Result of defining @code{make_withdraw} in the global environment.
 
 @example
           +---------------------------+
-global -->| make-withdraw: --+        |
+global -->| make_withdraw: --+        |
 env       +------------------|--------+
                              |      ^
                              V      |
-                         .---.---.  |
-                         | O | O-+--+
-                         `-|-^---'
-                           |
-                           V
-         parameters: balance
-         body: (lambda (amount)
-                 (if (>= balance amount)
-                     (begin (set! balance
-                                  (- balance amount))
-                            balance)
-                     "Insufficient funds"))
+                    .--------------------.
+                    | closure            |
+                    |  code:             |
+                    |   fun balance ->   |
+                    |     let balance =  |
+                    |       ref balance  |
+                    |     in fun amount  |
+                    |       -> ...       |
+                    |  env: global       |
+                    '--------------------'
 @end example
 @end quotation
 @end ifinfo
@@ -559,56 +606,58 @@ env       +------------------|--------+
 @image{../../text/original/figures/pdf/chap3/Fig3.6c.std,,128mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.6:} Result of defining @code{make-withdraw} in the global environment.}
+@caption{@strong{Figure 3.6:} Result of defining @code{make_withdraw} in the global environment.}
 @end float
 
 @noindent
-The interesting part of the computation happens when we apply the procedure
-@code{make-withdraw} to an argument:
-
-@lisp
-(define W1 (make-withdraw 100))
-@end lisp
-
-@noindent
-We begin, as usual, by setting up an environment E1 in which the formal
-parameter @code{balance} is bound to the argument 100.  Within this
-environment, we evaluate the body of @code{make-withdraw}, namely the
-λ-expression.  This constructs a new procedure object, whose code
-is as specified by the @code{lambda} and whose environment is E1, the
-environment in which the @code{lambda} was evaluated to produce the procedure.
-The resulting procedure object is the value returned by the call to
-@code{make-withdraw}.  This is bound to @code{W1} in the global environment,
-since the @code{define} itself is being evaluated in the global environment.
-@ref{Figure 3.7} shows the resulting environment structure.
+The interesting part of the computation happens when we apply the function
+@code{make_withdraw} to an argument.  We begin, as usual, by setting up an
+environment E1 in which the formal parameter @code{balance} is bound to the
+argument 100.  Within this environment, we evaluate the body of
+@code{make_withdraw}, namely the @code{let} binding and the @code{fun}
+expression under it.  The @code{let} binding allocates a fresh @code{ref}
+cell, initializes it with 100, and adds a binding of @code{balance} to the
+frame of E1, shadowing the parameter of the same name.  The @code{fun}
+expression then constructs a new closure whose code is as specified by the
+@code{fun} and whose environment is E1, so the fresh cell is inside the
+environment the closure carries.  This closure is the value returned by the
+call to @code{make_withdraw}.  It is bound to @code{w1} in the global
+environment, since the @code{let} definition itself is being evaluated in the
+global environment.  @ref{Figure 3.7} shows the resulting structure.
 
 @float
 @anchor{Figure 3.7}
 @ifinfo
-@strong{Figure 3.7:} Result of evaluating @code{(define W1 (make-withdraw 100))}.
+@quotation
+@strong{Figure 3.7:} Result of evaluating @code{let w1 = make_withdraw 100}.
 
 @example
-          +-----------------------------------------------+
-          | make-withdraw: -----------------------+       |
-global -->|                                       |       |
-          | W1: --+                               |       |
-          +-------|-------------------------------|-------+
-                  |                ^              |     ^
-                  |                |              V     |
-                  |        +-------+------+   .---.---. |
-                  |  E1 -->| balance: 100 |   | O | O-+-+
-                  |        +--------------+   `-|-^---'
-                  V                ^            |
-              .---.---.            |            V
-            +-+-O | O-+------------+    parameters: balance
-            | `---^---'                 body: ...
-            V
-    parameters: amount
-    body: (if (>= balance amount)
-              (begin (set! balance (- balance amount))
-                     balance)
-              "Insufficient funds")
+          +------------------------------------------+
+global -->| make_withdraw: ---+   w1: --+            |
+env       +-------------------|---------|------------+
+              ^               |         |     ^
+              |               V         |     |
+              |       .---------------. |     |
+              |       | closure       | |     |
+              |       |  code:        | |     |
+              |       |   fun amount  | |     |
+              |       |     -> ...    | |     |
+              |       |  env:  o      | |     |
+              |       '-------|-|-----' |     |
+              |               | |       |     |
+              |               | V       |     |
+              |               | +--------------------+
+              |               | | E1                 |
+              |               | |  balance: o        |
+              |               | +--------|-----------+
+              |               |          |
+              |               |          V
+              |               |   +----------------+
+              |               |   | ref cell       |
+              |               |   |  contents: 100 |
+              |               |   +----------------+
 @end example
+@end quotation
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.7b,,145mm,Figure 3.7: Result of evaluating (define W1 (make-withdraw 100)).,.std.svg}
@@ -617,66 +666,65 @@ global -->|                                       |       |
 @image{../../text/original/figures/pdf/chap3/Fig3.7b.std,,145mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.7:} Result of evaluating @code{(define W1 (make-withdraw 100))}.}
+@caption{@strong{Figure 3.7:} Result of evaluating @code{let w1 = make_withdraw 100}.}
 @end float
 
-Now we can analyze what happens when @code{W1} is applied to an argument:
+@noindent
+Now we can analyze what happens when the closure is applied to an argument:
 
-@lisp
-(W1 50)
-@i{50}
-@end lisp
+@example ocaml
+w1 50;;
+(* => Balance 50 *)
+@end example
 
 @noindent
-We begin by constructing a frame in which @code{amount}, the formal parameter
-of @code{W1}, is bound to the argument 50.  The crucial point to observe is
-that this frame has as its enclosing environment not the global environment,
-but rather the environment E1, because this is the environment that is
-specified by the @code{W1} procedure object.  Within this new environment, we
-evaluate the body of the procedure:
-
-@lisp
-(if (>= balance amount)
-    (begin (set! balance (- balance amount))
-           balance)
-    "Insufficient funds")
-@end lisp
-
-@noindent
-The resulting environment structure is shown in @ref{Figure 3.8}.  The
-expression being evaluated references both @code{amount} and @code{balance}.
-@code{Amount} will be found in the first frame in the environment, while
-@code{balance} will be found by following the enclosing-environment pointer to
-E1.
+We begin by constructing a frame in which the formal parameter of the
+closure, @code{amount}, is bound to the argument 50.  The crucial point to
+observe is that this frame is not the global environment but rather the
+environment E1, because this is the environment that is specified by the
+@code{w1} closure.  Within this new environment, we evaluate the body of the
+closure.  The expression being evaluated references both @code{amount} and
+@code{balance}; @code{amount} will be found in the first frame in the
+environment, while @code{balance} will be found by following the enclosing
+environment pointer to E1, where the name is bound to the ref cell.  When the
+assignment @code{balance := !balance - amount} is executed, the binding of
+@code{balance} in E1 stays exactly where it is; what changes is the contents
+of the ref cell that the binding designates.  The resulting structure is
+shown in @ref{Figure 3.8}.
 
 @float
 @anchor{Figure 3.8}
 @ifinfo
-@strong{Figure 3.8:} Environments created by applying the procedure object @code{W1}.
+@quotation
+@strong{Figure 3.8:} Environments created by applying the closure bound to @code{w1}.
 
 @example
-          +---------------------------------------------------+
-          | make-withdraw: ...                                |
-global -->|                                                   |
-env       | W1: --+                                           |
-          +-------|-------------------------------------------+
-                  |               ^
-                  |               |
-                  |       +-------+------+ Here is the balance
-                  | E1 -->| balance: 100 | that will be changed
-                  |       +--------------+ by the set!.
-                  V               ^   ^
-              .---.---.           |   +----+
-              | O | O-+-----------+        |
-              `-|-^---'             +------+-----+
-                |                   | amount: 50 |
-                V                   +------------+
-      parameters: amount   (if (>= balance amount)
-      body: ...                (begin (set! balance
-                                            (- balance amount))
-                                      balance)
-                               "Insufficient funds")
+          +------------------------------------------+
+global -->| make_withdraw: ---+   w1: --+            |
+env       +-------------------|---------|------------+
+              ^               |         |     ^
+              |               V         |     |
+              |       .---------------. |     |
+              |       | closure       | |     |
+              |       |  code:        | |     |
+              |       |   fun amount  | |     |
+              |       |     -> ...    | |     |
+              |       |  env:  o      | |     |
+              |       '-------|-|-----' |     |
+              |               | |       |     |
+   amount: 50 |               | V       |     |
+   +--------+ |               | +--------------------+
+   | E2       | |               | | E1                 |
+   +--------+-+ |               | |  balance: o        |
+                |               | +--------|-----------+
+                |               |          |
+                |               |          V
+                |               |   +----------------+
+                |               |   | ref cell       |
+                |               |   |  contents: 50  |
+                |               |   +----------------+
 @end example
+@end quotation
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.8c,,145mm,Figure 3.8: Environments created by applying the procedure object W1.,.std.svg}
@@ -685,45 +733,55 @@ env       | W1: --+                                           |
 @image{../../text/original/figures/pdf/chap3/Fig3.8c.std,,145mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.8:} Environments created by applying the procedure object @code{W1}.}
+@caption{@strong{Figure 3.8:} Environments created by applying the closure bound to @code{w1}.}
 @end float
 
-When the @code{set!} is executed, the binding of @code{balance} in E1 is
-changed.  At the completion of the call to @code{W1}, @code{balance} is 50, and
-the frame that contains @code{balance} is still pointed to by the procedure
-object @code{W1}.  The frame that binds @code{amount} (in which we executed the
-code that changed @code{balance}) is no longer relevant, since the procedure
-call that constructed it has terminated, and there are no pointers to that
-frame from other parts of the environment.  The next time @code{W1} is called,
-this will build a new frame that binds @code{amount} and whose enclosing
-environment is E1.  We see that E1 serves as the ``place'' that holds the local
-state variable for the procedure object @code{W1}.  @ref{Figure 3.9} shows the
-situation after the call to @code{W1}.
+@noindent
+When the @code{:=} is executed, the contents of the ref cell in E1 is
+changed.  The frame that contains the binding of @code{amount} is no longer
+relevant once the call has terminated, since the call that constructed it has
+terminated, and there are no pointers to that frame from other parts of the
+environment.  The next time @code{w1} is called, this will build a new frame
+that binds @code{amount} and whose enclosing environment is E1.  We see that
+the ref cell bound in E1 serves as the ``place'' that holds the local state
+variable for the closure bound to @code{w1}.  @ref{Figure 3.9} shows the
+situation after the call to @code{w1}.@footnote{Whether the compiled program
+really keeps the frame E1 alive, or keeps only the ref cell and drops the
+rest, is an implementation question the language does not answer.  The
+guarantee is the one the model predicts: every call of @code{w1} reads and
+writes this same cell, and no other call can reach it.  Nothing in a program
+can observe the frame itself.}
 
 @float
 @anchor{Figure 3.9}
 @ifinfo
-@strong{Figure 3.9:} Environments after the call to @code{W1}.
+@strong{Figure 3.9:} Environments after the call to @code{w1}.
 
 @example
-           +------------------------------------+
-           | make-withdraw: ...                 |
-global --->|                                    |
-env        | W1: --+                            |
-           +-------|----------------------------+
-                   |                   ^
-                   |                   |
-                   |            +------+------+
-                   |     E1 --->| balance: 50 |
-                   |            +-------------+
-                   V                   ^
-               .---.---.               |
-               | O | O-+---------------+
-               `-|-^---'
-                 |
-                 V
-          parameters: amount
-          body: ...
+          +------------------------------------------+
+global -->| make_withdraw: ---+   w1: --+            |
+env       +-------------------|---------|------------+
+              ^               |         |     ^
+              |               V         |     |
+              |       .---------------. |     |
+              |       | closure       | |     |
+              |       |  code:        | |     |
+              |       |   fun amount  | |     |
+              |       |     -> ...    | |     |
+              |       |  env:  o      | |     |
+              |       '-------|-|-----' |     |
+              |               | |       |     |
+              |               | V       |     |
+              |               | +--------------------+
+              |               | | E1                 |
+              |               | |  balance: o        |
+              |               | +--------|-----------+
+              |               |          |
+              |               |          V
+              |               |   +----------------+
+              |               |   | ref cell       |
+              |               |   |  contents: 50  |
+              |               |   +----------------+
 @end example
 @end ifinfo
 @ifhtml
@@ -733,56 +791,129 @@ env        | W1: --+                            |
 @image{../../text/original/figures/pdf/chap3/Fig3.9b.std,,147mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.9:} Environments after the call to @code{W1}.}
+@caption{@strong{Figure 3.9:} Environments after the call to @code{w1}.}
 @end float
 
-Observe what happens when we create a second ``withdraw'' object by making
-another call to @code{make-withdraw}:
+@noindent
+Nothing in this arrangement belongs to withdrawal closures in particular.  A
+ref cell can be shared by any bundle of closures that are created in the
+scope where the cell is bound.  Here, for example, one cell backs two
+closures, a @code{bump} that increments the count and a @code{peek} that
+reads it:
 
-@lisp
-(define W2 (make-withdraw 100))
-@end lisp
+@example ocaml
+let make_shared_counter () =
+  let count = ref 0 in
+  let bump () =
+    count := !count + 1;
+    !count
+  in
+  let peek () = !count in
+  (bump, peek)
+;;
+
+let bump, peek = make_shared_counter ();;
+
+bump ();;
+(* => 1 *)
+
+bump ();;
+(* => 2 *)
+
+peek ();;
+(* => 2 *)
+@end example
 
 @noindent
-This produces the environment structure of @ref{Figure 3.10}, which shows that
-@code{W2} is a procedure object, that is, a pair with some code and an
-environment.  The environment E2 for @code{W2} was created by the call to
-@code{make-withdraw}.  It contains a frame with its own local binding for
-@code{balance}.  On the other hand, @code{W1} and @code{W2} have the same code:
-the code specified by the λ-expression in the body of
-@code{make-withdraw}.@footnote{Whether @code{W1} and @code{W2} share the same
-physical code stored in the computer, or whether they each keep a copy of the
-code, is a detail of the implementation.  For the interpreter we implement in
-@ref{Chapter 4}, the code is in fact shared.} We see here why @code{W1} and
-@code{W2} behave as independent objects.  Calls to @code{W1} reference the
-state variable @code{balance} stored in E1, whereas calls to @code{W2}
-reference the @code{balance} stored in E2. Thus, changes to the local state of
-one object do not affect the other object.
+Both closures carry E1, the scope of the single @code{let} binding, so both
+reach the same cell, and every @code{bump} is visible to the next
+@code{peek}.  By contrast, two separate calls to a one-closure counter each
+allocate a cell of their own:
+
+@example ocaml
+let make_counter () =
+  let count = ref 0 in
+  fun () ->
+    count := !count + 1;
+    !count
+;;
+
+let c1 = make_counter ();;
+let c2 = make_counter ();;
+
+c1 ();;
+(* => 1 *)
+
+c1 ();;
+(* => 2 *)
+
+c2 ();;
+(* => 1 *)
+@end example
+
+@noindent
+The two calls of @code{c1} observe each other; the call of @code{c2} does not
+observe either of them.  The cell a closure captures, and not the closure's
+code, decides which objects share state.
+
+Observe what happens when we create a second ``withdrawal'' object by making
+another call to @code{make_withdraw}:
+
+@example ocaml
+let w2 = make_withdraw 100;;
+@end example
+
+@noindent
+This produces the structure of @ref{Figure 3.10}, which shows that
+@code{w2} is a closure, that is, a pair with some code and an environment.
+The environment E1' of @code{w2} was created by the call to
+@code{make_withdraw}.  It contains its own local binding for
+@code{balance}, a fresh ref cell with its own contents 100.  On the other
+hand, @code{w1} and @code{w2} have the same code: the code specified by the
+@code{fun} expression in the body of @code{make_withdraw}.@footnote{In
+OCaml this sharing of code is literal: the compiler translates the body of
+@code{make_withdraw} once, and every closure it returns points at that one
+translated body, differing only in the environment they carry.  The
+interpreter we build in @ref{Chapter 4} shares the code the same way.}  We
+see here why @code{w1} and @code{w2} behave as independent objects.  Calls
+to @code{w1} reference the ref cell that is bound in E1, whereas calls to
+@code{w2} reference the ref cell bound in E1'.  Changes to each thus do not
+affect the other.
 
 @float
 @anchor{Figure 3.10}
 @ifinfo
-@strong{Figure 3.10:} Using @code{(define W2 (make-withdraw 100))} to create a second object.
+@strong{Figure 3.10:} Using @code{let w2 = make_withdraw 100} to
+create a second object.
 
 @example
-         +-------------------------------------------------+
-         | make-withdraw: ...                              |
-global ->| W2: ---------------------------+                |
-env      | W1: --+                        |                |
-         +-------|------------------------|----------------+
-                 |              ^         |              ^
-                 |              |         |              |
-                 |       +------+------+  |       +------+-------+
-                 |  E1 ->| balance: 50 |  |  E2 ->| balance: 100 |
-                 |       +-------------+  |       +--------------+
-                 V              ^         V              ^
-             .---.---.          |     .---.---.          |
-             | O | O-+----------+     | O | O-+----------+
-             `-|-^---'                `-|-^---'
-               | +----------------------+
-               V V
-        parameters: amount
-        body: ...
+          +--------------------------------------------+
+global -->| make_withdraw: ---+  w1: --+  w2: --+     |
+env       +-------------------|--------|--------|-----+
+              ^               |        |        |   ^
+              |               V        |        |   |
+              |    .---------------.   |        |   |
+              |    | closure       |   |        |   |
+              |    |  code: o-----------+--------+---+
+              |    |  env: global  |   |        |
+              |    '---------------'   |        |
+              |           ^            |        |
+              |           |            V        V
+              |           |    .---------------.  .---------------.
+              |           |    | closure       |  | closure       |
+              |           |    |  code: o      |  |  code: o      |
+              |           |    |  env: o       |  |  env: o       |
+              |           |    '-------|------'  '-------|------'
+              |           |            |                 |
+              |           |            V                 V
+              |           |    +---------------+  +---------------+
+              |           |    | E1: balance o |  | E1': balance o|
+              |           |    '-------|-----'  '-------|-----'
+              |           |            |                 |
+              |           |            V                 V
+              |           |    +---------------+  +---------------+
+              |           |    | ref cell 100  |  | ref cell 100  |
+              |           |    +---------------+  +---------------+
 @end example
 @end ifinfo
 @ifhtml
@@ -792,52 +923,54 @@ env      | W1: --+                        |                |
 @image{../../text/original/figures/pdf/chap3/Fig3.10b.std,,147mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.10:} Using @code{(define W2 (make-withdraw 100))} to create a second object.}
+@caption{@strong{Figure 3.10:} Using @code{let w2 = make_withdraw 100} to create a second object.}
 @end float
 
 @quotation
-@strong{@anchor{Exercise 3.10}Exercise 3.10:} In the @code{make-withdraw}
-procedure, the local variable @code{balance} is created as a parameter of
-@code{make-withdraw}.  We could also create the local state variable
-explicitly, using @code{let}, as follows:
+@emph{SICP exercise 3.10 is about Scheme itself, so this edition replaces it;
+the exercise below keeps the number and teaches the same section material.}
+@strong{@anchor{Exercise 3.10}Exercise 3.10:} In the @code{make_withdraw}
+procedure, the local state is created by the @code{let} binding
 
-@lisp
-(define (make-withdraw initial-amount)
-  (let ((balance initial-amount))
-    (lambda (amount)
-      (if (>= balance amount)
-          (begin (set! balance 
-                       (- balance amount))
-                 balance)
-          "Insufficient funds"))))
-@end lisp
-
-Recall from @ref{1.3.2} that @code{let} is simply syntactic sugar for a
-procedure call:
-
-@lisp
-(let ((⟨@var{var}⟩ ⟨@var{exp}⟩)) ⟨@var{body}⟩)
-@end lisp
+@example ocaml
+let make_withdraw balance =
+  let balance = ref balance in
+  fun amount ->
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+;;
+@end example
 
 @noindent
-is interpreted as an alternate syntax for
+The book's Scheme original contrasts two writings of @code{make-withdraw},
+one whose parameter stays a plain binding and one wrapped in an explicit
+@code{let}; in OCaml a mutable local has to be built somewhere, and the
+@code{let} above is that place: it is where the cell is allocated, while the
+@code{fun} under it is where the cell gets captured.  Trace the lifetime of
+the cell by instrumenting @code{make_withdraw} to return, next to the
+withdrawal closure, the cell it built:
 
-@lisp
-((lambda (⟨@var{var}⟩) ⟨@var{body}⟩) ⟨@var{exp}⟩)
-@end lisp
+@example ocaml
+type withdraw_with_cell =
+  { withdraw : int -> withdraw_result
+  ; balance_cell : int ref
+  }
+@end example
 
-Use the environment model to analyze this alternate version of
-@code{make-withdraw}, drawing figures like the ones above to illustrate the
-interactions
-
-@lisp
-(define W1 (make-withdraw 100))
-(W1 50)
-(define W2 (make-withdraw 100))
-@end lisp
-
-Show that the two versions of @code{make-withdraw} create objects with the same
-behavior.  How do the environment structures differ for the two versions?
+@noindent
+Use physical equality (@code{==}, which is true when its two operands are the
+very same cell) to show that the cell captured by @code{w1} is the very cell
+that @code{make_withdraw_traced} returned: change the cell's contents
+directly between two calls and watch the next withdrawal see the change.
+Then create a second object with @code{let w2 = make_withdraw_traced 100}
+and show that the two accounts hold two different cells, although the two
+cells start with the same contents.  Finally, draw the cell's lifetime as a
+timeline: at which expression is it allocated, which closures capture it,
+what happens to the call's own frame E1 when @code{make_withdraw_traced}
+returns, and why does the cell outlive that frame?
 @end quotation
 
 @node	3.2.4, 3.3, 3.1, 3.2
@@ -847,23 +980,25 @@ Section @ref{1.1.8} introduced the idea that procedures can have internal
 definitions, thus leading to a block structure as in the following procedure to
 compute square roots:
 
-@lisp
-(define (sqrt x)
-  (define (good-enough? guess)
-    (< (abs (- (square guess) x)) 0.001))
-  (define (improve guess)
-    (average guess (/ x guess)))
-  (define (sqrt-iter guess)
-    (if (good-enough? guess)
-        guess
-        (sqrt-iter (improve guess))))
-  (sqrt-iter 1.0))
-@end lisp
+@example ocaml
+let sqrt x =
+  let good_enough guess =
+    Float.abs (guess *. guess -. x) < 0.001
+  in
+  let improve guess = (guess +. x /. guess) /. 2.0 in
+  let rec sqrt_iter guess =
+    if good_enough guess
+    then guess
+    else sqrt_iter (improve guess)
+  in
+  sqrt_iter 1.0
+;;
+@end example
 
 @noindent
 Now we can use the environment model to see why these internal definitions
 behave as desired.  @ref{Figure 3.11} shows the point in the evaluation of the
-expression @code{(sqrt 2)} where the internal procedure @code{good-enough?} has
+expression @code{sqrt 2.0} where the internal function @code{good_enough} has
 been called for the first time with @code{guess} equal to 1.
 
 @float
@@ -879,22 +1014,22 @@ env       |         |                                        |
                     V       ^                   ^
                 .---.---.   |                   |
      +----------+-O | O-+---+        +----------+------------+
-     |          `---^---'            | x: 2                  |
-     V                         E1 -->| good-enough?: -+      |
-parameters: x                        | improve: ...   |      |
-body: (define good-enough? ...)      | sqrt-iter: ... |      |
-      (define improve ...)           +----------------|------+
-      (define sqrt-iter ...)          ^  ^            |     ^
-      (sqrt-iter 1.0)                 |  |            V     |
+     |          `---^---'            | x: 2.0                |
+     V                         E1 -->| good_enough: -+      |
+parameters: x                       | improve: ...  |      |
+body: let good_enough guess = ...   | sqrt_iter: ...|      |
+      let improve guess = ...       +----------------|------+
+      let rec sqrt_iter guess = ...  ^  ^            |     ^
+      sqrt_iter 1.0                  |  |            V     |
                             +---------++ |        .---.---. |
                       E2 -->| guess: 1 | |        | O | O-+-+
                             +----------+ |        `-|-^---'
-                      call to sqrt-iter  |          |
+                      call to sqrt_iter  |          |
                                          |          V
                                +---------++    parameters: guess
-                         E3 -->| guess: 1 |    body: (< (abs ...)
+                         E3 -->| guess: 1 |    body: Float.abs (...
                                +----------+             ...)
-                         call to good-enough?
+                         call to good_enough
 @end example
 @end ifinfo
 @ifhtml
@@ -907,43 +1042,49 @@ body: (define good-enough? ...)      | sqrt-iter: ... |      |
 @caption{@strong{Figure 3.11:} @code{Sqrt} procedure with internal definitions.}
 @end float
 
-Observe the structure of the environment.  @code{Sqrt} is a symbol in the
-global environment that is bound to a procedure object whose associated
-environment is the global environment.  When @code{sqrt} was called, a new
-environment E1 was formed, subordinate to the global environment, in which the
-parameter @code{x} is bound to 2.  The body of @code{sqrt} was then evaluated
-in E1.  Since the first expression in the body of @code{sqrt} is
+Observe the structure of the environment.  @code{Sqrt} is a name in the
+global environment that is bound to a closure whose associated environment is
+the global environment.  When @code{sqrt} was called, a new environment E1
+was formed, subordinate to the global environment, in which the parameter
+@code{x} is bound to 2.0.  The body of @code{sqrt} was then evaluated in E1.
+Since the first expression in the body of @code{sqrt} is
 
-@lisp
-(define (good-enough? guess)
-  (< (abs (- (square guess) x)) 0.001))
-@end lisp
-
-@noindent
-evaluating this expression defined the procedure @code{good-enough?}  in the
-environment E1.  To be more precise, the symbol @code{good-enough?} was added
-to the first frame of E1, bound to a procedure object whose associated
-environment is E1.  Similarly, @code{improve} and @code{sqrt-iter} were defined
-as procedures in E1.  For conciseness, @ref{Figure 3.11} shows only the
-procedure object for @code{good-enough?}.
+@example ocaml
+let good_enough guess =
+  Float.abs (guess *. guess -. x) < 0.001
+@end example
 
 @noindent
-After the local procedures were defined, the expression @code{(sqrt-iter 1.0)}
-was evaluated, still in environment E1.  So the procedure object bound to
-@code{sqrt-iter} in E1 was called with 1 as an argument.  This created an
-environment E2 in which @code{guess}, the parameter of @code{sqrt-iter}, is
-bound to 1.  @code{Sqrt-iter} in turn called @code{good-enough?} with the value
-of @code{guess} (from E2) as the argument for @code{good-enough?}.  This set up
-another environment, E3, in which @code{guess} (the parameter of
-@code{good-enough?}) is bound to 1.  Although @code{sqrt-iter} and
-@code{good-enough?} both have a parameter named @code{guess}, these are two
-distinct local variables located in different frames.  Also, E2 and E3 both
-have E1 as their enclosing environment, because the @code{sqrt-iter} and
-@code{good-enough?} procedures both have E1 as their environment part.  One
-consequence of this is that the symbol @code{x} that appears in the body of
-@code{good-enough?} will reference the binding of @code{x} that appears in E1,
-namely the value of @code{x} with which the original @code{sqrt} procedure was
-called.
+evaluating this expression bound the name @code{good_enough} in the first
+frame of E1, to a closure whose associated environment is E1.  Similarly,
+@code{improve} and @code{sqrt_iter} were bound as closures in E1.  For
+conciseness, @ref{Figure 3.11} shows only the closure for
+@code{good_enough}.@footnote{Scheme's internal definitions may appear in any
+order and may refer to one another; OCaml's @code{let @dots{} in} bindings
+are evaluated in order and see only the bindings written before them.  The
+body of @code{sqrt} above is already in an order OCaml accepts, and
+@code{sqrt_iter} refers to @code{good_enough} and @code{improve} through E1
+exactly as the figure shows.  Internal functions that must call one another
+mutually are written as one @code{let rec @dots{} and @dots{}} group, which
+OCaml compiles to mutually recursive closures sharing the same frame.}
+
+@noindent
+After the internal functions were defined, the expression
+@code{sqrt_iter 1.0} was evaluated, still in environment E1.  So the closure
+bound to @code{sqrt_iter} in E1 was called with 1.0 as an argument.  This
+created an environment E2 in which @code{guess}, the parameter of
+@code{sqrt_iter}, is bound to 1.  @code{Sqrt_iter} in turn called
+@code{good_enough} with the value of @code{guess} (from E2) as the argument
+for @code{good_enough}.  This set up another environment, E3, in which
+@code{guess} (the parameter of @code{good_enough}) is bound to 1.  Although
+@code{sqrt_iter} and @code{good_enough} both have a parameter named
+@code{guess}, these are two distinct local variables located in different
+frames.  Also, E2 and E3 both have E1 as their enclosing environment, because
+the closures bound to @code{sqrt_iter} and @code{good_enough} both have E1 as
+their environment part.  One consequence of this is that the name @code{x}
+that appears in the body of @code{good_enough} will reference the binding of
+@code{x} that appears in E1, namely the value of @code{x} with which the
+original @code{sqrt} procedure was called.
 
 The environment model thus explains the two key properties that make local
 procedure definitions a useful technique for modularizing programs:
@@ -952,66 +1093,100 @@ procedure definitions a useful technique for modularizing programs:
 
 @item
 The names of the local procedures do not interfere with names external to the
-enclosing procedure, because the local procedure names will be bound in the
-frame that the procedure creates when it is run, rather than being bound in the
-global environment.
+enclosing procedure, because the local names are bound in the frame that the
+enclosing procedure creates when it is run, rather than being bound in the
+global environment.  OCaml enforces the same discipline statically: a local
+@code{let} binding shadows any outer name of the same spelling for the rest
+of its scope, without touching the outer binding.
 
 @item
 The local procedures can access the arguments of the enclosing procedure,
-simply by using parameter names as free variables.  This is because the body of
-the local procedure is evaluated in an environment that is subordinate to the
-evaluation environment for the enclosing procedure.
+simply by using parameter names as free variables.  This is because the body
+of the local function is evaluated in an environment that is subordinate to
+the evaluation environment for the enclosing procedure; in OCaml's terms, the
+internal closures capture the frame of the enclosing call, and the compiler
+keeps that frame's contents alive exactly as long as some closure can still
+reach them.
 
 @end itemize
 
 @quotation
-@strong{@anchor{Exercise 3.11}Exercise 3.11:} In @ref{3.2.3} we saw how
-the environment model described the behavior of procedures with local state.
-Now we have seen how internal definitions work.  A typical message-passing
-procedure contains both of these aspects.  Consider the bank account procedure
-of @ref{3.1.1}:
+@emph{SICP exercise 3.11 is about Scheme itself, so this edition replaces it;
+the exercise below keeps the number and teaches the same section material.}
+@strong{@anchor{Exercise 3.11}Exercise 3.11:} In @ref{3.2.3} we saw how the
+environment model described the behavior of procedures with local state.  Now
+we have seen how internal definitions work.  The bank account of
+@ref{3.1.1} contains both of these aspects, packaged as a record of the
+closures that operate on one captured cell:
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance 
-                        amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (define (dispatch m)
-    (cond ((eq? m 'withdraw) withdraw)
-          ((eq? m 'deposit) deposit)
-          (else (error "Unknown request: 
-                        MAKE-ACCOUNT" 
-                       m))))
-  dispatch)
-@end lisp
+@example ocaml
+let make_account balance =
+  let balance = ref balance in
+  let withdraw amount =
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+  in
+  let deposit amount =
+    balance := !balance + amount;
+    !balance
+  in
+  { withdraw; deposit }
+;;
+@end example
 
-Show the environment structure generated by the sequence of interactions
+@noindent
+Draw the structure generated by the sequence of interactions
 
-@lisp
-(define acc (make-account 50))
+@example ocaml
+let acc = make_account 50;;
 
-((acc 'deposit) 40)
-@i{90}
+acc.deposit 40;;
+(* => 90 *)
 
-((acc 'withdraw) 60)
-@i{30}
-@end lisp
+acc.withdraw 60;;
+(* => Balance 30 *)
+@end example
 
-Where is the local state for @code{acc} kept?  Suppose we define another
-account
+@noindent
+showing which closures capture which cell, and where the local state for
+@code{acc} is kept.  Suppose we define another account
 
-@lisp
-(define acc2 (make-account 100))
-@end lisp
+@example ocaml
+let acc2 = make_account 100;;
+@end example
 
+@noindent
 How are the local states for the two accounts kept distinct?  Which parts of
-the environment structure are shared between @code{acc} and @code{acc2}?
+the structure are shared between @code{acc} and @code{acc2}?
 @end quotation
 
+@quotation
+@emph{Exercise 3.11a is added by this edition and extends exercise 3.11; SICP
+numbers stop at 3.11.} @strong{@anchor{Exercise 3.11a}Exercise 3.11a:} The
+accounts of exercise 3.11 raise the sameness question of @ref{3.1.3} in a
+form OCaml answers with two different operators.  Structural equality
+(@code{=}) compares the pieces of a value; physical equality (@code{==})
+compares whether two names designate the very same object.  Let @code{acc}
+and @code{twin} be accounts built by two separate calls to
+@code{make_account 100}, and let @code{alias} be a second name for
+@code{acc}, bound by @code{let alias = acc}.  Determine the value of
+
+@example ocaml
+acc == twin;;
+acc == alias;;
+acc = twin;;
+@end example
+
+@noindent
+and of the behavioral test of sameness: withdraw 20 through @code{acc} and
+through @code{twin}, and compare the two answers with @code{=}.  Say, for
+each result, which relationship from your drawing in exercise 3.11 it
+reflects.@footnote{OCaml's structural comparison cannot compare functional
+values at all: @code{acc = twin} raises @code{Invalid_argument} at run time,
+because two closures can be told apart only by where they were created, and
+no structural traversal reaches that.  For values that carry closures, such
+as account records, @code{==} is the only comparison the language provides.}
+@end quotation

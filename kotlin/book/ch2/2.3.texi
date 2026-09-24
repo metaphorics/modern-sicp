@@ -17,206 +17,234 @@ language by introducing the ability to work with arbitrary symbols as data.
 
 If we can form compound data using symbols, we can have lists such as
 
-@lisp
-(a b c d)
-(23 45 17)
-((Norah 12) 
- (Molly 9) 
- (Anna 7) 
- (Lauren 6) 
- (Charlotte 4))
-@end lisp
+@example kotlin
+vlist(VSym("a"), VSym("b"), VSym("c"), VSym("d"))
+vlist(VInt(23), VInt(45), VInt(17))
+vlist(
+    vlist(VSym("Norah"), VInt(12)),
+    vlist(VSym("Molly"), VInt(9)),
+    vlist(VSym("Anna"), VInt(7)),
+    vlist(VSym("Lauren"), VInt(6)),
+    vlist(VSym("Charlotte"), VInt(4)),
+)
+@end example
 
 @noindent
 Lists containing symbols can look just like the expressions of our
 language:
 
-@lisp
-(* (+ 23 45) (+ x 9))
-(define (fact n) 
-  (if (= n 1) 
-      1 
-      (* n (fact (- n 1)))))
-@end lisp
+@example kotlin
+vlist(VSym("*"), vlist(VSym("+"), VInt(23), VInt(45)), vlist(VSym("+"), VSym("x"), VInt(9)))
+@end example
 
 @noindent
 In order to manipulate symbols we need a new element in our language: the
-ability to @newterm{quote} a data object.  Suppose we want to construct the
-list @code{(a b)}.  We can't accomplish this with @code{(list a b)}, because
-this expression constructs a list of the @newterm{values} of @code{a} and
-@code{b} rather than the symbols themselves.  This issue is well known in the
-context of natural languages, where words and sentences may be regarded either
-as semantic entities or as character strings (syntactic entities).  The common
-practice in natural languages is to use quotation marks to indicate that a word
-or a sentence is to be treated literally as a string of characters.  For
-instance, the first letter of ``John'' is clearly ``J.''  If we tell somebody
-``say your name aloud,'' we expect to hear that person's name.  However, if we
-tell somebody ``say `your name' aloud,'' we expect to hear the words ``your
-name.''  Note that we are forced to nest quotation marks to describe what
-somebody else might say.@footnote{Allowing quotation in a language wreaks havoc
-with the ability to reason about the language in simple terms, because it
-destroys the notion that equals can be substituted for equals.  For example,
-three is one plus two, but the word ``three'' is not the phrase ``one plus
-two.''  Quotation is powerful because it gives us a way to build expressions
-that manipulate other expressions (as we will see when we write an interpreter
-in @ref{Chapter 4}). But allowing statements in a language that talk about
-other statements in that language makes it very difficult to maintain any
-coherent principle of what ``equals can be substituted for equals'' should
-mean.  For example, if we know that the evening star is the morning star, then
-from the statement ``the evening star is Venus'' we can deduce ``the morning
-star is Venus.''  However, given that ``John knows that the evening star is
-Venus'' we cannot infer that ``John knows that the morning star is Venus.''}
+ability to @newterm{quote} a data object.  In Scheme this ability matters
+because @code{(a b c)} is otherwise ambiguous: it could be a call to a
+function named @code{a}, or a list of three symbols.  Kotlin's syntax never
+carries that ambiguity.  A call always looks like @code{a(b, c)}; a `Value`
+literal always looks like @code{vlist(VSym("a"), VSym("b"), VSym("c"))}.
+There is no reading of the second form under which it means anything other
+than a three-element list, so this edition needs nothing to quote:
+@code{vlist(VSym("a"), VSym("b"))} already, directly, is the list @code{(a
+b)}, with no separate mark disambiguating it from a function call.
+
+Scheme's confusion is well known in the context of natural languages, where
+words and sentences may be regarded either as semantic entities or as
+character strings (syntactic entities).  The common practice in natural
+languages is to use quotation marks to indicate that a word or a sentence is
+to be treated literally as a string of characters.  For instance, the first
+letter of ``John'' is clearly ``J.''  If we tell somebody ``say your name
+aloud,'' we expect to hear that person's name.  However, if we tell somebody
+``say `your name' aloud,'' we expect to hear the words ``your name.''  Note
+that we are forced to nest quotation marks to describe what somebody else
+might say.@footnote{Allowing quotation in a language wreaks havoc with the
+ability to reason about the language in simple terms, because it destroys the
+notion that equals can be substituted for equals.  For example, three is one
+plus two, but the word ``three'' is not the phrase ``one plus two.''
+Quotation is powerful because it gives us a way to build expressions that
+manipulate other expressions (as we will see when we write an interpreter in
+@ref{Chapter 4}). But allowing statements in a language that talk about other
+statements in that language makes it very difficult to maintain any coherent
+principle of what ``equals can be substituted for equals'' should mean.  For
+example, if we know that the evening star is the morning star, then from the
+statement ``the evening star is Venus'' we can deduce ``the morning star is
+Venus.''  However, given that ``John knows that the evening star is Venus''
+we cannot infer that ``John knows that the morning star is Venus.''}
 
 We can follow this same practice to identify lists and symbols that are to be
-treated as data objects rather than as expressions to be evaluated.  However,
-our format for quoting differs from that of natural languages in that we place
-a quotation mark (traditionally, the single quote @w{symbol @code{'})} only at the
-beginning of the object to be quoted.  We can get away with this in Scheme
-syntax because we rely on blanks and parentheses to delimit objects.  Thus, the
-meaning of the single quote character is to quote the next object.@footnote{The
-single quote is different from the double quote we have been using to enclose
-character strings to be printed.  Whereas the single quote can be used to
-denote lists or symbols, the double quote is used only with character strings.
-In this book, the only use for character strings is as items to be printed.}
+treated as data objects rather than as expressions to be evaluated.  Now we
+can distinguish between symbols and their values:
 
-Now we can distinguish between symbols and their values:
+@example kotlin
+val a = VInt(1)
+val b = VInt(2)
 
-@lisp
-(define a 1)
-(define b 2)
+vlist(a, b)
+// => (1 2)
 
-(list a b)
-@i{(1 2)}
+vlist(VSym("a"), VSym("b"))
+// => (a b)
 
-(list 'a 'b)
-@i{(a b)}
-
-(list 'a b)
-@i{(a 2)}
-@end lisp
+vlist(VSym("a"), b)
+// => (a 2)
+@end example
 
 @noindent
-Quotation also allows us to type in compound objects, using the conventional
-printed representation for lists:@footnote{Strictly, our use of the quotation
-mark violates the general rule that all compound expressions in our language
-should be delimited by parentheses and look like lists.  We can recover this
-consistency by introducing a special form @code{quote}, which serves the same
-purpose as the quotation mark.  Thus, we would type @code{(quote a)} instead of
-@code{'a}, and we would type @code{(quote (a b c))} instead of @code{'(a b c)}.
-This is precisely how the interpreter works.  The quotation mark is just a
-single-character abbreviation for wrapping the next complete expression with
-@code{quote} to form @code{(quote ⟨@var{expression}⟩)}.  This is
-important because it maintains the principle that any expression seen by the
-interpreter can be manipulated as a data object.  For instance, we could
-construct the expression @code{(car '(a b c))}, which is the same as @code{(car
-(quote (a b c)))}, by evaluating @code{(list 'car (list 'quote '(a b c)))}.}
-
-@lisp
-(car '(a b c))
-@i{a}
-
-(cdr '(a b c))
-@i{(b c)}
-@end lisp
+The first call builds a list of the @newterm{values} bound to @code{a} and
+@code{b}; the second builds a list of the two symbols themselves, which share
+nothing with the variables above but their spelling; the third mixes a symbol
+with a bound value, exactly as freely as the first two, because @code{Value}
+is one dynamic union covering every kind of datum this language has.
 
 @noindent
-In keeping with this, we can obtain the empty list by evaluating @code{'()},
-and thus dispense with the variable @code{nil}.
+Quotation also allows the book to type in compound objects using the
+conventional printed representation for lists.@footnote{Strictly, the book's
+quotation mark violates the general rule that all compound expressions in
+Scheme should be delimited by parentheses and look like lists; a leading
+quote mark is a single-character abbreviation that a reader expands into
+@code{(quote @var{expression})} before the interpreter ever sees it.  This
+edition has no reader to do that expanding, so there was never a second,
+abbreviated spelling to reconcile with a first: @code{vlist(VSym("car"),
+vlist(VSym("quote"), vlist(VSym("a"), VSym("b"), VSym("c"))))} already is the
+direct, and only, way to build that nested list.  Exercise 2.55 works out
+what a reader's expansion rule would have built, by hand, for doubled
+quotation.}
 
-One additional primitive used in manipulating symbols is @code{eq?}, which
-takes two symbols as arguments and tests whether they are the same.@footnote{We
-can consider two symbols to be ``the same'' if they consist of the same
-characters in the same order.  Such a definition skirts a deep issue that we
-are not yet ready to address: the meaning of ``sameness'' in a programming
-language.  We will return to this in @ref{Chapter 3} (@ref{3.1.3}).}
-Using @code{eq?}, we can implement a useful procedure called @code{memq}.  This
-takes two arguments, a symbol and a list.  If the symbol is not contained in
-the list (i.e., is not @code{eq?} to any item in the list), then @code{memq}
-returns false.  Otherwise, it returns the sublist of the list beginning with
-the first occurrence of the symbol:
+@example kotlin
+val abc = vlist(VSym("a"), VSym("b"), VSym("c"))
+(abc as VPair).car
+// => a
 
-@lisp
-(define (memq item x)
-  (cond ((null? x) false)
-        ((eq? item (car x)) x)
-        (else (memq item (cdr x)))))
-@end lisp
+abc.cdr
+// => (b c)
+@end example
+
+@noindent
+In keeping with this, the empty list is simply @code{VNil}, the runtime's own
+singleton, so there is no separate variable to dispense with the way the
+book's discussion of @code{nil} implies.
+
+One additional primitive used in manipulating symbols is @code{==} on
+@code{VSym}, which takes two symbols and tests whether they are the
+same.@footnote{Because a boxed @code{VSym} value's @code{equals} already
+compares its wrapped name, @code{==} is exactly the book's ``consist of the
+same characters in the same order'' definition of symbol sameness.  Such a
+definition skirts a deep issue that we are not yet ready to address: the
+meaning of ``sameness'' in a programming language more generally, for values
+that are not symbols.  We will return to this in @ref{Chapter 3}
+(@ref{3.1.3}).}  Using @code{==}, we can implement a useful procedure called
+@code{memq}.  This takes two arguments, an item and a `Value` chain.  If the
+item is not contained in the chain (i.e., is not @code{==} to any item in
+the chain), then @code{memq} returns @code{VBool(false)}.  Otherwise, it
+returns the sublist beginning with the first occurrence of the item:
+
+@example kotlin
+fun memq(item: Value, x: Value): Value =
+    when {
+        x is VPair && x.car == item -> x
+        x is VPair -> memq(item, x.cdr)
+        else -> VBool(false)
+    }
+@end example
 
 @noindent
 For example, the value of
 
-@lisp
-(memq 'apple '(pear banana prune))
-@end lisp
+@example kotlin
+memq(VSym("apple"), vlist(VSym("pear"), VSym("banana"), VSym("prune")))
+@end example
 
 @noindent
-is false, whereas the value of
+is @code{#f}, whereas the value of
 
-@lisp
-(memq 'apple '(x (apple sauce) y apple pear))
-@end lisp
+@example kotlin
+memq(
+    VSym("apple"),
+    vlist(VSym("x"), vlist(VSym("apple"), VSym("sauce")), VSym("y"), VSym("apple"), VSym("pear")),
+)
+@end example
 
 @noindent
-is @code{(apple pear)}.
+is @code{(apple pear)}: the first @code{apple} is buried inside a nested
+list, a different `Value` from the bare symbol @code{VSym("apple")} being
+searched for, so it is skipped exactly as the book's untagged sublist is
+skipped by @code{eq?}.
 
 @quotation
-@strong{@anchor{Exercise 2.53}Exercise 2.53:} What would the interpreter print
-in response to evaluating each of the following expressions?
+@emph{SICP exercise 2.53 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.53}Exercise 2.53:} What value, or what
+printed form, does each of the following produce?  Answer from the types
+alone where you can, without running anything.
 
-@lisp
-(list 'a 'b 'c)
-(list (list 'george))
-(cdr '((x1 x2) (y1 y2)))
-(cadr '((x1 x2) (y1 y2)))
-(pair? (car '(a short list)))
-(memq 'red '((red shoes) (blue socks)))
-(memq 'red '(red shoes blue socks))
-@end lisp
+@example kotlin
+vlist(VSym("a"), VSym("b"), VSym("c"))
+vlist(vlist(VSym("george")))
+
+val pairs = vlist(vlist(VSym("x1"), VSym("x2")), vlist(VSym("y1"), VSym("y2")))
+pairs.cdr
+(pairs.cdr as VPair).car
+
+val shortList = vlist(VSym("a"), VSym("short"), VSym("list"))
+(shortList as VPair).car is VPair
+
+memq(
+    VSym("red"),
+    vlist(vlist(VSym("red"), VSym("shoes")), vlist(VSym("blue"), VSym("socks"))),
+)
+memq(VSym("red"), vlist(VSym("red"), VSym("shoes"), VSym("blue"), VSym("socks")))
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.54}Exercise 2.54:} Two lists are said to be
-@code{equal?} if they contain equal elements arranged in the same order.  For
-example,
+@strong{@anchor{Exercise 2.54}Exercise 2.54:} Two `Value` lists are said to
+be @code{myEqual} if they contain equal elements arranged in the same order.
+For example,
 
-@lisp
-(equal? '(this is a list) 
-        '(this is a list))
-@end lisp
+@example kotlin
+myEqual(
+    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
+    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
+)
+@end example
 
 @noindent
 is true, but
 
-@lisp
-(equal? '(this is a list) 
-        '(this (is a) list))
-@end lisp
+@example kotlin
+myEqual(
+    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
+    vlist(VSym("this"), vlist(VSym("is"), VSym("a")), VSym("list")),
+)
+@end example
 
 @noindent
-is false.  To be more precise, we can define @code{equal?}  recursively in
-terms of the basic @code{eq?} equality of symbols by saying that @code{a} and
-@code{b} are @code{equal?} if they are both symbols and the symbols are
-@code{eq?}, or if they are both lists such that @code{(car a)} is @code{equal?}
-to @code{(car b)} and @code{(cdr a)} is @code{equal?} to @code{(cdr b)}.  Using
-this idea, implement @code{equal?} as a procedure.@footnote{In practice,
-programmers use @code{equal?} to compare lists that contain numbers as well as
-symbols.  Numbers are not considered to be symbols.  The question of whether
-two numerically equal numbers (as tested by @code{=}) are also @code{eq?} is
-highly implementation-dependent.  A better definition of @code{equal?} (such as
-the one that comes as a primitive in Scheme) would also stipulate that if
-@code{a} and @code{b} are both numbers, then @code{a} and @code{b} are
-@code{equal?} if they are numerically equal.}
+is false.  To be more precise, we can define @code{myEqual} recursively in
+terms of the basic @code{==} equality of symbols by saying that @code{a} and
+@code{b} are @code{myEqual} if they are both symbols and the symbols are
+@code{==}, or if they are both lists such that @code{a}'s car is
+@code{myEqual} to @code{b}'s car and @code{a}'s cdr is @code{myEqual} to
+@code{b}'s cdr.  Using this idea, implement @code{myEqual} as a
+function.@footnote{In practice, programmers use @code{myEqual} to compare
+lists that contain numbers as well as symbols.  Numbers are not considered to
+be symbols.  The question of whether two numerically equal numbers (as
+tested by @code{==} on @code{VInt}) are also identical is highly
+implementation-dependent.  A more thorough definition of @code{myEqual} would
+also stipulate that if @code{a} and @code{b} are both numbers, then @code{a}
+and @code{b} are @code{myEqual} if they are numerically equal.}
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.55}Exercise 2.55:} Eva Lu Ator types to the
-interpreter the expression
-
-@lisp
-(car ''abracadabra)
-@end lisp
-
-To her surprise, the interpreter prints back @code{quote}.  Explain.
+@emph{SICP exercise 2.55 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.55}Exercise 2.55:} SICP's Eva
+Lu Ator types to her interpreter the expression @code{(car ''abracadabra)},
+and to her surprise the interpreter prints back @code{quote}.  Kotlin has no
+reader, so @code{''abracadabra} is never something a running program types at
+a prompt, but the reader's expansion rule is simple enough to apply by hand:
+a single quote @code{'x} is sugar for the two-element list @code{(quote x)},
+so the doubled quote @code{''abracadabra} is sugar for @code{(quote (quote
+abracadabra))}.  Build the `Value` that @code{''abracadabra} would have read
+as, using only @code{vlist} and @code{VSym}, and give its car.  Explain, in
+terms of the value's own shape rather than by appealing to a reader, why that
+car is the symbol @code{quote} and not @code{abracadabra}.
 @end quotation
 
 @node	2.3.2, 2.3.3, 2.3.1, 2.3
@@ -290,160 +318,90 @@ decomposed.  Decomposing into smaller and smaller pieces will eventually
 produce pieces that are either constants or variables, whose derivatives will
 be either 0 or 1.
 
-To embody these rules in a procedure we indulge in a little wishful thinking,
-as we did in designing the rational-number implementation.  If we had a means
-for representing algebraic expressions, we should be able to tell whether an
+To embody these rules we indulge in a little wishful thinking, as we did in
+designing the rational-number implementation.  If we had a means for
+representing algebraic expressions, we should be able to tell whether an
 expression is a sum, a product, a constant, or a variable.  We should be able
-to extract the parts of an expression.  For a sum, for example we want to be
-able to extract the addend (first term) and the augend (second term).  We
-should also be able to construct expressions from parts.  Let us assume that we
-already have procedures to implement the following selectors, constructors, and
-predicates:
+to extract the parts of an expression.  For a sum, for example, we want to be
+able to extract the addend (first term) and the augend (second term).  Where
+the book assumes ten free-floating procedures for this (@code{variable?},
+@code{same-variable?}, @code{sum?}, @code{addend}, @code{augend},
+@code{make-sum}, @code{product?}, @code{multiplier}, @code{multiplicand},
+@code{make-product}), one sealed hierarchy grants all of them at once:
 
-@example
-(variable? e)          @r{Is @code{e} a variable?}
-(same-variable? v1 v2) @r{Are @code{v1} and @code{v2} the same variable?}
-(sum? e)               @r{Is @code{e} a sum?}
-(addend e)             @r{Addend of the sum @code{e}.}
-(augend e)             @r{Augend of the sum @code{e}.}
-(make-sum a1 a2)       @r{Construct the sum of @code{a1} and @code{a2}.}
-(product? e)           @r{Is @code{e} a product?}
-(multiplier e)         @r{Multiplier of the product @code{e}.}
-(multiplicand e)       @r{Multiplicand of the product @code{e}.}
-(make-product m1 m2)   @r{Construct the product of @code{m1} and @code{m2}.}
+@example kotlin
+sealed interface Expr {
+    data class Num(val n: Long) : Expr
+    data class Var(val name: String) : Expr
+    data class Sum(val a1: Expr, val a2: Expr) : Expr
+    data class Product(val a1: Expr, val a2: Expr) : Expr
+}
 @end example
 
 @noindent
-Using these, and the primitive predicate @code{number?}, which identifies
-numbers, we can express the differentiation rules as the following procedure:
+@code{sum?} and @code{product?} collapse into the @code{is Expr.Sum}/@code{is
+Expr.Product} branches below; @code{addend}/@code{augend} and
+@code{multiplier}/@code{multiplicand} become the two fields @code{a1}/@code{a2}
+those branches bind; @code{make-sum}/@code{make-product} survive as ordinary
+functions, unchanged in name.  @code{variable?} is absorbed into the
+@code{is Expr.Var} branch, and @code{same-variable?} is just @code{==} on
+the two variables' @code{name} fields.  Using pattern matching in place of
+the primitive predicate @code{number?}, we can express the differentiation
+rules as the following function:
 
-@lisp
-(define (deriv exp var)
-  (cond ((number? exp) 0)
-        ((variable? exp)
-         (if (same-variable? exp var) 1 0))
-        ((sum? exp)
-         (make-sum (deriv (addend exp) var)
-                   (deriv (augend exp) var)))
-        ((product? exp)
-         (make-sum
-          (make-product 
-           (multiplier exp)
-           (deriv (multiplicand exp) var))
-          (make-product 
-           (deriv (multiplier exp) var)
-           (multiplicand exp))))
-        (else (error "unknown expression 
-                      type: DERIV" exp))))
-@end lisp
+@example kotlin
+fun deriv(exp: Expr, variable: String): Expr =
+    when (exp) {
+        is Expr.Num -> Expr.Num(0)
+        is Expr.Var -> Expr.Num(if (exp.name == variable) 1 else 0)
+        is Expr.Sum -> Expr.Sum(deriv(exp.a1, variable), deriv(exp.a2, variable))
+        is Expr.Product ->
+            Expr.Sum(
+                Expr.Product(exp.a1, deriv(exp.a2, variable)),
+                Expr.Product(deriv(exp.a1, variable), exp.a2),
+            )
+    }
+@end example
 
 @noindent
-This @code{deriv} procedure incorporates the complete differentiation
-algorithm.  Since it is expressed in terms of abstract data, it will work no
-matter how we choose to represent algebraic expressions, as long as we design a
-proper set of selectors and constructors.  This is the issue we must address
-next.
+This @code{deriv} function incorporates the complete differentiation
+algorithm.  Since @code{Expr}'s four variants are exhaustive, the compiler
+proves every case is handled; the book's final @code{(else (error "unknown
+expression type: DERIV" exp))} clause has no counterpart here, because there
+is no fifth variant left for it to catch.
 
 @subsubheading Representing algebraic expressions
 
-We can imagine many ways to use list structure to represent algebraic
-expressions.  For example, we could use lists of symbols that mirror the usual
-algebraic notation, representing @math{{ax + b}} as the list @code{(a * x + b)}.  
-However, one especially straightforward choice is to use the same
-parenthesized prefix notation that Lisp uses for combinations; that is, to
-represent @math{{ax + b}} as @code{(+ (* a x) b)}.  Then our data
-representation for the differentiation problem is as follows:
+Printing an expression back in the book's parenthesized prefix notation is
+a small recursive function over the same four variants:
 
-@itemize @bullet
-
-@item
-The variables are symbols.  They are identified by the primitive predicate
-@code{symbol?}:
-
-@lisp
-(define (variable? x) (symbol? x))
-@end lisp
-
-@item
-Two variables are the same if the symbols representing them are @code{eq?}:
-
-@lisp
-(define (same-variable? v1 v2)
-  (and (variable? v1)
-       (variable? v2)
-       (eq? v1 v2)))
-@end lisp
-
-@item
-Sums and products are constructed as lists:
-
-@lisp
-(define (make-sum a1 a2) (list '+ a1 a2))
-(define (make-product m1 m2) (list '* m1 m2))
-@end lisp
-
-@item
-A sum is a list whose first element is the symbol @code{+}:
-
-@lisp
-(define (sum? x)
-  (and (pair? x) (eq? (car x) '+)))
-@end lisp
-
-@item
-The addend is the second item of the sum list:
-
-@lisp
-(define (addend s) (cadr s))
-@end lisp
-
-@item
-The augend is the third item of the sum list:
-
-@lisp
-(define (augend s) (caddr s))
-@end lisp
-
-@item
-A product is a list whose first element is the symbol @code{*}:
-@lisp
-(define (product? x)
-  (and (pair? x) (eq? (car x) '*)))
-@end lisp
-
-@item
-The multiplier is the second item of the product list:
-
-@lisp
-(define (multiplier p) (cadr p))
-@end lisp
-
-@item
-The multiplicand is the third item of the product list:
-
-@lisp
-(define (multiplicand p) (caddr p))
-@end lisp
-
-@end itemize
+@example kotlin
+fun printExpr(e: Expr): String =
+    when (e) {
+        is Expr.Num -> e.n.toString()
+        is Expr.Var -> e.name
+        is Expr.Sum -> "(+ ${printExpr(e.a1)} ${printExpr(e.a2)})"
+        is Expr.Product -> "(* ${printExpr(e.a1)} ${printExpr(e.a2)})"
+    }
+@end example
 
 @noindent
-Thus, we need only combine these with the algorithm as embodied by @code{deriv}
-in order to have a working symbolic-differentiation program.  Let us look at
-some examples of its behavior:
+Let us look at some examples of @code{deriv}'s behavior, built with the
+naive constructors @code{Expr.Sum}/@code{Expr.Product} shown above:
 
-@lisp
-(deriv '(+ x 3) 'x)
-@i{(+ 1 0)}
+@example kotlin
+val sum = Expr.Sum(Expr.Var("x"), Expr.Num(3))
+printExpr(deriv(sum, "x"))
+// => (+ 1 0)
 
-(deriv '(* x y) 'x)
-@i{(+ (* x 0) (* 1 y))}
+val product = Expr.Product(Expr.Var("x"), Expr.Var("y"))
+printExpr(deriv(product, "x"))
+// => (+ (* x 0) (* 1 y))
 
-(deriv '(* (* x y) (+ x 3)) 'x)
-@i{(+ (* (* x y) (+ 1 0))}
-   @i{(* (+ (* x 0) (* 1 y))}
-      @i{(+  x 3)))}
-@end lisp
+val nested = Expr.Product(Expr.Product(Expr.Var("x"), Expr.Var("y")), Expr.Sum(Expr.Var("x"), Expr.Num(3)))
+printExpr(deriv(nested, "x"))
+// => (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))
+@end example
 
 @noindent
 The program produces answers that are correct; however, they are unsimplified.
@@ -470,58 +428,68 @@ Our difficulty is much like the one we encountered with the rational-number
 implementation: we haven't reduced answers to simplest form.  To accomplish the
 rational-number reduction, we needed to change only the constructors and the
 selectors of the implementation.  We can adopt a similar strategy here.  We
-won't change @code{deriv} at all.  Instead, we will change @code{make-sum} so
-that if both summands are numbers, @code{make-sum} will add them and return
-their sum.  Also, if one of the summands is 0, then @code{make-sum} will return
+won't change @code{deriv} at all.  Instead, we will change @code{makeSum} so
+that if both summands are numbers, @code{makeSum} will add them and return
+their sum.  Also, if one of the summands is 0, then @code{makeSum} will return
 the other summand:
 
-@lisp
-(define (make-sum a1 a2)
-  (cond ((=number? a1 0) a2)
-        ((=number? a2 0) a1)
-        ((and (number? a1) (number? a2)) 
-         (+ a1 a2))
-        (else (list '+ a1 a2))))
-@end lisp
+@example kotlin
+fun isNumber(e: Expr, n: Long): Boolean = e is Expr.Num && e.n == n
+
+fun makeSum(a1: Expr, a2: Expr): Expr =
+    when {
+        isNumber(a1, 0) -> a2
+        isNumber(a2, 0) -> a1
+        a1 is Expr.Num && a2 is Expr.Num -> Expr.Num(a1.n + a2.n)
+        else -> Expr.Sum(a1, a2)
+    }
+@end example
 
 @noindent
-This uses the procedure @code{=number?}, which checks whether an expression is
-equal to a given number:
+This uses the function @code{isNumber}, which checks whether an expression is
+equal to a given number.  Similarly, we will change @code{makeProduct} to
+build in the rules that 0 times anything is 0 and 1 times anything is the
+thing itself:
 
-@lisp
-(define (=number? exp num)
-  (and (number? exp) (= exp num)))
-@end lisp
+@example kotlin
+fun makeProduct(m1: Expr, m2: Expr): Expr =
+    when {
+        isNumber(m1, 0) || isNumber(m2, 0) -> Expr.Num(0)
+        isNumber(m1, 1) -> m2
+        isNumber(m2, 1) -> m1
+        m1 is Expr.Num && m2 is Expr.Num -> Expr.Num(m1.n * m2.n)
+        else -> Expr.Product(m1, m2)
+    }
+
+fun deriv(exp: Expr, variable: String): Expr =
+    when (exp) {
+        is Expr.Num -> Expr.Num(0)
+        is Expr.Var -> Expr.Num(if (exp.name == variable) 1 else 0)
+        is Expr.Sum -> makeSum(deriv(exp.a1, variable), deriv(exp.a2, variable))
+        is Expr.Product ->
+            makeSum(
+                makeProduct(exp.a1, deriv(exp.a2, variable)),
+                makeProduct(deriv(exp.a1, variable), exp.a2),
+            )
+    }
+@end example
 
 @noindent
-Similarly, we will change @code{make-product} to build in the rules that 0
-times anything is 0 and 1 times anything is the thing itself:
-
-@lisp
-(define (make-product m1 m2)
-  (cond ((or (=number? m1 0) 
-             (=number? m2 0)) 
-         0)
-        ((=number? m1 1) m2)
-        ((=number? m2 1) m1)
-        ((and (number? m1) (number? m2)) 
-         (* m1 m2))
-        (else (list '* m1 m2))))
-@end lisp
-
-@noindent
+This edition's numbers are checked @code{Long}s, so a differentiation that
+overflows fails loudly rather than wrapping silently, exactly as
+@ref{2.1.3}'s exact-integer convention promises everywhere else in this book.
 Here is how this version works on our three examples:
 
-@lisp
-(deriv '(+ x 3) 'x)
-@i{1}
+@example kotlin
+printExpr(deriv(sum, "x"))
+// => 1
 
-(deriv '(* x y) 'x)
-@i{y}
+printExpr(deriv(product, "x"))
+// => y
 
-(deriv '(* (* x y) (+ x 3)) 'x)
-@i{(+ (* x y) (* y (+ x 3)))}
-@end lisp
+printExpr(deriv(nested, "x"))
+// => (+ (* x y) (* y (+ x 3)))
+@end example
 
 @noindent
 Although this is quite an improvement, the third example shows that there is
@@ -547,11 +515,13 @@ d(u^n)            du
 
 @end ifinfo
 @noindent
-by adding a new clause to the @code{deriv} program and defining appropriate
-procedures @code{exponentiation?}, @code{base}, @code{exponent}, and
-@code{make-exponentiation}.  (You may use the symbol @code{**} to denote
-exponentiation.)  Build in the rules that anything raised to the power 0 is 1
-and anything raised to the power 1 is the thing itself.
+by adding a fifth variant to a local copy of @code{Expr} named @code{PowExpr}
+(kept local to this exercise, per the section's one-representation-per-
+exercise convention, rather than editing the running prose's @code{Expr}) and
+a matching @code{Pow} branch to a local copy of @code{deriv}, plus a
+@code{makeExponentiation} constructor.  Print exponentiation as @code{(** base
+n)}.  Build in the rules that anything raised to the power 0 is 1 and
+anything raised to the power 1 is the thing itself.
 @end quotation
 
 @quotation
@@ -559,39 +529,44 @@ and anything raised to the power 1 is the thing itself.
 program to handle sums and products of arbitrary numbers of (two or more)
 terms.  Then the last example above could be expressed as
 
-@lisp
-(deriv '(* x y (+ x 3)) 'x)
-@end lisp
+@example kotlin
+deriv(
+    NaryExpr.Product(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"), NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3))))),
+    "x",
+)
+@end example
 
-Try to do this by changing only the representation for sums and products,
-without changing the @code{deriv} procedure at all.  For example, the
-@code{addend} of a sum would be the first term, and the @code{augend} would be
-the sum of the rest of the terms.
+Try to do this by changing only the representation for sums and products
+(your own local @code{NaryExpr}, holding a @code{List} of terms or factors
+instead of a fixed pair), without changing @code{deriv}'s own shape at all.
+For example, the addend of a sum would be the first term, and the augend
+would be the sum of the rest of the terms.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.58}Exercise 2.58:} Suppose we want to modify the
 differentiation program so that it works with ordinary mathematical notation,
 in which @code{+} and @code{*} are infix rather than prefix operators.  Since
-the differentiation program is defined in terms of abstract data, we can modify
-it to work with different representations of expressions solely by changing the
-predicates, selectors, and constructors that define the representation of the
-algebraic expressions on which the differentiator is to operate.
+the differentiation program is defined in terms of abstract data, we can
+modify it to work with different concrete syntax solely by changing what
+builds an @code{Expr} in the first place, leaving @code{deriv} itself
+untouched.
 
 @enumerate a
 
 @item
-Show how to do this in order to differentiate algebraic expressions presented
-in infix form, such as @code{(x + (3 * (x + (y + 2))))}.  To simplify the task,
-assume that @code{+} and @code{*} always take two arguments and that
+Write a tokenizer and a recursive-descent parser from a @code{String} into
+this section's @code{Expr}, to differentiate algebraic expressions presented
+in infix form, such as @code{"(x + (3 * (x + (y + 2))))"}.  To simplify the
+task, assume that @code{+} and @code{*} always take two arguments and that
 expressions are fully parenthesized.
 
 @item
 The problem becomes substantially harder if we allow standard algebraic
-notation, such as @code{(x + 3 * (x + y + 2))}, which drops unnecessary
-parentheses and assumes that multiplication is done before addition.  Can you
-design appropriate predicates, selectors, and constructors for this notation
-such that our derivative program still works?
+notation, such as @code{"x + 3 * (x + y + 2)"}, which drops unnecessary
+parentheses and assumes that multiplication is done before addition.  Extend
+your parser to handle operator precedence so that our derivative program
+still works.
 
 @end enumerate
 @end quotation
@@ -611,39 +586,42 @@ differ significantly from one another in several ways.
 Informally, a set is simply a collection of distinct objects.  To give a more
 precise definition we can employ the method of data abstraction.  That is, we
 define ``set'' by specifying the operations that are to be used on sets.  These
-are @code{union-set}, @code{intersection-set}, @code{element-of-set?}, and
-@code{adjoin-set}.  @code{Element-of-set?} is a predicate that determines
-whether a given element is a member of a set.  @code{Adjoin-set} takes an
-object and a set as arguments and returns a set that contains the elements of
-the original set and also the adjoined element.  @code{Union-set} computes the
-union of two sets, which is the set containing each element that appears in
-either argument.  @code{Intersection-set} computes the intersection of two
-sets, which is the set containing only elements that appear in both arguments.
-From the viewpoint of data abstraction, we are free to design any
-representation that implements these operations in a way consistent with the
-interpretations given above.@footnote{If we want to be more formal, we can
+are @code{unionSet}, @code{intersectionSet}, @code{elementOfSet}, and
+@code{adjoinSet}.  @code{elementOfSet} is a predicate that determines whether a
+given element is a member of a set.  @code{adjoinSet} takes an object and a
+set as arguments and returns a set that contains the elements of the original
+set and also the adjoined element.  @code{unionSet} computes the union of two
+sets, which is the set containing each element that appears in either
+argument.  @code{intersectionSet} computes the intersection of two sets, which
+is the set containing only elements that appear in both arguments.  From the
+viewpoint of data abstraction, we are free to design any representation that
+implements these operations in a way consistent with the interpretations
+given above.  This edition fixes the element type to @code{Long} across all
+three representations, unordered included, so that one consistent element
+type carries all the way to the ordered and tree representations, which need
+@code{<}/@code{>} anyway.@footnote{If we want to be more formal, we can
 specify ``consistent with the interpretations given above'' to mean that the
 operations satisfy a collection of rules such as these:
 
 @itemize @bullet
 
 @item
-For any set @code{S} and any object @code{x},
-@code{(element-of-set? x (adjoin-set x S))}
+For any set @code{s} and any object @code{x},
+@code{elementOfSet(x, adjoinSet(x, s))}
 is true (informally: ``Adjoining an object to a
 set produces a set that contains the object'').
 
 @item
-For any sets @code{S} and @code{T} and any object @code{x},
-@code{(element-of-set? x (union-set S T))}
+For any sets @code{s} and @code{t} and any object @code{x},
+@code{elementOfSet(x, unionSet(s, t))}
 is equal to
-@code{(or (element-of-set? x S) (element-of-set? x T))}
-(informally: ``The elements of @code{(union S T)} are the elements that
-are in @code{S} or in @code{T}'').
+@code{elementOfSet(x, s) || elementOfSet(x, t)}
+(informally: ``The elements of the union of @code{s} and @code{t} are the
+elements that are in @code{s} or in @code{t}'').
 
 @item
 For any object @code{x},
-@code{(element-of-set? x '())}
+@code{elementOfSet(x, emptyList())}
 is false (informally: ``No object is an element of the empty set'').
 
 @end itemize
@@ -651,109 +629,102 @@ is false (informally: ``No object is an element of the empty set'').
 
 @subsubheading Sets as unordered lists
 
-One way to represent a set is as a list of its elements in which no element
-appears more than once.  The empty set is represented by the empty list.  In
-this representation, @code{element-of-set?} is similar to the procedure
-@code{memq} of @ref{2.3.1}.  It uses @code{equal?}  instead of
-@code{eq?} so that the set elements need not be symbols:
+One way to represent a set is as a @code{List} of its elements in which no
+element appears more than once.  The empty set is represented by the empty
+list.  In this representation, @code{elementOfSet} is similar to the
+function @code{memq} of @ref{2.3.1}, except that it compares @code{Long}s
+with @code{==} directly, since this edition's sets are never nested:
 
-@lisp
-(define (element-of-set? x set)
-  (cond ((null? set) false)
-        ((equal? x (car set)) true)
-        (else (element-of-set? x (cdr set)))))
-@end lisp
-
-@noindent
-Using this, we can write @code{adjoin-set}.  If the object to be adjoined is
-already in the set, we just return the set.  Otherwise, we use @code{cons} to
-add the object to the list that represents the set:
-
-@lisp
-(define (adjoin-set x set)
-  (if (element-of-set? x set)
-      set
-      (cons x set)))
-@end lisp
+@example kotlin
+fun elementOfSet(x: Long, set: List<Long>): Boolean =
+    when {
+        set.isEmpty() -> false
+        x == set[0] -> true
+        else -> elementOfSet(x, set.drop(1))
+    }
+@end example
 
 @noindent
-For @code{intersection-set} we can use a recursive strategy.  If we know how to
-form the intersection of @code{set2} and the @code{cdr} of @code{set1}, we only
-need to decide whether to include the @code{car} of @code{set1} in this.  But
-this depends on whether @code{(car set1)} is also in @code{set2}.  Here is the
-resulting procedure:
+Using this, we can write @code{adjoinSet}.  If the object to be adjoined is
+already in the set, we just return the set unchanged.  Otherwise, we build a
+new list with the object in front:
 
-@lisp
-(define (intersection-set set1 set2)
-  (cond ((or (null? set1) (null? set2)) 
-         '())
-        ((element-of-set? (car set1) set2)
-         (cons (car set1)
-               (intersection-set (cdr set1) 
-                                 set2)))
-        (else (intersection-set (cdr set1) 
-                                set2))))
-@end lisp
+@example kotlin
+fun adjoinSet(x: Long, set: List<Long>): List<Long> = if (elementOfSet(x, set)) set else listOf(x) + set
+@end example
+
+@noindent
+For @code{intersectionSet} we can use a recursive strategy.  If we know how to
+form the intersection of @code{set2} and the tail of @code{set1}, we only
+need to decide whether to include the head of @code{set1} in this.  But this
+depends on whether that head is also in @code{set2}.  Here is the resulting
+function:
+
+@example kotlin
+fun intersectionSet(set1: List<Long>, set2: List<Long>): List<Long> =
+    when {
+        set1.isEmpty() || set2.isEmpty() -> emptyList()
+        elementOfSet(set1[0], set2) -> listOf(set1[0]) + intersectionSet(set1.drop(1), set2)
+        else -> intersectionSet(set1.drop(1), set2)
+    }
+@end example
 
 @noindent
 In designing a representation, one of the issues we should be concerned with is
 efficiency.  Consider the number of steps required by our set operations.
-Since they all use @code{element-of-set?}, the speed of this operation has a
+Since they all use @code{elementOfSet}, the speed of this operation has a
 major impact on the efficiency of the set implementation as a whole.  Now, in
-order to check whether an object is a member of a set, @code{element-of-set?}
+order to check whether an object is a member of a set, @code{elementOfSet}
 may have to scan the entire set. (In the worst case, the object turns out not
 to be in the set.)  Hence, if the set has @math{n} elements,
-@code{element-of-set?}  might take up to @math{n} steps.  Thus, the number of
+@code{elementOfSet}  might take up to @math{n} steps.  Thus, the number of
 steps required grows as @math{{\Theta(n)}}.  The number of steps required by
-@code{adjoin-set}, which uses this operation, also grows as @math{{\Theta(n)}}.
-For @code{intersection-set}, which does an @code{element-of-set?} check for
+@code{adjoinSet}, which uses this operation, also grows as @math{{\Theta(n)}}.
+For @code{intersectionSet}, which does an @code{elementOfSet} check for
 each element of @code{set1}, the number of steps required grows as the product
 of the sizes of the sets involved, or @math{{\Theta(n^2)}} for two sets of size
-@math{n}.  The same will be true of @code{union-set}.
+@math{n}.  The same will be true of @code{unionSet}.
 
 @quotation
-@strong{@anchor{Exercise 2.59}Exercise 2.59:} Implement the @code{union-set}
+@strong{@anchor{Exercise 2.59}Exercise 2.59:} Implement the @code{unionSet}
 operation for the unordered-list representation of sets.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.60}Exercise 2.60:} We specified that a set would be
 represented as a list with no duplicates.  Now suppose we allow duplicates.
-For instance, the set @math{{\{1, 2, 3\}}} could be represented as the list @code{(2 3 2 1
-3 2 2)}.  Design procedures @code{element-of-set?}, @code{adjoin-set},
-@code{union-set}, and @code{intersection-set} that operate on this
+For instance, the set @math{{\{1, 2, 3\}}} could be represented as the list @code{[2, 3, 2, 1,
+3, 2, 2]}.  Design functions @code{elementOfSetDup}, @code{adjoinSetDup},
+@code{unionSetDup}, and @code{intersectionSetDup} that operate on this
 representation.  How does the efficiency of each compare with the corresponding
-procedure for the non-duplicate representation?  Are there applications for
+function for the non-duplicate representation?  Are there applications for
 which you would use this representation in preference to the non-duplicate one?
 @end quotation
 
 @subsubheading Sets as ordered lists
 
 One way to speed up our set operations is to change the representation so that
-the set elements are listed in increasing order.  To do this, we need some way
-to compare two objects so that we can say which is bigger.  For example, we
-could compare symbols lexicographically, or we could agree on some method for
-assigning a unique number to an object and then compare the elements by
-comparing the corresponding numbers.  To keep our discussion simple, we will
-consider only the case where the set elements are numbers, so that we can
-compare elements using @code{>} and @code{<}.  We will represent a set of
-numbers by listing its elements in increasing order.  Whereas our first
-representation above allowed us to represent the set @math{{\{1, 3, 6, 10\}}} by listing
-the elements in any order, our new representation allows only the list @code{(1
-3 6 10)}.
+the set elements are listed in increasing order.  Because this edition's sets
+are already the numeric type @code{Long}, we can compare elements directly
+with @code{<} and @code{>} without needing to agree on a way to order
+non-numeric objects first.  Whereas our first representation above allowed us
+to represent the set @math{{\{1, 3, 6, 10\}}} by listing the elements in any
+order, our new representation allows only the list @code{[1, 3, 6, 10]}.
 
-One advantage of ordering shows up in @code{element-of-set?}: In checking for
-the presence of an item, we no longer have to scan the entire set.  If we reach
-a set element that is larger than the item we are looking for, then we know
-that the item is not in the set:
+One advantage of ordering shows up in @code{elementOfSetOrdered}: In checking
+for the presence of an item, we no longer have to scan the entire set.  If we
+reach a set element that is larger than the item we are looking for, then we
+know that the item is not in the set:
 
-@lisp
-(define (element-of-set? x set)
-  (cond ((null? set) false)
-        ((= x (car set)) true)
-        ((< x (car set)) false)
-        (else (element-of-set? x (cdr set)))))
-@end lisp
+@example kotlin
+fun elementOfSetOrdered(x: Long, set: List<Long>): Boolean =
+    when {
+        set.isEmpty() -> false
+        x == set[0] -> true
+        x < set[0] -> false
+        else -> elementOfSetOrdered(x, set.drop(1))
+    }
+@end example
 
 How many steps does this save?  In the worst case, the item we are looking for
 may be the largest one in the set, so the number of steps is the same as for
@@ -766,38 +737,34 @@ number of steps required will be about @math{{n / 2}}.  This is still
 @math{{\Theta(n)}} growth, but it does save us, on the average, a factor of 2
 in number of steps over the previous implementation.
 
-We obtain a more impressive speedup with @code{intersection-set}.  In the
-unordered representation this operation required @math{{\Theta(n^2)}} steps,
-because we performed a complete scan of @code{set2} for each element of
+We obtain a more impressive speedup with @code{intersectionSetOrdered}.  In
+the unordered representation this operation required @math{{\Theta(n^2)}}
+steps, because we performed a complete scan of @code{set2} for each element of
 @code{set1}.  But with the ordered representation, we can use a more clever
 method.  Begin by comparing the initial elements, @code{x1} and @code{x2}, of
 the two sets.  If @code{x1} equals @code{x2}, then that gives an element of the
 intersection, and the rest of the intersection is the intersection of the
-@code{cdr}-s of the two sets.  Suppose, however, that @code{x1} is less than
+tails of the two sets.  Suppose, however, that @code{x1} is less than
 @code{x2}.  Since @code{x2} is the smallest element in @code{set2}, we can
 immediately conclude that @code{x1} cannot appear anywhere in @code{set2} and
 hence is not in the intersection.  Hence, the intersection is equal to the
-intersection of @code{set2} with the @code{cdr} of @code{set1}.  Similarly, if
+intersection of @code{set2} with the tail of @code{set1}.  Similarly, if
 @code{x2} is less than @code{x1}, then the intersection is given by the
-intersection of @code{set1} with the @code{cdr} of @code{set2}.  Here is the
-procedure:
+intersection of @code{set1} with the tail of @code{set2}.  Here is the
+function:
 
-@lisp
-(define (intersection-set set1 set2)
-  (if (or (null? set1) (null? set2))
-      '()
-      (let ((x1 (car set1)) (x2 (car set2)))
-        (cond ((= x1 x2)
-               (cons x1 (intersection-set 
-                         (cdr set1)
-                         (cdr set2))))
-              ((< x1 x2) (intersection-set 
-                          (cdr set1) 
-                          set2))
-              ((< x2 x1) (intersection-set 
-                          set1 
-                          (cdr set2)))))))
-@end lisp
+@example kotlin
+fun intersectionSetOrdered(set1: List<Long>, set2: List<Long>): List<Long> {
+    if (set1.isEmpty() || set2.isEmpty()) return emptyList()
+    val x1 = set1[0]
+    val x2 = set2[0]
+    return when {
+        x1 == x2 -> listOf(x1) + intersectionSetOrdered(set1.drop(1), set2.drop(1))
+        x1 < x2 -> intersectionSetOrdered(set1.drop(1), set2)
+        else -> intersectionSetOrdered(set1, set2.drop(1))
+    }
+}
+@end example
 
 @noindent
 To estimate the number of steps required by this process, observe that at each
@@ -810,15 +777,16 @@ unordered representation.  This is @math{{\Theta(n)}} growth rather than
 
 @quotation
 @strong{@anchor{Exercise 2.61}Exercise 2.61:} Give an implementation of
-@code{adjoin-set} using the ordered representation.  By analogy with
-@code{element-of-set?} show how to take advantage of the ordering to produce a
-procedure that requires on the average about half as many steps as with the
-unordered representation.
+@code{adjoinSetOrdered} using the ordered representation.  By analogy with
+@code{elementOfSetOrdered} show how to take advantage of the ordering to
+produce a function that requires on the average about half as many steps as
+with the unordered representation.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.62}Exercise 2.62:} Give a @math{{\Theta(n)}}
-implementation of @code{union-set} for sets represented as ordered lists.
+implementation of @code{unionSetOrdered} for sets represented as ordered
+lists.
 @end quotation
 
 @subsubheading Sets as binary trees
@@ -876,42 +844,41 @@ the fast-exponentiation algorithm of @ref{1.2.4} and the half-interval
 search method of @ref{1.3.3}.} For large sets, this will be a
 significant speedup over the previous representations.
 
-We can represent trees by using lists.  Each node will be a list of three
-items: the entry at the node, the left subtree, and the right subtree.  A left
-or a right subtree of the empty list will indicate that there is no subtree
-connected there.  We can describe this representation by the following
-procedures:@footnote{We are representing sets in terms of trees, and trees in
-terms of lists---in effect, a data abstraction built upon a data abstraction.
-We can regard the procedures @code{entry}, @code{left-branch},
-@code{right-branch}, and @code{make-tree} as a way of isolating the abstraction
-of a ``binary tree'' from the particular way we might wish to represent such a
-tree in terms of list structure.}
+Where the book represents trees as three-item lists (the entry, the left
+subtree, the right subtree), this edition closes the shape as a sealed
+hierarchy instead, so @code{entry}, @code{left}, and @code{right} are its own
+data-class fields rather than list positions read out by @code{car}/@code{cadr}/@code{caddr}:
 
-@lisp
-(define (entry tree) (car tree))
-(define (left-branch tree) (cadr tree))
-(define (right-branch tree) (caddr tree))
-(define (make-tree entry left right)
-  (list entry left right))
-@end lisp
+@example kotlin
+sealed interface Tree {
+    data object Empty : Tree
+    data class Node(val entry: Long, val left: Tree, val right: Tree) : Tree
+}
+
+fun makeTree(entry: Long, left: Tree, right: Tree): Tree = Tree.Node(entry, left, right)
+@end example
 
 @noindent
-Now we can write the @code{element-of-set?} procedure using the strategy
-described above:
+@code{entry}, @code{left}, and @code{right} are simple examples of
+@newterm{generic procedures} (procedures that can handle more than one kind of
+data), which we will have much more to say about in @ref{2.4} and @ref{2.5};
+here they are simply the fields of @code{Tree.Node}, valid to read only once
+the sealed @code{when} branch below has confirmed the tree is not
+@code{Tree.Empty}.  Now we can write the @code{elementOfSetTree} function
+using the strategy described above:
 
-@lisp
-(define (element-of-set? x set)
-  (cond ((null? set) false)
-        ((= x (entry set)) true)
-        ((< x (entry set))
-         (element-of-set? 
-          x 
-          (left-branch set)))
-        ((> x (entry set))
-         (element-of-set? 
-          x 
-          (right-branch set)))))
-@end lisp
+@example kotlin
+fun elementOfSetTree(x: Long, tree: Tree): Boolean =
+    when (tree) {
+        is Tree.Empty -> false
+        is Tree.Node ->
+            when {
+                x == tree.entry -> true
+                x < tree.entry -> elementOfSetTree(x, tree.left)
+                else -> elementOfSetTree(x, tree.right)
+            }
+    }
+@end example
 
 @noindent
 Adjoining an item to a set is implemented similarly and also requires
@@ -920,25 +887,22 @@ Adjoining an item to a set is implemented similarly and also requires
 the right or to the left branch, and having adjoined @code{x} to the
 appropriate branch we piece this newly constructed branch together with the
 original entry and the other branch.  If @code{x} is equal to the entry, we
-just return the node.  If we are asked to adjoin @code{x} to an empty tree, we
-generate a tree that has @code{x} as the entry and empty right and left
-branches.  Here is the procedure:
+just return the tree unchanged.  If we are asked to adjoin @code{x} to an
+empty tree, we generate a tree that has @code{x} as the entry and empty right
+and left branches.  Here is the function:
 
-@lisp
-(define (adjoin-set x set)
-  (cond ((null? set) (make-tree x '() '()))
-        ((= x (entry set)) set)
-        ((< x (entry set))
-         (make-tree 
-          (entry set)
-          (adjoin-set x (left-branch set))
-          (right-branch set)))
-        ((> x (entry set))
-         (make-tree
-          (entry set)
-          (left-branch set)
-          (adjoin-set x (right-branch set))))))
-@end lisp
+@example kotlin
+fun adjoinSetTree(x: Long, tree: Tree): Tree =
+    when (tree) {
+        is Tree.Empty -> makeTree(x, Tree.Empty, Tree.Empty)
+        is Tree.Node ->
+            when {
+                x == tree.entry -> tree
+                x < tree.entry -> makeTree(tree.entry, adjoinSetTree(x, tree.left), tree.right)
+                else -> makeTree(tree.entry, tree.left, adjoinSetTree(x, tree.right))
+            }
+    }
+@end example
 
 @noindent
 The above claim that searching the tree can be performed in a logarithmic
@@ -947,22 +911,22 @@ that the left and the right subtree of every tree have approximately the same
 number of elements, so that each subtree contains about half the elements of
 its parent.  But how can we be certain that the trees we construct will be
 balanced?  Even if we start with a balanced tree, adding elements with
-@code{adjoin-set} may produce an unbalanced result.  Since the position of a
+@code{adjoinSetTree} may produce an unbalanced result.  Since the position of a
 newly adjoined element depends on how the element compares with the items
 already in the set, we can expect that if we add elements ``randomly'' the tree
 will tend to be balanced on the average.  But this is not a guarantee.  For
-example, if we start with an empty set and adjoin the numbers 1 through 7 in
-sequence we end up with the highly unbalanced tree shown in @ref{Figure 2.17}.
-In this tree all the left subtrees are empty, so it has no advantage over a
-simple ordered list.  One way to solve this problem is to define an operation
-that transforms an arbitrary tree into a balanced tree with the same elements.
-Then we can perform this transformation after every few @code{adjoin-set}
-operations to keep our set in balance.  There are also other ways to solve this
-problem, most of which involve designing new data structures for which
-searching and insertion both can be done in @math{{\Theta(\log n)}}
-steps.@footnote{Examples of such structures include @newterm{B-trees} and
-@newterm{red-black trees}.  There is a large literature on data structures
-devoted to this problem.  See @ref{Cormen et al. 1990}.}
+example, if we start with @code{Tree.Empty} and adjoin the numbers 1 through 7
+in sequence we end up with the highly unbalanced tree shown in @ref{Figure
+2.17}.  In this tree all the left subtrees are empty, so it has no advantage
+over a simple ordered list.  One way to solve this problem is to define an
+operation that transforms an arbitrary tree into a balanced tree with the
+same elements.  Then we can perform this transformation after every few
+@code{adjoinSetTree} operations to keep our set in balance.  There are also
+other ways to solve this problem, most of which involve designing new data
+structures for which searching and insertion both can be done in
+@math{{\Theta(\log n)}} steps.@footnote{Examples of such structures include
+@newterm{B-trees} and @newterm{red-black trees}.  There is a large literature
+on data structures devoted to this problem.  See @ref{Cormen et al. 1990}.}
 
 @float
 @anchor{Figure 2.17}
@@ -997,101 +961,79 @@ devoted to this problem.  See @ref{Cormen et al. 1990}.}
 
 @quotation
 @strong{@anchor{Exercise 2.63}Exercise 2.63:} Each of the following two
-procedures converts a binary tree to a list.
+functions converts a binary tree to a list.
 
-@lisp
-(define (tree->list-1 tree)
-  (if (null? tree)
-      '()
-      (append 
-       (tree->list-1 
-        (left-branch tree))
-       (cons (entry tree)
-             (tree->list-1 
-              (right-branch tree))))))
+@example kotlin
+fun treeToList1(tree: Tree): List<Long> =
+    when (tree) {
+        is Tree.Empty -> emptyList()
+        is Tree.Node -> treeToList1(tree.left) + listOf(tree.entry) + treeToList1(tree.right)
+    }
 
-(define (tree->list-2 tree)
-  (define (copy-to-list tree result-list)
-    (if (null? tree)
-        result-list
-        (copy-to-list 
-         (left-branch tree)
-         (cons (entry tree)
-               (copy-to-list 
-                (right-branch tree)
-                result-list)))))
-  (copy-to-list tree '()))
-@end lisp
+fun treeToList2(tree: Tree): List<Long> {
+    fun copyToList(tree: Tree, result: List<Long>): List<Long> =
+        when (tree) {
+            is Tree.Empty -> result
+            is Tree.Node -> copyToList(tree.left, listOf(tree.entry) + copyToList(tree.right, result))
+        }
+    return copyToList(tree, emptyList())
+}
+@end example
 
 @enumerate a
 
 @item
-Do the two procedures produce the same result for every tree?  If not, how do
-the results differ?  What lists do the two procedures produce for the trees in
+Do the two functions produce the same result for every tree?  If not, how do
+the results differ?  What lists do the two functions produce for the trees in
 @ref{Figure 2.16}?
 
 @item
-Do the two procedures have the same order of growth in the number of steps
+Do the two functions have the same order of growth in the number of steps
 required to convert a balanced tree with @math{n} elements to a list?  If not,
-which one grows more slowly?
+which one grows more slowly?  (Kotlin's persistent @code{List} has no
+built-in O(1) prepend the way Scheme's @code{cons} does; @code{treeToList2}
+above still costs the same as @code{treeToList1} once translated literally.
+Rewrite @code{treeToList2} using a single mutable @code{ArrayDeque} threaded
+through the whole recursion, with @code{addFirst} standing in for
+@code{cons}, and re-answer the question for that version.)
 
 @end enumerate
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.64}Exercise 2.64:} The following procedure
-@code{list->tree} converts an ordered list to a balanced binary tree.  The
-helper procedure @code{partial-tree} takes as arguments an integer @math{n} and
-list of at least @math{n} elements and constructs a balanced tree containing the
-first @math{n} elements of the list.  The result returned by @code{partial-tree}
-is a pair (formed with @code{cons}) whose @code{car} is the constructed tree
-and whose @code{cdr} is the list of elements not included in the tree.
+@strong{@anchor{Exercise 2.64}Exercise 2.64:} The following function
+@code{listToTree} converts an ordered list to a balanced binary tree.  The
+helper function @code{partialTree} takes as arguments a list of at least
+@math{n} elements and the count @math{n}, and constructs a balanced tree
+containing the first @math{n} elements of the list.  The result returned by
+@code{partialTree} is a @code{Pair} whose first component is the constructed
+tree and whose second component is the list of elements not included in the
+tree.
 
-@lisp
-(define (list->tree elements)
-  (car (partial-tree 
-        elements (length elements))))
+@example kotlin
+fun listToTree(elements: List<Long>): Tree = partialTree(elements, elements.size).first
 
-(define (partial-tree elts n)
-  (if (= n 0)
-      (cons '() elts)
-      (let ((left-size 
-             (quotient (- n 1) 2)))
-        (let ((left-result 
-               (partial-tree 
-                elts left-size)))
-          (let ((left-tree 
-                 (car left-result))
-                (non-left-elts 
-                 (cdr left-result))
-                (right-size 
-                 (- n (+ left-size 1))))
-            (let ((this-entry 
-                   (car non-left-elts))
-                  (right-result 
-                   (partial-tree 
-                    (cdr non-left-elts)
-                    right-size)))
-              (let ((right-tree 
-                     (car right-result))
-                    (remaining-elts 
-                     (cdr right-result)))
-                (cons (make-tree this-entry 
-                                 left-tree 
-                                 right-tree)
-                      remaining-elts))))))))
-@end lisp
+fun partialTree(elts: List<Long>, n: Int): Pair<Tree, List<Long>> {
+    if (n == 0) return Tree.Empty to elts
+    val leftSize = (n - 1) / 2
+    val (leftTree, nonLeftElts) = partialTree(elts, leftSize)
+    val rightSize = n - (leftSize + 1)
+    val thisEntry = nonLeftElts[0]
+    val (rightTree, remainingElts) = partialTree(nonLeftElts.drop(1), rightSize)
+    return makeTree(thisEntry, leftTree, rightTree) to remainingElts
+}
+@end example
 
 @enumerate a
 
 @item
 Write a short paragraph explaining as clearly as you can how
-@code{partial-tree} works.  Draw the tree produced by @code{list->tree} for
-the list @code{(1 3 5 7 9 11)}.
+@code{partialTree} works.  Draw the tree produced by @code{listToTree} for
+the list @code{[1, 3, 5, 7, 9, 11]}.
 
 @item
 What is the order of growth in the number of steps required by
-@code{list->tree} to convert a list of @math{n} elements?
+@code{listToTree} to convert a list of @math{n} elements?
 
 @end enumerate
 @end quotation
@@ -1099,9 +1041,21 @@ What is the order of growth in the number of steps required by
 @quotation
 @strong{@anchor{Exercise 2.65}Exercise 2.65:} Use the results of @ref{Exercise 2.63} 
 and @ref{Exercise 2.64} to give @math{{\Theta(n)}} implementations of
-@code{union-set} and @code{intersection-set} for sets implemented as (balanced)
+@code{unionSetTree} and @code{intersectionSetTree} for sets implemented as (balanced)
 binary trees.@footnote{@ref{Exercise 2.63} through @ref{Exercise 2.65} are due
 to Paul Hilfinger.}
+@end quotation
+
+@quotation
+@emph{Exercise 2.65a is added by this edition and extends exercise 2.65; SICP numbers stop at 2.65.} @strong{@anchor{Exercise 2.65a}Exercise 2.65a:} Check
+@code{unionSetTree}/@code{intersectionSetTree} against a second,
+independently written balanced-tree set: the JDK's own
+@code{java.util.TreeSet<Long>}.  Write a function @code{treeOf} that builds
+this section's @code{Tree} from a @code{Set<Long>}, then, for at least one
+worked example, compute the union and intersection both ways and check that
+the two representations agree, ignoring order.  Use Kotest's @code{checkAll}
+property runner to check the same claim for many generated pairs of
+@code{Long} sets.
 @end quotation
 
 @subsubheading Sets and information retrieval
@@ -1120,27 +1074,19 @@ for accessing records.  This is done by identifying a part of each record to
 serve as an identifying @newterm{key}.  A key can be anything that uniquely
 identifies the record.  For a personnel file, it might be an employee's ID
 number.  For an accounting system, it might be a transaction number.  Whatever
-the key is, when we define the record as a data structure we should include a
-@code{key} selector procedure that retrieves the key associated with a given
-record.
+the key is, a record type in this language should carry a @code{key} field
+that retrieves the key associated with a given record.
 
 Now we represent the data base as a set of records. To locate the record with a
-given key we use a procedure @code{lookup}, which takes as arguments a key and
-a data base and which returns the record that has that key, or false if there
-is no such record.  @code{Lookup} is implemented in almost the same way as
-@code{element-of-set?}.  For example, if the set of records is implemented as
+given key we use a function @code{lookup}, which takes as arguments a key and
+a data base and which returns the record that has that key, or @code{null} if
+there is no such record.  @code{lookup} is implemented in almost the same way as
+@code{elementOfSet}.  For example, if the set of records is implemented as
 an unordered list, we could use
 
-@lisp
-(define (lookup given-key set-of-records)
-  (cond ((null? set-of-records) false)
-        ((equal? given-key 
-                 (key (car set-of-records)))
-         (car set-of-records))
-        (else 
-         (lookup given-key 
-                 (cdr set-of-records)))))
-@end lisp
+@example kotlin
+fun lookup(givenKey: Long, setOfRecords: List<Record>): Record? = setOfRecords.find { it.key == givenKey }
+@end example
 
 @noindent
 Of course, there are better ways to represent large sets than as unordered
@@ -1158,14 +1104,15 @@ changes to the rest of the system.
 
 @quotation
 @strong{@anchor{Exercise 2.66}Exercise 2.66:} Implement the @code{lookup}
-procedure for the case where the set of records is structured as a binary tree,
-ordered by the numerical values of the keys.
+function for the case where the set of records is structured as a binary
+tree of your own @code{RecordTree} type, ordered by the numerical value of
+each record's key.
 @end quotation
 
 @node	2.3.4, 2.4, 2.2, 2.3
 @subsection Example: Huffman Encoding Trees
 
-This section provides practice in the use of list structure and data
+This section provides practice in the use of a sealed hierarchy and data
 abstraction to manipulate sets and trees.  The application is to methods for
 representing data as sequences of ones and zeros (bits).  For example, the
 ASCII standard code used to represent text in computers encodes each character
@@ -1372,213 +1319,176 @@ encode and decode messages and generates Huffman trees according to the
 algorithm outlined above.  We will begin by discussing how trees are
 represented.
 
-Leaves of the tree are represented by a list consisting of the symbol
-@code{leaf}, the symbol at the leaf, and the weight:
+Where the book tags a leaf as a three-item list headed by the symbol
+@code{leaf} and a general tree as a four-item list of its two branches plus a
+precomputed symbol set and weight, this edition closes both shapes as one
+sealed hierarchy: a leaf holds its symbol and weight directly, and a branch
+holds its two subtrees plus the aggregate symbol list and weight of
+everything below it, computed once at construction rather than walked on
+every query:
 
-@lisp
-(define (make-leaf symbol weight)
-  (list 'leaf symbol weight))
-(define (leaf? object)
-  (eq? (car object) 'leaf))
-(define (symbol-leaf x) (cadr x))
-(define (weight-leaf x) (caddr x))
-@end lisp
+@example kotlin
+sealed interface HuffmanTree {
+    val weight: Long
+    data class Leaf(val sym: String, override val weight: Long) : HuffmanTree
+    data class Branch(val left: HuffmanTree, val right: HuffmanTree, override val weight: Long, val syms: List<String>) : HuffmanTree
+}
 
-@noindent
-A general tree will be a list of a left branch, a right branch, a set of
-symbols, and a weight.  The set of symbols will be simply a list of the
-symbols, rather than some more sophisticated set representation.  When we make
-a tree by merging two nodes, we obtain the weight of the tree as the sum of the
-weights of the nodes, and the set of symbols as the union of the sets of
-symbols for the nodes.  Since our symbol sets are represented as lists, we can
-form the union by using the @code{append} procedure we defined in 
-@ref{2.2.1}:
+fun makeLeaf(sym: String, weight: Long): HuffmanTree = HuffmanTree.Leaf(sym, weight)
 
-@lisp
-(define (make-code-tree left right)
-  (list left
-        right
-        (append (symbols left) 
-                (symbols right))
-        (+ (weight left) (weight right))))
-@end lisp
+fun symbols(t: HuffmanTree): List<String> =
+    when (t) {
+        is HuffmanTree.Leaf -> listOf(t.sym)
+        is HuffmanTree.Branch -> t.syms
+    }
+
+fun makeCodeTree(left: HuffmanTree, right: HuffmanTree): HuffmanTree =
+    HuffmanTree.Branch(left, right, left.weight + right.weight, symbols(left) + symbols(right))
+@end example
 
 @noindent
-If we make a tree in this way, we have the following selectors:
-
-@lisp
-(define (left-branch tree) (car tree))
-(define (right-branch tree) (cadr tree))
-
-(define (symbols tree)
-  (if (leaf? tree)
-      (list (symbol-leaf tree))
-      (caddr tree)))
-
-(define (weight tree)
-  (if (leaf? tree)
-      (weight-leaf tree)
-      (cadddr tree)))
-@end lisp
-
-@noindent
-The procedures @code{symbols} and @code{weight} must do something slightly
-different depending on whether they are called with a leaf or a general tree.
-These are simple examples of @newterm{generic procedures} (procedures that can
-handle more than one kind of data), which we will have much more to say about
-in @ref{2.4} and @ref{2.5}.
+The book's @code{symbols} and @code{weight} procedures dispatch on
+@code{leaf?} and then read @code{cadr}/@code{caddr}/@code{cadddr} by hand.
+Here @code{symbols} is the @code{when} above, and @code{weight} is simply
+@code{HuffmanTree.weight}, an abstract property every variant overrides; both
+are simple examples of @newterm{generic procedures} (procedures that can
+handle more than one kind of data), which we will have much more to say
+about in @ref{2.4} and @ref{2.5}.
 
 @subsubheading The decoding procedure
 
-The following procedure implements the decoding algorithm.  It takes as
-arguments a list of zeros and ones, together with a Huffman tree.
+The following function implements the decoding algorithm.  It takes as
+arguments a list of bits, together with a Huffman tree.  The book's
+@code{decode-1} is a second, inner recursive procedure only because Scheme
+has no loop construct of its own; this edition writes the same
+restart-at-the-root behavior as a single loop:
 
-@lisp
-(define (decode bits tree)
-  (define (decode-1 bits current-branch)
-    (if (null? bits)
-        '()
-        (let ((next-branch
-               (choose-branch 
-                (car bits) 
-                current-branch)))
-          (if (leaf? next-branch)
-              (cons 
-               (symbol-leaf next-branch)
-               (decode-1 (cdr bits) tree))
-              (decode-1 (cdr bits) 
-                        next-branch)))))
-  (decode-1 bits tree))
+@example kotlin
+fun chooseBranch(bit: Int, branch: HuffmanTree): HuffmanTree =
+    when {
+        branch !is HuffmanTree.Branch -> throw IllegalArgumentException("choose-branch of a leaf")
+        bit == 0 -> branch.left
+        bit == 1 -> branch.right
+        else -> throw IllegalArgumentException("bad bit: $bit")
+    }
 
-(define (choose-branch bit branch)
-  (cond ((= bit 0) (left-branch branch))
-        ((= bit 1) (right-branch branch))
-        (else (error "bad bit: 
-               CHOOSE-BRANCH" bit))))
-@end lisp
+fun decode(bits: List<Int>, tree: HuffmanTree): List<String> {
+    val result = mutableListOf<String>()
+    var current = tree
+    for (bit in bits) {
+        val next = chooseBranch(bit, current)
+        if (next is HuffmanTree.Leaf) {
+            result.add(next.sym)
+            current = tree
+        } else {
+            current = next
+        }
+    }
+    return result
+}
+@end example
 
 @noindent
-The procedure @code{decode-1} takes two arguments: the list of remaining bits
-and the current position in the tree.  It keeps moving ``down'' the tree,
-choosing a left or a right branch according to whether the next bit in the list
-is a zero or a one.  (This is done with the procedure @code{choose-branch}.)
-When it reaches a leaf, it returns the symbol at that leaf as the next symbol
-in the message by @code{cons}ing it onto the result of decoding the rest of the
-message, starting at the root of the tree.  Note the error check in the final
-clause of @code{choose-branch}, which complains if the procedure finds
-something other than a zero or a one in the input data.
+@code{chooseBranch} takes two arguments: the bit and the current position in
+the tree.  It keeps moving ``down'' the tree, choosing a left or a right
+branch according to whether the next bit in the list is @code{0} or @code{1}.
+When @code{decode}'s loop reaches a leaf, it appends the symbol at that leaf
+to the result and restarts the walk at the root of the tree, exactly as the
+book's @code{cons}-onto-the-recursive-call does.
 
 @subsubheading Sets of weighted elements
 
 In our representation of trees, each non-leaf node contains a set of symbols,
-which we have represented as a simple list.  However, the tree-generating
-algorithm discussed above requires that we also work with sets of leaves and
-trees, successively merging the two smallest items.  Since we will be required
-to repeatedly find the smallest item in a set, it is convenient to use an
-ordered representation for this kind of set.
+which we have represented as a plain @code{List}.  However, the
+tree-generating algorithm discussed above requires that we also work with
+sets of leaves and trees, successively merging the two smallest items.  Since
+we will be required to repeatedly find the smallest item in a set, it is
+convenient to use an ordered representation for this kind of set.
 
-We will represent a set of leaves and trees as a list of elements, arranged in
-increasing order of weight.  The following @code{adjoin-set} procedure for
-constructing sets is similar to the one described in @ref{Exercise 2.61};
-however, items are compared by their weights, and the element being added to
-the set is never already in it.
+We will represent a set of leaves and trees as a @code{List} of elements,
+arranged in increasing order of weight.  The following @code{adjoinHuffmanSet}
+function for constructing sets is similar to @code{adjoinSetOrdered} of
+@ref{Exercise 2.61}; however, items are compared by their weights, and the
+element being added to the set is never already in it:
 
-@lisp
-(define (adjoin-set x set)
-  (cond ((null? set) (list x))
-        ((< (weight x) (weight (car set))) 
-         (cons x set))
-        (else 
-         (cons (car set)
-               (adjoin-set x (cdr set))))))
-@end lisp
+@example kotlin
+fun adjoinHuffmanSet(x: HuffmanTree, set: List<HuffmanTree>): List<HuffmanTree> =
+    when {
+        set.isEmpty() -> listOf(x)
+        x.weight < set[0].weight -> listOf(x) + set
+        else -> listOf(set[0]) + adjoinHuffmanSet(x, set.drop(1))
+    }
+@end example
 
 @noindent
-The following procedure takes a list of symbol-frequency pairs such as
-@code{((A 4) (B 2) (C 1) (D 1))} and constructs an initial ordered set of
-leaves, ready to be merged according to the Huffman algorithm:
+The following function takes a list of symbol-frequency pairs such as
+@code{[("A", 4), ("B", 2), ("C", 1), ("D", 1)]} and constructs an initial
+ordered set of leaves, ready to be merged according to the Huffman algorithm:
 
-@lisp
-(define (make-leaf-set pairs)
-  (if (null? pairs)
-      '()
-      (let ((pair (car pairs)))
-        (adjoin-set 
-         (make-leaf (car pair)    @r{; symbol}
-                    (cadr pair))  @r{; frequency}
-         (make-leaf-set (cdr pairs))))))
-@end lisp
+@example kotlin
+fun makeLeafSet(pairs: List<Pair<String, Long>>): List<HuffmanTree> =
+    pairs.fold(emptyList()) { set, (sym, weight) -> adjoinHuffmanSet(makeLeaf(sym, weight), set) }
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.67}Exercise 2.67:} Define an encoding tree and a
 sample message:
 
-@lisp
-(define sample-tree
-  (make-code-tree 
-   (make-leaf 'A 4)
-   (make-code-tree
-    (make-leaf 'B 2)
-    (make-code-tree 
-     (make-leaf 'D 1)
-     (make-leaf 'C 1)))))
+@example kotlin
+val sampleTree =
+    makeCodeTree(
+        makeLeaf("A", 4L),
+        makeCodeTree(makeLeaf("B", 2L), makeCodeTree(makeLeaf("D", 1L), makeLeaf("C", 1L))),
+    )
 
-(define sample-message 
-  '(0 1 1 0 0 1 0 1 0 1 1 1 0))
-@end lisp
+val sampleMessage = listOf(0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0)
+@end example
 
-Use the @code{decode} procedure to decode the message, and give the result.
+Use the @code{decode} function to decode the message, and give the result.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.68}Exercise 2.68:} The @code{encode} procedure takes
+@strong{@anchor{Exercise 2.68}Exercise 2.68:} The @code{encode} function takes
 as arguments a message and a tree and produces the list of bits that gives the
 encoded message.
 
-@lisp
-(define (encode message tree)
-  (if (null? message)
-      '()
-      (append 
-       (encode-symbol (car message) 
-                      tree)
-       (encode (cdr message) tree))))
-@end lisp
+@example kotlin
+fun encode(message: List<String>, tree: HuffmanTree): List<Int> = message.flatMap { encodeSymbol(it, tree) }
+@end example
 
-@code{Encode-symbol} is a procedure, which you must write, that returns the
-list of bits that encodes a given symbol according to a given tree.  You should
-design @code{encode-symbol} so that it signals an error if the symbol is not in
-the tree at all.  Test your procedure by encoding the result you obtained in
-@ref{Exercise 2.67} with the sample tree and seeing whether it is the same as
-the original sample message.
+Write your own @code{encodeSymbol}, a function that returns the bits that
+encode a given symbol according to a given tree.  You should design
+@code{encodeSymbol} so that it signals an error if the symbol is not in the
+tree at all.  Test your function by encoding the result you obtained in
+@ref{Exercise 2.67} with @code{sampleTree} and seeing whether it is the same
+as the original @code{sampleMessage}.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.69}Exercise 2.69:} The following procedure takes as
+@strong{@anchor{Exercise 2.69}Exercise 2.69:} The following function takes as
 its argument a list of symbol-frequency pairs (where no symbol appears in more
 than one pair) and generates a Huffman encoding tree according to the Huffman
 algorithm.
 
-@lisp
-(define (generate-huffman-tree pairs)
-  (successive-merge 
-   (make-leaf-set pairs)))
-@end lisp
+@example kotlin
+fun generateHuffmanTree(pairs: List<Pair<String, Long>>): HuffmanTree = successiveMerge(makeLeafSet(pairs))
+@end example
 
-@code{Make-leaf-set} is the procedure given above that transforms the list of
-pairs into an ordered set of leaves.  @code{Successive-merge} is the procedure
-you must write, using @code{make-code-tree} to successively merge the
-smallest-weight elements of the set until there is only one element left, which
-is the desired Huffman tree.  (This procedure is slightly tricky, but not
-really complicated.  If you find yourself designing a complex procedure, then
-you are almost certainly doing something wrong.  You can take significant
-advantage of the fact that we are using an ordered set representation.)
+@code{makeLeafSet} is the function given above that transforms the list of
+pairs into an ordered set of leaves.  @code{successiveMerge} is the function
+you must write, using @code{makeCodeTree} to successively merge the
+smallest-weight elements of the set until there is only one element left,
+which is the desired Huffman tree.  (This function is slightly tricky, but
+not really complicated.  If you find yourself designing a complex function,
+then you are almost certainly doing something wrong.  You can take
+significant advantage of the fact that we are using an ordered set
+representation.)
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.70}Exercise 2.70:} The following eight-symbol
-alphabet with as@-so@-ci@-ated relative frequencies was designed to efficiently
-encode the lyr@-ics of 1950s rock songs.  (Note that the ``symbols'' of an
+alphabet with associated relative frequencies was designed to efficiently
+encode the lyrics of 1950s rock songs.  (Note that the ``symbols'' of an
 ``alphabet'' need not be individual letters.)
 
 @example
@@ -1589,7 +1499,7 @@ GET  2    YIP  9
 JOB  2    WAH  1
 @end example
 
-Use @code{generate-huffman-tree} (@ref{Exercise 2.69}) to generate a
+Use @code{generateHuffmanTree} (@ref{Exercise 2.69}) to generate a
 corresponding Huffman tree, and use @code{encode} (@ref{Exercise 2.68}) to
 encode the following message:
 
@@ -1626,7 +1536,6 @@ steps needed to search the symbol list at each node encountered.  To answer
 this question in general is difficult.  Consider the special case where the
 relative frequencies of the @math{n} symbols are as described in @ref{Exercise 2.71}, 
 and give the order of growth (as a function of @math{n}) of the number of
-steps needed to encode the most frequent and least frequent symbols in the
+steps needed to encode the most frequent and least frequent symbol in the
 alphabet.
 @end quotation
-

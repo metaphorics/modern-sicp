@@ -218,7 +218,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.62 | Ordered union | T | T | T | T | |
 | 2.63 | Tree-to-list comparison | T | T | T | T | |
 | 2.64 | List-to-tree | A: partial-tree returns pair, needs tuple | A: partial-tree returns pair, needs tuple | A: partial-tree returns pair, needs tuple | A: partial-tree returns pair, needs Pair | |
-| 2.65 | Tree set operations | T | T | T | T | tree sets as balanced maps |
+| 2.65 | Tree set operations | T | T | T | T | tree sets as balanced maps (chosen: kotlin) |
 | 2.66 | Tree lookup | T | T | T | T | |
 | 2.67 | Sample decode | T | T | T | T | decode via pattern match |
 | 2.68 | Encode-symbol | T | T | T | T | |
@@ -248,7 +248,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.82 | Multi-argument coercion | A: multi-arg coercion needs conversion search | A: multi-arg coercion needs conversion search | A: multi-arg coercion needs conversion search | A: multi-arg coercion needs conversion search | coerce to common supertype example |
 | 2.83 | Raise operation | A: raise needs tower enum with levels | A: raise over variant tower levels | A: raise over union tower levels | A: raise over sealed tower levels | |
 | 2.84 | Successive raising | A: successive raising needs tower ordering map | A: tower ordering via raise chain search | A: tower ordering via raise chain search | A: tower ordering via raise chain search | |
-| 2.85 | Drop projection | A: drop needs project plus equ? dispatch | A: lowering needs project and equality dispatch | A: lowering needs project and equality dispatch | A: lowering needs project and equality dispatch | simplify complex zero to real |
+| 2.85 | Drop projection | A: drop needs project plus equ? dispatch | A: lowering needs project and equality dispatch | A: lowering needs project and equality dispatch | A: lowering needs project and equality dispatch | simplify complex zero to real (chosen: ocaml — implemented as 2.85a, coercion-graph cycle detection, not the literal "simplify complex zero to real" text; see report) |
 | 2.86 | Generic complex parts | A: generic coefficients force numeric abstraction layer | A: generic coefficients need numeric module signatures | A: generic coefficients need numeric abstraction union | A: generic coefficients need numeric abstraction interface | |
 | 2.87 | Polynomial =zero? | T | T | T | T | test =zero? on nested polys |
 | 2.88 | Polynomial subtraction | A: negation and subtraction as generic ops | A: negation and subtraction as generic ops | A: negation and subtraction as generic ops | A: negation and subtraction as generic ops | |

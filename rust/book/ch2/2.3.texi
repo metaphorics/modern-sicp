@@ -17,34 +17,52 @@ language by introducing the ability to work with arbitrary symbols as data.
 
 If we can form compound data using symbols, we can have lists such as
 
-@lisp
-(a b c d)
-(23 45 17)
-((Norah 12) 
- (Molly 9) 
- (Anna 7) 
- (Lauren 6) 
- (Charlotte 4))
-@end lisp
+@example rust
+List::from_iter([sym("a"), sym("b"), sym("c"), sym("d")]);
+List::from_iter([23_i128, 45, 17]);
+List::from_iter([
+    (sym("Norah"), 12),
+    (sym("Molly"), 9),
+    (sym("Anna"), 7),
+    (sym("Lauren"), 6),
+    (sym("Charlotte"), 4),
+]);
+@end example
+
+@noindent
+Where the book nests a two-element list for each name/age pair, this edition
+reaches for a tuple: @code{List<T>} and @code{Nest<T>} are homogeneous, so
+pairing a symbol with a number inside one of them needs a sum type, and the
+section does not introduce one until @code{Expr} in @ref{2.3.2}.  A
+@code{(Symbol, i128)} tuple is the honest translation of an ad hoc record
+until then.
 
 @noindent
 Lists containing symbols can look just like the expressions of our
 language:
 
-@lisp
-(* (+ 23 45) (+ x 9))
-(define (fact n) 
-  (if (= n 1) 
-      1 
-      (* n (fact (- n 1)))))
-@end lisp
+@example rust
+Expr::Product(
+    Box::new(Expr::Sum(Box::new(Expr::Num(23)), Box::new(Expr::Num(45)))),
+    Box::new(Expr::Sum(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Num(9)))),
+);
+@end example
 
 @noindent
-In order to manipulate symbols we need a new element in our language: the
-ability to @newterm{quote} a data object.  Suppose we want to construct the
-list @code{(a b)}.  We can't accomplish this with @code{(list a b)}, because
-this expression constructs a list of the @newterm{values} of @code{a} and
-@code{b} rather than the symbols themselves.  This issue is well known in the
+Except that here they cannot: @code{Expr::Product(...)} is a value being
+constructed by an ordinary function call, and no sequence of tokens that
+builds it could also be read by @code{rustc} as executable code computing
+something else.  Lisp lists and Lisp expressions share one surface syntax, so
+the interpreter has to be told, token by token, which meaning is intended.
+Rust's syntax for building a value and its syntax for computing one are
+different from the start, which is exactly why the language we build in this
+section never needs a @newterm{quote} operator to tell them apart.
+
+@noindent
+In Scheme, quoting is what makes @code{(a b)} available as a list of symbols
+rather than a call to a function named @code{a} on a value named @code{b}.
+@code{(list a b)} builds a list of the @newterm{values} of @code{a} and
+@code{b}, not the symbols themselves.  This issue is well known in the
 context of natural languages, where words and sentences may be regarded either
 as semantic entities or as character strings (syntactic entities).  The common
 practice in natural languages is to use quotation marks to indicate that a word
@@ -67,156 +85,239 @@ from the statement ``the evening star is Venus'' we can deduce ``the morning
 star is Venus.''  However, given that ``John knows that the evening star is
 Venus'' we cannot infer that ``John knows that the morning star is Venus.''}
 
+Rust never needs the marker that natural language, and Scheme, reach for here,
+because a Rust value is never ambiguous between ``the thing itself'' and ``a
+name that stands for the thing.''  @code{List::from_iter([sym("a"),
+sym("b")])} is the list @code{(a b)}: there is no reading of this call under
+which @code{sym("a")} could instead denote the value of some variable named
+@code{a}, because @code{sym} always takes a string literal and always returns
+a fresh @code{Symbol}.  The confusion the book's @code{'} solves does not
+arise, so there is nothing here for a marker to disambiguate.@footnote{A Rust
+string literal such as @code{"a"} is a further, unrelated distinction the book
+does not need to draw at this point: @code{"a"} is a @code{&str}, a sequence
+of characters meant to be printed, and @code{Symbol::from("a")} is the
+one-character conversion that turns it into the interned, @code{==}-comparable
+value this section manipulates as data.  The two are never confused, because
+Rust's double quotes always mean ``string'' and nothing else.}
+
 We can follow this same practice to identify lists and symbols that are to be
-treated as data objects rather than as expressions to be evaluated.  However,
-our format for quoting differs from that of natural languages in that we place
-a quotation mark (traditionally, the single quote @w{symbol @code{'})} only at the
-beginning of the object to be quoted.  We can get away with this in Scheme
-syntax because we rely on blanks and parentheses to delimit objects.  Thus, the
-meaning of the single quote character is to quote the next object.@footnote{The
-single quote is different from the double quote we have been using to enclose
-character strings to be printed.  Whereas the single quote can be used to
-denote lists or symbols, the double quote is used only with character strings.
-In this book, the only use for character strings is as items to be printed.}
+treated as data objects rather than as expressions to be evaluated.  Now we
+can distinguish between symbols and their values:
 
-Now we can distinguish between symbols and their values:
+@example rust
+let a = 1;
+let b = 2;
 
-@lisp
-(define a 1)
-(define b 2)
+List::from_iter([a, b]);
+// => (1 2)
 
-(list a b)
-@i{(1 2)}
-
-(list 'a 'b)
-@i{(a b)}
-
-(list 'a b)
-@i{(a 2)}
-@end lisp
+List::from_iter([sym("a"), sym("b")]);
+// => (a b)
+@end example
 
 @noindent
-Quotation also allows us to type in compound objects, using the conventional
-printed representation for lists:@footnote{Strictly, our use of the quotation
-mark violates the general rule that all compound expressions in our language
-should be delimited by parentheses and look like lists.  We can recover this
-consistency by introducing a special form @code{quote}, which serves the same
-purpose as the quotation mark.  Thus, we would type @code{(quote a)} instead of
-@code{'a}, and we would type @code{(quote (a b c))} instead of @code{'(a b c)}.
-This is precisely how the interpreter works.  The quotation mark is just a
-single-character abbreviation for wrapping the next complete expression with
-@code{quote} to form @code{(quote ⟨@var{expression}⟩)}.  This is
-important because it maintains the principle that any expression seen by the
-interpreter can be manipulated as a data object.  For instance, we could
-construct the expression @code{(car '(a b c))}, which is the same as @code{(car
-(quote (a b c)))}, by evaluating @code{(list 'car (list 'quote '(a b c)))}.}
-
-@lisp
-(car '(a b c))
-@i{a}
-
-(cdr '(a b c))
-@i{(b c)}
-@end lisp
+The first call builds a list of the numbers @code{a} and @code{b} are bound
+to; the second builds a list of the two-character symbols @code{a} and
+@code{b}, which share nothing with the variables above but their spelling.
+Because @code{List<T>} is homogeneous, there is no third call mixing a
+variable's value with a symbol of the same name in one list the way the
+book's @code{(list 'a b)} does; the type checker would refuse to compile a
+@code{List<i128>} literal containing a @code{Symbol}, which is the same
+distinction the book is illustrating, enforced one level earlier.
 
 @noindent
-In keeping with this, we can obtain the empty list by evaluating @code{'()},
-and thus dispense with the variable @code{nil}.
+Symbols also let us read the parts of a list back out:
 
-One additional primitive used in manipulating symbols is @code{eq?}, which
-takes two symbols as arguments and tests whether they are the same.@footnote{We
-can consider two symbols to be ``the same'' if they consist of the same
-characters in the same order.  Such a definition skirts a deep issue that we
-are not yet ready to address: the meaning of ``sameness'' in a programming
-language.  We will return to this in @ref{Chapter 3} (@ref{3.1.3}).}
-Using @code{eq?}, we can implement a useful procedure called @code{memq}.  This
-takes two arguments, a symbol and a list.  If the symbol is not contained in
-the list (i.e., is not @code{eq?} to any item in the list), then @code{memq}
-returns false.  Otherwise, it returns the sublist of the list beginning with
-the first occurrence of the symbol:
-
-@lisp
-(define (memq item x)
-  (cond ((null? x) false)
-        ((eq? item (car x)) x)
-        (else (memq item (cdr x)))))
-@end lisp
+@example rust
+let abc: List<Symbol> = List::from_iter([sym("a"), sym("b"), sym("c")]);
+println!("{}", abc.car().cloned().expect("cons cell"));
+// => a
+println!("{}", abc.cdr().expect("cons cell"));
+// => (b c)
+@end example
 
 @noindent
-For example, the value of
+In keeping with this, the empty list is simply @code{List::Nil}: a variant of
+the type itself, constructed the same way regardless of element type, never a
+loose global variable that quoting would need to dispense with the way the
+book's discussion of @code{nil} implies.@footnote{Strictly, this also settles a
+question the book raises separately: whether a leading quotation mark is a
+primitive notation of its own, or an abbreviation for a special form
+@code{quote} that a reader expands before the interpreter ever sees it.  This
+edition has no reader to do that expanding, so there is only one spelling to
+begin with: @code{List::from_iter([sym("a"), sym("b"), sym("c")])} already is
+the one way to build the list @code{(a b c)}, called directly rather than
+abbreviated by a mark and later expanded into an equivalent call.  Exercise
+2.55 asks what a reader would have built out of doubled quotation, without
+ever needing to run one.}
 
-@lisp
-(memq 'apple '(pear banana prune))
-@end lisp
+One additional primitive used in manipulating symbols is @code{==} on
+@code{Symbol}, which takes two symbols and tests whether they are the
+same.@footnote{Because @code{Symbol} is @code{Rc<str>}, @code{==} compares
+the underlying characters, so two symbols built from the same string always
+compare equal, whether or not they happen to share one allocation.  Such a
+definition skirts a deep issue that we are not yet ready to address: the
+meaning of ``sameness'' in a programming language.  We will return to this in
+@ref{Chapter 3} (@ref{3.1.3}).}
+Using @code{==}, we can implement a useful procedure called @code{memq}.  This
+takes two arguments, an item and a list.  If the item is not contained in
+the list (i.e., is not @code{==} to any item in the list), then @code{memq}
+returns @code{None}.  Otherwise, it returns the sublist of the list beginning with
+the first occurrence of the item:
+
+@example rust
+/// Finds `item` in `xs` by `eq?`-style comparison: the book's `memq`.
+pub fn memq<T: PartialEq + Clone>(item: &T, xs: &List<T>) -> Option<List<T>> {
+    let mut cursor = xs;
+    loop {
+        match cursor {
+            List::Nil => return None,
+            List::Cons(x, rest) => {
+                if x == item {
+                    return Some(cursor.clone());
+                }
+                cursor = rest;
+            }
+        }
+    }
+}
+@end example
 
 @noindent
-is false, whereas the value of
+Because @code{memq} is generic over any @code{T: PartialEq + Clone}, it works
+unchanged whether the list holds flat symbols or the nested @code{Nest<Symbol>}
+trees @ref{2.2} built; the book's Scheme version gets this generality for
+free from being untyped, while here the compiler proves it once at the
+function's own definition.  For example, the value of
 
-@lisp
-(memq 'apple '(x (apple sauce) y apple pear))
-@end lisp
+@example rust
+memq(&sym("apple"), &List::from_iter([sym("pear"), sym("banana"), sym("prune")]))
+    .map_or_else(|| "false".to_string(), |l| l.to_string());
+@end example
 
 @noindent
-is @code{(apple pear)}.
+is @code{"false"}, whereas the value of
+
+@example rust
+let xs: List<Nest<Symbol>> = List::from_iter([
+    leaf(sym("x")),
+    sub(&[leaf(sym("apple")), leaf(sym("sauce"))]),
+    leaf(sym("y")),
+    leaf(sym("apple")),
+    leaf(sym("pear")),
+]);
+memq(&Nest::Leaf(sym("apple")), &xs)
+    .map_or_else(|| "false".to_string(), |l| l.to_string());
+@end example
+
+@noindent
+is @code{"(apple pear)"}: the first @code{apple} is buried inside a
+@code{Nest::Sub}, a different variant from the bare @code{Nest::Leaf(sym("apple"))}
+being searched for, so it is skipped exactly as the book's untagged sublist
+is skipped by @code{eq?}.
 
 @quotation
-@strong{@anchor{Exercise 2.53}Exercise 2.53:} What would the interpreter print
-in response to evaluating each of the following expressions?
+@emph{SICP exercise 2.53 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
 
-@lisp
-(list 'a 'b 'c)
-(list (list 'george))
-(cdr '((x1 x2) (y1 y2)))
-(cadr '((x1 x2) (y1 y2)))
-(pair? (car '(a short list)))
-(memq 'red '((red shoes) (blue socks)))
-(memq 'red '(red shoes blue socks))
-@end lisp
+@strong{@anchor{Exercise 2.53}Exercise 2.53:} What value, or what printed
+form, does each of the following produce?  Answer from the types alone where
+you can, without running anything.
+
+@example rust
+List::from_iter([sym("a"), sym("b"), sym("c")])
+sub(&[sub(&[leaf(sym("george"))])])
+
+let pairs: List<Nest<Symbol>> = List::from_iter([
+    sub(&[leaf(sym("x1")), leaf(sym("x2"))]),
+    sub(&[leaf(sym("y1")), leaf(sym("y2"))]),
+]);
+pairs.cdr()
+pairs.cdr().and_then(List::car)
+
+let short_list: List<Symbol> = List::from_iter([sym("a"), sym("short"), sym("list")]);
+// Could short_list.car() ever be a value that is itself a compound list?
+// Answer in terms of List<Symbol>'s type, not by tracing the call.
+
+let outer = sub(&[
+    sub(&[leaf(sym("red")), leaf(sym("shoes"))]),
+    sub(&[leaf(sym("blue")), leaf(sym("socks"))]),
+]);
+// as a List<Nest<Symbol>>:
+memq(&Nest::Leaf(sym("red")), &outer_as_list)
+
+let flat: List<Symbol> = List::from_iter([sym("red"), sym("shoes"), sym("blue"), sym("socks")]);
+memq(&sym("red"), &flat)
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.54}Exercise 2.54:} Two lists are said to be
-@code{equal?} if they contain equal elements arranged in the same order.  For
+@strong{@anchor{Exercise 2.54}Exercise 2.54:} Two @code{Nest<Symbol>} values are said to be
+equal, call the comparison @code{my_equal}, if they contain equal elements arranged in the same order.  For
 example,
 
-@lisp
-(equal? '(this is a list) 
-        '(this is a list))
-@end lisp
+@example rust
+my_equal(
+    &sub(&[leaf(sym("this")), leaf(sym("is")), leaf(sym("a")), leaf(sym("list"))]),
+    &sub(&[leaf(sym("this")), leaf(sym("is")), leaf(sym("a")), leaf(sym("list"))]),
+);
+@end example
 
 @noindent
-is true, but
+is @code{true}, but
 
-@lisp
-(equal? '(this is a list) 
-        '(this (is a) list))
-@end lisp
+@example rust
+my_equal(
+    &sub(&[leaf(sym("this")), leaf(sym("is")), leaf(sym("a")), leaf(sym("list"))]),
+    &sub(&[leaf(sym("this")), sub(&[leaf(sym("is")), leaf(sym("a"))]), leaf(sym("list"))]),
+);
+@end example
 
 @noindent
-is false.  To be more precise, we can define @code{equal?}  recursively in
-terms of the basic @code{eq?} equality of symbols by saying that @code{a} and
-@code{b} are @code{equal?} if they are both symbols and the symbols are
-@code{eq?}, or if they are both lists such that @code{(car a)} is @code{equal?}
-to @code{(car b)} and @code{(cdr a)} is @code{equal?} to @code{(cdr b)}.  Using
-this idea, implement @code{equal?} as a procedure.@footnote{In practice,
-programmers use @code{equal?} to compare lists that contain numbers as well as
+is @code{false}.  To be more precise, we can define @code{my_equal}
+recursively in terms of the basic @code{==} equality of symbols by saying that
+@code{a} and @code{b} are equal if they are both leaves and the symbols are
+@code{==}, or if they are both branches such that every corresponding pair of
+their items is recursively equal, in order.  Implement this yourself, as a
+recursive function: @code{Nest<Symbol>} already derives a structural
+@code{PartialEq}, but the point of the exercise is writing the recursion that
+derive gives you for free, not calling it.@footnote{In practice,
+programmers use @code{my_equal} to compare lists that contain numbers as well as
 symbols.  Numbers are not considered to be symbols.  The question of whether
-two numerically equal numbers (as tested by @code{=}) are also @code{eq?} is
-highly implementation-dependent.  A better definition of @code{equal?} (such as
-the one that comes as a primitive in Scheme) would also stipulate that if
-@code{a} and @code{b} are both numbers, then @code{a} and @code{b} are
-@code{equal?} if they are numerically equal.}
+two numerically equal numbers (as tested by @code{==}) are also the same
+allocation is highly implementation-dependent.  A better definition of
+@code{my_equal} would also stipulate that if @code{a} and @code{b} are both
+numbers, then @code{a} and @code{b} are equal if they are numerically equal.}
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.55}Exercise 2.55:} Eva Lu Ator types to the
-interpreter the expression
+@emph{SICP exercise 2.55 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
 
-@lisp
-(car ''abracadabra)
-@end lisp
+@strong{@anchor{Exercise 2.55}Exercise 2.55:} This edition has no reader, so
+``@code{''abracadabra}'' is not something a program ever types at a prompt.
+But we can still ask what nested quotation @emph{would} build, by
+representing exactly what a reader constructs, as data, and nothing more:
 
-To her surprise, the interpreter prints back @code{quote}.  Explain.
+@example rust
+enum Quoted {
+    Sym(Symbol),
+    Pair(Box<Quoted>, Box<Quoted>),
+    Nil,
+}
+@end example
+
+@noindent
+A single quote @code{'x} is reader sugar for the two-element list
+@code{(quote x)}; a doubled quote @code{''abracadabra} is sugar for
+@code{(quote (quote abracadabra))}.  Build the value that @code{''abracadabra}
+would read as, using only @code{Quoted::Sym}, @code{Quoted::Pair}, and
+@code{Quoted::Nil} (an interior helper such as @code{list2(a, b)} for the
+two-element case is fair game).  Write a @code{Display} impl that prints a
+@code{Quoted} list the way the book prints Scheme lists, then predict what
+your @code{Display} impl prints for the value you built, and what its
+@code{car} is.  Explain your answer without appealing to a reader at all: say
+directly, in terms of the @code{Quoted} value's shape, why the outer
+@code{Pair}'s first element is the symbol @code{quote} rather than
+@code{abracadabra}.
 @end quotation
 
 @node	2.3.2, 2.3.3, 2.3.1, 2.3
@@ -241,7 +342,13 @@ strategy of data abstraction that we followed in developing the rational-number
 system of @ref{2.1.1}.  That is, we will first define a differentiation
 algorithm that operates on abstract objects such as ``sums,'' ``products,'' and
 ``variables'' without worrying about how these are to be represented.  Only
-afterward will we address the representation problem.
+afterward will we address the representation problem.  In Scheme, that
+separation is total, because a list-based representation can stay hidden
+behind procedures indefinitely.  In Rust, it is smaller: naming the abstract
+objects at all means giving them a type, and a closed @code{enum} is both the
+abstract interface @code{deriv} is written against and its concrete
+representation at once, since there is no other representation this edition
+will ever install behind it.
 
 @subsubheading The differentiation program with abstract data
 
@@ -296,154 +403,148 @@ for representing algebraic expressions, we should be able to tell whether an
 expression is a sum, a product, a constant, or a variable.  We should be able
 to extract the parts of an expression.  For a sum, for example we want to be
 able to extract the addend (first term) and the augend (second term).  We
-should also be able to construct expressions from parts.  Let us assume that we
-already have procedures to implement the following selectors, constructors, and
-predicates:
+should also be able to construct expressions from parts.  The type that grants
+all of this at once is:
 
-@example
-(variable? e)          @r{Is @code{e} a variable?}
-(same-variable? v1 v2) @r{Are @code{v1} and @code{v2} the same variable?}
-(sum? e)               @r{Is @code{e} a sum?}
-(addend e)             @r{Addend of the sum @code{e}.}
-(augend e)             @r{Augend of the sum @code{e}.}
-(make-sum a1 a2)       @r{Construct the sum of @code{a1} and @code{a2}.}
-(product? e)           @r{Is @code{e} a product?}
-(multiplier e)         @r{Multiplier of the product @code{e}.}
-(multiplicand e)       @r{Multiplicand of the product @code{e}.}
-(make-product m1 m2)   @r{Construct the product of @code{m1} and @code{m2}.}
+@example rust
+pub enum Expr {
+    /// A number.
+    Num(i128),
+    /// A variable, identified by its symbol.
+    Var(Symbol),
+    /// A sum of two expressions.
+    Sum(Box<Expr>, Box<Expr>),
+    /// A product of two expressions.
+    Product(Box<Expr>, Box<Expr>),
+}
 @end example
 
 @noindent
-Using these, and the primitive predicate @code{number?}, which identifies
-numbers, we can express the differentiation rules as the following procedure:
+The book's nine assumed procedures collapse into this one type: @code{sum?}
+and @code{product?} become the @code{Sum}/@code{Product} match arms below,
+@code{addend}/@code{augend} and @code{multiplier}/@code{multiplicand} become
+the two boxed fields those arms bind, and @code{make-sum}/@code{make-product}
+become the two closures @code{deriv_via} takes as parameters, so that changing
+how sums and products are built (the section's whole point, reached again
+below) never touches @code{deriv_via} itself.  Only @code{variable?} and
+@code{same-variable?} survive as named functions, because @code{Var}'s field
+is a value that still needs comparing, not merely a shape to match:
 
-@lisp
-(define (deriv exp var)
-  (cond ((number? exp) 0)
-        ((variable? exp)
-         (if (same-variable? exp var) 1 0))
-        ((sum? exp)
-         (make-sum (deriv (addend exp) var)
-                   (deriv (augend exp) var)))
-        ((product? exp)
-         (make-sum
-          (make-product 
-           (multiplier exp)
-           (deriv (multiplicand exp) var))
-          (make-product 
-           (deriv (multiplier exp) var)
-           (multiplicand exp))))
-        (else (error "unknown expression 
-                      type: DERIV" exp))))
-@end lisp
+@example rust
+/// Checks whether an expression is equal to a given number: the book's
+/// `=number?`.
+pub fn is_number(exp: &Expr, num: i128) -> bool {
+    matches!(exp, Expr::Num(x) if *x == num)
+}
+
+/// Checks whether `exp` is the variable `var`: the book's
+/// `(same-variable? exp var)`.
+pub fn is_same_variable(exp: &Expr, var: &Symbol) -> bool {
+    matches!(exp, Expr::Var(x) if x == var)
+}
+@end example
 
 @noindent
-This @code{deriv} procedure incorporates the complete differentiation
-algorithm.  Since it is expressed in terms of abstract data, it will work no
-matter how we choose to represent algebraic expressions, as long as we design a
-proper set of selectors and constructors.  This is the issue we must address
-next.
+Using these, and pattern matching in place of the primitive predicate
+@code{number?}, we can express the differentiation rules as the following
+function, which takes the sum and product constructors as parameters so that
+the book's later promise, ``we won't change @code{deriv} at all,'' is literal:
+this function is written once and never edited again, no matter which pair of
+constructors it is handed.
+
+@example rust
+pub fn deriv_via(
+    exp: &Expr,
+    var: &Symbol,
+    make_sum: &impl Fn(Expr, Expr) -> Result<Expr, SchemeError>,
+    make_product: &impl Fn(Expr, Expr) -> Result<Expr, SchemeError>,
+) -> Result<Expr, SchemeError> {
+    match exp {
+        Expr::Num(_) => Ok(Expr::Num(0)),
+        Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
+        Expr::Sum(a1, a2) => make_sum(
+            deriv_via(a1, var, make_sum, make_product)?,
+            deriv_via(a2, var, make_sum, make_product)?,
+        ),
+        Expr::Product(m1, m2) => {
+            let left = make_product((**m1).clone(), deriv_via(m2, var, make_sum, make_product)?)?;
+            let right = make_product(deriv_via(m1, var, make_sum, make_product)?, (**m2).clone())?;
+            make_sum(left, right)
+        }
+    }
+}
+@end example
+
+@noindent
+This function incorporates the complete differentiation algorithm.  Since the
+@code{Expr::Num}/@code{Expr::Var}/@code{Expr::Sum}/@code{Expr::Product} match
+is exhaustive, the compiler proves every case is handled; the book's final
+@code{(else (error "unknown expression type: DERIV" exp))} clause has no
+counterpart here, because there is no fifth variant left for it to catch.
 
 @subsubheading Representing algebraic expressions
 
-We can imagine many ways to use list structure to represent algebraic
-expressions.  For example, we could use lists of symbols that mirror the usual
-algebraic notation, representing @math{{ax + b}} as the list @code{(a * x + b)}.  
-However, one especially straightforward choice is to use the same
-parenthesized prefix notation that Lisp uses for combinations; that is, to
-represent @math{{ax + b}} as @code{(+ (* a x) b)}.  Then our data
-representation for the differentiation problem is as follows:
+Two variables are the same if the symbols representing them are @code{==},
+which is exactly @code{is_same_variable} above.  Printing an expression back
+in the book's parenthesized prefix notation is a @code{Display} impl over the
+same four variants:
 
-@itemize @bullet
-
-@item
-The variables are symbols.  They are identified by the primitive predicate
-@code{symbol?}:
-
-@lisp
-(define (variable? x) (symbol? x))
-@end lisp
-
-@item
-Two variables are the same if the symbols representing them are @code{eq?}:
-
-@lisp
-(define (same-variable? v1 v2)
-  (and (variable? v1)
-       (variable? v2)
-       (eq? v1 v2)))
-@end lisp
-
-@item
-Sums and products are constructed as lists:
-
-@lisp
-(define (make-sum a1 a2) (list '+ a1 a2))
-(define (make-product m1 m2) (list '* m1 m2))
-@end lisp
-
-@item
-A sum is a list whose first element is the symbol @code{+}:
-
-@lisp
-(define (sum? x)
-  (and (pair? x) (eq? (car x) '+)))
-@end lisp
-
-@item
-The addend is the second item of the sum list:
-
-@lisp
-(define (addend s) (cadr s))
-@end lisp
-
-@item
-The augend is the third item of the sum list:
-
-@lisp
-(define (augend s) (caddr s))
-@end lisp
-
-@item
-A product is a list whose first element is the symbol @code{*}:
-@lisp
-(define (product? x)
-  (and (pair? x) (eq? (car x) '*)))
-@end lisp
-
-@item
-The multiplier is the second item of the product list:
-
-@lisp
-(define (multiplier p) (cadr p))
-@end lisp
-
-@item
-The multiplicand is the third item of the product list:
-
-@lisp
-(define (multiplicand p) (caddr p))
-@end lisp
-
-@end itemize
+@example rust
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expr::Num(n) => write!(f, "{n}"),
+            Expr::Var(x) => write!(f, "{x}"),
+            Expr::Sum(a, b) => write!(f, "(+ {a} {b})"),
+            Expr::Product(a, b) => write!(f, "(* {a} {b})"),
+        }
+    }
+}
+@end example
 
 @noindent
-Thus, we need only combine these with the algorithm as embodied by @code{deriv}
-in order to have a working symbolic-differentiation program.  Let us look at
-some examples of its behavior:
+Now all that is missing is the pair of constructors @code{deriv_via} expects.
+The naive versions build a sum or a product without simplifying it at all:
 
-@lisp
-(deriv '(+ x 3) 'x)
-@i{(+ 1 0)}
+@example rust
+pub fn make_sum_unsimplified(a1: Expr, a2: Expr) -> Expr {
+    Expr::Sum(Box::new(a1), Box::new(a2))
+}
+pub fn make_product_unsimplified(m1: Expr, m2: Expr) -> Expr {
+    Expr::Product(Box::new(m1), Box::new(m2))
+}
 
-(deriv '(* x y) 'x)
-@i{(+ (* x 0) (* 1 y))}
+pub fn deriv_unsimplified(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+    deriv_via(
+        exp,
+        var,
+        &|a, b| Ok(make_sum_unsimplified(a, b)),
+        &|a, b| Ok(make_product_unsimplified(a, b)),
+    )
+}
+@end example
 
-(deriv '(* (* x y) (+ x 3)) 'x)
-@i{(+ (* (* x y) (+ 1 0))}
-   @i{(* (+ (* x 0) (* 1 y))}
-      @i{(+  x 3)))}
-@end lisp
+@noindent
+Thus, we need only combine these with the algorithm as embodied by
+@code{deriv_via} in order to have a working symbolic-differentiation program.
+Let us look at some examples of its behavior:
+
+@example rust
+let sum = Expr::Sum(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Num(3)));
+deriv_unsimplified(&sum, &sym("x"))?;
+// => (+ 1 0)
+
+let product = Expr::Product(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Var(sym("y"))));
+deriv_unsimplified(&product, &sym("x"))?;
+// => (+ (* x 0) (* 1 y))
+
+let nested = Expr::Product(
+    Box::new(Expr::Product(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Var(sym("y"))))),
+    Box::new(Expr::Sum(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Num(3)))),
+);
+deriv_unsimplified(&nested, &sym("x"))?;
+// => (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))
+@end example
 
 @noindent
 The program produces answers that are correct; however, they are unsimplified.
@@ -470,58 +571,77 @@ Our difficulty is much like the one we encountered with the rational-number
 implementation: we haven't reduced answers to simplest form.  To accomplish the
 rational-number reduction, we needed to change only the constructors and the
 selectors of the implementation.  We can adopt a similar strategy here.  We
-won't change @code{deriv} at all.  Instead, we will change @code{make-sum} so
-that if both summands are numbers, @code{make-sum} will add them and return
-their sum.  Also, if one of the summands is 0, then @code{make-sum} will return
+won't change @code{deriv_via} at all.  Instead, we will change @code{make_sum} so
+that if both summands are numbers, @code{make_sum} will add them and return
+their sum.  Also, if one of the summands is 0, then @code{make_sum} will return
 the other summand:
 
-@lisp
-(define (make-sum a1 a2)
-  (cond ((=number? a1 0) a2)
-        ((=number? a2 0) a1)
-        ((and (number? a1) (number? a2)) 
-         (+ a1 a2))
-        (else (list '+ a1 a2))))
-@end lisp
+@example rust
+/// # Errors
+/// [`SchemeError::Overflow`] when both summands are numbers whose sum
+/// leaves the `i128` range.
+pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> {
+    if is_number(&a1, 0) {
+        return Ok(a2);
+    }
+    if is_number(&a2, 0) {
+        return Ok(a1);
+    }
+    if let (Expr::Num(x), Expr::Num(y)) = (&a1, &a2) {
+        return Ok(Expr::Num(x.checked_add(*y).ok_or(SchemeError::Overflow)?));
+    }
+    Ok(Expr::Sum(Box::new(a1), Box::new(a2)))
+}
+@end example
 
 @noindent
-This uses the procedure @code{=number?}, which checks whether an expression is
-equal to a given number:
+This uses @code{is_number} above, which checks whether an expression is
+equal to a given number.  Similarly, we will change @code{make_product} to
+build in the rules that 0 times anything is 0 and 1 times anything is the
+thing itself:
 
-@lisp
-(define (=number? exp num)
-  (and (number? exp) (= exp num)))
-@end lisp
+@example rust
+/// # Errors
+/// [`SchemeError::Overflow`] when both factors are numbers whose
+/// product leaves the `i128` range.
+pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> {
+    if is_number(&m1, 0) || is_number(&m2, 0) {
+        return Ok(Expr::Num(0));
+    }
+    if is_number(&m1, 1) {
+        return Ok(m2);
+    }
+    if is_number(&m2, 1) {
+        return Ok(m1);
+    }
+    if let (Expr::Num(x), Expr::Num(y)) = (&m1, &m2) {
+        return Ok(Expr::Num(x.checked_mul(*y).ok_or(SchemeError::Overflow)?));
+    }
+    Ok(Expr::Product(Box::new(m1), Box::new(m2)))
+}
+
+pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+    deriv_via(exp, var, &make_sum, &make_product)
+}
+@end example
 
 @noindent
-Similarly, we will change @code{make-product} to build in the rules that 0
-times anything is 0 and 1 times anything is the thing itself:
+Both refined constructors fold their numeric case with @code{checked_add}
+and @code{checked_mul}: this edition's numbers are fixed-width @code{i128},
+not Scheme's unbounded integers, so a differentiation that overflows returns
+@code{SchemeError::Overflow} instead of silently wrapping.  Here is how this
+version works on our three examples:
 
-@lisp
-(define (make-product m1 m2)
-  (cond ((or (=number? m1 0) 
-             (=number? m2 0)) 
-         0)
-        ((=number? m1 1) m2)
-        ((=number? m2 1) m1)
-        ((and (number? m1) (number? m2)) 
-         (* m1 m2))
-        (else (list '* m1 m2))))
-@end lisp
+@example rust
+deriv(&sum, &sym("x"))?;
+// => 1
 
-@noindent
-Here is how this version works on our three examples:
+deriv(&product, &sym("x"))?;
+// => y
 
-@lisp
-(deriv '(+ x 3) 'x)
-@i{1}
-
-(deriv '(* x y) 'x)
-@i{y}
-
-(deriv '(* (* x y) (+ x 3)) 'x)
-@i{(+ (* x y) (* y (+ x 3)))}
-@end lisp
+deriv(&nested, &sym("x"))?;
+// => (+ (* x y) (* y (+ x 3)))
+@end example
 
 @noindent
 Although this is quite an improvement, the third example shows that there is
@@ -547,25 +667,32 @@ d(u^n)            du
 
 @end ifinfo
 @noindent
-by adding a new clause to the @code{deriv} program and defining appropriate
-procedures @code{exponentiation?}, @code{base}, @code{exponent}, and
-@code{make-exponentiation}.  (You may use the symbol @code{**} to denote
-exponentiation.)  Build in the rules that anything raised to the power 0 is 1
+by adding a new @code{Pow(Box<Expr>, Box<Expr>)} variant to a local copy of
+@code{Expr}, a matching arm to a local copy of @code{deriv_via}, and a
+@code{make_exponentiation} constructor.  (Keep this exercise's @code{Expr}
+local rather than editing the section's; the section's convention is one
+representation per exercise, printed with @code{**} for exponentiation, e.g.
+@code{(** x 2)}.)  Build in the rules that anything raised to the power 0 is 1
 and anything raised to the power 1 is the thing itself.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.57}Exercise 2.57:} Extend the differentiation
 program to handle sums and products of arbitrary numbers of (two or more)
-terms.  Then the last example above could be expressed as
+terms, by changing your local copies of @code{Expr::Sum} and
+@code{Expr::Product} to hold a @code{Vec<Expr>} instead of two fixed fields.
+Then the last example above could be expressed as
 
-@lisp
-(deriv '(* x y (+ x 3)) 'x)
-@end lisp
+@example rust
+deriv(
+    &Expr::Product(vec![Expr::Var(sym("x")), Expr::Var(sym("y")), Expr::Sum(vec![Expr::Var(sym("x")), Expr::Num(3)])]),
+    &sym("x"),
+)?;
+@end example
 
 Try to do this by changing only the representation for sums and products,
-without changing the @code{deriv} procedure at all.  For example, the
-@code{addend} of a sum would be the first term, and the @code{augend} would be
+without changing @code{deriv_via} at all.  For example, the
+addend of a sum would be the first term, and the augend would be
 the sum of the rest of the terms.
 @end quotation
 
@@ -573,25 +700,26 @@ the sum of the rest of the terms.
 @strong{@anchor{Exercise 2.58}Exercise 2.58:} Suppose we want to modify the
 differentiation program so that it works with ordinary mathematical notation,
 in which @code{+} and @code{*} are infix rather than prefix operators.  Since
-the differentiation program is defined in terms of abstract data, we can modify
-it to work with different representations of expressions solely by changing the
-predicates, selectors, and constructors that define the representation of the
-algebraic expressions on which the differentiator is to operate.
+the differentiation program is defined in terms of the abstract @code{Expr}
+type, we can modify it to work with different concrete syntax solely by
+changing what builds an @code{Expr} in the first place, leaving @code{deriv_via}
+itself untouched.
 
 @enumerate a
 
 @item
-Show how to do this in order to differentiate algebraic expressions presented
-in infix form, such as @code{(x + (3 * (x + (y + 2))))}.  To simplify the task,
+Write a tokenizer and a recursive-descent parser from a string into this
+section's @code{Expr}, to differentiate algebraic expressions presented
+in infix form, such as @code{"(x + (3 * (x + (y + 2))))"}.  To simplify the task,
 assume that @code{+} and @code{*} always take two arguments and that
 expressions are fully parenthesized.
 
 @item
 The problem becomes substantially harder if we allow standard algebraic
-notation, such as @code{(x + 3 * (x + y + 2))}, which drops unnecessary
-parentheses and assumes that multiplication is done before addition.  Can you
-design appropriate predicates, selectors, and constructors for this notation
-such that our derivative program still works?
+notation, such as @code{"x + 3 * (x + y + 2)"}, which drops unnecessary
+parentheses and assumes that multiplication is done before addition.  Extend
+your parser to handle operator precedence so that our derivative program still
+works.
 
 @end enumerate
 @end quotation
@@ -611,39 +739,42 @@ differ significantly from one another in several ways.
 Informally, a set is simply a collection of distinct objects.  To give a more
 precise definition we can employ the method of data abstraction.  That is, we
 define ``set'' by specifying the operations that are to be used on sets.  These
-are @code{union-set}, @code{intersection-set}, @code{element-of-set?}, and
-@code{adjoin-set}.  @code{Element-of-set?} is a predicate that determines
-whether a given element is a member of a set.  @code{Adjoin-set} takes an
+are @code{union_set}, @code{intersection_set}, @code{element_of_set}, and
+@code{adjoin_set}.  @code{element_of_set} is a predicate that determines
+whether a given element is a member of a set.  @code{adjoin_set} takes an
 object and a set as arguments and returns a set that contains the elements of
-the original set and also the adjoined element.  @code{Union-set} computes the
+the original set and also the adjoined element.  @code{union_set} computes the
 union of two sets, which is the set containing each element that appears in
-either argument.  @code{Intersection-set} computes the intersection of two
+either argument.  @code{intersection_set} computes the intersection of two
 sets, which is the set containing only elements that appear in both arguments.
 From the viewpoint of data abstraction, we are free to design any
 representation that implements these operations in a way consistent with the
-interpretations given above.@footnote{If we want to be more formal, we can
+interpretations given above.  This edition fixes the element type to
+@code{i128} across all three representations, unordered included, so that one
+consistent element type carries all the way to the ordered and tree
+representations, which need @code{<}/@code{>} anyway.@footnote{If we want to be more formal, we can
 specify ``consistent with the interpretations given above'' to mean that the
 operations satisfy a collection of rules such as these:
 
 @itemize @bullet
 
 @item
-For any set @code{S} and any object @code{x},
-@code{(element-of-set? x (adjoin-set x S))}
+For any set @code{s} and any object @code{x},
+@code{element_of_set(x, &adjoin_set(x, &s))}
 is true (informally: ``Adjoining an object to a
 set produces a set that contains the object'').
 
 @item
-For any sets @code{S} and @code{T} and any object @code{x},
-@code{(element-of-set? x (union-set S T))}
+For any sets @code{s} and @code{t} and any object @code{x},
+@code{element_of_set(x, &union_set(&s, &t))}
 is equal to
-@code{(or (element-of-set? x S) (element-of-set? x T))}
-(informally: ``The elements of @code{(union S T)} are the elements that
-are in @code{S} or in @code{T}'').
+@code{element_of_set(x, &s) || element_of_set(x, &t)}
+(informally: ``The elements of the union of @code{s} and @code{t} are the elements that
+are in @code{s} or in @code{t}'').
 
 @item
 For any object @code{x},
-@code{(element-of-set? x '())}
+@code{element_of_set(x, &[])}
 is false (informally: ``No object is an element of the empty set'').
 
 @end itemize
@@ -651,77 +782,92 @@ is false (informally: ``No object is an element of the empty set'').
 
 @subsubheading Sets as unordered lists
 
-One way to represent a set is as a list of its elements in which no element
-appears more than once.  The empty set is represented by the empty list.  In
-this representation, @code{element-of-set?} is similar to the procedure
-@code{memq} of @ref{2.3.1}.  It uses @code{equal?}  instead of
-@code{eq?} so that the set elements need not be symbols:
+One way to represent a set is as a slice of its elements in which no element
+appears more than once.  The empty set is represented by the empty slice.  In
+this representation, @code{element_of_set} is similar to @code{memq} of @ref{2.3.1}, except
+that it uses @code{==} over @code{i128} directly, since this edition's sets are
+never nested:
 
-@lisp
-(define (element-of-set? x set)
-  (cond ((null? set) false)
-        ((equal? x (car set)) true)
-        (else (element-of-set? x (cdr set)))))
-@end lisp
-
-@noindent
-Using this, we can write @code{adjoin-set}.  If the object to be adjoined is
-already in the set, we just return the set.  Otherwise, we use @code{cons} to
-add the object to the list that represents the set:
-
-@lisp
-(define (adjoin-set x set)
-  (if (element-of-set? x set)
-      set
-      (cons x set)))
-@end lisp
+@example rust
+/// Sets as unordered lists: is `x` a member of `set`? The book's
+/// `element-of-set?`, which scans the whole set in the worst case.
+pub fn element_of_set(x: i128, set: &[i128]) -> bool {
+    set.contains(&x)
+}
+@end example
 
 @noindent
-For @code{intersection-set} we can use a recursive strategy.  If we know how to
-form the intersection of @code{set2} and the @code{cdr} of @code{set1}, we only
-need to decide whether to include the @code{car} of @code{set1} in this.  But
-this depends on whether @code{(car set1)} is also in @code{set2}.  Here is the
-resulting procedure:
+Using this, we can write @code{adjoin_set}.  If the object to be adjoined is
+already in the set, we just return the set unchanged.  Otherwise, we build a
+new vector with the object in front:
 
-@lisp
-(define (intersection-set set1 set2)
-  (cond ((or (null? set1) (null? set2)) 
-         '())
-        ((element-of-set? (car set1) set2)
-         (cons (car set1)
-               (intersection-set (cdr set1) 
-                                 set2)))
-        (else (intersection-set (cdr set1) 
-                                set2))))
-@end lisp
+@example rust
+pub fn adjoin_set(x: i128, set: &[i128]) -> Vec<i128> {
+    if element_of_set(x, set) {
+        set.to_vec()
+    } else {
+        let mut out = vec![x];
+        out.extend_from_slice(set);
+        out
+    }
+}
+@end example
+
+@noindent
+For @code{intersection_set} we can use an iterator filter.  An element of
+@code{set1} belongs in the intersection exactly when it is also an element of
+@code{set2}:
+
+@example rust
+/// `Θ(n²)` for sets of size `n`, since every element
+/// of `set1` scans all of `set2`.
+pub fn intersection_set(set1: &[i128], set2: &[i128]) -> Vec<i128> {
+    set1.iter()
+        .copied()
+        .filter(|&x| element_of_set(x, set2))
+        .collect()
+}
+@end example
 
 @noindent
 In designing a representation, one of the issues we should be concerned with is
 efficiency.  Consider the number of steps required by our set operations.
-Since they all use @code{element-of-set?}, the speed of this operation has a
+Since they all use @code{element_of_set}, the speed of this operation has a
 major impact on the efficiency of the set implementation as a whole.  Now, in
-order to check whether an object is a member of a set, @code{element-of-set?}
+order to check whether an object is a member of a set, @code{element_of_set}
 may have to scan the entire set. (In the worst case, the object turns out not
 to be in the set.)  Hence, if the set has @math{n} elements,
-@code{element-of-set?}  might take up to @math{n} steps.  Thus, the number of
+@code{element_of_set}  might take up to @math{n} steps.  Thus, the number of
 steps required grows as @math{{\Theta(n)}}.  The number of steps required by
-@code{adjoin-set}, which uses this operation, also grows as @math{{\Theta(n)}}.
-For @code{intersection-set}, which does an @code{element-of-set?} check for
+@code{adjoin_set}, which uses this operation, also grows as @math{{\Theta(n)}}.
+For @code{intersection_set}, which does an @code{element_of_set} check for
 each element of @code{set1}, the number of steps required grows as the product
 of the sizes of the sets involved, or @math{{\Theta(n^2)}} for two sets of size
-@math{n}.  The same will be true of @code{union-set}.
+@math{n}.  The same will be true of @code{union_set}.
 
 @quotation
-@strong{@anchor{Exercise 2.59}Exercise 2.59:} Implement the @code{union-set}
+@strong{@anchor{Exercise 2.59}Exercise 2.59:} Implement the @code{union_set}
 operation for the unordered-list representation of sets.
 @end quotation
 
 @quotation
+@emph{Exercise 2.59a is added by this edition and extends exercise 2.59; SICP numbers stop at 2.59.}
+
+@strong{@anchor{Exercise 2.59a}Exercise 2.59a:} Check @code{union_set} against
+a second, independently written implementation of set union:
+@code{std::collections::HashSet}'s own @code{union}.  Write at least one
+worked example comparing your @code{union_set(a, b)}, collected into a
+@code{HashSet<i128>}, against @code{a.iter().chain(b.iter()).copied().collect::<HashSet<i128>>()},
+and then use @code{proptest} to check that the two agree, as sets (ignoring
+element order and this representation's lack of a canonical form), for any
+two no-duplicate integer slices.
+@end quotation
+
+@quotation
 @strong{@anchor{Exercise 2.60}Exercise 2.60:} We specified that a set would be
-represented as a list with no duplicates.  Now suppose we allow duplicates.
-For instance, the set @math{{\{1, 2, 3\}}} could be represented as the list @code{(2 3 2 1
-3 2 2)}.  Design procedures @code{element-of-set?}, @code{adjoin-set},
-@code{union-set}, and @code{intersection-set} that operate on this
+represented as a slice with no duplicates.  Now suppose we allow duplicates.
+For instance, the set @math{{\{1, 2, 3\}}} could be represented as @code{[2, 3, 2, 1, 3, 2, 2]}.  Design functions @code{element_of_set_dup}, @code{adjoin_set_dup},
+@code{union_set_dup}, and @code{intersection_set_dup} that operate on this
 representation.  How does the efficiency of each compare with the corresponding
 procedure for the non-duplicate representation?  Are there applications for
 which you would use this representation in preference to the non-duplicate one?
@@ -730,74 +876,73 @@ which you would use this representation in preference to the non-duplicate one?
 @subsubheading Sets as ordered lists
 
 One way to speed up our set operations is to change the representation so that
-the set elements are listed in increasing order.  To do this, we need some way
-to compare two objects so that we can say which is bigger.  For example, we
-could compare symbols lexicographically, or we could agree on some method for
-assigning a unique number to an object and then compare the elements by
-comparing the corresponding numbers.  To keep our discussion simple, we will
-consider only the case where the set elements are numbers, so that we can
-compare elements using @code{>} and @code{<}.  We will represent a set of
-numbers by listing its elements in increasing order.  Whereas our first
+the set elements are listed in increasing order.  Because this edition's sets
+are already the numeric type @code{i128}, we can compare elements directly
+with @code{<} and @code{>} without needing to agree on a way to order
+non-numeric objects first.  Whereas our first
 representation above allowed us to represent the set @math{{\{1, 3, 6, 10\}}} by listing
-the elements in any order, our new representation allows only the list @code{(1
-3 6 10)}.
+the elements in any order, our new representation allows only @code{[1, 3, 6, 10]}.
 
-One advantage of ordering shows up in @code{element-of-set?}: In checking for
+One advantage of ordering shows up in @code{element_of_set_ordered}: in checking for
 the presence of an item, we no longer have to scan the entire set.  If we reach
 a set element that is larger than the item we are looking for, then we know
 that the item is not in the set:
 
-@lisp
-(define (element-of-set? x set)
-  (cond ((null? set) false)
-        ((= x (car set)) true)
-        ((< x (car set)) false)
-        (else (element-of-set? x (cdr set)))))
-@end lisp
+@example rust
+pub fn element_of_set_ordered(x: i128, set: &[i128]) -> bool {
+    match set.first() {
+        None => false,
+        Some(&y) => match x.cmp(&y) {
+            Ordering::Equal => true,
+            Ordering::Less => false,
+            Ordering::Greater => element_of_set_ordered(x, &set[1..]),
+        },
+    }
+}
+@end example
 
 How many steps does this save?  In the worst case, the item we are looking for
 may be the largest one in the set, so the number of steps is the same as for
 the unordered representation.  On the other hand, if we search for items of
 many different sizes we can expect that sometimes we will be able to stop
-searching at a point near the beginning of the list and that other times we
-will still need to examine most of the list.  On the average we should expect
+searching at a point near the beginning of the slice and that other times we
+will still need to examine most of the slice.  On the average we should expect
 to have to examine about half of the items in the set.  Thus, the average
 number of steps required will be about @math{{n / 2}}.  This is still
 @math{{\Theta(n)}} growth, but it does save us, on the average, a factor of 2
 in number of steps over the previous implementation.
 
-We obtain a more impressive speedup with @code{intersection-set}.  In the
+We obtain a more impressive speedup with @code{intersection_set_ordered}.  In the
 unordered representation this operation required @math{{\Theta(n^2)}} steps,
 because we performed a complete scan of @code{set2} for each element of
 @code{set1}.  But with the ordered representation, we can use a more clever
-method.  Begin by comparing the initial elements, @code{x1} and @code{x2}, of
-the two sets.  If @code{x1} equals @code{x2}, then that gives an element of the
-intersection, and the rest of the intersection is the intersection of the
-@code{cdr}-s of the two sets.  Suppose, however, that @code{x1} is less than
-@code{x2}.  Since @code{x2} is the smallest element in @code{set2}, we can
-immediately conclude that @code{x1} cannot appear anywhere in @code{set2} and
-hence is not in the intersection.  Hence, the intersection is equal to the
-intersection of @code{set2} with the @code{cdr} of @code{set1}.  Similarly, if
-@code{x2} is less than @code{x1}, then the intersection is given by the
-intersection of @code{set1} with the @code{cdr} of @code{set2}.  Here is the
-procedure:
+method: walk both slices in step with two indices, taking the smaller head (or
+the shared head once, advancing both) at each step.  The book writes this
+recursively, which shares list structure for free in Scheme; this edition
+writes the walk as a loop instead, so the @code{Vec} result is still built
+just once rather than being copied at every recursive return, keeping the
+@math{{\Theta(n)}} cost genuine and not an artifact of a persistent list this
+host type does not have:
 
-@lisp
-(define (intersection-set set1 set2)
-  (if (or (null? set1) (null? set2))
-      '()
-      (let ((x1 (car set1)) (x2 (car set2)))
-        (cond ((= x1 x2)
-               (cons x1 (intersection-set 
-                         (cdr set1)
-                         (cdr set2))))
-              ((< x1 x2) (intersection-set 
-                          (cdr set1) 
-                          set2))
-              ((< x2 x1) (intersection-set 
-                          set1 
-                          (cdr set2)))))))
-@end lisp
+@example rust
+pub fn intersection_set_ordered(set1: &[i128], set2: &[i128]) -> Vec<i128> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < set1.len() && j < set2.len() {
+        match set1[i].cmp(&set2[j]) {
+            Ordering::Equal => {
+                out.push(set1[i]);
+                i += 1;
+                j += 1;
+            }
+            Ordering::Less => i += 1,
+            Ordering::Greater => j += 1,
+        }
+    }
+    out
+}
+@end example
 
 @noindent
 To estimate the number of steps required by this process, observe that at each
@@ -810,15 +955,15 @@ unordered representation.  This is @math{{\Theta(n)}} growth rather than
 
 @quotation
 @strong{@anchor{Exercise 2.61}Exercise 2.61:} Give an implementation of
-@code{adjoin-set} using the ordered representation.  By analogy with
-@code{element-of-set?} show how to take advantage of the ordering to produce a
+@code{adjoin_set_ordered} using the ordered representation.  By analogy with
+@code{element_of_set_ordered} show how to take advantage of the ordering to produce a
 procedure that requires on the average about half as many steps as with the
 unordered representation.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.62}Exercise 2.62:} Give a @math{{\Theta(n)}}
-implementation of @code{union-set} for sets represented as ordered lists.
+implementation of @code{union_set_ordered} for sets represented as ordered slices.
 @end quotation
 
 @subsubheading Sets as binary trees
@@ -876,42 +1021,79 @@ the fast-exponentiation algorithm of @ref{1.2.4} and the half-interval
 search method of @ref{1.3.3}.} For large sets, this will be a
 significant speedup over the previous representations.
 
-We can represent trees by using lists.  Each node will be a list of three
-items: the entry at the node, the left subtree, and the right subtree.  A left
-or a right subtree of the empty list will indicate that there is no subtree
-connected there.  We can describe this representation by the following
-procedures:@footnote{We are representing sets in terms of trees, and trees in
-terms of lists---in effect, a data abstraction built upon a data abstraction.
-We can regard the procedures @code{entry}, @code{left-branch},
-@code{right-branch}, and @code{make-tree} as a way of isolating the abstraction
-of a ``binary tree'' from the particular way we might wish to represent such a
-tree in terms of list structure.}
+Where the book represents trees as three-item lists (the entry, the left
+subtree, the right subtree), this edition closes the shape as a recursive
+enum instead, sharing subtrees by @code{Rc} rather than deep-cloning them on
+every adjoin.@footnote{We are representing sets in terms of trees, and trees
+directly as a Rust enum---one data abstraction built on the host language's
+own sum types, rather than on a second, hand-rolled list encoding the way the
+book builds trees out of lists.  We can regard @code{entry}, @code{left_branch},
+@code{right_branch}, and @code{make_tree} as isolating the abstraction of a
+``binary tree'' from @code{Tree}'s own representation, the same separation the
+book draws between a tree and the list structure that encodes it, one layer
+shorter since Rust's enum already is the representation.}
 
-@lisp
-(define (entry tree) (car tree))
-(define (left-branch tree) (cadr tree))
-(define (right-branch tree) (caddr tree))
-(define (make-tree entry left right)
-  (list entry left right))
-@end lisp
+@example rust
+/// Branches are `Rc`, not `Box`: adjoining an element rebuilds the spine
+/// from the insertion point to the root and shares every untouched
+/// sibling subtree by pointer, so the `Θ(log n)` claims below are
+/// genuine rather than hidden behind an `O(n)` deep clone.
+pub enum Tree {
+    /// No elements.
+    Empty,
+    /// One element, with its left and right subtrees.
+    Node(i128, Rc<Tree>, Rc<Tree>),
+}
+
+impl Tree {
+    /// Builds a tree node: the book's `make-tree`.
+    pub fn make_tree(entry: i128, left: Tree, right: Tree) -> Tree {
+        Tree::Node(entry, Rc::new(left), Rc::new(right))
+    }
+
+    /// The entry at the root, or `None` on `Empty`: the book's `entry`.
+    pub fn entry(&self) -> Option<i128> {
+        match self {
+            Tree::Node(x, ..) => Some(*x),
+            Tree::Empty => None,
+        }
+    }
+
+    /// The left subtree, or `None` on `Empty`: the book's `left-branch`.
+    pub fn left_branch(&self) -> Option<&Tree> {
+        match self {
+            Tree::Node(_, l, _) => Some(l),
+            Tree::Empty => None,
+        }
+    }
+
+    /// The right subtree, or `None` on `Empty`: the book's
+    /// `right-branch`.
+    pub fn right_branch(&self) -> Option<&Tree> {
+        match self {
+            Tree::Node(_, _, r) => Some(r),
+            Tree::Empty => None,
+        }
+    }
+}
+@end example
 
 @noindent
-Now we can write the @code{element-of-set?} procedure using the strategy
+Now we can write the @code{element_of_set_tree} procedure using the strategy
 described above:
 
-@lisp
-(define (element-of-set? x set)
-  (cond ((null? set) false)
-        ((= x (entry set)) true)
-        ((< x (entry set))
-         (element-of-set? 
-          x 
-          (left-branch set)))
-        ((> x (entry set))
-         (element-of-set? 
-          x 
-          (right-branch set)))))
-@end lisp
+@example rust
+pub fn element_of_set_tree(x: i128, tree: &Tree) -> bool {
+    match tree {
+        Tree::Empty => false,
+        Tree::Node(entry, left, right) => match x.cmp(entry) {
+            Ordering::Equal => true,
+            Ordering::Less => element_of_set_tree(x, left),
+            Ordering::Greater => element_of_set_tree(x, right),
+        },
+    }
+}
+@end example
 
 @noindent
 Adjoining an item to a set is implemented similarly and also requires
@@ -919,26 +1101,26 @@ Adjoining an item to a set is implemented similarly and also requires
 @code{x} with the node entry to determine whether @code{x} should be added to
 the right or to the left branch, and having adjoined @code{x} to the
 appropriate branch we piece this newly constructed branch together with the
-original entry and the other branch.  If @code{x} is equal to the entry, we
-just return the node.  If we are asked to adjoin @code{x} to an empty tree, we
-generate a tree that has @code{x} as the entry and empty right and left
-branches.  Here is the procedure:
+original entry and the other branch, cloning only the sibling @code{Rc}
+handle rather than the sibling subtree itself.  If @code{x} is equal to the
+entry, we just return the tree unchanged.  If we are asked to adjoin @code{x}
+to an empty tree, we generate a tree that has @code{x} as the entry and empty
+right and left branches.  Here is the procedure:
 
-@lisp
-(define (adjoin-set x set)
-  (cond ((null? set) (make-tree x '() '()))
-        ((= x (entry set)) set)
-        ((< x (entry set))
-         (make-tree 
-          (entry set)
-          (adjoin-set x (left-branch set))
-          (right-branch set)))
-        ((> x (entry set))
-         (make-tree
-          (entry set)
-          (left-branch set)
-          (adjoin-set x (right-branch set))))))
-@end lisp
+@example rust
+pub fn adjoin_set_tree(x: i128, tree: &Tree) -> Tree {
+    match tree {
+        Tree::Empty => Tree::make_tree(x, Tree::Empty, Tree::Empty),
+        Tree::Node(entry, left, right) => match x.cmp(entry) {
+            Ordering::Equal => tree.clone(),
+            Ordering::Less => Tree::make_tree(*entry, adjoin_set_tree(x, left), (**right).clone()),
+            Ordering::Greater => {
+                Tree::make_tree(*entry, (**left).clone(), adjoin_set_tree(x, right))
+            }
+        },
+    }
+}
+@end example
 
 @noindent
 The above claim that searching the tree can be performed in a logarithmic
@@ -947,16 +1129,16 @@ that the left and the right subtree of every tree have approximately the same
 number of elements, so that each subtree contains about half the elements of
 its parent.  But how can we be certain that the trees we construct will be
 balanced?  Even if we start with a balanced tree, adding elements with
-@code{adjoin-set} may produce an unbalanced result.  Since the position of a
+@code{adjoin_set_tree} may produce an unbalanced result.  Since the position of a
 newly adjoined element depends on how the element compares with the items
 already in the set, we can expect that if we add elements ``randomly'' the tree
 will tend to be balanced on the average.  But this is not a guarantee.  For
-example, if we start with an empty set and adjoin the numbers 1 through 7 in
+example, if we start with @code{Tree::Empty} and adjoin the numbers 1 through 7 in
 sequence we end up with the highly unbalanced tree shown in @ref{Figure 2.17}.
 In this tree all the left subtrees are empty, so it has no advantage over a
-simple ordered list.  One way to solve this problem is to define an operation
+simple ordered slice.  One way to solve this problem is to define an operation
 that transforms an arbitrary tree into a balanced tree with the same elements.
-Then we can perform this transformation after every few @code{adjoin-set}
+Then we can perform this transformation after every few @code{adjoin_set_tree}
 operations to keep our set in balance.  There are also other ways to solve this
 problem, most of which involve designing new data structures for which
 searching and insertion both can be done in @math{{\Theta(\log n)}}
@@ -999,29 +1181,33 @@ devoted to this problem.  See @ref{Cormen et al. 1990}.}
 @strong{@anchor{Exercise 2.63}Exercise 2.63:} Each of the following two
 procedures converts a binary tree to a list.
 
-@lisp
-(define (tree->list-1 tree)
-  (if (null? tree)
-      '()
-      (append 
-       (tree->list-1 
-        (left-branch tree))
-       (cons (entry tree)
-             (tree->list-1 
-              (right-branch tree))))))
+@example rust
+fn tree_to_list_1(tree: &Tree) -> Vec<i128> {
+    match tree {
+        Tree::Empty => Vec::new(),
+        Tree::Node(..) => {
+            let mut out = tree_to_list_1(tree.left_branch().expect("node"));
+            out.push(tree.entry().expect("node"));
+            out.extend(tree_to_list_1(tree.right_branch().expect("node")));
+            out
+        }
+    }
+}
 
-(define (tree->list-2 tree)
-  (define (copy-to-list tree result-list)
-    (if (null? tree)
-        result-list
-        (copy-to-list 
-         (left-branch tree)
-         (cons (entry tree)
-               (copy-to-list 
-                (right-branch tree)
-                result-list)))))
-  (copy-to-list tree '()))
-@end lisp
+fn tree_to_list_2(tree: &Tree) -> Vec<i128> {
+    fn copy_to_list(tree: &Tree, mut result: VecDeque<i128>) -> VecDeque<i128> {
+        match tree {
+            Tree::Empty => result,
+            Tree::Node(..) => {
+                result = copy_to_list(tree.right_branch().expect("node"), result);
+                result.push_front(tree.entry().expect("node"));
+                copy_to_list(tree.left_branch().expect("node"), result)
+            }
+        }
+    }
+    copy_to_list(tree, VecDeque::new()).into_iter().collect()
+}
+@end example
 
 @enumerate a
 
@@ -1033,65 +1219,56 @@ the results differ?  What lists do the two procedures produce for the trees in
 @item
 Do the two procedures have the same order of growth in the number of steps
 required to convert a balanced tree with @math{n} elements to a list?  If not,
-which one grows more slowly?
+which one grows more slowly?  (Instrument both procedures with a shared
+@code{copies: &mut u64} counter, incremented once per element every time a
+@code{Vec}/@code{VecDeque} is copied or extended, and measure at
+@math{n = 15} and @math{n = 127}.)
 
 @end enumerate
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.64}Exercise 2.64:} The following procedure
-@code{list->tree} converts an ordered list to a balanced binary tree.  The
-helper procedure @code{partial-tree} takes as arguments an integer @math{n} and
-list of at least @math{n} elements and constructs a balanced tree containing the
-first @math{n} elements of the list.  The result returned by @code{partial-tree}
-is a pair (formed with @code{cons}) whose @code{car} is the constructed tree
-and whose @code{cdr} is the list of elements not included in the tree.
+@code{list_to_tree} converts an ordered slice to a balanced binary tree.  The
+helper procedure @code{partial_tree} takes as arguments a slice of at least
+@math{n} elements and the count @math{n}, and constructs a balanced tree containing the
+first @math{n} elements of the slice, returning that tree paired with the
+elements not included in it:
 
-@lisp
-(define (list->tree elements)
-  (car (partial-tree 
-        elements (length elements))))
+@example rust
+fn list_to_tree(elements: &[i128]) -> Tree {
+    partial_tree(elements, elements.len()).0
+}
 
-(define (partial-tree elts n)
-  (if (= n 0)
-      (cons '() elts)
-      (let ((left-size 
-             (quotient (- n 1) 2)))
-        (let ((left-result 
-               (partial-tree 
-                elts left-size)))
-          (let ((left-tree 
-                 (car left-result))
-                (non-left-elts 
-                 (cdr left-result))
-                (right-size 
-                 (- n (+ left-size 1))))
-            (let ((this-entry 
-                   (car non-left-elts))
-                  (right-result 
-                   (partial-tree 
-                    (cdr non-left-elts)
-                    right-size)))
-              (let ((right-tree 
-                     (car right-result))
-                    (remaining-elts 
-                     (cdr right-result)))
-                (cons (make-tree this-entry 
-                                 left-tree 
-                                 right-tree)
-                      remaining-elts))))))))
-@end lisp
+fn partial_tree(elts: &[i128], n: usize) -> (Tree, &[i128]) {
+    if n == 0 {
+        return (Tree::Empty, elts);
+    }
+    let left_size = (n - 1) / 2;
+    let (left_tree, non_left_elts) = partial_tree(elts, left_size);
+    let right_size = n - (left_size + 1);
+    let (this_entry, after_entry) = non_left_elts
+        .split_first()
+        .expect("n elements remain after the left subtree");
+    let (right_tree, remaining_elts) = partial_tree(after_entry, right_size);
+    (
+        Tree::make_tree(*this_entry, left_tree, right_tree),
+        remaining_elts,
+    )
+}
+@end example
 
 @enumerate a
 
 @item
 Write a short paragraph explaining as clearly as you can how
-@code{partial-tree} works.  Draw the tree produced by @code{list->tree} for
-the list @code{(1 3 5 7 9 11)}.
+@code{partial_tree} works.  Draw the tree produced by @code{list_to_tree} for
+@code{[1, 3, 5, 7, 9, 11]}.
 
 @item
 What is the order of growth in the number of steps required by
-@code{list->tree} to convert a list of @math{n} elements?
+@code{list_to_tree} to convert a slice of @math{n} elements?  (Count calls to
+@code{Tree::make_tree}.)
 
 @end enumerate
 @end quotation
@@ -1099,14 +1276,14 @@ What is the order of growth in the number of steps required by
 @quotation
 @strong{@anchor{Exercise 2.65}Exercise 2.65:} Use the results of @ref{Exercise 2.63} 
 and @ref{Exercise 2.64} to give @math{{\Theta(n)}} implementations of
-@code{union-set} and @code{intersection-set} for sets implemented as (balanced)
+@code{union_set_tree} and @code{intersection_set_tree} for sets implemented as (balanced)
 binary trees.@footnote{@ref{Exercise 2.63} through @ref{Exercise 2.65} are due
 to Paul Hilfinger.}
 @end quotation
 
 @subsubheading Sets and information retrieval
 
-We have examined options for using lists to represent sets and have seen how
+We have examined options for using slices to represent sets and have seen how
 the choice of representation for a data object can have a large impact on the
 performance of the programs that use the data.  Another reason for
 concentrating on sets is that the techniques discussed here appear again and
@@ -1121,30 +1298,25 @@ serve as an identifying @newterm{key}.  A key can be anything that uniquely
 identifies the record.  For a personnel file, it might be an employee's ID
 number.  For an accounting system, it might be a transaction number.  Whatever
 the key is, when we define the record as a data structure we should include a
-@code{key} selector procedure that retrieves the key associated with a given
-record.
+@code{key} field, or a @code{key} accessor method, that retrieves the key
+associated with a given record.
 
 Now we represent the data base as a set of records. To locate the record with a
 given key we use a procedure @code{lookup}, which takes as arguments a key and
-a data base and which returns the record that has that key, or false if there
-is no such record.  @code{Lookup} is implemented in almost the same way as
-@code{element-of-set?}.  For example, if the set of records is implemented as
-an unordered list, we could use
+a data base and which returns the record that has that key, or @code{None} if
+there is no such record.  @code{lookup} is implemented in almost the same way as
+@code{element_of_set}.  For example, if the set of records is implemented as
+an unordered slice, we could use
 
-@lisp
-(define (lookup given-key set-of-records)
-  (cond ((null? set-of-records) false)
-        ((equal? given-key 
-                 (key (car set-of-records)))
-         (car set-of-records))
-        (else 
-         (lookup given-key 
-                 (cdr set-of-records)))))
-@end lisp
+@example rust
+fn lookup<'a>(given_key: i128, set_of_records: &'a [Record]) -> Option<&'a Record> {
+    set_of_records.iter().find(|record| record.key == given_key)
+}
+@end example
 
 @noindent
 Of course, there are better ways to represent large sets than as unordered
-lists.  Information-retrieval systems in which records have to be ``randomly
+slices.  Information-retrieval systems in which records have to be ``randomly
 accessed'' are typically implemented by a tree-based method, such as the
 binary-tree representation discussed previously.  In designing such a system
 the methodology of data abstraction can be a great help.  The designer can
@@ -1158,15 +1330,14 @@ changes to the rest of the system.
 
 @quotation
 @strong{@anchor{Exercise 2.66}Exercise 2.66:} Implement the @code{lookup}
-procedure for the case where the set of records is structured as a binary tree,
-ordered by the numerical values of the keys.
+procedure for the case where the set of records is structured as a binary tree
+of your own @code{RecordTree} type, ordered by the numerical values of the keys.
 @end quotation
 
 @node	2.3.4, 2.4, 2.2, 2.3
 @subsection Example: Huffman Encoding Trees
 
-This section provides practice in the use of list structure and data
-abstraction to manipulate sets and trees.  The application is to methods for
+This section provides practice in the use of an enum and data abstraction to manipulate sets and trees.  The application is to methods for
 representing data as sequences of ones and zeros (bits).  For example, the
 ASCII standard code used to represent text in computers encodes each character
 as a sequence of seven bits.  Using seven bits allows us to distinguish @math{2^7},
@@ -1372,160 +1543,221 @@ encode and decode messages and generates Huffman trees according to the
 algorithm outlined above.  We will begin by discussing how trees are
 represented.
 
-Leaves of the tree are represented by a list consisting of the symbol
-@code{leaf}, the symbol at the leaf, and the weight:
+Where the book tags a leaf as a three-item list headed by the symbol
+@code{leaf} and a general tree as a four-item list of its two branches plus a
+precomputed symbol set and weight, this edition closes both shapes as one
+enum: a leaf holds its symbol and weight directly, and a node holds its two
+branches plus the aggregate symbol set and weight of everything below it,
+computed once at construction rather than walked on every query:
 
-@lisp
-(define (make-leaf symbol weight)
-  (list 'leaf symbol weight))
-(define (leaf? object)
-  (eq? (car object) 'leaf))
-(define (symbol-leaf x) (cadr x))
-(define (weight-leaf x) (caddr x))
-@end lisp
+@example rust
+pub enum HuffmanTree {
+    /// A leaf: one symbol and its weight.
+    Leaf(Symbol, u32),
+    /// A node: its two branches, the symbols reachable below it, and
+    /// their total weight.
+    Node(Box<HuffmanTree>, Box<HuffmanTree>, Vec<Symbol>, u32),
+}
+
+impl HuffmanTree {
+    /// Builds a leaf: the book's `make-leaf`.
+    pub fn make_leaf(symbol: Symbol, weight: u32) -> HuffmanTree {
+        HuffmanTree::Leaf(symbol, weight)
+    }
+
+    /// Whether this tree is a leaf: the book's `leaf?`.
+    pub fn is_leaf(&self) -> bool {
+        matches!(self, HuffmanTree::Leaf(..))
+    }
+
+    /// The symbol at a leaf, or `None` on a node: the book's
+    /// `symbol-leaf`.
+    pub fn symbol_leaf(&self) -> Option<&Symbol> {
+        match self {
+            HuffmanTree::Leaf(s, _) => Some(s),
+            HuffmanTree::Node(..) => None,
+        }
+    }
+
+    /// Merges two subtrees into a node, computing its aggregate symbol
+    /// set and weight: the book's `make-code-tree`.  Since our symbol
+    /// sets are represented as `Vec`s, we can form the union by
+    /// extending a clone of the left set with the right.
+    pub fn make_code_tree(left: HuffmanTree, right: HuffmanTree) -> HuffmanTree {
+        let mut symbols = left.symbols();
+        symbols.extend(right.symbols());
+        let weight = left.weight() + right.weight();
+        HuffmanTree::Node(Box::new(left), Box::new(right), symbols, weight)
+    }
+
+    /// The left branch, or `None` on a leaf: the book's `left-branch`.
+    pub fn left_branch(&self) -> Option<&HuffmanTree> {
+        match self {
+            HuffmanTree::Node(l, ..) => Some(l),
+            HuffmanTree::Leaf(..) => None,
+        }
+    }
+
+    /// The right branch, or `None` on a leaf: the book's
+    /// `right-branch`.
+    pub fn right_branch(&self) -> Option<&HuffmanTree> {
+        match self {
+            HuffmanTree::Node(_, r, ..) => Some(r),
+            HuffmanTree::Leaf(..) => None,
+        }
+    }
+
+    /// The symbols reachable below this tree: a leaf contributes its
+    /// one symbol; a node returns its precomputed set.
+    pub fn symbols(&self) -> Vec<Symbol> {
+        match self {
+            HuffmanTree::Leaf(s, _) => vec![Rc::clone(s)],
+            HuffmanTree::Node(_, _, syms, _) => syms.clone(),
+        }
+    }
+
+    /// The total weight below this tree: the book's `weight`.
+    pub fn weight(&self) -> u32 {
+        match self {
+            HuffmanTree::Leaf(_, w) | HuffmanTree::Node(_, _, _, w) => *w,
+        }
+    }
+}
+@end example
 
 @noindent
-A general tree will be a list of a left branch, a right branch, a set of
-symbols, and a weight.  The set of symbols will be simply a list of the
-symbols, rather than some more sophisticated set representation.  When we make
-a tree by merging two nodes, we obtain the weight of the tree as the sum of the
-weights of the nodes, and the set of symbols as the union of the sets of
-symbols for the nodes.  Since our symbol sets are represented as lists, we can
-form the union by using the @code{append} procedure we defined in 
-@ref{2.2.1}:
-
-@lisp
-(define (make-code-tree left right)
-  (list left
-        right
-        (append (symbols left) 
-                (symbols right))
-        (+ (weight left) (weight right))))
-@end lisp
-
-@noindent
-If we make a tree in this way, we have the following selectors:
-
-@lisp
-(define (left-branch tree) (car tree))
-(define (right-branch tree) (cadr tree))
-
-(define (symbols tree)
-  (if (leaf? tree)
-      (list (symbol-leaf tree))
-      (caddr tree)))
-
-(define (weight tree)
-  (if (leaf? tree)
-      (weight-leaf tree)
-      (cadddr tree)))
-@end lisp
-
-@noindent
-The procedures @code{symbols} and @code{weight} must do something slightly
-different depending on whether they are called with a leaf or a general tree.
-These are simple examples of @newterm{generic procedures} (procedures that can
-handle more than one kind of data), which we will have much more to say about
-in @ref{2.4} and @ref{2.5}.
+The book's @code{symbols} and @code{weight} procedures dispatch on
+@code{leaf?} and then read @code{cadr}/@code{caddr}/@code{cadddr} by hand.
+Here that dispatch is the @code{match} itself, and @code{HuffmanTree}'s own
+fields replace the fixed list positions; these are simple examples of
+@newterm{generic procedures} (procedures that can handle more than one kind of
+data), which we will have much more to say about in @ref{2.4} and @ref{2.5}.
 
 @subsubheading The decoding procedure
 
 The following procedure implements the decoding algorithm.  It takes as
-arguments a list of zeros and ones, together with a Huffman tree.
+arguments a slice of bits, together with a Huffman tree.  The book's
+@code{decode-1} is a second, inner recursive procedure only because Scheme
+has no loop construct of its own; this edition writes the same
+restart-at-the-root behavior as a single loop:
 
-@lisp
-(define (decode bits tree)
-  (define (decode-1 bits current-branch)
-    (if (null? bits)
-        '()
-        (let ((next-branch
-               (choose-branch 
-                (car bits) 
-                current-branch)))
-          (if (leaf? next-branch)
-              (cons 
-               (symbol-leaf next-branch)
-               (decode-1 (cdr bits) tree))
-              (decode-1 (cdr bits) 
-                        next-branch)))))
-  (decode-1 bits tree))
+@example rust
+/// Moves one step down a Huffman tree by one bit: `false` (the book's
+/// `0`) takes the left branch, `true` (the book's `1`) takes the
+/// right.  A `bool` has no third value, so the book's
+/// `(error "bad bit..." bit)` case is structurally unreachable here.
+pub fn choose_branch(bit: bool, branch: &HuffmanTree) -> Option<&HuffmanTree> {
+    if bit {
+        branch.right_branch()
+    } else {
+        branch.left_branch()
+    }
+}
 
-(define (choose-branch bit branch)
-  (cond ((= bit 0) (left-branch branch))
-        ((= bit 1) (right-branch branch))
-        (else (error "bad bit: 
-               CHOOSE-BRANCH" bit))))
-@end lisp
+/// # Errors
+/// [`SchemeError::Parse`] if a bit is consumed at a leaf, which means
+/// `bits` and `tree` are inconsistent (more bits than the encoding
+/// produced).
+pub fn decode(bits: &[bool], tree: &HuffmanTree) -> Result<Vec<Symbol>, SchemeError> {
+    let mut result = Vec::new();
+    let mut current = tree;
+    for &bit in bits {
+        let next = choose_branch(bit, current)
+            .ok_or_else(|| SchemeError::Parse("decode: bit consumed at a leaf".to_string()))?;
+        if let HuffmanTree::Leaf(symbol, _) = next {
+            result.push(symbol.clone());
+            current = tree;
+        } else {
+            current = next;
+        }
+    }
+    Ok(result)
+}
+@end example
 
 @noindent
-The procedure @code{decode-1} takes two arguments: the list of remaining bits
-and the current position in the tree.  It keeps moving ``down'' the tree,
-choosing a left or a right branch according to whether the next bit in the list
-is a zero or a one.  (This is done with the procedure @code{choose-branch}.)
-When it reaches a leaf, it returns the symbol at that leaf as the next symbol
-in the message by @code{cons}ing it onto the result of decoding the rest of the
-message, starting at the root of the tree.  Note the error check in the final
-clause of @code{choose-branch}, which complains if the procedure finds
-something other than a zero or a one in the input data.
+@code{choose_branch} takes two arguments: the bit and the current position in
+the tree.  It keeps moving ``down'' the tree, choosing a left or a right branch
+according to whether the next bit in the slice is @code{false} or @code{true}.
+When @code{decode}'s loop reaches a leaf, it pushes the symbol at that leaf
+onto the result and restarts the walk at the root of the tree, exactly as the
+book's @code{cons}-onto-the-recursive-call does.  Bit sequences in this
+edition's examples and tests are written as a compact string of @code{0}s and
+@code{1}s, e.g. @code{"0110010101111"}, and converted with
+@code{bits_from_str}/@code{bits_to_string} rather than typed out as a literal
+@code{Vec<bool>}.
 
 @subsubheading Sets of weighted elements
 
 In our representation of trees, each non-leaf node contains a set of symbols,
-which we have represented as a simple list.  However, the tree-generating
+which we have represented as a plain @code{Vec}.  However, the tree-generating
 algorithm discussed above requires that we also work with sets of leaves and
 trees, successively merging the two smallest items.  Since we will be required
 to repeatedly find the smallest item in a set, it is convenient to use an
 ordered representation for this kind of set.
 
-We will represent a set of leaves and trees as a list of elements, arranged in
-increasing order of weight.  The following @code{adjoin-set} procedure for
-constructing sets is similar to the one described in @ref{Exercise 2.61};
+We will represent a set of leaves and trees as a @code{Vec} of elements, arranged in
+increasing order of weight.  The following @code{adjoin_huffman_set} procedure for
+constructing sets is similar to @code{adjoin_set_ordered} of @ref{Exercise 2.61};
 however, items are compared by their weights, and the element being added to
-the set is never already in it.
+the set is never already in it:
 
-@lisp
-(define (adjoin-set x set)
-  (cond ((null? set) (list x))
-        ((< (weight x) (weight (car set))) 
-         (cons x set))
-        (else 
-         (cons (car set)
-               (adjoin-set x (cdr set))))))
-@end lisp
+@example rust
+/// Adjoins a tree to a set of trees ordered by increasing weight: the
+/// book's `adjoin-set`, re-defined here for Huffman trees.
+pub fn adjoin_huffman_set(x: HuffmanTree, set: &[HuffmanTree]) -> Vec<HuffmanTree> {
+    match set.split_first() {
+        None => vec![x],
+        Some((first, rest)) if x.weight() < first.weight() => {
+            let mut out = vec![x, first.clone()];
+            out.extend_from_slice(rest);
+            out
+        }
+        Some((first, rest)) => {
+            let mut out = vec![first.clone()];
+            out.extend(adjoin_huffman_set(x, rest));
+            out
+        }
+    }
+}
+@end example
 
 @noindent
-The following procedure takes a list of symbol-frequency pairs such as
-@code{((A 4) (B 2) (C 1) (D 1))} and constructs an initial ordered set of
+The following procedure takes a slice of symbol-frequency pairs such as
+@code{[(A, 4), (B, 2), (C, 1), (D, 1)]} and constructs an initial ordered set of
 leaves, ready to be merged according to the Huffman algorithm:
 
-@lisp
-(define (make-leaf-set pairs)
-  (if (null? pairs)
-      '()
-      (let ((pair (car pairs)))
-        (adjoin-set 
-         (make-leaf (car pair)    @r{; symbol}
-                    (cadr pair))  @r{; frequency}
-         (make-leaf-set (cdr pairs))))))
-@end lisp
+@example rust
+pub fn make_leaf_set(pairs: &[(Symbol, u32)]) -> Vec<HuffmanTree> {
+    let mut set = Vec::new();
+    for (symbol, weight) in pairs {
+        set = adjoin_huffman_set(HuffmanTree::make_leaf(Rc::clone(symbol), *weight), &set);
+    }
+    set
+}
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.67}Exercise 2.67:} Define an encoding tree and a
 sample message:
 
-@lisp
-(define sample-tree
-  (make-code-tree 
-   (make-leaf 'A 4)
-   (make-code-tree
-    (make-leaf 'B 2)
-    (make-code-tree 
-     (make-leaf 'D 1)
-     (make-leaf 'C 1)))))
+@example rust
+let sample_tree = HuffmanTree::make_code_tree(
+    HuffmanTree::make_leaf(sym("A"), 4),
+    HuffmanTree::make_code_tree(
+        HuffmanTree::make_leaf(sym("B"), 2),
+        HuffmanTree::make_code_tree(
+            HuffmanTree::make_leaf(sym("D"), 1),
+            HuffmanTree::make_leaf(sym("C"), 1),
+        ),
+    ),
+);
 
-(define sample-message 
-  '(0 1 1 0 0 1 0 1 0 1 1 1 0))
-@end lisp
+let sample_message = bits_from_str("011001010111")?;
+// (This edition drops the SICP text's trailing redundant `0`, which
+// would only begin an unfinished eighth symbol with no bits left to
+// complete it.)
+@end example
 
 Use the @code{decode} procedure to decode the message, and give the result.
 @end quotation
@@ -1535,39 +1767,39 @@ Use the @code{decode} procedure to decode the message, and give the result.
 as arguments a message and a tree and produces the list of bits that gives the
 encoded message.
 
-@lisp
-(define (encode message tree)
-  (if (null? message)
-      '()
-      (append 
-       (encode-symbol (car message) 
-                      tree)
-       (encode (cdr message) tree))))
-@end lisp
+@example rust
+pub fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, SchemeError> {
+    let mut bits = Vec::new();
+    for symbol in message {
+        bits.extend(encode_symbol(symbol, tree)?);
+    }
+    Ok(bits)
+}
+@end example
 
-@code{Encode-symbol} is a procedure, which you must write, that returns the
-list of bits that encodes a given symbol according to a given tree.  You should
-design @code{encode-symbol} so that it signals an error if the symbol is not in
+Write your own @code{encode_symbol}, a function that returns the
+bits that encode a given symbol according to a given tree.  You should
+design @code{encode_symbol} so that it returns a @code{SchemeError} if the symbol is not in
 the tree at all.  Test your procedure by encoding the result you obtained in
-@ref{Exercise 2.67} with the sample tree and seeing whether it is the same as
-the original sample message.
+@ref{Exercise 2.67} with @code{sample_tree} and seeing whether it is the same as
+the original @code{sample_message}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.69}Exercise 2.69:} The following procedure takes as
-its argument a list of symbol-frequency pairs (where no symbol appears in more
+its argument a slice of symbol-frequency pairs (where no symbol appears in more
 than one pair) and generates a Huffman encoding tree according to the Huffman
 algorithm.
 
-@lisp
-(define (generate-huffman-tree pairs)
-  (successive-merge 
-   (make-leaf-set pairs)))
-@end lisp
+@example rust
+fn generate_huffman_tree(pairs: &[(Symbol, u32)]) -> Option<HuffmanTree> {
+    successive_merge(make_leaf_set(pairs))
+}
+@end example
 
-@code{Make-leaf-set} is the procedure given above that transforms the list of
-pairs into an ordered set of leaves.  @code{Successive-merge} is the procedure
-you must write, using @code{make-code-tree} to successively merge the
+@code{make_leaf_set} is the procedure given above that transforms the slice of
+pairs into an ordered set of leaves.  @code{successive_merge} is the procedure
+you must write, using @code{HuffmanTree::make_code_tree} to successively merge the
 smallest-weight elements of the set until there is only one element left, which
 is the desired Huffman tree.  (This procedure is slightly tricky, but not
 really complicated.  If you find yourself designing a complex procedure, then
@@ -1577,8 +1809,8 @@ advantage of the fact that we are using an ordered set representation.)
 
 @quotation
 @strong{@anchor{Exercise 2.70}Exercise 2.70:} The following eight-symbol
-alphabet with as@-so@-ci@-ated relative frequencies was designed to efficiently
-encode the lyr@-ics of 1950s rock songs.  (Note that the ``symbols'' of an
+alphabet with associated relative frequencies was designed to efficiently
+encode the lyrics of 1950s rock songs.  (Note that the ``symbols'' of an
 ``alphabet'' need not be individual letters.)
 
 @example
@@ -1589,7 +1821,7 @@ GET  2    YIP  9
 JOB  2    WAH  1
 @end example
 
-Use @code{generate-huffman-tree} (@ref{Exercise 2.69}) to generate a
+Use @code{generate_huffman_tree} (@ref{Exercise 2.69}) to generate a
 corresponding Huffman tree, and use @code{encode} (@ref{Exercise 2.68}) to
 encode the following message:
 
@@ -1622,11 +1854,10 @@ encode the most frequent symbol?  The least frequent symbol?
 @strong{@anchor{Exercise 2.72}Exercise 2.72:} Consider the encoding procedure
 that you designed in @ref{Exercise 2.68}.  What is the order of growth in the
 number of steps needed to encode a symbol?  Be sure to include the number of
-steps needed to search the symbol list at each node encountered.  To answer
+steps needed to search the symbol slice at each node encountered.  To answer
 this question in general is difficult.  Consider the special case where the
 relative frequencies of the @math{n} symbols are as described in @ref{Exercise 2.71}, 
 and give the order of growth (as a function of @math{n}) of the number of
 steps needed to encode the most frequent and least frequent symbols in the
 alphabet.
 @end quotation
-

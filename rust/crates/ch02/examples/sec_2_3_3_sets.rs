@@ -5,8 +5,8 @@
 //! lists, and binary trees.
 
 use ch02::sec_2_3::{
-    Tree, adjoin_set, adjoin_set_tree, element_of_set, element_of_set_ordered,
-    element_of_set_tree, intersection_set, intersection_set_ordered,
+    Tree, adjoin_set, adjoin_set_tree, element_of_set, element_of_set_ordered, element_of_set_tree,
+    intersection_set, intersection_set_ordered,
 };
 
 fn main() {
@@ -32,13 +32,24 @@ fn main() {
     assert!(!element_of_set_ordered(7, &ordered));
     println!("{:?}", intersection_set_ordered(&[1, 3, 5, 7], &[3, 5, 9]));
     // => [3, 5]
-    assert_eq!(intersection_set_ordered(&[1, 3, 5, 7], &[3, 5, 9]), vec![3, 5]);
+    assert_eq!(
+        intersection_set_ordered(&[1, 3, 5, 7], &[3, 5, 9]),
+        vec![3, 5]
+    );
 
     // Sets as binary trees: Figure 2.16's first tree for {1, 3, 5, 7, 9, 11}.
     let tree = Tree::make_tree(
         7,
-        Tree::make_tree(3, Tree::make_tree(1, Tree::Empty, Tree::Empty), Tree::make_tree(5, Tree::Empty, Tree::Empty)),
-        Tree::make_tree(9, Tree::Empty, Tree::make_tree(11, Tree::Empty, Tree::Empty)),
+        Tree::make_tree(
+            3,
+            Tree::make_tree(1, Tree::Empty, Tree::Empty),
+            Tree::make_tree(5, Tree::Empty, Tree::Empty),
+        ),
+        Tree::make_tree(
+            9,
+            Tree::Empty,
+            Tree::make_tree(11, Tree::Empty, Tree::Empty),
+        ),
     );
     println!("{tree}");
     // => (7 (3 (1 () ()) (5 () ())) (9 () (11 () ())))

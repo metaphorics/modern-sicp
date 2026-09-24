@@ -254,7 +254,10 @@ pub fn adjoin_set(x: i128, set: &[i128]) -> Vec<i128> {
 /// of `set1` scans all of `set2`.
 #[must_use]
 pub fn intersection_set(set1: &[i128], set2: &[i128]) -> Vec<i128> {
-    set1.iter().copied().filter(|&x| element_of_set(x, set2)).collect()
+    set1.iter()
+        .copied()
+        .filter(|&x| element_of_set(x, set2))
+        .collect()
 }
 
 /// Sets as ordered lists (elements increasing): is `x` a member of
@@ -274,24 +277,32 @@ pub fn element_of_set_ordered(x: i128, set: &[i128]) -> bool {
 }
 
 /// Sets as ordered lists: the elements common to `set1` and `set2`.
-/// Walking both lists in step reduces the problem to computing the
+/// Walking both lists in step, taking the smaller head (or the shared
+/// head once, advancing both) reduces the problem to computing the
 /// intersection of smaller sets at each step, removing an element from
 /// one or both lists, so this is `Θ(n)` rather than the unordered
-/// representation's `Θ(n²)`.
+/// representation's `Θ(n²)`. The book writes this recursively, which
+/// is `Θ(n)` in Scheme because `cons` shares structure; this edition
+/// writes the same walk as a loop so the `Vec` result is built once,
+/// keeping the `Θ(n)` cost real rather than an artifact of a shared
+/// list the host type does not have.
 #[must_use]
 pub fn intersection_set_ordered(set1: &[i128], set2: &[i128]) -> Vec<i128> {
-    match (set1.first(), set2.first()) {
-        (Some(&x1), Some(&x2)) => match x1.cmp(&x2) {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut j = 0;
+    while i < set1.len() && j < set2.len() {
+        match set1[i].cmp(&set2[j]) {
             Ordering::Equal => {
-                let mut out = vec![x1];
-                out.extend(intersection_set_ordered(&set1[1..], &set2[1..]));
-                out
+                out.push(set1[i]);
+                i += 1;
+                j += 1;
             }
-            Ordering::Less => intersection_set_ordered(&set1[1..], set2),
-            Ordering::Greater => intersection_set_ordered(set1, &set2[1..]),
-        },
-        _ => Vec::new(),
+            Ordering::Less => i += 1,
+            Ordering::Greater => j += 1,
+        }
     }
+    out
 }
 
 /// Sets as binary trees: a node holds one element (the "entry"), a left
@@ -299,20 +310,25 @@ pub fn intersection_set_ordered(set1: &[i128], set2: &[i128]) -> Vec<i128> {
 /// `Empty`. The book represents this shape with three-item lists
 /// (`entry`, `left-branch`, `right-branch`); this edition represents it
 /// directly as a recursive enum, which is the abstraction the book's
-/// list encoding was standing in for.
+/// list encoding was standing in for. Branches are `Rc`, not `Box`,
+/// for the same reason [`List`] uses `Rc`: adjoining an element
+/// rebuilds the spine from the insertion point to the root and shares
+/// every untouched sibling subtree by pointer, so the `Θ(log n)`
+/// claims below are genuine rather than hidden behind an `O(n)` deep
+/// clone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tree {
     /// No elements.
     Empty,
     /// One element, with its left and right subtrees.
-    Node(i128, Box<Tree>, Box<Tree>),
+    Node(i128, Rc<Tree>, Rc<Tree>),
 }
 
 impl Tree {
     /// Builds a tree node: the book's `make-tree`.
     #[must_use]
     pub fn make_tree(entry: i128, left: Tree, right: Tree) -> Tree {
-        Tree::Node(entry, Box::new(left), Box::new(right))
+        Tree::Node(entry, Rc::new(left), Rc::new(right))
     }
 
     /// The entry at the root, or `None` on `Empty`: the book's `entry`.
@@ -381,7 +397,9 @@ pub fn adjoin_set_tree(x: i128, tree: &Tree) -> Tree {
         Tree::Node(entry, left, right) => match x.cmp(entry) {
             Ordering::Equal => tree.clone(),
             Ordering::Less => Tree::make_tree(*entry, adjoin_set_tree(x, left), (**right).clone()),
-            Ordering::Greater => Tree::make_tree(*entry, (**left).clone(), adjoin_set_tree(x, right)),
+            Ordering::Greater => {
+                Tree::make_tree(*entry, (**left).clone(), adjoin_set_tree(x, right))
+            }
         },
     }
 }
@@ -667,7 +685,10 @@ mod tests {
                 Box::new(Expr::Var(sym("x"))),
                 Box::new(Expr::Var(sym("y"))),
             )),
-            Box::new(Expr::Sum(Box::new(Expr::Var(sym("x"))), Box::new(Expr::Num(3)))),
+            Box::new(Expr::Sum(
+                Box::new(Expr::Var(sym("x"))),
+                Box::new(Expr::Num(3)),
+            )),
         );
         assert_eq!(
             deriv(&e3, &x).unwrap().to_string(),
@@ -734,7 +755,10 @@ mod tests {
                 ),
             ),
         );
-        let message: Vec<Symbol> = ["A", "D", "A", "B", "B", "C"].into_iter().map(sym).collect();
+        let message: Vec<Symbol> = ["A", "D", "A", "B", "B", "C"]
+            .into_iter()
+            .map(sym)
+            .collect();
         let bits = encode(&message, &tree).unwrap();
         assert_eq!(bits_to_string(&bits), "011001010111");
         let decoded = decode(&bits, &tree).unwrap();

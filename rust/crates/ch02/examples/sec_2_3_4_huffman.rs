@@ -16,12 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // of leaves ordered by increasing weight, ready to be merged
     // according to the Huffman algorithm (exercise 2.69 writes the
     // merge itself).
-    let pairs = [
-        (sym("A"), 4),
-        (sym("B"), 2),
-        (sym("C"), 1),
-        (sym("D"), 1),
-    ];
+    let pairs = [(sym("A"), 4), (sym("B"), 2), (sym("C"), 1), (sym("D"), 1)];
     let leaves = make_leaf_set(&pairs);
     let weights: Vec<u32> = leaves.iter().map(HuffmanTree::weight).collect();
     println!("{weights:?}");

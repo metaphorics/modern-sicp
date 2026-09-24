@@ -35,8 +35,7 @@ fn main() {
     // => (pear banana)
     assert_eq!(found_str, "(pear banana)");
 
-    let feed: List<Symbol> =
-        List::from_iter([sym("red"), sym("shoes"), sym("blue"), sym("socks")]);
+    let feed: List<Symbol> = List::from_iter([sym("red"), sym("shoes"), sym("blue"), sym("socks")]);
     let miss = memq(&sym("red"), &feed);
     let miss_str = miss.map_or_else(|| "false".to_string(), |l| l.to_string());
     println!("{miss_str}");

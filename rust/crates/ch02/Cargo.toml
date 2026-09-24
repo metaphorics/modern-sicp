@@ -479,6 +479,166 @@ path = "../../exercises/ch02/sec_2_52.rs"
 name = "solution_sec_2_52"
 path = "../../solutions/ch02/sec_2_52.rs"
 
+[[test]]
+name = "scaffold_sec_2_53"
+path = "../../exercises/ch02/sec_2_53.rs"
+
+[[test]]
+name = "solution_sec_2_53"
+path = "../../solutions/ch02/sec_2_53.rs"
+
+[[test]]
+name = "scaffold_sec_2_54"
+path = "../../exercises/ch02/sec_2_54.rs"
+
+[[test]]
+name = "solution_sec_2_54"
+path = "../../solutions/ch02/sec_2_54.rs"
+
+[[test]]
+name = "scaffold_sec_2_55"
+path = "../../exercises/ch02/sec_2_55.rs"
+
+[[test]]
+name = "solution_sec_2_55"
+path = "../../solutions/ch02/sec_2_55.rs"
+
+[[test]]
+name = "scaffold_sec_2_56"
+path = "../../exercises/ch02/sec_2_56.rs"
+
+[[test]]
+name = "solution_sec_2_56"
+path = "../../solutions/ch02/sec_2_56.rs"
+
+[[test]]
+name = "scaffold_sec_2_57"
+path = "../../exercises/ch02/sec_2_57.rs"
+
+[[test]]
+name = "solution_sec_2_57"
+path = "../../solutions/ch02/sec_2_57.rs"
+
+[[test]]
+name = "scaffold_sec_2_58"
+path = "../../exercises/ch02/sec_2_58.rs"
+
+[[test]]
+name = "solution_sec_2_58"
+path = "../../solutions/ch02/sec_2_58.rs"
+
+[[test]]
+name = "scaffold_sec_2_59"
+path = "../../exercises/ch02/sec_2_59.rs"
+
+[[test]]
+name = "solution_sec_2_59"
+path = "../../solutions/ch02/sec_2_59.rs"
+
+[[test]]
+name = "scaffold_sec_2_60"
+path = "../../exercises/ch02/sec_2_60.rs"
+
+[[test]]
+name = "solution_sec_2_60"
+path = "../../solutions/ch02/sec_2_60.rs"
+
+[[test]]
+name = "scaffold_sec_2_61"
+path = "../../exercises/ch02/sec_2_61.rs"
+
+[[test]]
+name = "solution_sec_2_61"
+path = "../../solutions/ch02/sec_2_61.rs"
+
+[[test]]
+name = "scaffold_sec_2_62"
+path = "../../exercises/ch02/sec_2_62.rs"
+
+[[test]]
+name = "solution_sec_2_62"
+path = "../../solutions/ch02/sec_2_62.rs"
+
+[[test]]
+name = "scaffold_sec_2_63"
+path = "../../exercises/ch02/sec_2_63.rs"
+
+[[test]]
+name = "solution_sec_2_63"
+path = "../../solutions/ch02/sec_2_63.rs"
+
+[[test]]
+name = "scaffold_sec_2_64"
+path = "../../exercises/ch02/sec_2_64.rs"
+
+[[test]]
+name = "solution_sec_2_64"
+path = "../../solutions/ch02/sec_2_64.rs"
+
+[[test]]
+name = "scaffold_sec_2_65"
+path = "../../exercises/ch02/sec_2_65.rs"
+
+[[test]]
+name = "solution_sec_2_65"
+path = "../../solutions/ch02/sec_2_65.rs"
+
+[[test]]
+name = "scaffold_sec_2_66"
+path = "../../exercises/ch02/sec_2_66.rs"
+
+[[test]]
+name = "solution_sec_2_66"
+path = "../../solutions/ch02/sec_2_66.rs"
+
+[[test]]
+name = "scaffold_sec_2_67"
+path = "../../exercises/ch02/sec_2_67.rs"
+
+[[test]]
+name = "solution_sec_2_67"
+path = "../../solutions/ch02/sec_2_67.rs"
+
+[[test]]
+name = "scaffold_sec_2_68"
+path = "../../exercises/ch02/sec_2_68.rs"
+
+[[test]]
+name = "solution_sec_2_68"
+path = "../../solutions/ch02/sec_2_68.rs"
+
+[[test]]
+name = "scaffold_sec_2_69"
+path = "../../exercises/ch02/sec_2_69.rs"
+
+[[test]]
+name = "solution_sec_2_69"
+path = "../../solutions/ch02/sec_2_69.rs"
+
+[[test]]
+name = "scaffold_sec_2_70"
+path = "../../exercises/ch02/sec_2_70.rs"
+
+[[test]]
+name = "solution_sec_2_70"
+path = "../../solutions/ch02/sec_2_70.rs"
+
+[[test]]
+name = "scaffold_sec_2_71"
+path = "../../exercises/ch02/sec_2_71.rs"
+
+[[test]]
+name = "solution_sec_2_71"
+path = "../../solutions/ch02/sec_2_71.rs"
+
+[[test]]
+name = "scaffold_sec_2_72"
+path = "../../exercises/ch02/sec_2_72.rs"
+
+[[test]]
+name = "solution_sec_2_72"
+path = "../../solutions/ch02/sec_2_72.rs"
+
 
 [dev-dependencies]
 anyhow = { workspace = true }

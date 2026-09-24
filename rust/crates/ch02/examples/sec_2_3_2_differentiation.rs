@@ -51,10 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{}", deriv(&nested, &x)?);
     // => (+ (* x y) (* y (+ x 3)))
-    assert_eq!(
-        deriv(&nested, &x)?.to_string(),
-        "(+ (* x y) (* y (+ x 3)))"
-    );
+    assert_eq!(deriv(&nested, &x)?.to_string(), "(+ (* x y) (* y (+ x 3)))");
 
     Ok(())
 }

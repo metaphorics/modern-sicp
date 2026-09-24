@@ -9,11 +9,11 @@ program that uses rational numbers from the task of implementing rational
 numbers in terms of the computer language's primitive mechanisms for
 constructing compound data.  The key idea was to erect an abstraction barrier
 -- in this case, the selectors and constructors for rational numbers
-(@code{make-rat}, @code{numer}, @code{denom})---that isolates the way rational
-numbers are used from their underlying representation in terms of list
-structure.  A similar abstraction barrier isolates the details of the
-procedures that perform rational arithmetic (@code{add-rat}, @code{sub-rat},
-@code{mul-rat}, and @code{div-rat}) from the ``higher-level'' procedures that
+(@code{makeRat}, @code{numer}, @code{denom})---that isolates the way rational
+numbers are used from their underlying representation in terms of a record.
+A similar abstraction barrier isolates the details of the
+functions that perform rational arithmetic (@code{addRat}, @code{subRat},
+@code{mulRat}, and @code{divRat}) from the ``higher-level'' functions that
 use rational numbers.  The resulting program has the structure shown in
 @ref{Figure 2.1}.
 
@@ -31,7 +31,7 @@ in two almost equivalent ways: in rectangular form (real and imaginary parts)
 and in polar form (magnitude and angle).  Sometimes rectangular form is more
 appropriate and sometimes polar form is more appropriate.  Indeed, it is
 perfectly plausible to imagine a system in which complex numbers are
-represented in both ways, and in which the procedures for manipulating complex
+represented in both ways, and in which the functions for manipulating complex
 numbers work with either representation.
 
 More importantly, programming systems are often designed by many people working
@@ -48,9 +48,9 @@ having to redesign or reimplement these modules.
 
 In this section, we will learn how to cope with data that may be represented in
 different ways by different parts of a program.  This requires constructing
-@newterm{generic procedures}---procedures that can operate on data that may be
+@newterm{generic functions}---functions that can operate on data that may be
 represented in more than one way.  Our main technique for building generic
-procedures will be to work in terms of data objects that have @newterm{type tags}, 
+functions will be to work in terms of data objects that have @newterm{type tags},
 that is, data objects that include explicit information about how they
 are to be processed.  We will also discuss @newterm{data-directed} programming,
 a powerful and convenient implementation strategy for additively assembling
@@ -60,8 +60,8 @@ We begin with the simple complex-number example. We will see how type tags and
 data-directed style enable us to design separate rectangular and polar
 representations for complex numbers while maintaining the notion of an abstract
 ``complex-number'' data object.  We will accomplish this by defining arithmetic
-procedures for complex numbers (@code{add-complex}, @code{sub-complex},
-@code{mul-complex}, and @code{div-complex}) in terms of generic selectors that
+functions for complex numbers (@code{addComplex}, @code{subComplex},
+@code{mulComplex}, and @code{divComplex}) in terms of generic selectors that
 access parts of a complex number independent of how the number is represented.
 The resulting complex-number system, as shown in @ref{Figure 2.19}, contains
 two different kinds of abstraction barriers.  The ``horizontal'' abstraction
@@ -79,14 +79,14 @@ and install alternative representations.
 @example
            Programs that use complex numbers
   +-------------------------------------------------+
---| add-complex sub-complex mul-complex div-complex |--
+--| addComplex subComplex mulComplex divComplex     |--
   +-------------------------------------------------+
               Complex arithmetic package
 ---------------------------+---------------------------
           Rectangular      |         Polar
         representation     |     representation
 ---------------------------+---------------------------
-    List structure and primitive machine arithmetic
+       Value pairs and primitive Double arithmetic
 @end example
 @end quotation
 @end ifinfo
@@ -102,9 +102,9 @@ and install alternative representations.
 
 @noindent
 In @ref{2.5} we will show how to use type tags and data-directed style
-to develop a generic arithmetic package.  This provides procedures (@code{add},
+to develop a generic arithmetic package.  This provides functions (@code{add},
 @code{mul}, and so on) that can be used to manipulate all sorts of ``numbers''
-and can be easily extended when a new kind of number is needed.  In 
+and can be easily extended when a new kind of number is needed.  In
 @ref{2.5.3}, we'll show how to use generic arithmetic in a system that performs
 symbolic algebra.
 
@@ -126,14 +126,14 @@ form is preferable to polar form most of the time because of roundoff errors in
 conversion between rectangular and polar form.  This is why the complex-number
 example is unrealistic.  Nevertheless, it provides a clear illustration of the
 design of a system using generic operations and a good introduction to the more
-substantial systems to be developed later in this chapter.}  
+substantial systems to be developed later in this chapter.}
 Section @ref{2.4.2} will show how both representations can be made to coexist in a
 single system through the use of type tags and generic operations.
 
 Like rational numbers, complex numbers are naturally represented as ordered
 pairs.  The set of complex numbers can be thought of as a two-dimensional space
 with two orthogonal axes, the ``real'' axis and the ``imaginary'' axis. (See
-@ref{Figure 2.20}.)  From this point of view, the complex number 
+@ref{Figure 2.20}.)  From this point of view, the complex number
 @math{{z = x + iy}} (where @math{{i^{\kern0.1em 2} = \hbox{−1}}}) can be thought of as the point in the plane
 whose real coordinate is @math{x} and whose imaginary coordinate is @math{y}.
 Addition of complex numbers reduces in this representation to addition of
@@ -194,9 +194,9 @@ vector obtained by stretching one complex number by the length of the other and
 then rotating it through the angle of the other:
 @displaymath
 \eqalign{
-  \hbox{Magnitude} (z_1 \cdot z_2)  &= 
+  \hbox{Magnitude} (z_1 \cdot z_2)  &=
     \hbox{Magnitude} (z_1) \cdot \hbox{Magnitude} (z_2), \cr
-  \hbox{Angle} (z_1 \cdot z_2)      &= 
+  \hbox{Angle} (z_1 \cdot z_2)      &=
     \hbox{Angle} (z_1) + \hbox{Angle} (z_2).
 }
 @end displaymath
@@ -224,25 +224,23 @@ specified by polar coordinates.
 To design such a system, we can follow the same data-abstraction strategy we
 followed in designing the rational-number package in @ref{2.1.1}.
 Assume that the operations on complex numbers are implemented in terms of four
-selectors: @code{real-part}, @code{imag-part}, @code{magnitude}, and
-@code{angle}.  Also assume that we have two procedures for constructing complex
-numbers: @code{make-from-real-imag} returns a complex number with specified
-real and imaginary parts, and @code{make-from-mag-ang} returns a complex number
-with specified magnitude and angle.  These procedures have the property that,
+selectors: @code{realPart}, @code{imagPart}, @code{magnitude}, and
+@code{angle}.  Also assume that we have two functions for constructing complex
+numbers: @code{makeFromRealImag} returns a complex number with specified
+real and imaginary parts, and @code{makeFromMagAng} returns a complex number
+with specified magnitude and angle.  These functions have the property that,
 for any complex number @code{z}, both
 
-@lisp
-(make-from-real-imag (real-part z) 
-                     (imag-part z))
-@end lisp
+@example kotlin
+makeFromRealImag(realPart(z), imagPart(z))
+@end example
 
 @noindent
 and
 
-@lisp
-(make-from-mag-ang (magnitude z) 
-                   (angle z))
-@end lisp
+@example kotlin
+makeFromMagAng(magnitude(z), angle(z))
+@end example
 
 @noindent
 produce complex numbers that are equal to @code{z}.
@@ -252,34 +250,45 @@ numbers using the ``abstract data'' specified by the constructors and
 selectors, just as we did for rational numbers in @ref{2.1.1}.  As
 shown in the formulas above, we can add and subtract complex numbers in terms
 of real and imaginary parts while multiplying and dividing complex numbers in
-terms of magnitudes and angles:
+terms of magnitudes and angles.  In this edition every complex-number selector
+and constructor already threads the operation table that @ref{2.4.3} builds,
+since that table is what finally makes the four selectors below generic across
+whichever representation a number carries:
 
-@lisp
-(define (add-complex z1 z2)
-  (make-from-real-imag 
-   (+ (real-part z1) (real-part z2))
-   (+ (imag-part z1) (imag-part z2))))
+@example kotlin
+context(r: Raise<SchemeError>)
+fun addComplex(table: OpTable, z1: Value, z2: Value): Value {
+    val re = realOf(realPart(table, z1)) + realOf(realPart(table, z2))
+    val im = realOf(imagPart(table, z1)) + realOf(imagPart(table, z2))
+    return makeFromRealImag(table, re, im)
+}
 
-(define (sub-complex z1 z2)
-  (make-from-real-imag 
-   (- (real-part z1) (real-part z2))
-   (- (imag-part z1) (imag-part z2))))
+context(r: Raise<SchemeError>)
+fun subComplex(table: OpTable, z1: Value, z2: Value): Value {
+    val re = realOf(realPart(table, z1)) - realOf(realPart(table, z2))
+    val im = realOf(imagPart(table, z1)) - realOf(imagPart(table, z2))
+    return makeFromRealImag(table, re, im)
+}
 
-(define (mul-complex z1 z2)
-  (make-from-mag-ang 
-   (* (magnitude z1) (magnitude z2))
-   (+ (angle z1) (angle z2))))
+context(r: Raise<SchemeError>)
+fun mulComplex(table: OpTable, z1: Value, z2: Value): Value {
+    val mag = realOf(magnitude(table, z1)) * realOf(magnitude(table, z2))
+    val ang = realOf(angle(table, z1)) + realOf(angle(table, z2))
+    return makeFromMagAng(table, mag, ang)
+}
 
-(define (div-complex z1 z2)
-  (make-from-mag-ang 
-   (/ (magnitude z1) (magnitude z2))
-   (- (angle z1) (angle z2))))
-@end lisp
+context(r: Raise<SchemeError>)
+fun divComplex(table: OpTable, z1: Value, z2: Value): Value {
+    val mag = realOf(magnitude(table, z1)) / realOf(magnitude(table, z2))
+    val ang = realOf(angle(table, z1)) - realOf(angle(table, z2))
+    return makeFromMagAng(table, mag, ang)
+}
+@end example
 
 @noindent
 To complete the complex-number package, we must choose a representation and we
 must implement the constructors and selectors in terms of primitive numbers and
-primitive list structure.  There are two obvious ways to do this: We can
+a primitive pair.  There are two obvious ways to do this: We can
 represent a complex number in ``rectangular form'' as a pair (real part,
 imaginary part) or in ``polar form'' as a pair (magnitude, angle).  Which shall
 we choose?
@@ -315,28 +324,39 @@ y = r sin A     A = arctan(y,x)
 @noindent
 which relate the real and imaginary parts @math{{(x, y)}} to the magnitude and
 the angle @math{{(r, A)}}.@footnote{The arctangent function referred to here,
-computed by Scheme's @code{atan} procedure, is defined so as to take two
+computed by Kotlin's @code{kotlin.math.atan2} function, is defined so as to take two
 arguments @math{y} and @math{x} and to return the angle whose tangent is @math{{y / x}}.
 The signs of the arguments determine the quadrant of the angle.}  Ben's
-representation is therefore given by the following selectors and constructors:
+representation is therefore given by the following selectors and constructors,
+each threading the section's shared @code{Raise<SchemeError>} context so a
+malformed pair fails typed rather than crashing:
 
-@lisp
-(define (real-part z) (car z))
-(define (imag-part z) (cdr z))
+@example kotlin
+context(r: Raise<SchemeError>)
+fun rectRealPart(z: Value): Value = car(z)
 
-(define (magnitude z)
-  (sqrt (+ (square (real-part z)) 
-           (square (imag-part z)))))
+context(r: Raise<SchemeError>)
+fun rectImagPart(z: Value): Value = cdr(z)
 
-(define (angle z)
-  (atan (imag-part z) (real-part z)))
+context(r: Raise<SchemeError>)
+fun rectMagnitude(z: Value): Value {
+    val x = realOf(rectRealPart(z))
+    val y = realOf(rectImagPart(z))
+    return VReal(sqrt(x * x + y * y))
+}
 
-(define (make-from-real-imag x y) 
-  (cons x y))
+context(r: Raise<SchemeError>)
+fun rectAngle(z: Value): Value {
+    val x = realOf(rectRealPart(z))
+    val y = realOf(rectImagPart(z))
+    return VReal(atan2(y, x))
+}
 
-(define (make-from-mag-ang r a)
-  (cons (* r (cos a)) (* r (sin a))))
-@end lisp
+fun rectMakeFromRealImag(x: Double, y: Double): Value = VPair(VReal(x), VReal(y))
+
+fun rectMakeFromMagAng(mag: Double, ang: Double): Value =
+    VPair(VReal(mag * cos(ang)), VReal(mag * sin(ang)))
+@end example
 
 @noindent
 Alyssa, in contrast, chooses to represent complex numbers in polar form.  For
@@ -344,35 +364,44 @@ her, selecting the magnitude and angle is straightforward, but she has to use
 the trigonometric relations to obtain the real and imaginary parts.  Alyssa's
 representation is:
 
-@lisp
-(define (real-part z)
-  (* (magnitude z) (cos (angle z))))
+@example kotlin
+context(r: Raise<SchemeError>)
+fun polarMagnitude(z: Value): Value = car(z)
 
-(define (imag-part z)
-  (* (magnitude z) (sin (angle z))))
+context(r: Raise<SchemeError>)
+fun polarAngle(z: Value): Value = cdr(z)
 
-(define (magnitude z) (car z))
-(define (angle z) (cdr z))
+context(r: Raise<SchemeError>)
+fun polarRealPart(z: Value): Value {
+    val mag = realOf(polarMagnitude(z))
+    val ang = realOf(polarAngle(z))
+    return VReal(mag * cos(ang))
+}
 
-(define (make-from-real-imag x y)
-  (cons (sqrt (+ (square x) (square y)))
-        (atan y x)))
+context(r: Raise<SchemeError>)
+fun polarImagPart(z: Value): Value {
+    val mag = realOf(polarMagnitude(z))
+    val ang = realOf(polarAngle(z))
+    return VReal(mag * sin(ang))
+}
 
-(define (make-from-mag-ang r a) 
-  (cons r a))
-@end lisp
+fun polarMakeFromRealImag(x: Double, y: Double): Value =
+    VPair(VReal(sqrt(x * x + y * y)), VReal(atan2(y, x)))
+
+fun polarMakeFromMagAng(mag: Double, ang: Double): Value = VPair(VReal(mag), VReal(ang))
+@end example
 
 @noindent
 The discipline of data abstraction ensures that the same implementation of
-@code{add-complex}, @code{sub-complex}, @code{mul-complex}, and
-@code{div-complex} will work with either Ben's representation or Alyssa's
+@code{addComplex}, @code{subComplex}, @code{mulComplex}, and
+@code{divComplex} will work with either Ben's representation or Alyssa's
 representation.
 
 @node	2.4.2, 2.4.3, 2.4.1, 2.4
 @subsection Tagged data
 
 One way to view data abstraction is as an application of the ``principle of
-least commitment.''  In implementing the complex-number system in 
+least commitment.''  In implementing the complex-number system in
 @ref{2.4.1}, we can use either Ben's rectangular representation or Alyssa's
 polar representation.  The abstraction barrier formed by the selectors and
 constructors permits us to defer to the last possible moment the choice of a
@@ -388,183 +417,152 @@ in polar form from data in rectangular form.  Otherwise, if we were asked, for
 instance, to find the @code{magnitude} of the pair (3, 4), we wouldn't know
 whether to answer 5 (interpreting the number in rectangular form) or 3
 (interpreting the number in polar form).  A straightforward way to accomplish
-this distinction is to include a @newterm{type tag}---the symbol
-@code{rectangular} or @code{polar}---as part of each complex number.  Then
+this distinction is to include a @newterm{type tag}---the string
+@code{"rectangular"} or @code{"polar"}---as part of each complex number.  Then
 when we need to manipulate a complex number we can use the tag to decide which
 selector to apply.
 
-In order to manipulate tagged data, we will assume that we have procedures
-@code{type-tag} and @code{contents} that extract from a data object the tag and
+In order to manipulate tagged data, we will assume that we have functions
+@code{typeTag} and @code{contents} that extract from a data object the tag and
 the actual contents (the polar or rectangular coordinates, in the case of a
-complex number).  We will also postulate a procedure @code{attach-tag} that
-takes a tag and contents and produces a tagged data object.  A straightforward
-way to implement this is to use ordinary list structure:
+complex number).  We will also postulate a function @code{attachTag} that
+takes a tag and contents and produces a tagged data object.  The runtime
+already carries an @newterm{operation-tagged} value class for exactly this,
+@code{Value.Tagged} (@ref{2.4.3}) names it @code{VTagged}, and
+@code{attachTag}/@code{typeTag}/@code{contents} substitute from it in the
+case of a complex number:
 
-@lisp
-(define (attach-tag type-tag contents)
-  (cons type-tag contents))
+@example kotlin
+fun attachTag(typeTag: String, contents: Value): Value = VTagged(typeTag, contents)
 
-(define (type-tag datum)
-  (if (pair? datum)
-      (car datum)
-      (error "Bad tagged datum: 
-              TYPE-TAG" datum)))
+context(r: Raise<SchemeError>)
+fun typeTag(datum: Value): String =
+    when (datum) {
+        is VTagged -> datum.tag
+        else -> r.raise(SchemeError.UserRaised("Bad tagged datum: TYPE-TAG", listOf(datum)))
+    }
 
-(define (contents datum)
-  (if (pair? datum)
-      (cdr datum)
-      (error "Bad tagged datum: 
-              CONTENTS" datum)))
-@end lisp
+context(r: Raise<SchemeError>)
+fun contents(datum: Value): Value =
+    when (datum) {
+        is VTagged -> datum.data
+        else -> r.raise(SchemeError.UserRaised("Bad tagged datum: CONTENTS", listOf(datum)))
+    }
+@end example
 
 @noindent
-Using these procedures, we can define predicates @code{rectangular?}  and
-@code{polar?}, which recognize rectangular and polar numbers, respectively:
+Using these functions, we can define predicates @code{isRectangular} and
+@code{isPolar}, which recognize rectangular and polar numbers, respectively:
 
-@lisp
-(define (rectangular? z)
-  (eq? (type-tag z) 'rectangular))
+@example kotlin
+fun isRectangular(z: Value): Boolean = z is VTagged && z.tag == "rectangular"
 
-(define (polar? z)
-  (eq? (type-tag z) 'polar))
-@end lisp
+fun isPolar(z: Value): Boolean = z is VTagged && z.tag == "polar"
+@end example
 
 @noindent
 With type tags, Ben and Alyssa can now modify their code so that their two
 different representations can coexist in the same system.  Whenever Ben
 constructs a complex number, he tags it as rectangular.  Whenever Alyssa
-constructs a complex number, she tags it as polar.  In addition, Ben and Alyssa
-must make sure that the names of their procedures do not conflict.  One way to
-do this is for Ben to append the suffix @code{rectangular} to the name of each
-of his representation procedures and for Alyssa to append @code{polar} to the
-names of hers.  Here is Ben's revised rectangular representation from 
-@ref{2.4.1}:
+constructs a complex number, she tags it as polar.  In Scheme, Ben and Alyssa
+would also have had to rename their internal procedures so the names of their
+procedures do not conflict.  This edition's @code{rect}- and @code{polar}-prefixed
+names of @ref{2.4.1} are already distinct by name and were never exported from
+one file into the other, so the only new code Ben and Alyssa need is the tagged
+wrapper around each constructor.  Here are Ben's tagged constructors, built
+directly from @ref{2.4.1}:
 
-@lisp
-(define (real-part-rectangular z) (car z))
-(define (imag-part-rectangular z) (cdr z))
+@example kotlin
+fun rectMakeFromRealImagTagged(x: Double, y: Double): Value =
+    attachTag("rectangular", rectMakeFromRealImag(x, y))
 
-(define (magnitude-rectangular z)
-  (sqrt (+ (square (real-part-rectangular z))
-           (square (imag-part-rectangular z)))))
-
-(define (angle-rectangular z)
-  (atan (imag-part-rectangular z)
-        (real-part-rectangular z)))
-
-(define (make-from-real-imag-rectangular x y)
-  (attach-tag 'rectangular (cons x y)))
-
-(define (make-from-mag-ang-rectangular r a)
-  (attach-tag 
-   'rectangular
-   (cons (* r (cos a)) (* r (sin a)))))
-@end lisp
+fun rectMakeFromMagAngTagged(mag: Double, ang: Double): Value =
+    attachTag("rectangular", rectMakeFromMagAng(mag, ang))
+@end example
 
 @noindent
-and here is Alyssa's revised polar representation:
+and here are Alyssa's tagged constructors:
 
-@lisp
-(define (real-part-polar z)
-  (* (magnitude-polar z) 
-     (cos (angle-polar z))))
+@example kotlin
+fun polarMakeFromRealImagTagged(x: Double, y: Double): Value =
+    attachTag("polar", polarMakeFromRealImag(x, y))
 
-(define (imag-part-polar z)
-  (* (magnitude-polar z) 
-     (sin (angle-polar z))))
-
-(define (magnitude-polar z) (car z))
-(define (angle-polar z) (cdr z))
-
-(define (make-from-real-imag-polar x y)
-  (attach-tag 
-   'polar
-   (cons (sqrt (+ (square x) (square y)))
-         (atan y x))))
-
-(define (make-from-mag-ang-polar r a)
-  (attach-tag 'polar (cons r a)))
-@end lisp
+fun polarMakeFromMagAngTagged(mag: Double, ang: Double): Value =
+    attachTag("polar", polarMakeFromMagAng(mag, ang))
+@end example
 
 @noindent
-Each generic selector is implemented as a procedure that checks the tag of its
-argument and calls the appropriate procedure for handling data of that type.
-For example, to obtain the real part of a complex number, @code{real-part}
-examines the tag to determine whether to use Ben's @code{real-part-rectangular}
-or Alyssa's @code{real-part-polar}.  In either case, we use @code{contents} to
+A tagged rectangular number prints its tag alongside its untagged contents:
+
+@example kotlin
+rectMakeFromRealImagTagged(3.0, 4.0)
+// => (rectangular (3.0 . 4.0))
+@end example
+
+@noindent
+Each generic selector is implemented as a function that checks the tag of its
+argument and calls the appropriate function for handling data of that type.
+For example, to obtain the real part of a complex number, @code{realPartDispatch}
+examines the tag to determine whether to use Ben's @code{rectRealPart}
+or Alyssa's @code{polarRealPart}.  In either case, we use @code{contents} to
 extract the bare, untagged datum and send this to the rectangular or polar
-procedure as required:
+function as required:
 
-@lisp
-(define (real-part z)
-  (cond ((rectangular? z)
-         (real-part-rectangular (contents z)))
-        ((polar? z)
-         (real-part-polar (contents z)))
-        (else (error "Unknown type: 
-               REAL-PART" z))))
+@example kotlin
+context(r: Raise<SchemeError>)
+fun realPartDispatch(z: Value): Value =
+    when {
+        isRectangular(z) -> rectRealPart(contents(z))
+        isPolar(z) -> polarRealPart(contents(z))
+        else -> r.raise(SchemeError.UserRaised("Unknown type: REAL-PART", listOf(z)))
+    }
 
-(define (imag-part z)
-  (cond ((rectangular? z)
-         (imag-part-rectangular (contents z)))
-        ((polar? z)
-         (imag-part-polar (contents z)))
-        (else (error "Unknown type: 
-               IMAG-PART" z))))
+context(r: Raise<SchemeError>)
+fun imagPartDispatch(z: Value): Value =
+    when {
+        isRectangular(z) -> rectImagPart(contents(z))
+        isPolar(z) -> polarImagPart(contents(z))
+        else -> r.raise(SchemeError.UserRaised("Unknown type: IMAG-PART", listOf(z)))
+    }
 
-(define (magnitude z)
-  (cond ((rectangular? z)
-         (magnitude-rectangular (contents z)))
-        ((polar? z)
-         (magnitude-polar (contents z)))
-        (else (error "Unknown type: 
-               MAGNITUDE" z))))
+context(r: Raise<SchemeError>)
+fun magnitudeDispatch(z: Value): Value =
+    when {
+        isRectangular(z) -> rectMagnitude(contents(z))
+        isPolar(z) -> polarMagnitude(contents(z))
+        else -> r.raise(SchemeError.UserRaised("Unknown type: MAGNITUDE", listOf(z)))
+    }
 
-(define (angle z)
-  (cond ((rectangular? z)
-         (angle-rectangular (contents z)))
-        ((polar? z)
-         (angle-polar (contents z)))
-        (else (error "Unknown type: 
-               ANGLE" z))))
-@end lisp
+context(r: Raise<SchemeError>)
+fun angleDispatch(z: Value): Value =
+    when {
+        isRectangular(z) -> rectAngle(contents(z))
+        isPolar(z) -> polarAngle(contents(z))
+        else -> r.raise(SchemeError.UserRaised("Unknown type: ANGLE", listOf(z)))
+    }
+@end example
 
 @noindent
 To implement the complex-number arithmetic operations, we can use the same
-procedures @code{add-complex}, @code{sub-complex}, @code{mul-complex}, and
-@code{div-complex} from @ref{2.4.1}, because the selectors they call
-are generic, and so will work with either representation.  For example, the
-procedure @code{add-complex} is still
-
-@lisp
-(define (add-complex z1 z2)
-  (make-from-real-imag 
-   (+ (real-part z1) (real-part z2))
-   (+ (imag-part z1) (imag-part z2))))
-@end lisp
+functions @code{addComplex}, @code{subComplex}, @code{mulComplex}, and
+@code{divComplex} from @ref{2.4.1}, because the selectors they call
+are generic, and so will work with either representation.
 
 @noindent
 Finally, we must choose whether to construct complex numbers using Ben's
 representation or Alyssa's representation.  One reasonable choice is to
 construct rectangular numbers whenever we have real and imaginary parts and to
-construct polar numbers whenever we have magnitudes and angles:
-
-@lisp
-(define (make-from-real-imag x y)
-  (make-from-real-imag-rectangular x y))
-
-(define (make-from-mag-ang r a)
-  (make-from-mag-ang-polar r a))
-@end lisp
+construct polar numbers whenever we have magnitudes and angles, exactly as
+@ref{2.4.3}'s @code{makeFromRealImag} and @code{makeFromMagAng} do.
 
 @noindent
-The resulting complex-number system has the structure shown in @ref{Figure 2.21}.  
+The resulting complex-number system has the structure shown in @ref{Figure 2.21}.
 The system has been decomposed into three relatively independent parts:
 the complex-number-arithmetic operations, Alyssa's polar implementation, and
 Ben's rectangular implementation.  The polar and rectangular implementations
 could have been written by Ben and Alyssa working separately, and both of these
 can be used as underlying representations by a third programmer implementing
-the complex-arithmetic procedures in terms of the abstract constructor/selector
+the complex-arithmetic functions in terms of the abstract constructor/selector
 interface.
 
 @float
@@ -575,18 +573,18 @@ interface.
 
 @example
     +-------------------------------------------------+
-----| add-complex sub-complex mul-complex div-complex |----
+----| addComplex subComplex mulComplex divComplex     |----
     +-------------------------------------------------+
                 Complex arithmetic package
                  +-----------------------+
-                 | real-part   imag-part |
+                 | realPart   imagPart   |
 -----------------|                       |------------------
                  | magnitude   angle     |
                  +-----------+-----------+
            Rectangular       |          Polar
           representation     |     representation
 -----------------------------+------------------------------
-       List structure and primitive machine arithmetic
+       Value pairs and primitive Double arithmetic
 @end example
 @end quotation
 @end ifinfo
@@ -605,11 +603,11 @@ data in a generic manner.  That is, each selector is defined to have a behavior
 that depends upon the particular type of data it is applied to.  Notice the
 general mechanism for interfacing the separate representations: Within a given
 representation implementation (say, Alyssa's polar package) a complex number is
-an untyped pair (magnitude, angle).  When a generic selector operates on a
+an untagged pair (magnitude, angle).  When a generic selector operates on a
 number of @code{polar} type, it strips off the tag and passes the contents on
 to Alyssa's code.  Conversely, when Alyssa constructs a number for general use,
 she tags it with a type so that it can be appropriately recognized by the
-higher-level procedures.  This discipline of stripping off and attaching tags
+higher-level functions.  This discipline of stripping off and attaching tags
 as data objects are passed from level to level can be an important
 organizational strategy, as we shall see in @ref{2.5}.
 
@@ -617,25 +615,28 @@ organizational strategy, as we shall see in @ref{2.5}.
 @subsection Data-Directed Programming and Additivity
 
 The general strategy of checking the type of a datum and calling an appropriate
-procedure is called @newterm{dispatching on type}.  This is a powerful strategy
+function is called @newterm{dispatching on type}.  This is a powerful strategy
 for obtaining modularity in system design.  On the other hand, implementing the
 dispatch as in @ref{2.4.2} has two significant weaknesses.  One
-weakness is that the generic interface procedures (@code{real-part},
-@code{imag-part}, @code{magnitude}, and @code{angle}) must know about all the
+weakness is that the generic interface functions (@code{realPartDispatch},
+@code{imagPartDispatch}, @code{magnitudeDispatch}, and @code{angleDispatch}) must know about all the
 different representations.  For instance, suppose we wanted to incorporate a
 new representation for complex numbers into our complex-number system.  We
 would need to identify this new representation with a type, and then add a
-clause to each of the generic interface procedures to check for the new type
+branch to each of the generic interface functions to check for the new type
 and apply the appropriate selector for that representation.
 
 Another weakness of the technique is that even though the individual
 representations can be designed separately, we must guarantee that no two
-procedures in the entire system have the same name.  This is why Ben and Alyssa
-had to change the names of their original procedures from @ref{2.4.1}.
+functions in the entire system have the same name.  In Scheme this is why Ben
+and Alyssa had to change the names of their original procedures from
+@ref{2.4.1}; in this edition file-private visibility already keeps their
+functions apart, but the underlying issue is the same one @ref{2.4.2}'s
+tagged constructors already needed a wrapper for.
 
 The issue underlying both of these weaknesses is that the technique for
 implementing generic interfaces is not @newterm{additive}.  The person
-implementing the generic selector procedures must modify those procedures each
+implementing the generic selector functions must modify those functions each
 time a new representation is installed, and the people interfacing the
 individual representations must modify their code to avoid name conflicts.  In
 each of these cases, the changes that must be made to the code are
@@ -644,21 +645,21 @@ inconvenience and error.  This is not much of a problem for the complex-number
 system as it stands, but suppose there were not two but hundreds of different
 representations for complex numbers.  And suppose that there were many generic
 selectors to be maintained in the abstract-data interface.  Suppose, in fact,
-that no one programmer knew all the interface procedures or all the
+that no one programmer knew all the interface functions or all the
 representations.  The problem is real and must be addressed in such programs as
 large-scale data-base-management systems.
 
 What we need is a means for modularizing the system design even further.  This
-is provided by the programming technique known as @newterm{data-directed programming}.  
+is provided by the programming technique known as @newterm{data-directed programming}.
 To understand how data-directed programming works, begin with
 the observation that whenever we deal with a set of generic operations that are
 common to a set of different types we are, in effect, dealing with a
 two-dimensional table that contains the possible operations on one axis and the
-possible types on the other axis.  The entries in the table are the procedures
+possible types on the other axis.  The entries in the table are the functions
 that implement each operation for each type of argument presented.  In the
 complex-number system developed in the previous section, the correspondence
-between operation name, data type, and actual procedure was spread out among
-the various conditional clauses in the generic interface procedures.  But the
+between operation name, data type, and actual function was spread out among
+the various @code{when} branches in the generic interface functions.  But the
 same information could have been organized in a table, as shown in @ref{Figure 2.22}.
 
 @float
@@ -692,172 +693,167 @@ angle      | angle-polar     | angle-rectangular
 Data-directed programming is the technique of designing programs to work with
 such a table directly.  Previously, we implemented the mechanism that
 interfaces the complex-arithmetic code with the two representation packages as
-a set of procedures that each perform an explicit dispatch on type.  Here we
-will implement the interface as a single procedure that looks up the
+a set of functions that each perform an explicit dispatch on type.  Here we
+will implement the interface as a single function that looks up the
 combination of the operation name and argument type in the table to find the
-correct procedure to apply, and then applies it to the contents of the
+correct function to apply, and then applies it to the contents of the
 argument.  If we do this, then to add a new representation package to the
-system we need not change any existing procedures; we need only add new entries
+system we need not change any existing functions; we need only add new entries
 to the table.
 
-To implement this plan, assume that we have two procedures, @code{put} and
-@code{get}, for manipulating the operation-and-type table:
+To implement this plan, this edition's runtime ships a real table, an
+@code{OpTable}, keyed by the operation name plus an ordered chain of type
+tags:
 
 @itemize @bullet
 
 @item
-@code{(put ⟨@var{op}⟩ ⟨@var{type}⟩ ⟨@var{item}⟩)} installs the 
-@code{⟨}@var{item}@code{⟩} in the table, indexed by the 
-@code{⟨}@var{op}@code{⟩} and the @code{⟨}@var{type}@code{⟩}.
+@code{table.put(op, tag, handler)} installs @code{handler} in the table,
+indexed by @code{op} and @code{tag}; a later @code{put} of the same pair
+overwrites the earlier one.
 
 @item
-@code{(get ⟨@var{op}⟩ ⟨@var{type}⟩)} looks up the @code{⟨}@var{op}@code{⟩}, 
-@code{⟨}@var{type}@code{⟩} entry in the table and returns the item found there.  
-If no item is found, @code{get} returns false.
+@code{table.get(op, tag)} looks up the @code{(op, tag)} entry in the table
+and returns the handler found there.  If no entry is found, @code{get}
+returns the absent option, @code{null}, never a false-ish sentinel.
 
 @end itemize
 
 @noindent
-For now, we can assume that @code{put} and @code{get} are included in our
-language.  In @ref{Chapter 3} (@ref{3.3.3}) we
+@code{OpTable} lives in the runtime shared by every chapter from here on; it
+is not something @ref{Chapter 3}'s pairs-based tables (@ref{3.3.3}) build from
+scratch, though the two share the same @code{put}/@code{get} discipline.  For
+now, we can assume that @code{put} and @code{get} are included in our
+runtime.  In @ref{Chapter 3} (@ref{3.3.3}) we
 will see how to implement these and other operations for manipulating tables.
 
 Here is how data-directed programming can be used in the complex-number system.
 Ben, who developed the rectangular representation, implements his code just as
-he did originally.  He defines a collection of procedures, or a
+he did originally.  He defines a collection of functions, or a
 @newterm{package}, and interfaces these to the rest of the system by adding
 entries to the table that tell the system how to operate on rectangular
-numbers.  This is accomplished by calling the following procedure:
+numbers.  This is accomplished by calling the following function:
 
-@lisp
-(define (install-rectangular-package)
-  @r{;; internal procedures}
-  (define (real-part z) (car z))
-  (define (imag-part z) (cdr z))
-  (define (make-from-real-imag x y) 
-    (cons x y))
-  (define (magnitude z)
-    (sqrt (+ (square (real-part z))
-             (square (imag-part z)))))
-  (define (angle z)
-    (atan (imag-part z) (real-part z)))
-  (define (make-from-mag-ang r a)
-    (cons (* r (cos a)) (* r (sin a))))
-  @r{;; interface to the rest of the system}
-  (define (tag x) 
-    (attach-tag 'rectangular x))
-  (put 'real-part '(rectangular) real-part)
-  (put 'imag-part '(rectangular) imag-part)
-  (put 'magnitude '(rectangular) magnitude)
-  (put 'angle '(rectangular) angle)
-  (put 'make-from-real-imag 'rectangular
-       (lambda (x y) 
-         (tag (make-from-real-imag x y))))
-  (put 'make-from-mag-ang 'rectangular
-       (lambda (r a) 
-         (tag (make-from-mag-ang r a))))
-  'done)
-@end lisp
+@example kotlin
+fun installRectangularPackage(table: OpTable) {
+    val tag = tagListKey("rectangular")
+    table.put(Key.Sym("real-part"), tag) { args -> rectRealPart(sole(args)) }
+    table.put(Key.Sym("imag-part"), tag) { args -> rectImagPart(sole(args)) }
+    table.put(Key.Sym("magnitude"), tag) { args -> rectMagnitude(sole(args)) }
+    table.put(Key.Sym("angle"), tag) { args -> rectAngle(sole(args)) }
+    table.put(Key.Sym("make-from-real-imag"), Key.Sym("rectangular")) { args ->
+        val (x, y) = realPair(args)
+        rectMakeFromRealImagTagged(x, y)
+    }
+    table.put(Key.Sym("make-from-mag-ang"), Key.Sym("rectangular")) { args ->
+        val (mag, ang) = realPair(args)
+        rectMakeFromMagAngTagged(mag, ang)
+    }
+}
+@end example
 
 @noindent
-Notice that the internal procedures here are the same procedures from 
+Notice that the internal functions here are the same functions from
 @ref{2.4.1} that Ben wrote when he was working in isolation.  No changes are
 necessary in order to interface them to the rest of the system.  Moreover,
-since these procedure definitions are internal to the installation procedure,
-Ben needn't worry about name conflicts with other procedures outside the
-rectangular package.  To interface these to the rest of the system, Ben
-installs his @code{real-part} procedure under the operation name
-@code{real-part} and the type @code{(rectangular)}, and similarly for the other
-selectors.@footnote{We use the list @code{(rectangular)} rather than the symbol
-@code{rectangular} to allow for the possibility of operations with multiple
-arguments, not all of the same type.}  The interface also defines the
-constructors to be used by the external system.@footnote{The type the
-constructors are installed under needn't be a list because a constructor is
+since @code{rectRealPart} and friends are top-level functions of this file's
+own, Ben needn't worry about name conflicts with functions outside it.  To
+interface these to the rest of the system, Ben
+installs his @code{real-part} function under the operation name
+@code{real-part} and the tag chain @code{tagListKey("rectangular")}, and similarly for the other
+selectors.@footnote{We install under the one-element tag chain built by
+@code{tagListKey("rectangular")} rather than the bare symbol key
+@code{Key.Sym("rectangular")} to allow for the possibility of operations with
+multiple arguments, not all of the same type.}  The interface also defines the
+constructors to be used by the external system.@footnote{The tag the
+constructors are installed under needn't be a chain because a constructor is
 always used to make an object of one particular type.}  These are identical to
 Ben's internally defined constructors, except that they attach the tag.
 
 Alyssa's polar package is analogous:
 
-@lisp
-(define (install-polar-package)
-  @r{;; internal procedures}
-  (define (magnitude z) (car z))
-  (define (angle z) (cdr z))
-  (define (make-from-mag-ang r a) (cons r a))
-  (define (real-part z)
-    (* (magnitude z) (cos (angle z))))
-  (define (imag-part z)
-    (* (magnitude z) (sin (angle z))))
-  (define (make-from-real-imag x y)
-    (cons (sqrt (+ (square x) (square y)))
-          (atan y x)))
-  @r{;; interface to the rest of the system}
-  (define (tag x) (attach-tag 'polar x))
-  (put 'real-part '(polar) real-part)
-  (put 'imag-part '(polar) imag-part)
-  (put 'magnitude '(polar) magnitude)
-  (put 'angle '(polar) angle)
-  (put 'make-from-real-imag 'polar
-       (lambda (x y) 
-         (tag (make-from-real-imag x y))))
-  (put 'make-from-mag-ang 'polar
-       (lambda (r a) 
-         (tag (make-from-mag-ang r a))))
-  'done)
-@end lisp
+@example kotlin
+fun installPolarPackage(table: OpTable) {
+    val tag = tagListKey("polar")
+    table.put(Key.Sym("real-part"), tag) { args -> polarRealPart(sole(args)) }
+    table.put(Key.Sym("imag-part"), tag) { args -> polarImagPart(sole(args)) }
+    table.put(Key.Sym("magnitude"), tag) { args -> polarMagnitude(sole(args)) }
+    table.put(Key.Sym("angle"), tag) { args -> polarAngle(sole(args)) }
+    table.put(Key.Sym("make-from-real-imag"), Key.Sym("polar")) { args ->
+        val (x, y) = realPair(args)
+        polarMakeFromRealImagTagged(x, y)
+    }
+    table.put(Key.Sym("make-from-mag-ang"), Key.Sym("polar")) { args ->
+        val (mag, ang) = realPair(args)
+        polarMakeFromMagAngTagged(mag, ang)
+    }
+}
+@end example
 
 @noindent
-Even though Ben and Alyssa both still use their original procedures defined
-with the same names as each other's (e.g., @code{real-part}), these definitions
-are now internal to different procedures (see @ref{1.1.8}), so there is
+Even though Ben and Alyssa both still use their original functions defined
+with the same names as each other's (e.g., @code{realMagnitude} and
+@code{polarMagnitude} both compute a @code{magnitude}), these definitions
+already live in files owned by each representation, so there is
 no name conflict.
 
 The complex-arithmetic selectors access the table by means of a general
-``operation'' procedure called @code{apply-generic}, which applies a generic
-operation to some arguments.  @code{Apply-generic} looks in the table under the
-name of the operation and the types of the arguments and applies the resulting
-procedure if one is present:@footnote{@code{Apply-generic} uses the dotted-tail
-notation described in @ref{Exercise 2.20}, because different generic operations
-may take different numbers of arguments.  In @code{apply-generic}, @code{op}
-has as its value the first argument to @code{apply-generic} and @code{args} has
-as its value a list of the remaining arguments.
+``operation'' function called @code{applyGeneric}, which applies a generic
+operation to some arguments.  @code{applyGeneric} looks in the table under the
+name of the operation and the tags of the arguments and applies the resulting
+handler if one is present:@footnote{The book's @code{apply-generic} uses the
+dotted-tail notation described in @ref{Exercise 2.20} because different generic
+operations take different numbers of arguments; this edition's
+@code{applyGeneric} takes the operation name and a @code{List<Value>} of
+arguments directly, since a list already stands for a sequence of arguments of
+any length, and the book's separate @code{apply} primitive becomes the
+ordinary call @code{r.handler(bare)} against the contents list.}
 
-@code{Apply-generic} also uses the primitive procedure @code{apply}, which
-takes two arguments, a procedure and a list.  @code{Apply} applies the
-procedure, using the elements in the list as arguments.  For example,
-
-@lisp
-(apply + (list 1 2 3 4))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+fun applyGeneric(table: OpTable, op: String, args: List<Value>): Value {
+    val tagKeys = mutableListOf<Key>()
+    val tagValues = mutableListOf<Value>()
+    for (arg in args) {
+        val tag = typeTag(arg)
+        tagKeys += Key.Sym(tag)
+        tagValues += VSym(tag)
+    }
+    val handler = table.get(Key.Sym(op), keyTagList(tagKeys))
+        ?: r.raise(
+            SchemeError.UserRaised(
+                "No method for these types: APPLY-GENERIC",
+                listOf(vlist(listOf(VSym(op), vlist(tagValues)))),
+            ),
+        )
+    val bare = args.map { contents(it) }
+    return r.handler(bare)
+}
+@end example
 
 @noindent
-returns 10.}
+A miss here does not fall through to a general-purpose error: it raises the
+edition's typed @code{SchemeError.UserRaised}, naming the operation and the
+tags that had no handler, which is the concrete answer to what an
+extensible-at-runtime table costs that a closed @code{sealed} hierarchy
+cannot: the compiler cannot catch a missing combination the way it catches a
+missing @code{when} branch, so the table's own miss path has to.
 
-@lisp
-(define (apply-generic op . args)
-  (let ((type-tags (map type-tag args)))
-    (let ((proc (get op type-tags)))
-      (if proc
-          (apply proc (map contents args))
-          (error
-            "No method for these types: 
-             APPLY-GENERIC"
-            (list op type-tags))))))
-@end lisp
+Using @code{applyGeneric}, we can define our generic selectors as follows:
 
-@noindent
-Using @code{apply-generic}, we can define our generic selectors as follows:
+@example kotlin
+context(r: Raise<SchemeError>)
+fun realPart(table: OpTable, z: Value): Value = applyGeneric(table, "real-part", listOf(z))
 
-@lisp
-(define (real-part z) 
-  (apply-generic 'real-part z))
-(define (imag-part z) 
-  (apply-generic 'imag-part z))
-(define (magnitude z) 
-  (apply-generic 'magnitude z))
-(define (angle z) 
-  (apply-generic 'angle z))
-@end lisp
+context(r: Raise<SchemeError>)
+fun imagPart(table: OpTable, z: Value): Value = applyGeneric(table, "imag-part", listOf(z))
+
+context(r: Raise<SchemeError>)
+fun magnitude(table: OpTable, z: Value): Value = applyGeneric(table, "magnitude", listOf(z))
+
+context(r: Raise<SchemeError>)
+fun angle(table: OpTable, z: Value): Value = applyGeneric(table, "angle", listOf(z))
+@end example
 
 @noindent
 Observe that these do not change at all if a new representation is added to the
@@ -869,73 +865,105 @@ parts and from magnitudes and angles.  As in @ref{2.4.2}, we construct
 rectangular numbers whenever we have real and imaginary parts, and polar
 numbers whenever we have magnitudes and angles:
 
-@lisp
-(define (make-from-real-imag x y)
-  ((get 'make-from-real-imag 
-        'rectangular) 
-   x y))
+@example kotlin
+context(r: Raise<SchemeError>)
+fun makeFromRealImag(table: OpTable, x: Double, y: Double): Value {
+    val handler = table.get(Key.Sym("make-from-real-imag"), Key.Sym("rectangular"))
+        ?: r.raise(SchemeError.UserRaised("make-from-real-imag is not installed for rectangular", emptyList()))
+    return r.handler(listOf(VReal(x), VReal(y)))
+}
 
-(define (make-from-mag-ang r a)
-  ((get 'make-from-mag-ang 
-        'polar) 
-   r a))
-@end lisp
+context(r: Raise<SchemeError>)
+fun makeFromMagAng(table: OpTable, mag: Double, ang: Double): Value {
+    val handler = table.get(Key.Sym("make-from-mag-ang"), Key.Sym("polar"))
+        ?: r.raise(SchemeError.UserRaised("make-from-mag-ang is not installed for polar", emptyList()))
+    return r.handler(listOf(VReal(mag), VReal(ang)))
+}
+@end example
+
+@example kotlin
+val table = OpTable()
+installRectangularPackage(table)
+installPolarPackage(table)
+makeFromRealImag(table, 3.0, 4.0)
+// => (rectangular (3.0 . 4.0))
+makeFromMagAng(table, 1.0, 0.0)
+// => (polar (1.0 . 0.0))
+@end example
+
+@quotation
+@strong{In this language: runtime dispatch through the operation table.}
+
+A Kotlin @code{sealed interface} closes its set of implementing types once the
+module compiles, so a @code{when} over one -- exactly what @code{realPartDispatch}
+and friends show in @ref{2.4.2} -- is exhaustive, and the compiler proves every
+case handled.  The section's actual point, though, is a system where packages
+install themselves after the fact, from code the compiler never saw together;
+a closed hierarchy cannot do that, so @code{applyGeneric} reaches for the
+runtime's @code{OpTable} instead:
+
+@example kotlin
+table.put(Key.Sym("real-part"), tagListKey("rectangular"), handler)
+// => Unit
+table.get(Key.Sym("real-part"), tagListKey("polar"))
+// => null
+@end example
+
+When every representation is known in advance, the sealed hierarchy still
+wins: the compiler catches a missing case at compile time that
+@code{applyGeneric} can only catch by raising a @code{SchemeError} at run
+time, exactly the trade-off exercise 2.76 measures.
+@end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.73}Exercise 2.73:} @ref{2.3.2} described a
-program that performs symbolic differentiation:
-
-@lisp
-(define (deriv exp var)
-  (cond ((number? exp) 0)
-        ((variable? exp) 
-         (if (same-variable? exp var) 1 0))
-        ((sum? exp)
-         (make-sum (deriv (addend exp) var)
-                   (deriv (augend exp) var)))
-        ((product? exp)
-         (make-sum
-           (make-product 
-            (multiplier exp)
-            (deriv (multiplicand exp) var))
-           (make-product 
-            (deriv (multiplier exp) var)
-            (multiplicand exp))))
-        ⟨@var{more rules can be added here}⟩
-        (else (error "unknown expression type:
-                      DERIV" exp))))
-@end lisp
-
-We can regard this program as performing a dispatch on the type of the
-expression to be differentiated.  In this situation the ``type tag'' of the
-datum is the algebraic operator symbol (such as @code{+}) and the operation
+program that performs symbolic differentiation, dispatching on the type of
+the expression to be differentiated -- in this situation the ``type tag'' of
+the datum is the algebraic operator (such as @code{+}), and the operation
 being performed is @code{deriv}.  We can transform this program into
-data-directed style by rewriting the basic derivative procedure as
+data-directed style by rewriting the basic derivative function as the
+following starting skeleton, where @code{OperatorExpr} carries its own
+operator, and a @code{DerivTable} maps an operator to the handler that
+differentiates it:
 
-@lisp
-(define (deriv exp var)
-   (cond ((number? exp) 0)
-         ((variable? exp) 
-           (if (same-variable? exp var) 
-               1 
-               0))
-         (else ((get 'deriv (operator exp)) 
-                (operands exp) 
-                var))))
+@example kotlin
+sealed interface OperatorExpr {
+    data class Num(val n: Long) : OperatorExpr
+    data class Var(val name: String) : OperatorExpr
+    data class Sum(val a1: OperatorExpr, val a2: OperatorExpr) : OperatorExpr
+    data class Product(val a1: OperatorExpr, val a2: OperatorExpr) : OperatorExpr
+    data class Pow(val base: OperatorExpr, val n: Long) : OperatorExpr
+}
 
-(define (operator exp) (car exp))
-(define (operands exp) (cdr exp))
-@end lisp
+fun interface DerivRule {
+    fun differentiate(exp: OperatorExpr, variable: String, table: DerivTable): OperatorExpr
+}
+
+class DerivTable {
+    private val rules: MutableMap<String, DerivRule> = HashMap()
+    fun put(operator: String, rule: DerivRule) { rules[operator] = rule }
+    fun get(operator: String): DerivRule? = rules[operator]
+}
+
+fun derivDataDirected(exp: OperatorExpr, variable: String, table: DerivTable): OperatorExpr =
+    when (exp) {
+        is OperatorExpr.Num -> OperatorExpr.Num(0)
+        is OperatorExpr.Var -> OperatorExpr.Num(if (exp.name == variable) 1 else 0)
+        is OperatorExpr.Sum -> dispatchRule("+", exp, variable, table)
+        is OperatorExpr.Product -> dispatchRule("*", exp, variable, table)
+        is OperatorExpr.Pow -> dispatchRule("**", exp, variable, table)
+    }
+@end example
 
 @enumerate a
 
 @item
-Explain what was done above.  Why can't we assimilate the predicates
-@code{number?} and @code{variable?} into the data-directed dispatch?
+Explain what was done above.  Why can't we assimilate @code{OperatorExpr.Num}
+and @code{OperatorExpr.Var} into the data-directed dispatch?
 
 @item
-Write the procedures for derivatives of sums and products, and the auxiliary
-code required to install them in the table used by the program above.
+Write the rules for derivatives of sums and products, and the auxiliary code
+required to install them in the table used by the function above.
 
 @item
 Choose any additional differentiation rule that you like, such as the one for
@@ -943,17 +971,12 @@ exponents (@ref{Exercise 2.56}), and install it in this data-directed
 system.
 
 @item
-In this simple algebraic manipulator the type of an expression is the algebraic
-operator that binds it together.  Suppose, however, we indexed the procedures
-in the opposite way, so that the dispatch line in @code{deriv} looked like
-
-@lisp
-((get (operator exp) 'deriv) 
- (operands exp) var)
-@end lisp
-
-@noindent
-What corresponding changes to the derivative system are required?
+In this simple algebraic manipulator the type of an expression is the
+algebraic operator that binds it together.  Suppose, however, we indexed the
+functions in the opposite way, so that the table were keyed
+@code{table.get(operator, "deriv")} instead of @code{table.get("deriv",
+operator)}.  What corresponding changes to the derivative system are
+required?
 
 @end enumerate
 @end quotation
@@ -967,10 +990,11 @@ network-interfacing scheme that makes the entire network appear to any user to
 be a single computer.  Insatiable's president, in her first attempt to exploit
 the ability of the network to extract administrative information from division
 files, is dismayed to discover that, although all the division files have been
-implemented as data structures in Scheme, the particular data structure used
-varies from division to division.  A meeting of division managers is hastily
-called to search for a strategy to integrate the files that will satisfy
-headquarters' needs while preserving the existing autonomy of the divisions.
+implemented as data structures in this edition's own host language, the
+particular data structure used varies from division to division.  A meeting of
+division managers is hastily called to search for a strategy to integrate the
+files that will satisfy headquarters' needs while preserving the existing
+autonomy of the divisions.
 
 Show how such a strategy can be implemented with data-directed programming.  As
 an example, suppose that each division's personnel records consist of a single
@@ -983,22 +1007,22 @@ contains information keyed under identifiers such as @code{address} and
 @enumerate a
 
 @item
-Implement for headquarters a @code{get-record} procedure that retrieves a
-specified employee's record from a specified personnel file.  The procedure
+Implement for headquarters a @code{getRecord} function that retrieves a
+specified employee's record from a specified personnel file.  The function
 should be applicable to any division's file.  Explain how the individual
 divisions' files should be structured.  In particular, what type information
 must be supplied?
 
 @item
-Implement for headquarters a @code{get-salary} procedure that returns the
+Implement for headquarters a @code{getSalary} function that returns the
 salary information from a given employee's record from any division's personnel
 file.  How should the record be structured in order to make this operation
 work?
 
 @item
-Implement for headquarters a @code{find-employee-record} procedure.  This
+Implement for headquarters a @code{findEmployeeRecord} function.  This
 should search all the divisions' files for the record of a given employee and
-return the record.  Assume that this procedure takes as arguments an employee's
+return the record.  Assume that this function takes as arguments an employee's
 name and a list of all the divisions' files.
 
 @item
@@ -1012,54 +1036,71 @@ incorporate the new personnel information into the central system?
 
 The key idea of data-directed programming is to handle generic operations in
 programs by dealing explicitly with operation-and-type tables, such as the
-table in @ref{Figure 2.22}.  The style of programming we used in 
+table in @ref{Figure 2.22}.  The style of programming we used in
 @ref{2.4.2} organized the required dispatching on type by having each operation
 take care of its own dispatching.  In effect, this decomposes the
-operation-and-type table into rows, with each generic operation procedure
+operation-and-type table into rows, with each generic operation function
 representing a row of the table.
 
 An alternative implementation strategy is to decompose the table into columns
 and, instead of using ``intelligent operations'' that dispatch on data types,
 to work with ``intelligent data objects'' that dispatch on operation names.  We
 can do this by arranging things so that a data object, such as a rectangular
-number, is represented as a procedure that takes as input the required
+number, is represented as an object that takes as input the required
 operation name and performs the operation indicated.  In such a discipline,
-@code{make-from-real-imag} could be written as
+@code{makeFromRealImagMessagePassing} could be written as
 
-@lisp
-(define (make-from-real-imag x y)
-  (define (dispatch op)
-    (cond ((eq? op 'real-part) x)
-          ((eq? op 'imag-part) y)
-          ((eq? op 'magnitude)
-           (sqrt (+ (square x) (square y))))
-          ((eq? op 'angle) (atan y x))
-          (else
-           (error "Unknown op: 
-            MAKE-FROM-REAL-IMAG" op))))
-  dispatch)
-@end lisp
+@example kotlin
+fun interface MessageObject {
+    fun send(op: String): Double
+}
+
+fun makeFromRealImagMessagePassing(x: Double, y: Double): MessageObject =
+    MessageObject { op ->
+        when (op) {
+            "real-part" -> x
+            "imag-part" -> y
+            "magnitude" -> sqrt(x * x + y * y)
+            "angle" -> atan2(y, x)
+            else -> error("Unknown op: MAKE-FROM-REAL-IMAG $op")
+        }
+    }
+@end example
 
 @noindent
-The corresponding @code{apply-generic} procedure, which applies a generic
+The corresponding @code{applyGeneric} function, which applies a generic
 operation to an argument, now simply feeds the operation's name to the data
 object and lets the object do the work:@footnote{One limitation of this
-organization is it permits only generic procedures of one argument.}
+organization is it permits only generic functions of one argument.}
 
-@lisp
-(define (apply-generic op arg) (arg op))
-@end lisp
+@example kotlin
+fun applyGenericMessagePassing(op: String, arg: MessageObject): Double = arg.send(op)
+@end example
 
 @noindent
-Note that the value returned by @code{make-from-real-imag} is a procedure---the
-internal @code{dispatch} procedure.  This is the procedure that is invoked when
-@code{apply-generic} requests an operation to be performed.
+Note that the value returned by @code{makeFromRealImagMessagePassing} is a
+@code{MessageObject} -- an object built from the internal @code{send}
+lambda given above.  This is the object that is invoked when
+@code{applyGenericMessagePassing} requests an operation to be performed.
+@code{MessageObject} is a @code{fun interface}, this edition's spelling for a
+single-behavior object with named messages, one step up from a bare returned
+lambda: sketch 6's other shape, used where the section's earlier closures
+(@code{makeAccount}, @ref{3.1.1}) answer only one call signature rather than a
+family of named operations.
+
+@example kotlin
+val z = makeFromRealImagMessagePassing(3.0, 4.0)
+applyGenericMessagePassing("real-part", z)
+// => 3.0
+applyGenericMessagePassing("magnitude", z)
+// => 5.0
+@end example
 
 This style of programming is called @newterm{message passing}.  The name comes
 from the image that a data object is an entity that receives the requested
 operation name as a ``message.''  We have already seen an example of message
 passing in @ref{2.1.3}, where we saw how @code{cons}, @code{car}, and
-@code{cdr} could be defined with no data objects but only procedures.  Here we
+@code{cdr} could be defined with no data objects but only functions.  Here we
 see that message passing is not a mathematical trick but a useful technique for
 organizing systems with generic operations.  In the remainder of this chapter
 we will continue to use data-directed programming, rather than message passing,
@@ -1069,18 +1110,32 @@ simulation programs.
 
 @quotation
 @strong{@anchor{Exercise 2.75}Exercise 2.75:} Implement the constructor
-@code{make-from-mag-ang} in mes@-sage-pass@-ing style.  This procedure should be
-analogous to the @code{make-from-real-imag} procedure given above.
+@code{makeFromMagAng} in message-passing style.  This function should be
+analogous to the @code{makeFromRealImagMessagePassing} function given above.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.76}Exercise 2.76:} As a large system with generic
 operations evolves, new types of data objects or new operations may be needed.
 For each of the three strategies---generic operations with explicit dispatch,
-data-directed style, and message-passing-style---describe the changes that
+data-directed style, and message-passing style---describe the changes that
 must be made to a system in order to add new types or new operations.  Which
 organization would be most appropriate for a system in which new types must
 often be added?  Which would be most appropriate for a system in which new
-operations must often be added?
+operations must often be added?  In Kotlin terms, compare the trade-off
+against a closed @code{sealed} hierarchy with an exhaustive @code{when}
+(explicit dispatch, one virtual call per object like message passing), and
+against the table (like a natural host shape).
 @end quotation
 
+@quotation
+@strong{@anchor{Exercise 2.76a}Exercise 2.76a:} Exercise 2.76a is added by this
+edition and extends exercise 2.76; SICP numbers stop at 2.76.  Install a third
+representation into exercise 2.76's data-directed table -- storing the angle
+in degrees rather than radians -- entirely from a new file, calling only the
+table's existing @code{put}, and confirm that the rectangular package's
+handler is the exact object it was before the new package installs.  Could
+the sealed hierarchy of exercise 2.76's explicit-dispatch strategy gain this
+representation the same way, from a file that does not touch the hierarchy's
+own declaration?
+@end quotation

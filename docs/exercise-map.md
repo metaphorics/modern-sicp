@@ -234,7 +234,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.73 | Data-directed deriv | A: enum for expression variants replaces type tags | A: variant types replace tags and dispatch tables | A: discriminated union replaces type tags | A: sealed hierarchy replaces type tags | add atan rule via new variant (chosen: rust) |
 | 2.74 | Division records | A: division record schemas need per-division adapters | A: first-class modules model division-specific records | A: Schema variants model division record formats | A: sealed interfaces model division record formats | add salary-records division with schema (chosen: ocaml) |
 | 2.75 | Message-passing make-from-mag-ang | A: message dispatch needs closure objects per instance | A: message passing natural with closures | A: message dispatch needs closure returning dispatch | A: message dispatch needs function types per instance | |
-| 2.76 | Adding types versus operations | A: compare trait objects, enums, visitor dispatch | A: compare variants, functors, first-class modules | A: compare unions, Schema tags, method objects | A: compare sealed hierarchies, extension dispatch, interfaces | add type via module extension |
+| 2.76 | Adding types versus operations | A: compare trait objects, enums, visitor dispatch | A: compare variants, functors, first-class modules | A: compare unions, Schema tags, method objects | A: compare sealed hierarchies, extension dispatch, interfaces | add type via module extension (chosen: kotlin) |
 
 ### Section 2.5 (exercises 2.77 to 2.97, 21 rows)
 
@@ -253,7 +253,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.87 | Polynomial =zero? | T | T | T | T | test =zero? on nested polys |
 | 2.88 | Polynomial subtraction | A: negation and subtraction as generic ops | A: negation and subtraction as generic ops | A: negation and subtraction as generic ops | A: negation and subtraction as generic ops | |
 | 2.89 | Dense term lists | A: dense term lists as Vec with invariants | A: dense term lists as int list | A: dense term lists as readonly arrays | A: dense term lists as PersistentList | |
-| 2.90 | Sparse and dense | A: two term-list packages behind traits | A: two term-list modules behind signatures | A: two term-list providers behind interface | A: two term-list providers behind interface | benchmark sparse versus dense multiply |
+| 2.90 | Sparse and dense | A: two term-list packages behind traits | A: two term-list modules behind signatures | A: two term-list providers behind interface | A: two term-list providers behind interface | benchmark sparse versus dense multiply (chosen: rust) |
 | 2.91 | Polynomial division | A: division needs generic sub mul on terms | A: polynomial division via generic operations | A: polynomial division via generic operations | A: polynomial division via generic operations | |
 | 2.92 | Multi-variable polynomials | A: variable ordering needs symbolic comparison keys | A: variable ordering needs symbolic comparison keys | A: variable ordering needs symbolic comparison keys | A: variable ordering needs symbolic comparison keys | |
 | 2.93 | Generic rational functions | A: rational of generic values needs trait bounds | A: rational over generic coefficients needs signatures | A: rational over union coefficients | A: rational over generic coefficients interface | reduce rational functions lazily |

@@ -950,8 +950,9 @@ one whose parameter stays a plain binding and one wrapped in an explicit
 @code{let}; in OCaml a mutable local has to be built somewhere, and the
 @code{let} above is that place: it is where the cell is allocated, while the
 @code{fun} under it is where the cell gets captured.  Trace the lifetime of
-the cell by instrumenting @code{make_withdraw} to return, next to the
-withdrawal closure, the cell it built:
+the cell by writing @code{make_withdraw_traced}, an instrumented variant of
+@code{make_withdraw} that returns, next to the withdrawal closure, the cell
+it built:
 
 @example ocaml
 type withdraw_with_cell =

@@ -1,12 +1,13 @@
-@node 3.5, Chapter 4, 3.4, Chapter 3
+@node	3.5, Chapter 4, 3.4, Chapter 3
 @section Streams
 
 We've gained a good understanding of assignment as a tool in modeling, as well
-as an appreciation of the complex problems that assignment raises. It is time
-to ask whether we could have gone about things in a different way, so as to
-avoid some of these problems.  In this section, we explore an alternative
-approach to modeling state, based on data structures called @newterm{streams}.
-As we shall see, streams can mitigate some of the complexity of modeling state.
+as an appreciation of the complex problems that assignment raises as a powerful
+tool.  It is time to ask whether we could have gone about things in a different
+way, so as to avoid some of these problems.  In this section, we explore an
+alternative approach to modeling state, based on data structures called
+@newterm{streams}.  As we shall see, streams can mitigate some of the
+complexity of modeling state.
 
 Let's step back and review where this complexity comes from.  In an attempt to
 model real-world phenomena, we made some apparently reasonable decisions: We
@@ -14,36 +15,34 @@ modeled real-world objects with local state by computational objects with local
 variables.  We identified time variation in the real world with time variation
 in the computer.  We implemented the time variation of the states of the model
 objects in the computer with assignments to the local variables of the model
-objects.
-
-Is there another approach?  Can we avoid identifying time in the computer with
-time in the modeled world?  Must we make the model change with time in order to
-model phenomena in a changing world?  Think about the issue in terms of
-mathematical functions.  We can describe the time-varying behavior of a
-quantity @math{x} as a function of time @math{{x(t)}}.  If we concentrate on @math{x}
-instant by instant, we think of it as a changing quantity.  Yet if we
-concentrate on the entire time history of values, we do not emphasize
+objects.  Is there another approach?  Can we avoid identifying time in the
+computer with time in the modeled world?  Must we make the model change with
+time in order to model phenomena in a changing world?  Think about the issue
+in terms of mathematical functions.  We can describe the time-varying behavior
+of a quantity @math{x} as a function of time @math{x(t)}.  If we concentrate
+on @math{x} instant by instant, we think of it as a changing quantity.  Yet,
+if we concentrate on the entire time history of values, we do not emphasize
 change---the function itself does not change.@footnote{Physicists sometimes
-adopt this view by introducing the ``world lines'' of particles as a device for
-reasoning about motion.  We've also already mentioned (@ref{2.2.3})
-that this is the natural way to think about signal-processing systems.  We will
-explore applications of streams to signal processing in @ref{3.5.3}.}
+adopt this view by introducing the ``world lines'' of particles as a device
+for reasoning about motion.  We've already mentioned (@ref{2.2.3}) that this
+is the natural way to think about signal-processing systems.  We will explore
+applications of streams to signal processing in @ref{3.5.3}.}  If time is
+measured in discrete steps, then we can model a time function as a (possibly
+infinite) sequence.  In this section, we will see how to model change in terms
+of sequences that represent the time histories (or states) of the systems
+being modeled.
 
-If time is measured in discrete steps, then we can model a time function as a
-(possibly infinite) sequence.  In this section, we will see how to model change
-in terms of sequences that represent the time histories of the systems being
-modeled.  To accomplish this, we introduce new data structures called
-@newterm{streams}.  From an abstract point of view, a stream is simply a
-sequence.  However, we will find that the straightforward implementation of
-streams as lists (as in @ref{2.2.1}) doesn't fully reveal the power of
-stream processing.  As an alternative, we introduce the technique of
-@newterm{delayed evaluation}, which enables us to represent very large (even
-infinite) sequences as streams.
+To accomplish this, we introduce new data structures called @newterm{streams}.
+From an abstract point of view, a stream is simply a sequence.  However, we
+will find that the straightforward implementation of streams as lists (as in
+@ref{2.2.1}) doesn't fully reveal the power of stream processing.  As an
+alternative, we introduce the technique of @newterm{delayed evaluation}, which
+enables us to represent very large (even infinite) sequences as streams.
 
 Stream processing lets us model systems that have state without ever using
 assignment or mutable data.  This has important implications, both theoretical
-and practical, because we can build models that avoid the drawbacks inherent in
-introducing assignment.  On the other hand, the stream framework raises
+and practical, because we can build models that avoid the drawbacks inherent
+in introducing assignment.  On the other hand, the stream framework raises
 difficulties of its own, and the question of which modeling technique leads to
 more modular and more easily maintained systems remains open.
 
@@ -52,426 +51,450 @@ more modular and more easily maintained systems remains open.
 * 3.5.2::            Infinite Streams
 * 3.5.3::            Exploiting the Stream Paradigm
 * 3.5.4::            Streams and Delayed Evaluation
-* 3.5.5::            Modularity of Functional Programs and Modularity of
-                     Objects
+* 3.5.5::            Modularity of Functional Programs and Modularity of Objects
 @end menu
 
 @node	3.5.1, 3.5.2, 3.5, 3.5
 @subsection Streams Are Delayed Lists
 
-As we saw in @ref{2.2.3}, sequences can serve as standard interfaces
-for combining program modules.  We formulated powerful abstractions for
-manipulating sequences, such as @code{map}, @code{filter}, and
-@code{accumulate}, that capture a wide variety of operations in a manner that
-is both succinct and elegant.
+As we saw in @ref{2.2.3}, sequences can serve as standard interfaces for
+combining program modules.  We formulated powerful abstractions for
+manipulating sequences, such as @code{map}, @code{filter}, and @code{fold},
+that capture a wide variety of operations in a manner that is both succinct
+and elegant.  Unfortunately, if we represent sequences as lists, this elegance
+is bought at the price of severe inflexibility with respect to the time and
+space required by our computations.
 
-Unfortunately, if we represent sequences as lists, this elegance is bought at
-the price of severe inefficiency with respect to both the time and space
-required by our computations.  When we represent manipulations on sequences as
-transformations of lists, our programs must construct and copy data structures
-(which may be huge) at every step of a process.
+When we represent manipulations on sequences as transformations of the lists,
+our programs must construct and copy data structures (which may be huge) at
+every step of a process.  To see why this is true, let us compare two
+programs for computing the sum of all the prime numbers in an interval.  The
+first program is written in standard iterative style:@footnote{We assume here
+that we have a predicate @code{is_prime} for testing primality, such as the
+one we saw in @ref{1.2.6}.}
 
-To see why this is true, let us compare two programs for computing the sum of
-all the prime numbers in an interval.  The first program is written in standard
-iterative style:@footnote{Assume that we have a predicate @code{prime?} (e.g.,
-as in @ref{1.2.6}) that tests for primality.}
-
-@lisp
-(define (sum-primes a b)
-  (define (iter count accum)
-    (cond ((> count b) accum)
-          ((prime? count)
-           (iter (+ count 1)
-                 (+ count accum)))
-          (else (iter (+ count 1) accum))))
-  (iter a 0))
-@end lisp
+@example rust
+fn sum_primes_list(a: i128, b: i128) -> i128 @{
+    let mut primes_found = Vec::new();
+    for n in a..=b @{
+        if is_prime(n, &primes()) @{
+            primes_found.push(n);
+        @}
+    @}
+    primes_found.iter().sum()
+@}
+@end example
 
 @noindent
 The second program performs the same computation using the sequence operations
 of @ref{2.2.3}:
 
-@lisp
-(define (sum-primes a b)
-  (accumulate 
-   +
-   0
-   (filter prime? (enumerate-interval a b))))
-@end lisp
+@example rust
+fn sum_primes(a: i128, b: i128) -> i128 @{
+    stream_filter(|n| is_prime(*n, &primes()), &stream_enumerate_interval(a, b))
+        .iter()
+        .sum()
+@}
+@end example
 
 @noindent
 In carrying out the computation, the first program needs to store only the sum
-being accumulated.  In contrast, the filter in the second program cannot do any
-testing until @code{enumerate-interval} has constructed a complete list of the
-numbers in the interval.  The filter generates another list, which in turn is
-passed to @code{accumulate} before being collapsed to form a sum.  Such large
-intermediate storage is not needed by the first program, which we can think of
-as enumerating the interval incrementally, adding each prime to the sum as it
-is generated.
+being accumulated.  In contrast, the filter in the second program cannot do
+any testing until @code{stream_enumerate_interval} has constructed a complete
+list of the numbers in the interval.  The filter generates another list, which
+in turn is passed to the folding step before being collapsed to form a sum.
+Such large intermediate storage is not needed by the first program, which we
+can think of as enumerating the interval incrementally, adding each prime to
+the sum as it is generated.  The inefficiency in using lists becomes painfully
+apparent if we use the sequence paradigm to compute the second prime in the
+interval from 10,000 to 1,000,000 by evaluating the expression
 
-The inefficiency in using lists becomes painfully apparent if we use the
-sequence paradigm to compute the second prime in the interval from 10,000 to
-1,000,000 by evaluating the expression
+@example rust
+let primes_found: Vec<i128> = (10_000..=1_000_000)
+    .filter(|n| is_prime(*n, &primes()))
+    .collect();
 
-@lisp
-(car (cdr 
-      (filter 
-       prime?
-       (enumerate-interval 10000 1000000))))
-@end lisp
+let second_prime = primes_found[1];
+@end example
 
 @noindent
 This expression does find the second prime, but the computational overhead is
-outrageous.  We construct a list of almost a million integers, filter this list
-by testing each element for primality, and then ignore almost all of the
+outrageous.  We construct a list of almost a million integers, filter this
+list by testing each element for primality, and then ignore almost all of the
 result.  In a more traditional programming style, we would interleave the
-enumeration and the filtering, and stop when we reached the second prime.
+enumeration and the filtering, and stop when we've reached the second prime.
 
-Streams are a clever idea that allows one to use sequence manipulations without
-incurring the costs of manipulating sequences as lists.  With streams we can
-achieve the best of both worlds: We can formulate programs elegantly as
+Streams are a clever idea that allows one to use sequence manipulations
+without incurring the costs of manipulating sequences as lists.  With streams
+we can achieve the best of both worlds: we can formulate programs elegantly as
 sequence manipulations, while attaining the efficiency of incremental
 computation.  The basic idea is to arrange to construct a stream only
 partially, and to pass the partial construction to the program that consumes
 the stream.  If the consumer attempts to access a part of the stream that has
 not yet been constructed, the stream will automatically construct just enough
 more of itself to produce the required part, thus preserving the illusion that
-the entire stream exists.  In other words, although we will write programs as
-if we were processing complete sequences, we design our stream implementation
-to automatically and transparently interleave the construction of the stream
-with its use.
+the entire stream exists.  In other words, although we will write our programs
+as if we were processing complete sequences, we design our stream
+implementation to automatically and transparently interleave the construction
+of the stream with its use.
 
 On the surface, streams are just lists with different names for the procedures
-that manipulate them.  There is a constructor, @code{cons-stream}, and two
-selectors, @code{stream-car} and @code{stream-cdr}, which satisfy the
+that manipulate them.  There is a constructor, @code{cons_stream}, and two
+selectors, @code{stream_head} and @code{stream_tail}, which satisfy the
 constraints
 
-@example
-(stream-car (cons-stream x y)) = x
-(stream-cdr (cons-stream x y)) = y
+@example rust
+stream_head(&cons_stream(x, tail_thunk)) == &x
+stream_tail(&cons_stream(x, tail_thunk)) == tail_thunk()
 @end example
 
 @noindent
-There is a distinguishable object, @code{the-empty-stream}, which cannot be the
-result of any @code{cons-stream} operation, and which can be identified with
-the predicate @code{stream-null?}.@footnote{In the @abbr{MIT}
-implementation, @code{the-empty-stream} is the same as the empty list
-@code{'()}, and @code{stream-null?} is the same as @code{null?}.}  Thus we can
-make and use streams, in just the same way as we can make and use lists, to
-represent aggregate data arranged in a sequence.  In particular, we can build
-stream analogs of the list operations from @ref{Chapter 2}, such as
-@code{list-ref}, @code{map}, and @code{for-each}:@footnote{This should bother
-you.  The fact that we are defining such similar procedures for streams and
-lists indicates that we are missing some underlying abstraction.
-Unfortunately, in order to exploit this abstraction, we will need to exert
-finer control over the process of evaluation than we can at present.  We will
-discuss this point further at the end of @ref{3.5.4}.  In 
-@ref{4.2}, we'll develop a framework that unifies lists and streams.}
+There is a distinguishable object, @code{Stream::Empty}, the empty stream,
+which cannot be the result of any @code{cons_stream} operation, and which can
+be identified with the predicate @code{is_empty}.@footnote{In this edition
+the empty stream is a constructor of the stream type, so
+@code{stream_null?} in the book's Scheme is the method
+@code{is_empty}: @code{s.is_empty()}.}  Thus we can make and use streams, in
+just the same way as we can make and use lists, to represent aggregate data
+arranged in a sequence.  In particular, we can build stream analogs of the
+list operations from @ref{Chapter 2}, such as @code{stream_ref}, @code{stream_map}, and
+@code{stream_for_each}:@footnote{This should bother you.  The fact that we are
+defining such similar procedures for streams and lists indicates that we are
+missing some underlying abstraction.  Unfortunately, in order to exploit this
+abstraction, we will need to exert finer control over the process of
+evaluation than we can at present, which we will discuss further at the end of
+@ref{3.5.4}.  In @ref{4.2}, we'll develop a framework that unifies lists and
+streams.}
 
-@lisp
-(define (stream-ref s n)
-  (if (= n 0)
-      (stream-car s)
-      (stream-ref (stream-cdr s) (- n 1))))
+@example rust
+fn stream_ref<A: Clone + 'static>(s: &Stream<A>, n: usize) -> A @{
+    if n == 0 @{
+        return s.head().clone();
+    @}
+    stream_ref(&s.tail(), n - 1)
+@}
 
-(define (stream-map proc s)
-  (if (stream-null? s)
-      the-empty-stream
-      (cons-stream 
-       (proc (stream-car s))
-       (stream-map proc (stream-cdr s)))))
+fn stream_map<A, B, F>(f: F, s: &Stream<A>) -> Stream<B>
+where
+    A: Clone + 'static,
+    B: 'static,
+    F: Fn(&A) -> B + Clone + 'static,
+@{
+    if s.is_empty() @{
+        return Stream::Empty;
+    @}
+    let head = f(s.head());
+    let source = s.clone();
+    cons_stream(head, move || stream_map(f, &source.tail()))
+@}
 
-(define (stream-for-each proc s)
-  (if (stream-null? s)
-      'done
-      (begin 
-        (proc (stream-car s))
-        (stream-for-each proc 
-                         (stream-cdr s)))))
-@end lisp
+fn stream_for_each<A, F>(mut proc: F, s: &Stream<A>)
+where
+    A: Clone + 'static,
+    F: FnMut(&A),
+@{
+    if s.is_empty() @{
+        return;
+    @}
+    proc(s.head());
+    stream_for_each(proc, &s.tail());
+@}
+@end example
 
 @noindent
-@code{Stream-for-each} is useful for viewing streams:
+@code{Stream_for_each} is useful for viewing streams:
 
-@lisp
-(define (display-stream s)
-  (stream-for-each display-line s))
+@example rust
+fn display_line<A: Display>(x: &A) -> String @{
+    format!(@{x@})
+@}
 
-(define (display-line x)
-  (newline)
-  (display x))
-@end lisp
+fn display_stream<A>(s: &Stream<A>) -> Vec<String>
+where
+    A: Display + Clone + 'static,
+@{
+    let mut lines = Vec::new();
+    stream_for_each(|x| lines.push(format!(@{x@})), s);
+    lines
+@}
+@end example
+
+@noindent
+Rust ships its own lazy sequences: the @code{Iterator} trait, and the
+@code{iter()} cursor this chapter uses to drain a bounded prefix of a stream
+into a test.  An iterator is a one-shot cursor: two cursors over it cannot
+share one memoized spine, it cannot name its own earlier elements, and it
+cannot be produced before its input exists, which is exactly what the
+feedback loops of @ref{3.5.4} demand.  The book's stream makes the sharing and
+the demand-driven construction explicit, and the exercises of this section
+measure the difference; the cold @code{Iterator} is a comparison here and
+carries no book example of its own.
 
 @noindent
 To make the stream implementation automatically and transparently interleave
-the construction of a stream with its use, we will arrange for the @code{cdr}
-of a stream to be evaluated when it is accessed by the @code{stream-cdr}
-procedure rather than when the stream is constructed by @code{cons-stream}.
-This implementation choice is reminiscent of our discussion of rational numbers
-in @ref{2.1.2}, where we saw that we can choose to implement rational
-numbers so that the reduction of numerator and denominator to lowest terms is
-performed either at construction time or at selection time.  The two
-rational-number implementations produce the same data abstraction, but the
-choice has an effect on efficiency.  There is a similar relationship between
-streams and ordinary lists.  As a data abstraction, streams are the same as
-lists.  The difference is the time at which the elements are evaluated.  With
-ordinary lists, both the @code{car} and the @code{cdr} are evaluated at
-construction time.  With streams, the @code{cdr} is evaluated at selection
-time.
+the construction of a stream with its use, we will arrange for the
+@code{tail} of a stream to be evaluated when it is accessed by the
+@code{stream_tail} procedure rather than when the stream is constructed by
+@code{cons_stream}.  This implementation choice is reminiscent of our
+discussion of rational numbers in @ref{2.1.2}, where we saw that we can choose
+to implement rational numbers so that the reduction of numerator and
+denominator to lowest terms is performed either at construction time or at
+selection time.  The two rational-number implementations produce the same data
+abstraction, but the choice has an effect on efficiency.  There is a similar
+relationship between streams and ordinary lists.  As data abstractions,
+streams are the same as lists.  The difference is the time at which the
+elements are evaluated.  With ordinary lists, both the @code{cons} and the
+elements are evaluated at construction time.  With streams, the
+@code{cons_stream} is evaluated at construction time.  Our implementation of
+streams will be based on a special form called @code{delay}.  Evaluating
+@code{(delay ⟨@var{exp}⟩)} does not evaluate the expression
+@code{⟨@var{exp}⟩}, but rather returns a so-called
+@newterm{delayed object}, which we can think of as a ``promise'' to evaluate
+@code{⟨@var{exp}⟩} at some future time.  As a companion to
+@code{delay}, there is a procedure called @code{force} that takes a delayed
+object as an argument and performs the evaluation---in effect, forcing the
+@code{delay} to fulfill its promise.  We will see below how @code{delay} and
+@code{force} can be implemented, but first let us use these to construct
+streams.
 
-Our implementation of streams will be based on a special form called
-@code{delay}.  Evaluating @code{(delay ⟨@var{exp}⟩)} does not evaluate the
-expression @code{⟨}@var{exp}@code{⟩}, but rather returns a so-called 
-@newterm{delayed object}, which we can think of as a ``promise'' to evaluate 
-@code{⟨}@var{exp}@code{⟩} at some
-future time.  As a companion to @code{delay}, there is a procedure called
-@code{force} that takes a delayed object as argument and performs the
-evaluation---in effect, forcing the @code{delay} to fulfill its promise.  We
-will see below how @code{delay} and @code{force} can be implemented, but first
-let us use these to construct streams.
+@code{Cons_stream} is defined so that @code{(cons-stream ⟨@var{a}⟩ ⟨@var{b}⟩)}
+is equivalent to @code{(cons ⟨@var{a}⟩ (delay ⟨@var{b}⟩))}.
+What this means is that we will construct streams using
+the constructor @code{cons_stream}, whose second argument is a thunk: in Rust
+the delay is explicit, because a plain argument would be evaluated before the
+call, which is the one thing @code{cons_stream} exists to prevent.
 
-@code{Cons-stream} is a special form defined so that
-
-@lisp
-(cons-stream ⟨@var{a}⟩ ⟨@var{b}⟩)
-@end lisp
-
-@noindent
-is equivalent to
-
-@lisp
-(cons ⟨@var{a}⟩ (delay ⟨@var{b}⟩))
-@end lisp
-
-@noindent
-What this means is that we will construct streams using pairs.  However, rather
-than placing the value of the rest of the stream into the @code{cdr} of the
-pair we will put there a promise to compute the rest if it is ever requested.
-@code{Stream-car} and @code{stream-cdr} can now be defined as procedures:
-
-@lisp
-(define (stream-car stream) 
-  (car stream))
-
-(define (stream-cdr stream) 
-  (force (cdr stream)))
-@end lisp
+@example rust
+pub fn cons_stream<A: 'static>(
+    head: A,
+    tail: impl FnOnce() -> Stream<A> + 'static,
+) -> Stream<A> @{
+    Stream::cons_stream(head, tail)
+@}
+@end example
 
 @noindent
-@code{Stream-car} selects the @code{car} of the pair; @code{stream-cdr} selects
-the @code{cdr} of the pair and evaluates the delayed expression found there to
-obtain the rest of the stream.@footnote{Although @code{stream-car} and
-@code{stream-cdr} can be defined as procedures, @code{cons-stream} must be a
-special form.  If @code{cons-stream} were a procedure, then, according to our
-model of evaluation, evaluating @code{(cons-stream ⟨@var{a}⟩ ⟨@var{b}⟩)} would
-automatically cause @code{⟨}@var{b}@code{⟩} to be evaluated, which is precisely what we do
-not want to happen.  For the same reason, @code{delay} must be a special form,
-though @code{force} can be an ordinary procedure.}
+@code{Stream_head} and @code{stream_tail} can now be defined as procedures:
 
-@subsubheading The stream implementation in action
+@example rust
+pub fn stream_head<A: 'static>(s: &Stream<A>) -> &A @{
+    s.head()
+@}
 
-To see how this implementation behaves, let us analyze the ``outrageous'' prime
-computation we saw above, reformulated in terms of streams:
+pub fn stream_tail<A: Clone + 'static>(s: &Stream<A>) -> Stream<A> @{
+    s.tail()
+@}
+@end example
 
-@lisp
-(stream-car 
- (stream-cdr
-  (stream-filter 
-   prime? (stream-enumerate-interval 
-           10000 1000000))))
-@end lisp
+@noindent
+@code{Stream_tail} selects the tail of the pair and forces the delayed
+expression found there to obtain the rest of the stream.@footnote{Although
+@code{stream_head} and @code{stream_tail} can be defined as ordinary
+functions, @code{cons_stream} must take the tail as a thunk.  If
+@code{cons_stream} took an eagerly evaluated tail, then, by the model of
+evaluation, evaluating @code{(cons-stream ⟨@var{a}⟩ ⟨@var{b}⟩)}
+would automatically cause @code{⟨@var{b}⟩} to be evaluated, which
+is precisely what we do not want to happen.  For the same reason, the
+@code{delay} of this edition is a function taking a closure, though
+@code{force} is an ordinary procedure.}  The stream implementation in action
+is below.  To see how this implementation behaves, let us analyze the
+``outrageous'' computation we saw above, reformulated in terms of streams:
+
+@example rust
+stream_head(&stream_tail(&stream_filter(
+    prime,
+    &stream_enumerate_interval(10_000, 1_000_000),
+)))
+@end example
 
 @noindent
 We will see that it does indeed work efficiently.
 
-We begin by calling @code{stream-enumerate-interval} with the arguments 10,000
-and 1,000,000.  @code{Stream-enumerate-interval} is the stream analog of
-@code{enumerate-interval} (@ref{2.2.3}):
+We begin by calling @code{stream_enumerate_interval} with the arguments 10,000
+and 1,000,000.  @code{Stream_enumerate_interval} is the stream analog of
+@code{enumerate_interval} (@ref{2.2.3}):
 
-@lisp
-(define (stream-enumerate-interval low high)
-  (if (> low high)
-      the-empty-stream
-      (cons-stream
-       low
-       (stream-enumerate-interval (+ low 1)
-                                  high))))
-@end lisp
-
-@noindent
-and thus the result returned by @code{stream-enumerate-interval}, formed by the
-@code{cons-stream}, is@footnote{The numbers shown here do not really appear in
-the delayed expression.  What actually appears is the original expression, in
-an environment in which the variables are bound to the appropriate numbers.
-For example, @code{(+ low 1)} with @code{low} bound to 10,000 actually appears
-where @code{10001} is shown.}
-
-@lisp
-(cons 10000
-      (delay 
-        (stream-enumerate-interval 
-         10001 
-         1000000)))
-@end lisp
+@example rust
+fn stream_enumerate_interval(low: i128, high: i128) -> Stream<i128> @{
+    if low > high @{
+        return Stream::Empty;
+    @}
+    cons_stream(low, move || stream_enumerate_interval(low + 1, high))
+@}
+@end example
 
 @noindent
-That is, @code{stream-enumerate-interval} returns a stream represented as a
-pair whose @code{car} is 10,000 and whose @code{cdr} is a promise to enumerate
-more of the interval if so requested.  This stream is now filtered for primes,
-using the stream analog of the @code{filter} procedure (@ref{2.2.3}):
+and thus the result returned by @code{stream_enumerate_interval}, formed by
+@code{cons_stream}, is@footnote{The numbers shown here do not really appear
+in the delayed expression.  What actually appears is the original expression,
+in an environment in which the variables are bound to the appropriate
+numbers.  For example, @code{(+ low 1)} with @code{low} bound to 10,000
+actually appears where @code{10001} is shown.}
 
-@lisp
-(define (stream-filter pred stream)
-  (cond ((stream-null? stream) 
-         the-empty-stream)
-        ((pred (stream-car stream))
-         (cons-stream 
-          (stream-car stream)
-          (stream-filter 
-           pred
-           (stream-cdr stream))))
-        (else (stream-filter 
-               pred 
-               (stream-cdr stream)))))
-@end lisp
+@example rust
+cons_stream(10_000, || stream_enumerate_interval(10_001, 1_000_000))
+@end example
 
 @noindent
-@code{Stream-filter} tests the @code{stream-car} of the stream (the @code{car}
-of the pair, which is 10,000).  Since this is not prime, @code{stream-filter}
-examines the @code{stream-cdr} of its input stream.  The call to
-@code{stream-cdr} forces evaluation of the delayed
-@code{stream-enumerate-interval}, which now returns
+That is, @code{stream_enumerate_interval} returns a stream, represented as a
+pair whose @code{head} is 10,000 and whose @code{tail} is a promise to
+enumerate more of the interval if so requested.  This stream is now filtered
+for primes using the stream analog of the @code{filter} procedure
+(@ref{2.2.3}):
 
-@lisp
-(cons 10001
-      (delay 
-        (stream-enumerate-interval 
-         10002 
-         1000000)))
-@end lisp
-
-@noindent
-@code{Stream-filter} now looks at the @code{stream-car} of this stream, 10,001,
-sees that this is not prime either, forces another @code{stream-cdr}, and so
-on, until @code{stream-enumerate-interval} yields the prime 10,007, whereupon
-@code{stream-filter}, according to its definition, returns
-
-@lisp
-(cons-stream 
- (stream-car stream)
- (stream-filter pred (stream-cdr stream)))
-@end lisp
+@example rust
+fn stream_filter<A, F>(pred: F, s: &Stream<A>) -> Stream<A>
+where
+    A: Clone + 'static,
+    F: Fn(&A) -> bool + Clone + 'static,
+@{
+    if s.is_empty() @{
+        return Stream::Empty;
+    @}
+    let head = s.head().clone();
+    if pred(&head) @{
+        let source = s.clone();
+        return cons_stream(head, move || stream_filter(pred, &source.tail()));
+    @}
+    stream_filter(pred, &s.tail())
+@}
+@end example
 
 @noindent
-which in this case is
+@code{Stream_filter} tests the @code{head} of the stream (the @code{head}
+of the pair, which is 10,000).  Since this is not prime,
+@code{stream_filter} examines the @code{tail} of its input stream.  The call
+to @code{stream_tail} forces evaluation of the delayed
+@code{stream_enumerate_interval}, which returns another stream (beginning
+with 10,001).  @code{Stream_filter} now looks at the @code{head} of this
+stream, sees that this is not prime either, forces another
+@code{stream_tail}, and so on, until @code{stream_enumerate_interval} yields
+the prime 10,007, whereupon @code{stream_filter}, according to its
+@code{cons_stream}, returns
 
-@lisp
-(cons 10007
-      (delay
-        (stream-filter
-         prime?
-         (cons 10008
-               (delay
-                 (stream-enumerate-interval 
-                  10009 1000000))))))
-@end lisp
-
-@noindent
-This result is now passed to @code{stream-cdr} in our original expression.
-This forces the delayed @code{stream-filter}, which in turn keeps forcing the
-delayed @code{stream-enumerate-interval} until it finds the next prime, which
-is 10,009.  Finally, the result passed to @code{stream-car} in our original
-expression is
-
-@lisp
-(cons 10009
-      (delay
-        (stream-filter
-         prime?
-         (cons 10010
-               (delay
-                 (stream-enumerate-interval 
-                  10011 1000000))))))
-@end lisp
+@example rust
+cons_stream(
+    10_007,
+    || stream_filter(prime, &stream_enumerate_interval(10_008, 1_000_000)),
+)
+@end example
 
 @noindent
-@code{Stream-car} returns 10,009, and the computation is complete.  Only as
+This result is now passed to @code{stream_tail} in our original expression.
+This forces the delayed @code{stream_filter}, which in turn keeps forcing the
+delayed @code{stream_enumerate_interval} until it finds the next prime,
+which is 10,009.  Finally, the result passed to @code{stream_head} in our
+original expression is
+
+@example rust
+cons_stream(
+    10_009,
+    || stream_filter(prime, &stream_enumerate_interval(10_010, 1_000_000)),
+)
+@end example
+
+@noindent
+@code{Stream_head} returns 10,009, and the computation is complete.  Only as
 many integers were tested for primality as were necessary to find the second
-prime, and the interval was enumerated only as far as was necessary to feed the
-prime filter.
-
-In general, we can think of delayed evaluation as ``demand-driven''
-programming, whereby each stage in the stream process is activated only enough
-to satisfy the next stage.  What we have done is to decouple the actual order
-of events in the computation from the apparent structure of our procedures.  We
-write procedures as if the streams existed ``all at once'' when, in reality,
-the computation is performed incrementally, as in traditional programming
-styles.
+prime, and the interval was enumerated only as far as was necessary to feed
+the prime filter.  In general, we can think of delayed evaluation as
+``demand-driven'' programming, whereby each stage in the stream process is
+activated only enough to satisfy the next stage.  What we have done is to
+decouple the actual order of events in the computation from the apparent
+structure of our procedures.  We write procedures as if the streams existed
+``all at once'' when, in reality, the computation is performed
+incrementally, as in traditional programming styles.
 
 @subsubheading Implementing @code{delay} and @code{force}
 
 Although @code{delay} and @code{force} may seem like mysterious operations,
 their implementation is really quite straightforward.  @code{Delay} must
 package an expression so that it can be evaluated later on demand, and we can
-accomplish this simply by treating the expression as the body of a procedure.
-@code{Delay} can be a special form such that
+accomplish this simply by treating the expression as the body of a
+procedure.  @code{Delay} cannot be a special form such that
+@code{(delay ⟨@var{exp}⟩)} is syntactic sugar for
 
-@lisp
-(delay ⟨@var{exp}⟩)
-@end lisp
-
-@noindent
-is syntactic sugar for
-
-@lisp
+@example
 (lambda () ⟨@var{exp}⟩)
-@end lisp
+@end example
 
 @noindent
-@code{Force} simply calls the procedure (of no arguments) produced by
-@code{delay}, so we can implement @code{force} as a procedure:
+because in Rust a function call evaluates its arguments first; the delay of
+this edition is a function taking a closure, and forcing it is a call:
 
-@lisp
-(define (force delayed-object)
-  (delayed-object))
-@end lisp
+@example rust
+pub fn delay<T: 'static, F: FnOnce() -> T + 'static>(f: F) -> Lazy<T> @{
+    Lazy::new(f)
+@}
+
+#[must_use]
+pub fn force<T: 'static>(promise: &Lazy<T>) -> Rc<T> @{
+    promise.force()
+@}
+@end example
 
 @noindent
 This implementation suffices for @code{delay} and @code{force} to work as
 advertised, but there is an important optimization that we can include.  In
-many applications, we end up forcing the same delayed object many times.  This
-can lead to serious inefficiency in recursive programs involving streams.  (See
-@ref{Exercise 3.57}.)  The solution is to build delayed objects so that the
-first time they are forced, they store the value that is computed.  Subsequent
-forcings will simply return the stored value without repeating the computation.
-In other words, we implement @code{delay} as a special-purpose memoized
-procedure similar to the one described in @ref{Exercise 3.27}.  One way to
-accomplish this is to use the following procedure, which takes as argument a
-procedure (of no arguments) and returns a memoized version of the procedure.
-The first time the memoized procedure is run, it saves the computed result.  On
-subsequent evaluations, it simply returns the result.
+many applications, we end up forcing the same delayed object many times.
+This can lead to serious inefficiency in recursive programs involving
+streams.  (See @ref{Exercise 3.57}.)  The solution is to build delayed objects
+so that the first time they are forced, they store the value that is
+computed.  Subsequent forcings will simply return the stored value without
+repeating the computation.  In other words, we implement @code{delay} as a
+special-purpose memoized procedure similar to the one described in
+@ref{Exercise 3.27}.  One way to accomplish this is to use the following
+procedure, which takes as argument a procedure (of no arguments) and returns
+a memoized version of the procedure.  The first time the memoized procedure
+is run, it saves the computed result.  On subsequent evaluations, it simply
+returns the result.
 
-@lisp
-(define (memo-proc proc)
-  (let ((already-run? false) (result false))
-    (lambda ()
-      (if (not already-run?)
-          (begin (set! result (proc))
-                 (set! already-run? true)
-                 result)
-          result))))
-@end lisp
-
-@noindent
-@code{Delay} is then defined so that @code{(delay ⟨@var{exp}⟩)} is equivalent
-to
-
-@lisp
-(memo-proc (lambda () ⟨@var{exp}⟩))
-@end lisp
+@example rust
+fn memo_proc<T>(proc: impl FnOnce() -> T + Clone + 'static) -> impl Fn() -> T @{
+    let already_run = Rc::new(Cell::new(false));
+    let result: Rc<RefCell<Option<T>>> = Rc::new(RefCell::new(None));
+    move || @{
+        if !already_run.get() @{
+            *result.borrow_mut() = Some(proc());
+            already_run.set(true);
+        @}
+        result.borrow().clone().expect("memoized by the arm above")
+    @}
+@}
+@end example
 
 @noindent
-and @code{force} is as defined previously.@footnote{There are many possible
+The runtime's @code{Lazy} of this edition realizes exactly this memoized
+procedure, with the generator dropped after the first run so a self-referential
+stream cannot force it twice:
+
+@example rust
+pub struct Lazy<T> @{
+    cell: Rc<LazyCell<T>>,
+@}
+
+struct LazyCell<T> @{
+    f: RefCell<Option<Box<dyn FnOnce() -> T>>>,
+    memo: RefCell<Option<Rc<T>>>,
+@}
+
+impl<T: 'static> Lazy<T> @{
+    pub fn force(&self) -> Rc<T> @{
+        if let Some(v) = &*self.cell.memo.borrow() @{
+            return Rc::clone(v);
+        @}
+        let f = self.cell.f.borrow_mut().take();
+        let value = Rc::new(f.expect("forced reentrantly")());
+        *self.cell.memo.borrow_mut() = Some(Rc::clone(&value));
+        value
+    @}
+@}
+@end example
+
+@noindent
+Thus @code{(delay ⟨@var{exp}⟩)} of the book is
+@code{delay(|| ⟨@var{exp}⟩)} over this @code{Lazy}, and
+@code{force} is as defined previously.@footnote{There are many possible
 implementations of streams other than the one described in this section.
 Delayed evaluation, which is the key to making streams practical, was inherent
 in Algol 60's @newterm{call-by-name} parameter-passing method.  The use of this
@@ -487,31 +510,40 @@ versions as @newterm{call-by-need thunks}.}
 @strong{@anchor{Exercise 3.50}Exercise 3.50:} Complete the following
 definition, which generalizes @code{stream-map} to allow procedures that take
 multiple arguments, analogous to @code{map} in @ref{2.2.1}, 
-@ref{Footnote 78}.
+@ref{Footnote 78}.  In this edition the list of argument streams becomes a
+slice of streams.
 
-@lisp
-(define (stream-map proc . argstreams)
-  (if (⟨??⟩ (car argstreams))
-      the-empty-stream
-      (⟨??⟩
-       (apply proc (map ⟨??⟩ argstreams))
-       (apply stream-map
-              (cons proc 
-                    (map ⟨??⟩ 
-                         argstreams))))))
-@end lisp
+@example rust
+fn stream_map_n<A, B, F>(f: F, streams: &[Stream<A>]) -> Stream<B>
+where
+    A: Clone + 'static,
+    B: 'static,
+    F: Fn(&[A]) -> B + Clone + 'static,
+@{
+    if streams.iter().@r{⟨??⟩}(|s| s.is_empty()) @{
+        return Stream::Empty;
+    @}
+    let heads: Vec<A> = streams.iter().map(|s| s.head().clone()).collect();
+    let tails: Vec<Stream<A>> = streams.iter().map(|s| s.tail()).collect();
+    cons_stream(f(&heads), move || stream_map_n(f, @r{⟨??⟩}))
+@}
+@end example
+
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.51}Exercise 3.51:} In order to take a closer look at
 delayed evaluation, we will use the following procedure, which simply returns
-its argument after printing it:
+its argument after printing it (here @code{show} records the value in a log
+the demonstration can inspect, so the evidence is observable in library code
+that does not print):
 
-@lisp
-(define (show x)
-  (display-line x)
-  x)
-@end lisp
+@example rust
+fn show<A: Display>(x: A, log: &Rc<RefCell<Vec<String>>>) -> A @{
+    log.borrow_mut().push(format!("@{x@}"));
+    x
+@}
+@end example
 
 What does the interpreter print in response to evaluating each expression in
 the following sequence?@footnote{Exercises such as @ref{Exercise 3.51} and
@@ -526,43 +558,52 @@ order in which events actually happen in our programs.  Unfortunately, this is
 precisely what we cannot afford to do in the presence of assignment, which
 forces us to be concerned with time and change.}
 
-@lisp
-(define x 
-  (stream-map 
-   show 
-   (stream-enumerate-interval 0 10)))
+@example rust
+let log = Rc::new(RefCell::new(Vec::new()));
+let x = stream_map(
+    |v| show(*v, &log),
+    &stream_map(|v| v * v, &stream_enumerate_interval(0, 10)),
+);
 
-(stream-ref x 5)
-(stream-ref x 7)
-@end lisp
+stream_ref(&x, 5)
+// => 25
+
+stream_ref(&x, 7)
+// => 49
+@end example
+
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.52}Exercise 3.52:} Consider the sequence of
 expressions
 
-@lisp
-(define sum 0)
+@example rust
+let sum = Rc::new(Cell::new(0i128));
 
-(define (accum x)
-  (set! sum (+ x sum))
-  sum)
+let accum = @{
+    let sum = Rc::clone(&sum);
+    move |v: i128| @{
+        sum.set(sum.get() + v);
+        sum.get()
+    @}
+@};
 
-(define seq 
-  (stream-map 
-   accum 
-   (stream-enumerate-interval 1 20)))
+let seq = stream_map(|v| accum(*v), &stream_enumerate_interval(1, 20));
 
-(define y (stream-filter even? seq))
+let y = stream_filter(|v| v % 2 == 0, &seq);
 
-(define z 
-  (stream-filter 
-   (lambda (x) 
-     (= (remainder x 5) 0)) seq))
+let z = stream_filter(|v| v % 5 == 0, &seq);
 
-(stream-ref y 7)
-(display-stream z)
-@end lisp
+stream_ref(&y, 7)
+// => 136
+
+display_stream(&z)
+// => ["10", "15", "45", "55", "105", "120"]
+
+sum.get()
+// => 210
+@end example
 
 What is the value of @code{sum} after each of the above expressions is
 evaluated?  What is the printed response to evaluating the @code{stream-ref}
@@ -582,16 +623,17 @@ striking, we can use streams to represent sequences that are infinitely long.
 For instance, consider the following definition of the stream of positive
 integers:
 
-@lisp
-(define (integers-starting-from n)
-  (cons-stream 
-   n (integers-starting-from (+ n 1))))
-(define integers (integers-starting-from 1))
-@end lisp
+@example rust
+fn integers_starting_from(n: i128) -> Stream<i128> @{
+    cons_stream(n, move || integers_starting_from(n + 1))
+@}
+
+let integers = integers_starting_from(1);
+@end example
 
 @noindent
-This makes sense because @code{integers} will be a pair whose @code{car} is 1
-and whose @code{cdr} is a promise to produce the integers beginning with 2.
+This makes sense because @code{integers} will be a pair whose @code{head} is 1
+and whose @code{tail} is a promise to produce the integers beginning with 2.
 This is an infinitely long stream, but in any given time we can examine only a
 finite portion of it.  Thus, our programs will never know that the entire
 infinite stream is not there.
@@ -599,37 +641,39 @@ infinite stream is not there.
 Using @code{integers} we can define other infinite streams, such as the stream
 of integers that are not divisible by 7:
 
-@lisp
-(define (divisible? x y) (= (remainder x y) 0))
-(define no-sevens
-  (stream-filter (lambda (x) 
-                   (not (divisible? x 7)))
-                 integers))
-@end lisp
+@example rust
+fn divisible(x: i128, y: i128) -> bool @{
+    x % y == 0
+@}
+
+let no_sevens = stream_filter(|x| !divisible(*x, 7), &integers());
+@end example
 
 @noindent
 Then we can find integers not divisible by 7 simply by accessing elements of
 this stream:
 
-@lisp
-(stream-ref no-sevens 100)
-@i{117}
-@end lisp
+@example rust
+stream_ref(&no_sevens, 100)
+// => 117
+@end example
 
 @noindent
 In analogy with @code{integers}, we can define the infinite stream of Fibonacci
 numbers:
 
-@lisp
-(define (fibgen a b)
-  (cons-stream a (fibgen b (+ a b))))
-(define fibs (fibgen 0 1))
-@end lisp
+@example rust
+fn fibgen(a: i128, b: i128) -> Stream<i128> @{
+    cons_stream(a, move || fibgen(b, a + b))
+@}
+
+let fibs = fibgen(0, 1);
+@end example
 
 @noindent
-@code{Fibs} is a pair whose @code{car} is 0 and whose @code{cdr} is a promise
+@code{Fibs} is a pair whose @code{head} is 0 and whose @code{tail} is a promise
 to evaluate @code{(fibgen 1 1)}.  When we evaluate this delayed @code{(fibgen 1
-1)}, it will produce a pair whose @code{car} is 1 and whose @code{cdr} is a
+1)}, it will produce a pair whose @code{head} is 1 and whose @code{tail} is a
 promise to evaluate @code{(fibgen 1 2)}, and so on.
 
 For a look at a more exciting infinite stream, we can generalize the
@@ -653,27 +697,25 @@ of @code{S} and the rest of which is obtained by filtering all multiples of the
 first element of @code{S} out of the rest of @code{S} and sieving the
 result. This process is readily described in terms of stream operations:
 
-@lisp
-(define (sieve stream)
-  (cons-stream
-   (stream-car stream)
-   (sieve (stream-filter
-           (lambda (x)
-             (not (divisible? 
-                   x (stream-car stream))))
-           (stream-cdr stream)))))
+@example rust
+fn sieve(s: &Stream<i128>) -> Stream<i128> @{
+    let first = *s.head();
+    let source = s.clone();
+    cons_stream(first, move || @{
+        sieve(&stream_filter(move |x| x % first != 0, &source.tail()))
+    @})
+@}
 
-(define primes 
-  (sieve (integers-starting-from 2)))
-@end lisp
+let primes = sieve(&integers_starting_from(2));
+@end example
 
 @noindent
 Now to find a particular prime we need only ask for it:
 
-@lisp
-(stream-ref primes 50)
-@i{233}
-@end lisp
+@example rust
+stream_ref(&primes, 50)
+// => 233
+@end example
 
 @noindent
 It is interesting to contemplate the signal-processing system set up by
@@ -681,7 +723,7 @@ It is interesting to contemplate the signal-processing system set up by
 @ref{Figure 3.31}.@footnote{We have named these figures after Peter Henderson, who was the
 first person to show us diagrams of this sort as a way of thinking about stream
 processing.  Each solid line represents a stream of values being transmitted.
-The dashed line from the @code{car} to the @code{cons} and the @code{filter}
+The dashed line from the @code{head} to the @code{cons} and the @code{filter}
 indicates that this is a single value rather than a stream.}  The input stream
 feeds into an ``un@code{cons}er'' that separates the first element of the
 stream from the rest of the stream.  The first element is used to construct a
@@ -712,6 +754,7 @@ infinite, because the sieve contains a sieve within it.
   |                +------------+    +------------+               |
   +---------------------------------------------------------------+
 @end example
+
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.31a,,132mm,Figure 3.31: The prime sieve viewed as a signal-processing system.,.std.svg}
@@ -731,14 +774,15 @@ one. An alternative way to specify streams is to take advantage of delayed
 evaluation to define streams implicitly.  For example, the following expression
 defines the stream @code{ones} to be an infinite stream of ones:
 
-@lisp
-(define ones (cons-stream 1 ones))
-@end lisp
+@example rust
+let ones: Stream<i128> =
+    self_stream(|ones| cons_stream(1, move || ones.stream()));
+@end example
 
 @noindent
 This works much like the definition of a recursive procedure: @code{ones} is a
-pair whose @code{car} is 1 and whose @code{cdr} is a promise to evaluate
-@code{ones}.  Evaluating the @code{cdr} gives us again a 1 and a promise to
+pair whose @code{head} is 1 and whose @code{tail} is a promise to evaluate
+@code{ones}.  Evaluating the @code{tail} gives us again a 1 and a promise to
 evaluate @code{ones}, and so on.
 
 We can do more interesting things by manipulating streams with operations such
@@ -746,18 +790,22 @@ as @code{add-streams}, which produces the elementwise sum of two given
 streams:@footnote{This uses the generalized version of @code{stream-map} from
 @ref{Exercise 3.50}.}
 
-@lisp
-(define (add-streams s1 s2) 
-  (stream-map + s1 s2))
-@end lisp
+@example rust
+fn add_streams<A>(s1: &Stream<A>, s2: &Stream<A>) -> Stream<A>
+where
+    A: Add<Output = A> + Copy + 'static,
+@{
+    stream_map2(|a, b| *a + *b, s1, s2)
+@}
+@end example
 
 @noindent
 Now we can define the integers as follows:
 
-@lisp
-(define integers 
-  (cons-stream 1 (add-streams ones integers)))
-@end lisp
+@example rust
+let integers: Stream<i128> =
+    self_stream(|integers| cons_stream(1, move || add_streams(&integers.stream(), &ones)));
+@end example
 
 @noindent
 This defines @code{integers} to be a stream whose first element is 1 and the
@@ -770,13 +818,16 @@ back into the definition to produce the next integer.
 
 We can define the Fibonacci numbers in the same style:
 
-@lisp
-(define fibs 
-  (cons-stream 
-   0 (cons-stream
-      1 (add-streams 
-         (stream-cdr fibs) fibs))))
-@end lisp
+@example rust
+let fibs: Stream<i128> = self_stream(|fibs| @{
+    cons_stream(0, move || @{
+        cons_stream(1, @{
+            let named = fibs.clone();
+            move || add_streams(&named.stream().tail(), &named.stream())
+        @})
+    @})
+@});
+@end example
 
 @noindent
 This definition says that @code{fibs} is a stream beginning with 0 and 1, such
@@ -793,20 +844,22 @@ shifted by one place:
 @code{Scale-stream} is another useful procedure in formulating such stream
 definitions.  This multiplies each item in a stream by a given constant:
 
-@lisp
-(define (scale-stream stream factor)
-  (stream-map
-   (lambda (x) (* x factor))
-   stream))
-@end lisp
+@example rust
+fn scale_stream<A>(s: &Stream<A>, factor: A) -> Stream<A>
+where
+    A: Mul<Output = A> + Copy + 'static,
+@{
+    stream_map(move |x| *x * factor, s)
+@}
+@end example
 
 @noindent
 For example,
 
-@lisp
-(define double 
-  (cons-stream 1 (scale-stream double 2)))
-@end lisp
+@example rust
+let double: Stream<i128> =
+    self_stream(|double| cons_stream(1, move || scale_stream(&double.stream(), 2)));
+@end example
 
 @noindent
 produces the stream of powers of 2: 1, 2, 4, 8, 16, 32, @dots{}.
@@ -815,26 +868,36 @@ An alternate definition of the stream of primes can be given by starting with
 the integers and filtering them by testing for primality.  We will need the
 first prime, 2, to get started:
 
-@lisp
-(define primes
-  (cons-stream
-   2 (stream-filter 
-      prime? (integers-starting-from 3))))
-@end lisp
+@example rust
+let primes: Stream<i128> = self_stream(|primes| @{
+    cons_stream(2, @{
+        let named = primes.clone();
+        move || @{
+            stream_filter(move |n| is_prime(*n, &named.stream()), &integers_starting_from(3))
+        @}
+    @})
+@});
+@end example
 
 @noindent
 This definition is not so straightforward as it appears, because we will test
 whether a number @math{n} is prime by checking whether @math{n} is divisible by a
 prime (not by just any integer) less than or equal to @math{\sqrt{n}}:
 
-@lisp
-(define (prime? n)
-  (define (iter ps)
-    (cond ((> (square (stream-car ps)) n) true)
-          ((divisible? n (stream-car ps)) false)
-          (else (iter (stream-cdr ps)))))
-  (iter primes))
-@end lisp
+@example rust
+fn is_prime(n: i128, primes: &Stream<i128>) -> bool @{
+    let mut ps = primes.clone();
+    loop @{
+        if ps.head() * ps.head() > n @{
+            return true;
+        @}
+        if n % ps.head() == 0 @{
+            return false;
+        @}
+        ps = ps.tail();
+    @}
+@}
+@end example
 
 @noindent
 This is a recursive definition, since @code{primes} is defined in terms of the
@@ -859,9 +922,11 @@ A proof can be found in section 22.3 of @ref{Hardy and Wright 1960}.}
 @strong{@anchor{Exercise 3.53}Exercise 3.53:} Without running the program,
 describe the elements of the stream defined by
 
-@lisp
-(define s (cons-stream 1 (add-streams s s)))
-@end lisp
+@example rust
+let s: Stream<i128> =
+    self_stream(|s| cons_stream(1, move || add_streams(&s.stream(), &s.stream())));
+@end example
+
 @end quotation
 
 @quotation
@@ -871,10 +936,36 @@ elementwise product of its two input streams.  Use this together with the
 stream of @code{integers} to complete the following definition of the stream
 whose @math{n^{\hbox{th}}} element (counting from 0) is @math{{n + 1}} factorial:
 
-@lisp
-(define factorials 
-  (cons-stream 1 (mul-streams ⟨??⟩ ⟨??⟩)))
-@end lisp
+@example rust
+fn mul_streams<A>(s1: &Stream<A>, s2: &Stream<A>) -> Stream<A>
+where
+    A: Mul<Output = A> + Copy + 'static,
+@{
+    stream_map2(|a, b| *a * *b, s1, s2)
+@}
+
+let factorials: Stream<i128> = self_stream(|factorials| @{
+    cons_stream(1, move || mul_streams(&integers(), &factorials.stream()))
+@});
+@end example
+
+@end quotation
+
+@quotation
+@emph{Exercise 3.54a is added by this edition and extends exercise 3.54; SICP
+numbers stop at 3.54.}
+@strong{@anchor{Exercise 3.54a}Exercise 3.54a:} The @code{factorials} stream
+and @code{mul_streams} can count more than one kind of number.  Define the
+stream of @newterm{Catalan numbers}---1, 1, 2, 5, 14, 42, 132, @dots{}, which
+count, among many other things, the ways of fully parenthesizing a product of
+@math{{n + 1}} factors.  Define it from the recurrence
+@math{{C_0 = 1}}, @math{{C_{n+1} = C_n (4n + 2) / (n + 2)}} as a
+self-referential stream that pairs each element with its index, and check the
+division is exact at every step.  Verify the stream against the factorial form
+@math{{C_n = (2n)! / (n! \cdot (n+1)!)}}, read from the
+@code{factorials} stream, over the elements the edition's integer width
+permits: 34! overflows a 128-bit integer at @math{{n = 17}}, so the
+factorial-form check runs over @math{{n = 0..=16}}.
 @end quotation
 
 @quotation
@@ -917,38 +1008,39 @@ Now all we have to do is combine elements from these sources.  For this we
 define a procedure @code{merge} that combines two ordered streams into one
 ordered result stream, eliminating repetitions:
 
-@lisp
-(define (merge s1 s2)
-  (cond ((stream-null? s1) s2)
-        ((stream-null? s2) s1)
-        (else
-         (let ((s1car (stream-car s1))
-               (s2car (stream-car s2)))
-           (cond ((< s1car s2car)
-                  (cons-stream 
-                   s1car 
-                   (merge (stream-cdr s1) 
-                          s2)))
-                 ((> s1car s2car)
-                  (cons-stream 
-                   s2car 
-                   (merge s1 
-                          (stream-cdr s2))))
-                 (else
-                  (cons-stream 
-                   s1car
-                   (merge 
-                    (stream-cdr s1)
-                    (stream-cdr s2)))))))))
-@end lisp
+@example rust
+fn merge<A>(s1: &Stream<A>, s2: &Stream<A>) -> Stream<A>
+where
+    A: PartialOrd + Copy + 'static,
+@{
+    if s1.is_empty() @{
+        return s2.clone();
+    @}
+    if s2.is_empty() @{
+        return s1.clone();
+    @}
+    let x1 = *s1.head();
+    let x2 = *s2.head();
+    let front = s1.clone();
+    let back = s2.clone();
+    if x1 < x2 @{
+        cons_stream(x1, move || merge(&front.tail(), &back))
+    @} else if x2 < x1 @{
+        cons_stream(x2, move || merge(&front, &back.tail()))
+    @} else @{
+        cons_stream(x1, move || merge(&front.tail(), &back.tail()))
+    @}
+@}
+@end example
 
 Then the required stream may be constructed with @code{merge}, as follows:
 
-@lisp
-(define S (cons-stream 1 (merge ⟨??⟩ ⟨??⟩)))
-@end lisp
+@example rust
+let s: Stream<i128> =
+    self_stream(|s| cons_stream(1, move || merge(@r{⟨??⟩}, @r{⟨??⟩})));
+@end example
 
-Fill in the missing expressions in the places marked @code{⟨??⟩} above.
+Fill in the missing expressions in the places marked @code{@r{⟨??⟩}} above.
 @end quotation
 
 @quotation
@@ -969,14 +1061,14 @@ values in the previously forced parts of the stream.}
 @strong{@anchor{Exercise 3.58}Exercise 3.58:} Give an interpretation of the
 stream computed by the following procedure:
 
-@lisp
-(define (expand num den radix)
-  (cons-stream
-   (quotient (* num radix) den)
-   (expand (remainder (* num radix) den) 
-           den 
-           radix)))
-@end lisp
+@example rust
+fn expand(num: i128, den: i128, radix: i128) -> Stream<i128> @{
+    cons_stream(
+        num / den,
+        move || expand(radix * (num % den), den, radix),
+    )
+@}
+@end example
 
 (@code{Quotient} is a primitive that returns the integer quotient of two
 integers.)  What are the successive elements produced by @code{(expand 1 7
@@ -1046,23 +1138,24 @@ The function @math{{x \mapsto e^x}} is its own derivative.  This implies that
 constant term, which is @math{{e^0 = 1}}.  Accordingly, we can generate the series
 for @math{e^x} as
 
-@lisp
-(define exp-series
-  (cons-stream 
-   1 (integrate-series exp-series)))
-@end lisp
+@example rust
+let exp_series: Stream<f64> = self_stream(|exp_series| @{
+    cons_stream(1.0, move || integrate_series(&exp_series.stream()))
+@});
+@end example
 
 Show how to generate the series for sine and cosine, starting from the facts
 that the derivative of sine is cosine and the derivative of cosine is the
 negative of sine:
 
-@lisp
-(define cosine-series 
-  (cons-stream 1 ⟨??⟩))
+@example rust
+let cosine_series: Stream<f64> =
+    self_stream(|cosine| cons_stream(1.0, move || @r{⟨??⟩}));
 
-(define sine-series
-  (cons-stream 0 ⟨??⟩))
-@end lisp
+let sine_series: Stream<f64> =
+    self_stream(|sine| cons_stream(0.0, move || @r{⟨??⟩}));
+@end example
+
 @end enumerate
 @end quotation
 
@@ -1072,10 +1165,11 @@ streams of coefficients as in @ref{Exercise 3.59}, adding series is implemented
 by @code{add-streams}.  Complete the definition of the following procedure for
 multiplying series:
 
-@lisp
-(define (mul-series s1 s2)
-  (cons-stream ⟨??⟩ (add-streams ⟨??⟩ ⟨??⟩)))
-@end lisp
+@example rust
+fn mul_series(s1: &Stream<f64>, s2: &Stream<f64>) -> Stream<f64> @{
+    cons_stream(@r{⟨??⟩}, add_streams(@r{⟨??⟩}, @r{⟨??⟩}))
+@}
+@end example
 
 You can test your procedure by verifying that @math{{\sin^2x + \cos^2x = 1,}}
 using the series from @ref{Exercise 3.59}.
@@ -1147,10 +1241,11 @@ Let's adopt this perspective in revisiting the square-root procedure from
 and better guesses for the square root of @math{x} by applying over and over again
 the procedure that improves guesses:
 
-@lisp
-(define (sqrt-improve guess x)
-  (average guess (/ x guess)))
-@end lisp
+@example rust
+fn sqrt_improve(guess: f64, x: f64) -> f64 @{
+    (guess + x / guess) / 2.0
+@}
+@end example
 
 @noindent
 In our original @code{sqrt} procedure, we made these guesses be the successive
@@ -1160,24 +1255,18 @@ to bind the local variable @code{guesses}, because the value of @code{guesses}
 depends on @code{guesses} itself.  @ref{Exercise 3.63} addresses why we want a
 local variable here.}
 
-@lisp
-(define (sqrt-stream x)
-  (define guesses
-    (cons-stream 
-     1.0 (stream-map
-          (lambda (guess)
-            (sqrt-improve guess x))
-          guesses)))
-  guesses)
+@example rust
+fn sqrt_stream(x: f64) -> Stream<f64> @{
+    self_stream(move |guesses| @{
+        cons_stream(1.0, move || @{
+            stream_map(move |g| sqrt_improve(*g, x), &guesses.stream())
+        @})
+    @})
+@}
 
-(display-stream (sqrt-stream 2))
-@i{1.}
-@i{1.5}
-@i{1.4166666666666665}
-@i{1.4142156862745097}
-@i{1.4142135623746899}
-@r{…}
-@end lisp
+sqrt_stream(2.0).iter().take(5).collect::<Vec<f64>>()
+// => [1.0, 1.5, 1.4166666666666665, 1.4142156862745097, 1.4142135623746899]
+@end example
 
 @noindent
 We can generate more and more terms of the stream to get better and better
@@ -1204,27 +1293,15 @@ odd integers, with alternating signs).  Then we take the stream of sums of more
 and more terms (using the @code{partial-sums} procedure of @ref{Exercise 3.55})
 and scale the result by 4:
 
-@lisp
-(define (pi-summands n)
-  (cons-stream 
-   (/ 1.0 n)
-   (stream-map - (pi-summands (+ n 2)))))
+@example rust
+fn pi_summands(n: f64) -> Stream<f64> @{
+    cons_stream(1.0 / n, move || stream_map(|v| -v, &pi_summands(n + 2.0)))
+@}
 
-(define pi-stream
-  (scale-stream 
-   (partial-sums (pi-summands 1)) 4))
-
-(display-stream pi-stream)
-@i{4.}
-@i{2.666666666666667}
-@i{3.466666666666667}
-@i{2.8952380952380956}
-@i{3.3396825396825403}
-@i{2.9760461760461765}
-@i{3.2837384837384844}
-@i{3.017071817071818}
-@r{…}
-@end lisp
+fn pi_stream() -> Stream<f64> @{
+    scale_stream(&partial_sums(&pi_summands(1.0)), 4.0)
+@}
+@end example
 
 @noindent
 This gives us a stream of better and better approximations to @math{\pi},
@@ -1257,34 +1334,27 @@ S_(n+1) - ------------------------
 Thus, if the original sequence is represented as a stream of values, the
 transformed sequence is given by
 
-@lisp
-(define (euler-transform s)
-  (let ((s0 (stream-ref s 0))     ; @var{Sₙ}₋₁
-        (s1 (stream-ref s 1))     ; @var{Sₙ}
-        (s2 (stream-ref s 2)))    ; @var{Sₙ}₊₁
-    (cons-stream 
-     (- s2 (/ (square (- s2 s1))
-              (+ s0 (* -2 s1) s2)))
-     (euler-transform (stream-cdr s)))))
-@end lisp
+@example rust
+fn euler_transform(s: &Stream<f64>) -> Stream<f64> @{
+    let s0 = stream_ref(s, 0);
+    let s1 = stream_ref(s, 1);
+    let s2 = stream_ref(s, 2);
+    let head = s2 - (s2 - s1) * (s2 - s1) / (s0 + -2.0 * s1 + s2);
+    let source = s.clone();
+    cons_stream(head, move || euler_transform(&source.tail()))
+@}
+@end example
 
 @noindent
 We can demonstrate Euler acceleration with our sequence of approximations to
 @math{\pi}:
 
-@lisp
-(display-stream 
- (euler-transform pi-stream))
-@i{3.166666666666667}
-@i{3.1333333333333337}
-@i{3.1452380952380956}
-@i{3.13968253968254}
-@i{3.1427128427128435}
-@i{3.1408813408813416}
-@i{3.142071817071818}
-@i{3.1412548236077655}
-@r{…}
-@end lisp
+@example rust
+euler_transform(&pi_stream()).iter().take(8).collect::<Vec<f64>>()
+// => [3.166666666666667, 3.1333333333333337, 3.1452380952380956,
+//     3.13968253968254, 3.1427128427128435, 3.1408813408813416,
+//     3.142071817071818, 3.1412548236077655]
+@end example
 
 @noindent
 Even better, we can accelerate the accelerated sequence, and recursively
@@ -1292,14 +1362,17 @@ accelerate that, and so on.  Namely, we create a stream of streams (a structure
 we'll call a @newterm{tableau}) in which each stream is the transform of the
 preceding one:
 
-@lisp
-(define (make-tableau transform s)
-  (cons-stream 
-   s
-   (make-tableau
-    transform
-    (transform s))))
-@end lisp
+@example rust
+fn make_tableau<F>(transform: F, s: &Stream<f64>) -> Stream<Stream<f64>>
+where
+    F: Fn(&Stream<f64>) -> Stream<f64> + Clone + 'static,
+@{
+    let source = s.clone();
+    cons_stream(source.clone(), move || @{
+        make_tableau(transform.clone(), &transform(&source))
+    @})
+@}
+@end example
 
 @noindent
 The tableau has the form
@@ -1324,30 +1397,28 @@ s_00   s_01   s_02   s_03   s_04   ...
 Finally, we form a sequence by taking the first term in each row of the
 tableau:
 
-@lisp
-(define (accelerated-sequence transform s)
-  (stream-map stream-car
-              (make-tableau transform s)))
-@end lisp
+@example rust
+fn accelerate_sequence<F>(transform: F, s: &Stream<f64>) -> Stream<f64>
+where
+    F: Fn(&Stream<f64>) -> Stream<f64> + Clone + 'static,
+@{
+    stream_map(|row| *row.head(), &make_tableau(transform, s))
+@}
+@end example
 
 @noindent
 We can demonstrate this kind of ``super-acceleration'' of the @math{\pi}
 sequence:
 
-@lisp
-(display-stream 
- (accelerated-sequence euler-transform
-                       pi-stream))
-@i{4.}
-@i{3.166666666666667}
-@i{3.142105263157895}
-@i{3.141599357319005}
-@i{3.1415927140337785}
-@i{3.1415926539752927}
-@i{3.1415926535911765}
-@i{3.141592653589778}
-@r{…}
-@end lisp
+@example rust
+accelerate_sequence(euler_transform, &pi_stream())
+    .iter()
+    .take(8)
+    .collect::<Vec<f64>>()
+// => [4.0, 3.166666666666667, 3.142105263157895, 3.141599357319005,
+//     3.1415927140337785, 3.1415926539752927, 3.1415926535911765,
+//     3.141592653589778]
+@end example
 
 @noindent
 The result is impressive.  Taking eight terms of the sequence yields the
@@ -1366,14 +1437,14 @@ manipulated with a uniform set of operations.
 @code{sqrt-stream} procedure was not written in the following more
 straightforward way, without the local variable @code{guesses}:
 
-@lisp
-(define (sqrt-stream x)
-  (cons-stream 
-   1.0
-   (stream-map (lambda (guess)
-                 (sqrt-improve guess x))
-               (sqrt-stream x))))
-@end lisp
+@example rust
+fn sqrt_stream_louis(x: f64) -> Stream<f64> @{
+    cons_stream(
+        1.0,
+        move || stream_map(move |g| sqrt_improve(*g, x), &sqrt_stream_louis(x)),
+    )
+@}
+@end example
 
 Alyssa P. Hacker replies that this version of the procedure is considerably
 less efficient because it performs redundant computation.  Explain Alyssa's
@@ -1390,10 +1461,12 @@ elements that differ in absolute value by less than the tolerance, and return
 the second of the two elements.  Using this, we could compute square roots up
 to a given tolerance by
 
-@lisp
-(define (sqrt x tolerance)
-  (stream-limit (sqrt-stream x) tolerance))
-@end lisp
+@example rust
+fn sqrt(x: f64, tolerance: f64) -> f64 @{
+    stream_limit(&sqrt_stream(x), tolerance)
+@}
+@end example
+
 @end quotation
 
 @quotation
@@ -1431,12 +1504,12 @@ of @ref{2.2.3} to produce the stream of pairs of @emph{all} integers
 @ref{2.2.3}, we represent a pair of integers as a list rather than a Lisp
 pair.}
 
-@lisp
-(stream-filter 
- (lambda (pair)
-   (prime? (+ (car pair) (cadr pair))))
- int-pairs)
-@end lisp
+@example rust
+stream_filter(
+    |pair| is_prime(pair.0 + pair.1, &primes()),
+    &int_pairs,
+)
+@end example
 
 @noindent
 Our problem, then, is to produce the stream @code{int-pairs}.  More generally,
@@ -1513,49 +1586,51 @@ first row) is (recursively) the pairs formed from @code{(stream-cdr S)} and
 @code{(stream-cdr T)}.  Also note that the second piece (the rest of the first
 row) is
 
-@lisp
-(stream-map (lambda (x) 
-              (list (stream-car s) x))
-            (stream-cdr t))
-@end lisp
+@example rust
+stream_map(|x| (s.head().clone(), x.clone()), t)
+@end example
 
 @noindent
 Thus we can form our stream of pairs as follows:
 
-@lisp
-(define (pairs s t)
-  (cons-stream
-   (list (stream-car s) (stream-car t))
-   (⟨@var{combine-in-some-way}⟩
-    (stream-map (lambda (x) 
-                  (list (stream-car s) x))
-                (stream-cdr t))
-    (pairs (stream-cdr s)
-           (stream-cdr t)))))
-@end lisp
+@example rust
+fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
+    let head_pair = (s.head().clone(), t.head().clone());
+    let named_head = s.head().clone();
+    let mapped = stream_map(|x| (named_head.clone(), x.clone()), &t.tail());
+    let front = s.clone();
+    let back = t.clone();
+    cons_stream(head_pair, move || @{
+        ⟨@var{combine-in-some-way}⟩(mapped, pairs(&front.tail(), &back.tail()))
+    @})
+@}
+@end example
 
 @noindent
 In order to complete the procedure, we must choose some way to combine the two
 inner streams.  One idea is to use the stream analog of the @code{append}
 procedure from @ref{2.2.1}:
 
-@lisp
-(define (stream-append s1 s2)
-  (if (stream-null? s1)
-      s2
-      (cons-stream 
-       (stream-car s1)
-       (stream-append (stream-cdr s1) s2))))
-@end lisp
+@example rust
+fn stream_append<A: Clone + 'static>(s1: &Stream<A>, s2: &Stream<A>) -> Stream<A> @{
+    if s1.is_empty() @{
+        return s2.clone();
+    @}
+    let head = s1.head().clone();
+    let front = s1.clone();
+    let back = s2.clone();
+    cons_stream(head, move || stream_append(&front.tail(), &back))
+@}
+@end example
 
 @noindent
 This is unsuitable for infinite streams, however, because it takes all the
 elements from the first stream before incorporating the second stream.  In
 particular, if we try to generate all pairs of positive integers using
 
-@lisp
-(pairs integers integers)
-@end lisp
+@example rust
+pairs(&integers(), &integers())
+@end example
 
 @noindent
 our stream of results will first try to run through all pairs with the first
@@ -1573,14 +1648,17 @@ number @math{{f(i, j)}} of the output stream.  The trick of using
 @code{interleave} to accomplish this was shown to us by David Turner, who
 employed it in the language KRC (@ref{Turner 1981}).}
 
-@lisp
-(define (interleave s1 s2)
-  (if (stream-null? s1)
-      s2
-      (cons-stream 
-       (stream-car s1)
-       (interleave s2 (stream-cdr s1)))))
-@end lisp
+@example rust
+fn interleave<A: Clone + 'static>(s1: &Stream<A>, s2: &Stream<A>) -> Stream<A> @{
+    if s1.is_empty() @{
+        return s2.clone();
+    @}
+    let head = s1.head().clone();
+    let front = s1.clone();
+    let back = s2.clone();
+    cons_stream(head, move || interleave(&back, &front.tail()))
+@}
+@end example
 
 @noindent
 Since @code{interleave} takes elements alternately from the two streams, every
@@ -1589,16 +1667,18 @@ stream, even if the first stream is infinite.
 
 We can thus generate the required stream of pairs as
 
-@lisp
-(define (pairs s t)
-  (cons-stream
-   (list (stream-car s) (stream-car t))
-   (interleave
-    (stream-map (lambda (x) 
-                  (list (stream-car s) x))
-                (stream-cdr t))
-    (pairs (stream-cdr s) (stream-cdr t)))))
-@end lisp
+@example rust
+fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
+    let head_pair = (s.head().clone(), t.head().clone());
+    let named_head = s.head().clone();
+    let mapped = stream_map(move |x| (named_head.clone(), x.clone()), &t.tail());
+    let front = s.clone();
+    let back = t.clone();
+    cons_stream(head_pair, move || @{
+        interleave(&mapped, &pairs(&front.tail(), &back.tail()))
+    @})
+@}
+@end example
 
 @quotation
 @strong{@anchor{Exercise 3.66}Exercise 3.66:} Examine the stream @code{(pairs
@@ -1622,16 +1702,14 @@ building a stream of pairs from three parts is unnecessarily complicated.
 Instead of separating the pair @math{{(S_0, T_0)}} from the rest of the pairs in
 the first row, he proposes to work with the whole first row, as follows:
 
-@lisp
-(define (pairs s t)
-  (interleave
-   (stream-map
-    (lambda (x) 
-      (list (stream-car s) x))
-    t)
-   (pairs (stream-cdr s)
-          (stream-cdr t))))
-@end lisp
+@example rust
+fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
+    interleave(
+        &stream_map(|x| (s.head().clone(), x.clone()), t),
+        &pairs(&s.tail(), &t.tail()),
+    )
+@}
+@end example
 
 Does this work?  Consider what happens if we evaluate @code{(pairs integers
 integers)} using Louis's definition of @code{pairs}.
@@ -1735,15 +1813,16 @@ and returns the stream of values @math{{S = (S_i)}}.  The following
 @code{integral} procedure is reminiscent of the ``implicit style'' definition
 of the stream of integers (@ref{3.5.2}):
 
-@lisp
-(define (integral integrand initial-value dt)
-  (define int
-    (cons-stream 
-     initial-value
-     (add-streams (scale-stream integrand dt)
-                  int)))
-  int)
-@end lisp
+@example rust
+fn integral(integrand: &Stream<f64>, initial_value: f64, dt: f64) -> Stream<f64> @{
+    self_stream(move |int| @{
+        let source = integrand.clone();
+        cons_stream(initial_value, move || @{
+            add_streams(&scale_stream(&source, dt), &int.stream())
+        @})
+    @})
+@}
+@end example
 
 @noindent
 @ref{Figure 3.32} is a picture of a signal-processing system that corresponds
@@ -1770,6 +1849,7 @@ input  |           |      |\__    +-->|   \_  integral
                       |                        |
                       +------------------------+
 @end example
+
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.32a,,143mm,Figure 3.32: The integral procedure viewed as a signal-processing system.,.std.svg}
@@ -1819,6 +1899,7 @@ accompanying signal-flow diagram.
 				   v
 				    0
 @end example
+
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.33a,,125mm,Figure 3.33: An RC circuit and the associated signal-flow diagram.,.std.svg}
@@ -1851,10 +1932,10 @@ changes from positive to negative, and @math{0} otherwise.  (Assume that the sig
 @math{0} input is positive.)  For example, a typical input signal with its associated
 zero-crossing signal would be
 
-@lisp
-@r{…} 1 2 1.5 1 0.5 -0.1 -2 -3 -2 -0.5 0.2 3 4 @r{…}
-@r{…} 0 0  0  0  0   -1   0  0  0   0   1  0 0 @r{…}
-@end lisp
+@example rust
+// sense-data:      ... 1 2 1.5 1 0.5 -0.1 -2 -3 -2 -0.5 0.2 3 4 ...
+// zero-crossings:  ... 0 0   0   0 0    -1   0  0  0   0   1 0 0 ...
+@end example
 
 In Alyssa's system, the signal from the sensor is represented as a stream
 @code{sense-data} and the stream @code{zero-crossings} is the corresponding
@@ -1863,31 +1944,29 @@ stream of zero crossings.  Alyssa first writes a procedure
 signs of the values to produce an appropriate @math{0}, @math{1}, or @math{{-1}}.  She then
 constructs her zero-crossing stream as follows:
 
-@lisp
-(define (make-zero-crossings
-         input-stream last-value)
-  (cons-stream
-   (sign-change-detector 
-    (stream-car input-stream) 
-    last-value)
-   (make-zero-crossings 
-    (stream-cdr input-stream)
-    (stream-car input-stream))))
+@example rust
+fn make_zero_crossings(input_stream: &Stream<f64>, last_value: f64) -> Stream<f64> @{
+    let source = input_stream.clone();
+    let head = sign_change_detector(*source.head(), last_value);
+    cons_stream(head, move || @{
+        make_zero_crossings(&source.tail(), *source.head())
+    @})
+@}
 
-(define zero-crossings 
-  (make-zero-crossings sense-data 0))
-@end lisp
+let zero_crossings = make_zero_crossings(&sense_data, 0.0);
+@end example
 
 Alyssa's boss, Eva Lu Ator, walks by and suggests that this program is
 approximately equivalent to the following one, which uses the generalized
 version of @code{stream-map} from @ref{Exercise 3.50}:
 
-@lisp
-(define zero-crossings
-  (stream-map sign-change-detector 
-              sense-data 
-              ⟨@var{expression}⟩))
-@end lisp
+@example rust
+let zero_crossings = stream_map2(
+    |current, previous| sign_change_detector(*current, *previous),
+    &sense_data,
+    ⟨@var{expression}⟩,
+);
+@end example
 
 Complete the program by supplying the indicated @code{⟨}@var{expression}@code{⟩}.
 @end quotation
@@ -1903,18 +1982,16 @@ averaging each value of the sense data with the previous value.  She explains
 the problem to her assistant, Louis Reasoner, who attempts to implement the
 idea, altering Alyssa's program as follows:
 
-@lisp
-(define (make-zero-crossings 
-         input-stream last-value)
-  (let ((avpt 
-         (/ (+ (stream-car input-stream) 
-               last-value) 
-            2)))
-    (cons-stream 
-     (sign-change-detector avpt last-value)
-     (make-zero-crossings 
-      (stream-cdr input-stream) avpt))))
-@end lisp
+@example rust
+fn make_zero_crossings(input_stream: &Stream<f64>, last_value: f64) -> Stream<f64> @{
+    let avpt = (*input_stream.head() + last_value) / 2.0;
+    let source = input_stream.clone();
+    cons_stream(
+        sign_change_detector(avpt, last_value),
+        move || make_zero_crossings(&source.tail(), avpt),
+    )
+@}
+@end example
 
 This does not correctly implement Alyssa's plan.  Find the bug that Louis has
 installed and fix it without changing the structure of the program.  (Hint: You
@@ -1942,13 +2019,14 @@ The feedback loop for the adder shown in @ref{Figure 3.32} is modeled by the
 fact that @code{integral}'s internal stream @code{int} is defined in terms of
 itself:
 
-@lisp
-(define int
-  (cons-stream 
-   initial-value
-   (add-streams 
-    (scale-stream integrand dt) int)))
-@end lisp
+@example rust
+let int = self_stream(move |int| @{
+    let source = integrand.clone();
+    cons_stream(initial_value, move || @{
+        add_streams(&scale_stream(&source, dt), &int.stream())
+    @})
+@});
+@end example
 
 @noindent
 The interpreter's ability to deal with such an implicit definition depends on
@@ -1987,6 +2065,7 @@ such equations.
 |                                    |
 +------------------------------------+
 @end example
+
 @end quotation
 @end ifinfo
 @ifhtml
@@ -2002,17 +2081,19 @@ such equations.
 Assuming we are given an initial value @math{y_0} for @math{y}, we could try to model
 this system using the procedure
 
-@lisp
-(define (solve f y0 dt)
-  (define y (integral dy y0 dt))
-  (define dy (stream-map f y))
-  y)
-@end lisp
+@example rust
+fn solve(f: impl Fn(f64) -> f64 + Copy + 'static, y0: f64, dt: f64) -> Stream<f64> @{
+    let y = integral(dy, y0, dt); // dy is named on the next line
+    let dy = stream_map(move |v| f(*v), &y);
+    y
+@}
+@end example
 
 @noindent
-This procedure does not work, because in the first line of @code{solve} the
-call to @code{integral} requires that the input @code{dy} be defined, which
-does not happen until the second line of @code{solve}.
+This translation does not even compile, because in the first line of
+@code{solve} the call to @code{integral} requires that the input @code{dy} be
+defined, which does not happen until the second line: the forward reference
+the book's interpreter tolerated until run time is a compile error here.
 
 On the other hand, the intent of our definition does make sense, because we
 can, in principle, begin to generate the @code{y} stream without knowing
@@ -2031,19 +2112,20 @@ integrand stream to be a @newterm{delayed argument}.  @code{Integral} will
 @code{force} the integrand to be evaluated only when it is required to generate
 more than the first element of the output stream:
 
-@lisp
-(define (integral
-         delayed-integrand initial-value dt)
-  (define int
-    (cons-stream 
-     initial-value
-     (let ((integrand 
-            (force delayed-integrand)))
-       (add-streams 
-        (scale-stream integrand dt)
-        int))))
-  int)
-@end lisp
+@example rust
+fn integral_delayed(
+    delayed_integrand: impl FnOnce() -> Stream<f64> + 'static,
+    initial_value: f64,
+    dt: f64,
+) -> Stream<f64> @{
+    self_stream(move |int| @{
+        cons_stream(initial_value, move || @{
+            let integrand = delayed_integrand();
+            add_streams(&scale_stream(&integrand, dt), &int.stream())
+        @})
+    @})
+@}
+@end example
 
 @noindent
 Now we can implement our @code{solve} procedure by delaying the evaluation of
@@ -2053,12 +2135,17 @@ implementation there is a simple variation that will work.  The problem has to
 do with subtle differences in the ways that Scheme implementations handle
 internal definitions.  (See @ref{4.1.6}.)}
 
-@lisp
-(define (solve f y0 dt)
-  (define y (integral (delay dy) y0 dt))
-  (define dy (stream-map f y))
-  y)
-@end lisp
+@example rust
+fn solve(f: impl Fn(f64) -> f64 + Clone + 'static, y0: f64, dt: f64) -> Stream<f64> @{
+    self_stream(move |y| @{
+        let dy = @{
+            let named = y.clone();
+            move || stream_map(move |v| f(*v), &named.stream())
+        @};
+        integral_delayed(dy, y0, dt)
+    @})
+@}
+@end example
 
 @noindent
 In general, every caller of @code{integral} must now @code{delay} the integrand
@@ -2067,11 +2154,10 @@ approximating @math{{e \approx 2.718}} by computing the value at @math{{y = 1}} 
 solution to the differential equation @math{{dy / dt = y}} with initial
 condition @math{{y(0) = 1}}:
 
-@lisp
-(stream-ref 
- (solve (lambda (y) y) 1 0.001) 1000)
-@i{2.716924}
-@end lisp
+@example rust
+stream_ref(&solve(|y| y, 1.0, 0.001), 1000)
+// => 2.716923932235896
+@end example
 
 @quotation
 @strong{@anchor{Exercise 3.77}Exercise 3.77:} The @code{integral} procedure
@@ -2080,19 +2166,18 @@ of integers in @ref{3.5.2}.  Alternatively, we can give a definition of
 @code{integral} that is more like @code{integers-starting-from} (also in
 @ref{3.5.2}):
 
-@lisp
-(define (integral
-         integrand initial-value dt)
-  (cons-stream 
-   initial-value
-   (if (stream-null? integrand)
-       the-empty-stream
-       (integral 
-        (stream-cdr integrand)
-        (+ (* dt (stream-car integrand))
-           initial-value)
-        dt))))
-@end lisp
+@example rust
+fn integral_direct(integrand: &Stream<f64>, initial_value: f64, dt: f64) -> Stream<f64> @{
+    let source = integrand.clone();
+    cons_stream(initial_value, move || @{
+        if source.is_empty() @{
+            Stream::Empty
+        @} else @{
+            integral_direct(&source.tail(), dt * source.head() + initial_value, dt)
+        @}
+    @})
+@}
+@end example
 
 When used in systems with loops, this procedure has the same problem as does
 our original version of @code{integral}.  Modify the procedure so that it
@@ -2148,6 +2233,7 @@ stream of successive values of @math{y}.
         \|<--+ scale: b |<-------------------+
              +----------+
 @end example
+
 @end quotation
 @end ifinfo
 @ifhtml
@@ -2186,6 +2272,7 @@ v_C -+- C                     _)  v_L
   -  |                       |    -
      +-----------------------+
 @end example
+
 @end quotation
 @end ifinfo
 @ifhtml
@@ -2301,6 +2388,7 @@ shown in @ref{Figure 3.37}.
 +----------------+ scale: -R/L |<--+
                  +-------------+
 @end example
+
 @end quotation
 @end ifinfo
 @ifhtml
@@ -2390,43 +2478,49 @@ random-number generator from programs that used random numbers.  We began with
 a procedure @code{rand-update}, whose successive values furnished our supply of
 random numbers, and used this to produce a random-number generator:
 
-@lisp
-(define rand
-  (let ((x random-init))
-    (lambda ()
-      (set! x (rand-update x))
-      x)))
-@end lisp
+@example rust
+let rand = @{
+    let x = Cell::new(RANDOM_INIT);
+    move || @{
+        x.set(rand_update(x.get()));
+        x.get()
+    @}
+@};
+@end example
 
 @noindent
 In the stream formulation there is no random-number generator @emph{per se},
 just a stream of random numbers produced by successive calls to
 @code{rand-update}:
 
-@lisp
-(define random-numbers
-  (cons-stream random-init
-               (stream-map rand-update 
-                           random-numbers)))
-@end lisp
+@example rust
+let random_numbers: Stream<u64> = self_stream(|randoms| @{
+    cons_stream(RANDOM_INIT, move || @{
+        stream_map(|x| rand_update(*x), &randoms.stream())
+    @})
+@});
+@end example
 
 @noindent
 We use this to construct the stream of outcomes of the Ces@`aro experiment
 performed on consecutive pairs in the @code{random-numbers} stream:
 
-@lisp
-(define cesaro-stream
-  (map-successive-pairs
-   (lambda (r1 r2) (= (gcd r1 r2) 1))
-   random-numbers))
+@example rust
+fn map_successive_pairs<F>(f: F, s: &Stream<u64>) -> Stream<bool>
+where
+    F: Fn(&u64, &u64) -> bool + Clone + 'static,
+@{
+    let first = s.head().clone();
+    let second = s.tail().head().clone();
+    let source = s.clone();
+    cons_stream(f(&first, &second), move || @{
+        map_successive_pairs(f, &source.tail().tail())
+    @})
+@}
 
-(define (map-successive-pairs f s)
-  (cons-stream
-   (f (stream-car s) 
-      (stream-car (stream-cdr s)))
-   (map-successive-pairs 
-    f (stream-cdr (stream-cdr s)))))
-@end lisp
+let cesaro_stream =
+    map_successive_pairs(|r1, r2| gcd(*r1, *r2) == 1, &random_numbers());
+@end example
 
 @noindent
 The @code{cesaro-stream} is now fed to a @code{monte-carlo} procedure, which
@@ -2434,33 +2528,32 @@ produces a stream of estimates of probabilities.  The results are then
 converted into a stream of estimates of @math{\pi}.  This version of the program
 doesn't need a parameter telling how many trials to perform.  Better estimates
 of @math{\pi} (from performing more experiments) are obtained by looking farther
-into the @code{pi} stream:
+into the @code{pi_estimates} stream:
 
-@lisp
-(define (monte-carlo experiment-stream 
-                     passed 
-                     failed)
-  (define (next passed failed)
-    (cons-stream
-     (/ passed (+ passed failed))
-     (monte-carlo
-      (stream-cdr experiment-stream) 
-      passed 
-      failed)))
-  (if (stream-car experiment-stream)
-      (next (+ passed 1) failed)
-      (next passed (+ failed 1))))
+@example rust
+fn monte_carlo_stream(experiments: &Stream<bool>, passed: u32, failed: u32) -> Stream<f64> @{
+    let source = experiments.clone();
+    let (pass, fail) = if *experiments.head() @{
+        (passed + 1, failed)
+    @} else @{
+        (passed, failed + 1)
+    @};
+    cons_stream(
+        f64::from(pass) / f64::from(pass + fail),
+        move || monte_carlo_stream(&source.tail(), pass, fail),
+    )
+@}
 
-(define pi
-  (stream-map
-   (lambda (p) (sqrt (/ 6 p)))
-   (monte-carlo cesaro-stream 0 0)))
-@end lisp
+let pi_estimates: Stream<f64> = stream_map(
+    |p| (6.0 / *p).sqrt(),
+    &monte_carlo_stream(&cesaro_stream, 0, 0),
+);
+@end example
 
 @noindent
 There is considerable modularity in this approach, because we still can
-formulate a general @code{monte-carlo} procedure that can deal with arbitrary
-experiments.  Yet there is no assignment or local state.
+formulate a general @code{monte_carlo_stream} procedure that can deal with
+arbitrary experiments.  Yet there is no assignment or local state.
 
 @quotation
 @strong{@anchor{Exercise 3.81}Exercise 3.81:} @ref{Exercise 3.6} discussed
@@ -2504,12 +2597,15 @@ implementation of a ``withdrawal processor'' that monitors the balance in a
 bank account.  In @ref{3.1.3} we implemented a simplified version of
 such a processor:
 
-@lisp
-(define (make-simplified-withdraw balance)
-  (lambda (amount)
-    (set! balance (- balance amount))
-    balance))
-@end lisp
+@example rust
+fn make_simplified_withdraw(balance: i128) -> impl Fn(i128) -> i128 @{
+    let balance = Cell::new(balance);
+    move |amount| @{
+        balance.set(balance.get() - amount);
+        balance.get()
+    @}
+@}
+@end example
 
 @noindent
 Calls to @code{make-simplified-withdraw} produce computational objects, each
@@ -2523,14 +2619,14 @@ Alternatively, we can model a withdrawal processor as a procedure that takes as
 input a balance and a stream of amounts to withdraw and produces the stream of
 successive balances in the account:
 
-@lisp
-(define (stream-withdraw balance amount-stream)
-  (cons-stream
-   balance
-   (stream-withdraw 
-    (- balance (stream-car amount-stream))
-    (stream-cdr amount-stream))))
-@end lisp
+@example rust
+fn stream_withdraw(balance: i128, amounts: &Stream<i128>) -> Stream<i128> @{
+    let source = amounts.clone();
+    cons_stream(balance, move || @{
+        stream_withdraw(balance - *source.head(), &source.tail())
+    @})
+@}
+@end example
 
 @noindent
 @code{Stream-withdraw} implements a well-defined mathematical function whose
@@ -2608,6 +2704,7 @@ Paul's requests    |  merge  |---->| bank    |---->
 ------------------>|         |     | account |
                    +---------+     +---------+
 @end example
+
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.38a,,143mm,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
@@ -2657,6 +2754,7 @@ mechanics, where thinking of things as individual particles leads to paradoxes
 and confusions.  Unifying the object view with the functional view may have
 little to do with programming, but rather with fundamental epistemological
 issues.}
+
 
 @node    Chapter 4, 4.1, 3.5, Top
 @chapter Metalinguistic Abstraction

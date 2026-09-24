@@ -399,7 +399,7 @@ Notes: Rust 3.47 is a natural fit: `AtomicBool::compare_exchange` is literally t
 | 3.51 | show reveals memoized delay timing | T | T | T | T | count force operations explicitly; chosen: ocaml — implemented as 3.51a, an instrumented delay whose counters separate tail accesses from tail bodies; see report |
 | 3.52 | accum traces assignment plus laziness | A: RefCell sum plus lazy timing | A: ref sum plus Lazy timing | A: Ref sum plus suspend timing | A: var sum plus lazy timing |  |
 | 3.53 | predict self-referential doubling stream | T | T | T | T |  |
-| 3.54 | mul-streams and factorial stream | T | T | T | T | stream of Catalan numbers |
+| 3.54 | mul-streams and factorial stream | T | T | T | T | stream of Catalan numbers (chosen: rust) |
 | 3.55 | partial-sums combinator | T | T | T | T |  |
 | 3.56 | Hamming numbers via merge | T | T | T | T | Hamming numbers with uniqueness proof |
 | 3.57 | fib additions with memoized delay | T | T | T | T |  |

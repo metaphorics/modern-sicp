@@ -363,6 +363,26 @@ path = "examples/sec_3_4_1_time.rs"
 name = "sec_3_4_2_serializers"
 path = "examples/sec_3_4_2_serializers.rs"
 
+[[example]]
+name = "sec_3_5_1_streams"
+path = "examples/sec_3_5_1_streams.rs"
+
+[[example]]
+name = "sec_3_5_2_infinite"
+path = "examples/sec_3_5_2_infinite.rs"
+
+[[example]]
+name = "sec_3_5_3_exploiting"
+path = "examples/sec_3_5_3_exploiting.rs"
+
+[[example]]
+name = "sec_3_5_4_delayed"
+path = "examples/sec_3_5_4_delayed.rs"
+
+[[example]]
+name = "sec_3_5_5_modularity"
+path = "examples/sec_3_5_5_modularity.rs"
+
 [dependencies]
 sicp-runtime = { workspace = true }
 
@@ -469,3 +489,267 @@ path = "../../solutions/ch03/sec_3_48.rs"
 [[test]]
 name = "solution_sec_3_49"
 path = "../../solutions/ch03/sec_3_49.rs"
+
+[[test]]
+name = "scaffold_sec_3_50"
+path = "../../exercises/ch03/sec_3_50.rs"
+
+[[test]]
+name = "solution_sec_3_50"
+path = "../../solutions/ch03/sec_3_50.rs"
+
+[[test]]
+name = "scaffold_sec_3_51"
+path = "../../exercises/ch03/sec_3_51.rs"
+
+[[test]]
+name = "solution_sec_3_51"
+path = "../../solutions/ch03/sec_3_51.rs"
+
+[[test]]
+name = "scaffold_sec_3_52"
+path = "../../exercises/ch03/sec_3_52.rs"
+
+[[test]]
+name = "solution_sec_3_52"
+path = "../../solutions/ch03/sec_3_52.rs"
+
+[[test]]
+name = "scaffold_sec_3_53"
+path = "../../exercises/ch03/sec_3_53.rs"
+
+[[test]]
+name = "solution_sec_3_53"
+path = "../../solutions/ch03/sec_3_53.rs"
+
+[[test]]
+name = "scaffold_sec_3_54"
+path = "../../exercises/ch03/sec_3_54.rs"
+
+[[test]]
+name = "solution_sec_3_54"
+path = "../../solutions/ch03/sec_3_54.rs"
+
+[[test]]
+name = "scaffold_sec_3_55"
+path = "../../exercises/ch03/sec_3_55.rs"
+
+[[test]]
+name = "solution_sec_3_55"
+path = "../../solutions/ch03/sec_3_55.rs"
+
+[[test]]
+name = "scaffold_sec_3_56"
+path = "../../exercises/ch03/sec_3_56.rs"
+
+[[test]]
+name = "solution_sec_3_56"
+path = "../../solutions/ch03/sec_3_56.rs"
+
+[[test]]
+name = "scaffold_sec_3_57"
+path = "../../exercises/ch03/sec_3_57.rs"
+
+[[test]]
+name = "solution_sec_3_57"
+path = "../../solutions/ch03/sec_3_57.rs"
+
+[[test]]
+name = "scaffold_sec_3_58"
+path = "../../exercises/ch03/sec_3_58.rs"
+
+[[test]]
+name = "solution_sec_3_58"
+path = "../../solutions/ch03/sec_3_58.rs"
+
+[[test]]
+name = "scaffold_sec_3_59"
+path = "../../exercises/ch03/sec_3_59.rs"
+
+[[test]]
+name = "solution_sec_3_59"
+path = "../../solutions/ch03/sec_3_59.rs"
+
+[[test]]
+name = "scaffold_sec_3_60"
+path = "../../exercises/ch03/sec_3_60.rs"
+
+[[test]]
+name = "solution_sec_3_60"
+path = "../../solutions/ch03/sec_3_60.rs"
+
+[[test]]
+name = "scaffold_sec_3_61"
+path = "../../exercises/ch03/sec_3_61.rs"
+
+[[test]]
+name = "solution_sec_3_61"
+path = "../../solutions/ch03/sec_3_61.rs"
+
+[[test]]
+name = "scaffold_sec_3_62"
+path = "../../exercises/ch03/sec_3_62.rs"
+
+[[test]]
+name = "solution_sec_3_62"
+path = "../../solutions/ch03/sec_3_62.rs"
+
+[[test]]
+name = "scaffold_sec_3_63"
+path = "../../exercises/ch03/sec_3_63.rs"
+
+[[test]]
+name = "solution_sec_3_63"
+path = "../../solutions/ch03/sec_3_63.rs"
+
+[[test]]
+name = "scaffold_sec_3_64"
+path = "../../exercises/ch03/sec_3_64.rs"
+
+[[test]]
+name = "solution_sec_3_64"
+path = "../../solutions/ch03/sec_3_64.rs"
+
+[[test]]
+name = "scaffold_sec_3_65"
+path = "../../exercises/ch03/sec_3_65.rs"
+
+[[test]]
+name = "solution_sec_3_65"
+path = "../../solutions/ch03/sec_3_65.rs"
+
+[[test]]
+name = "scaffold_sec_3_66"
+path = "../../exercises/ch03/sec_3_66.rs"
+
+[[test]]
+name = "solution_sec_3_66"
+path = "../../solutions/ch03/sec_3_66.rs"
+
+[[test]]
+name = "scaffold_sec_3_67"
+path = "../../exercises/ch03/sec_3_67.rs"
+
+[[test]]
+name = "solution_sec_3_67"
+path = "../../solutions/ch03/sec_3_67.rs"
+
+[[test]]
+name = "scaffold_sec_3_68"
+path = "../../exercises/ch03/sec_3_68.rs"
+
+[[test]]
+name = "solution_sec_3_68"
+path = "../../solutions/ch03/sec_3_68.rs"
+
+[[test]]
+name = "scaffold_sec_3_69"
+path = "../../exercises/ch03/sec_3_69.rs"
+
+[[test]]
+name = "solution_sec_3_69"
+path = "../../solutions/ch03/sec_3_69.rs"
+
+[[test]]
+name = "scaffold_sec_3_70"
+path = "../../exercises/ch03/sec_3_70.rs"
+
+[[test]]
+name = "solution_sec_3_70"
+path = "../../solutions/ch03/sec_3_70.rs"
+
+[[test]]
+name = "scaffold_sec_3_71"
+path = "../../exercises/ch03/sec_3_71.rs"
+
+[[test]]
+name = "solution_sec_3_71"
+path = "../../solutions/ch03/sec_3_71.rs"
+
+[[test]]
+name = "scaffold_sec_3_72"
+path = "../../exercises/ch03/sec_3_72.rs"
+
+[[test]]
+name = "solution_sec_3_72"
+path = "../../solutions/ch03/sec_3_72.rs"
+
+[[test]]
+name = "scaffold_sec_3_73"
+path = "../../exercises/ch03/sec_3_73.rs"
+
+[[test]]
+name = "solution_sec_3_73"
+path = "../../solutions/ch03/sec_3_73.rs"
+
+[[test]]
+name = "scaffold_sec_3_74"
+path = "../../exercises/ch03/sec_3_74.rs"
+
+[[test]]
+name = "solution_sec_3_74"
+path = "../../solutions/ch03/sec_3_74.rs"
+
+[[test]]
+name = "scaffold_sec_3_75"
+path = "../../exercises/ch03/sec_3_75.rs"
+
+[[test]]
+name = "solution_sec_3_75"
+path = "../../solutions/ch03/sec_3_75.rs"
+
+[[test]]
+name = "scaffold_sec_3_76"
+path = "../../exercises/ch03/sec_3_76.rs"
+
+[[test]]
+name = "solution_sec_3_76"
+path = "../../solutions/ch03/sec_3_76.rs"
+
+[[test]]
+name = "scaffold_sec_3_77"
+path = "../../exercises/ch03/sec_3_77.rs"
+
+[[test]]
+name = "solution_sec_3_77"
+path = "../../solutions/ch03/sec_3_77.rs"
+
+[[test]]
+name = "scaffold_sec_3_78"
+path = "../../exercises/ch03/sec_3_78.rs"
+
+[[test]]
+name = "solution_sec_3_78"
+path = "../../solutions/ch03/sec_3_78.rs"
+
+[[test]]
+name = "scaffold_sec_3_79"
+path = "../../exercises/ch03/sec_3_79.rs"
+
+[[test]]
+name = "solution_sec_3_79"
+path = "../../solutions/ch03/sec_3_79.rs"
+
+[[test]]
+name = "scaffold_sec_3_80"
+path = "../../exercises/ch03/sec_3_80.rs"
+
+[[test]]
+name = "solution_sec_3_80"
+path = "../../solutions/ch03/sec_3_80.rs"
+
+[[test]]
+name = "scaffold_sec_3_81"
+path = "../../exercises/ch03/sec_3_81.rs"
+
+[[test]]
+name = "solution_sec_3_81"
+path = "../../solutions/ch03/sec_3_81.rs"
+
+[[test]]
+name = "scaffold_sec_3_82"
+path = "../../exercises/ch03/sec_3_82.rs"
+
+[[test]]
+name = "solution_sec_3_82"
+path = "../../solutions/ch03/sec_3_82.rs"

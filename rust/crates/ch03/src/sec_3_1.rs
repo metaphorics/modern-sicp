@@ -139,10 +139,14 @@ impl Account {
 /// from, so every run of the chapter is reproducible.
 pub const RANDOM_INIT: u64 = 1;
 
-/// The book's `rand-update`: one step of the seeded `xorshift64*`
-/// generator (Vigna 2016) that the runtime's `Random` also uses. It is
-/// a mathematical function of its input: the same word in, the same
-/// word out, every time.
+/// The book's `rand-update`: one step of this edition's pure generator,
+/// `xorshift64*` (Vigna 2016) with the multiplied word fed back as the
+/// next state. It is a mathematical function of its input: the same word
+/// in, the same word out, every time, which is what the stream
+/// formulations of 3.5.5 map. The runtime's stateful `Random` keeps the
+/// multiplied word out of its state, so the two agree on the first word
+/// from a shared seed and differ after; both are deterministic and the
+/// first word matches the edition's fixed vector.
 #[must_use]
 pub fn rand_update(x: u64) -> u64 {
     let x = x ^ (x >> 12);

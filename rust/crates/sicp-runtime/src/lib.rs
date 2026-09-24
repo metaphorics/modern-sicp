@@ -31,5 +31,5 @@ pub use optable::OpTable;
 pub use pair::{ConsCell, Pair, car, cdr, cons_cell, eq_pair, set_car, set_cdr};
 pub use pending::Pending;
 pub use random::Random;
-pub use stream::{SNode, Stream};
+pub use stream::{Stream, StreamIter};
 pub use value::{Closure, CompiledProc, Handler, Symbol, ThunkState, Value};

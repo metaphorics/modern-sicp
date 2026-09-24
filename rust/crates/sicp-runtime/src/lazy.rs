@@ -8,11 +8,28 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// A memoized thunk: the generator is dropped on first force, the memoized
-/// value survives. Not `Sync`: the runtime is single-threaded.
-pub struct Lazy<T> {
+/// The shared interior of one [`Lazy`]: cloning the `Lazy` clones a
+/// pointer to this cell, so every clone forces the same generator once
+/// and shares the one memo -- the book's thunk is a single promise, and
+/// a stream's clones share its spine for exactly this reason.
+struct LazyCell<T> {
     f: RefCell<Option<Box<dyn FnOnce() -> T>>>,
     memo: RefCell<Option<Rc<T>>>,
+}
+
+/// A memoized thunk: the generator is dropped on first force, the memoized
+/// value survives. Cloning hands out another pointer to the same promise.
+/// Not `Sync`: the runtime is single-threaded.
+pub struct Lazy<T> {
+    cell: Rc<LazyCell<T>>,
+}
+
+impl<T> Clone for Lazy<T> {
+    fn clone(&self) -> Self {
+        Lazy {
+            cell: Rc::clone(&self.cell),
+        }
+    }
 }
 
 impl<T: 'static> Lazy<T> {
@@ -20,8 +37,10 @@ impl<T: 'static> Lazy<T> {
     #[must_use]
     pub fn new(f: impl FnOnce() -> T + 'static) -> Self {
         Lazy {
-            f: RefCell::new(Some(Box::new(f))),
-            memo: RefCell::new(None),
+            cell: Rc::new(LazyCell {
+                f: RefCell::new(Some(Box::new(f))),
+                memo: RefCell::new(None),
+            }),
         }
     }
 
@@ -33,24 +52,25 @@ impl<T: 'static> Lazy<T> {
     /// finished: the book's memoized thunk has no defined value there
     /// either, and silently re-running the body would break the once-only
     /// guarantee 4.2 teaches.
+    #[must_use]
     pub fn force(&self) -> Rc<T> {
-        if let Some(v) = &*self.memo.borrow() {
+        if let Some(v) = &*self.cell.memo.borrow() {
             return Rc::clone(v);
         }
-        let f = self.f.borrow_mut().take();
+        let f = self.cell.f.borrow_mut().take();
         // Taking the generator before running it is what makes reentrant
         // forcing a loud panic instead of a silent double run.
         let value = Rc::new(f
             .expect("Lazy forced reentrantly before its first force finished")(
         ));
-        *self.memo.borrow_mut() = Some(Rc::clone(&value));
+        *self.cell.memo.borrow_mut() = Some(Rc::clone(&value));
         value
     }
 
     /// True once the generator has run and the memo is set.
     #[must_use]
     pub fn is_forced(&self) -> bool {
-        self.memo.borrow().is_some()
+        self.cell.memo.borrow().is_some()
     }
 }
 
@@ -94,6 +114,22 @@ mod tests {
     }
 
     #[test]
+    fn clone_shares_the_one_promise_and_memo() {
+        let calls = Rc::new(Cell::new(0u32));
+        let calls_in_body = Rc::clone(&calls);
+        let l = Lazy::new(move || {
+            calls_in_body.set(calls_in_body.get() + 1);
+            7
+        });
+        let l2 = l.clone();
+        let a = l.force();
+        let b = l2.force();
+        assert_eq!((*a, *b), (7, 7));
+        assert_eq!(calls.get(), 1, "the clone forced the same generator once");
+        assert!(Rc::ptr_eq(&a, &b));
+    }
+
+    #[test]
     fn forcing_one_lazy_does_not_run_another() {
         let ran = Rc::new(Cell::new(false));
         let ran_in_body = Rc::clone(&ran);
@@ -101,7 +137,7 @@ mod tests {
             ran_in_body.set(true);
         });
         assert!(!ran.get());
-        l.force();
+        let _ = l.force();
         assert!(ran.get());
     }
 

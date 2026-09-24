@@ -12,6 +12,9 @@ autotests = false
 path = "src/lib.rs"
 
 [[test]]
+name = "corpus_core"
+path = "tests/corpus_core.rs"
+[[test]]
 name = "scaffold_sec_4_1"
 path = "../../exercises/ch04/sec_4_1.rs"
 
@@ -42,6 +45,199 @@ path = "../../solutions/ch04/sec_4_3.rs"
 [[test]]
 name = "solution_sec_4_4"
 path = "../../solutions/ch04/sec_4_4.rs"
+
+[[example]]
+name = "sec_4_1_0_reader"
+path = "examples/sec_4_1_0_reader.rs"
+
+[[example]]
+name = "sec_4_1_1_eval_apply"
+path = "examples/sec_4_1_1_eval_apply.rs"
+
+[[example]]
+name = "sec_4_1_2_expressions"
+path = "examples/sec_4_1_2_expressions.rs"
+
+[[example]]
+name = "sec_4_1_3_frames"
+path = "examples/sec_4_1_3_frames.rs"
+
+[[example]]
+name = "sec_4_1_4_driver"
+path = "examples/sec_4_1_4_driver.rs"
+
+[[example]]
+name = "sec_4_1_5_data_as_programs"
+path = "examples/sec_4_1_5_data_as_programs.rs"
+
+[[example]]
+name = "sec_4_1_6_internal_definitions"
+path = "examples/sec_4_1_6_internal_definitions.rs"
+
+[[example]]
+name = "sec_4_1_7_analyze"
+path = "examples/sec_4_1_7_analyze.rs"
+
+
+[[test]]
+name = "scaffold_sec_4_5"
+path = "../../exercises/ch04/sec_4_5.rs"
+
+[[test]]
+name = "solution_sec_4_5"
+path = "../../solutions/ch04/sec_4_5.rs"
+
+[[test]]
+name = "scaffold_sec_4_6"
+path = "../../exercises/ch04/sec_4_6.rs"
+
+[[test]]
+name = "solution_sec_4_6"
+path = "../../solutions/ch04/sec_4_6.rs"
+
+[[test]]
+name = "scaffold_sec_4_7"
+path = "../../exercises/ch04/sec_4_7.rs"
+
+[[test]]
+name = "solution_sec_4_7"
+path = "../../solutions/ch04/sec_4_7.rs"
+
+[[test]]
+name = "scaffold_sec_4_8"
+path = "../../exercises/ch04/sec_4_8.rs"
+
+[[test]]
+name = "solution_sec_4_8"
+path = "../../solutions/ch04/sec_4_8.rs"
+
+[[test]]
+name = "scaffold_sec_4_9"
+path = "../../exercises/ch04/sec_4_9.rs"
+
+[[test]]
+name = "solution_sec_4_9"
+path = "../../solutions/ch04/sec_4_9.rs"
+
+[[test]]
+name = "scaffold_sec_4_10"
+path = "../../exercises/ch04/sec_4_10.rs"
+
+[[test]]
+name = "solution_sec_4_10"
+path = "../../solutions/ch04/sec_4_10.rs"
+
+[[test]]
+name = "scaffold_sec_4_11"
+path = "../../exercises/ch04/sec_4_11.rs"
+
+[[test]]
+name = "solution_sec_4_11"
+path = "../../solutions/ch04/sec_4_11.rs"
+
+[[test]]
+name = "scaffold_sec_4_12"
+path = "../../exercises/ch04/sec_4_12.rs"
+
+[[test]]
+name = "solution_sec_4_12"
+path = "../../solutions/ch04/sec_4_12.rs"
+
+[[test]]
+name = "scaffold_sec_4_13"
+path = "../../exercises/ch04/sec_4_13.rs"
+
+[[test]]
+name = "solution_sec_4_13"
+path = "../../solutions/ch04/sec_4_13.rs"
+
+[[test]]
+name = "scaffold_sec_4_14"
+path = "../../exercises/ch04/sec_4_14.rs"
+
+[[test]]
+name = "solution_sec_4_14"
+path = "../../solutions/ch04/sec_4_14.rs"
+
+[[test]]
+name = "scaffold_sec_4_15"
+path = "../../exercises/ch04/sec_4_15.rs"
+
+[[test]]
+name = "solution_sec_4_15"
+path = "../../solutions/ch04/sec_4_15.rs"
+
+[[test]]
+name = "scaffold_sec_4_16"
+path = "../../exercises/ch04/sec_4_16.rs"
+
+[[test]]
+name = "solution_sec_4_16"
+path = "../../solutions/ch04/sec_4_16.rs"
+
+[[test]]
+name = "scaffold_sec_4_17"
+path = "../../exercises/ch04/sec_4_17.rs"
+
+[[test]]
+name = "solution_sec_4_17"
+path = "../../solutions/ch04/sec_4_17.rs"
+
+[[test]]
+name = "scaffold_sec_4_18"
+path = "../../exercises/ch04/sec_4_18.rs"
+
+[[test]]
+name = "solution_sec_4_18"
+path = "../../solutions/ch04/sec_4_18.rs"
+
+[[test]]
+name = "scaffold_sec_4_19"
+path = "../../exercises/ch04/sec_4_19.rs"
+
+[[test]]
+name = "solution_sec_4_19"
+path = "../../solutions/ch04/sec_4_19.rs"
+
+[[test]]
+name = "scaffold_sec_4_20"
+path = "../../exercises/ch04/sec_4_20.rs"
+
+[[test]]
+name = "solution_sec_4_20"
+path = "../../solutions/ch04/sec_4_20.rs"
+
+[[test]]
+name = "scaffold_sec_4_21"
+path = "../../exercises/ch04/sec_4_21.rs"
+
+[[test]]
+name = "solution_sec_4_21"
+path = "../../solutions/ch04/sec_4_21.rs"
+
+[[test]]
+name = "scaffold_sec_4_22"
+path = "../../exercises/ch04/sec_4_22.rs"
+
+[[test]]
+name = "solution_sec_4_22"
+path = "../../solutions/ch04/sec_4_22.rs"
+
+[[test]]
+name = "scaffold_sec_4_23"
+path = "../../exercises/ch04/sec_4_23.rs"
+
+[[test]]
+name = "solution_sec_4_23"
+path = "../../solutions/ch04/sec_4_23.rs"
+
+[[test]]
+name = "scaffold_sec_4_24"
+path = "../../exercises/ch04/sec_4_24.rs"
+
+[[test]]
+name = "solution_sec_4_24"
+path = "../../solutions/ch04/sec_4_24.rs"
 
 [dependencies]
 sicp-runtime = { workspace = true }

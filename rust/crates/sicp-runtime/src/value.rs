@@ -74,9 +74,13 @@ pub enum Value {
 
 /// A compound procedure: the parameter names, the optional `.`-style rest
 /// parameter, the body forms evaluated in order, and the environment the
-/// `lambda` captured.
+/// `lambda` captured. The name is the definition name when the procedure
+/// was made by a `(define (name ...))` form, which the printer prints as
+/// `#[compound-procedure name]`.
 #[derive(Clone, Debug)]
 pub struct Closure {
+    /// The definition name, when the procedure has one.
+    pub name: Option<Symbol>,
     /// The required parameter names, in order.
     pub params: Vec<Symbol>,
     /// The rest parameter after `.`, if the form has one.
@@ -445,6 +449,7 @@ mod tests {
         assert_eq!(primitive.to_string(), "#[primitive identity]");
 
         let closure = Value::Closure(Rc::new(Closure {
+            name: None,
             params: vec![Rc::from("x")],
             rest: None,
             body: vec![Value::sym("x")],

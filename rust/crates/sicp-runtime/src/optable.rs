@@ -16,11 +16,15 @@ use crate::value::Handler;
 
 /// The `(operation, tag) -> handler` table behind `put` and `get`.
 /// Cloning is not implemented on purpose: one program has one table, and
-/// sections share it by `Rc` when they need aliasing.
+/// sections share it by `Rc` when they need aliasing. The element type
+/// defaults to the runtime [`Handler`]; a section whose handlers need
+/// more context in scope (4.3's evaluation clauses carry the environment
+/// and the dispatcher) keys the same registry shape with its own element
+/// type.
 #[derive(Default)]
-pub struct OpTable(RefCell<HashMap<(Key, Key), Handler>>);
+pub struct OpTable<T = Handler>(RefCell<HashMap<(Key, Key), T>>);
 
-impl OpTable {
+impl<T> OpTable<T> {
     /// An empty table.
     #[must_use]
     pub fn new() -> Self {
@@ -29,14 +33,16 @@ impl OpTable {
 
     /// The book's `put`: installs `handler` under the `(op, tag)` pair,
     /// overwriting any earlier install of exactly that pair.
-    pub fn put(&self, op: Key, tag: Key, handler: Handler) {
+    pub fn put(&self, op: Key, tag: Key, handler: T) {
         self.0.borrow_mut().insert((op, tag), handler);
     }
+}
 
+impl<T: Clone> OpTable<T> {
     /// The book's `get`: the handler under `(op, tag)`, or the absent
     /// option on a miss — never a false-ish sentinel.
     #[must_use]
-    pub fn get(&self, op: &Key, tag: &Key) -> Option<Handler> {
+    pub fn get(&self, op: &Key, tag: &Key) -> Option<T> {
         self.0.borrow().get(&(op.clone(), tag.clone())).cloned()
     }
 }
@@ -57,7 +63,7 @@ mod tests {
 
     #[test]
     fn put_then_get_returns_the_handler() {
-        let table = OpTable::new();
+        let table: OpTable = OpTable::new();
         table.put(Key::sym("real-part"), Key::sym("rectangular"), constant(1));
         let h = table
             .get(&Key::sym("real-part"), &Key::sym("rectangular"))
@@ -67,13 +73,13 @@ mod tests {
 
     #[test]
     fn missing_key_returns_the_absent_option() {
-        let table = OpTable::new();
+        let table: OpTable = OpTable::new();
         assert!(table.get(&Key::sym("nope"), &Key::sym("polar")).is_none());
     }
 
     #[test]
     fn later_install_overwrites_earlier() {
-        let table = OpTable::new();
+        let table: OpTable = OpTable::new();
         let op = Key::sym("add");
         let tag = Key::sym("scheme-number");
         table.put(op.clone(), tag.clone(), constant(1));
@@ -84,7 +90,7 @@ mod tests {
 
     #[test]
     fn tags_and_operations_dispatch_independently() {
-        let table = OpTable::new();
+        let table: OpTable = OpTable::new();
         table.put(Key::sym("real-part"), Key::sym("rectangular"), constant(1));
         table.put(Key::sym("real-part"), Key::sym("polar"), constant(2));
         table.put(Key::sym("imag-part"), Key::sym("rectangular"), constant(3));
@@ -103,7 +109,7 @@ mod tests {
 
     #[test]
     fn handlers_receive_the_argument_slice() {
-        let table = OpTable::new();
+        let table: OpTable = OpTable::new();
         table.put(
             Key::sym("add"),
             Key::sym("scheme-number"),

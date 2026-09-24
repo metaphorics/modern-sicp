@@ -17,7 +17,9 @@ mod number;
 mod optable;
 mod pair;
 mod pending;
+mod printer;
 mod random;
+mod reader;
 mod stream;
 mod value;
 
@@ -30,6 +32,8 @@ pub use number::Number;
 pub use optable::OpTable;
 pub use pair::{ConsCell, Pair, car, cdr, cons_cell, eq_pair, set_car, set_cdr};
 pub use pending::Pending;
+pub use printer::{display_value, float_string, print_value};
 pub use random::Random;
+pub use reader::{read, read_program};
 pub use stream::{Stream, StreamIter};
 pub use value::{Closure, CompiledProc, Handler, Symbol, ThunkState, Value};

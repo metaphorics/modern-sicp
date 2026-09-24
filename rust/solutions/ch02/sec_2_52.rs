@@ -23,11 +23,11 @@ mod ex_2_52 {
     }
 
     /// Exercise 2.52b: a corner split that branches with one copy of
-    /// each split image. Where the book's `corner-split` places an
-    /// `up-split` result beside the painter and a `right-split` result
-    /// below it and then recurses on the corner, this arrangement puts
-    /// the painter, one `up-split`, one `right-split`, and the
-    /// recursive corner into the four quadrants directly.
+    /// each split image. Where the book's `corner-split` reuses one
+    /// `up-split` and one `right-split` result twice each and recurses
+    /// on the corner, this arrangement puts the painter, one
+    /// `up-split`, one `right-split`, and the recursive corner into
+    /// the four quadrants directly.
     pub fn corner_split_variant(painter: &Painter, n: u32) -> Painter {
         if n == 0 {
             return Rc::clone(painter);

@@ -1,4 +1,110 @@
-@node	0.5, 0.6, Chapter 0, Chapter 0
+@node	0.5, 0.6, 0.4, Chapter 0
 @section Mutation and ownership
 
 This section covers the language's mutable cell, aliasing, and identity.
+TypeScript has neither Rust's ownership rules nor a separate mutable-cell
+type: the mutable cell is a @code{let}, and the interesting questions are
+when this book permits one and what it costs.
+
+@heading The captured @code{let}
+
+A @code{let} declared in a function body is one mutable cell, and a
+function that mentions it closes over the cell itself, not a copy. Two
+closures made by the same call share one cell; two calls make two cells.
+That is exactly the mechanism section @ref{3.1} exists to teach, which is
+why this edition writes it with a plain @code{let} rather than hiding the
+cell inside a class:
+
+@example typescript
+const makeCounter = (start: number): (() => number) => @{
+  let n = start;
+  return () => @{
+    n += 1;
+    return n;
+  @};
+@};
+
+const c1 = makeCounter(0);
+const c2 = makeCounter(0);
+
+c1()
+// => 1
+
+c1()
+// => 2
+
+c2()
+// => 1
+@end example
+
+@example typescript
+const makeWithdrawer = (balance: number): ((amount: number) => number) => @{
+  let b = balance;
+  return (amount) => @{
+    b -= amount;
+    return b;
+  @};
+@};
+
+const w = makeWithdrawer(100);
+
+w(30)
+// => 70
+
+w(20)
+// => 50
+@end example
+
+@noindent
+The house rule follows from this: a @code{const} everywhere is the
+default, and a captured @code{let} appears only where the book itself
+assigns, which in this edition means the closure state of @ref{3.1} and
+@ref{3.2}, the simulator internals of chapters 4 and 5, and the one table
+and queue implementation of @ref{3.3}. Everywhere else the listings are
+assignment-free. From @ref{3.1} the same assignment also becomes visible
+in the type of the code: @code{Effect} and its @code{Ref} enter under
+their own names, and a function that reads or writes a @code{Ref} says so
+in its signature. This primer stays below that line; the cells here are
+plain @code{let}.
+
+@heading Aliasing and identity
+
+Mutating one object is visible through every name that holds it. An
+object lives once, and @code{const} freezes the binding, not the object,
+so a non-readonly field changes under every alias:
+
+@example typescript
+interface Cell @{
+  value: number;
+@}
+
+const cell: Cell = @{ value: 1 @};
+const alias = cell;
+
+cell.value = 9;
+
+alias.value
+// => 9
+
+alias === cell
+// => true
+@end example
+
+@noindent
+This is the price and the point of chapter 3: two names for one mutable
+object behave as one object. The interpreted pairs of @ref{3.3.1} are
+built exactly here, a pair whose fields may be assigned, and
+@code{eq?} on pairs is @code{===}, so identity is the question the book
+asks of them. The persistent structures of @ref{0.4} exist precisely so
+that the rest of the book never has to reason about such sharing.
+
+Ownership, in the sense of the Rust edition, has no TypeScript
+counterpart: the collector reclaims unreachable objects, and the book's
+aliasing arguments are made with @code{===}, not with lifetimes. The
+runnable version of this section's listings is
+@file{packages/ch0/src/05-mutation.ts}, asserted by the test file beside
+it.
+
+@cindex let
+@cindex aliasing
+@cindex identity

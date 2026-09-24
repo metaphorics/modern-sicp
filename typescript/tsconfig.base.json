@@ -15,8 +15,7 @@
     "allowUnreachableCode": false,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
-    "isolatedDeclarations": true,
-    "declaration": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
     "skipLibCheck": true
   }

@@ -4,6 +4,7 @@
     "rootDir": "../.."
   },
   "include": [
+    "src/**/*.ts",
     "../../examples/ch1/**/*.ts",
     "../../exercises/ch1/**/*.ts",
     "../../solutions/ch1/**/*.ts"

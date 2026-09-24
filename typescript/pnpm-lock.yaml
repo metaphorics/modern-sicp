@@ -191,7 +191,104 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6))
 
-  packages/ch1: {}
+  packages/ch0:
+    dependencies:
+      effect:
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6)))
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6))
+
+  packages/ch1:
+    dependencies:
+      effect:
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6)))
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6))
+
+  packages/ch2:
+    dependencies:
+      effect:
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6)))
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6))
+
+  packages/ch3:
+    dependencies:
+      effect:
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6)))
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6))
+
+  packages/ch4:
+    dependencies:
+      effect:
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6)))
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6))
+
+  packages/ch5:
+    dependencies:
+      '@sicp-ts/ch4':
+        specifier: workspace:*
+        version: link:../ch4
+      effect:
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.0.0-rc.117
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6)))
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@24.13.6)(vite@8.3.0(@types/node@24.13.6))
 
 packages:
 

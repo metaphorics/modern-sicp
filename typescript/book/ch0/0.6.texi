@@ -1,4 +1,123 @@
-@node	0.6, 0.7, Chapter 0, Chapter 0
+@node	0.6, 0.7, 0.5, Chapter 0
 @section Errors as values
 
-This section covers the edition's error type and how this book uses it.
+This section covers the edition's error type and how this book uses it. No
+exception crosses library code in this book: a fallible operation returns
+its error as an ordinary value, and the caller decides where it becomes a
+result.
+
+@heading @code{Result}: the two-sided value
+
+The book's two-sided result is one discriminated union, @code{Result}:
+
+@example typescript
+type Result<A, E> =
+  | @{ readonly _tag: "Ok"; readonly value: A @}
+  | @{ readonly _tag: "Error"; readonly error: E @};
+
+const ok = <A>(value: A): Result<A, never> => (@{ _tag: "Ok", value @});
+const err = <E>(error: E): Result<never, E> => (@{ _tag: "Error", error @});
+@end example
+
+@noindent
+A fallible operation returns @code{Ok} of the value on success and
+@code{Error} of the failure otherwise. The failure type is part of the
+signature, so a caller can see what can go wrong before calling. The
+parse errors of this section's example are one variant per failure mode,
+the union of @ref{0.4} again:
+
+@example typescript
+type PortError =
+  | @{ readonly _tag: "Blank" @}
+  | @{ readonly _tag: "NotDigits"; readonly input: string @}
+  | @{ readonly _tag: "OutOfRange"; readonly n: number @};
+
+const parsePort = (s: string): Result<number, PortError> => @{
+  const t = s.trim();
+  if (t.length === 0) @{
+    return err(@{ _tag: "Blank" @});
+  @}
+  if (!/^[0-9]+$/.test(t)) @{
+    return err(@{ _tag: "NotDigits", input: s @});
+  @}
+  const n = Number(t);
+  if (n < 1 || n > 65535) @{
+    return err(@{ _tag: "OutOfRange", n @});
+  @}
+  return ok(n);
+@};
+@end example
+
+@noindent
+Since no error throws, the code after a guard needs no branch for the
+failure: the guard returns, and the rest of the body is the success path.
+
+@example typescript
+parsePort(" 8080 ")
+// => @{ _tag: "Ok", value: 8080 @}
+
+parsePort("80x0")
+// => @{ _tag: "Error", error: @{ _tag: "NotDigits", input: "80x0" @} @}
+
+parsePort("99999")
+// => @{ _tag: "Error", error: @{ _tag: "OutOfRange", n: 99999 @} @}
+@end example
+
+@heading Per-domain error sets
+
+The error type is a union of the domain, one variant per failure mode, so
+a caller can dispatch on errors with the exhaustive @code{switch} of
+@ref{0.4}:
+
+@example typescript
+const renderError = (e: PortError): string => @{
+  switch (e._tag) @{
+    case "Blank":
+      return "blank input";
+    case "NotDigits":
+      return `not digits: ${e.input}`;
+    case "OutOfRange":
+      return `out of range: ${e.n}`;
+  @}
+@};
+@end example
+
+@noindent
+This book keeps error sets per domain: the account of @ref{3.1} carries
+@code{AccountError}, the interval arithmetic of @ref{2.1.4} carries
+@code{IntervalError}, and so on. From @ref{3.1} the failures themselves
+move onto Effect's typed error channel, and the classes there are
+@code{Schema.TaggedError} classes; chapters 1 and 2 keep plain
+@code{Result} values like this one and import no Effect module at all.
+One error set is shared by every chapter from 4 on that runs interpreted
+programs: the evaluator's error classes, whose variants carry the book's
+runtime faults, from an unbound name to a wrong arity.
+
+@heading What this buys
+
+Three consequences follow and are used without further comment later.
+Errors compose: a helper that returns @code{Result} composes with any
+other, and no try-and-rethrow plumbing appears. Errors stay typed all the
+way to the driver: an error value is data that tests can compare, which
+is how the exercises of @ref{3.1} pin failure behavior. And test failure
+paths cost the same as success paths: a probe asserts
+@code{err(@{ _tag: "Blank" @})} where an exception-based design would
+assert a throw. The runnable version of this section's listings is
+@file{packages/ch0/src/06-errors.ts}, asserted by the test file beside
+it.
+
+@strong{@anchor{Exercise 0.5}Exercise 0.5:} The scaffold gives you
+@code{parseAmountEager}, a parser for non-negative amounts that throws
+@code{RangeError} on blank input and @code{TypeError} on input containing
+any character outside @code{0..9} after trimming spaces, alongside a
+@code{ParseError} union with @code{Blank} and @code{NotDigits} variants.
+Write @code{parseAmount} with the same behavior, returning
+@code{Result<number, ParseError>} instead of throwing. Test both sides:
+digits with surrounding spaces parse to their value, blank input is a
+@code{Blank} error, a stray character is a @code{NotDigits} error
+carrying the original input, and the eager original still throws where
+your version returns a value.
+
+@cindex Result
+@cindex exception
+@cindex error channel

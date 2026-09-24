@@ -1,4 +1,108 @@
 @node	0.1, 0.2, Chapter 0, Chapter 0
 @section Running this book
 
-This section covers the pinned toolchain, the just recipes, the layout of examples/, exercises/, and solutions/, and how a test proves an exercise.
+This section covers the pinned toolchain, the @command{just} recipes, the
+layout of @file{examples/}, @file{exercises/}, and @file{solutions/}, and how
+a test proves an exercise. Running the code is optional: every result a
+listing displays is also written in the listing as a comment, so the book
+reads standalone in print, HTML, and EPUB alike.
+
+@heading The toolchain
+
+The TypeScript edition is a pnpm workspace. The pins live once in
+@file{typescript/package.json}, and every chapter package builds against
+them:
+
+@multitable @columnfractions .50 .45
+@item Node, pinned by @file{.node-version} @tab 24.21.0
+@item pnpm @tab 12.5.1
+@item TypeScript @tab 7.0.2
+@item vitest @tab 5.0.1
+@item fast-check @tab 4.10.2
+@item Biome, formatter and linter @tab 2.5.14
+@item Effect and @@effect/vitest @tab 4.0.0-rc.117
+@end multitable
+
+@noindent
+The compiler settings are house rules, not suggestions.
+@file{tsconfig.base.json} turns on @code{strict} and keeps it company:
+@code{noUncheckedIndexedAccess} makes every index read a possibility of
+nothing, @code{exactOptionalPropertyTypes} keeps ``absent'' and
+``undefined'' distinct, and @code{verbatimModuleSyntax} keeps the type and
+value worlds apart at import time. Two prohibitions the settings cannot
+express are enforced in review: no @code{any}, and no non-null assertion.
+Biome owns formatting and linting in one pass, so a listing in this book is
+formatted the way @command{biome check} would leave it.
+
+@heading The layout
+
+The @file{typescript/} tree holds six chapter packages, @code{ch0} through
+@code{ch5}, under @file{packages/}. Each is a workspace package named
+@code{@@sicp-ts/ch@var{N}}, whose @file{src/} carries the book listings,
+numbered in section order, one file per section. Three directories at the
+workspace root carry the code the reader writes, and every chapter package
+compiles and tests them beside its own sources:
+
+@multitable @columnfractions .38 .57
+@item Directory @tab Contents
+@item @file{typescript/examples/ch@var{N}/} @tab runnable demos beyond the listings, one file each, tested
+@item @file{typescript/exercises/ch@var{N}/} @tab one scaffold per exercise, @file{ex_N_MM.ts}, statement as a doc comment
+@item @file{typescript/solutions/ch@var{N}/} @tab the same file names as @file{exercises/}, solved, tested, with a rationale @file{ex_N_MM.md}
+@end multitable
+
+@noindent
+Chapter 0 itself is the primer you are reading; its package carries the
+sections' listings in @file{packages/ch0/src/}, and @ref{0.2} through
+@ref{0.8} use them as they teach.
+
+@heading The recipes
+
+The @command{just} recipes wrap the commands worth remembering:
+
+@example
+just setup      # mise install, corepack enable, pnpm install --frozen-lockfile
+just fmt        # pnpm biome format .
+just lint       # pnpm biome check . + tsc --noEmit in every chapter package
+just test       # pnpm vitest run
+just scaffold   # the pending report: pnpm vitest run --reporter=verbose, todo lines only
+@end example
+
+@noindent
+@command{just lint} is the gate: it fixes nothing, checks formatting,
+applies the linter, and type-checks all six chapter packages under the
+strict settings. A scaffold that is still pending does not break it, which
+is what @code{PendingSolution} is for (@ref{0.7}).
+
+@heading How a test proves an exercise
+
+Every exercise in this book carries three artifacts. The statement lives in
+the section text. The scaffold lives in @file{exercises/}: a function body
+that throws @code{PendingSolution} and a @code{test.todo} carrying the
+exercise's name, so the scaffold compiles and the gate stays green while it
+is unsolved. The solution lives in @file{solutions/} under the same name: a
+real implementation whose test asserts exactly the values the book's
+statement leads to, with a short rationale beside it. A listing file proves
+itself the same way, which the shortest example in the book shows in full:
+
+@example typescript
+export const square = (x: number): number => x * x;
+@end example
+
+@noindent
+The definition is the listing; the test is the proof. The file is
+@file{packages/ch0/src/01-running-this-book.ts}, and its call reads
+@code{square(21)} with the result written beside it:
+
+@example typescript
+square(21)
+// => 441
+@end example
+
+@noindent
+That comment shape is the book's interaction convention, introduced for
+real in @ref{0.2} and specified in @ref{0.8}.
+
+@cindex pnpm
+@cindex vitest
+@cindex Biome
+@cindex PendingSolution

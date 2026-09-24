@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     name: "ch1",
     include: [
+      "src/**/*.test.ts",
       "../../examples/ch1/**/*.test.ts",
       "../../exercises/ch1/**/*.test.ts",
       "../../solutions/ch1/**/*.test.ts",

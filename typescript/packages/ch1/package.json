@@ -1,5 +1,16 @@
 {
-  "name": "@modern-sicp/ch1",
+  "name": "@sicp-ts/ch1",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "effect": "4.0.0-rc.117"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0-rc.117",
+    "fast-check": "4.10.2",
+    "vitest": "5.0.1"
+  }
 }

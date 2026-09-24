@@ -1,12 +1,38 @@
 (library
  (name sicp_ch3_exercises)
- (libraries sicp_common)
+ (libraries sicp_common sicp_ch3)
  (modules
   sec_3_1
   sec_3_10
   sec_3_11
+  sec_3_12
+  sec_3_13
+  sec_3_14
+  sec_3_15
+  sec_3_16
+  sec_3_17
+  sec_3_18
+  sec_3_19
   sec_3_2
+  sec_3_20
+  sec_3_21
+  sec_3_22
+  sec_3_23
+  sec_3_24
+  sec_3_25
+  sec_3_26
+  sec_3_27
+  sec_3_28
+  sec_3_29
   sec_3_3
+  sec_3_30
+  sec_3_31
+  sec_3_32
+  sec_3_33
+  sec_3_34
+  sec_3_35
+  sec_3_36
+  sec_3_37
   sec_3_4
   sec_3_5
   sec_3_6
@@ -33,3 +59,13 @@
  (alias scaffold)
  (action
   (run ./scaffold_sec_3_2.exe)))
+
+(executable
+ (name scaffold_sec_3_3)
+ (modules scaffold_sec_3_3)
+ (libraries sicp_ch3_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_3_3.exe)))

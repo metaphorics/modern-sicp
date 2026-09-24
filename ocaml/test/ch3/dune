@@ -37,3 +37,23 @@
  (alias runtest)
  (action
   (run ./prop_sec_3_2.exe)))
+
+(executable
+ (name test_sec_3_3)
+ (modules test_sec_3_3)
+ (libraries sicp_ch3_solutions sicp_ch3 alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_3_3.exe)))
+
+(executable
+ (name prop_sec_3_3)
+ (modules prop_sec_3_3)
+ (libraries sicp_ch3_solutions sicp_ch3 qcheck-core qcheck-core.runner))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./prop_sec_3_3.exe)))

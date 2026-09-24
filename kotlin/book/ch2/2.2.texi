@@ -1764,7 +1764,7 @@ sequence.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.39}Exercise 2.39:} Complete the following definitions of @code{reverseRight} (Exercise 2.18's @code{reverseList}) in terms of @code{foldRight} and @code{foldLeft} from
+@strong{@anchor{Exercise 2.39}Exercise 2.39:} Complete the following definitions of @code{reverseRight} (@ref{Exercise 2.18}'s @code{reverseList}) in terms of @code{foldRight} and @code{foldLeft} from
 @ref{Exercise 2.38}:
 
 @example kotlin

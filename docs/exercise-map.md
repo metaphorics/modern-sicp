@@ -194,7 +194,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.43 | Swapped mapping order | T | T | T | T | |
 | 2.44 | Up-split | A: painter is a boxed frame-to-frame function | A: painter is a first-class function | A: painter needs function type, adapts | A: painter needs function type, adapts | |
 | 2.45 | Split combinator | A: split returns generic higher-order constructor | A: split returns polymorphic combinator | A: split returns generic higher-order function | A: split returns generic higher-order function | |
-| 2.46 | Vector abstraction | T | T | T | T | vectors as data class or tuple |
+| 2.46 | Vector abstraction | T | T | T | T | vectors as data class or tuple chosen: kotlin |
 | 2.47 | Frame constructors | T | T | T | T | |
 | 2.48 | Segment from vectors | T | T | T | T | |
 | 2.49 | Primitive painters | T | T | T | T | painter output as SVG strings |

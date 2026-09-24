@@ -17,7 +17,8 @@ public fun xPoint(p: Point): Double = p.x
 
 public fun yPoint(p: Point): Double = p.y
 
-public data class Segment(
+/** Disambiguated from the picture language's vector-based `Segment` (exercise 2.48), which shares this package. */
+public data class PointSegment(
     val startPoint: Point,
     val endPoint: Point,
 )
@@ -25,18 +26,18 @@ public data class Segment(
 public fun makeSegment(
     start: Point,
     end: Point,
-): Segment = Segment(start, end)
+): PointSegment = PointSegment(start, end)
 
-public fun startSegment(s: Segment): Point = s.startPoint
+public fun startSegment(s: PointSegment): Point = s.startPoint
 
-public fun endSegment(s: Segment): Point = s.endPoint
+public fun endSegment(s: PointSegment): Point = s.endPoint
 
 private fun average(
     a: Double,
     b: Double,
 ): Double = (a + b) / 2.0
 
-public fun midpointSegment(s: Segment): Point =
+public fun midpointSegment(s: PointSegment): Point =
     makePoint(
         average(xPoint(startSegment(s)), xPoint(endSegment(s))),
         average(yPoint(startSegment(s)), yPoint(endSegment(s))),

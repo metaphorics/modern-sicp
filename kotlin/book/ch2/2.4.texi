@@ -48,7 +48,7 @@ having to redesign or reimplement these modules.
 
 In this section, we will learn how to cope with data that may be represented in
 different ways by different parts of a program.  This requires constructing
-@newterm{generic functions}---functions that can operate on data that may be
+@newterm{generic procedures}---functions that can operate on data that may be
 represented in more than one way.  Our main technique for building generic
 functions will be to work in terms of data objects that have @newterm{type tags},
 that is, data objects that include explicit information about how they
@@ -426,9 +426,9 @@ In order to manipulate tagged data, we will assume that we have functions
 @code{typeTag} and @code{contents} that extract from a data object the tag and
 the actual contents (the polar or rectangular coordinates, in the case of a
 complex number).  We will also postulate a function @code{attachTag} that
-takes a tag and contents and produces a tagged data object.  The runtime
-already carries an @newterm{operation-tagged} value class for exactly this,
-@code{Value.Tagged} (@ref{2.4.3}) names it @code{VTagged}, and
+takes a tag and contents and produces a tagged data object.  In this edition
+the runtime already carries an operation-tagged value class for exactly this,
+@code{VTagged}, which pairs a dispatch tag with its payload, and
 @code{attachTag}/@code{typeTag}/@code{contents} substitute from it in the
 case of a complex number:
 
@@ -467,9 +467,10 @@ constructs a complex number, he tags it as rectangular.  Whenever Alyssa
 constructs a complex number, she tags it as polar.  In Scheme, Ben and Alyssa
 would also have had to rename their internal procedures so the names of their
 procedures do not conflict.  This edition's @code{rect}- and @code{polar}-prefixed
-names of @ref{2.4.1} are already distinct by name and were never exported from
-one file into the other, so the only new code Ben and Alyssa need is the tagged
-wrapper around each constructor.  Here are Ben's tagged constructors, built
+names of @ref{2.4.1} are already distinct by name---top-level Kotlin
+declarations cannot share one, so the two have already been renamed---and the
+only new code Ben and Alyssa need is the tagged wrapper around each
+constructor.  Here are Ben's tagged constructors, built
 directly from @ref{2.4.1}:
 
 @example kotlin
@@ -630,9 +631,9 @@ Another weakness of the technique is that even though the individual
 representations can be designed separately, we must guarantee that no two
 functions in the entire system have the same name.  In Scheme this is why Ben
 and Alyssa had to change the names of their original procedures from
-@ref{2.4.1}; in this edition file-private visibility already keeps their
-functions apart, but the underlying issue is the same one @ref{2.4.2}'s
-tagged constructors already needed a wrapper for.
+@ref{2.4.1}; in this edition the @code{rect}- and @code{polar}-prefixed names
+of @ref{2.4.1} are that renaming already, but the underlying issue is the same
+one @ref{2.4.2}'s tagged constructors already needed a wrapper for.
 
 The issue underlying both of these weaknesses is that the technique for
 implementing generic interfaces is not @newterm{additive}.  The person
@@ -756,8 +757,9 @@ fun installRectangularPackage(table: OpTable) {
 Notice that the internal functions here are the same functions from
 @ref{2.4.1} that Ben wrote when he was working in isolation.  No changes are
 necessary in order to interface them to the rest of the system.  Moreover,
-since @code{rectRealPart} and friends are top-level functions of this file's
-own, Ben needn't worry about name conflicts with functions outside it.  To
+since @code{rectRealPart} and friends already carry the @code{rect} prefix
+adopted in @ref{2.4.1}, Ben needn't worry about name conflicts with functions
+outside the rectangular package.  To
 interface these to the rest of the system, Ben
 installs his @code{real-part} function under the operation name
 @code{real-part} and the tag chain @code{tagListKey("rectangular")}, and similarly for the other
@@ -791,11 +793,13 @@ fun installPolarPackage(table: OpTable) {
 @end example
 
 @noindent
-Even though Ben and Alyssa both still use their original functions defined
-with the same names as each other's (e.g., @code{realMagnitude} and
-@code{polarMagnitude} both compute a @code{magnitude}), these definitions
-already live in files owned by each representation, so there is
-no name conflict.
+In Scheme, Ben and Alyssa both still use their original procedures defined
+with the same names as each other's (e.g., @code{real-part}); these
+definitions are now internal to different procedures (see @ref{1.1.8}), so
+there is no name conflict.  This edition's top-level functions cannot keep
+that block structure, so they take the renaming instead:
+@code{rectMagnitude} and @code{polarMagnitude} both compute a
+@code{magnitude}, and their distinct prefixes keep them apart.
 
 The complex-arithmetic selectors access the table by means of a general
 ``operation'' function called @code{applyGeneric}, which applies a generic
@@ -1129,8 +1133,8 @@ against the table (like a natural host shape).
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.76a}Exercise 2.76a:} Exercise 2.76a is added by this
-edition and extends exercise 2.76; SICP numbers stop at 2.76.  Install a third
+@emph{Exercise 2.76a is added by this edition and extends exercise 2.76; SICP
+numbers stop at 2.76.} @strong{@anchor{Exercise 2.76a}Exercise 2.76a:} Install a third
 representation into exercise 2.76's data-directed table -- storing the angle
 in degrees rather than radians -- entirely from a new file, calling only the
 table's existing @code{put}, and confirm that the rectangular package's

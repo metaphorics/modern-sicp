@@ -285,7 +285,7 @@ in Bank1 and a private account in Bank2.
  |                          +---+
  |                          | W |
  |    ____           ____   ++-++   ____           ____  
- |   /    \         /    \   | |   /    \   | |   ____  
+ |   /    \         /    \   | |   /    \         /    \ 
  |  | $17  |       | $65  |<-' `->| $25  |       | $305 |
  |   \____/         \____/         \____/         \____/ 
  V
@@ -515,7 +515,7 @@ possibilities are eliminated, because the execution of @math{P_1} and @math{P_2}
 cannot be interleaved.  Both @code{launch} bodies name the same serializer, so
 the two wrapped lambdas belong to one set.
 
-Here is a version of the @code{make-account} procedure from 
+Here is a version of the @code{makeAccount} procedure from 
 @ref{3.1.1}, where the deposits and withdrawals have been serialized.  The
 balance stays a captured @code{var} for the reason 3.1 gave, and the book's
 dispatch symbol becomes a method:
@@ -665,7 +665,7 @@ on a schedule), and what kind of decision may not be made on one.
 @quotation
 @strong{@anchor{Exercise 3.42}Exercise 3.42:} Ben Bitdiddle suggests that it's
 a waste of time to create a new serialized procedure in response to every
-@code{withdraw} and @code{deposit} message.  He says that @code{make-account}
+@code{withdraw} and @code{deposit} message.  He says that @code{makeSerializedAccount}
 could be changed so that the calls to the serializer are done outside the
 dispatch.  That is, an account would answer the same serialized procedures
 (which were created at the same time as the account) each time it is asked for
@@ -699,7 +699,7 @@ class BenAccount(balance: Long) : SerializedAccount {
 @end example
 
 Is this a safe change to make?  In particular, is there any difference in what
-concurrency is allowed by these two versions of @code{make-account}?
+concurrency is allowed by these two versions of @code{makeSerializedAccount}?
 @end quotation
 
 @subsubheading Complexity of using multiple shared resources
@@ -733,7 +733,7 @@ This procedure works well when only a single process is trying to do the
 exchange.  Suppose, however, that Peter and Paul both have access to accounts
 @math{{a1}}, @math{{a2}}, and @math{{a3}}, and that Peter exchanges @math{{a1}} and @math{{a2}} while
 Paul concurrently exchanges @math{{a1}} and @math{{a3}}.  Even with account deposits and
-withdrawals serialized for individual accounts (as in the @code{make-account}
+withdrawals serialized for individual accounts (as in the @code{makeSerializedAccount}
 procedure shown above in this section), @code{exchange} can still produce
 incorrect results.  For example, Peter might compute the difference in the
 balances for @math{{a1}} and @math{{a2}}, but then Paul might change the balance in
@@ -749,7 +749,7 @@ One way we can accomplish this is by using both accounts' serializers to
 serialize the entire @code{exchange} procedure.  To do this, we will arrange
 for access to an account's serializer.  Note that we are deliberately breaking
 the modularity of the bank-account object by exposing the serializer.  The
-following version of @code{make-account} is identical to the original version
+following version of @code{makeAccount} is identical to the original version
 given in @ref{3.1.1}, except that a serializer is provided to protect
 the balance variable, and the serializer is exported via the interface:
 
@@ -842,7 +842,7 @@ transferring an amount from one account to another.  Ben Bitdiddle claims that
 this can be accomplished with the following procedure, even if there are
 multiple people concurrently transferring money among multiple accounts, using
 any account mechanism that serializes deposit and withdrawal transactions, for
-example, the version of @code{make-account} in the text above.
+example, the version of @code{makeSerializedAccount} in the text above.
 
 @example kotlin
 suspend fun transfer(
@@ -859,16 +859,16 @@ Louis Reasoner claims that there is a problem here, and that we need to use a
 more sophisticated method, such as the one required for dealing with the
 exchange problem.  Is Louis right?  If not, what is the essential difference
 between the transfer problem and the exchange problem?  (You should assume that
-the balance in @code{from-account} is at least @code{amount}.)
+the balance in @code{fromAccount} is at least @code{amount}.)
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.45}Exercise 3.45:} Louis Reasoner thinks our
 bank-account system is unnecessarily complex and error-prone now that deposits
 and withdrawals aren't automatically serialized.  He suggests that
-@code{make-account-and-serializer} should have exported the serializer (for use
-by such procedures as @code{serialized-exchange}) in addition to (rather than
-instead of) using it to serialize accounts and deposits as @code{make-account}
+@code{makeAccountAndSerializer} should have exported the serializer (for use
+by such procedures as @code{serializedExchange}) in addition to (rather than
+instead of) using it to serialize accounts and deposits as @code{makeSerializedAccount}
 did.  He proposes to redefine accounts as follows:
 
 @example kotlin
@@ -899,7 +899,7 @@ fun louisAccount(balance: Long): RawAccount {
 }
 @end example
 
-Then deposits are handled as with the original @code{make-account}:
+Then deposits are handled as with the original @code{makeAccount}:
 
 @example kotlin
 suspend fun deposit(account: RawAccount, amount: Long): Long =
@@ -907,7 +907,7 @@ suspend fun deposit(account: RawAccount, amount: Long): Long =
 @end example
 
 Explain what is wrong with Louis's reasoning.  In particular, consider what
-happens when @code{serialized-exchange} is called.
+happens when @code{serializedExchange} is called.
 @end quotation
 
 @subsubheading Implementing serializers
@@ -1019,7 +1019,7 @@ fun makeMutex(): BookMutex {
 
 @noindent
 @code{Test-and-set} tests the cell and returns the result of the test.  In
-addition, if the test was false, @code{test-and-set} sets the cell contents to
+addition, if the test was false, @code{testAndSet} sets the cell contents to
 true before returning false.  We can express this behavior as the following
 procedure:
 
@@ -1034,21 +1034,21 @@ fun testAndSet(cell: Cell): Boolean =
 @end example
 
 @noindent
-However, this implementation of @code{test-and-set} does not suffice as it
+However, this implementation of @code{testAndSet} does not suffice as it
 stands.  There is a crucial subtlety here, which is the essential place where
-concurrency control enters the system: The @code{test-and-set} operation must
+concurrency control enters the system: The @code{testAndSet} operation must
 be performed @newterm{atomically}.  That is, we must guarantee that, once a
 process has tested the cell and found it to be false, the cell contents will
 actually be set to true before any other process can test the cell.  If we do
 not make this guarantee, then the mutex can fail in a way similar to the
 bank-account failure in @ref{Figure 3.29}.  (See @ref{Exercise 3.46}.)
 
-The actual implementation of @code{test-and-set} depends on the details of how
+The actual implementation of @code{testAndSet} depends on the details of how
 our system runs concurrent processes.  For example, we might be executing
 concurrent processes on a sequential processor using a time-slicing mechanism
 that cycles through the processes, permitting each process to run for a short
 time before interrupting it and moving on to the next process.  In that case,
-@code{test-and-set} can work by disabling time slicing during the testing and
+@code{testAndSet} can work by disabling time slicing during the testing and
 setting.@footnote{A runtime that schedules its coroutines by time slicing on a
 single thread could make the test indivisible by disallowing preemption while
 the test-and-set runs.  Kotlin takes the hardware route instead:
@@ -1093,7 +1093,7 @@ deciding which to go to first.}
 
 @quotation
 @strong{@anchor{Exercise 3.46}Exercise 3.46:} Suppose that we implement
-@code{test-and-set} using an ordinary procedure as shown in the text, without
+@code{testAndSet} using an ordinary procedure as shown in the text, without
 attempting to make the operation atomic.  Draw a timing diagram like the one in
 @ref{Figure 3.29} to demonstrate how the mutex implementation can fail by
 allowing two processes to acquire the mutex at the same time.
@@ -1112,7 +1112,7 @@ semaphore must wait for release operations.  Give implementations of semaphores
 in terms of mutexes
 
 @item
-in terms of atomic @code{test-and-set} operations.
+in terms of atomic @code{testAndSet} operations.
 
 @end enumerate
 
@@ -1125,7 +1125,7 @@ check the built ones against the library's for permit conservation.
 @subsubheading Deadlock
 
 Now that we have seen how to implement serializers, we can see that account
-exchanging still has a problem, even with the @code{serialized-exchange}
+exchanging still has a problem, even with the @code{serializedExchange}
 procedure above.  Imagine that Peter attempts to exchange @math{{a1}} with @math{{a2}}
 while Paul concurrently attempts to exchange @math{{a2}} with @math{{a1}}.  Suppose that
 Peter's process reaches the point where it has entered a serialized procedure
@@ -1139,7 +1139,7 @@ Deadlock is always a danger in systems that provide concurrent access to
 multiple shared resources.
 
 One way to avoid the deadlock in this situation is to give each account a
-unique identification number and rewrite @code{serialized-exchange} so that a
+unique identification number and rewrite @code{serializedExchange} so that a
 process will always attempt to enter a procedure protecting the lowest-numbered
 account first.  Although this method works well for the exchange problem, there
 are other situations that require more sophisticated deadlock-avoidance
@@ -1156,8 +1156,8 @@ used in database management systems, a topic that is treated in detail in
 @strong{@anchor{Exercise 3.48}Exercise 3.48:} Explain in detail why the
 deadlock-avoidance method described above, (i.e., the accounts are numbered,
 and each process attempts to acquire the smaller-numbered account first) avoids
-deadlock in the exchange problem.  Rewrite @code{serialized-exchange} to
-incorporate this idea.  (You will also need to modify @code{make-account} so
+deadlock in the exchange problem.  Rewrite @code{serializedExchange} to
+incorporate this idea.  (You will also need to modify @code{makeAccountAndSerializer} so
 that each account is created with a number, which can be accessed by sending an
 appropriate message.)
 @end quotation
@@ -1179,7 +1179,7 @@ achieve this control through judicious use of serializers.  But the problems of
 concurrency lie deeper than this, because, from a fundamental point of view,
 it's not always clear what is meant by ``shared state.''
 
-Mechanisms such as @code{test-and-set} require processes to examine a global
+Mechanisms such as @code{testAndSet} require processes to examine a global
 shared flag at arbitrary times.  This is problematic and inefficient to
 implement in modern high-speed processors, where due to optimization techniques
 such as pipelining and cached memory, the contents of memory may not be in a

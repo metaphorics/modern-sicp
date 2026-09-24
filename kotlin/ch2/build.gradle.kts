@@ -23,6 +23,9 @@ configure<KotlinJvmProjectExtension> {
 
 dependencies {
     "examplesImplementation"(project(":runtime"))
+    // The 2.5 listings run on the section's typed tower, which lives in the
+    // solutions source set (Tower.kt and Poly.kt, package sicp.ch2.exercises).
+    "examplesImplementation"(solutionsSet.output)
     "examplesImplementation"(libs.immutable)
     "examplesImplementation"(libs.kotest.runner.junit5)
     "examplesImplementation"(libs.kotest.assertions.core)

@@ -51,11 +51,11 @@ fn ex_3_65() {
     // the measured error is about 4.3e-2 -- roughly one digit.
     assert!((raw_10 - LN_2).abs() < 5.0e-2);
     // Element 5 of the Euler transform needs only 7 raw terms and is
-    // already within about 2.5e-4 of ln 2 -- better than the raw sums'
+    // already within about 2.9e-4 of ln 2 -- better than the raw sums'
     // element 10 by two orders of magnitude, at roughly 3 digits.
     assert!((euler_5 - LN_2).abs() < 1.0e-3);
     // Element 5 of the recursively accelerated sequence carries the
-    // tableau's compounding: within about 1.7e-9, roughly 8 digits,
+    // tableau's compounding: within about 1.0e-10, roughly 10 digits,
     // from the same 7 raw terms.
     assert!((accelerated_5 - LN_2).abs() < 1.0e-8);
     // The ordering the statement asks about: each acceleration stage

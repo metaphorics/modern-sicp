@@ -19,11 +19,11 @@ mod ex_3_20 {
     /// cloning the dispatch handle, mutates the shared cell through the
     /// second name, and reads back through the first. It then builds a
     /// separate pair with the same starting contents to show what a
-    /// non-aliased pair answers. The result is the value the first
-    /// name sees after the mutation: both names dispatched into one
-    /// and the same pair of cells.
+    /// non-aliased pair answers. The result is `(aliased, separate)`:
+    /// the value the first name sees after the mutation, and the value
+    /// the fresh pair still holds.
     #[must_use]
-    pub fn ex_3_20() -> i128 {
+    pub fn ex_3_20() -> (i128, i128) {
         let x = procedural_cons(Value::int(1), Value::int(2));
         let alias = ProcPair::clone(&x);
 
@@ -33,14 +33,10 @@ mod ex_3_20 {
         let separate = procedural_cons(Value::int(1), Value::int(2));
         let separate_answer = separate.send(PairRequest::Car);
 
-        let Value::Int(answer) = aliased_answer else {
-            return 0;
+        let (Value::Int(answer), Value::Int(other)) = (aliased_answer, separate_answer) else {
+            return (0, 0);
         };
-        let Value::Int(other) = separate_answer else {
-            return 0;
-        };
-        let _ = other;
-        answer
+        (answer, other)
     }
 }
 
@@ -48,7 +44,7 @@ mod ex_3_20 {
 fn ex_3_20() {
     // The mutation through `alias` is visible through `x`, because both
     // dispatch closures captured the same two cells.
-    assert_eq!(ex_3_20::ex_3_20(), 17);
+    assert_eq!(ex_3_20::ex_3_20(), (17, 1));
 
     // The full trace: the second name shares the cells, a fresh pair
     // with the same contents does not.

@@ -43,19 +43,16 @@ pub fn print_queue(queue: &Queue) -> String {
 }
 
 /// What the book's default printer shows for the same queue: the pair
-/// of the front-pointer list and the rear-pointer node.
+/// of the front pointer's list and the rear pointer's node. Reading the
+/// raw pointers is what reproduces Ben's fourth line `(() b)`: after
+/// the last deletion the front is empty while the rear still names the
+/// final node.
 #[must_use]
 pub fn pointer_pair_view(queue: &Queue) -> String {
-    let items = queue.items();
-    let mut front_list = Value::Nil;
-    for item in items.iter().rev() {
-        front_list = Value::Pair(cons_of(item.clone(), front_list));
-    }
-    let rear_list = match items.last() {
-        Some(last) => Value::Pair(cons_of(last.clone(), Value::Nil)),
-        None => Value::Nil,
-    };
-    Value::Pair(cons_of(front_list, rear_list)).to_string()
+    let (front, rear) = queue.pointer_pair();
+    let front_value = front.map_or(Value::Nil, Value::Pair);
+    let rear_value = rear.map_or(Value::Nil, Value::Pair);
+    Value::Pair(cons_of(front_value, rear_value)).to_string()
 }
 
 fn cons_of(car: Value, cdr: Value) -> sicp_runtime::Pair {
@@ -70,6 +67,18 @@ fn ex_3_21() {
         ex_3_21::ex_3_21(),
         ("(b d)".to_string(), "((b d) d)".to_string())
     );
+
+    // Ben's premise, line for line: the raw pointer pair after each
+    // operation, including the stale rear after the last deletion.
+    let q1 = Queue::new();
+    q1.insert(Value::sym("a"));
+    assert_eq!(pointer_pair_view(&q1), "((a) a)");
+    q1.insert(Value::sym("b"));
+    assert_eq!(pointer_pair_view(&q1), "((a b) b)");
+    let _ = q1.delete();
+    assert_eq!(pointer_pair_view(&q1), "((b) b)");
+    let _ = q1.delete();
+    assert_eq!(pointer_pair_view(&q1), "(() b)");
 
     // The fixed printer never changes the queue it prints.
     let q = Queue::new();

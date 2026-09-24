@@ -325,6 +325,14 @@ impl Queue {
         }
         items
     }
+
+    /// The raw front and rear pointers the representation stores, for
+    /// exercise 3.21's pointer-pair view: after the last deletion the
+    /// front is unset while the rear still names the final node.
+    #[must_use]
+    pub fn pointer_pair(&self) -> (Option<Pair>, Option<Pair>) {
+        (self.front.borrow().clone(), self.rear.borrow().clone())
+    }
 }
 
 /// One table's key comparison: the book's `same-key?` predicate,

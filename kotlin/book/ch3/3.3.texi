@@ -16,9 +16,9 @@ include, in addition to selectors and constructors, operations called
 banking system requires us to change account balances.  Thus, a data structure
 for representing bank accounts might admit an operation
 
-@lisp
-(set-balance! ⟨@var{account}⟩ ⟨@var{new-value}⟩)
-@end lisp
+@example kotlin
+account.setBalance(newValue)
+@end example
 
 @noindent
 that changes the balance of the designated account to the designated new value.
@@ -43,33 +43,46 @@ complex systems are modeled as collections of objects with local state.
 @node	3.3.1, 3.3.2, 3.3, 3.3
 @subsection Mutable List Structure
 
-The basic operations on pairs---@code{cons}, @code{car}, and @code{cdr}---can
-be used to construct list structure and to select parts from list structure,
-but they are incapable of modifying list structure.  The same is true of the
-list operations we have used so far, such as @code{append} and @code{list},
-since these can be defined in terms of @code{cons}, @code{car}, and @code{cdr}.
-To modify list structures we need new operations.
+The basic operations on pairs---@code{cons} and the @code{car} and
+@code{cdr} selectors---can be used to construct list structure and to select
+parts from list structure, but they are incapable of modifying list structure.
+The same is true of the list operations we have used so far, such as
+@code{append} and @code{vlist}, since these can be defined in terms of
+@code{cons} and the two selectors.  To modify list structures we need new
+operations.
 
-The primitive mutators for pairs are @code{set-car!} and
-@code{set-cdr!}. @code{Set-car!} takes two arguments, the first of which must
-be a pair.  It modifies this pair, replacing the @code{car} pointer by a
-pointer to the second argument of @code{set-car!}.@footnote{@code{Set-car!} and
-@code{set-cdr!} return implementation-dependent values.  Like @code{set!}, they
-should be used only for their effect.}
+The primitive mutators for pairs are @code{setCar} and
+@code{setCdr}. @code{SetCar} is called on the pair to modify, and that
+receiver must be a pair.  It modifies this pair, replacing the @code{car}
+pointer by a pointer to the argument of
+@code{setCar}.@footnote{@code{SetCar} and @code{setCdr} return @code{Unit},
+which carries no information.  Like assignment, they should be used only for
+their effect.}
 
 @noindent
 As an example, suppose that @code{x} is bound to the list @code{((a b) c d)}
 and @code{y} to the list @code{(e f)} as illustrated in @ref{Figure 3.12}.
-Evaluating the expression @code{ (set-car!  x y)} modifies the pair to which
+Evaluating the expression @code{x.setCar(y)} modifies the pair to which
 @code{x} is bound, replacing its @code{car} by the value of @code{y}.  The
 result of the operation is shown in @ref{Figure 3.13}.  The structure @code{x}
 has been modified and would now be printed as @code{((e f) c d)}.  The pairs
 representing the list @code{(a b)}, identified by the pointer that was
 replaced, are now detached from the original structure.@footnote{We see from
 this that mutation operations on lists can create ``garbage'' that is not part
-of any accessible structure.  We will see in @ref{5.3.2} that Lisp
+of any accessible structure.  The JVM reclaims a detached chain once no live
+reference can reach it; we will see in @ref{5.3.2} that Lisp
 memory-management systems include a @newterm{garbage collector}, which
 identifies and recycles the memory space used by unneeded pairs.}
+
+@example kotlin
+val x = cons(vlist(VSym("a"), VSym("b")), vlist(VSym("c"), VSym("d")))
+val y = vlist(VSym("e"), VSym("f"))
+
+x.setCar(y)
+
+x
+// => ((e f) c d)
+@end example
 
 @float
 @anchor{Figure 3.12}
@@ -112,6 +125,12 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @caption{@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.}
 @end float
 
+Compare @ref{Figure 3.13} with @ref{Figure 3.14}, which illustrates the result
+of executing @code{val z = cons(y, x.cdr)} with @code{x} and @code{y}
+bound to the original lists of @ref{Figure 3.12}.  The variable @code{z} is now
+bound to a new pair created by the @code{cons} operation; the list to which
+@code{x} is bound is unchanged.
+
 @float
 @anchor{Figure 3.13}
 @ifinfo
@@ -153,11 +172,14 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @caption{@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.}
 @end float
 
-Compare @ref{Figure 3.13} with @ref{Figure 3.14}, which illustrates the result
-of executing @code{(define z (cons y (cdr x)))} with @code{x} and @code{y}
-bound to the original lists of @ref{Figure 3.12}.  The variable @code{z} is now
-bound to a new pair created by the @code{cons} operation; the list to which
-@code{x} is bound is unchanged.
+The @code{setCdr} operation is similar to @code{setCar}.  The only
+difference is that the @code{cdr} pointer of the pair, rather than the
+@code{car} pointer, is replaced.  The effect of executing @code{x.setCdr(y)}
+on the lists of @ref{Figure 3.12} is shown in @ref{Figure 3.15}.  Here the
+@code{cdr} pointer of @code{x} has been replaced by the pointer to @code{(e
+f)}.  Also, the list @code{(c d)}, which used to be the @code{cdr} of @code{x},
+is now detached from the structure; @code{x} would now print as
+@code{((a b) e f)}.
 
 @float
 @anchor{Figure 3.14}
@@ -200,14 +222,6 @@ z -->| * | *-+-+   +---+         +---+
 @caption{@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.}
 @end float
 
-The @code{set-cdr!} operation is similar to @code{set-car!}.  The only
-difference is that the @code{cdr} pointer of the pair, rather than the
-@code{car} pointer, is replaced.  The effect of executing @code{(set-cdr! x y)}
-on the lists of @ref{Figure 3.12} is shown in @ref{Figure 3.15}.  Here the
-@code{cdr} pointer of @code{x} has been replaced by the pointer to @code{(e
-f)}.  Also, the list @code{(c d)}, which used to be the @code{cdr} of @code{x},
-is now detached from the structure.
-
 @float
 @anchor{Figure 3.15}
 @ifinfo
@@ -249,80 +263,85 @@ x -->| * | * |     | * | *-+---->| * | / |
 @caption{@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.}
 @end float
 
-@noindent 
+@noindent
 @code{Cons} builds new list structure by creating new pairs, while
-@code{set-car!} and @code{set-cdr!} modify existing pairs.  Indeed, we could
-implement @code{cons} in terms of the two mutators, together with a procedure
-@code{get-new-pair}, which returns a new pair that is not part of any existing
-list structure.  We obtain the new pair, set its @code{car} and @code{cdr}
-pointers to the designated objects, and return the new pair as the result of
-the @code{cons}.@footnote{@code{Get-new-pair} is one of the operations that
-must be implemented as part of the memory management required by a Lisp
-implementation.  We will discuss this in @ref{5.3.1}.}
+@code{setCar} and @code{setCdr} modify existing pairs.  Indeed, we could
+implement @code{cons} in terms of the two mutators, together with a function
+@code{getNewPair} that returns a new pair that is not part of any existing
+list structure; in this runtime that role is played by constructing a fresh
+@code{VPair} with two empty slots.  We obtain the new pair, set its
+@code{car} and @code{cdr} pointers to the designated objects, and return the
+new pair as the result of the @code{cons}.@footnote{Constructing that fresh
+cell is one of the operations that must be implemented as part of the memory
+management required by a Lisp implementation.  We will discuss this in
+@ref{5.3.1}.}
 
-@lisp
-(define (cons x y)
-  (let ((new (get-new-pair)))
-    (set-car! new x)
-    (set-cdr! new y)
-    new))
-@end lisp
+@example kotlin
+fun cons(x: Value, y: Value): VPair {
+    val newPair = VPair(VNil, VNil)
+    newPair.setCar(x)
+    newPair.setCdr(y)
+    return newPair
+}
+@end example
 
 @quotation
-@strong{@anchor{Exercise 3.12}Exercise 3.12:} The following procedure for
+@strong{@anchor{Exercise 3.12}Exercise 3.12:} The following function for
 appending lists was introduced in @ref{2.2.1}:
 
-@lisp
-(define (append x y)
-  (if (null? x)
-      y
-      (cons (car x) (append (cdr x) y))))
-@end lisp
+@example kotlin
+fun append(x: Value, y: Value): Value =
+    if (x !is VPair) {
+        y
+    } else {
+        cons(x.car, append(x.cdr, y))
+    }
+@end example
 
 @code{Append} forms a new list by successively @code{cons}ing the elements of
-@code{x} onto @code{y}.  The procedure @code{append!} is similar to
+@code{x} onto @code{y}.  The function @code{appendBang} is similar to
 @code{append}, but it is a mutator rather than a constructor.  It appends the
 lists by splicing them together, modifying the final pair of @code{x} so that
-its @code{cdr} is now @code{y}.  (It is an error to call @code{append!} with an
-empty @code{x}.)
+its @code{cdr} is now @code{y}.  (It is an error to call @code{appendBang}
+with an empty @code{x}; the @code{VPair} parameter type refuses one before
+the program runs.)
 
-@lisp
-(define (append! x y)
-  (set-cdr! (last-pair x) y)
-  x)
-@end lisp
+@example kotlin
+fun appendBang(x: VPair, y: VPair): VPair {
+    lastPair(x).setCdr(y)
+    return x
+}
+@end example
 
-Here @code{last-pair} is a procedure that returns the last pair in its
+Here @code{lastPair} is a function that returns the last pair in its
 argument:
 
-@lisp
-(define (last-pair x)
-  (if (null? (cdr x))
-      x
-      (last-pair (cdr x))))
-@end lisp
+@example kotlin
+fun lastPair(x: VPair): VPair =
+    if (x.cdr is VNil) x else lastPair(x.cdr as VPair)
+@end example
 
 Consider the interaction
 
-@lisp
-(define x (list 'a 'b))
-(define y (list 'c 'd))
-(define z (append x y))
+@example kotlin
+val x = vlist(VSym("a"), VSym("b")) as VPair
+val y = vlist(VSym("c"), VSym("d")) as VPair
+val z = append(x, y)
 
 z
-@i{(a b c d)}
+// => (a b c d)
 
-(cdr x)
-⟨@var{response}⟩
+x.cdr
+// ⟨response⟩
 
-(define w (append! x y))
+val w = appendBang(x, y)
 
 w
-@i{(a b c d)}
+// => (a b c d)
 
-(cdr x)
-⟨@var{response}⟩
-@end lisp
+x.cdr
+// ⟨response⟩
+@end example
 
 What are the missing @code{⟨}@var{response}@code{⟩}s?  Draw box-and-pointer diagrams to
 explain your answer.
@@ -330,48 +349,62 @@ explain your answer.
 
 @quotation
 @strong{@anchor{Exercise 3.13}Exercise 3.13:} Consider the following
-@code{make-cycle} procedure, which uses the @code{last-pair} procedure defined
+@code{makeCycle} function, which uses the @code{lastPair} function defined
 in @ref{Exercise 3.12}:
 
-@lisp
-(define (make-cycle x)
-  (set-cdr! (last-pair x) x)
-  x)
-@end lisp
+@example kotlin
+fun makeCycle(x: VPair): VPair {
+    lastPair(x).setCdr(x)
+    return x
+}
+@end example
 
 Draw a box-and-pointer diagram that shows the structure @code{z} created by
 
-@lisp
-(define z (make-cycle (list 'a 'b 'c)))
-@end lisp
+@example kotlin
+val z = makeCycle(vlist(VSym("a"), VSym("b"), VSym("c")) as VPair)
+@end example
 
-What happens if we try to compute @code{(last-pair z)}?
+What happens if we try to compute @code{lastPair(z)}?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.14}Exercise 3.14:} The following procedure is quite
+@strong{@anchor{Exercise 3.14}Exercise 3.14:} The following function is quite
 useful, although obscure:
 
-@lisp
-(define (mystery x)
-  (define (loop x y)
-    (if (null? x)
-        y
-        (let ((temp (cdr x)))
-          (set-cdr! x y)
-          (loop temp x))))
-  (loop x '()))
-@end lisp
+@example kotlin
+fun mystery(x: VPair): VPair {
+    fun loop(x: Value, y: Value): VPair =
+        if (x !is VPair) {
+            y as VPair
+        } else {
+            val temp = x.cdr
+            x.setCdr(y)
+            loop(temp, x)
+        }
+    return loop(x, VNil)
+}
+@end example
 
 @code{Loop} uses the ``temporary'' variable @code{temp} to hold the old value
-of the @code{cdr} of @code{x}, since the @code{set-cdr!}  on the next line
+of the @code{cdr} of @code{x}, since the @code{setCdr} on the next line
 destroys the @code{cdr}.  Explain what @code{mystery} does in general.  Suppose
-@code{v} is defined by @code{(define v (list 'a 'b 'c 'd))}. Draw the
-box-and-pointer diagram that represents the list to which @code{v} is bound.
-Suppose that we now evaluate @code{(define w (mystery v))}. Draw
-box-and-pointer diagrams that show the structures @code{v} and @code{w} after
-evaluating this expression.  What would be printed as the values of @code{v}
-and @code{w}?
+@code{v} is defined by
+
+@example kotlin
+val v = vlist(VSym("a"), VSym("b"), VSym("c"), VSym("d")) as VPair
+@end example
+
+Draw the box-and-pointer diagram that represents the list to which @code{v} is
+bound.  Suppose that we now evaluate
+
+@example kotlin
+val w = mystery(v)
+@end example
+
+Draw box-and-pointer diagrams that show the structures @code{v} and @code{w}
+after evaluating this expression.  What would be printed as the values of
+@code{v} and @code{w}?
 @end quotation
 
 @subsubheading Sharing and identity
@@ -381,10 +414,10 @@ We mentioned in @ref{3.1.3} the theoretical issues of ``sameness'' and
 practice when individual pairs are @newterm{shared} among different data
 objects.  For example, consider the structure formed by
 
-@lisp
-(define x (list 'a 'b))
-(define z1 (cons x x))
-@end lisp
+@example kotlin
+val x = vlist(VSym("a"), VSym("b")) as VPair
+val z1 = cons(x, x)
+@end example
 
 @noindent
 As shown in @ref{Figure 3.16}, @code{z1} is a pair whose @code{car} and
@@ -428,10 +461,10 @@ z1 -->| * | * |
 In contrast to @ref{Figure 3.16}, @ref{Figure 3.17} shows the structure created
 by
 
-@lisp
-(define z2 
-  (cons (list 'a 'b) (list 'a 'b)))
-@end lisp
+@example kotlin
+val z2 =
+    cons(vlist(VSym("a"), VSym("b")), vlist(VSym("a"), VSym("b")))
+@end example
 
 @float
 @anchor{Figure 3.17}
@@ -469,61 +502,70 @@ z2 -->| * | *-+---->| * | *-+---->| * | / |
 In this structure, the pairs in the two @code{(a b)} lists are distinct,
 although the actual symbols are shared.@footnote{The two pairs are distinct
 because each call to @code{cons} returns a new pair.  The symbols are shared;
-in Scheme there is a unique symbol with any given name.  Since Scheme provides
-no way to mutate a symbol, this sharing is undetectable.  Note also that the
-sharing is what enables us to compare symbols using @code{eq?}, which simply
-checks equality of pointers.}
+a @code{VSym} carries only its name and the language provides no way to mutate
+one, so this sharing is undetectable.  Note also that the sharing of pairs is
+what enables us to compare them with the identity operator @code{===}, which
+simply checks equality of references.}
 
 @noindent
 When thought of as a list, @code{z1} and @code{z2} both represent ``the same''
 list, @code{((a b) a b)}.  In general, sharing is completely undetectable if we
-operate on lists using only @code{cons}, @code{car}, and @code{cdr}.  However,
+operate on lists using only @code{cons} and the two selectors.  However,
 if we allow mutators on list structure, sharing becomes significant.  As an
 example of the difference that sharing can make, consider the following
-procedure, which modifies the @code{car} of the structure to which it is
+function, which modifies the @code{car} of the structure to which it is
 applied:
 
-@lisp
-(define (set-to-wow! x)
-  (set-car! (car x) 'wow)
-  x)
-@end lisp
+@example kotlin
+fun setToWow(x: VPair): VPair {
+    (x.car as VPair).setCar(VSym("wow"))
+    return x
+}
+@end example
 
 @noindent
 Even though @code{z1} and @code{z2} are ``the same'' structure, applying
-@code{set-to-wow!} to them yields different results.  With @code{z1}, altering
+@code{setToWow} to them yields different results.  With @code{z1}, altering
 the @code{car} also changes the @code{cdr}, because in @code{z1} the @code{car}
 and the @code{cdr} are the same pair.  With @code{z2}, the @code{car} and
-@code{cdr} are distinct, so @code{set-to-wow!} modifies only the @code{car}:
+@code{cdr} are distinct, so @code{setToWow} modifies only the @code{car}:
 
-@lisp
+@example kotlin
 z1
-@i{((a b) a b)}
+// => ((a b) a b)
 
-(set-to-wow! z1)
-@i{((wow b) wow b)}
+setToWow(z1)
+// => ((wow b) wow b)
 
 z2
-@i{((a b) a b)}
+// => ((a b) a b)
 
-(set-to-wow! z2)
-@i{((wow b) a b)}
-@end lisp
+setToWow(z2)
+// => ((wow b) a b)
+@end example
 
 @noindent
-One way to detect sharing in list structures is to use the predicate
-@code{eq?}, which we introduced in @ref{2.3.1} as a way to test whether
-two symbols are equal.  More generally, @code{(eq?  x y)} tests whether
-@code{x} and @code{y} are the same object (that is, whether @code{x} and
-@code{y} are equal as pointers).  Thus, with @code{z1} and @code{z2} as defined
-in @ref{Figure 3.16} and @ref{Figure 3.17}, @code{(eq?  (car z1) (cdr
-z1))} is true and @code{(eq? (car z2) (cdr z2))} is false.
+One way to detect sharing in list structures is to use the identity operator
+@code{===}, the counterpart of the @code{eq?} we introduced in @ref{2.3.1}
+as a way to test whether two symbols are equal.  More generally,
+@code{x === y} tests whether @code{x} and @code{y} are the same object (that
+is, whether they are equal as references).  Thus, with @code{z1} and
+@code{z2} as defined in @ref{Figure 3.16} and @ref{Figure 3.17},
+@code{z1.car === z1.cdr} is true and @code{z2.car === z2.cdr} is false:
+
+@example kotlin
+z1.car === z1.cdr
+// => true
+
+z2.car === z2.cdr
+// => false
+@end example
 
 As will be seen in the following sections, we can exploit sharing to greatly
 extend the repertoire of data structures that can be represented by pairs.  On
 the other hand, sharing can also be dangerous, since modifications made to
 structures will also affect other structures that happen to share the modified
-parts.  The mutation operations @code{set-car!} and @code{set-cdr!} should be
+parts.  The mutation operations @code{setCar} and @code{setCdr} should be
 used with care; unless we have a good understanding of how our data objects are
 shared, mutation can have unanticipated results.@footnote{The subtleties of
 dealing with sharing of mutable data objects reflect the underlying issues of
@@ -531,54 +573,58 @@ dealing with sharing of mutable data objects reflect the underlying issues of
 mentioned there that admitting change to our language requires that a compound
 object must have an ``identity'' that is something different from the pieces
 from which it is composed.  In Lisp, we consider this ``identity'' to be the
-quality that is tested by @code{eq?}, i.e., by equality of pointers.  Since in
-most Lisp implementations a pointer is essentially a memory address, we are
-``solving the problem'' of defining the identity of objects by stipulating that
-a data object ``itself'' is the information stored in some particular set of
-memory locations in the computer.  This suffices for simple Lisp programs, but
-is hardly a general way to resolve the issue of ``sameness'' in computational
-models.}
+quality that is tested by @code{eq?}, i.e., by equality of pointers, and
+Kotlin spells the same test @code{===}.  Since in most Lisp implementations a
+pointer is essentially a memory address, we are ``solving the problem'' of
+defining the identity of objects by stipulating that a data object ``itself''
+is the information stored in some particular set of memory locations in the
+computer.  This suffices for simple Lisp programs, but is hardly a general way
+to resolve the issue of ``sameness'' in computational models.}
 
 @quotation
 @strong{@anchor{Exercise 3.15}Exercise 3.15:} Draw box-and-pointer diagrams to
-explain the effect of @code{set-to-wow!} on the structures @code{z1} and
+explain the effect of @code{setToWow} on the structures @code{z1} and
 @code{z2} above.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.16}Exercise 3.16:} Ben Bitdiddle decides to write a
-procedure to count the number of pairs in any list structure.  ``It's easy,''
+function to count the number of pairs in any list structure.  ``It's easy,''
 he reasons.  ``The number of pairs in any structure is the number in the
 @code{car} plus the number in the @code{cdr} plus one more to count the current
-pair.''  So Ben writes the following procedure:
+pair.''  So Ben writes the following function:
 
-@lisp
-(define (count-pairs x)
-  (if (not (pair? x))
-      0
-      (+ (count-pairs (car x))
-         (count-pairs (cdr x))
-         1)))
-@end lisp
+@example kotlin
+fun countPairs(x: Value): Int =
+    if (x !is VPair) {
+        0
+    } else {
+        countPairs(x.car) + countPairs(x.cdr) + 1
+    }
+@end example
 
-Show that this procedure is not correct.  In particular, draw box-and-pointer
+Show that this function is not correct.  In particular, draw box-and-pointer
 diagrams representing list structures made up of exactly three pairs for which
-Ben's procedure would return 3; return 4; return 7; never return at all.
+Ben's function would return 3; return 4; return 7; never return at all.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.17}Exercise 3.17:} Devise a correct version of the
-@code{count-pairs} procedure of @ref{Exercise 3.16} that returns the number of
+@code{countPairs} function of @ref{Exercise 3.16} that returns the number of
 distinct pairs in any structure.  (Hint: Traverse the structure, maintaining an
 auxiliary data structure that is used to keep track of which pairs have already
-been counted.)
+been counted.  Kotlin's standard library has no identity-keyed set, so the
+book-true approach is to keep the visited pairs in a structure you scan with
+@code{===}.)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.18}Exercise 3.18:} Write a procedure that examines a
+@strong{@anchor{Exercise 3.18}Exercise 3.18:} Write a function that examines a
 list and determines whether it contains a cycle, that is, whether a program
 that tried to find the end of the list by taking successive @code{cdr}s would
-go into an infinite loop.  @ref{Exercise 3.13} constructed such lists.
+go into an infinite loop.  @ref{Exercise 3.13} constructed such lists.  (As in
+the previous exercise, you will need a hand-rolled structure scanned with
+@code{===} to remember which pairs you have already visited.)
 @end quotation
 
 @quotation
@@ -590,56 +636,50 @@ clever idea.)
 @subsubheading Mutation is just assignment
 
 When we introduced compound data, we observed in @ref{2.1.3} that pairs
-can be represented purely in terms of procedures:
+can be represented purely in terms of procedures, with a @code{dispatch}
+function that hands back the @code{car} or the @code{cdr} closure for a
+message.  The same observation is true for mutable data.  We can implement
+mutable data objects as objects closing over assignment and local state.  For
+instance, we can extend that representation to handle the two mutators in a
+manner analogous to the way we implemented bank accounts using
+@code{makeAccount} in @ref{3.1.1}.  Where the book's @code{dispatch} string
+selected a closure to call, Kotlin says it directly: the procedural pair is
+an object whose selectors read captured @code{var} slots and whose mutators
+write them:
 
-@lisp
-(define (cons x y)
-  (define (dispatch m)
-    (cond ((eq? m 'car) x)
-          ((eq? m 'cdr) y)
-          (else (error "Undefined 
-                 operation: CONS" m))))
-  dispatch)
+@example kotlin
+interface PairProc {
+    fun car(): Value
 
-(define (car z) (z 'car))
-(define (cdr z) (z 'cdr))
-@end lisp
+    fun cdr(): Value
 
-@noindent
-The same observation is true for mutable data.  We can implement mutable data
-objects as procedures using assignment and local state.  For instance, we can
-extend the above pair implementation to handle @code{set-car!} and
-@code{set-cdr!} in a manner analogous to the way we implemented bank accounts
-using @code{make-account} in @ref{3.1.1}:
+    fun setCar(v: Value)
 
-@lisp
-(define (cons x y)
-  (define (set-x! v) (set! x v))
-  (define (set-y! v) (set! y v))
-  (define (dispatch m)
-    (cond ((eq? m 'car) x)
-          ((eq? m 'cdr) y)
-          ((eq? m 'set-car!) set-x!)
-          ((eq? m 'set-cdr!) set-y!)
-          (else (error "Undefined 
-                 operation: CONS" m))))
-  dispatch)
+    fun setCdr(v: Value)
+}
 
-(define (car z) (z 'car))
-(define (cdr z) (z 'cdr))
+fun proceduralCons(x: Value, y: Value): PairProc {
+    var carCell = x
+    var cdrCell = y
+    return object : PairProc {
+        override fun car(): Value = carCell
 
-(define (set-car! z new-value)
-  ((z 'set-car!) new-value)
-  z)
+        override fun cdr(): Value = cdrCell
 
-(define (set-cdr! z new-value)
-  ((z 'set-cdr!) new-value)
-  z)
-@end lisp
+        override fun setCar(v: Value) {
+            carCell = v
+        }
+
+        override fun setCdr(v: Value) {
+            cdrCell = v
+        }
+    }
+}
+@end example
 
 @noindent
 Assignment is all that is needed, theoretically, to account for the behavior of
-mutable data.  As soon as we admit @code{set!} to our language, we raise all
+mutable data.  As soon as we admit assignment to our language, we raise all
 the issues, not only of assignment, but of mutable data in general.@footnote{On
 the other hand, from the viewpoint of implementation, assignment requires us to
 modify the environment, which is itself a mutable data structure.  Thus,
@@ -647,24 +687,28 @@ assignment and mutation are equipotent: Each can be implemented in terms of the
 other.}
 
 @quotation
-@strong{@anchor{Exercise 3.20}Exercise 3.20:} Draw environment diagrams to
-illustrate the evaluation of the sequence of expressions
+@strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{SICP exercise 3.20 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
 
-@lisp
-(define x (cons 1 2))
-(define z (cons x x))
+Suppose we evaluate the following sequence against the
+@code{proceduralCons} implementation above:
 
-(set-car! (cdr z) 17)
+@example kotlin
+val x = proceduralCons(VInt(1L), VInt(2L))
+val alias = x
 
-(car x)
-@i{17}
-@end lisp
+alias.setCar(VInt(17L))
 
-@noindent
-using the procedural implementation of pairs given above.  (Compare
+x.car()
+// => 17
+@end example
+
+Trace this sequence: which captured @code{var} slot does each call consult,
+and why does @code{x.car()} answer 17 after the mutation went through
+@code{alias}?  What does a fresh @code{proceduralCons(VInt(1L), VInt(2L))}
+answer to the same @code{car()} request, and what does that contrast say
+about where the state of a procedural pair lives?  (Compare
 @ref{Exercise 3.11}.)
 @end quotation
-
 @node	3.3.2, 3.3.3, 3.3.1, 3.3
 @subsection Representing Queues
 
@@ -717,45 +761,48 @@ set of operations:
 @itemize @bullet
 
 @item
-a constructor: @code{(make-queue)} returns an empty queue (a queue containing
-no items).
+a constructor: @code{Queue()} returns an empty queue (a queue containing
+no items); the constructor call is all the book's @code{make-queue} needs
+here.
 
 @item
 two selectors:
 
-@lisp
-(empty-queue? ⟨@var{queue}⟩)
-@end lisp
+@example kotlin
+⟨queue⟩.emptyQueue()
+@end example
 
 @noindent
 tests if the queue is empty.
 
-@lisp
-(front-queue ⟨@var{queue}⟩)
-@end lisp
+@example kotlin
+⟨queue⟩.frontCell()?.car
+@end example
 
 @noindent
-returns the object at the front of the queue, signaling an error if the queue
-is empty; it does not modify the queue.
+returns the object at the front of the queue, or null if the queue is empty;
+it does not modify the queue.
 
 @item
 two mutators:
 
-@lisp
-(insert-queue! ⟨@var{queue}⟩ ⟨@var{item}⟩)
-@end lisp
+@example kotlin
+⟨queue⟩.insert(⟨item⟩)
+@end example
 
 @noindent
-inserts the item at the rear of the queue and returns the modified queue as its
+inserts the item at the rear of the queue; where the original handed back the
+modified queue, a Kotlin mutator returns @code{Unit}, the book's unspecified
 value.
 
-@lisp
-(delete-queue! ⟨@var{queue}⟩)
-@end lisp
+@example kotlin
+⟨queue⟩.delete()
+@end example
 
 @noindent
-removes the item at the front of the queue and returns the modified queue as
-its value, signaling an error if the queue is empty before the deletion.
+removes the item at the front of the queue and returns @code{Either.Right} of
+the removed item, or @code{Either.Left(QueueError.EmptyQueue)} if the queue is
+empty before the deletion.
 
 @end itemize
 
@@ -783,11 +830,13 @@ final pair in the list.  That way, when we go to insert an item, we can consult
 the rear pointer and so avoid scanning the list.
 
 @noindent
-A queue is represented, then, as a pair of pointers, @code{front-ptr} and
-@code{rear-ptr}, which indicate, respectively, the first and last pairs in an
+A queue is represented, then, by a pair of pointers, @code{front} and
+@code{rear}, which indicate, respectively, the first and last pairs in an
 ordinary list.  Since we would like the queue to be an identifiable object, we
-can use @code{cons} to combine the two pointers.  Thus, the queue itself will
-be the @code{cons} of the two pointers.  @ref{Figure 3.19} illustrates this
+gather the two pointers into one object: where the original edition combined
+the two pointers with @code{cons} and passed that pair around, this edition
+declares a @code{Queue} class whose two @code{var} fields are the pointers,
+and the queue itself is the class instance.  @ref{Figure 3.19} illustrates this
 representation.
 
 @float
@@ -823,46 +872,49 @@ representation.
 @caption{@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.}
 @end float
 
-To define the queue operations we use the following procedures, which enable us
-to select and to modify the front and rear pointers of a queue:
+@noindent
+To define the queue operations we begin from the representation, which keeps
+the front and rear pointers in two fields, so that every operation can select
+and modify them directly:
 
-@lisp
-(define (front-ptr queue) (car queue))
-(define (rear-ptr queue) (cdr queue))
-(define (set-front-ptr! queue item) 
-  (set-car! queue item))
-(define (set-rear-ptr! queue item) 
-  (set-cdr! queue item))
-@end lisp
+@example kotlin
+class Queue @{
+    private var front: VPair? = null
+    private var rear: VPair? = null
+
+    fun frontCell(): VPair? = front
+
+    fun rearCell(): VPair? = rear
+@end example
 
 @noindent
-Now we can implement the actual queue operations.  We will consider a queue to
-be empty if its front pointer is the empty list:
+The original's four procedures --- @code{front-ptr}, @code{rear-ptr},
+@code{set-front-ptr!}, and @code{set-rear-ptr!} --- collapse into the two
+field accesses themselves; the two readers exist so that exercise 3.21 can
+observe the hidden pair, which the fields alone would not show.  We will
+consider a queue to be empty if its front pointer is null:
 
-@lisp
-(define (empty-queue? queue) 
-  (null? (front-ptr queue)))
-@end lisp
+@example kotlin
+    fun emptyQueue(): Boolean = front == null
+@end example
 
 @noindent
-The @code{make-queue} constructor returns, as an initially empty queue, a pair
-whose @code{car} and @code{cdr} are both the empty list:
+The @code{make-queue} constructor returns, as an initially empty queue, a
+queue whose two pointers are both null; the constructor call itself is the
+book's name for that, and it gives us the @code{q} the figures label:
 
-@lisp
-(define (make-queue) (cons '() '()))
-@end lisp
+@example kotlin
+val q = Queue()
+@end example
 
 @noindent
 To select the item at the front of the queue, we return the @code{car} of the
-pair indicated by the front pointer:
+pair indicated by the front pointer, with null where the original signaled an
+error:
 
-@lisp
-(define (front-queue queue)
-  (if (empty-queue? queue)
-      (error "FRONT called with an 
-              empty queue" queue)
-      (car (front-ptr queue))))
-@end lisp
+@example kotlin
+q.frontCell()?.car
+@end example
 
 @noindent
 To insert an item in a queue, we follow the method whose result is indicated in
@@ -903,39 +955,60 @@ also set the rear pointer to the new pair.
 @caption{@strong{Figure 3.20:} Result of using @code{(insert-queue! q 'd)} on the queue of @ref{Figure 3.19}.}
 @end float
 
-@lisp
-(define (insert-queue! queue item)
-  (let ((new-pair (cons item '())))
-    (cond ((empty-queue? queue)
-           (set-front-ptr! queue new-pair)
-           (set-rear-ptr! queue new-pair)
-           queue)
-          (else (set-cdr! (rear-ptr queue) 
-                          new-pair)
-                (set-rear-ptr! queue new-pair)
-                queue))))
-@end lisp
+@example kotlin
+    fun insert(item: Value) @{
+        val cell = VPair(item, VNil)
+        val tail = rear
+        if (tail == null) @{
+            front = cell
+            rear = cell
+        @} else @{
+            tail.setCdr(cell)
+            rear = cell
+        @}
+    @}
+@end example
 
 @noindent
 To delete the item at the front of the queue, we merely modify the front
 pointer so that it now points at the second item in the queue, which can be
-found by following the @code{cdr} pointer of the first item (see 
+found by following the @code{cdr} pointer of the first item (see
 @ref{Figure 3.21}):@footnote{If the first item is the final item in the queue, the front
 pointer will be the empty list after the deletion, which will mark the queue as
 empty; we needn't worry about updating the rear pointer, which will still point
 to the deleted item, because @code{empty-queue?} looks only at the front
 pointer.}
 
-@lisp
-(define (delete-queue! queue)
-  (cond ((empty-queue? queue)
-         (error "DELETE! called with 
-                 an empty queue" queue))
-        (else (set-front-ptr! 
-               queue 
-               (cdr (front-ptr queue)))
-              queue)))
-@end lisp
+@example kotlin
+    fun delete(): Either<QueueError, Value> @{
+        val head = front
+        return if (head == null) @{
+            Either.Left(QueueError.EmptyQueue)
+        @} else @{
+            front = head.cdr as? VPair
+            if (front == null) @{
+                rear = null
+            @}
+            Either.Right(head.car)
+        @}
+    @}
+@end example
+
+@noindent
+Where the original signaled an error for the empty queue, @code{delete}
+returns @code{Either.Left(QueueError.EmptyQueue)}, the typed shape this
+edition gives the book's errors.  And where the footnote lets the original
+leave the rear pointer resting on the deleted cell, this @code{delete} also
+clears @code{rear} when the last item leaves, so the cells of exercise 3.21
+never show a stale pointer.  One operation of the book's queue has no
+counterpart in the original section: @code{printQueue}, the print procedure
+exercise 3.21 asks Ben for, ships with the class from the start and closes the
+definition of it:
+
+@example kotlin
+    fun printQueue(): String = front?.toString() ?: "()"
+@}
+@end example
 
 @float
 @anchor{Figure 3.21}
@@ -968,70 +1041,158 @@ pointer.}
 @caption{@strong{Figure 3.21:} Result of using @code{(delete-queue!  q)} on the queue of @ref{Figure 3.20}.}
 @end float
 
+@noindent
+The interactions of @ref{Figure 3.18}, against this class:
+
+@example kotlin
+val q = Queue()
+
+q.insert(VSym("a"))
+q.printQueue()
+// (a)
+
+q.insert(VSym("b"))
+q.printQueue()
+// (a b)
+
+q.delete()
+// => Either.Right(a)
+q.printQueue()
+// (b)
+
+q.insert(VSym("c"))
+q.insert(VSym("d"))
+q.printQueue()
+// (b c d)
+
+q.delete()
+// => Either.Right(b)
+q.printQueue()
+// (c d)
+@end example
+
+@noindent
+In everyday Kotlin this queue is @code{ArrayDeque}, the standard library's
+double-ended queue, which gives the same @math{{\Theta(1)}} ends over an array
+rather than over pairs.  The pair-built queue is the one this book uses,
+because its insides are the subject.
+
 @quotation
 @strong{@anchor{Exercise 3.21}Exercise 3.21:} Ben Bitdiddle decides to test the
-queue implementation described above.  He types in the procedures to the Lisp
-interpreter and proceeds to try them out:
+queue implementation described above.  He runs a session, printing the queue
+with the class's own printer and then inspecting the two pointer cells behind
+the representation:
 
-@lisp
-(define q1 (make-queue))
+@example kotlin
+val q1 = Queue()
 
-(insert-queue! q1 'a)
-@i{((a) a)}
+q1.insert(VSym("a"))
+q1.insert(VSym("b"))
+q1.insert(VSym("c"))
+q1.insert(VSym("d"))
 
-(insert-queue! q1 'b)
-@i{((a b) b)}
+q1.printQueue()
+// (a b c d)
 
-(delete-queue! q1)
-@i{((b) b)}
+q1.frontCell()
+// => (a b c d)
 
-(delete-queue! q1)
-@i{(() b)}
-@end lisp
+q1.rearCell()
+// => (d)
+@end example
 
-``It's all wrong!'' he complains.  ``The interpreter's response shows that the
-last item is inserted into the queue twice.  And when I delete both items, the
-second @code{b} is still there, so the queue isn't empty, even though it's
-supposed to be.''  Eva Lu Ator suggests that Ben has misunderstood what is
-happening.  ``It's not that the items are going into the queue twice,'' she
-explains.  ``It's just that the standard Lisp printer doesn't know how to make
-sense of the queue representation.  If you want to see the queue printed
-correctly, you'll have to define your own print procedure for queues.'' Explain
-what Eva Lu is talking about.  In particular, show why Ben's examples produce
-the printed results that they do.  Define a procedure @code{print-queue} that
-takes a queue as input and prints the sequence of items in the queue.
+``It's all wrong!''  he complains.  ``The item @code{d} is in the queue twice:
+once in the printed queue and again as the rear pointer.  And the rear pointer
+is not a list of the items the way the front one is.''  Eva Lu Ator suggests
+that Ben has misunderstood what is happening.  ``It's not that the items are
+going into the queue twice,'' she explains.  ``The queue is one chain of
+mutable pairs; the front cell is the first pair of that chain, and the rear
+cell is the last pair of the very same chain.''  The original Lisp
+interpreter, which held the two pointers in a pair of its own and printed
+that pair with the standard list printer, showed Ben's equivalent session
+there as
+
+@example
+(insert-queue! q1 'a)   ((a) a)
+(insert-queue! q1 'b)   ((a b) b)
+(delete-queue! q1)      ((b) b)
+(delete-queue! q1)      (() b)
+@end example
+
+@noindent
+--- the front chain, then the rear chain in tail position, where a one-pair
+chain shows as its single item; and the @code{b} on the last line is the stale
+rear pointer, untouched because the original's deletion moved only the front
+pointer and its emptiness test looked only at the front pointer too.  Explain
+what Eva Lu is talking about.  In particular, show why the views above come
+out the way they do: why @code{printQueue} agrees with the front cell, why the
+rear cell shows only @code{(d)}, and why the pair of the two pointers is the
+same queue as the printed one.  Then write the original printer yourself: a
+function that takes a queue and renders the pair of its two pointer cells the
+way the standard list printer would, so that Ben's queue renders as
+@code{((a b c d) d)} and a queue of @code{a} alone as @code{((a) a)}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.22}Exercise 3.22:} Instead of representing a queue
-as a pair of pointers, we can build a queue as a procedure with local state.
-The local state will consist of pointers to the beginning and the end of an
-ordinary list.  Thus, the @code{make-queue} procedure will have the form
+as a class whose fields hold the two pointers, we can build a queue as an
+object whose state is captured by the very function that constructs it.  The
+local state will consist of pointers to the beginning and the end of an
+ordinary list.  The messages are the queue operations themselves:
 
-@lisp
-(define (make-queue)
-  (let ((front-ptr @r{…} )
-        (rear-ptr @r{…} ))
-    ⟨@var{definitions of internal procedures}⟩
-    (define (dispatch m) @r{…})
-    dispatch))
-@end lisp
+@example kotlin
+interface MessagePassingQueue @{
+    fun emptyQueue(): Boolean
 
-Complete the definition of @code{make-queue} and provide implementations of the
+    fun insert(item: Value)
+
+    fun delete(): Either<QueueError, Value>
+
+    fun printQueue(): String
+@}
+@end example
+
+@noindent
+Thus, the @code{makeQueue} function will have the form
+
+@example kotlin
+fun makeQueue(): MessagePassingQueue @{
+    var front: VPair? = ⟨…⟩
+    var rear: VPair? = ⟨…⟩
+    ⟨the queue operations, as members of the object expression⟩
+    return ⟨the object expression⟩
+@}
+@end example
+
+Complete the definition of @code{makeQueue} and provide implementations of the
 queue operations using this representation.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.23}Exercise 3.23:} A @newterm{deque} (``double-ended
                                                                  queue'') is a sequence in which items can be inserted and deleted at either the
-front or the rear.  Operations on deques are the constructor @code{make-deque},
-the predicate @code{empty-deque?}, selectors @code{front-deque} and
-@code{rear-deque}, and mutators @code{front-insert-deque!},
-@code{rear-insert-deque!}, @code{front-delete-deque!}, 
-@code{rear-delete-deque!}.  Show how to represent deques using pairs, and give
+front or the rear.  Operations on deques are the constructor @code{makeDeque},
+the predicate @code{emptyDeque}, selectors @code{frontDeque} and
+@code{rearDeque}, and mutators @code{frontInsert},
+@code{rearInsert}, @code{frontDelete},
+@code{rearDelete}.  Show how to represent deques using pairs, and give
 implementations of the operations.@footnote{Be careful not to make the
-interpreter try to print a structure that contains cycles.  (See @ref{Exercise 3.13}.)}  
-All operations should be accomplished in @math{{\Theta(1)}} steps.
+interpreter try to print a structure that contains cycles.  (See @ref{Exercise 3.13}.)}
+All operations should be accomplished in @math{{\Theta(1)}} steps.  In this
+edition the cell of the chain is a three-slot mutable pair --- the item, the
+previous cell, and the next cell:
+
+@example kotlin
+class DPair(
+    var item: Value,
+    var prev: DPair?,
+    var next: DPair?,
+)
+@end example
+
+@noindent
+The deque itself keeps the two end pointers and carries the operations as its
+members, exactly like the queue of this section.
 @end quotation
 
 @node	3.3.3, 3.3.4, 3.3.2, 3.3
@@ -1055,11 +1216,16 @@ list has a special backbone pair at the beginning, which holds a dummy
 ``record''---in this case the arbitrarily chosen symbol @code{*table*}.
 @ref{Figure 3.22} shows the box-and-pointer diagram for the table
 
-@lisp
-a:  1
-b:  2
-c:  3
-@end lisp
+@example kotlin
+val table = makeTable()
+
+table.insert(VSym("a"), VInt(1))
+table.insert(VSym("b"), VInt(2))
+table.insert(VSym("c"), VInt(3))
+
+table.lookup(VSym("b"))
+// => 2
+@end example
 
 @float
 @anchor{Figure 3.22}
@@ -1093,30 +1259,43 @@ V   V       V   V       V   V
 @end float
 
 @noindent
-To extract information from a table we use the @code{lookup} procedure, which
-takes a key as argument and returns the associated value (or false if there is
-no value stored under that key).  @code{Lookup} is defined in terms of the
+To extract information from a table we use the @code{lookup} operation, which
+takes a key as argument and returns the associated value, or null where the
+original wrote false.  @code{Lookup} is defined in terms of the
 @code{assoc} operation, which expects a key and a list of records as arguments.
 Note that @code{assoc} never sees the dummy record.  @code{Assoc} returns the
 record that has the given key as its @code{car}.@footnote{Because @code{assoc}
 uses @code{equal?}, it can recognize keys that are symbols, numbers, or list
 structure.}  @code{Lookup} then checks to see that the resulting record
-returned by @code{assoc} is not false, and returns the value (the @code{cdr})
+returned by @code{assoc} is not null, and returns the value (the @code{cdr})
 of the record.
 
-@lisp
-(define (lookup key table)
-  (let ((record (assoc key (cdr table))))
-    (if record
-        (cdr record)
-        false)))
+The table is a class.  Its first field is the header pair the representation
+needs --- a fixed location the operations can mutate through --- and its
+constructor carries the table's key test, @code{sameKey}: the default is
+@code{equalv}, the book's @code{equal?}, and exercise 3.24 hands the
+constructor a different one.
 
-(define (assoc key records)
-  (cond ((null? records) false)
-        ((equal? key (caar records)) 
-         (car records))
-        (else (assoc key (cdr records)))))
-@end lisp
+@example kotlin
+class Table(
+    val sameKey: (Value, Value) -> Boolean = ::equalv,
+) @{
+    private val header: VPair = VPair(VSym("*table*"), VNil)
+
+    fun assoc(key: Value, records: Value): VPair? @{
+        if (records !is VPair) @{
+            return null
+        @}
+        val record = records.car
+        return if (record is VPair && sameKey(key, record.car)) @{
+            record
+        @} else @{
+            this.assoc(key, records.cdr)
+        @}
+    @}
+
+    fun lookup(key: Value): Value? = this.assoc(key, header.cdr)?.cdr
+@end example
 
 @noindent
 To insert a value in a table under a specified key, we first use @code{assoc}
@@ -1132,25 +1311,30 @@ starts the table.  If we did not arrange things in this way, @code{insert!}
 would have to return a new value for the start of the table when it added a new
 record.}
 
-@lisp
-(define (insert! key value table)
-  (let ((record (assoc key (cdr table))))
-    (if record
-        (set-cdr! record value)
-        (set-cdr! table
-                  (cons (cons key value) 
-                        (cdr table)))))
-  'ok)
-@end lisp
+@example kotlin
+    fun insert(key: Value, value: Value) @{
+        val record = this.assoc(key, header.cdr)
+        if (record == null) @{
+            header.setCdr(cons(VPair(key, value), header.cdr))
+            return
+        @}
+        record.setCdr(value)
+    @}
+@end example
 
 @noindent
-To construct a new table, we simply create a list containing the symbol
-@code{*table*}:
+Where the original's @code{insert!} returned the symbol @code{ok}, a Kotlin
+mutator returns @code{Unit}, the book's unspecified value; the caller reads
+the table's state through @code{lookup}.
 
-@lisp
-(define (make-table)
-  (list '*table*))
-@end lisp
+@noindent
+To construct a new table, we simply create a headed pair whose @code{car} is
+the symbol @code{*table*}; the constructor above does it, and the book's
+@code{make-table} is the factory that hands one back:
+
+@example kotlin
+fun makeTable(): Table = Table()
+@end example
 
 @subsubheading Two-dimensional tables
 
@@ -1218,140 +1402,156 @@ table
 
 @noindent
 When we look up an item, we use the first key to identify the correct subtable.
-Then we use the second key to identify the record within the subtable.
+Then we use the second key to identify the record within the subtable:
 
-@lisp
-(define (lookup key-1 key-2 table)
-  (let ((subtable (assoc key-1 (cdr table))))
-    (if subtable
-        (let ((record 
-               (assoc key-2 (cdr subtable))))
-          (if record (cdr record) false))
-        false)))
-@end lisp
+@example kotlin
+    fun lookup2d(key1: Value, key2: Value): Value? @{
+        val subtable = this.assoc(key1, header.cdr) ?: return null
+        return this.assoc(key2, subtable.cdr)?.cdr
+    @}
+@end example
 
 @noindent
 To insert a new item under a pair of keys, we use @code{assoc} to see if there
 is a subtable stored under the first key.  If not, we build a new subtable
 containing the single record (@code{key-2}, @code{value}) and insert it into
-the table under the first key.  If a subtable already exists for the first key,
-we insert the new record into this subtable, using the insertion method for
-one-dimensional tables described above:
+the table under the first key.  The new subtable is itself a headed list,
+whose header carries @code{key-1} where the top table carries
+@code{*table*} --- the key that identifies the subtable serves the header's
+purpose.  If a subtable already exists for the first key, we insert the new
+record into this subtable, using the insertion method for one-dimensional
+tables described above:
 
-@lisp
-(define (insert! key-1 key-2 value table)
-  (let ((subtable (assoc key-1 (cdr table))))
-    (if subtable
-        (let ((record 
-               (assoc key-2 (cdr subtable))))
-          (if record
-              (set-cdr! record value)
-              (set-cdr! 
-               subtable
-               (cons (cons key-2 value)
-                     (cdr subtable)))))
-        (set-cdr! 
-         table
-         (cons (list key-1 (cons key-2 value))
-               (cdr table)))))
-  'ok)
-@end lisp
+@example kotlin
+    fun insert2d(key1: Value, key2: Value, value: Value) @{
+        val subtable = this.assoc(key1, header.cdr)
+        if (subtable == null) @{
+            header.setCdr(
+                cons(VPair(key1, vlist(VPair(key2, value))), header.cdr),
+            )
+            return
+        @}
+        val record = assoc(key2, subtable.cdr)
+        if (record != null) @{
+            record.setCdr(value)
+            return
+        @}
+        subtable.setCdr(cons(VPair(key2, value), subtable.cdr))
+    @}
+@}
+@end example
+
+@noindent
+The table of @ref{Figure 3.23} is then:
+
+@example kotlin
+val table = makeTable()
+
+table.insert2d(VSym("letters"), VSym("a"), VInt(97))
+table.insert2d(VSym("letters"), VSym("b"), VInt(98))
+table.insert2d(VSym("math"), VSym("+"), VInt(43))
+table.insert2d(VSym("math"), VSym("-"), VInt(45))
+table.insert2d(VSym("math"), VSym("*"), VInt(42))
+
+table.lookup2d(VSym("letters"), VSym("b"))
+// => 98
+
+table.lookup2d(VSym("math"), VSym("*"))
+// => 42
+
+table.lookup2d(VSym("math"), VSym("/"))
+// => null
+@end example
 
 @subsubheading Creating local tables
 
-The @code{lookup} and @code{insert!} operations defined above take the table as
-an argument.  This enables us to use programs that access more than one table.
-Another way to deal with multiple tables is to have separate @code{lookup} and
-@code{insert!} procedures for each table.  We can do this by representing a
-table procedurally, as an object that maintains an internal table as part of
-its local state.  When sent an appropriate message, this ``table object''
-supplies the procedure with which to operate on the internal table.  Here is a
-generator for two-dimensional tables represented in this fashion:
+The @code{lookup2d} and @code{insert2d} operations defined above take the
+table as their receiver.  This enables us to use programs that access more
+than one table.  Another way to deal with multiple tables is to have separate
+@code{lookup} and @code{insert} operations for each table.  We can do this by
+representing a table as an object that maintains an internal table as part of
+its local state.  Where the original assembled such a ``table object'' out of
+a dispatch procedure that handed back the right operation for a message,
+Kotlin already has that object: one call to @code{makeTable()} constructs a
+@code{Table} whose records live behind its own header pair, and the
+operations are its members.  When a program wants the book's two-name shape,
+@code{get} and @code{put} are the operations of one local table, bound once:
 
-@lisp
-(define (make-table)
-  (let ((local-table (list '*table*)))
-    (define (lookup key-1 key-2)
-      (let ((subtable 
-             (assoc key-1 (cdr local-table))))
-        (if subtable
-            (let ((record 
-                   (assoc key-2 
-                          (cdr subtable))))
-              (if record (cdr record) false))
-            false)))
-    (define (insert! key-1 key-2 value)
-      (let ((subtable 
-             (assoc key-1 (cdr local-table))))
-        (if subtable
-            (let ((record 
-                   (assoc key-2 
-                          (cdr subtable))))
-              (if record
-                  (set-cdr! record value)
-                  (set-cdr! 
-                   subtable
-                   (cons (cons key-2 value)
-                         (cdr subtable)))))
-            (set-cdr! 
-             local-table
-             (cons (list key-1
-                         (cons key-2 value))
-                   (cdr local-table)))))
-      'ok)
-    (define (dispatch m)
-      (cond ((eq? m 'lookup-proc) lookup)
-            ((eq? m 'insert-proc!) insert!)
-            (else (error "Unknown operation: 
-                          TABLE" m))))
-    dispatch))
-@end lisp
+@example kotlin
+val operationTable = makeTable()
+
+val get = @{ key1: Value, key2: Value -> operationTable.lookup2d(key1, key2) @}
+val put = @{ key1: Value, key2: Value, value: Value ->
+    operationTable.insert2d(key1, key2, value)
+@}
+@end example
 
 @noindent
-Using @code{make-table}, we could implement the @code{get} and @code{put}
+Using this table object, we could implement the @code{get} and @code{put}
 operations used in @ref{2.4.3} for data-directed programming, as
-follows:
+follows: @code{Get} takes as arguments two keys, and @code{put} takes as
+arguments two keys and a value.  Both operations access the same local table,
+which is encapsulated within the object created by the call to
+@code{makeTable}.
 
-@lisp
-(define operation-table (make-table))
-(define get (operation-table 'lookup-proc))
-(define put (operation-table 'insert-proc!))
-@end lisp
+@example kotlin
+put(VSym("real-part"), VSym("rectangular"), VInt(0))
+
+get(VSym("real-part"), VSym("rectangular"))
+// => 0
+
+get(VSym("real-part"), VSym("polar"))
+// => null
+@end example
 
 @noindent
-@code{Get} takes as arguments two keys, and @code{put} takes as arguments two
-keys and a value.  Both operations access the same local table, which is
-encapsulated within the object created by the call to @code{make-table}.
+In everyday Kotlin this table is a @code{MutableMap}: keys in, values out, no
+backbone to maintain.  The runtime's own operation table,
+@code{sicp.runtime.OpTable}, is this table at runtime scale --- @code{get}
+and @code{put} over a map of maps, a later install overwriting an earlier
+one, which is the record overwrite of this section's @code{insert} at
+hash-map speed.
 
 @quotation
 @strong{@anchor{Exercise 3.24}Exercise 3.24:} In the table implementations
-above, the keys are tested for equality using @code{equal?} (called by
-@code{assoc}).  This is not always the appropriate test.  For instance, we
+above, the keys are tested for equality using @code{equalv}, the Kotlin
+@code{equal?}, unless the constructor was handed a different @code{sameKey}
+predicate.  This is not always the appropriate test.  For instance, we
 might have a table with numeric keys in which we don't need an exact match to
 the number we're looking up, but only a number within some tolerance of it.
-Design a table constructor @code{make-table} that takes as an argument a
-@code{same-key?} procedure that will be used to test ``equality'' of keys.
-@code{Make-table} should return a @code{dispatch} procedure that can be used to
-access appropriate @code{lookup} and @code{insert!} procedures for a local
-table.
+Design a table constructor @code{makeTable} that takes as an argument a
+@code{sameKey} predicate that will be used to test ``equality'' of keys.
+@code{MakeTable} should return a table whose @code{lookup} and @code{insert}
+use that test for a local table.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.25}Exercise 3.25:} Generalizing one- and
 two-dimensional tables, show how to implement a table in which values are
 stored under an arbitrary number of keys and different values may be stored
-under different numbers of keys.  The @code{lookup} and @code{insert!}
-procedures should take as input a list of keys used to access the table.
+under different numbers of keys.  The @code{lookup} and @code{insert}
+operations should take as input a list of keys used to access the table:
+
+@example kotlin
+val t = KeyListTable()
+
+t.insert(listOf(VSym("letters"), VSym("b")), VInt(98))
+
+t.lookup(listOf(VSym("letters"), VSym("b")))
+// => 98
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.26}Exercise 3.26:} To search a table as implemented
 above, one needs to scan through the list of records.  This is basically the
 unordered list representation of @ref{2.3.3}.  For large tables, it may
-be more efficient to structure the table in a different manner.  Describe a
-table implementation where the (key, value) records are organized using a
-binary tree, assuming that keys can be ordered in some way (e.g., numerically
-or alphabetically).  (Compare @ref{Exercise 2.66} of @ref{Chapter 2}.)
+be more efficient to structure the table in a different manner.  Describe,
+and in this edition implement, a table where the (key, value) records are
+organized as a binary tree, assuming that keys can be ordered in some way
+(e.g., numerically or alphabetically).  Define the ordering your table
+assumes; the reference solution compares symbols lexicographically by name
+and integers numerically.  (Compare @ref{Exercise 2.66} of @ref{Chapter 2}.)
 @end quotation
 
 @quotation
@@ -1367,46 +1567,78 @@ new value in the ordinary way and stores this in the table.  As an example of
 memoization, recall from @ref{1.2.2} the exponential process for
 computing Fibonacci numbers:
 
-@lisp
-(define (fib n)
-  (cond ((= n 0) 0)
-        ((= n 1) 1)
-        (else (+ (fib (- n 1))
-                 (fib (- n 2))))))
-@end lisp
+@example kotlin
+fun fib(n: Long): Long =
+    if (n == 0L) @{
+        0L
+    @} else if (n == 1L) @{
+        1L
+    @} else @{
+        fib(n - 1) + fib(n - 2)
+    @}
+@end example
 
 The memoized version of the same procedure is
 
-@lisp
-(define memo-fib
-  (memoize 
-   (lambda (n)
-     (cond ((= n 0) 0)
-           ((= n 1) 1)
-           (else 
-            (+ (memo-fib (- n 1))
-               (memo-fib (- n 2))))))))
-@end lisp
+@example kotlin
+val memoFib = makeMemoFib()
+@end example
 
 @noindent
-where the memoizer is defined as
+where
 
-@lisp
-(define (memoize f)
-  (let ((table (make-table)))
-    (lambda (x)
-      (let ((previously-computed-result 
-             (lookup x table)))
-        (or previously-computed-result
-            (let ((result (f x)))
-              (insert! x result table)
-              result))))))
-@end lisp
+@example kotlin
+fun makeMemoFib(): (Long) -> Long @{
+    var memoFib: ((Long) -> Long)? = null
+    fun fibStep(n: Long): Long =
+        if (n == 0L) @{
+            0L
+        @} else if (n == 1L) @{
+            1L
+        @} else @{
+            val recurse =
+                memoFib
+                    ?: error("memoFib consulted before makeMemoFib finished building it")
+            recurse(n - 1) + recurse(n - 2)
+        @}
+    val memoized = memoize(::fibStep)
+    memoFib = memoized
+    return memoized
+@}
+@end example
 
-Draw an environment diagram to analyze the computation of @code{(memo-fib 3)}.
-Explain why @code{memo-fib} computes the @math{n^{\hbox{th}}} Fibonacci number in a number
-of steps proportional to @math{n}.  Would the scheme still work if we had simply
-defined @code{memo-fib} to be @code{(memoize fib)}?
+@noindent
+and the memoizer is defined as
+
+@example kotlin
+fun memoize(f: (Long) -> Long): (Long) -> Long @{
+    val table = HashMap<Long, Long>()
+    return @{ x ->
+        val previouslyComputedResult = table[x]
+        if (previouslyComputedResult != null) @{
+            previouslyComputedResult
+        @} else @{
+            val result = f(x)
+            table[x] = result
+            result
+        @}
+    @}
+@}
+@end example
+
+@noindent
+Two things have changed shape in this edition, and the statement says so.
+The book's local table --- the @code{make-table} of this section --- is
+stored as a @code{HashMap} keyed by the argument, the host map at
+hash-map scale; and where the book asks for an environment diagram, this
+edition asks for a trace, because the structure worth watching is the one
+table object every recursive level consults, not a nesting of frames.
+Trace the computation of @code{memoFib(3)} over this shared table, noting
+each consult that answers from the table and each that computes and
+stores.  Explain why @code{memoFib} computes the
+@math{n^{\hbox{th}}} Fibonacci number in a number of steps proportional to
+@math{n}.  Would the scheme still work if we had simply defined
+@code{memoFib} to memoize the plain @code{fib}?
 @end quotation
 
 @node	3.3.4, 3.3.5, 3.3.3, 3.3
@@ -1435,7 +1667,7 @@ time that depends on the type of the function box.  For example, an
 input signal to an inverter changes to 0, then one inverter-delay later the
 inverter will change its output signal to 1.  If the input signal to an
 inverter changes to 1, then one inverter-delay later the inverter will change
-its output signal to 0.  We draw an inverter symbolically as in @ref{Figure 3.24}.  
+its output signal to 0.  We draw an inverter symbolically as in @ref{Figure 3.24}.
 An @newterm{and-gate}, also shown in figure 3.24, is a primitive
 function box with two inputs and one output.  It drives its output signal to a
 value that is the @newterm{logical and} of the inputs.  That is, if both of its
@@ -1519,60 +1751,67 @@ B -----*------|___/                        |
 @noindent
 We will now build a program for modeling the digital logic circuits we wish to
 study.  The program will construct computational objects modeling the wires,
-which will ``hold'' the signals.  Function boxes will be modeled by procedures
+which will ``hold'' the signals.  Function boxes will be modeled by functions
 that enforce the correct relationships among the signals.
 
-One basic element of our simulation will be a procedure @code{make-wire}, which
-constructs wires.  For example, we can construct six wires as follows:
+One basic element of our simulation will be the class @code{Wire}, whose
+instances are wires.  For example, we can construct six wires as follows:
 
-@lisp
-(define a (make-wire))
-(define b (make-wire))
-(define c (make-wire))
-(define d (make-wire))
-(define e (make-wire))
-(define s (make-wire))
-@end lisp
-
-@noindent
-We attach a function box to a set of wires by calling a procedure that
-constructs that kind of box.  The arguments to the constructor procedure are
-the wires to be attached to the box.  For example, given that we can construct
-and-gates, or-gates, and inverters, we can wire together the half-adder shown
-in @ref{Figure 3.25}:
-
-@lisp
-(or-gate a b d)
-@i{ok}
-
-(and-gate a b c)
-@i{ok}
-
-(inverter c e)
-@i{ok}
-
-(and-gate d e s)
-@i{ok}
-@end lisp
+@example kotlin
+val a = Wire()
+val b = Wire()
+val c = Wire()
+val d = Wire()
+val e = Wire()
+val s = Wire()
+@end example
 
 @noindent
-Better yet, we can explicitly name this operation by defining a procedure
-@code{half-adder} that constructs this circuit, given the four external wires
-to be attached to the half-adder:
+We attach a function box to a set of wires by calling the constructor that
+builds that kind of box.  The arguments of the constructor are the wires to be
+attached to the box.  In this edition the circuit lives inside one
+@code{Simulation} object, @code{sim}, which owns the agenda its gates schedule
+on.  Given that we can construct and-gates, or-gates, and inverters, we can
+wire together the half-adder shown in @ref{Figure 3.25}:
 
-@lisp
-(define (half-adder a b s c)
-  (let ((d (make-wire)) (e (make-wire)))
-    (or-gate a b d)
-    (and-gate a b c)
-    (inverter c e)
-    (and-gate d e s)
-    'ok))
-@end lisp
+@example kotlin
+val sim = Simulation()
+
+sim.orGate(a, b, d)
+
+sim.andGate(a, b, c)
+
+sim.inverter(c, e)
+
+sim.andGate(d, e, s)
+@end example
 
 @noindent
-The advantage of making this definition is that we can use @code{half-adder}
-itself as a building block in creating more complex circuits.  @ref{Figure 3.26}, 
+The book's interpreter answered @i{ok} to each wiring call; a Kotlin
+constructor answers nothing, and the effect is the wiring itself.  Better yet,
+we can explicitly name this operation by declaring a member @code{halfAdder}
+that constructs this circuit, given the four external wires to be attached to
+the half-adder:
+
+@example kotlin
+fun halfAdder(
+    a: Wire,
+    b: Wire,
+    s: Wire,
+    c: Wire,
+) {
+    val d = Wire()
+    val e = Wire()
+    orGate(a, b, d)
+    andGate(a, b, c)
+    inverter(c, e)
+    andGate(d, e, s)
+}
+@end example
+
+@noindent
+The advantage of making this definition is that we can use @code{halfAdder}
+itself as a building block in creating more complex circuits.  @ref{Figure 3.26},
 for example, shows a @newterm{full-adder} composed of two half-adders
 and an or-gate.@footnote{A full-adder is a basic circuit element used in adding
 two binary numbers.  Here A and B are the bits at corresponding positions in
@@ -1581,16 +1820,22 @@ addition one place to the right.  The circuit generates SUM, which is the sum
 bit in the corresponding position, and @math{\rm C_{out}}, which is the carry
 bit to be propagated to the left.} We can construct a full-adder as follows:
 
-@lisp
-(define (full-adder a b c-in sum c-out)
-  (let ((c1 (make-wire)) 
-        (c2 (make-wire))
-        (s  (make-wire)))
-    (half-adder b c-in s c1)
-    (half-adder a s sum c2)
-    (or-gate c1 c2 c-out)
-    'ok))
-@end lisp
+@example kotlin
+fun fullAdder(
+    a: Wire,
+    b: Wire,
+    cIn: Wire,
+    sum: Wire,
+    cOut: Wire,
+) {
+    val c1 = Wire()
+    val c2 = Wire()
+    val s = Wire()
+    halfAdder(b, cIn, s, c1)
+    halfAdder(a, s, sum, c2)
+    orGate(c1, c2, cOut)
+}
+@end example
 
 @float
 @anchor{Figure 3.26}
@@ -1622,7 +1867,7 @@ C -----+       +---------------/___/   |
 @end float
 
 @noindent
-Having defined @code{full-adder} as a procedure, we can now use it as a
+Having defined @code{fullAdder} as a function, we can now use it as a
 building block for creating still more complex circuits.  (For example, see
 @ref{Exercise 3.30}.)
 
@@ -1631,7 +1876,7 @@ circuits.  If we adopt the general perspective on languages with which we
 approached the study of Lisp in @ref{1.1}, we can say that the
 primitive function boxes form the primitive elements of the language, that
 wiring boxes together provides a means of combination, and that specifying
-wiring patterns as procedures serves as a means of abstraction.
+wiring patterns as functions serves as a means of abstraction.
 
 @subsubheading Primitive function boxes
 
@@ -1641,108 +1886,144 @@ boxes, we use the following operations on wires:
 
 @itemize @bullet
 
-@item @code{(get-signal ⟨@var{wire}⟩)}
+@item @code{wire.getSignal()}
 
 @noindent
 returns the current value of the signal on the wire.
 
-@item @code{(set-signal! ⟨@var{wire}⟩ ⟨@var{new value}⟩)}
+@item @code{wire.setSignal(⟨@var{new value}⟩)}
 
 @noindent
-changes the value of the signal on the wire to the new value.
+changes the value of the signal on the wire to the new value and, when the
+value differs from the old, runs every action attached to the wire, in the
+order the actions were added.
 
-@item @code{(add-action! ⟨@var{wire}⟩ ⟨@var{procedure of no arguments}⟩)}
+@item @code{wire.addAction(⟨@var{procedure of no arguments}⟩)}
 
 @noindent
 asserts that the designated procedure should be run whenever the signal on the
-wire changes value.  Such procedures are the vehicles by which changes in the
-signal value on the wire are communicated to other wires.
+wire changes value, and runs it once immediately, so a newly attached device
+learns the signal the wire already carries.  Such
+procedures are the vehicles by which changes in the signal value on the wire
+are communicated to other wires.
 
 @end itemize
 
 @noindent
-In addition, we will make use of a procedure @code{after-delay} that takes a
-time delay and a procedure to be run and executes the given procedure after the
-given delay.
+In addition, we will make use of the member @code{sim.afterDelay}, which takes
+a time delay and a procedure to be run and executes the given procedure after
+the given delay.
 
-Using these procedures, we can define the primitive digital logic functions.
-To connect an input to an output through an inverter, we use @code{add-action!}
-to associate with the input wire a procedure that will be run whenever the
-signal on the input wire changes value.  The procedure computes the
-@code{logical-not} of the input signal, and then, after one
-@code{inverter-delay}, sets the output signal to be this new value:
+The book keeps @code{the-agenda} as a global variable and the gate
+constructors as procedures over it; this edition gathers them into one
+@code{Simulation} class, whose constructor properties are the agenda and a
+probe log.  The gate constructors below are members of that class, shown as
+the file declares them, and each builds its box on the simulation's own
+agenda.  To connect an input to an output through an inverter, we use
+@code{addAction} to associate with the input wire a procedure that will be run
+whenever the signal on the input wire changes value.  The procedure computes
+the @code{logicalNot} of the input signal, and then, after one
+@code{inverterDelay}, sets the output signal to be this new value:
 
-@lisp
-(define (inverter input output)
-  (define (invert-input)
-    (let ((new-value 
-           (logical-not (get-signal input))))
-      (after-delay 
-       inverter-delay
-       (lambda ()
-         (set-signal! output new-value)))))
-  (add-action! input invert-input)
-  'ok)
+@example kotlin
+fun inverter(
+    input: Wire,
+    output: Wire,
+) {
+    val invertInput = {
+        val newValue = logicalNot(input.getSignal())
+        afterDelay(inverterDelay) { output.setSignal(newValue) }
+    }
+    input.addAction(invertInput)
+}
 
-(define (logical-not s)
-  (cond ((= s 0) 1)
-        ((= s 1) 0)
-        (else (error "Invalid signal" s))))
-@end lisp
+fun logicalNot(s: Long): Long =
+    when (s) {
+        0L -> 1L
+        1L -> 0L
+        else -> throw IllegalArgumentException("Invalid signal: $s")
+    }
+@end example
 
 @noindent
-An and-gate is a little more complex.  The action procedure must be run if
-either of the inputs to the gate changes.  It computes the @code{logical-and}
-(using a procedure analogous to @code{logical-not}) of the values of the
-signals on the input wires and sets up a change to the new value to occur on
-the output wire after one @code{and-gate-delay}.
+@code{logicalNot} is an ordinary file-level function, not a member.  The
+book's @code{error} for a signal other than 0 or 1 becomes an exception here,
+a guard the wire discipline never lets a well-formed circuit reach.
 
-@lisp
-(define (and-gate a1 a2 output)
-  (define (and-action-procedure)
-    (let ((new-value
-           (logical-and (get-signal a1) 
-                        (get-signal a2))))
-      (after-delay 
-       and-gate-delay
-       (lambda ()
-         (set-signal! output new-value)))))
-  (add-action! a1 and-action-procedure)
-  (add-action! a2 and-action-procedure)
-  'ok)
-@end lisp
+An and-gate is a little more complex.  The action procedure must be run if
+either of the inputs to the gate changes.  It computes the @code{logicalAnd}
+(using a function analogous to @code{logicalNot}) of the values of the
+signals on the input wires and sets up a change to the new value to occur on
+the output wire after one @code{andGateDelay}.
+
+@example kotlin
+fun andGate(
+    a1: Wire,
+    a2: Wire,
+    output: Wire,
+) {
+    val andAction = {
+        val newValue = logicalAnd(a1.getSignal(), a2.getSignal())
+        afterDelay(andGateDelay) { output.setSignal(newValue) }
+    }
+    a1.addAction(andAction)
+    a2.addAction(andAction)
+}
+@end example
 
 @quotation
 @strong{@anchor{Exercise 3.28}Exercise 3.28:} Define an or-gate as a primitive
-function box.  Your @code{or-gate} constructor should be similar to
-@code{and-gate}.
+function box.  Your @code{orGate} constructor should be similar to
+@code{andGate}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.29}Exercise 3.29:} Another way to construct an
 or-gate is as a compound digital logic device, built from and-gates and
-inverters.  Define a procedure @code{or-gate} that accomplishes this.  What is
-the delay time of the or-gate in terms of @code{and-gate-delay} and
-@code{inverter-delay}?
+inverters.  Define a function @code{orGateFromAndGate} that accomplishes
+this.  (The book reuses the name @code{or-gate} for the compound device; this
+edition already spent that name on exercise 3.28's primitive, so the compound
+constructor needs a name of its own.)  What is the delay time of the or-gate
+in terms of @code{andGateDelay} and @code{inverterDelay}?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.30}Exercise 3.30:} @ref{Figure 3.27} shows a
 @newterm{ripple-carry adder} formed by stringing together @math{n} full-adders.
 This is the simplest form of parallel adder for adding two @math{n}-bit binary
-numbers.  The inputs @math{A_1}, @math{A_2}, @math{A_3}, @dots{}, @math{A_n} and 
+numbers.  The inputs @math{A_1}, @math{A_2}, @math{A_3}, @dots{}, @math{A_n} and
 @math{B_1}, @math{B_2}, @math{B_3},
 @dots{}, @math{B_n} are the two binary numbers to be added (each @math{A_k} and
-@math{B_k} is a 0 or a 1).  The circuit generates @math{S_1}, @math{S_2}, 
+@math{B_k} is a 0 or a 1).  The circuit generates @math{S_1}, @math{S_2},
 @math{S_3}, @dots{}, @math{S_n},
 the @math{n} bits of the sum, and @math{C}, the carry from the addition.  Write a
-procedure @code{ripple-carry-adder} that generates this circuit.  The procedure
-should take as arguments three lists of @math{n} wires each---the @math{A_k}, the
-@math{B_k}, and the @math{S_k}---and also another wire @math{C}.  The major drawback of the
-ripple-carry adder is the need to wait for the carry signals to propagate.
-What is the delay needed to obtain the complete output from an @math{n}-bit
-ripple-carry adder, expressed in terms of the delays for and-gates, or-gates,
-and inverters?
+function @code{rippleCarryAdder} that generates this circuit.  This edition
+fixes the width at four bits, so the constructor takes the fourteen wires of
+one 4-bit addition---the @math{A_k} as @code{a1} through @code{a4}, the
+@math{B_k} as @code{b1} through @code{b4}, the @math{S_k} as @code{s1} through
+@code{s4}---and the carry wires @code{cIn} and @code{cOut}; the carry into
+each full-adder is wired exactly as the figure wires it.  The major drawback
+of the ripple-carry adder is the need to wait for the carry signals to
+propagate.  What is the delay needed to obtain the complete output from an
+@math{n}-bit ripple-carry adder, expressed in terms of the delays for
+and-gates, or-gates, and inverters?
+@end quotation
+
+@quotation
+@emph{Exercise 3.30a is added by this edition and extends exercise 3.30; SICP
+numbers stop at 3.30.} @strong{@anchor{Exercise 3.30a}Exercise 3.30a:} The
+ripple-carry adder of exercise 3.30 is built and then trusted; this exercise
+checks it against the arithmetic it models.  Write a function @code{rippleAdd}
+that takes two four-bit integers @code{a} and @code{b} and a carry-in bit
+@code{cIn}, builds one fresh @code{Simulation} with the fourteen wires of
+exercise 3.30, wires a @code{rippleCarryAdder}, places each bit of the inputs
+on its wire (wire 1 least significant, as in @ref{Figure 3.27}), runs
+@code{propagate} once, and returns the assembled answer: the four sum wires as
+the low four bits and @code{cOut} as the fifth bit.  For a correct adder the
+result equals @code{a + b + cIn} for every input.  Check the boundary cases
+(all zeros, all ones, the carries that walk the full length of the adder) and
+a seeded sweep of input pairs, and say why a single @code{propagate} call is
+always enough before the outputs are read.
 @end quotation
 
 @float
@@ -1780,61 +2061,66 @@ C ------+   |     +-----+   |     +-----+   |     :  ------+   |
 @subsubheading Representing wires
 
 A wire in our simulation will be a computational object with two local state
-variables: a @code{signal-value} (initially taken to be 0) and a collection of
-@code{action-procedures} to be run when the signal changes value.  We implement
-the wire, using message-passing style, as a collection of local procedures
-together with a @code{dispatch} procedure that selects the appropriate local
-operation, just as we did with the simple bank-account object in 
-@ref{3.1.1}:
+variables: a signal value (initially taken to be 0) and a collection of
+action procedures to be run when the signal changes value.  The book
+implements the wire, using message-passing style, as a collection of local
+procedures together with a @code{dispatch} procedure that selects the
+appropriate local operation, just as it did with the simple bank-account
+object in @ref{3.1.1}.  Kotlin states the same object directly as a
+class, because the dispatch the book writes by hand is the language's own
+method dispatch:
 
-@lisp
-(define (make-wire)
-  (let ((signal-value 0) 
-        (action-procedures '()))
-    (define (set-my-signal! new-value)
-      (if (not (= signal-value new-value))
-          (begin (set! signal-value new-value)
-                 (call-each 
-                  action-procedures))
-          'done))
-    (define (accept-action-procedure! proc)
-      (set! action-procedures 
-            (cons proc action-procedures))
-      (proc))
-    (define (dispatch m)
-      (cond ((eq? m 'get-signal) 
-             signal-value)
-            ((eq? m 'set-signal!) 
-             set-my-signal!)
-            ((eq? m 'add-action!) 
-             accept-action-procedure!)
-            (else (error "Unknown operation: 
-                          WIRE" m))))
-    dispatch))
-@end lisp
+@example kotlin
+public class Wire {
+    private var signalValue: Long = 0L
+    private val actions = mutableListOf<() -> Unit>()
 
-@noindent
-The local procedure @code{set-my-signal!} tests whether the new signal value
-changes the signal on the wire.  If so, it runs each of the action procedures,
-using the following procedure @code{call-each}, which calls each of the items
-in a list of no-argument procedures:
+    /** The book's `get-signal`: the current value of the signal. */
+    public fun getSignal(): Long = signalValue
 
-@lisp
-(define (call-each procedures)
-  (if (null? procedures)
-      'done
-      (begin ((car procedures))
-             (call-each (cdr procedures)))))
-@end lisp
+    /**
+     * The book's `set-signal!`: store the new value and, when it differs
+     * from the old, call every action in the order the actions were
+     * added. The loop walks a snapshot so an action may add actions to
+     * other wires while it runs.
+     */
+    public fun setSignal(v: Long) {
+        if (signalValue == v) {
+            return
+        }
+        signalValue = v
+        for (action in actions.toList()) {
+            action()
+        }
+    }
+
+    /**
+     * The book's `add-action!`: register the action and run it once
+     * immediately, so a device attached to a wire learns the signal the
+     * wire already carries (exercise 3.31).
+     */
+    public fun addAction(action: () -> Unit) {
+        actions.add(action)
+        action()
+    }
+}
+@end example
 
 @noindent
-The local procedure @code{accept-action-procedure!} adds the given procedure to
-the list of procedures to be run, and then runs the new procedure once.  (See
-@ref{Exercise 3.31}.)
+The member @code{setSignal} tests whether the new signal value changes the
+signal on the wire.  If so, it stores the new value and runs each of the action
+procedures, in the order they were added.  The book factors that call loop into
+a separate procedure @code{call-each}, which calls each of the items in a list
+of no-argument procedures; Kotlin's @code{for} loop plays that role directly,
+and @code{actions.toList()} takes the snapshot the loop walks, so an action may
+add actions to other wires while it runs.
 
-With the local @code{dispatch} procedure set up as specified, we can provide
-the following procedures to access the local operations on
-wires:@footnote{@anchor{Footnote 155} These procedures are simply
+The member @code{addAction} adds the given procedure to the list of procedures
+to be run, and then runs the new procedure once.  (See @ref{Exercise 3.31}.)
+
+The book completes its wire object with @code{get-signal}, @code{set-signal!},
+and @code{add-action!} as ordinary procedures over the dispatch, so circuits
+can be written in procedural style:@footnote{@anchor{Footnote 155} These procedures are simply
 syntactic sugar that allow us to use ordinary procedural syntax to access the
 local procedures of objects.  It is striking that we can interchange the role
 of ``procedures'' and ``data'' in such a simple way.  For example, if we write
@@ -1845,24 +2131,15 @@ that is the input to a procedure @code{get-signal}.  The truth of the matter is
 that, in a language in which we can deal with procedures as objects, there is
 no fundamental difference between ``procedures'' and ``data,'' and we can
 choose our syntactic sugar to allow us to program in whatever style we choose.}
+Kotlin needs no such sugar: the members of @code{Wire} already @emph{are}
+ordinary procedural syntax, and the interchange the footnote celebrates is
+exactly what a method call on an object is.
 
-@lisp
-(define (get-signal wire)
-  (wire 'get-signal))
-(define (set-signal! wire new-value)
-  ((wire 'set-signal!) new-value))
-(define (add-action! wire action-procedure)
-  ((wire 'add-action!) action-procedure))
-@end lisp
-
-@noindent
 Wires, which have time-varying signals and may be incrementally attached to
-devices, are typical of mutable objects.  We have modeled them as procedures
-with local state variables that are modified by assignment.  When a new wire is
-created, a new set of state variables is allocated (by the @code{let}
-expression in @code{make-wire}) and a new @code{dispatch} procedure is
-constructed and returned, capturing the environment with the new state
-variables.
+devices, are typical of mutable objects.  We have modeled them as a class whose
+instances hold local state (the book's captured @code{var}; here, private
+properties) modified by assignment.  When a new @code{Wire} is constructed, a
+new set of state properties is allocated, and its action list starts empty.
 
 The wires are shared among the various devices that have been connected to
 them.  Thus, a change made by an interaction with one device will affect all
@@ -1872,7 +2149,7 @@ connections were established.
 
 @subsubheading The agenda
 
-The only thing needed to complete the simulator is @code{after-delay}.  The
+The only thing needed to complete the simulator is @code{afterDelay}.  The
 idea here is that we maintain a data structure, called an @newterm{agenda},
 that contains a schedule of things to do.  The following operations are defined
 for agendas:
@@ -1880,155 +2157,170 @@ for agendas:
 @itemize @bullet
 
 @item
-@code{(make-agenda)} returns a new empty agenda.
+@code{Agenda()} returns a new empty agenda.
 
 @item
-@code{(empty-agenda? ⟨@var{agenda}⟩)} is true if the specified agenda is
+@code{agenda.emptyAgenda()} is true if the specified agenda is
 empty.
 
 @item
-@code{(first-agenda-item ⟨@var{agenda}⟩)} returns the first item on the
-agenda.
+@code{agenda.firstAgendaItem()} returns the first item on the
+agenda, as a pair of its time and the action itself, or
+@code{Either.Left(AgendaError.EmptyAgenda)} where the book's version raised an
+error.
 
 @item
-@code{(remove-first-agenda-item! ⟨@var{agenda}⟩)} modifies the agenda by
+@code{agenda.removeFirstAgendaItem()} modifies the agenda by
 removing the first item.
 
 @item
-@code{(add-to-agenda! ⟨@var{time}⟩ ⟨@var{action}⟩ ⟨@var{agenda}⟩)} 
-modifies the agenda by adding the given action procedure to be run at the 
+@code{agenda.addToAgenda(⟨@var{time}⟩, ⟨@var{action}⟩)}
+modifies the agenda by adding the given action procedure to be run at the
 specified time.
 
 @item
-@code{(current-time ⟨@var{agenda}⟩)} returns the current simulation time.
+@code{agenda.currentTime()} returns the current simulation time.
 
 @end itemize
 
 @noindent
-The particular agenda that we use is denoted by @code{the-agenda}.  The
-procedure @code{after-delay} adds new elements to @code{the-agenda}:
+The particular agenda that a circuit runs on belongs to its @code{Simulation}.
+The member @code{afterDelay} adds new elements to it:
 
-@lisp
-(define (after-delay delay action)
-  (add-to-agenda! 
-   (+ delay (current-time the-agenda))
-   action
-   the-agenda))
-@end lisp
+@example kotlin
+fun afterDelay(
+    delay: Long,
+    action: () -> Unit,
+) {
+    agenda.addToAgenda(currentTime + delay.toInt(), action)
+}
+@end example
 
 @noindent
-The simulation is driven by the procedure @code{propagate}, which operates on
-@code{the-agenda}, executing each procedure on the agenda in sequence.  In
-general, as the simulation runs, new items will be added to the agenda, and
+The simulation is driven by the member @code{propagate}, which operates on
+the agenda, executing each procedure on the agenda in sequence.  In general, as
+the simulation runs, new items will be added to the agenda, and
 @code{propagate} will continue the simulation as long as there are items on the
 agenda:
 
-@lisp
-(define (propagate)
-  (if (empty-agenda? the-agenda)
-      'done
-      (let ((first-item 
-             (first-agenda-item the-agenda)))
-        (first-item)
-        (remove-first-agenda-item! the-agenda)
-        (propagate))))
-@end lisp
+@example kotlin
+fun propagate(): Either<AgendaError, Unit> {
+    while (!agenda.emptyAgenda()) {
+        val (time, action) =
+            when (val item = agenda.firstAgendaItem()) {
+                is Either.Left -> return Either.Left(item.value)
+                is Either.Right -> item.value
+            }
+        currentTime = time
+        action()
+        agenda.removeFirstAgendaItem()
+    }
+    return Either.Right(Unit)
+}
+@end example
+
+@noindent
+The book's @code{propagate} answered @i{done} when the agenda drained; this
+edition's answers @code{Either.Right(Unit)}, with the empty-agenda error
+carried for a caller who drives the agenda one item at a time.
 
 @subsubheading A sample simulation
 
-The following procedure, which places a ``probe'' on a wire, shows the
+The following member, which places a ``probe'' on a wire, shows the
 simulator in action.  The probe tells the wire that, whenever its signal
-changes value, it should print the new signal value, together with the current
+changes value, it should record the new signal value, together with the current
 time and a name that identifies the wire:
 
-@lisp
-(define (probe name wire)
-  (add-action! 
-   wire
-   (lambda ()
-     (newline)
-     (display name)
-     (display " ")
-     (display (current-time the-agenda))
-     (display "  New-value = ")
-     (display (get-signal wire)))))
-@end lisp
+@example kotlin
+fun probe(
+    name: String,
+    wire: Wire,
+) {
+    wire.addAction {
+        probeLog.add("-- $name = ${wire.getSignal()}, current-time = $currentTime")
+    }
+}
+@end example
 
 @noindent
-We begin by initializing the agenda and specifying delays for the primitive
-function boxes:
+The book's probe printed a line like @code{sum 0  New-value = 0}; this
+edition's appends the line @code{-- sum = 0, current-time = 0} to the
+simulation's probe log, naming the wire, the new value, and the time.
 
-@lisp
-(define the-agenda (make-agenda))
-(define inverter-delay 2)
-(define and-gate-delay 3)
-(define or-gate-delay 5)
-@end lisp
+We begin by initializing the simulation and recalling the delays for the
+primitive function boxes:
+
+@example kotlin
+public val inverterDelay: Long = 2L
+public val andGateDelay: Long = 3L
+public val orGateDelay: Long = 5L
+
+val sim = Simulation()
+@end example
 
 @noindent
 Now we define four wires, placing probes on two of them:
 
-@lisp
-(define input-1 (make-wire))
-(define input-2 (make-wire))
-(define sum (make-wire))
-(define carry (make-wire))
+@example kotlin
+val input1 = Wire()
+val input2 = Wire()
+val sum = Wire()
+val carry = Wire()
 
-(probe 'sum sum)
-@i{sum 0  New-value = 0}
+sim.probe("sum", sum)
+// -- sum = 0, current-time = 0
 
-(probe 'carry carry)
-@i{carry 0  New-value = 0}
-@end lisp
+sim.probe("carry", carry)
+// -- carry = 0, current-time = 0
+@end example
 
 @noindent
-Next we connect the wires in a half-adder circuit (as in @ref{Figure 3.25}),
-set the signal on @code{input-1} to 1, and run the simulation:
+Each probe printed once at registration, before any signal changed: the
+immediate run that exercise 3.31 asks about.  Next we connect the wires
+in a half-adder circuit (as in @ref{Figure 3.25}),
+set the signal on @code{input1} to 1, and run the simulation:
 
-@lisp
-(half-adder input-1 input-2 sum carry)
-@i{ok}
+@example kotlin
+sim.halfAdder(input1, input2, sum, carry)
 
-(set-signal! input-1 1)
-@i{done}
+input1.setSignal(1L)
 
-(propagate)
-@i{sum 8  New-value = 1}
-@i{done}
-@end lisp
+sim.propagate()
+// -- sum = 1, current-time = 8
+// => Either.Right(Unit)
+@end example
 
 @noindent
 The @code{sum} signal changes to 1 at time 8.  We are now eight time units from
 the beginning of the simulation.  At this point, we can set the signal on
-@code{input-2} to 1 and allow the values to propagate:
+@code{input2} to 1 and allow the values to propagate:
 
-@lisp
-(set-signal! input-2 1)
-@i{done}
+@example kotlin
+input2.setSignal(1L)
 
-(propagate)
-@i{carry 11  New-value = 1}
-@i{sum 16  New-value = 0}
-@i{done}
-@end lisp
+sim.propagate()
+// -- carry = 1, current-time = 11
+// -- sum = 0, current-time = 16
+// => Either.Right(Unit)
+@end example
 
 @noindent
 The @code{carry} changes to 1 at time 11 and the @code{sum} changes to 0 at
 time 16.
 
 @quotation
-@strong{@anchor{Exercise 3.31}Exercise 3.31:} The internal procedure
-@code{accept-action-procedure!} defined in @code{make-wire} specifies that when
-a new action procedure is added to a wire, the procedure is immediately run.
+@strong{@anchor{Exercise 3.31}Exercise 3.31:} The member @code{addAction} of
+the section's @code{Wire} class specifies that when a new action procedure is
+added to a wire, the procedure is immediately run.
 Explain why this initialization is necessary.  In particular, trace through the
 half-adder example in the paragraphs above and say how the system's response
-would differ if we had defined @code{accept-action-procedure!} as
+would differ if we had defined @code{addAction} as
 
-@lisp
-(define (accept-action-procedure! proc)
-  (set! action-procedures 
-        (cons proc action-procedures)))
-@end lisp
+@example kotlin
+public fun addAction(action: () -> Unit) {
+    actions.add(action)
+}
+@end example
 @end quotation
 
 @subsubheading Implementing the agenda
@@ -2039,135 +2331,189 @@ procedures that are scheduled for future execution.
 The agenda is made up of @newterm{time segments}.  Each time segment is a pair
 consisting of a number (the time) and a queue (see @ref{Exercise 3.32}) that
 holds the procedures that are scheduled to be run during that time segment.
+The book builds the segment as a cons pair whose car is the time and whose cdr
+is the queue; this edition states the same pair as a class:
 
-@lisp
-(define (make-time-segment time queue)
-  (cons time queue))
-(define (segment-time s) (car s))
-(define (segment-queue s) (cdr s))
-@end lisp
+@example kotlin
+/** The book's time segment: one timestamp and the queue of actions due
+ * at it. */
+public class TimeSegment(
+    public val time: Int,
+    public val queue: ActionQueue,
+)
+@end example
 
 @noindent
-We will operate on the time-segment queues using the queue operations described
-in @ref{3.3.2}.
+We will operate on the time-segment queues with the same front/rear discipline
+the queue of @ref{3.3.2} keeps.  The book could reuse its one queue type
+because a Scheme list holds procedures and pairs alike; Kotlin's segment
+queues hold no-argument actions, so the simulator carries its own queue with
+the same two pointers:
 
+@example kotlin
+/**
+ * The agenda's segment queue: the front/rear pointer discipline of the
+ * 3.3.2 queue, typed for the no-argument actions an agenda schedules.
+ * `delete` answers null for an empty queue instead of a typed error,
+ * because the agenda removes an item only after confirming one exists.
+ */
+public class ActionQueue {
+    private class Cell(
+        val item: () -> Unit,
+        var next: Cell?,
+    )
+
+    private var front: Cell? = null
+    private var rear: Cell? = null
+
+    /** Whether the queue holds no actions. */
+    public fun emptyQueue(): Boolean = front == null
+
+    /** The front action, still queued; null exactly when empty. */
+    public fun frontItem(): (() -> Unit)? = front?.item
+
+    /** The book's `insert-queue!`: hang the new cell off the rear. */
+    public fun insert(item: () -> Unit) {
+        val cell = Cell(item, null)
+        val tail = rear
+        if (tail == null) {
+            front = cell
+        } else {
+            tail.next = cell
+        }
+        rear = cell
+    }
+
+    /** The book's `delete-queue!`: advance the front pointer and answer
+     * the removed action, or null when the queue is empty. */
+    public fun delete(): (() -> Unit)? {
+        val head = front ?: return null
+        front = head.next
+        if (front == null) {
+            rear = null
+        }
+        return head.item
+    }
+}
+@end example
+
+@noindent
 The agenda itself is a one-dimensional table of time segments.  It differs from
-the tables described in @ref{3.3.3} in that the segments will be sorted
-in order of increasing time.  In addition, we store the @newterm{current time}
-(i.e., the time of the last action that was processed) at the head of the
-agenda.  A newly constructed agenda has no time segments and has a current time
-of 0:@footnote{The agenda is a headed list, like the tables in 
-@ref{3.3.3}, but since the list is headed by the time, we do not need an
-additional dummy header (such as the @code{*table*} symbol used with tables).}
+the tables described in @ref{3.3.3} in that the segments will be kept
+in order of increasing time.  The book scanned and spliced a headed list to
+preserve that order; this edition holds the segments in a Kotlin list and
+inserts by position.  In addition, we store the @newterm{current time}
+(i.e., the time of the last action that was processed) in the simulation that
+drives the agenda.  A newly constructed simulation has no time segments and a
+current time of 0:@footnote{The book's agenda is a headed list, like the
+tables in @ref{3.3.3}, with the current time stored at the head, so it
+needed no additional dummy header (such as the @code{*table*} symbol used with
+tables).  Kotlin's list carries no header cell either, and the current time
+lives one level up, in the @code{Simulation}.}
 
-@lisp
-(define (make-agenda) (list 0))
-(define (current-time agenda) (car agenda))
-(define (set-current-time! agenda time)
-  (set-car! agenda time))
-(define (segments agenda) (cdr agenda))
-(define (set-segments! agenda segments)
-  (set-cdr! agenda segments))
-(define (first-segment agenda) 
-  (car (segments agenda)))
-(define (rest-segments agenda) 
-  (cdr (segments agenda)))
-@end lisp
+@example kotlin
+/** Where the book's agenda procedures raised, this edition answers
+ * `Either.Left`. */
+public sealed interface AgendaError {
+    public data object EmptyAgenda : AgendaError
+}
+
+/**
+ * The book's agenda: the time segments sorted by increasing time, one
+ * queue of actions per time. The book kept the current time at the head
+ * of its agenda list; this edition keeps it in the [Simulation] that
+ * drives the agenda, where [Simulation.propagate] sets it from each
+ * first item before running it.
+ */
+public class Agenda {
+    private val segments = mutableListOf<TimeSegment>()
+
+    /** The book's `empty-agenda?`. */
+    public fun emptyAgenda(): Boolean = segments.isEmpty()
+
+    /** The time of the first segment, 0 when the agenda is empty. */
+    public fun currentTime(): Int = segments.firstOrNull()?.time ?: 0
+
+    /**
+     * The book's `add-to-agenda!`: add the action to the queue of its
+     * time, creating that segment in sorted position when no segment
+     * holds the time yet. Actions added to one time queue off behind
+     * the actions already waiting there.
+     */
+    public fun addToAgenda(
+        time: Int,
+        action: () -> Unit,
+    ) {
+        val index = segments.indexOfFirst { it.time >= time }
+        if (index >= 0 && segments[index].time == time) {
+            segments[index].queue.insert(action)
+            return
+        }
+        val segment = TimeSegment(time, ActionQueue())
+        segment.queue.insert(action)
+        if (index < 0) {
+            segments.add(segment)
+        } else {
+            segments.add(index, segment)
+        }
+    }
+
+    /** The book's `remove-first-agenda-item!`: delete the first action
+     * of the first segment, and drop the segment when its queue
+     * empties. */
+    public fun removeFirstAgendaItem() {
+        val first = segments.first()
+        first.queue.delete()
+        if (first.queue.emptyQueue()) {
+            segments.removeAt(0)
+        }
+    }
+
+    /** The book's `first-agenda-item`: the first segment's time paired
+     * with the action at its queue's head; `Either.Left(EmptyAgenda)`
+     * where the book raised. */
+    public fun firstAgendaItem(): Either<AgendaError, Pair<Int, () -> Unit>> {
+        val first = segments.firstOrNull()
+        val item = first?.queue?.frontItem()
+        return if (first == null || item == null) {
+            Either.Left(AgendaError.EmptyAgenda)
+        } else {
+            Either.Right(first.time to item)
+        }
+    }
+}
+@end example
 
 @noindent
-An agenda is empty if it has no time segments:
+An agenda is empty if it has no time segments; @code{emptyAgenda} is the
+book's @code{empty-agenda?}.
 
-@lisp
-(define (empty-agenda? agenda)
-  (null? (segments agenda)))
-@end lisp
+To add an action to an agenda, @code{addToAgenda} first checks if the agenda is
+empty.  If so, it creates a time segment for the action and installs this in
+the agenda.  Otherwise, it scans the segments, examining the time of each.  If
+it finds a segment for the appointed time, it adds the action to the associated
+queue.  If it reaches a time later than the one to which the action is
+appointed, it inserts a new time segment into the agenda just before it.  If it
+reaches the end of the segments, it creates a new time segment at the end.
 
-@noindent
-To add an action to an agenda, we first check if the agenda is empty.  If so,
-we create a time segment for the action and install this in the agenda.
-Otherwise, we scan the agenda, examining the time of each segment.  If we find
-a segment for our appointed time, we add the action to the associated queue.
-If we reach a time later than the one to which we are appointed, we insert a
-new time segment into the agenda just before it.  If we reach the end of the
-agenda, we must create a new time segment at the end.
-
-@lisp
-(define (add-to-agenda! time action agenda)
-  (define (belongs-before? segments)
-    (or (null? segments)
-        (< time 
-           (segment-time (car segments)))))
-  (define (make-new-time-segment time action)
-    (let ((q (make-queue)))
-      (insert-queue! q action)
-      (make-time-segment time q)))
-  (define (add-to-segments! segments)
-    (if (= (segment-time (car segments)) time)
-        (insert-queue! 
-         (segment-queue (car segments))
-         action)
-        (let ((rest (cdr segments)))
-          (if (belongs-before? rest)
-              (set-cdr!
-               segments
-               (cons (make-new-time-segment 
-                      time 
-                      action)
-                     (cdr segments)))
-              (add-to-segments! rest)))))
-  (let ((segments (segments agenda)))
-    (if (belongs-before? segments)
-        (set-segments!
-         agenda
-         (cons (make-new-time-segment 
-                time 
-                action)
-               segments))
-        (add-to-segments! segments))))
-@end lisp
-
-@noindent
 The procedure that removes the first item from the agenda deletes the item at
 the front of the queue in the first time segment.  If this deletion makes the
 time segment empty, we remove it from the list of segments:@footnote{Observe
-that the @code{if} expression in this procedure has no @code{⟨}@var{alternative}@code{⟩}
-expression.  Such a ``one-armed @code{if} statement'' is used to decide whether
-to do something, rather than to select between two expressions.  An @code{if}
-expression returns an unspecified value if the predicate is false and there is
-no @code{⟨}@var{alternative}@code{⟩}.}
+that the @code{if} in @code{removeFirstAgendaItem} has no @code{else}
+expression.  Such a ``one-armed @code{if} statement'' is used to decide
+whether to do something, rather than to select between two expressions.  An
+@code{if} without an @code{else} yields @code{Unit} when its predicate is
+false, which is exactly the right answer when the only task was conditional.}
 
-@lisp
-(define (remove-first-agenda-item! agenda)
-  (let ((q (segment-queue 
-            (first-segment agenda))))
-    (delete-queue! q)
-    (if (empty-queue? q)
-        (set-segments! 
-         agenda 
-         (rest-segments agenda)))))
-@end lisp
-
-@noindent
 The first agenda item is found at the head of the queue in the first time
 segment.  Whenever we extract an item, we also update the current
 time:@footnote{In this way, the current time will always be the time of the
-action most recently processed.  Storing this time at the head of the agenda
-ensures that it will still be available even if the associated time segment has
-been deleted.}
-
-@lisp
-(define (first-agenda-item agenda)
-  (if (empty-agenda? agenda)
-      (error "Agenda is empty: 
-              FIRST-AGENDA-ITEM")
-      (let ((first-seg 
-             (first-segment agenda)))
-        (set-current-time! 
-         agenda 
-         (segment-time first-seg))
-        (front-queue 
-         (segment-queue first-seg)))))
-@end lisp
+action most recently processed.  Keeping this time in the simulation, and
+refreshing it from each first item before the item runs, ensures that it will
+still be available even if the associated time segment has been deleted.}
+@code{propagate} takes the pair @code{firstAgendaItem} answers, sets the
+current time from it, runs the action, and only then removes it from the
+agenda.
 
 @quotation
 @strong{@anchor{Exercise 3.32}Exercise 3.32:} The procedures to be run during
@@ -2179,8 +2525,6 @@ same segment and say how the behavior would differ if we stored a segment's
 procedures in an ordinary list, adding and removing procedures only at the
 front (last in, first out).
 @end quotation
-
-
 @node	3.3.5, 3.4, 3.2, 3.3
 @subsection Propagation of Constraints
 
@@ -2219,10 +2563,11 @@ constraints.}
 In this section, we sketch the design of a language that enables us to work in
 terms of relations themselves.  The primitive elements of the language are
 @newterm{primitive constraints}, which state that certain relations hold
-between quantities.  For example, @code{(adder a b c)} specifies that the
-quantities @math{a}, @math{b}, and @math{c} must be related by the equation 
-@math{{a + b = c}}, @code{(multiplier x y z)} expresses the constraint 
-@math{{xy = z}}, and @code{(constant 3.14 x)} says that the value of @math{x} must be 3.14.
+between quantities.  For example, @code{adder(a, b, c)} specifies that the
+quantities @math{a}, @math{b}, and @math{c} must be related by the equation
+@math{{a + b = c}}, @code{multiplier(x, y, z)} expresses the constraint
+@math{{xy = z}}, and @code{constant(32L, x)} says that the value of @math{x}
+must be 32.
 
 Our language provides a means of combining primitive constraints in order to
 express more complex relations.  We combine constraints by constructing
@@ -2297,434 +2642,477 @@ to @math{{25 \cdot 9 = 225}}.  Then @math{u} awakens the second multiplier, whic
 @subsubheading Using the constraint system
 
 To use the constraint system to carry out the temperature computation outlined
-above, we first create two connectors, @code{C} and @code{F}, by calling the
-constructor @code{make-connector}, and link @code{C} and @code{F} in an
+above, we first create two connectors, @code{c} and @code{f}, by calling the
+constructor @code{Connector()}, and link @code{c} and @code{f} in an
 appropriate network:
 
-@lisp
-(define C (make-connector))
-(define F (make-connector))
-(celsius-fahrenheit-converter C F)
-@i{ok}
-@end lisp
+@example kotlin
+val c = Connector()
+val f = Connector()
+celsiusFahrenheitConverter(c, f)
+@end example
 
 @noindent
-The procedure that creates the network is defined as follows:
+The function that creates the network is defined as follows:
 
-@lisp
-(define (celsius-fahrenheit-converter c f)
-  (let ((u (make-connector))
-        (v (make-connector))
-        (w (make-connector))
-        (x (make-connector))
-        (y (make-connector)))
-    (multiplier c w u)
-    (multiplier v x u)
-    (adder v y f)
-    (constant 9 w)
-    (constant 5 x)
-    (constant 32 y)
-    'ok))
-@end lisp
+@example kotlin
+fun celsiusFahrenheitConverter(c: Connector, f: Connector) {
+    val u = Connector()
+    val v = Connector()
+    val w = Connector()
+    val x = Connector()
+    val y = Connector()
+    multiplier(c, w, u)
+    multiplier(v, x, u)
+    adder(v, y, f)
+    constant(9L, w)
+    constant(5L, x)
+    constant(32L, y)
+}
+@end example
 
 @noindent
-This procedure creates the internal connectors @code{u}, @code{v}, @code{w},
+This function creates the internal connectors @code{u}, @code{v}, @code{w},
 @code{x}, and @code{y}, and links them as shown in @ref{Figure 3.28} using the
 primitive constraint constructors @code{adder}, @code{multiplier}, and
-@code{constant}.  Just as with the digital-circuit simulator of 
-@ref{3.3.4}, expressing these combinations of primitive elements in terms of
-procedures automatically provides our language with a means of abstraction for
-compound objects.
+@code{constant}.  Each constructor call wires the new constraint into its
+connectors' lists of participants and returns the constraint it installed.
+Just as with the digital-circuit simulator of @ref{3.3.4},
+expressing these combinations of primitive elements in terms of functions
+automatically provides our language with a means of abstraction for compound
+objects.
 
-To watch the network in action, we can place probes on the connectors @code{C}
-and @code{F}, using a @code{probe} procedure similar to the one we used to
-monitor wires in @ref{3.3.4}.  Placing a probe on a connector will
-cause a message to be printed whenever the connector is given a value:
+To watch the network in action, we can place probes on the connectors
+@code{c} and @code{f}, using a @code{probe} function similar to the one we
+used to monitor wires in @ref{3.3.4}.  Placing a probe on a connector will
+cause a line to be appended to a shared log whenever the connector is given a
+value:
 
-@lisp
-(probe "Celsius temp" C)
-(probe "Fahrenheit temp" F)
-@end lisp
-
-@noindent
-Next we set the value of @code{C} to 25.  (The third argument to
-@code{set-value!} tells @code{C} that this directive comes from the
-@code{user}.)
-
-@lisp
-(set-value! C 25 'user)
-@i{Probe: Celsius temp = 25}
-@i{Probe: Fahrenheit temp = 77}
-@i{done}
-@end lisp
+@example kotlin
+val log = mutableListOf<String>()
+probe("Celsius temp", c, log)
+probe("Fahrenheit temp", f, log)
+@end example
 
 @noindent
-The probe on @code{C} awakens and reports the value.  @code{C} also propagates
-its value through the network as described above.  This sets @code{F} to 77,
-which is reported by the probe on @code{F}.
+Next we set the value of @code{c} to 25.  (The second argument to
+@code{setValue} tells @code{c} that this directive comes from @code{User},
+the book's @code{user}.)
 
-Now we can try to set @code{F} to a new value, say 212:
+@example kotlin
+c.setValue(25L, User)
+// Probe: Celsius temp = 25
+// Probe: Fahrenheit temp = 77
+@end example
 
-@lisp
-(set-value! F 212 'user)
-@i{Error! Contradiction (77 212)}
-@end lisp
+@noindent
+The probe on @code{c} awakens and reports the value.  @code{c} also propagates
+its value through the network as described above.  This sets @code{f} to 77,
+which is reported by the probe on @code{f}.
+
+Now we can try to set @code{f} to a new value, say 212:
+
+@example kotlin
+f.setValue(212L, User)
+// => Either.Left(Contradiction(old=77, attempted=212))
+@end example
 
 @noindent
 The connector complains that it has sensed a contradiction: Its value is 77,
-and someone is trying to set it to 212.  If we really want to reuse the network
-with new values, we can tell @code{C} to forget its old value:
+and someone is trying to set it to 212.  Unlike the book's @code{error} call,
+the refusal comes back as a value, @code{Either.Left} of the
+@code{ConstraintError.Contradiction} record, and the network is unchanged.  If
+we really want to reuse the network with new values, we can tell @code{c} to
+forget its old value:
 
-@lisp
-(forget-value! C 'user)
-@i{Probe: Celsius temp = ?}
-@i{Probe: Fahrenheit temp = ?}
-@i{done}
-@end lisp
+@example kotlin
+c.forgetValue(User)
+// Probe: Celsius temp = ?
+// Probe: Fahrenheit temp = ?
+@end example
 
 @noindent
-@code{C} finds that the @code{user}, who set its value originally, is now
-retracting that value, so @code{C} agrees to lose its value, as shown by the
+@code{c} finds that @code{User}, which set its value originally, is now
+retracting that value, so @code{c} agrees to lose its value, as shown by the
 probe, and informs the rest of the network of this fact.  This information
-eventually propagates to @code{F}, which now finds that it has no reason for
-continuing to believe that its own value is 77.  Thus, @code{F} also gives up
+eventually propagates to @code{f}, which now finds that it has no reason for
+continuing to believe that its own value is 77.  Thus, @code{f} also gives up
 its value, as shown by the probe.
 
-Now that @code{F} has no value, we are free to set it to 212:
+Now that @code{f} has no value, we are free to set it to 212:
 
-@lisp
-(set-value! F 212 'user)
-@i{Probe: Fahrenheit temp = 212}
-@i{Probe: Celsius temp = 100}
-@i{done}
-@end lisp
+@example kotlin
+f.setValue(212L, User)
+// Probe: Fahrenheit temp = 212
+// Probe: Celsius temp = 100
+@end example
 
 @noindent
-This new value, when propagated through the network, forces @code{C} to have a
-value of 100, and this is registered by the probe on @code{C}.  Notice that the
-very same network is being used to compute @code{C} given @code{F} and to
-compute @code{F} given @code{C}.  This nondirectionality of computation is the
+This new value, when propagated through the network, forces @code{c} to have a
+value of 100, and this is registered by the probe on @code{c}.  Notice that the
+very same network is being used to compute @code{c} given @code{f} and to
+compute @code{f} given @code{c}.  This nondirectionality of computation is the
 distinguishing feature of constraint-based systems.
 
 @subsubheading Implementing the constraint system
 
-The constraint system is implemented via procedural objects with local state,
-in a manner very similar to the digital-circuit simulator of 
-@ref{3.3.4}.  Although the primitive objects of the constraint system are
-somewhat more complex, the overall system is simpler, since there is no concern
-about agendas and logic delays.
+The constraint system is implemented via objects with local state, in a manner
+very similar to the digital-circuit simulator of @ref{3.3.4}.  Here each
+object is an ordinary Kotlin object holding its state in @code{private var}
+fields, and the book's @code{me} dispatch becomes the object's own methods.
+Although the primitive objects of the constraint system are somewhat more
+complex, the overall system is simpler, since there is no concern about
+agendas and logic delays.
 
 The basic operations on connectors are the following:
 
 @itemize @bullet
 
 @item
-@code{(has-value? ⟨@var{connector}⟩)} tells whether the connector has a value.
+@code{⟨@var{connector}⟩.hasValue()} tells whether the connector has a value.
 
 @item
-@code{(get-value ⟨@var{connector}⟩)} returns the connector's current value.
+@code{⟨@var{connector}⟩.value()} returns the connector's current value.
 
 @item
-@code{(set-value! ⟨@var{connector}⟩ ⟨@var{new-value}⟩ ⟨@var{informant}⟩)}
+@code{⟨@var{connector}⟩.setValue(⟨@var{new-value}⟩, ⟨@var{informant}⟩)}
 indicates that the informant is requesting the connector to set its value to
-the new value.
+the new value.  The request comes back as @code{Either.Right(Unit)} when the
+connector accepts it -- or already holds exactly that value -- and as
+@code{Either.Left(ConstraintError.Contradiction)} when the connector holds a
+different one.
 
 @item
-@code{(forget-value! ⟨@var{connector}⟩ ⟨@var{retractor}⟩)} tells the connector
+@code{⟨@var{connector}⟩.forgetValue(⟨@var{retractor}⟩)} tells the connector
 that the retractor is requesting it to forget its value.
 
 @item
-@code{(connect ⟨@var{connector}⟩ ⟨@var{new-constraint}⟩)} tells the connector
+@code{⟨@var{connector}⟩.connect(⟨@var{new-constraint}⟩)} tells the connector
 to participate in the new constraint.
 
 @end itemize
 
 @noindent
-The connectors communicate with the constraints by means of the procedures
-@code{inform-about-value}, which tells the given constraint that the connector
-has a value, and @code{inform-about-no-value}, which tells the constraint that
-the connector has lost its value.
+The connectors communicate with the constraints by means of the
+@code{Constraint} interface: calling @code{newValue()} on a constraint tells
+it that the connector has a value, and calling @code{forgetValue()} tells it
+that the connector has lost its value.
 
-@code{Adder} constructs an adder constraint among summand connectors @code{a1}
-and @code{a2} and a @code{sum} connector.  An adder is implemented as a
-procedure with local state (the procedure @code{me} below):
+@example kotlin
+interface Constraint {
+    fun newValue()
 
-@lisp
-(define (adder a1 a2 sum)
-  (define (process-new-value)
-    (cond ((and (has-value? a1) 
-                (has-value? a2))
-           (set-value! sum
-                       (+ (get-value a1) 
-                          (get-value a2))
-                       me))
-          ((and (has-value? a1) 
-                (has-value? sum))
-           (set-value! a2
-                       (- (get-value sum) 
-                          (get-value a1))
-                       me))
-          ((and (has-value? a2) 
-                (has-value? sum))
-           (set-value! a1
-                       (- (get-value sum) 
-                          (get-value a2))
-                       me))))
-  (define (process-forget-value)
-    (forget-value! sum me)
-    (forget-value! a1 me)
-    (forget-value! a2 me)
-    (process-new-value))
-  (define (me request)
-    (cond ((eq? request 'I-have-a-value)
-           (process-new-value))
-          ((eq? request 'I-lost-my-value)
-           (process-forget-value))
-          (else (error "Unknown request: 
-                        ADDER" request))))
-  (connect a1 me)
-  (connect a2 me)
-  (connect sum me)
-  me)
-@end lisp
+    fun forgetValue()
+}
+@end example
 
 @noindent
-@code{Adder} connects the new adder to the designated connectors and returns it
-as its value.  The procedure @code{me}, which represents the adder, acts as a
-dispatch to the local procedures.  The following ``syntax interfaces'' (see
-@ref{Footnote 155} in @ref{3.3.4}) are used in conjunction with
-the dispatch:
+@code{Adder} constructs an adder constraint among summand connectors
+@code{a1} and @code{a2} and a @code{sum} connector.  An adder is implemented
+as a private class whose local state is the three connectors; the class itself
+is this edition's version of the book's @code{me} object, and the constructor
+connects the new adder to the designated connectors and returns the constraint
+it installed:
 
-@lisp
-(define (inform-about-value constraint)
-  (constraint 'I-have-a-value))
-(define (inform-about-no-value constraint)
-  (constraint 'I-lost-my-value))
-@end lisp
+@example kotlin
+fun adder(a1: Connector, a2: Connector, sum: Connector): Constraint {
+    val me = Adder(a1, a2, sum)
+    a1.connect(me)
+    a2.connect(me)
+    sum.connect(me)
+    return me
+}
+
+private class Adder(
+    private val a1: Connector,
+    private val a2: Connector,
+    private val sum: Connector,
+) : Constraint {
+    override fun newValue() {
+        val x = a1.value()
+        val y = a2.value()
+        val total = sum.value()
+        when {
+            x != null && y != null -> sum.setValue(x + y, this)
+            x != null && total != null -> a2.setValue(total - x, this)
+            y != null && total != null -> a1.setValue(total - y, this)
+        }
+    }
+
+    override fun forgetValue() {
+        sum.forgetValue(this)
+        a1.forgetValue(this)
+        a2.forgetValue(this)
+        newValue()
+    }
+}
+@end example
 
 @noindent
-The adder's local procedure @code{process-new-value} is called when the adder
-is informed that one of its connectors has a value. The adder first checks to
+In the book, the adder's @code{me} procedure acts as a dispatch to the local
+procedures, and two ``syntax interfaces'' (see @ref{Footnote 155} in
+@ref{3.3.4}) are used in conjunction with the dispatch; here the
+@code{Constraint} interface folds the dispatch and its interfaces into the two
+methods a connector calls directly.  Since @code{value()} reads as
+@code{Long?}, @code{newValue} reads all three connectors first and each branch
+of the @code{when} guards on the two it needs.
+
+The adder's local procedure @code{newValue} is called when the adder is
+informed that one of its connectors has a value. The adder first checks to
 see if both @code{a1} and @code{a2} have values. If so, it tells @code{sum} to
-set its value to the sum of the two addends.  The @code{informant} argument to
-@code{set-value!} is @code{me}, which is the adder object itself.  If @code{a1}
-and @code{a2} do not both have values, then the adder checks to see if perhaps
-@code{a1} and @code{sum} have values.  If so, it sets @code{a2} to the
-difference of these two.  Finally, if @code{a2} and @code{sum} have values,
-this gives the adder enough information to set @code{a1}.  If the adder is told
-that one of its connectors has lost a value, it requests that all of its
-connectors now lose their values.  (Only those values that were set by this
-adder are actually lost.)  Then it runs @code{process-new-value}.  The reason
+set its value to the sum of the two addends.  The @code{setter} argument to
+@code{setValue} is @code{this}, which is the adder object itself.  If
+@code{a1} and @code{a2} do not both have values, then the adder checks to see
+if perhaps @code{a1} and @code{sum} have values.  If so, it sets @code{a2} to
+the difference of these two.  Finally, if @code{a2} and @code{sum} have
+values, this gives the adder enough information to set @code{a1}.  If the
+adder is told that one of its connectors has lost a value, it requests that
+all of its connectors now lose their values.  (Only those values that were set
+by this adder are actually lost.)  Then it runs @code{newValue}.  The reason
 for this last step is that one or more connectors may still have a value (that
-is, a connector may have had a value that was not originally set by the adder),
-and these values may need to be propagated back through the adder.
+is, a connector may have had a value that was not originally set by the
+adder), and these values may need to be propagated back through the adder.
 
 A multiplier is very similar to an adder. It will set its @code{product} to 0
-if either of the factors is 0, even if the other factor is not known.
+if either of the factors is 0, even if the other factor is not known.  Its
+backward branches divide, and division on @code{Long} values truncates, so a
+network that infers a factor must hand the box a quotient it can divide
+exactly.
 
-@lisp
-(define (multiplier m1 m2 product)
-  (define (process-new-value)
-    (cond ((or (and (has-value? m1) 
-                    (= (get-value m1) 0))
-               (and (has-value? m2) 
-                    (= (get-value m2) 0)))
-           (set-value! product 0 me))
-          ((and (has-value? m1) 
-                (has-value? m2))
-           (set-value! product
-                       (* (get-value m1) 
-                          (get-value m2))
-                       me))
-          ((and (has-value? product) 
-                (has-value? m1))
-           (set-value! m2
-                       (/ (get-value product) 
-                          (get-value m1))
-                       me))
-          ((and (has-value? product) 
-                (has-value? m2))
-           (set-value! m1
-                       (/ (get-value product) 
-                          (get-value m2))
-                       me))))
-  (define (process-forget-value)
-    (forget-value! product me)
-    (forget-value! m1 me)
-    (forget-value! m2 me)
-    (process-new-value))
-  (define (me request)
-    (cond ((eq? request 'I-have-a-value)
-           (process-new-value))
-          ((eq? request 'I-lost-my-value)
-           (process-forget-value))
-          (else
-           (error "Unknown request: 
-                   MULTIPLIER" 
-                  request))))
-  (connect m1 me)
-  (connect m2 me)
-  (connect product me)
-  me)
-@end lisp
+@example kotlin
+fun multiplier(m1: Connector, m2: Connector, product: Connector): Constraint {
+    val me = Multiplier(m1, m2, product)
+    m1.connect(me)
+    m2.connect(me)
+    product.connect(me)
+    return me
+}
+
+private class Multiplier(
+    private val m1: Connector,
+    private val m2: Connector,
+    private val product: Connector,
+) : Constraint {
+    override fun newValue() {
+        val x = m1.value()
+        val y = m2.value()
+        val total = product.value()
+        when {
+            x == 0L || y == 0L -> product.setValue(0L, this)
+            x != null && y != null -> product.setValue(x * y, this)
+            total != null && x != null -> m2.setValue(total / x, this)
+            total != null && y != null -> m1.setValue(total / y, this)
+        }
+    }
+
+    override fun forgetValue() {
+        product.forgetValue(this)
+        m1.forgetValue(this)
+        m2.forgetValue(this)
+        newValue()
+    }
+}
+@end example
 
 @noindent
 A @code{constant} constructor simply sets the value of the designated
-connector.  Any @code{I-have-a-value} or @code{I-lost-my-value} message sent to
-the constant box will produce an error.
+connector, once, at construction.  A well-formed network never sends a message
+to a constant box -- only the box itself may set its connector -- so the
+book's error for a stray @code{I-have-a-value} or @code{I-lost-my-value}
+message has nothing to answer, and the box's two methods stay empty.
 
-@lisp
-(define (constant value connector)
-  (define (me request)
-    (error "Unknown request: CONSTANT" 
-           request))
-  (connect connector me)
-  (set-value! connector value me)
-  me)
-@end lisp
+@example kotlin
+fun constant(v: Long, connector: Connector): Constraint {
+    val box = ConstantBox()
+    connector.connect(box)
+    connector.setValue(v, box)
+    return box
+}
+
+private class ConstantBox : Constraint {
+    override fun newValue() {}
+
+    override fun forgetValue() {}
+}
+@end example
 
 @noindent
-Finally, a probe prints a message about the setting or unsetting of
-the designated connector:
+Finally, a probe appends a line to a log about the setting or unsetting of the
+designated connector:
 
-@lisp
-(define (probe name connector)
-  (define (print-probe value)
-    (newline) (display "Probe: ")
-    (display name) (display " = ")
-    (display value))
-  (define (process-new-value)
-    (print-probe (get-value connector)))
-  (define (process-forget-value)
-    (print-probe "?"))
-  (define (me request)
-    (cond ((eq? request 'I-have-a-value)
-           (process-new-value))
-          ((eq? request 'I-lost-my-value)
-           (process-forget-value))
-          (else (error "Unknown request: 
-                        PROBE" request))))
-  (connect connector me)
-  me)
-@end lisp
+@example kotlin
+fun probe(
+    name: String,
+    connector: Connector,
+    log: MutableList<String> = mutableListOf(),
+): Constraint {
+    val me = Probe(name, connector, log)
+    connector.connect(me)
+    return me
+}
+
+private class Probe(
+    private val name: String,
+    private val connector: Connector,
+    private val log: MutableList<String>,
+) : Constraint {
+    override fun newValue() {
+        log.add("Probe: $name = ${connector.value()}")
+    }
+
+    override fun forgetValue() {
+        log.add("Probe: $name = ?")
+    }
+}
+@end example
 
 @subsubheading Representing connectors
 
-A connector is represented as a procedural object with local state variables
+A connector is represented as one object with local state variables
 @code{value}, the current value of the connector; @code{informant}, the object
-that set the connector's value; and @code{constraints}, a list of the
-constraints in which the connector participates.
+that set the connector's value; and @code{constraints}, the constraints in
+which the connector participates.  @code{Connector()} is the book's
+@code{make-connector}: a valueless connector with no constraints.  The book's
+local procedures become the object's methods:
 
-@lisp
-(define (make-connector)
-  (let ((value false) 
-        (informant false) 
-        (constraints '()))
-    (define (set-my-value newval setter)
-      (cond ((not (has-value? me))
-             (set! value newval)
-             (set! informant setter)
-             (for-each-except 
-              setter
-              inform-about-value
-              constraints))
-            ((not (= value newval))
-             (error "Contradiction" 
-                    (list value newval)))
-            (else 'ignored)))
-    (define (forget-my-value retractor)
-      (if (eq? retractor informant)
-          (begin (set! informant false)
-                 (for-each-except 
-                  retractor
-                  inform-about-no-value
-                  constraints))
-          'ignored))
-    (define (connect new-constraint)
-      (if (not (memq new-constraint 
-                     constraints))
-          (set! constraints
-                (cons new-constraint 
-                      constraints)))
-      (if (has-value? me)
-          (inform-about-value new-constraint))
-      'done)
-    (define (me request)
-      (cond ((eq? request 'has-value?)
-             (if informant true false))
-            ((eq? request 'value) value)
-            ((eq? request 'set-value!) 
-             set-my-value)
-            ((eq? request 'forget) 
-             forget-my-value)
-            ((eq? request 'connect) connect)
-            (else (error "Unknown operation: 
-                          CONNECTOR"
-                         request))))
-    me))
-@end lisp
+@example kotlin
+class Connector {
+    private var value: Long? = null
+    private var informant: Constraint? = null
+    private val constraints = mutableListOf<Constraint>()
+
+    fun hasValue(): Boolean = informant != null
+
+    fun value(): Long? = value
+
+    fun setValue(newValue: Long, setter: Constraint): Either<ConstraintError, Unit> {
+        val current = value
+        if (current == null) {
+            value = newValue
+            informant = setter
+            informExcept(setter, Constraint::newValue)
+            return Either.Right(Unit)
+        }
+        if (current == newValue) {
+            return Either.Right(Unit)
+        }
+        return Either.Left(ConstraintError.Contradiction(current, newValue))
+    }
+
+    fun forgetValue(retractor: Constraint) {
+        if (retractor !== informant) {
+            return
+        }
+        value = null
+        informant = null
+        informExcept(retractor, Constraint::forgetValue)
+    }
+
+    fun connect(source: Constraint) {
+        if (source !in constraints) {
+            constraints.add(0, source)
+        }
+        if (hasValue()) {
+            source.newValue()
+        }
+    }
+
+    private fun informExcept(
+        exception: Constraint,
+        inform: (Constraint) -> Unit,
+    ) {
+        for (constraint in constraints) {
+            if (constraint !== exception) {
+                inform(constraint)
+            }
+        }
+    }
+}
+@end example
 
 @noindent
-The connector's local procedure @code{set-my-value} is called when there is a
-request to set the connector's value.  If the connector does not currently have
-a value, it will set its value and remember as @code{informant} the constraint
-that requested the value to be set.@footnote{The @code{setter} might not be a
-constraint.  In our temperature example, we used @code{user} as the
-@code{setter}.}  Then the connector will notify all of its participating
-constraints except the constraint that requested the value to be set.  This is
-accomplished using the following iterator, which applies a designated procedure
-to all items in a list except a given one:
+The connector's local procedure @code{setValue} is called when there is a
+request to set the connector's value.  If the connector does not currently
+have a value, it will set its value and remember as @code{informant} the
+constraint that requested the value to be set.@footnote{The @code{setter}
+might not be a constraint.  In our temperature example, we used @code{User},
+the book's @code{user}, as the @code{setter}.}  Then the connector will notify
+all of its participating constraints except the constraint that requested the
+value to be set.  This is accomplished using the following helper, which
+applies a designated action to all constraints in the list except a given one.
+The test is physical: @code{!==} is the book's @code{not-eq?}, so two
+constraints that merely look alike are never confused.
 
-@lisp
-(define (for-each-except exception 
-                         procedure 
-                         list)
-  (define (loop items)
-    (cond ((null? items) 'done)
-          ((eq? (car items) exception) 
-           (loop (cdr items)))
-          (else (procedure (car items))
-                (loop (cdr items)))))
-  (loop list))
-@end lisp
+@example kotlin
+private fun informExcept(
+    exception: Constraint,
+    inform: (Constraint) -> Unit,
+) {
+    for (constraint in constraints) {
+        if (constraint !== exception) {
+            inform(constraint)
+        }
+    }
+}
+@end example
 
 @noindent
 If a connector is asked to forget its value, it runs the local procedure
-@code{forget-my-value}, which first checks to make sure that the request is
+@code{forgetValue}, which first checks to make sure that the request is
 coming from the same object that set the value originally.  If so, the
-connector informs its associated constraints about the loss of the value.
+connector drops the stored value along with the informant -- keeping the
+two in step, so no constraint can later poll a stale number -- and informs
+its associated constraints about the loss of the value.
 
 The local procedure @code{connect} adds the designated new constraint to the
-list of constraints if it is not already in that list.  Then, if the connector
-has a value, it informs the new constraint of this fact.
+list of constraints if it is not already in that list (membership, like the
+exception test, is object identity).  New members join at the front -- the
+book's @code{cons} onto the list -- so the most recently wired constraint is
+the first one consulted.  Then, if the connector has a value, it informs the
+new constraint of this fact.
 
-The connector's procedure @code{me} serves as a dispatch to the other internal
-procedures and also represents the connector as an object.  The following
-procedures provide a syntax interface for the dispatch:
+The book's @code{me} object plays two roles in the connector: it dispatches to
+the local procedures, and it represents the connector as an object, with a
+handful of ``syntax interface'' procedures standing in front of the dispatch.
+In this edition the five operations above are the connector's public methods,
+and the handle itself names the object:
 
-@lisp
-(define (has-value? connector)
-  (connector 'has-value?))
-(define (get-value connector)
-  (connector 'value))
-(define (set-value! connector 
-                    new-value 
-                    informant)
-  ((connector 'set-value!) 
-   new-value 
-   informant))
-(define (forget-value! connector retractor)
-  ((connector 'forget) retractor))
-(define (connect connector new-constraint)
-  ((connector 'connect) new-constraint))
-@end lisp
+@example kotlin
+connector.hasValue()
+connector.value()
+connector.setValue(newValue, User)
+connector.forgetValue(retractor)
+connector.connect(newConstraint)
+@end example
+
+@quotation
+@strong{In this language: mutable data.}
+
+Kotlin carries the section's mutable state in ordinary objects owning
+@code{private var} fields -- a queue's front and rear pointers, a table's
+cells, a wire's signal, a connector's value and constraint list -- or in a
+@code{var} captured by the closures behind them.  Two names alias exactly
+when they reference one object, and @code{===} settles which:
+
+@example kotlin
+val u = Connector()
+val v = u
+(v === u)
+// => true
+@end example
+
+The book's mechanism still wins when aliasing must be settled between parts
+no compiler sees together: sharing is a fact about references, and
+@code{===} is the only witness.
+@end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.33}Exercise 3.33:} Using primitive multiplier,
-adder, and constant constraints, define a procedure @code{averager} that takes
+adder, and constant constraints, define a function @code{averager} that takes
 three connectors @code{a}, @code{b}, and @code{c} as inputs and establishes the
-constraint that the value of @code{c} is the average of the values of @code{a}
-and @code{b}.
+constraint that the value of @code{c} is the average of the values of
+@code{a} and @code{b}.  Values in this edition are @code{Long}, so build the
+network so it only ever halves exactly; say what an odd sum does.
 @end quotation
 
 @quotation
@@ -2734,125 +3122,162 @@ connector @code{b} on the second terminal will always be the square of the
 value @code{a} on the first terminal.  He proposes the following simple device
 made from a multiplier:
 
-@lisp
-(define (squarer a b) (multiplier a a b))
-@end lisp
+@example kotlin
+fun louisSquarer(a: Connector, b: Connector): Constraint =
+    multiplier(a, a, b)
+@end example
 
-There is a serious flaw in this idea.  Explain.
+There is a serious flaw in this idea.  Explain, and demonstrate the flaw on
+the device itself: give @code{b} a value and observe what happens to
+@code{a}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.35}Exercise 3.35:} Ben Bitdiddle tells Louis that
 one way to avoid the trouble in @ref{Exercise 3.34} is to define a squarer as a
 new primitive constraint.  Fill in the missing portions in Ben's outline for a
-procedure to implement such a constraint:
+function to implement such a constraint:
 
-@lisp
-(define (squarer a b)
-  (define (process-new-value)
-    (if (has-value? b)
-        (if (< (get-value b) 0)
-            (error "square less than 0: 
-                    SQUARER" 
-                   (get-value b))
-            ⟨@var{alternative1}⟩)
-        ⟨@var{alternative2}⟩))
-  (define (process-forget-value) ⟨@var{body1}⟩)
-  (define (me request) ⟨@var{body2}⟩)
-  ⟨@var{rest of definition}⟩
-  me)
-@end lisp
+@example kotlin
+fun squarer(a: Connector, b: Connector): Constraint {
+    val me = object : Constraint {
+        override fun newValue() {
+            // the book's process-new-value
+            val v = b.value()
+            if (v == null) {
+                ⟨@var{alternative2}⟩
+            } else if (v < 0) {
+                ⟨@var{report "square less than 0: SQUARER" and give up}⟩
+            } else {
+                ⟨@var{alternative1}⟩
+            }
+        }
+
+        override fun forgetValue() {
+            ⟨@var{body1}⟩
+        }
+    }
+    ⟨@var{rest of definition}⟩
+    return me
+}
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.36}Exercise 3.36:} Suppose we evaluate the following
-sequence of expressions in the global environment:
+@strong{@anchor{Exercise 3.36}Exercise 3.36:} @emph{SICP exercise 3.36 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  Suppose we evaluate
 
-@lisp
-(define a (make-connector))
-(define b (make-connector))
-(set-value! a 10 'user)
-@end lisp
+@example kotlin
+val a = Connector()
+val b = Connector()
 
-At some time during evaluation of the @code{set-value!}, the following
-expression from the connector's local procedure is evaluated:
+a.setValue(10L, User)
+@end example
 
-@lisp
-(for-each-except 
-  setter inform-about-value constraints)
-@end lisp
+@noindent
+and that a logging constraint was connected to @code{a} before the last line,
+one that appends a line to a transcript each time the connector dispatches to
+it and each time its process procedure runs.  At some moment during the
+evaluation of @code{a.setValue}, the connector's local method reaches
 
-Draw an environment diagram showing the environment in which the above
-expression is evaluated.
+@example kotlin
+private fun informExcept(
+    exception: Constraint,
+    inform: (Constraint) -> Unit,
+) {
+    for (constraint in constraints) {
+        if (constraint !== exception) {
+            inform(constraint)
+        }
+    }
+}
+@end example
+
+@noindent
+where @code{exception} is the setter, @code{User}.  Trace the calls, in
+order: name each dispatch of the logging constraint, the process procedure
+each dispatch runs, and the connector methods that hand the requests along.
+Do the same for the matching @code{a.forgetValue(User)}.  Explain why the
+constraint is consulted even though the setter, @code{User}, never is, and
+why a second logging constraint connected afterwards would be consulted
+first.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.37}Exercise 3.37:} The
-@code{celsius-fahrenheit-converter} procedure is cumbersome when compared with
-a more expression-oriented style of definition, such as
+@code{celsiusFahrenheitConverter} function is cumbersome when compared with a
+more expression-oriented style of definition, such as
 
-@lisp
-(define (celsius-fahrenheit-converter x)
-  (c+ (c* (c/ (cv 9) (cv 5))
-          x)
-      (cv 32)))
+@example kotlin
+fun celsiusFahrenheit(x: Connector): Connector =
+    cPlus(cDiv(cMul(cConst(9L), x), cConst(5L)), cConst(32L))
 
-(define C (make-connector))
-(define F (celsius-fahrenheit-converter C))
-@end lisp
+val c = Connector()
+val f = celsiusFahrenheit(c)
+@end example
 
-Here @code{c+}, @code{c*}, etc. are the ``constraint'' versions of the
-arithmetic operations.  For example, @code{c+} takes two connectors as
+@noindent
+(The network multiplies @code{x} by 9 before dividing by 5 because values
+here are @code{Long}: @code{cDiv(cConst(9L), cConst(5L))} would truncate to 1
+before @code{x} ever contributes, and the book's session would come out 57,
+not 77.)
+
+Here @code{cPlus}, @code{cMul}, etc. are the ``constraint'' versions of the
+arithmetic operations.  For example, @code{cPlus} takes two connectors as
 arguments and returns a connector that is related to these by an adder
 constraint:
 
-@lisp
-(define (c+ x y)
-  (let ((z (make-connector)))
-    (adder x y z)
-    z))
-@end lisp
+@example kotlin
+fun cPlus(x: Connector, y: Connector): Connector {
+    val z = Connector()
+    adder(x, y, z)
+    return z
+}
+@end example
 
-Define analogous procedures @code{c-}, @code{c*}, @code{c/}, and @code{cv}
-(constant value) that enable us to define compound constraints as in the
-converter example above.@footnote{The expression-oriented format is convenient
-because it avoids the need to name the intermediate expressions in a
-computation.  Our original formulation of the constraint language is cumbersome
-in the same way that many languages are cumbersome when dealing with operations
-on compound data.  For example, if we wanted to compute the product 
-@math{{(a + b) \cdot (c + d)}}, where the variables represent vectors, we could work
-in ``imperative style,'' using procedures that set the values of designated
-vector arguments but do not themselves return vectors as values:
+Define analogous functions @code{cMinus}, @code{cMul}, @code{cDiv}, and
+@code{cConst} (constant value) that enable us to define compound constraints
+as in the converter example above, and check that the book's sessions still
+hold through the expression-style network: setting @code{c} to 25 gives
+@code{f} 77, and setting a forgotten @code{f} to 212 gives @code{c}
+100.@footnote{The expression-oriented format is convenient because it avoids
+the need to name the intermediate expressions in a computation.  Our original
+formulation of the constraint language is cumbersome in the same way that
+many languages are cumbersome when dealing with operations on compound data.
+For example, if we wanted to compute the product @math{{(a + b) \cdot (c + d)}},
+where the variables represent vectors, we could work in ``imperative style,''
+using functions that set the values of designated vector arguments but do not
+themselves return vectors as values:
 
-@lisp
-(v-sum a b temp1)
-(v-sum c d temp2)
-(v-prod temp1 temp2 answer)
-@end lisp
+@example kotlin
+vSum(a, b, temp1)
+vSum(c, d, temp2)
+vProd(temp1, temp2, answer)
+@end example
 
-Alternatively, we could deal with expressions, using procedures that return
+Alternatively, we could deal with expressions, using functions that return
 vectors as values, and thus avoid explicitly mentioning @code{temp1} and
 @code{temp2}:
 
-@lisp
-(define answer 
-  (v-prod (v-sum a b) (v-sum c d)))
-@end lisp
+@example kotlin
+val answer = vProd(vSum(a, b), vSum(c, d))
+@end example
 
-Since Lisp allows us to return compound objects as values of procedures, we can
-transform our imperative-style constraint language into an expression-oriented
-style as shown in this exercise.  In languages that are impoverished in
-handling compound objects, such as Algol, Basic, and Pascal (unless one
-explicitly uses Pascal pointer variables), one is usually stuck with the
-imperative style when manipulating compound objects.  Given the advantage of
-the expression-oriented format, one might ask if there is any reason to have
-implemented the system in imperative style, as we did in this section.  One
-reason is that the non-expression-oriented constraint language provides a
-handle on constraint objects (e.g., the value of the @code{adder} procedure) as
-well as on connector objects.  This is useful if we wish to extend the system
-with new operations that communicate with constraints directly rather than only
-indirectly via operations on connectors.  Although it is easy to implement the
-expression-oriented style in terms of the imperative implementation, it is very
-difficult to do the converse.}
+Since Kotlin functions can return compound objects as values, we can
+transform our imperative-style constraint language into an
+expression-oriented style as shown in this exercise.  In languages that are
+impoverished in handling compound objects, such as Algol, Basic, and Pascal
+(unless one explicitly uses Pascal pointer variables), one is usually stuck
+with the imperative style when manipulating compound objects.  Given the
+advantage of the expression-oriented format, one might ask if there is any
+reason to have implemented the system in imperative style, as we did in this
+section.  One reason is that the non-expression-oriented constraint language
+provides a handle on constraint objects (e.g., the @code{Constraint} that
+@code{adder} returns) as well as on connector objects.  This is useful if we
+wish to extend the system with new operations that communicate with
+constraints directly rather than only indirectly via operations on
+connectors.  Although it is easy to implement the expression-oriented style
+in terms of the imperative implementation, it is very difficult to do the
+converse.}
 @end quotation
-

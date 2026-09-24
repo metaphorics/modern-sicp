@@ -29,8 +29,11 @@ computational objects must also change.  If we choose to model the flow of time
 in the system by the elapsed time in the computer, then we must have a way to
 construct computational objects whose behaviors change as our programs run.  In
 particular, if we wish to model state variables by ordinary symbolic names in
-the programming language, then the language must provide an @newterm{assignment operator} 
-to enable us to change the value associated with a name.
+the programming language, then the language must provide an @newterm{assignment operator}
+to enable us to change the value associated with a name.  Kotlin's own
+assignment operator, @code{=}, does this only for names declared @code{var};
+this edition writes local state as a captured @code{var}, the decision this
+section exists to teach.
 
 @menu
 * 3.1.1::            Local State Variables
@@ -43,114 +46,103 @@ to enable us to change the value associated with a name.
 
 To illustrate what we mean by having a computational object with time-varying
 state, let us model the situation of withdrawing money from a bank account.  We
-will do this using a procedure @code{withdraw}, which takes as argument an
+will do this using a function @code{withdraw}, which takes as argument an
 @code{amount} to be withdrawn.  If there is enough money in the account to
 accommodate the withdrawal, then @code{withdraw} should return the balance
-remaining after the withdrawal.  Otherwise, @code{withdraw} should return the
-message @emph{Insufficient funds}. For example, if we begin with $100 in the
-account, we should obtain the following sequence of responses using
-@code{withdraw}:
+remaining after the withdrawal.  Otherwise, @code{withdraw} should raise the
+typed error @code{WithdrawError.InsufficientFunds}, the one book string this
+edition types this way (see the conventions of the companion).  For example, if
+we begin with $100 in the account, we should obtain the following sequence of
+responses using @code{withdraw}:
 
-@lisp
-(withdraw 25)
-@i{75}
+@example kotlin
+sealed interface WithdrawError {
+    data object InsufficientFunds : WithdrawError
+}
 
-(withdraw 25)
-@i{50}
+var balance: Long = 100L
 
-(withdraw 60)
-@i{"Insufficient funds"}
+fun withdraw(amount: Long): Either<WithdrawError, Long> =
+    if (amount > balance) {
+        Either.Left(WithdrawError.InsufficientFunds)
+    } else {
+        balance -= amount
+        Either.Right(balance)
+    }
 
-(withdraw 15)
-@i{35}
-@end lisp
+withdraw(25L)
+// => Either.Right(75)
+
+withdraw(25L)
+// => Either.Right(50)
+
+withdraw(60L)
+// => Either.Left(InsufficientFunds)
+
+withdraw(15L)
+// => Either.Right(35)
+@end example
 
 @noindent
-Observe that the expression @code{(withdraw 25)}, evaluated twice, yields
-different values.  This is a new kind of behavior for a procedure.  Until now,
-all our procedures could be viewed as specifications for computing mathematical
-functions.  A call to a procedure computed the value of the function applied to
-the given arguments, and two calls to the same procedure with the same
+Observe that the expression @code{withdraw(25L)}, evaluated twice, yields
+different values.  This is a new kind of behavior for a function.  Until now,
+all our functions could be viewed as specifications for computing mathematical
+functions.  A call to a function computed the value of the function applied to
+the given arguments, and two calls to the same function with the same
 arguments always produced the same result.@footnote{Actually, this is not quite
 true.  One exception was the random-number generator in @ref{1.2.6}.
-Another exception involved the operation/type tables we introduced in 
+Another exception involved the operation/type tables we introduced in
 @ref{2.4.3}, where the values of two calls to @code{get} with the same
 arguments depended on intervening calls to @code{put}.  On the other hand,
-until we introduce assignment, we have no way to create such procedures
+until we introduce assignment, we have no way to create such functions
 ourselves.}
 
 To implement @code{withdraw}, we can use a variable @code{balance} to indicate
-the balance of money in the account and define @code{withdraw} as a procedure
-that accesses @code{balance}.  The @code{withdraw} procedure checks to see if
+the balance of money in the account and define @code{withdraw} as a function
+that accesses @code{balance}.  The @code{withdraw} function checks to see if
 @code{balance} is at least as large as the requested @code{amount}.  If so,
 @code{withdraw} decrements @code{balance} by @code{amount} and returns the new
-value of @code{balance}.  Otherwise, @code{withdraw} returns the
-@emph{Insufficient funds} message.  Here are the definitions of @code{balance}
-and @code{withdraw}:
-
-@lisp
-(define balance 100)
-
-(define (withdraw amount)
-  (if (>= balance amount)
-      (begin (set! balance (- balance amount))
-             balance)
-      "Insufficient funds"))
-@end lisp
+value of @code{balance}.  Otherwise, @code{withdraw} raises the
+@emph{Insufficient funds} error, as shown above: @code{balance} is an ordinary
+top-level @code{var}, freely visible and modifiable by any other declaration in
+the program.
 
 @noindent
-Decrementing @code{balance} is accomplished by the expression
+Decrementing @code{balance} is accomplished by the statement
 
-@lisp
-(set! balance (- balance amount))
-@end lisp
-
-@noindent
-This uses the @code{set!} special form, whose syntax is
-
-@lisp
-(set! ⟨@var{name}⟩ ⟨@var{new-value}⟩)
-@end lisp
+@example kotlin
+balance -= amount
+@end example
 
 @noindent
-Here @code{⟨}@var{name}@code{⟩} is a symbol and @code{⟨}@var{new-value}@code{⟩} is any expression.
-@code{Set!} changes @code{⟨}@var{name}@code{⟩} so that its value is the result obtained by
-evaluating @code{⟨}@var{new-value}@code{⟩}.  In the case at hand, we are changing
-@code{balance} so that its new value will be the result of subtracting
-@code{amount} from the previous value of @code{balance}.@footnote{The value of
-a @code{set!} expression is implementation-dependent.  @code{Set!} should be
-used only for its effect, not for its value.
+This is Kotlin's ordinary compound-assignment operator, working directly on
+the @code{var} named @code{balance}.  @code{Balance -= amount} changes
+@code{balance} so that its new value is the result obtained by evaluating
+@code{balance - amount}: the previous value of @code{balance} minus
+@code{amount}.@footnote{Kotlin needs no special naming convention for
+mutation the way Scheme's @code{set!} does: assigning to a @code{var} is
+visibly different from an ordinary call, and the compiler itself refuses the
+assignment unless the name was declared @code{var}.  Data structures that
+mutate their own fields, as we will see in @ref{3.3}, follow the same
+rule directly on their properties.}
 
-The name @code{set!} reflects a naming convention used in Scheme: Operations
-that change the values of variables (or that change data structures, as we will
-see in @ref{3.3}) are given names that end with an exclamation point.
-This is similar to the convention of designating predicates by names that end
-with a question mark.}
-
-@code{Withdraw} also uses the @code{begin} special form to cause two
-expressions to be evaluated in the case where the @code{if} test is true: first
-decrementing @code{balance} and then returning the value of @code{balance}.  In
-general, evaluating the expression
-
-@lisp
-(begin ⟨@var{exp₁}⟩ ⟨@var{exp₂}⟩ @r{…} ⟨@var{expₖ}⟩)
-@end lisp
-
-@noindent
-causes the expressions @math{{⟨exp_1⟩}} through @math{{⟨exp_k⟩}} to be evaluated
-in sequence and the value of the final expression @math{{⟨exp_k⟩}} to be
-returned as the value of the entire @code{begin} form.@footnote{We have already
-used @code{begin} implicitly in our programs, because in Scheme the body of a
-procedure can be a sequence of expressions.  Also, the @code{⟨}@var{consequent}@code{⟩} part
-of each clause in a @code{cond} expression can be a sequence of expressions
-rather than a single expression.}
+@code{Withdraw}'s @code{if} branch does two things in sequence when the
+balance suffices: first decrementing @code{balance} and then returning the new
+value of @code{balance}.  In general, a Kotlin block already sequences its
+statements this way -- @code{@{ balance -= amount; balance @}} runs the first
+statement for its effect and returns the second as the block's
+value.@footnote{Scheme needs a separate @code{begin} form to sequence
+side-effecting expressions, because the body of a Scheme procedure and each
+clause of a @code{cond} are themselves single expressions.  Kotlin's function
+bodies and each branch of a @code{when} are blocks of statements already, so
+no equivalent form is needed anywhere in this book.}
 
 Although @code{withdraw} works as desired, the variable @code{balance} presents
-a problem.  As specified above, @code{balance} is a name defined in the global
-environment and is freely accessible to be examined or modified by any
-procedure.  It would be much better if we could somehow make @code{balance}
+a problem.  As specified above, @code{balance} is a name defined at the top
+level and is freely accessible to be examined or modified by any other
+declaration.  It would be much better if we could somehow make @code{balance}
 internal to @code{withdraw}, so that @code{withdraw} would be the only
-procedure that could access @code{balance} directly and any other procedure
+function that could access @code{balance} directly and any other function
 could access @code{balance} only indirectly (through calls to @code{withdraw}).
 This would more accurately model the notion that @code{balance} is a local
 state variable used by @code{withdraw} to keep track of the state of the
@@ -159,155 +151,174 @@ account.
 We can make @code{balance} internal to @code{withdraw} by rewriting the
 definition as follows:
 
-@lisp
-(define new-withdraw
-  (let ((balance 100))
-    (lambda (amount)
-      (if (>= balance amount)
-          (begin (set! balance 
-                       (- balance amount))
-                 balance)
-          "Insufficient funds"))))
-@end lisp
+@example kotlin
+fun newWithdraw(): (Long) -> Either<WithdrawError, Long> {
+    var b = 100L
+    return { amount ->
+        if (amount > b) {
+            Either.Left(WithdrawError.InsufficientFunds)
+        } else {
+            b -= amount
+            Either.Right(b)
+        }
+    }
+}
+@end example
 
 @noindent
-What we have done here is use @code{let} to establish an environment with a
-local variable @code{balance}, bound to the initial value 100.  Within this
-local environment, we use @code{lambda} to create a procedure that takes
+What we have done here is declare a local @code{var b}, bound to the initial
+value 100.  Within this local environment, we build a lambda that takes
 @code{amount} as an argument and behaves like our previous @code{withdraw}
-procedure.  This procedure---returned as the result of evaluating the
-@code{let} expression---is @code{new-withdraw}, which behaves in precisely the
-same way as @code{withdraw} but whose variable @code{balance} is not accessible
-by any other procedure.@footnote{In programming-language jargon, the variable
-@code{balance} is said to be @newterm{encapsulated} within the
-@code{new-withdraw} procedure.  Encapsulation reflects the general
-system-design principle known as the @newterm{hiding principle}: One can make a
-system more modular and robust by protecting parts of the system from each
-other; that is, by providing information access only to those parts of the
-system that have a ``need to know.''}
+function.  This function -- returned as the result of calling
+@code{newWithdraw()} -- behaves in precisely the same way as @code{withdraw}
+but whose variable @code{b} is not accessible by any other
+function.@footnote{In programming-language jargon, the variable @code{b}
+is said to be @newterm{encapsulated} within the closure @code{newWithdraw}
+returns.  Encapsulation reflects the general system-design principle known
+as the @newterm{hiding principle}: One can make a system more modular and
+robust by protecting parts of the system from each other; that is, by
+providing information access only to those parts of the system that have a
+``need to know.''}
 
-Combining @code{set!} with local variables is the general programming technique
-we will use for constructing computational objects with local state.
-Unfortunately, using this technique raises a serious problem: When we first
-introduced procedures, we also introduced the substitution model of evaluation
-(@ref{1.1.5}) to provide an interpretation of what procedure
-application means.  We said that applying a procedure should be interpreted as
-evaluating the body of the procedure with the formal parameters replaced by
-their values.  The trouble is that, as soon as we introduce assignment into our
-language, substitution is no longer an adequate model of procedure application.
+Combining a captured @code{var} with local variables is the general
+programming technique we will use for constructing computational objects with
+local state.  Unfortunately, using this technique raises a serious problem:
+when we first introduced functions, we also introduced the informal model of
+substituting argument values into function bodies
+(@ref{1.1.5}) to provide an interpretation of what a function
+call means.  We said that calling a function should be interpreted as
+evaluating the body of the function with the parameters replaced by
+their values.  The trouble is that, as soon as we introduce a captured @code{var} into our
+language, substitution is no longer an adequate model of a function call.
 (We will see why this is so in @ref{3.1.3}.)  As a consequence, we
-technically have at this point no way to understand why the @code{new-withdraw}
-procedure behaves as claimed above.  In order to really understand a procedure
-such as @code{new-withdraw}, we will need to develop a new model of procedure
+technically have at this point no way to understand why the @code{newWithdraw}
+function behaves as claimed above.  In order to really understand a function
+such as @code{newWithdraw}, we will need to develop a new model of function
 application.  In @ref{3.2} we will introduce such a model, together
-with an explanation of @code{set!} and local variables.  First, however, we
-examine some variations on the theme established by @code{new-withdraw}.
+with an explanation of the captured @code{var} and local variables.  First, however, we
+examine some variations on the theme established by @code{newWithdraw}.
 
-The following procedure, @code{make-withdraw}, creates ``withdrawal
-processors.''  The formal parameter @code{balance} in @code{make-withdraw}
+The following function, @code{makeWithdraw}, creates ``withdrawal
+processors.''  The parameter @code{balance} in @code{makeWithdraw}
 specifies the initial amount of money in the account.@footnote{In contrast with
-@code{new-withdraw} above, we do not have to use @code{let} to make
-@code{balance} a local variable, since formal parameters are already local.
-This will be clearer after the discussion of the environment model of
+@code{newWithdraw} above, we do not have to declare a separate local @code{var}
+to make @code{balance} local, since a function's parameters are already
+local.  This will be clearer after the discussion of the environment model of
 evaluation in @ref{3.2}.  (See also @ref{Exercise 3.10}.)}
 
-@lisp
-(define (make-withdraw balance)
-  (lambda (amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds")))
-@end lisp
+@example kotlin
+fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> {
+    var b = balance
+    return { amount ->
+        if (amount > b) {
+            Either.Left(WithdrawError.InsufficientFunds)
+        } else {
+            b -= amount
+            Either.Right(b)
+        }
+    }
+}
+@end example
 
 @noindent
-@code{Make-withdraw} can be used as follows to create two objects @code{W1} and
-@code{W2}:
+@code{MakeWithdraw} can be used as follows to create two objects @code{w1} and
+@code{w2}:
 
-@lisp
-(define W1 (make-withdraw 100))
-(define W2 (make-withdraw 100))
+@example kotlin
+val w1 = makeWithdraw(100L)
+val w2 = makeWithdraw(100L)
 
-(W1 50)
-@i{50}
+w1(50L)
+// => Either.Right(50)
 
-(W2 70)
-@i{30}
+w2(70L)
+// => Either.Right(30)
 
-(W2 40)
-@i{"Insufficient funds"}
+w2(40L)
+// => Either.Left(InsufficientFunds)
 
-(W1 40)
-@i{10}
-@end lisp
+w1(40L)
+// => Either.Right(10)
+@end example
 
 @noindent
-Observe that @code{W1} and @code{W2} are completely independent objects, each
-with its own local state variable @code{balance}.  Withdrawals from one do not
+Observe that @code{w1} and @code{w2} are completely independent objects, each
+with its own local state variable @code{b}.  Withdrawals from one do not
 affect the other.
 
 We can also create objects that handle deposits as well as withdrawals, and
-thus we can represent simple bank accounts.  Here is a procedure that returns a
-``bank-account object'' with a specified initial balance:
+thus we can represent simple bank accounts.  Here is a function that returns a
+``bank-account object'' with a specified initial balance.  Scheme's
+@code{dispatch} procedure, which hands back the @code{withdraw} or
+@code{deposit} closure for a message symbol, becomes this edition's
+@code{Account} interface: the dispatch the book's @code{cond} approximates is
+an ordinary method call in Kotlin, and @code{makeAccount} returns an object
+implementing that interface directly, rather than a bare closure, because the
+book has now given the object a real protocol of named operations.
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (define (dispatch m)
-    (cond ((eq? m 'withdraw) withdraw)
-          ((eq? m 'deposit) deposit)
-          (else (error "Unknown request: 
-                 MAKE-ACCOUNT" m))))
-  dispatch)
-@end lisp
+@example kotlin
+interface Account {
+    fun withdraw(amount: Long): Either<WithdrawError, Long>
+
+    fun deposit(amount: Long): Long
+}
+
+fun makeAccount(balance: Long): Account {
+    var b = balance
+    return object : Account {
+        override fun withdraw(amount: Long): Either<WithdrawError, Long> =
+            if (amount > b) {
+                Either.Left(WithdrawError.InsufficientFunds)
+            } else {
+                b -= amount
+                Either.Right(b)
+            }
+
+        override fun deposit(amount: Long): Long {
+            b += amount
+            return b
+        }
+    }
+}
+@end example
 
 @noindent
-Each call to @code{make-account} sets up an environment with a local state
-variable @code{balance}.  Within this environment, @code{make-account} defines
-procedures @code{deposit} and @code{withdraw} that access @code{balance} and an
-additional procedure @code{dispatch} that takes a ``message'' as input and
-returns one of the two local procedures.  The @code{dispatch} procedure itself
-is returned as the value that represents the bank-account object.  This is
-precisely the @newterm{message-passing} style of programming that we saw in
+Each call to @code{makeAccount} sets up an environment with a local state
+variable @code{b}.  Within this environment, @code{makeAccount} builds an
+anonymous object implementing @code{withdraw} and @code{deposit}, both
+closing over the one captured @code{b}.  The returned object itself
+represents the bank-account object; calling its methods is precisely the
+@newterm{message-passing} style of programming that we saw in
 @ref{2.4.3}, although here we are using it in conjunction with the
 ability to modify local variables.
 
-@code{Make-account} can be used as follows:
+@code{MakeAccount} can be used as follows:
 
-@lisp
-(define acc (make-account 100))
+@example kotlin
+val acc = makeAccount(100L)
 
-((acc 'withdraw) 50)
-@i{50}
+acc.withdraw(50L)
+// => Either.Right(50)
 
-((acc 'withdraw) 60)
-@i{"Insufficient funds"}
+acc.withdraw(60L)
+// => Either.Left(InsufficientFunds)
 
-((acc 'deposit) 40)
-@i{90}
+acc.deposit(40L)
+// => 90
 
-((acc 'withdraw) 60)
-@i{30}
-@end lisp
+acc.withdraw(60L)
+// => Either.Right(30)
+@end example
 
 @noindent
-Each call to @code{acc} returns the locally defined @code{deposit} or
-@code{withdraw} procedure, which is then applied to the specified
-@code{amount}.  As was the case with @code{make-withdraw}, another call to
-@code{make-account}
+Each call on @code{acc} invokes the locally defined @code{deposit} or
+@code{withdraw} method, which is then applied to the specified
+@code{amount}.  As was the case with @code{makeWithdraw}, another call to
+@code{makeAccount}
 
-@lisp
-(define acc2 (make-account 100))
-@end lisp
+@example kotlin
+val acc2 = makeAccount(100L)
+@end example
 
 @noindent
 will produce a completely separate account object, which maintains its own
@@ -315,77 +326,88 @@ local @code{balance}.
 
 @quotation
 @strong{@anchor{Exercise 3.1}Exercise 3.1:} An @newterm{accumulator} is a
-procedure that is called repeatedly with a single numeric argument and
+function that is called repeatedly with a single numeric argument and
 accumulates its arguments into a sum.  Each time it is called, it returns the
-currently accumulated sum.  Write a procedure @code{make-accumulator} that
+currently accumulated sum.  Write a function @code{makeAccumulator} that
 generates accumulators, each maintaining an independent sum.  The input to
-@code{make-accumulator} should specify the initial value of the sum; for
+@code{makeAccumulator} should specify the initial value of the sum; for
 example
 
-@lisp
-(define A (make-accumulator 5))
+@example kotlin
+val a = makeAccumulator(5L)
 
-(A 10)
-@i{15}
+a(10L)
+// => 15
 
-(A 10)
-@i{25}
-@end lisp
+a(10L)
+// => 25
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.2}Exercise 3.2:} In software-testing applications,
-it is useful to be able to count the number of times a given procedure is
-called during the course of a computation.  Write a procedure
-@code{make-monitored} that takes as input a procedure, @code{f}, that itself
-takes one input.  The result returned by @code{make-monitored} is a third
-procedure, say @code{mf}, that keeps track of the number of times it has been
-called by maintaining an internal counter.  If the input to @code{mf} is the
-special symbol @code{how-many-calls?}, then @code{mf} returns the value of the
-counter.  If the input is the special symbol @code{reset-count}, then @code{mf}
-resets the counter to zero.  For any other input, @code{mf} returns the result
-of calling @code{f} on that input and increments the counter.  For instance, we
-could make a monitored version of the @code{sqrt} procedure:
+it is useful to be able to count the number of times a given function is
+called during the course of a computation.  Write a function
+@code{makeMonitored} that takes as input a function, @code{f}, that itself
+takes one input.  The result returned by @code{makeMonitored} keeps track of
+the number of times it has been called by maintaining an internal counter.
+Its @code{howManyCalls()} method returns the value of the counter; its
+@code{resetCount()} method resets the counter to zero; its @code{call(x)}
+method returns the result of calling @code{f} on @code{x} and increments the
+counter.  For instance, we could make a monitored version of the @code{sqrt}
+function:
 
-@lisp
-(define s (make-monitored sqrt))
+@example kotlin
+val s = makeMonitored { x: Double -> sqrt(x) }
 
-(s 100)
-@i{10}
+s.call(100.0)
+// => 10.0
 
-(s 'how-many-calls?)
-@i{1}
-@end lisp
+s.howManyCalls()
+// => 1
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.3}Exercise 3.3:} Modify the @code{make-account}
-procedure so that it creates password-protected accounts.  That is,
-@code{make-account} should take a symbol as an additional argument, as in
+@strong{@anchor{Exercise 3.3}Exercise 3.3:} Modify the @code{makeAccount}
+function so that it creates password-protected accounts.  That is,
+@code{makeAccount} should take a password as an additional argument, as in
 
-@lisp
-(define acc 
-  (make-account 100 'secret-password))
-@end lisp
+@example kotlin
+val acc = makeAccount(100L, "secret-password")
+@end example
 
 The resulting account object should process a request only if it is accompanied
-by the password with which the account was created, and should otherwise return
-a complaint:
+by the password with which the account was created, and should otherwise raise
+@code{AccountError.WrongPassword}:
 
-@lisp
-((acc 'secret-password 'withdraw) 40)
-@i{60}
+@example kotlin
+acc.withdraw("secret-password", 40L)
+// => Either.Right(60)
 
-((acc 'some-other-password 'deposit) 50)
-@i{"Incorrect password"}
-@end lisp
+acc.deposit("some-other-password", 50L)
+// => Either.Left(WrongPassword)
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.4}Exercise 3.4:} Modify the @code{make-account}
-procedure of @ref{Exercise 3.3} by adding another local state variable so that,
+@strong{@anchor{Exercise 3.4}Exercise 3.4:} Modify the @code{makeAccount}
+function of @ref{Exercise 3.3} by adding another local state variable so that,
 if an account is accessed more than seven consecutive times with an incorrect
-password, it invokes the procedure @code{call-the-cops}.
+password, it raises @code{AccountError.CallTheCops} instead of
+@code{WrongPassword}.
+@end quotation
+
+@quotation
+@emph{Exercise 3.4a is added by this edition and extends exercise 3.4; SICP
+numbers stop at 3.4.} @strong{@anchor{Exercise 3.4a}Exercise 3.4a:} Exercise
+3.4 locks an account out after seven consecutive wrong passwords, but a
+locked-out account keeps no record of what happened to it.  Extend
+@code{makeAccountWithLockout} into @code{makeAccountWithAuditLog}, whose
+@code{auditLog()} method returns every access attempt in the order it
+happened, each entry naming the operation (@code{"withdraw"} or
+@code{"deposit"}) and its outcome (@code{"ok"}, @code{"wrong-password"},
+@code{"insufficient-funds"}, or @code{"call-the-cops"}).
 @end quotation
 
 @node	3.1.2, 3.1.3, 3.1.1, 3.1
@@ -395,57 +417,63 @@ As we shall see, introducing assignment into our programming language leads us
 into a thicket of difficult conceptual issues.  Nevertheless, viewing systems
 as collections of objects with local state is a powerful technique for
 maintaining a modular design.  As a simple example, consider the design of a
-procedure @code{rand} that, whenever it is called, returns an integer chosen at
+function @code{rand} that, whenever it is called, returns an integer chosen at
 random.
 
 It is not at all clear what is meant by ``chosen at random.''  What we
 presumably want is for successive calls to @code{rand} to produce a sequence of
 numbers that has statistical properties of uniform distribution.  We will not
 discuss methods for generating suitable sequences here.  Rather, let us assume
-that we have a procedure @code{rand-update} that has the property that if we
-start with a given number @math{x_1} and form
+that we have a function @code{randUpdate} that has the property that if we
+start with a given word @math{x_1} and form
 
-@lisp
-@var{x₂} = (rand-update @var{x₁})
-@var{x₃} = (rand-update @var{x₂})
-@end lisp
+@example kotlin
+val x2 = randUpdate(x1)
+val x3 = randUpdate(x2)
+@end example
 
 @noindent
 then the sequence of values @math{x_1}, @math{x_2}, @math{x_3}, @dots{} will have the
 desired statistical properties.@footnote{One common way to implement
-@code{rand-update} is to use the rule that @math{x} is updated to @math{{ax + b}} 
+@code{randUpdate} is to use the rule that @math{x} is updated to @math{{ax + b}}
 modulo @math{m}, where @math{a}, @math{b}, and @math{m} are appropriately chosen
 integers.  Chapter 3 of @ref{Knuth 1981} includes an extensive discussion of
 techniques for generating sequences of random numbers and establishing their
-statistical properties.  Notice that the @code{rand-update} procedure computes
-a mathematical function: Given the same input twice, it produces the same
-output.  Therefore, the number sequence produced by @code{rand-update}
-certainly is not ``random,'' if by ``random'' we insist that each number in the
-sequence is unrelated to the preceding number.  The relation between ``real
-randomness'' and so-called @newterm{pseudo-random} sequences, which are
-produced by well-determined computations and yet have suitable statistical
-properties, is a complex question involving difficult issues in mathematics and
-philosophy.  Kolmogorov, Solomonoff, and Chaitin have made great progress in
-clarifying these issues; a discussion can be found in @ref{Chaitin 1975}.}
+statistical properties.  This edition's own @code{randUpdate} is one step of
+the seeded xorshift64* generator (Vigna 2016) that the runtime's shared
+@code{Random} also uses (decision D31), reimplemented as a section-local pure
+function.  Notice that @code{randUpdate} computes a mathematical function:
+Given the same input twice, it produces the same output.  Therefore, the word
+sequence produced by @code{randUpdate} certainly is not ``random,'' if by
+``random'' we insist that each word in the sequence is unrelated to the
+preceding word.  The relation between ``real randomness'' and so-called
+@newterm{pseudo-random} sequences, which are produced by well-determined
+computations and yet have suitable statistical properties, is a complex
+question involving difficult issues in mathematics and philosophy.
+Kolmogorov, Solomonoff, and Chaitin have made great progress in clarifying
+these issues; a discussion can be found in @ref{Chaitin 1975}.}
 
-We can implement @code{rand} as a procedure with a local state variable
-@code{x} that is initialized to some fixed value @code{random-init}.  Each call
-to @code{rand} computes @code{rand-update} of the current value of @code{x},
-returns this as the random number, and also stores this as the new value of
-@code{x}.
+We can implement @code{rand} as a closure over a local state variable
+@code{x} that is initialized to some fixed seed.  Each call to the closure
+computes @code{randUpdate} of the current value of @code{x}, returns this as
+the random word, and also stores this as the new value of @code{x}.
 
-@lisp
-(define rand
-  (let ((x random-init))
-    (lambda () (set! x (rand-update x)) x)))
-@end lisp
+@example kotlin
+fun makeRand(seed: ULong): () -> ULong {
+    var x = seed
+    return {
+        x = randUpdate(x)
+        x
+    }
+}
+@end example
 
 @noindent
 Of course, we could generate the same sequence of random numbers without using
-assignment by simply calling @code{rand-update} directly.  How@-ever, this would
+assignment by simply calling @code{randUpdate} directly.  However, this would
 mean that any part of our program that used random numbers would have to
 explicitly remember the current value of @code{x} to be passed as an argument
-to @code{rand-update}.  To realize what an annoyance this would be, consider
+to @code{randUpdate}.  To realize what an annoyance this would be, consider
 using random numbers to implement a technique called @newterm{Monte Carlo simulation}.
 
 The Monte Carlo method consists of choosing sample experiments at random from a
@@ -461,86 +489,78 @@ if their @abbr{GCD} is 1.  The fraction of times that the test is passed
 gives us our estimate of @math{{6/\pi^2}}, and from this we obtain our
 approximation to @math{\pi}.
 
-The heart of our program is a procedure @code{monte-carlo}, which takes as
+The heart of our program is a function @code{monteCarlo}, which takes as
 arguments the number of times to try an experiment, together with the
-experiment, represented as a no-argument procedure that will return either true
-or false each time it is run.  @code{Monte-carlo} runs the experiment for the
+experiment, represented as a no-argument function that will return true or
+false each time it is run.  @code{MonteCarlo} runs the experiment for the
 designated number of trials and returns a number telling the fraction of the
 trials in which the experiment was found to be true.
 
-@lisp
-(define (estimate-pi trials)
-  (sqrt (/ 6 (monte-carlo trials 
-                          cesaro-test))))
-(define (cesaro-test)
-   (= (gcd (rand) (rand)) 1))
+@example kotlin
+fun estimatePi(trials: Int, rand: () -> ULong): Double =
+    sqrt(6.0 / monteCarlo(trials) { cesaroTest(rand) })
 
-(define (monte-carlo trials experiment)
-  (define (iter trials-remaining trials-passed)
-    (cond ((= trials-remaining 0)
-           (/ trials-passed trials))
-          ((experiment)
-           (iter (- trials-remaining 1) 
-                 (+ trials-passed 1)))
-          (else
-           (iter (- trials-remaining 1) 
-                 trials-passed))))
-  (iter trials 0))
-@end lisp
+fun cesaroTest(rand: () -> ULong): Boolean = gcd(rand(), rand()) == 1UL
+
+fun monteCarlo(trials: Int, experiment: () -> Boolean): Double {
+    tailrec fun iter(remaining: Int, passed: Int): Double =
+        when {
+            remaining == 0 -> passed.toDouble() / trials
+            experiment() -> iter(remaining - 1, passed + 1)
+            else -> iter(remaining - 1, passed)
+        }
+    return iter(trials, 0)
+}
+@end example
 
 @noindent
-Now let us try the same computation using @code{rand-update} directly rather
-than @code{rand}, the way we would be forced to proceed if we did not use
+Now let us try the same computation using @code{randUpdate} directly rather
+than a closure over @code{rand}, the way we would be forced to proceed if we did not use
 assignment to model local state:
 
-@lisp
-(define (estimate-pi trials)
-  (sqrt (/ 6 (random-gcd-test trials 
-                              random-init))))
+@example kotlin
+fun estimatePiStateless(trials: Int, initialX: ULong): Double =
+    sqrt(6.0 / randomGcdTest(trials, initialX))
 
-(define (random-gcd-test trials initial-x)
-  (define (iter trials-remaining 
-                trials-passed 
-                x)
-    (let ((x1 (rand-update x)))
-      (let ((x2 (rand-update x1)))
-        (cond ((= trials-remaining 0)
-               (/ trials-passed trials))
-              ((= (gcd x1 x2) 1)
-               (iter (- trials-remaining 1)
-                     (+ trials-passed 1)
-                     x2))
-              (else
-               (iter (- trials-remaining 1)
-                     trials-passed
-                     x2))))))
-  (iter trials 0 initial-x))
-@end lisp
+fun randomGcdTest(trials: Int, initialX: ULong): Double {
+    tailrec fun iter(remaining: Int, passed: Int, x: ULong): Double {
+        val x1 = randUpdate(x)
+        val x2 = randUpdate(x1)
+        return when {
+            remaining == 0 -> passed.toDouble() / trials
+            gcd(x1, x2) == 1UL -> iter(remaining - 1, passed + 1, x2)
+            else -> iter(remaining - 1, passed, x2)
+        }
+    }
+    return iter(trials, 0, initialX)
+}
+@end example
 
 @noindent
 While the program is still simple, it betrays some painful breaches of
-modularity.  In our first version of the program, using @code{rand}, we can
-express the Monte Carlo method directly as a general @code{monte-carlo}
-procedure that takes as an argument an arbitrary @code{experiment} procedure.
-In our second version of the program, with no local state for the random-number
-generator, @code{random-gcd-test} must explicitly manipulate the random numbers
-@code{x1} and @code{x2} and recycle @code{x2} through the iterative loop as the
-new input to @code{rand-update}.  This explicit handling of the random numbers
-intertwines the structure of accumulating test results with the fact that our
-particular experiment uses two random numbers, whereas other Monte Carlo
-experiments might use one random number or three.  Even the top-level procedure
-@code{estimate-pi} has to be concerned with supplying an initial random number.
-The fact that the random-number generator's insides are leaking out into other
-parts of the program makes it difficult for us to isolate the Monte Carlo idea
-so that it can be applied to other tasks.  In the first version of the program,
-assignment encapsulates the state of the random-number generator within the
-@code{rand} procedure, so that the details of random-number generation remain
-independent of the rest of the program.
+modularity.  In our first version of the program, using a closure over
+@code{rand}, we can express the Monte Carlo method directly as a general
+@code{monteCarlo} function that takes as an argument an arbitrary
+@code{experiment} function.  In our second version of the program, with no
+local state for the random-number generator, @code{randomGcdTest} must
+explicitly manipulate the random words @code{x1} and @code{x2} and recycle
+@code{x2} through the iterative loop as the new input to @code{randUpdate}.
+This explicit handling of the random numbers intertwines the structure of
+accumulating test results with the fact that our particular experiment uses
+two random numbers, whereas other Monte Carlo experiments might use one
+random number or three.  Even the top-level function @code{estimatePiStateless}
+has to be concerned with supplying an initial random word.  The fact that the
+random-number generator's insides are leaking out into other parts of the
+program makes it difficult for us to isolate the Monte Carlo idea so that it
+can be applied to other tasks.  In the first version of the program, the
+captured @code{var} encapsulates the state of the random-number generator
+within the closure @code{makeRand} returns, so that the details of
+random-number generation remain independent of the rest of the program.
 
 The general phenomenon illustrated by the Monte Carlo example is this: From the
 point of view of one part of a complex process, the other parts appear to
 change with time.  They have hidden time-varying local state.  If we wish to
-write computer programs whose structure reflects this decomposition, we make
+write programs whose structure reflects this decomposition, we make
 computational objects (such as bank accounts and random-number generators)
 whose behavior changes with time.  We model state with local state variables,
 and we model the changes of state with assignments to those variables.
@@ -571,171 +591,179 @@ estimate of the proportion of the rectangle that lies in the region.  Hence,
 multiplying this fraction by the area of the entire rectangle should produce an
 estimate of the integral.
 
-Implement Monte Carlo integration as a procedure @code{estimate-integral} that
-takes as arguments a predicate @code{P}, upper and lower bounds @code{x1},
-@code{x2}, @code{y1}, and @code{y2} for the rectangle, and the number of trials
-to perform in order to produce the estimate.  Your procedure should use the
-same @code{monte-carlo} procedure that was used above to estimate @math{\pi}.
-Use your @code{estimate-integral} to produce an estimate of @math{\pi} by
-measuring the area of a unit circle.
+Implement Monte Carlo integration as a function @code{estimateIntegral} that
+takes as arguments a predicate @code{p}, upper and lower bounds @code{x1},
+@code{x2}, @code{y1}, and @code{y2} for the rectangle, a random-word generator,
+and the number of trials to perform in order to produce the estimate.  Your
+function should use the same @code{monteCarlo} function that was used above
+to estimate @math{\pi}.  Use your @code{estimateIntegral} to produce an
+estimate of @math{\pi} by measuring the area of a unit circle.
 
-You will find it useful to have a procedure that returns a number chosen at
-random from a given range.  The following @code{random-in-range} procedure
-implements this in terms of the @code{random} procedure used in 
-@ref{1.2.6}, which returns a nonnegative number less than its
-input.@footnote{@abbr{MIT} Scheme provides such a procedure.  If
-@code{random} is given an exact integer (as in @ref{1.2.6}) it returns
-an exact integer, but if it is given a decimal value (as in this exercise) it
-returns a decimal value.}
+You will find it useful to have a function that returns a number chosen at
+random from a given range.  The following @code{randomInRange} function
+implements this in terms of the generator used in
+@ref{1.2.6}, scaling its raw word into the range.@footnote{This
+edition's generator, the same seeded xorshift64* generator introduced in
+@ref{1.2.6}, always returns a raw word regardless of the range
+requested; @code{randomInRange} does the scaling to a @code{Double}
+itself, so there is no separate exact-versus-decimal case the way MIT
+Scheme's @code{random} has.}
 
-@lisp
-(define (random-in-range low high)
-  (let ((range (- high low)))
-    (+ low (random range))))
-@end lisp
+@example kotlin
+fun randomInRange(low: Double, high: Double, next: () -> ULong): Double {
+    val range = high - low
+    return low + range * (next().toDouble() / ULong.MAX_VALUE.toDouble())
+}
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.6}Exercise 3.6:} It is useful to be able to reset a
 random-number generator to produce a sequence starting from a given value.
-Design a new @code{rand} procedure that is called with an argument that is
-either the symbol @code{generate} or the symbol @code{reset} and behaves as
-follows: @code{(rand 'generate)} produces a new random number; @code{((rand
-'reset) ⟨@var{new-value}⟩)} resets the internal state variable to the
-designated @code{⟨}@var{new-value}@code{⟩}.  Thus, by resetting the state, one can generate
-repeatable sequences.  These are very handy to have when testing and debugging
-programs that use random numbers.
+Design a new @code{makeResettableRand} function that returns an object with
+two methods: @code{generate()} produces a new random word, the way
+@code{(rand 'generate)} would; @code{reset(newValue)} resets the internal
+state variable to @code{newValue}, the way @code{((rand 'reset) newValue)}
+would.  Thus, by resetting the state, one can generate repeatable sequences.
+These are very handy to have when testing and debugging programs that use
+random numbers.
 @end quotation
 
 @node	3.1.3, 3.2, Chapter 3, 3.1
 @subsection The Costs of Introducing Assignment
 
-As we have seen, the @code{set!} operation enables us to model objects that
-have local state.  However, this advantage comes at a price.  Our programming
-language can no longer be interpreted in terms of the substitution model of
-procedure application that we introduced in @ref{1.1.5}.  Moreover, no
-simple model with ``nice'' mathematical properties can be an adequate framework
-for dealing with objects and assignment in programming languages.
+As we have seen, the captured-@code{var} mechanism enables us to model
+objects that have local state.  However, this advantage comes at a price.
+Our programming language can no longer be understood purely by substituting
+argument values into function bodies, the informal model we have relied on
+since @ref{1.1.5}.  Moreover, no simple model with ``nice'' mathematical
+properties can be an adequate framework for dealing with objects and
+assignment in programming languages.
 
-So long as we do not use assignments, two evaluations of the same procedure
-with the same arguments will produce the same result, so that procedures can be
+So long as we do not use assignments, two evaluations of the same function
+with the same arguments will produce the same result, so that functions can be
 viewed as computing mathematical functions.  Programming without any use of
 assignments, as we did throughout the first two chapters of this book, is
 accordingly known as @newterm{functional programming}.
 
 To understand how assignment complicates matters, consider a simplified version
-of the @code{make-withdraw} procedure of @ref{3.1.1} that does not
+of the @code{makeWithdraw} function of @ref{3.1.1} that does not
 bother to check for an insufficient amount:
 
-@lisp
-(define (make-simplified-withdraw balance)
-  (lambda (amount)
-    (set! balance (- balance amount))
-    balance))
+@example kotlin
+fun makeSimplifiedWithdraw(balance: Long): (Long) -> Long {
+    var b = balance
+    return { amount ->
+        b -= amount
+        b
+    }
+}
 
-(define W (make-simplified-withdraw 25))
+val w = makeSimplifiedWithdraw(25L)
 
-(W 20)
-@i{5}
+w(20L)
+// => 5
 
-(W 10)
-@i{-5}
-@end lisp
-
-@noindent
-Compare this procedure with the following @code{make-decrementer} procedure,
-which does not use @code{set!}:
-
-@lisp
-(define (make-decrementer balance)
-  (lambda (amount)
-    (- balance amount)))
-@end lisp
+w(10L)
+// => -5
+@end example
 
 @noindent
-@code{Make-decrementer} returns a procedure that subtracts its input from a
+Compare this function with the following @code{makeDecrementer} function,
+which closes over no @code{var}:
+
+@example kotlin
+fun makeDecrementer(balance: Long): (Long) -> Long = { amount -> balance - amount }
+@end example
+
+@noindent
+@code{MakeDecrementer} returns a function that subtracts its input from a
 designated amount @code{balance}, but there is no accumulated effect over
-successive calls, as with @code{make-simplified-withdraw}:
+successive calls, as with @code{makeSimplifiedWithdraw}:
 
-@lisp
-(define D (make-decrementer 25))
+@example kotlin
+val d = makeDecrementer(25L)
 
-(D 20)
-@i{5}
+d(20L)
+// => 5
 
-(D 10)
-@i{15}
-@end lisp
-
-@noindent
-We can use the substitution model to explain how @code{make-decrementer} works.
-For instance, let us analyze the evaluation of the expression
-
-@lisp
-((make-decrementer 25) 20)
-@end lisp
+d(10L)
+// => 15
+@end example
 
 @noindent
-We first simplify the operator of the combination by substituting 25 for
-@code{balance} in the body of @code{make-decrementer}.  This reduces the
+We can reason about how @code{makeDecrementer} works by substituting arguments
+into function bodies, the way we have throughout this book.  For instance, let
+us analyze the evaluation of the expression
+
+@example kotlin
+makeDecrementer(25L)(20L)
+@end example
+
+@noindent
+We first simplify the call by substituting 25 for
+@code{balance} in the body of @code{makeDecrementer}.  This reduces the
 expression to
 
-@lisp
-((lambda (amount) (- 25 amount)) 20)
-@end lisp
+@example kotlin
+( { amount: Long -> 25L - amount } )(20L)
+@end example
 
 @noindent
-Now we apply the operator by substituting 20 for @code{amount} in the body of
-the @code{lambda} expression:
+Now we apply the lambda by substituting 20 for @code{amount} in its
+body:
 
-@lisp
-(- 25 20)
-@end lisp
+@example kotlin
+25L - 20L
+@end example
 
 @noindent
 The final answer is 5.
 
 Observe, however, what happens if we attempt a similar substitution analysis
-with @code{make-simplified-withdraw}:
+with @code{makeSimplifiedWithdraw}:
 
-@lisp
-((make-simplified-withdraw 25) 20)
-@end lisp
-
-@noindent
-We first simplify the operator by substituting 25 for @code{balance} in the
-body of @code{make-simplified-withdraw}.  This reduces the expression
-to@footnote{We don't substitute for the occurrence of @code{balance} in the
-@code{set!} expression because the @code{⟨}@var{name}@code{⟩} in a @code{set!} is not
-evaluated.  If we did substitute for it, we would get @code{(set! 25 (- 25
-amount))}, which makes no sense.}
-
-@lisp
-((lambda (amount) 
-   (set! balance (- 25 amount)) 25)
- 20)
-@end lisp
+@example kotlin
+makeSimplifiedWithdraw(25L)(20L)
+@end example
 
 @noindent
-Now we apply the operator by substituting 20 for @code{amount} in the body of
-the @code{lambda} expression:
+We first simplify the call by substituting 25 for
+@code{balance} in the body of @code{makeSimplifiedWithdraw}.  This reduces the
+expression to@footnote{We don't substitute for the occurrence of @code{b} in
+the @code{-=} statement, because an assignment target is not an ordinary
+expression: substituting would give @code{25L -= amount}, which is not
+something Kotlin lets you write.}
 
-@lisp
-(set! balance (- 25 20)) 25
-@end lisp
+@example kotlin
+( { amount: Long ->
+    b -= amount
+    25L
+  }
+)(20L)
+@end example
 
 @noindent
-If we adhered to the substitution model, we would have to say that the meaning
-of the procedure application is to first set @code{balance} to 5 and then
+Now we apply the lambda by substituting 20 for @code{amount} in its
+body:
+
+@example kotlin
+b -= 20L
+25L
+@end example
+
+@noindent
+If we adhered to substitution as our only model, we would have to say that the meaning
+of the call is to first set @code{b} to 5 and then
 return 25 as the value of the expression.  This gets the wrong answer.  In
 order to get the correct answer, we would have to somehow distinguish the first
-occurrence of @code{balance} (before the effect of the @code{set!})  from the
-second occurrence of @code{balance} (after the effect of the @code{set!}), and
-the substitution model cannot do this.
+occurrence of @code{b} (before the effect of @code{-=})  from the
+second occurrence of @code{b} (after the effect of @code{-=}), and
+plain substitution cannot do this.
 
 The trouble here is that substitution is based ultimately on the notion that
 the symbols in our language are essentially names for values.  But as soon as
-we introduce @code{set!} and the idea that the value of a variable can change,
+we introduce a captured @code{var} and the idea that the value of a variable can change,
 a variable can no longer be simply a name.  Now a variable somehow refers to a
 place where a value can be stored, and the value stored at this place can
 change.  In @ref{3.2} we will see how environments play this role of
@@ -748,53 +776,53 @@ particular model of computation.  As soon as we introduce change into our
 computational models, many notions that were previously straightforward become
 problematical.  Consider the concept of two things being ``the same.''
 
-Suppose we call @code{make-decrementer} twice with the same argument to create
-two procedures:
+Suppose we call @code{makeDecrementer} twice with the same argument to create
+two functions:
 
-@lisp
-(define D1 (make-decrementer 25))
-(define D2 (make-decrementer 25))
-@end lisp
-
-@noindent
-Are @code{D1} and @code{D2} the same?  An acceptable answer is yes, because
-@code{D1} and @code{D2} have the same computational behavior---each is a
-procedure that subtracts its input from 25.  In fact, @code{D1} could be
-substituted for @code{D2} in any computation without changing the result.
-
-Contrast this with making two calls to @code{make-simplified-withdraw}:
-
-@lisp
-(define W1 (make-simplified-withdraw 25))
-(define W2 (make-simplified-withdraw 25))
-@end lisp
+@example kotlin
+val d1 = makeDecrementer(25L)
+val d2 = makeDecrementer(25L)
+@end example
 
 @noindent
-Are @code{W1} and @code{W2} the same?  Surely not, because calls to @code{W1}
-and @code{W2} have distinct effects, as shown by the following sequence of
+Are @code{d1} and @code{d2} the same?  An acceptable answer is yes, because
+@code{d1} and @code{d2} have the same computational behavior---each is a
+function that subtracts its input from 25.  In fact, @code{d1} could be
+substituted for @code{d2} in any computation without changing the result.
+
+Contrast this with making two calls to @code{makeSimplifiedWithdraw}:
+
+@example kotlin
+val w1 = makeSimplifiedWithdraw(25L)
+val w2 = makeSimplifiedWithdraw(25L)
+@end example
+
+@noindent
+Are @code{w1} and @code{w2} the same?  Surely not, because calls to @code{w1}
+and @code{w2} have distinct effects, as shown by the following sequence of
 interactions:
 
-@lisp
-(W1 20)
-@i{5}
+@example kotlin
+w1(20L)
+// => 5
 
-(W1 20)
-@i{-15}
+w1(20L)
+// => -15
 
-(W2 20)
-@i{5}
-@end lisp
+w2(20L)
+// => 5
+@end example
 
 @noindent
-Even though @code{W1} and @code{W2} are ``equal'' in the sense that they are
-both created by evaluating the same expression, @code{(make-simplified-withdraw
-25)}, it is not true that @code{W1} could be substituted for @code{W2} in any
+Even though @code{w1} and @code{w2} are ``equal'' in the sense that they are
+both created by evaluating the same expression, @code{makeSimplifiedWithdraw(25L)},
+it is not true that @code{w1} could be substituted for @code{w2} in any
 expression without changing the result of evaluating the expression.
 
 A language that supports the concept that ``equals can be substituted for
 equals'' in an expression without changing the value of the expression is said
 to be @newterm{referentially transparent}.  Referential transparency is
-violated when we include @code{set!} in our computer language.  This makes it
+violated when we include mutable @code{var}s in our computer language.  This makes it
 tricky to determine when we can simplify expressions by substituting equivalent
 expressions.  Consequently, reasoning about programs that use assignment
 becomes drastically more difficult.
@@ -815,32 +843,32 @@ As an example of how this issue arises in programming, consider the situation
 where Peter and Paul have a bank account with $100 in it.  There is a
 substantial difference between modeling this as
 
-@lisp
-(define peter-acc (make-account 100))
-(define paul-acc (make-account 100))
-@end lisp
+@example kotlin
+val peterAcc = makeAccount(100L)
+val paulAcc = makeAccount(100L)
+@end example
 
 @noindent
 and modeling it as
 
-@lisp
-(define peter-acc (make-account 100))
-(define paul-acc peter-acc)
-@end lisp
+@example kotlin
+val peterAcc = makeAccount(100L)
+val paulAcc = peterAcc
+@end example
 
 @noindent
 In the first situation, the two bank accounts are distinct.  Transactions made
 by Peter will not affect Paul's account, and vice versa.  In the second
-situation, however, we have defined @code{paul-acc} to be @emph{the same thing}
-as @code{peter-acc}.  In effect, Peter and Paul now have a joint bank account,
-and if Peter makes a withdrawal from @code{peter-acc} Paul will observe less
-money in @code{paul-acc}.  These two similar but distinct situations can cause
+situation, however, we have defined @code{paulAcc} to be @emph{the same object}
+as @code{peterAcc}.  In effect, Peter and Paul now have a joint bank account,
+and if Peter makes a withdrawal from @code{peterAcc} Paul will observe less
+money in @code{paulAcc}.  These two similar but distinct situations can cause
 confusion in building computational models.  With the shared account, in
 particular, it can be especially confusing that there is one object (the bank
-account) that has two different names (@code{peter-acc} and @code{paul-acc});
-if we are searching for all the places in our program where @code{paul-acc} can
+account) that has two different names (@code{peterAcc} and @code{paulAcc});
+if we are searching for all the places in our program where @code{paulAcc} can
 be changed, we must remember to look also at things that change
-@code{peter-acc}.@footnote{The phenomenon of a single computational object
+@code{peterAcc}.@footnote{The phenomenon of a single computational object
 being accessed by more than one name is known as @newterm{aliasing}.  The joint
 bank account situation illustrates a very simple example of an alias.  In
 @ref{3.3} we will see much more complex examples, such as ``distinct''
@@ -850,7 +878,7 @@ we forget that a change to an object may also, as a ``side effect,'' change a
 single object appearing under different aliases.  These so-called
 @newterm{side-effect bugs} are so difficult to locate and to analyze that some
 people have proposed that programming languages be designed in such a way as to
-not allow side effects or aliasing (@ref{Lampson et al. 1981}; 
+not allow side effects or aliasing (@ref{Lampson et al. 1981};
 @ref{Morris et al. 1980}).}
 
 With reference to the above remarks on ``sameness'' and ``change,'' observe
@@ -876,37 +904,33 @@ In contrast to functional programming, programming that makes extensive use of
 assignment is known as @newterm{imperative programming}.  In addition to
 raising complications about computational models, programs written in
 imperative style are susceptible to bugs that cannot occur in functional
-programs.  For example, recall the iterative factorial program from 
+programs.  For example, recall the iterative factorial program from
 @ref{1.2.1}:
 
-@lisp
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
-@end lisp
+@example kotlin
+fun factorial(n: Long): Long {
+    tailrec fun iter(product: Long, counter: Long): Long =
+        if (counter > n) product else iter(product * counter, counter + 1)
+    return iter(1L, 1L)
+}
+@end example
 
 @noindent
 Instead of passing arguments in the internal iterative loop, we could adopt a
 more imperative style by using explicit assignment to update the values of the
 variables @code{product} and @code{counter}:
 
-@lisp
-(define (factorial n)
-  (let ((product 1)
-        (counter 1))
-    (define (iter)
-      (if (> counter n)
-          product
-          (begin (set! product (* counter 
-                                  product))
-                 (set! counter (+ counter 1))
-                 (iter))))
-    (iter)))
-@end lisp
+@example kotlin
+fun factorialImperative(n: Long): Long {
+    var product = 1L
+    var counter = 1L
+    while (counter <= n) {
+        product *= counter
+        counter += 1
+    }
+    return product
+}
+@end example
 
 @noindent
 This does not change the results produced by the program, but it does introduce
@@ -914,10 +938,10 @@ a subtle trap.  How do we decide the order of the assignments?  As it happens,
 the program is correct as written.  But writing the assignments in the opposite
 order
 
-@lisp
-(set! counter (+ counter 1))
-(set! product (* counter product))
-@end lisp
+@example kotlin
+counter += 1
+product *= counter
+@end example
 
 @noindent
 would have produced a different, incorrect result.  In general, programming
@@ -930,7 +954,7 @@ vestige of a belief, common throughout the 1960s and 1970s, that programs that
 call procedures must inherently be less efficient than programs that perform
 assignments.  (@ref{Steele 1977} debunks this argument.)  Alternatively it may
 reflect a view that step-by-step assignment is easier for beginners to
-visualize than procedure call.  Whatever the reason, it often saddles beginning
+visualize than a function call.  Whatever the reason, it often saddles beginning
 programmers with ``should I set this variable before or after that one''
 concerns that can complicate programming and obscure the important ideas.}
 
@@ -942,46 +966,54 @@ explore the uses of objects with local state in designing simulations.
 
 @quotation
 @strong{@anchor{Exercise 3.7}Exercise 3.7:} Consider the bank account objects
-created by @code{make-account}, with the password modification described in
+created by @code{makeAccount}, with the password modification described in
 @ref{Exercise 3.3}.  Suppose that our banking system requires the ability to
-make joint accounts.  Define a procedure @code{make-joint} that accomplishes
-this.  @code{Make-joint} should take three arguments.  The first is a
+make joint accounts.  Define a function @code{makeJoint} that accomplishes
+this.  @code{MakeJoint} takes three arguments.  The first is a
 password-protected account.  The second argument must match the password with
-which the account was defined in order for the @code{make-joint} operation to
-proceed.  The third argument is a new password.  @code{Make-joint} is to create
+which the account was defined in order for the @code{makeJoint} operation to
+proceed.  The third argument is a new password.  @code{MakeJoint} creates
 an additional access to the original account using the new password.  For
-example, if @code{peter-acc} is a bank account with password
-@code{open-sesame}, then
+example, if @code{peterAcc} is a bank account with password
+@code{"open-sesame"}, then
 
-@lisp
-(define paul-acc
-  (make-joint peter-acc 
-              'open-sesame 
-              'rosebud))
-@end lisp
+@example kotlin
+val paulAcc = makeJoint(peterAcc, "open-sesame", "rosebud")
+@end example
 
 @noindent
-will allow one to make transactions on @code{peter-acc} using the name
-@code{paul-acc} and the password @code{rosebud}.  You may wish to modify your
+will allow one to make transactions on @code{peterAcc} using the name
+@code{paulAcc} and the password @code{"rosebud"}.  You may wish to modify your
 solution to @ref{Exercise 3.3} to accommodate this new feature.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.8}Exercise 3.8:} When we defined the evaluation
 model in @ref{1.1.3}, we said that the first step in evaluating an
-expression is to evaluate its subexpressions.  But we never specified the order
+expression is to evaluate its subexpressions.  Scheme never specifies the order
 in which the subexpressions should be evaluated (e.g., left to right or right
-to left).  When we introduce assignment, the order in which the arguments to a
-procedure are evaluated can make a difference to the result.  Define a simple
-procedure @code{f} such that evaluating 
+to left), and when we introduce assignment, the order in which the arguments to a
+procedure are evaluated can make a difference to the result -- SICP's original
+exercise turns that gap into a probe.  Kotlin closes the gap instead: a
+function's arguments are evaluated strictly left to right, and @code{a + b}
+desugars to @code{a.plus(b)}, so the receiver @code{a} is always evaluated
+before the argument @code{b}, a guarantee of the language rather than an
+accident of one implementation.  Define a simple function @code{f}, closing
+over one mutable cell, such that evaluating
 
-@lisp
-(+ (f 0) (f 1))
-@end lisp
+@example kotlin
+f(0) + f(1)
+@end example
 
 @noindent
-will return 0 if
-the arguments to @code{+} are evaluated from left to right but will return 1 if
-the arguments are evaluated from right to left.
-@end quotation
+always evaluates to 0, and evaluating
 
+@example kotlin
+f(1) + f(0)
+@end example
+
+@noindent
+always evaluates to 1 -- deterministically, on every conformant Kotlin
+implementation, because the order is specified rather than left open the way
+Scheme leaves it.
+@end quotation

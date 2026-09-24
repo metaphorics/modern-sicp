@@ -333,7 +333,7 @@ All three are environment-diagram exercises about Scheme frames, so all four edi
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 3.9 | environment structures of two factorials | R: diagram call stack, no TCO | R: diagram stack growth, tail calls guaranteed | R: diagram call stack growth, no TCO | R: diagram tailrec compilation stack behavior |  |
+| 3.9 | environment structures of two factorials | R: diagram call stack, no TCO | R: diagram stack growth, tail calls guaranteed | R: diagram call stack growth, no TCO | R: diagram tailrec compilation stack behavior | stack frames you can measure: recursive versus tailrec factorial on a small stack (chosen: kotlin — implemented as 3.9a, a small-stack thread run that overflows on the recursive version and completes on the tailrec version; see report) |
 | 3.10 | let desugaring adds a frame | R: trace closure capture of balance | R: trace ref cell captured lifetime | R: trace captured binding lifetimes | R: trace captured var closure semantics | shared-cell capture: move copies the pointer, not the binding (chosen: rust — implemented as 3.10a, two withdrawal processors built over clones of one Rc Cell balance share state while the same processors over a copied integer stay independent; see report) |
 | 3.11 | where account state lives | R: diagram closure state sharing between accounts | R: diagram per-account closure state | R: diagram per-factory closure state | R: diagram per-factory closure state | object identity versus structural equality; chosen: ocaml |
 

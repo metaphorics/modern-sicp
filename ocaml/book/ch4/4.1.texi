@@ -1,11 +1,11 @@
 @node	4.1, 4.2, Chapter 4, Chapter 4
 @section The Metacircular Evaluator
 
-Our evaluator for Lisp will be implemented as a Lisp program.  It may seem
-circular to think about evaluating Lisp programs using an evaluator that is
-itself implemented in Lisp.  However, evaluation is a process, so it is
-appropriate to describe the evaluation process using Lisp, which, after all, is
-our tool for describing processes.@footnote{Even so, there will remain
+Our evaluator for the object language will be implemented as an OCaml
+program.  It may seem circular to think about evaluating a language with an
+evaluator that is itself a program.  However, evaluation is a process, so it is
+appropriate to describe the evaluation process as a program, which, after all,
+is our tool for describing processes.@footnote{Even so, there will remain
 important aspects of the evaluation process that are not elucidated by our
 evaluator.  The most important of these are the detailed mechanisms by which
 procedures call other procedures and return values to their callers.  We will
@@ -124,15 +124,14 @@ The implementation of the evaluator will depend upon procedures that define the
 @newterm{syntax} of the expressions to be evaluated.  We will use data
 abstraction to make the evaluator independent of the representation of the
 language.  For example, rather than committing to a choice that an assignment
-is to be represented by a list beginning with the symbol @code{set!} we use an
-abstract predicate @code{assignment?} to test for an assignment, and we use
-abstract selectors @code{assignment-variable} and @code{assignment-value} to
-access the parts of an assignment.  Implementation of expressions will be
+is to be represented by a list beginning with the symbol @code{set!} we
+classify an assignment by the constructor @code{Ast.Set} of its typed view, and
+the fields of that constructor give the parts of an assignment.  Implementation of expressions will be
 described in detail in @ref{4.1.2}.  There are also operations,
 described in @ref{4.1.3}, that specify the representation of procedures
-and environments.  For example, @code{make-procedure} constructs compound
-procedures, @code{lookup-variable-value} accesses the values of variables, and
-@code{apply-primitive-procedure} applies a primitive procedure to a given list
+and environments.  For example, @code{Value.compound} constructs compound
+procedures, @code{lookup_variable_value} accesses the values of variables, and
+@code{apply_procedure} applies a primitive procedure to a given list
 of arguments.
 
 @menu
@@ -158,8 +157,8 @@ the expression and directs its evaluation.  @code{Eval} is structured as a case
 analysis of the syntactic type of the expression to be evaluated.  In order to
 keep the procedure general, we express the determination of the type of an
 expression abstractly, making no commitment to any particular representation
-for the various types of expressions.  Each type of expression has a predicate
-that tests for it and an abstract means for selecting its parts.  This
+for the various types of expressions.  Each type of expression is one constructor of the typed view @code{Ast.view},
+and the fields of the constructor are its parts.  This
 @newterm{abstract syntax} makes it easy to see how we can change the syntax of
 the language by using the same evaluator, but with a different collection of
 syntax procedures.
@@ -219,7 +218,7 @@ expressions and then evaluated.
 @item
 For a procedure application, @code{eval} must recursively evaluate the operator
 part and the operands of the combination.  The resulting procedure and
-arguments are passed to @code{apply}, which handles the actual procedure
+arguments are passed to @code{apply_procedure}, which handles the actual procedure
 application.
 
 @end itemize
@@ -227,44 +226,37 @@ application.
 @noindent
 Here is the definition of @code{eval}:
 
-@lisp
-(define (eval exp env)
-  (cond ((self-evaluating? exp) 
-         exp)
-        ((variable? exp) 
-         (lookup-variable-value exp env))
-        ((quoted? exp) 
-         (text-of-quotation exp))
-        ((assignment? exp) 
-         (eval-assignment exp env))
-        ((definition? exp) 
-         (eval-definition exp env))
-        ((if? exp) 
-         (eval-if exp env))
-        ((lambda? exp)
-         (make-procedure 
-          (lambda-parameters exp)
-          (lambda-body exp)
-          env))
-        ((begin? exp)
-         (eval-sequence 
-          (begin-actions exp) 
-          env))
-        ((cond? exp) 
-         (eval (cond->if exp) env))
-        ((application? exp)
-         (apply (eval (operator exp) env)
-                (list-of-values 
-                 (operands exp) 
-                 env)))
-        (else
-         (error "Unknown expression 
-                 type: EVAL" exp))))
-@end lisp
+@example ocaml
+let ( >>= ) = Result.bind
+
+let rec eval exp env =
+  match Ast.view exp with
+  | Ast.Int n -> Ok (Value.int n)
+  | Ast.Float f -> Ok (Value.float f)
+  | Ast.Bool b -> Ok (Value.bool b)
+  | Ast.String s -> Ok (Value.string s)
+  | Ast.Variable name -> lookup_variable_value name env
+  | Ast.Quote datum -> Ok (datum_to_value datum)
+  | Ast.Definition d -> eval_definition d env
+  | Ast.Set (name, exp) -> eval_assignment name exp env
+  | Ast.If _ -> eval_if exp env
+  | Ast.Lambda (parameters, body) ->
+    Ok (Value.compound ~name:None ~parameters ~body ~env)
+  | Ast.Sequence body -> eval_sequence body env
+  | Ast.Cond _ -> cond_to_if exp >>= fun rewritten -> Eval.eval rewritten env
+  (* Eval is the evaluator the standard clauses recurse through *)
+  | Ast.Application (operator, operands) ->
+    Eval.eval operator env
+    >>= fun proc ->
+    list_of_values operands env >>= fun args -> apply_procedure proc args
+  | Ast.And _ | Ast.Or _ | Ast.Let _ ->
+    Error (Eval_error.Invalid_form "unknown expression type: EVAL")
+;;
+@end example
 
 @noindent
 For clarity, @code{eval} has been implemented as a case analysis using
-@code{cond}.  The disadvantage of this is that our procedure handles only a few
+@code{match}.  The disadvantage of this is that our function handles only a few
 distinguishable types of expressions, and no new ones can be defined without
 editing the definition of @code{eval}.  In most Lisp implementations,
 dispatching on the type of an expression is done in a data-directed style.
@@ -276,118 +268,118 @@ distinguish, without modifying the definition of @code{eval} itself.  (See
 
 @code{Apply} takes two arguments, a procedure and a list of arguments to which
 the procedure should be applied.  @code{Apply} classifies procedures into two
-kinds: It calls @code{apply-primitive-procedure} to apply primitives; it
+kinds: It looks up primitives in the section's primitive table and calls their
+OCaml functions; it
 applies compound procedures by sequentially evaluating the expressions that
 make up the body of the procedure.  The environment for the evaluation of the
 body of a compound procedure is constructed by extending the base environment
 carried by the procedure to include a frame that binds the parameters of the
-procedure to the arguments to which the procedure is to be applied.  Here is
-the definition of @code{apply}:
+procedure to the arguments to which the procedure is to be applied.  Here is the definition of @code{apply_procedure}:
 
-@lisp
-(define (apply procedure arguments)
-  (cond ((primitive-procedure? procedure)
-         (apply-primitive-procedure 
-          procedure 
-          arguments))
-        ((compound-procedure? procedure)
-         (eval-sequence
-           (procedure-body procedure)
-           (extend-environment
-             (procedure-parameters 
-              procedure)
-             arguments
-             (procedure-environment 
-              procedure))))
-        (else
-         (error "Unknown procedure 
-                 type: APPLY" 
-                procedure))))
-@end lisp
+@example ocaml
+let apply_procedure proc args =
+  match Value.view proc with
+  | Value.Primitive_procedure name ->
+    (match List.assoc_opt name primitive_table with
+     | Some f -> f args
+     | None ->
+       Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
+  | Value.Compound_procedure { parameters; body; env; _ } ->
+    Env.extend parameters args env >>= fun extended -> eval_sequence body extended
+  | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
+;;
+@end example
 
 @subsubheading Procedure arguments
 
 When @code{eval} processes a procedure application, it uses
-@code{list-of-values} to produce the list of arguments to which the procedure
-is to be applied. @code{List-of-values} takes as an argument the operands of
+@code{list_of_values} to produce the list of arguments to which the procedure
+is to be applied. @code{list_of_values} takes as an argument the operands of
 the combination.  It evaluates each operand and returns a list of the
-corresponding values:@footnote{We could have simplified the @code{application?}
-clause in @code{eval} by using @code{map} (and stipulating that @code{operands}
-returns a list) rather than writing an explicit @code{list-of-values}
-procedure.  We chose not to use @code{map} here to emphasize the fact that the
+corresponding values:@footnote{We could have simplified the @code{Application}
+clause in @code{eval} by using @code{List.map} (the operands are already a
+list) rather than writing an explicit @code{list_of_values}
+function.  We chose not to use @code{map} here to emphasize the fact that the
 evaluator can be implemented without any use of higher-order procedures (and
 thus could be written in a language that doesn't have higher-order procedures),
 even though the language that it supports will include higher-order
 procedures.}
 
-@lisp
-(define (list-of-values exps env)
-  (if (no-operands? exps)
-      '()
-      (cons (eval (first-operand exps) env)
-            (list-of-values 
-             (rest-operands exps) 
-             env))))
-@end lisp
+@example ocaml
+let rec list_of_values exps env =
+  match exps with
+  | [] -> Ok []
+  | exp :: rest ->
+    Eval.eval exp env
+    >>= fun value ->
+    list_of_values rest env >>= fun values -> Ok (value :: values)
+;;
+@end example
 
 @subsubheading Conditionals
 
-@code{Eval-if} evaluates the predicate part of an @code{if} expression in the
-given environment.  If the result is true, @code{eval-if} evaluates the
+@code{eval_if} evaluates the predicate part of an @code{if} expression in the
+given environment.  If the result is true, @code{eval_if} evaluates the
 consequent, otherwise it evaluates the alternative:
 
-@lisp
-(define (eval-if exp env)
-  (if (true? (eval (if-predicate exp) env))
-      (eval (if-consequent exp) env)
-      (eval (if-alternative exp) env)))
-@end lisp
+@example ocaml
+let eval_if exp env =
+  match Ast.view exp with
+  | Ast.If (predicate, consequent, alternative) ->
+    Eval.eval predicate env >>= fun tested ->
+    if true_ tested
+    then Eval.eval consequent env
+    else (
+      match alternative with
+      | Some branch -> Eval.eval branch env
+      | None -> Ok (Value.bool false))
+  | _ -> Error (Eval_error.Invalid_form "eval_if: not an if")
+;;
+@end example
 
 @noindent
-The use of @code{true?} in @code{eval-if} highlights the issue of the
+The use of @code{true_} in @code{eval_if} highlights the issue of the
 connection between an implemented language and an implementation language.  The
-@code{if-predicate} is evaluated in the language being implemented and thus
-yields a value in that language.  The interpreter predicate @code{true?}
+predicate is evaluated in the language being implemented and thus
+yields a value in that language.  The interpreter predicate @code{true_}
 translates that value into a value that can be tested by the @code{if} in the
 implementation language: The metacircular representation of truth might not be
-the same as that of the underlying Scheme.@footnote{In this case, the language
-being implemented and the implementation language are the same.  Contemplation
-of the meaning of @code{true?} here yields expansion of consciousness without
+the same as that of the host, OCaml.@footnote{Here the language being
+implemented is the Scheme subset and the implementation language is OCaml.  Contemplation
+of the meaning of @code{true_} here yields expansion of consciousness without
 the abuse of substance.}
 
 @subsubheading Sequences
 
-@code{Eval-sequence} is used by @code{apply} to evaluate the sequence of
+@code{eval_sequence} is used by @code{apply_procedure} to evaluate the sequence of
 expressions in a procedure body and by @code{eval} to evaluate the sequence of
 expressions in a @code{begin} expression.  It takes as arguments a sequence of
 expressions and an environment, and evaluates the expressions in the order in
 which they occur.  The value returned is the value of the final expression.
 
-@lisp
-(define (eval-sequence exps env)
-  (cond ((last-exp? exps) 
-         (eval (first-exp exps) env))
-        (else 
-         (eval (first-exp exps) env)
-         (eval-sequence (rest-exps exps) 
-                        env))))
-@end lisp
+@example ocaml
+let rec eval_sequence exps env =
+  match exps with
+  | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
+  | [ exp ] -> Eval.eval exp env
+  | exp :: rest -> Eval.eval exp env >>= fun _ -> eval_sequence rest env
+;;
+@end example
 
 @subsubheading Assignments and definitions
 
 The following procedure handles assignments to variables.  It calls @code{eval}
 to find the value to be assigned and transmits the variable and the resulting
-value to @code{set-variable-value!} to be installed in the designated
+value to @code{set_variable_value_} to be installed in the designated
 environment.
 
-@lisp
-(define (eval-assignment exp env)
-  (set-variable-value! 
-   (assignment-variable exp)
-   (eval (assignment-value exp) env)
-   env)
-  'ok)
-@end lisp
+@example ocaml
+let eval_assignment name exp env =
+  Eval.eval exp env
+  >>= fun value ->
+  set_variable_value_ name value env >>= fun () -> Ok (Value.symbol "ok")
+;;
+@end example
 
 @noindent
 Definitions of variables are handled in a similar manner.@footnote{This
@@ -395,14 +387,16 @@ implementation of @code{define} ignores a subtle issue in the handling of
 internal definitions, although it works correctly in most cases.  We will see
 what the problem is and how to solve it in @ref{4.1.6}.}
 
-@lisp
-(define (eval-definition exp env)
-  (define-variable! 
-    (definition-variable exp)
-    (eval (definition-value exp) env)
-    env)
-  'ok)
-@end lisp
+@example ocaml
+let eval_definition d env =
+  match Ast.view_definition d with
+  | Ast.Define_variable (name, exp) ->
+    Eval.eval exp env >>= fun value -> define_variable_ name value env
+  | Ast.Define_function { name; parameters; body } ->
+    let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
+    define_variable_ name proc env
+;;
+@end example
 
 @noindent
 We have chosen here to return the symbol @code{ok} as the value of an
@@ -411,17 +405,14 @@ assignment or a definition.@footnote{As we said when we introduced
 Scheme---that is, the implementor can choose what value to return.}
 
 @quotation
-@strong{@anchor{Exercise 4.1}Exercise 4.1:} Notice that we cannot tell whether
-the metacircular evaluator evaluates operands from left to right or from right
-to left.  Its evaluation order is inherited from the underlying Lisp: If the
-arguments to @code{cons} in @code{list-of-values} are evaluated from left to
-right, then @code{list-of-values} will evaluate operands from left to right;
-and if the arguments to @code{cons} are evaluated from right to left, then
-@code{list-of-values} will evaluate operands from right to left.
-
-Write a version of @code{list-of-values} that evaluates operands from left to
-right regardless of the order of evaluation in the underlying Lisp.  Also write
-a version of @code{list-of-values} that evaluates operands from right to left.
+@strong{@anchor{Exercise 4.1}Exercise 4.1:} Notice that we cannot tell from a
+call alone which way the metacircular evaluator evaluates its operands.  In
+this edition the order is not inherited from the host: @code{list_of_values}
+is an explicit recursion this book writes out, so the order it evaluates
+operands in is fixed by construction.  Write a version of
+@code{list_of_values} that evaluates operands from left to right by
+construction.  Also write a version of @code{list_of_values} that evaluates
+operands from right to left.
 @end quotation
 
 @node	4.1.2, 4.1.3, 4.1.1, 4.1
@@ -437,8 +428,8 @@ details of how expressions are represented.  In the differentiation program
 this meant that the same differentiation procedure could deal with algebraic
 expressions in prefix form, in infix form, or in some other form.  For the
 evaluator, this means that the syntax of the language being evaluated is
-determined solely by the procedures that classify and extract pieces of
-expressions.
+determined solely by the typed view that classifies expressions and carries
+their pieces.
 
 Here is the specification of the syntax of our language:
 
@@ -447,117 +438,80 @@ Here is the specification of the syntax of our language:
 @item
 The only self-evaluating items are numbers and strings:
 
-@lisp
-(define (self-evaluating? exp)
-  (cond ((number? exp) true)
-        ((string? exp) true)
-        (else false)))
-@end lisp
+@example ocaml
+(* the self-evaluating views: Int of int | Float of float
+   | Bool of bool | String of string *)
+@end example
 
 @item
 Variables are represented by symbols:
 
-@lisp
-(define (variable? exp) (symbol? exp))
-@end lisp
+@example ocaml
+(* the variable view: Variable of string *)
+@end example
 
 @item
 Quotations have the form @code{(quote ⟨@var{text-of-quotation}⟩)}:@footnote{As
-mentioned in @ref{2.3.1}, the evaluator sees a quoted expression as a
-list beginning with @code{quote}, even if the expression is typed with the
-quotation mark.  For example, the expression @code{'a} would be seen by the
-evaluator as @code{(quote a)}.  See @ref{Exercise 2.55}.}
+mentioned in @ref{2.3.1}, the reader sees a quoted expression as the
+@code{Quote} view, even if the expression is typed with the
+quotation mark.  For example, the expression @code{'a} is read as the
+quotation of the symbol @code{a}, the same view as @code{(quote a)}.  See @ref{Exercise 2.55}.}
 
-@lisp
-(define (quoted? exp)
-  (tagged-list? exp 'quote))
+@example ocaml
+(* the quotation view: Quote of datum *)
+@end example
 
-(define (text-of-quotation exp)
-  (cadr exp))
-@end lisp
-
-@code{Quoted?} is defined in terms of the procedure @code{tagged-list?}, which
-identifies lists beginning with a designated symbol:
-
-@lisp
-(define (tagged-list? exp tag)
-  (if (pair? exp)
-      (eq? (car exp) tag)
-      false))
-@end lisp
+@code{Quote} is one constructor of the typed view: the reader has already
+identified each list beginning with the symbol @code{quote}, and the evaluator
+matches on the constructor.
 
 @item
 Assignments have the form @code{(set! ⟨@var{var}⟩ ⟨@var{value}⟩)}:
 
-@lisp
-(define (assignment? exp)
-  (tagged-list? exp 'set!))
-
-(define (assignment-variable exp) 
-  (cadr exp))
-
-(define (assignment-value exp) (caddr exp))
-@end lisp
+@example ocaml
+(* the assignment view: Set of string * expr *)
+@end example
 
 @item
 Definitions have the form
 
-@lisp
+@example
 (define ⟨@var{var}⟩ ⟨@var{value}⟩)
-@end lisp
+@end example
 
 @noindent
 or the form
 
-@lisp
+@example
 (define (⟨@var{var}⟩ ⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
   ⟨@var{body}⟩)
-@end lisp
+@end example
 
 The latter form (standard procedure definition) is syntactic sugar for
 
-@lisp
+@example
 (define ⟨@var{var}⟩
   (lambda (⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
     ⟨@var{body}⟩))
-@end lisp
+@end example
 
-The corresponding syntax procedures are the following:
+The corresponding definition views are the following:
 
-@lisp
-(define (definition? exp)
-  (tagged-list? exp 'define))
-
-(define (definition-variable exp)
-  (if (symbol? (cadr exp))
-      (cadr exp)
-      (caadr exp)))
-
-(define (definition-value exp)
-  (if (symbol? (cadr exp))
-      (caddr exp)
-      (make-lambda 
-       (cdadr exp)   @r{; formal parameters}
-       (cddr exp)))) @r{; body}
-@end lisp
+@example ocaml
+(* Define_variable of string * expr
+   Define_function of { name : string; parameters : string list;
+                        body : expr list } *)
+@end example
 
 @item
-@code{Lambda} expressions are lists that begin with the symbol @code{lambda}:
+@code{Lambda} expressions are the @code{Lambda} view of the typed syntax:
 
-@lisp
-(define (lambda? exp) 
-  (tagged-list? exp 'lambda))
-(define (lambda-parameters exp) (cadr exp))
-(define (lambda-body exp) (cddr exp))
-@end lisp
+@example ocaml
+(* the lambda view: Lambda of string list * expr list *)
+@end example
 
-We also provide a constructor for @code{lambda} expressions, which is used by
-@code{definition-value}, above:
-
-@lisp
-(define (make-lambda parameters body)
-  (cons 'lambda (cons parameters body)))
-@end lisp
+We also provide a constructor for @code{lambda} expressions, @code{Ast.lambda},
+which the derived-expression transformations use.
 
 @item
 Conditionals begin with @code{if} and have a predicate, a consequent, and an
@@ -568,76 +522,48 @@ Scheme; we have chosen here to make it false.  We will support the use of the
 variables @code{true} and @code{false} in expressions to be evaluated by
 binding them in the global environment.  See @ref{4.1.4}.}
 
-@lisp
-(define (if? exp) (tagged-list? exp 'if))
-(define (if-predicate exp) (cadr exp))
-(define (if-consequent exp) (caddr exp))
-(define (if-alternative exp)
-  (if (not (null? (cdddr exp)))
-      (cadddr exp)
-      'false))
-@end lisp
+@example ocaml
+(* the if view: If of expr * expr * expr option *)
+@end example
 
-We also provide a constructor for @code{if} expressions, to be used by
-@code{cond->if} to transform @code{cond} expressions into @code{if}
-expressions:
-
-@lisp
-(define (make-if predicate 
-                 consequent 
-                 alternative)
-  (list 'if 
-        predicate 
-        consequent 
-        alternative))
-@end lisp
+We also provide a constructor for @code{if} expressions, @code{Ast.if_}, to be
+used by @code{cond_to_if} to transform @code{cond} expressions into @code{if}
+expressions.
 
 @item
-@code{Begin} packages a sequence of expressions into a single expression.  We
-include syntax operations on @code{begin} expressions to extract the actual
-sequence from the @code{begin} expression, as well as selectors that return the
-first expression and the rest of the expressions in the
-sequence.@footnote{These selectors for a list of expressions---and the
+@code{Begin} packages a sequence of expressions into a single expression.  The @code{Sequence} view of a @code{begin} expression carries the actual
+sequence, and list patterns give the first expression and the rest of the
+expressions in the sequence.@footnote{These selectors for a list of expressions---and the
 corresponding ones for a list of operands---are not intended as a data
 abstraction.  They are introduced as mnemonic names for the basic list
 operations in order to make it easier to understand the explicit-control
 evaluator in @ref{5.4}.}
 
-@lisp
-(define (begin? exp) 
-  (tagged-list? exp 'begin))
-(define (begin-actions exp) (cdr exp))
-(define (last-exp? seq) (null? (cdr seq)))
-(define (first-exp seq) (car seq))
-(define (rest-exps seq) (cdr seq))
-@end lisp
+@example ocaml
+(* the sequence view: Sequence of expr list *)
+@end example
 
-We also include a constructor @code{sequence->exp} (for use by @code{cond->if})
+We also include a constructor @code{sequence_to_exp} (for use by @code{cond_to_if})
 that transforms a sequence into a single expression, using @code{begin} if
 necessary:
 
-@lisp
-(define (sequence->exp seq)
-  (cond ((null? seq) seq)
-        ((last-exp? seq) (first-exp seq))
-        (else (make-begin seq))))
-
-(define (make-begin seq) (cons 'begin seq))
-@end lisp
+@example ocaml
+let sequence_to_exp exps =
+  match exps with
+  | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
+  | [ exp ] -> Ok exp
+  | exps -> Ast.sequence exps
+;;
+@end example
 
 @item
 A procedure application is any compound expression that is not one of the above
-expression types.  The @code{car} of the expression is the operator, and the
-@code{cdr} is the list of operands:
+expression types.  The @code{Application} view carries the operator and the list of
+operands:
 
-@lisp
-(define (application? exp) (pair? exp))
-(define (operator exp) (car exp))
-(define (operands exp) (cdr exp))
-(define (no-operands? ops) (null? ops))
-(define (first-operand ops) (car ops))
-(define (rest-operands ops) (cdr ops))
-@end lisp
+@example ocaml
+(* the application view: Application of expr * expr list *)
+@end example
 
 @end itemize
 
@@ -649,31 +575,31 @@ example is @code{cond}, which can be implemented as a nest of @code{if}
 expressions.  For example, we can reduce the problem of evaluating the
 expression
 
-@lisp
+@example
 (cond ((> x 0) x)
       ((= x 0) (display 'zero) 0)
       (else (- x)))
-@end lisp
+@end example
 
 @noindent
 to the problem of evaluating the following expression involving @code{if} and
 @code{begin} expressions:
 
-@lisp
+@example
 (if (> x 0)
     x
     (if (= x 0)
         (begin (display 'zero) 0)
         (- x)))
-@end lisp
+@end example
 
 @noindent
 Implementing the evaluation of @code{cond} in this way simplifies the evaluator
 because it reduces the number of special forms for which the evaluation process
 must be explicitly specified.
 
-We include syntax procedures that extract the parts of a @code{cond}
-expression, and a procedure @code{cond->if} that transforms @code{cond}
+The @code{Cond} view carries the parts of a @code{cond}
+expression, and the function @code{cond_to_if} transforms @code{cond}
 expressions into @code{if} expressions.  A case analysis begins with
 @code{cond} and has a list of predicate-action clauses.  A clause is an
 @code{else} clause if its predicate is the symbol @code{else}.@footnote{The
@@ -681,36 +607,24 @@ value of a @code{cond} expression when all the predicates are false and there
 is no @code{else} clause is unspecified in Scheme; we have chosen here to make
 it false.}
 
-@lisp
-(define (cond? exp) 
-  (tagged-list? exp 'cond))
-(define (cond-clauses exp) (cdr exp))
-(define (cond-else-clause? clause)
-  (eq? (cond-predicate clause) 'else))
-(define (cond-predicate clause) 
-  (car clause))
-(define (cond-actions clause) 
-  (cdr clause))
-(define (cond->if exp)
-  (expand-clauses (cond-clauses exp)))
-(define (expand-clauses clauses)
-  (if (null? clauses)
-      'false     @r{; no @code{else} clause}
-      (let ((first (car clauses))
-            (rest (cdr clauses)))
-        (if (cond-else-clause? first)
-            (if (null? rest)
-                (sequence->exp 
-                 (cond-actions first))
-                (error "ELSE clause isn't 
-                        last: COND->IF"
-                       clauses))
-            (make-if (cond-predicate first)
-                     (sequence->exp 
-                      (cond-actions first))
-                     (expand-clauses 
-                      rest))))))
-@end lisp
+@example ocaml
+(* (cond ((> x 0) x)
+         ((= x 0) (display 'zero) 0)
+         (else (- x)))
+   lowers to: *)
+(* (if (> x 0) x (if (= x 0) (begin (display 'zero) 0) (- x)))) *)
+let rec expand = function
+  | [] ->
+    (match else_body with
+     | Some body -> sequence_to_exp body
+     | None -> Ok (Ast.bool false))
+  | (test, actions) :: rest ->
+    expand rest
+    >>= fun alternative ->
+    sequence_to_exp actions
+    >>= fun consequent -> Ok (Ast.if_ test consequent (Some alternative))
+;;
+@end example
 
 @noindent
 Expressions (such as @code{cond}) that we choose to implement as syntactic
@@ -795,10 +709,10 @@ Its value must be a procedure of one argument; this procedure is then invoked
 on the value of the @code{⟨}@var{test}@code{⟩}, and the result is returned as the value of
 the @code{cond} expression.  For example
 
-@lisp
+@example
 (cond ((assoc 'b '((a 1) (b 2))) => cadr)
       (else false))
-@end lisp
+@end example
 
 @noindent
 returns 2.  Modify the handling of @code{cond} so that it supports this
@@ -809,21 +723,21 @@ extended syntax.
 @strong{@anchor{Exercise 4.6}Exercise 4.6:} @code{Let} expressions are derived
 expressions, because
 
-@lisp
+@example
 (let ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
   ⟨@var{body}⟩)
-@end lisp
+@end example
 
 @noindent
 is equivalent to
 
-@lisp
+@example
 ((lambda (⟨@var{var₁}⟩ @r{…} ⟨@var{varₙ}⟩)
    ⟨@var{body}⟩)
  ⟨@var{exp₁}⟩
  @r{…}
  ⟨@var{expₙ}⟩)
-@end lisp
+@end example
 
 Implement a syntactic transformation @code{let->combination} that reduces
 evaluating @code{let} expressions to evaluating combinations of the type shown
@@ -837,12 +751,12 @@ expressions.
 sequentially from left to right, and each binding is made in an environment in
 which all of the preceding bindings are visible.  For example
 
-@lisp
+@example
 (let* ((x 3)
        (y (+ x 2))
        (z (+ x y 5)))
   (* x z))
-@end lisp
+@end example
 
 @noindent
 returns 39.  Explain how a @code{let*} expression can be rewritten as a set of
@@ -851,9 +765,9 @@ that performs this transformation.  If we have already implemented @code{let}
 (@ref{Exercise 4.6}) and we want to extend the evaluator to handle @code{let*},
 is it sufficient to add a clause to @code{eval} whose action is
 
-@lisp
+@example
 (eval (let*->nested-lets exp) env)
-@end lisp
+@end example
 
 @noindent
 or must we explicitly expand @code{let*} in terms of non-derived expressions?
@@ -863,9 +777,9 @@ or must we explicitly expand @code{let*} in terms of non-derived expressions?
 @strong{@anchor{Exercise 4.8}Exercise 4.8:} ``Named @code{let}'' is a variant
 of @code{let} that has the form 
 
-@lisp
+@example
 (let ⟨@var{var}⟩ ⟨@var{bindings}⟩ ⟨@var{body}⟩)
-@end lisp
+@end example
 
 The @code{⟨}@var{bindings}@code{⟩} and @code{⟨}@var{body}@code{⟩} are just as in ordinary @code{let},
 except that @code{⟨}@var{var}@code{⟩} is bound within @code{⟨}@var{body}@code{⟩} to a procedure whose body
@@ -874,15 +788,13 @@ Thus, one can repeatedly execute the @code{⟨}@var{body}@code{⟩} by invoking 
 named @code{⟨}@var{var}@code{⟩}.  For example, the iterative Fibonacci procedure 
 (@ref{1.2.2}) can be rewritten using named @code{let} as follows:
 
-@lisp
+@example
 (define (fib n)
   (let fib-iter ((a 1) (b 0) (count n))
     (if (= count 0)
         b
-        (fib-iter (+ a b) 
-                  a 
-                  (- count 1)))))
-@end lisp
+        (fib-iter (+ a b) a (- count 1)))))
+@end example
 
 Modify @code{let->combination} of @ref{Exercise 4.6} to also support named
 @code{let}.
@@ -920,13 +832,11 @@ and false.
 For conditionals, we accept anything to be true that is not the explicit
 @code{false} object.
 
-@lisp
-(define (true? x)
-  (not (eq? x false)))
-
-(define (false? x)
-  (eq? x false))
-@end lisp
+@example ocaml
+(* true_ v holds for every value except the false object. *)
+let true_ v = not (Value.physical_equal v (Value.bool false))
+let false_ v = Value.physical_equal v (Value.bool false)
+@end example
 
 @subsubheading Representing procedures
 
@@ -936,17 +846,18 @@ procedures:
 @itemize @bullet
 
 @item
-@code{(apply-primitive-procedure ⟨@var{proc}⟩ ⟨@var{args}⟩)}
+@code{apply_procedure ⟨@var{proc}⟩ ⟨@var{args}⟩}
 
 @noindent
 applies the given primitive procedure to the argument values in the list
 @code{⟨}@var{args}@code{⟩} and returns the result of the application.
 
 @item
-@code{(primitive-procedure? ⟨@var{proc}⟩)}
+@code{Value.view ⟨@var{proc}⟩}
 
 @noindent
-tests whether @code{⟨}@var{proc}@code{⟩} is a primitive procedure.
+tests whether @code{⟨}@var{proc}@code{⟩} is a primitive procedure: its view is
+@code{Primitive_procedure}.
 
 @end itemize
 
@@ -955,17 +866,14 @@ These mechanisms for handling primitives are further described in
 @ref{4.1.4}.
 
 Compound procedures are constructed from parameters, procedure bodies, and
-environments using the constructor @code{make-procedure}:
+environments using the constructor @code{Value.compound}:
 
-@lisp
-(define (make-procedure parameters body env)
-  (list 'procedure parameters body env))
-(define (compound-procedure? p)
-  (tagged-list? p 'procedure))
-(define (procedure-parameters p) (cadr p))
-(define (procedure-body p) (caddr p))
-(define (procedure-environment p) (cadddr p))
-@end lisp
+@example ocaml
+(* A compound procedure packages parameters, body, and the
+   environment of evaluation; the printer prints it as
+   #[compound-procedure name]. *)
+Value.compound ~name ~parameters ~body ~env
+@end example
 
 @subsubheading Operations on Environments
 
@@ -977,13 +885,13 @@ We use the following operations for manipulating environments:
 @itemize @bullet
 
 @item
-@code{(lookup-variable-value ⟨@var{var}⟩ ⟨@var{env}⟩)}
+@code{lookup_variable_value ⟨@var{var}⟩ ⟨@var{env}⟩}
 
 returns the value that is bound to the symbol @code{⟨}@var{var}@code{⟩} in the environment
 @code{⟨}@var{env}@code{⟩}, or signals an error if the variable is unbound.
 
 @item
-@code{(extend-environment ⟨@var{variables}⟩ ⟨@var{values}⟩ ⟨@var{base-env}⟩)}
+@code{extend_environment ⟨@var{variables}⟩ ⟨@var{values}⟩ ⟨@var{base-env}⟩}
 
 returns a new environment, consisting of a new frame in which the symbols in
 the list @code{⟨}@var{variables}@code{⟩} are bound to the corresponding elements in the list
@@ -991,13 +899,13 @@ the list @code{⟨}@var{variables}@code{⟩} are bound to the corresponding elem
 @code{⟨}@var{base-env}@code{⟩}.
 
 @item
-@code{(define-variable! ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩)}
+@code{define_variable_ ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩}
 
 adds to the first frame in the environment @code{⟨}@var{env}@code{⟩} a new binding that
 associates the variable @code{⟨}@var{var}@code{⟩} with the value @code{⟨}@var{value}@code{⟩}.
 
 @item
-@code{(set-variable-value! ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩)}
+@code{set_variable_value_ ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩}
 
 changes the binding of the variable @code{⟨}@var{var}@code{⟩} in the environment @code{⟨}@var{env}@code{⟩}
 so that the variable is now bound to the value @code{⟨}@var{value}@code{⟩}, or signals an
@@ -1006,123 +914,57 @@ error if the variable is unbound.
 @end itemize
 
 @noindent
-To implement these operations we represent an environment as a list of frames.
-The enclosing environment of an environment is the @code{cdr} of the list.  The
-empty environment is simply the empty list.
+To implement these operations we use the environments of @ref{3.2}: an
+environment is a chain of frames, and the enclosing environment of an
+environment is the rest of the chain.  The four operations are thin wrappers
+over @code{Env}: each one is a single call into that representation.
 
-@lisp
-(define (enclosing-environment env) (cdr env))
-(define (first-frame env) (car env))
-(define the-empty-environment '())
-@end lisp
+@example ocaml
+let lookup_variable_value name env =
+  match Env.find_binding env name with
+  | Some value -> Ok value
+  | None -> Error (Eval_error.Unbound_variable name)
+;;
+
+let extend_environment names values base_env = Env.extend names values base_env
+
+let set_variable_value_ name value env = Env.set env name value
+
+let define_variable_ name value env =
+  Env.define env name value;
+  Ok (Value.symbol "ok")
+;;
+@end example
 
 @noindent
-Each frame of an environment is represented as a pair of lists: a list of the
-variables bound in that frame and a list of the associated
-values.@footnote{Frames are not really a data abstraction in the following
-code: @code{Set-variable-value!} and @code{define-variable!} use
-@code{set-car!}  to directly modify the values in a frame.  The purpose of the
-frame procedures is to make the environment-manipulation procedures easy to
-read.}
-
-@lisp
-(define (make-frame variables values)
-  (cons variables values))
-(define (frame-variables frame) (car frame))
-(define (frame-values frame) (cdr frame))
-(define (add-binding-to-frame! var val frame)
-  (set-car! frame (cons var (car frame)))
-  (set-cdr! frame (cons val (cdr frame))))
-@end lisp
+Each frame is a mutable table from names to values, searched newest
+first.@footnote{Frames are not really a data abstraction in this
+code: the mutation lives behind @code{Env}'s operations, which
+@code{set_variable_value_} and @code{define_variable_} call to modify the
+values in a frame.  The purpose of the @code{Env} operations is to make the
+environment-manipulation procedures easy to read.}
 
 @noindent
 To extend an environment by a new frame that associates variables with values,
-we make a frame consisting of the list of variables and the list of values, and
+we make a frame binding each variable to the value at the same position, and
 we adjoin this to the environment.  We signal an error if the number of
 variables does not match the number of values.
 
-@lisp
-(define (extend-environment vars vals base-env)
-  (if (= (length vars) (length vals))
-      (cons (make-frame vars vals) base-env)
-      (if (< (length vars) (length vals))
-          (error "Too many arguments supplied" 
-                 vars 
-                 vals)
-          (error "Too few arguments supplied" 
-                 vars 
-                 vals))))
-@end lisp
+@noindent
+To look up a variable in an environment, we search the table of the first
+frame.  If we find the desired variable, we return its value.  If we do not find the variable in the current
+frame, we search the enclosing environment, and so on.  If no frame
+binds the variable, we signal an ``unbound variable'' error.
 
 @noindent
-To look up a variable in an environment, we scan the list of variables in the
-first frame.  If we find the desired variable, we return the corresponding
-element in the list of values.  If we do not find the variable in the current
-frame, we search the enclosing environment, and so on.  If we reach the empty
-environment, we signal an ``unbound variable'' error.
-
-@lisp
-(define (lookup-variable-value var env)
-  (define (env-loop env)
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (env-loop 
-              (enclosing-environment env)))
-            ((eq? var (car vars))
-             (car vals))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (if (eq? env the-empty-environment)
-        (error "Unbound variable" var)
-        (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
-                (frame-values frame)))))
-  (env-loop env))
-@end lisp
-
-@noindent
-To set a variable to a new value in a specified environment, we scan for the
-variable, just as in @code{lookup-variable-value}, and change the corresponding
+To set a variable to a new value in a specified environment, we search for the
+variable, just as in @code{lookup_variable_value}, and change the corresponding
 value when we find it.
-
-@lisp
-(define (set-variable-value! var val env)
-  (define (env-loop env)
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (env-loop 
-              (enclosing-environment env)))
-            ((eq? var (car vars))
-             (set-car! vals val))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (if (eq? env the-empty-environment)
-        (error "Unbound variable: SET!" var)
-        (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
-                (frame-values frame)))))
-  (env-loop env))
-@end lisp
 
 @noindent
 To define a variable, we search the first frame for a binding for the variable,
-and change the binding if it exists (just as in @code{set-variable-value!}).
+and change the binding if it exists (just as in @code{set_variable_value_}).
 If no such binding exists, we adjoin one to the first frame.
-
-@lisp
-(define (define-variable! var val env)
-  (let ((frame (first-frame env)))
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (add-binding-to-frame! 
-              var val frame))
-            ((eq? var (car vars))
-             (set-car! vals val))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (scan (frame-variables frame)
-          (frame-values frame))))
-@end lisp
 
 @noindent
 The method described here is only one of many plausible ways to represent
@@ -1170,16 +1012,16 @@ justify any choices you make.
 @node	4.1.4, 4.1.5, 4.1.3, 4.1
 @subsection Running the Evaluator as a Program
 
-Given the evaluator, we have in our hands a description (expressed in Lisp) of
+Given the evaluator, we have in our hands a description (expressed in OCaml) of
 the process by which Lisp expressions are evaluated.  One advantage of
 expressing the evaluator as a program is that we can run the program.  This
-gives us, running within Lisp, a working model of how Lisp itself evaluates
+gives us, running within OCaml, a working model of how Lisp evaluates
 expressions.  This can serve as a framework for experimenting with evaluation
 rules, as we shall do later in this chapter.
 
 Our evaluator program reduces expressions ultimately to the application of
 primitive procedures.  Therefore, all that we need to run the evaluator is to
-create a mechanism that calls on the underlying Lisp system to model the
+create a mechanism that calls on the OCaml runtime to model the
 application of primitive procedures.
 
 There must be a binding for each primitive procedure name, so that when
@@ -1190,168 +1032,118 @@ can appear in the expressions we will be evaluating.  The global environment
 also includes bindings for the symbols @code{true} and @code{false}, so that
 they can be used as variables in expressions to be evaluated.
 
-@lisp
-(define (setup-environment)
-  (let ((initial-env
-         (extend-environment 
-          (primitive-procedure-names)
-          (primitive-procedure-objects)
-          the-empty-environment)))
-    (define-variable! 'true true initial-env)
-    (define-variable! 'false false initial-env)
-    initial-env))
+@example ocaml
+let setup_environment () =
+  let env = Env.empty () in
+  Env.define env "true" (Value.bool true);
+  Env.define env "false" (Value.bool false);
+  List.iter
+    (fun (name, f) -> Env.define env name (Value.primitive ~name f))
+    primitive_table;
+  env
+;;
 
-(define the-global-environment 
-  (setup-environment))
-@end lisp
+let the_global_environment = setup_environment
+@end example
 
 @noindent
 It does not matter how we represent the primitive procedure objects, so long as
-@code{apply} can identify and apply them by using the procedures
-@code{primitive-procedure?} and @code{apply-primitive-procedure}.  We have
-chosen to represent a primitive procedure as a list beginning with the symbol
-@code{primitive} and containing a procedure in the underlying Lisp that
-implements that primitive.
+@code{apply_procedure} can identify and apply them by their view and the
+primitive table.  We have chosen to represent a primitive procedure as a value
+carrying its name and an OCaml function that implements that primitive.
 
-@lisp
-(define (primitive-procedure? proc)
-  (tagged-list? proc 'primitive))
-
-(define (primitive-implementation proc) 
-  (cadr proc))
-@end lisp
+@example ocaml
+(* the primitive-procedure view: Primitive_procedure of string,
+   the name under which the table stores the OCaml implementation *)
+@end example
 
 @noindent
-@code{Setup-environment} will get the primitive names and implementation
-procedures from a list:@footnote{Any procedure defined in the underlying Lisp
+@code{setup_environment} will get the primitive names and implementation
+functions from a table:@footnote{Any function written in OCaml
 can be used as a primitive for the metacircular evaluator.  The name of a
 primitive installed in the evaluator need not be the same as the name of its
-implementation in the underlying Lisp; the names are the same here because the
+implementation in OCaml; the names are the same here because the
 metacircular evaluator implements Scheme itself.  Thus, for example, we could
-put @code{(list 'first car)} or @code{(list 'square (lambda (x) (* x x)))} in
-the list of @code{primitive-procedures}.}
+put an entry named @code{first} for the function of @code{car}, or an entry named
+@code{square} for a squaring function, in @code{primitive_table}.}
 
-@lisp
-(define primitive-procedures
-  (list (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
-        (list 'null? null?)
-        ⟨@var{more primitives}⟩ ))
-
-(define (primitive-procedure-names)
-  (map car primitive-procedures))
-
-(define (primitive-procedure-objects)
-  (map (lambda (proc) 
-         (list 'primitive (cadr proc)))
-       primitive-procedures))
-@end lisp
+@example ocaml
+let primitive_table : (string * Value.primitive) list =
+  [ "car", ...; "cdr", ...; "cons", ...; "list", ...; "null?", ...
+  ; "assoc", ...; "memq", ...; "+", ...; "-", ...; "*", ...
+  ; "=", ...; "display", ...; "error", ... ]
+;;
+@end example
 
 @noindent
-To apply a primitive procedure, we simply apply the implementation procedure to
-the arguments, using the underlying Lisp
-system:@footnote{@code{Apply-in-underlying-scheme} is the @code{apply}
-procedure we have used in earlier chapters.  The metacircular evaluator's
-@code{apply} procedure (@ref{4.1.1}) models the working of this
-primitive.  Having two different things called @code{apply} leads to a
-technical problem in running the metacircular evaluator, because defining the
-metacircular evaluator's @code{apply} will mask the definition of the
-primitive.  One way around this is to rename the metacircular @code{apply} to
-avoid conflict with the name of the primitive procedure.  We have assumed
-instead that we have saved a reference to the underlying @code{apply} by doing
-
-@lisp
-(define apply-in-underlying-scheme apply)
-@end lisp
-
-@noindent
-before defining the metacircular @code{apply}.  This allows us to access the
-original version of @code{apply} under a different name.}
-
-@lisp
-(define (apply-primitive-procedure proc args)
-  (apply-in-underlying-scheme
-   (primitive-implementation proc) args))
-@end lisp
+To apply a primitive procedure, we simply apply the implementation function to
+the arguments, an ordinary OCaml call of the function the table
+stores:@footnote{The metacircular evaluator's @code{apply_procedure}
+(@ref{4.1.1}) models the working of the host's application.  In OCaml the two
+never share a name, so defining the metacircular @code{apply_procedure} masks
+nothing: its primitive arm finds the function in @code{primitive_table} and
+calls it as @code{f args}.}
 
 @noindent
 For convenience in running the metacircular evaluator, we provide a
-@newterm{driver loop} that models the read-eval-print loop of the underlying
-Lisp system.  It prints a @newterm{prompt}, reads an input expression,
+@newterm{driver loop} that models the read-eval-print loop of a Lisp
+system.  It prints a @newterm{prompt}, reads an input expression,
 evaluates this expression in the global environment, and prints the result.  We
 precede each printed result by an @newterm{output prompt} so as to distinguish
-the value of the expression from other output that may be printed.@footnote{The
-primitive procedure @code{read} waits for input from the user, and returns the
-next complete expression that is typed.  For example, if the user types
-@code{(+ 23 x)}, @code{read} returns a three-element list containing the symbol
-@code{+}, the number 23, and the symbol @code{x}.  If the user types @code{'x},
-@code{read} returns a two-element list containing the symbol @code{quote} and
-the symbol @code{x}.}
+the value of the expression from other output that may be printed.@footnote{The shared
+@code{Reader} takes the input the user types and returns the next complete
+expression as a typed form.  For example, if the user types @code{(+ 23 x)},
+the reader returns an application whose operator is the symbol @code{+} and
+whose operands are the number 23 and the symbol @code{x}.  If the user types
+@code{'x}, the reader returns the quotation of the symbol @code{x}.}
 
-@lisp
-(define input-prompt  ";;; M-Eval input:")
-(define output-prompt ";;; M-Eval value:")
+@example ocaml
+let input_prompt = ";;; M-Eval input:"
+let output_prompt = ";;; M-Eval value:"
 
-(define (driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((input (read)))
-    (let ((output 
-           (eval input 
-                 the-global-environment)))
-      (announce-output output-prompt)
-      (user-print output)))
-  (driver-loop))
-
-(define (prompt-for-input string)
-  (newline) (newline) 
-  (display string) (newline))
-
-(define (announce-output string)
-  (newline) (display string) (newline))
-@end lisp
+(* The read-eval-print loop of the driver: read one form, evaluate it
+   in the global environment, announce the value, repeat. The book's
+   [read] is the shared Reader, parsing lives only here at the
+   surface. *)
+let rec driver_loop env =
+  print_string (input_prompt ^ " ");
+  let line = read_line () in
+  (match Eval.run env line with
+   | Ok value ->
+     print_string (output_prompt ^ " ");
+     print_endline (Value.to_string value)
+   | Error e -> print_endline ("Error: " ^ Eval_error.to_string e));
+  driver_loop env
+;;
+@end example
 
 @noindent
-We use a special printing procedure, @code{user-print}, to avoid printing the
-environment part of a compound procedure, which may be a very long list (or may
+We use the shared printer, @code{Value.to_string}, to avoid printing the
+environment part of a compound procedure, which may be a very long structure (or may
 even contain cycles).
 
-@lisp
-(define (user-print object)
-  (if (compound-procedure? object)
-      (display 
-       (list 'compound-procedure
-             (procedure-parameters object)
-             (procedure-body object)
-             '<procedure-env>))
-      (display object)))
-@end lisp
+@example ocaml
+(* The shared printer keeps the environment part of a compound
+   procedure out of sight: a procedure value prints as
+   #[compound-procedure name], and a primitive as
+   #[primitive-procedure name]. *)
+Value.to_string (Value.compound ~name:(Some "f") ~parameters:[ "x" ] ~body:[] ~env:(Env.empty ()))
+(* => #[compound-procedure f] *)
+@end example
 
 @noindent
-Now all we need to do to run the evaluator is to initialize the global
-environment and start the driver loop.  Here is a sample interaction:
+Now all we need to do to run the evaluator is to create the global
+environment and run forms in it.  Here is a sample interaction:
 
-@lisp
-(define the-global-environment 
-  (setup-environment))
-
-(driver-loop)
-
-@i{;;; M-Eval input:}
-(define (append x y)
-  (if (null? x)
-      y
-      (cons (car x) (append (cdr x) y))))
-
-@i{;;; M-Eval value:}
-@i{ok}
-
-@i{;;; M-Eval input:}
-(append '(a b c) '(d e f))
-
-@i{;;; M-Eval value:}
-@i{(a b c d e f)}
-@end lisp
+@example ocaml
+let env = Eval.the_global_environment () in
+Eval.run env "(define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))"
+(* ;;; M-Eval value: *)
+(* => ok *)
+Eval.run env "(append '(a b c) '(d e f))"
+(* ;;; M-Eval value: *)
+(* => (a b c d e f) *)
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.14}Exercise 4.14:} Eva Lu Ator and Louis Reasoner
@@ -1362,20 +1154,33 @@ primitive for the metacircular evaluator.  When he tries it, things go terribly
 wrong.  Explain why Louis's @code{map} fails even though Eva's works.
 @end quotation
 
+@quotation
+@emph{Exercise 4.14a is added by this edition and extends exercise
+4.14; SICP numbers stop at 4.14.} @strong{@anchor{Exercise 4.14a}Exercise 4.14a:} Eva answers Louis by writing her own
+@code{sort} in the object language and sorting the same test data
+with a compound comparison procedure. Louis installs the host's
+list-sorting procedure as the primitive @code{sort}: sorting data
+with a primitive comparison such as @code{<} works, but sorting with
+a compound procedure goes badly wrong. Explain why Louis's
+@code{sort} fails on the compound comparison even though Eva's works.
+@end quotation
+
 @node	4.1.5, 4.1.6, 4.1.4, 4.1
 @subsection Data as Programs
 
-In thinking about a Lisp program that evaluates Lisp expressions, an analogy
+In thinking about an OCaml program that evaluates Lisp expressions, an analogy
 might be helpful.  One operational view of the meaning of a program is that a
 program is a description of an abstract (perhaps infinitely large) machine.
 For example, consider the familiar program to compute factorials:
 
-@lisp
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))
-@end lisp
+@example ocaml
+Eval.run env "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))"
+(* ;;; M-Eval value: *)
+(* => ok *)
+Eval.run env "(factorial 5)"
+(* ;;; M-Eval value: *)
+(* => 120 *)
+@end example
 
 @noindent
 We may regard this program as the description of a machine containing parts
@@ -1505,12 +1310,12 @@ explores some of these ideas (@ref{Hofstadter 1979}).}
 Another striking aspect of the evaluator is that it acts as a bridge between
 the data objects that are manipulated by our programming language and the
 programming language itself.  Imagine that the evaluator program (implemented
-in Lisp) is running, and that a user is typing expressions to the evaluator and
+in OCaml) is running, and that a user is typing expressions to the evaluator and
 observing the results.  From the perspective of the user, an input expression
 such as @code{(* x x)} is an expression in the programming language, which the
 evaluator should execute.  From the perspective of the evaluator, however, the
-expression is simply a list (in this case, a list of three symbols: @code{*},
-@code{x}, and @code{x}) that is to be manipulated according to a well-defined
+expression is simply data (in this case, an application of the symbol @code{*} to
+the symbols @code{x} and @code{x}) that is to be manipulated according to a well-defined
 set of rules.
 
 That the user's programs are the evaluator's data need not be a source of
@@ -1529,23 +1334,22 @@ we saw earlier is not identical to the metacircular @code{apply}, because it
 uses actual Scheme procedures rather than the procedure objects we constructed
 in @ref{4.1.3} and @ref{4.1.4}.} Thus,
 
-@lisp
-(eval '(* 5 5) user-initial-environment)
-@end lisp
+@example ocaml
+Eval.run env "(* 5 5)"
+@end example
 
 @noindent
 and
 
-@lisp
-(eval (cons '* (list 5 5)) 
-      user-initial-environment)
-@end lisp
+@example ocaml
+Eval.eval (Ast.application (Ast.variable "*") [ Ast.int 5; Ast.int 5 ]) env
+@end example
 
 @noindent
-will both return 25.@footnote{The @abbr{MIT} implementation of Scheme
-includes @code{eval}, as well as a symbol @code{user-initial-environment} that
-is bound to the initial environment in which the user's input expressions are
-evaluated.}
+will both return 25.@footnote{This edition's driver offers the same two
+routes: @code{Eval.run} reads an expression from text and evaluates it in an
+environment, and @code{Eval.eval} evaluates an expression built from the typed
+syntax, here in the global environment @code{env}.}
 
 @quotation
 @strong{@anchor{Exercise 4.15}Exercise 4.15:} Given a one-argument procedure
@@ -1557,7 +1361,7 @@ impossible to write a procedure @code{halts?} that correctly determines whether
 the following reasoning: If you had such a procedure @code{halts?}, you could
 implement the following program:
 
-@lisp
+@example
 (define (run-forever)
   (run-forever))
 
@@ -1565,7 +1369,7 @@ implement the following program:
   (if (halts? p p)
       (run-forever)
       'halted))
-@end lisp
+@end example
 
 Now consider evaluating the expression @code{(try try)} and show that any
 possible outcome (either halting or running forever) violates the intended
@@ -1591,7 +1395,7 @@ not be the best way to define local variables.
 
 Consider a procedure with internal definitions, such as
 
-@lisp
+@example
 (define (f x)
   (define (even? n)
     (if (= n 0)
@@ -1602,7 +1406,7 @@ Consider a procedure with internal definitions, such as
         false
         (even? (- n 1))))
   ⟨@var{rest of body of @code{f}}⟩)
-@end lisp
+@end example
 
 @noindent
 Our intention here is that the name @code{odd?} in the body of the procedure
@@ -1648,24 +1452,24 @@ eliminate all the internal definitions in the body.  The internally defined
 variables will be created with a @code{let} and then set to their values by
 assignment.  For example, the procedure
 
-@lisp
+@example
 (lambda ⟨@var{vars}⟩
   (define u ⟨@var{e1}⟩)
   (define v ⟨@var{e2}⟩)
   ⟨@var{e3}⟩)
-@end lisp
+@end example
 
 @noindent
 would be transformed into
 
-@lisp
+@example
 (lambda ⟨@var{vars}⟩
   (let ((u '*unassigned*)
         (v '*unassigned*))
     (set! u ⟨@var{e1}⟩)
     (set! v ⟨@var{e2}⟩)
     ⟨@var{e3}⟩))
-@end lisp
+@end example
 
 @noindent
 where @code{*unassigned*} is a special symbol that causes looking up a variable
@@ -1681,6 +1485,29 @@ the programmer to obey this restriction, not up to the implementation to
 enforce it.  Some Scheme implementations, including @abbr{MIT} Scheme, use
 the transformation shown above.  Thus, some programs that don't obey this
 restriction will in fact run in such implementations.}
+
+@quotation
+@strong{In this language: a typed abstract syntax and pattern-matched dispatch.}
+
+The book's evaluator classifies an expression by asking it
+predicates; this edition's @code{Ast} hands @code{eval} one
+@code{Ast.view} value whose constructor @emph{is} the expression
+type, so the dispatch of @ref{4.1.1} is a @code{match} with one arm
+per syntactic form, and the compiler counts the arms.
+
+@example ocaml
+let rec eval exp env =
+  match Ast.view exp with
+  | Ast.Int n -> Ok (Value.int n)
+  | Ast.Variable name -> lookup_variable_value name env
+  | Ast.Application (operator, operands) -> ...
+@end example
+
+The book's mechanism still wins when the set of forms must grow
+while the program runs: exercise 4.3's table accepts a handler for a
+new type at runtime, where a @code{match} must be edited and
+recompiled.
+@end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.16}Exercise 4.16:} In this exercise we implement the
@@ -1722,7 +1549,7 @@ the extra frame.
 @strong{@anchor{Exercise 4.18}Exercise 4.18:} Consider an alternative strategy
 for scanning out definitions that translates the example in the text to
 
-@lisp
+@example
 (lambda ⟨@var{vars}⟩
   (let ((u '*unassigned*)
         (v '*unassigned*))
@@ -1731,18 +1558,18 @@ for scanning out definitions that translates the example in the text to
       (set! u a)
       (set! v b))
     ⟨@var{e3}⟩))
-@end lisp
+@end example
 
 Here @code{a} and @code{b} are meant to represent new variable names, created
 by the interpreter, that do not appear in the user's program.  Consider the
 @code{solve} procedure from @ref{3.5.4}:
 
-@lisp
+@example
 (define (solve f y0 dt)
   (define y (integral (delay dy) y0 dt))
   (define dy (stream-map f y))
   y)
-@end lisp
+@end example
 
 Will this procedure work if internal definitions are scanned out as shown in
 this exercise?  What if they are scanned out as shown in the text?  Explain.
@@ -1753,14 +1580,14 @@ this exercise?  What if they are scanned out as shown in the text?  Explain.
 and Eva Lu Ator are arguing about the desired result of evaluating the
 expression
 
-@lisp
+@example
 (let ((a 1))
   (define (f x)
     (define b (+ a x))
     (define a 5)
     (+ a b))
   (f 10))
-@end lisp
+@end example
 
 Ben asserts that the result should be obtained using the sequential rule for
 @code{define}: @code{b} is defined to be 11, then @code{a} is defined to be 5,
@@ -1793,7 +1620,7 @@ simultaneously and have the same scope as each other.  The sample procedure
 @code{f} above can be written without internal definitions, but with exactly
 the same meaning, as
 
-@lisp
+@example
 (define (f x)
   (letrec
       ((even?
@@ -1807,14 +1634,14 @@ the same meaning, as
               false
               (even? (- n 1))))))
     ⟨@var{rest of body of @code{f}}⟩))
-@end lisp
+@end example
 
 @code{Letrec} expressions, which have the form
 
-@lisp
+@example
 (letrec ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
   ⟨@var{body}⟩)
-@end lisp
+@end example
 
 @noindent
 are a variation on @code{let} in which the expressions
@@ -1824,7 +1651,7 @@ that includes all the @code{letrec} bindings.  This permits recursion in the
 bindings, such as the mutual recursion of @code{even?} and @code{odd?} in the
 example above, or the evaluation of 10 factorial with
 
-@lisp
+@example
 (letrec
     ((fact
       (lambda (n)
@@ -1832,7 +1659,7 @@ example above, or the evaluation of 10 factorial with
             1
             (* n (fact (- n 1)))))))
   (fact 10))
-@end lisp
+@end example
 
 @enumerate a
 
@@ -1869,15 +1696,9 @@ trick of this sort is the @math{Y} @newterm{operator}, which can be used to give
 details on the λ-calculus, and @ref{Gabriel 1988} for an exposition of the
 @math{Y} operator in Scheme.)}
 
-@lisp
-((lambda (n)
-   ((lambda (fact) (fact fact n))
-    (lambda (ft k)
-      (if (= k 1)
-          1
-          (* k (ft ft (- k 1)))))))
- 10)
-@end lisp
+@example ocaml
+Eval.run env "((lambda (n) ((lambda (fact) (fact fact n)) (lambda (ft k) (if (= k 1) 1 (* k (ft ft (- k 1))))))) 10)"
+@end example
 
 @enumerate a
 
@@ -1889,7 +1710,7 @@ Devise an analogous expression for computing Fibonacci numbers.
 Consider the following procedure, which includes mutually recursive internal
 definitions:
 
-@lisp
+@example
 (define (f x)
   (define (even? n)
     (if (= n 0)
@@ -1900,12 +1721,12 @@ definitions:
         false
         (even? (- n 1))))
   (even? x))
-@end lisp
+@end example
 
 Fill in the missing expressions to complete an alternative definition of
 @code{f}, which uses neither internal definitions nor @code{letrec}:
 
-@lisp
+@example
 (define (f x)
   ((lambda (even? odd?)
      (even? even? odd? x))
@@ -1917,7 +1738,7 @@ Fill in the missing expressions to complete an alternative definition of
      (if (= n 0) 
          false 
          (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
-@end lisp
+@end example
 @end enumerate
 @end quotation
 
@@ -1930,12 +1751,11 @@ Thus if a program is executed many times, its syntax is analyzed many times.
 Consider, for example, evaluating @code{(factorial 4)} using the following
 definition of @code{factorial}:
 
-@lisp
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))
-@end lisp
+@example ocaml
+Eval.run env "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))"
+(* ;;; M-Eval value: *)
+(* => ok *)
+@end example
 
 @noindent
 Each time @code{factorial} is called, the evaluator must determine that the
@@ -1962,11 +1782,15 @@ environment as its argument and completes the evaluation.  This saves work
 because @code{analyze} will be called only once on an expression, while the
 execution procedure may be called many times.
 
-With the separation into analysis and execution, @code{eval} now becomes
+@example ocaml
+(* One execution procedure: the analyzed form of one expression, an
+   environment-to-result closure with every dispatch decision already
+   made. *)
+type execution = Value.env -> (Value.t, Eval_error.t) result
+@end example
 
-@lisp
-(define (eval exp env) ((analyze exp) env))
-@end lisp
+With the separation into analysis and execution, @code{eval} now analyzes the
+expression and applies the resulting execution procedure to the environment.
 
 @noindent
 The result of calling @code{analyze} is the execution procedure to be applied
@@ -1974,55 +1798,40 @@ to the environment.  The @code{analyze} procedure is the same case analysis as
 performed by the original @code{eval} of @ref{4.1.1}, except that the
 procedures to which we dispatch perform only analysis, not full evaluation:
 
-@lisp
-(define (analyze exp)
-  (cond ((self-evaluating? exp)
-         (analyze-self-evaluating exp))
-        ((quoted? exp) 
-         (analyze-quoted exp))
-        ((variable? exp) 
-         (analyze-variable exp))
-        ((assignment? exp) 
-         (analyze-assignment exp))
-        ((definition? exp) 
-         (analyze-definition exp))
-        ((if? exp) 
-         (analyze-if exp))
-        ((lambda? exp) 
-         (analyze-lambda exp))
-        ((begin? exp) 
-         (analyze-sequence 
-          (begin-actions exp)))
-        ((cond? exp) 
-         (analyze (cond->if exp)))
-        ((application? exp) 
-         (analyze-application exp))
-        (else
-         (error "Unknown expression 
-                 type: ANALYZE" 
-                exp))))
-@end lisp
+@example ocaml
+let rec analyze exp =
+  match Ast.view exp with
+  | Ast.Int n -> ok_constant (Value.int n)
+  | Ast.Variable name -> Ok (fun env -> lookup_variable_value name env)
+  | Ast.Quote datum -> ok_constant (datum_to_value datum)
+  | Ast.Definition d -> analyze_definition d
+  | Ast.Set (name, exp) -> analyze_assignment name exp
+  | Ast.If (predicate, consequent, alternative) ->
+    analyze_if predicate consequent alternative
+  | Ast.Lambda (parameters, body) -> analyze_lambda parameters body
+  | Ast.Sequence body -> analyze_sequence body
+  | Ast.Cond _ -> cond_to_if exp >>= analyze
+  | Ast.Application (operator, operands) -> analyze_application operator operands
+  | Ast.And _ | Ast.Or _ | Ast.Let _ ->
+    Ok (constant_error (Eval_error.Invalid_form "unknown expression type: ANALYZE"))
+;;
+@end example
 
 @noindent
-Here is the simplest syntactic analysis procedure, which handles
+Here is the simplest syntactic analysis, which handles
 self-evaluating expressions.  It returns an execution procedure that ignores
-its environment argument and just returns the expression:
+its environment argument and just returns the value:
 
-@lisp
-(define (analyze-self-evaluating exp)
-  (lambda (env) exp))
-@end lisp
+@example ocaml
+let constant value = fun _ -> Ok value
+let ok_constant value = Ok (constant value)
+@end example
 
 @noindent
 For a quoted expression, we can gain a little efficiency by extracting the text
 of the quotation only once, in the analysis phase, rather than in the execution
-phase.
-
-@lisp
-(define (analyze-quoted exp)
-  (let ((qval (text-of-quotation exp)))
-    (lambda (env) qval)))
-@end lisp
+phase: the @code{Quote} clause of @code{analyze} converts the datum before it
+builds the constant.
 
 @noindent
 Looking up a variable value must still be done in the execution phase, since
@@ -2031,69 +1840,83 @@ important part of the variable search that @emph{can} be done as part of the
 syntactic analysis.  As we will show in @ref{5.5.6}, one can determine
 the position in the environment structure where the value of the variable will
 be found, thus obviating the need to scan the environment for the entry that
-matches the variable.}
-
-@lisp
-(define (analyze-variable exp)
-  (lambda (env) 
-    (lookup-variable-value exp env)))
-@end lisp
+matches the variable.}  The @code{Variable} clause of @code{analyze}
+therefore returns an execution procedure that looks the variable up.
 
 @noindent
-@code{Analyze-assignment} also must defer actually setting the variable until
+@code{analyze_assignment} also must defer actually setting the variable until
 the execution, when the environment has been supplied.  However, the fact that
-the @code{assignment-value} expression can be analyzed (recursively) during
-analysis is a major gain in efficiency, because the @code{assignment-value}
+the assigned expression can be analyzed (recursively) during
+analysis is a major gain in efficiency, because the assigned
 expression will now be analyzed only once.  The same holds true for
 definitions.
 
-@lisp
-(define (analyze-assignment exp)
-  (let ((var (assignment-variable exp))
-        (vproc (analyze 
-                (assignment-value exp))))
-    (lambda (env)
-      (set-variable-value! 
-       var (vproc env) env)
-      'ok)))
+@example ocaml
+and analyze_definition d =
+  match Ast.view_definition d with
+  | Ast.Define_variable (name, exp) ->
+    analyze exp
+    >>= fun get ->
+    Ok (fun env -> get env >>= fun value -> define_variable_ name value env)
+  | Ast.Define_function { name; parameters; body } ->
+    analyze_sequence body
+    >>= fun body_exec ->
+    Ok
+      (fun env ->
+        let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
+        register proc body_exec;
+        define_variable_ name proc env)
 
-(define (analyze-definition exp)
-  (let ((var (definition-variable exp))
-        (vproc (analyze 
-                (definition-value exp))))
-    (lambda (env)
-      (define-variable! var (vproc env) env)
-      'ok)))
-@end lisp
+and analyze_assignment name exp =
+  analyze exp
+  >>= fun get ->
+  Ok
+    (fun env ->
+      get env
+      >>= fun value ->
+      set_variable_value_ name value env >>= fun () -> Ok (Value.symbol "ok"))
+@end example
 
 @noindent
 For @code{if} expressions, we extract and analyze the predicate, consequent,
 and alternative at analysis time.
 
-@lisp
-(define (analyze-if exp)
-  (let ((pproc (analyze (if-predicate exp)))
-        (cproc (analyze (if-consequent exp)))
-        (aproc (analyze (if-alternative exp))))
-    (lambda (env)
-      (if (true? (pproc env))
-          (cproc env)
-          (aproc env)))))
-@end lisp
+@example ocaml
+and analyze_if predicate consequent alternative =
+  analyze predicate
+  >>= fun get ->
+  analyze consequent
+  >>= fun when_true ->
+  let when_false =
+    match alternative with
+    | Some branch -> analyze branch
+    | None -> ok_constant (Value.bool false)
+  in
+  when_false
+  >>= fun otherwise ->
+  Ok
+    (fun env ->
+      get env >>= fun tested -> if true_ tested then when_true env else otherwise env)
+@end example
 
 @noindent
 Analyzing a @code{lambda} expression also achieves a major gain in efficiency:
 We analyze the @code{lambda} body only once, even though procedures resulting
-from evaluation of the @code{lambda} may be applied many times.
+from evaluation of the @code{lambda} may be applied many times.  The analyzed
+body is registered beside the procedure value once, at creation, so repeated
+calls execute the already-analyzed body (this is what @ref{Exercise 4.24}
+measures).
 
-@lisp
-(define (analyze-lambda exp)
-  (let ((vars (lambda-parameters exp))
-        (bproc (analyze-sequence 
-                (lambda-body exp))))
-    (lambda (env) 
-      (make-procedure vars bproc env))))
-@end lisp
+@example ocaml
+and analyze_lambda parameters body =
+  analyze_sequence body
+  >>= fun body_exec ->
+  Ok
+    (fun env ->
+      let proc = Value.compound ~name:None ~parameters ~body ~env in
+      register proc body_exec;
+      Ok proc)
+@end example
 
 @noindent
 Analysis of a sequence of expressions (as in a @code{begin} or the body of a
@@ -2104,56 +1927,73 @@ procedures are combined to produce an execution procedure that takes an
 environment as argument and sequentially calls each individual execution
 procedure with the environment as argument.
 
-@lisp
-(define (analyze-sequence exps)
-  (define (sequentially proc1 proc2)
-    (lambda (env) (proc1 env) (proc2 env)))
-  (define (loop first-proc rest-procs)
-    (if (null? rest-procs)
-        first-proc
-        (loop (sequentially first-proc 
-                            (car rest-procs))
-              (cdr rest-procs))))
-  (let ((procs (map analyze exps)))
-    (if (null? procs)
-        (error "Empty sequence: ANALYZE"))
-    (loop (car procs) (cdr procs))))
-@end lisp
+@example ocaml
+and analyze_sequence body =
+  let rec go = function
+    | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
+    | [ exp ] -> analyze exp
+    | exp :: rest ->
+      analyze exp
+      >>= fun first ->
+      go rest >>= fun others -> Ok (fun env -> first env >>= fun _ -> others env)
+  in
+  go body
+@end example
 
 @noindent
 To analyze an application, we analyze the operator and operands and construct
 an execution procedure that calls the operator execution procedure (to obtain
 the actual procedure to be applied) and the operand execution procedures (to
 obtain the actual arguments).  We then pass these to
-@code{execute-application}, which is the analog of @code{apply} in 
-@ref{4.1.1}.  @code{Execute-application} differs from @code{apply} in that the
-procedure body for a compound procedure has already been analyzed, so there is
-no need to do further analysis.  Instead, we just call the execution procedure
-for the body on the extended environment.
+@code{apply}, which is the analog of @code{apply_procedure} in 
+@ref{4.1.1}.  This @code{apply} differs from @code{apply_procedure} in that the
+procedure body for a compound procedure has already been analyzed and
+registered beside the procedure value, so there is no need to do further
+analysis.  Instead, we just call the registered execution procedure for the
+body on the extended environment.
 
-@lisp
-(define (analyze-application exp)
-  (let ((fproc (analyze (operator exp)))
-        (aprocs (map analyze (operands exp))))
-    (lambda (env)
-      (execute-application 
-       (fproc env)
-       (map (lambda (aproc) (aproc env))
-            aprocs)))))
+@example ocaml
+and analyze_application operator operands =
+  analyze operator
+  >>= fun get_proc ->
+  let rec collect = function
+    | [] -> Ok []
+    | exp :: rest ->
+      analyze exp >>= fun get -> collect rest >>= fun gets -> Ok (get :: gets)
+  in
+  collect operands
+  >>= fun gets ->
+  Ok
+    (fun env ->
+      get_proc env
+      >>= fun proc ->
+      let rec evaluate acc = function
+        | [] -> Ok (List.rev acc)
+        | get :: rest -> get env >>= fun value -> evaluate (value :: acc) rest
+      in
+      evaluate [] gets >>= fun args -> apply proc args)
 
-(define (execute-application proc args)
-  (cond ((primitive-procedure? proc)
-         (apply-primitive-procedure proc args))
-        ((compound-procedure? proc)
-         ((procedure-body proc)
-          (extend-environment 
-           (procedure-parameters proc)
-           args
-           (procedure-environment proc))))
-        (else (error "Unknown procedure type: 
-                      EXECUTE-APPLICATION"
-                     proc))))
-@end lisp
+and apply proc args =
+  match Value.view proc with
+  | Value.Primitive_procedure name ->
+    (match List.assoc_opt name primitive_table with
+     | Some f -> f args
+     | None ->
+       Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
+  | Value.Compound_procedure { parameters; env; _ } ->
+    Env.extend parameters args env
+    >>= fun extended ->
+    (match registered proc with
+     | Some body_exec -> body_exec extended
+     | None -> Error (Eval_error.Invalid_form "the analyzed body is missing"))
+  | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
+@end example
+
+@example ocaml
+(* [Analyze.eval] analyzes once and runs, the book's
+   [(define (eval exp env) ((analyze exp) env))]. *)
+let eval exp env = analyze exp >>= fun proc -> proc env
+@end example
 
 @noindent
 Our new evaluator uses the same data structures, syntax procedures, and
@@ -2172,7 +2012,7 @@ other analysis procedures are straightforward transformations of the
 corresponding evaluation procedures (or @code{eval} clauses) in 
 @ref{4.1.1}.  She expected @code{analyze-sequence} to look like this:
 
-@lisp
+@example
 (define (analyze-sequence exps)
   (define (execute-sequence procs env)
     (cond ((null? (cdr procs)) 
@@ -2186,7 +2026,7 @@ corresponding evaluation procedures (or @code{eval} clauses) in
                 ANALYZE"))
     (lambda (env) 
       (execute-sequence procs env))))
-@end lisp
+@end example
 
 Eva Lu Ator explains to Alyssa that the version in the text does more of the
 work of evaluating a sequence at analysis time.  Alyssa's sequence-execution

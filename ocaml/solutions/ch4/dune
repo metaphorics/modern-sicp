@@ -1,0 +1,28 @@
+(library
+ (name sicp_ch4_solutions)
+ (libraries sicp_common sicp_ch4)
+ (modules
+  sec_4_1
+  sec_4_2
+  sec_4_3
+  sec_4_4
+  sec_4_5
+  sec_4_6
+  sec_4_7
+  sec_4_8
+  sec_4_9
+  sec_4_10
+  sec_4_11
+  sec_4_12
+  sec_4_13
+  sec_4_14
+  sec_4_15
+  sec_4_16
+  sec_4_17
+  sec_4_18
+  sec_4_19
+  sec_4_20
+  sec_4_21
+  sec_4_22
+  sec_4_23
+  sec_4_24))

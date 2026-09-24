@@ -482,7 +482,7 @@ Reading coverage: 65 of the 79 statements were read verbatim from the Texinfo th
 | 4.11 | frame as association list | T | T | T | T | 4.11a: benchmark lookup on both frame representations |
 | 4.12 | abstract environment traversals | T | T | T | T | |
 | 4.13 | make-unbound! removes binding | T | T | T | T | |
-| 4.14 | host map as primitive fails | T | T | T | T | 4.14a: install host sort as primitive, diagnose |
+| 4.14 | host map as primitive fails | T | T | T | T | 4.14a: install host sort as primitive, diagnose (chosen: ocaml) |
 | 4.15 | halting problem diagonal argument | T | T | T | T | |
 | 4.16 | scan out internal definitions | T | T | T | T | |
 | 4.17 | extra frame from scan-out | T | T | T | T | 4.17a: print environment structure during evaluation |

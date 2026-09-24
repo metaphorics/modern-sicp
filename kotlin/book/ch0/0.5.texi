@@ -100,14 +100,20 @@ either { inner.lookup("x") }
 // => Either.Right(1)
 
 inner.set("x", VInt(99))
-either { global.lookup("x") }
+either { inner.lookup("x") }
 // => Either.Right(99)
+either { global.lookup("x") }
+// => Either.Left(SchemeError.Unbound("x"))
 @end example
 
 @noindent
-The interpreted @code{define} and @code{set!} of @ref{3.2} run on exactly
-this chain, and @ref{4.3}'s backtracking evaluator takes a snapshot of the
-chain to abandon a branch's effects, which persistent maps make cheap.
+@code{set} mutates the nearest frame on the chain that owns the name and
+never creates a binding: @code{inner} holds @code{x}, so the assignment
+lands there, and @code{global}, which has no @code{x} of its own, is left
+without one and its lookup fails. The interpreted @code{define} and
+@code{set!} of @ref{3.2} run on exactly this chain, and @ref{4.3}'s
+backtracking evaluator takes a snapshot of the chain to abandon a branch's
+effects, which persistent maps make cheap.
 Ownership, in the sense of Rust's edition, has no Kotlin counterpart: the
 collector reclaims unreachable cells, and the book's aliasing arguments are
 made with @code{===}, not with lifetimes.

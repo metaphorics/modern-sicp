@@ -1378,7 +1378,7 @@ side by side.
 Finally, we need a way to get started.  For instance, we can always guess that
 the square root of any number is 1.0:@footnote{Observe that we express our
 initial guess as 1.0 rather than 1.  In Kotlin the two are values of different
-types from the start: @code{1} is a @code{Long} and @code{1.0} a
+types from the start: @code{1} is an @code{Int} (@code{1L} a @code{Long}) and @code{1.0} a
 @code{Double}, and mixing them would change the type of every result in the
 computation.  Division follows the operand types: @code{10L / 6L} truncates to
 @code{1}, while @code{10.0 / 6.0} yields @code{1.6666666666666667}.  (We will

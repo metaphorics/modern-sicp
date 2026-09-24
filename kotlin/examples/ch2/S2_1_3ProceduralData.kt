@@ -10,10 +10,9 @@ import io.kotest.matchers.shouldBe
 /**
  * A pair needs no data structure at all: [cons] closes over its two
  * arguments and returns a function that dispatches on a message, `0` for
- * `car` and `1` for `cdr`. [car] and [cdr] just send that message. This is
- * the only valid way to represent pairs the two selectors and one
- * constructor need to fulfill: for any `x` and `y`, `car(cons(x, y))` is
- * `x` and `cdr(cons(x, y))` is `y`.
+ * `car` and `1` for `cdr`. [car] and [cdr] just send that message. Any
+ * representation of pairs has to satisfy one condition: for any `x` and
+ * `y`, `car(cons(x, y))` is `x` and `cdr(cons(x, y))` is `y`.
  */
 public fun cons(
     x: Long,

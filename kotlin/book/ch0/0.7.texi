@@ -64,9 +64,11 @@ the same transcript on every machine and every run.
 @heading How solutions are checked
 
 Exercises and solutions share fully qualified names, and a test run
-receives exactly one of the two on its classpath, chosen by the build:
-plain tasks test the scaffolds, and the @code{-Psolutions} build runs the
-same test sources against the solutions source set. Day to day:
+receives exactly one of the two on its classpath: each chapter registers
+three test tasks, @code{examplesTest}, @code{exercisesTest}, and
+@code{solutionsTest}, each carrying the runtime classpath of its own
+source set, so no run ever mixes them. The task you run chooses, not a
+flag. Day to day:
 
 @example
 just test       # examples and solutions tests, the green gate
@@ -82,7 +84,7 @@ scaffold throws is the runtime's @code{PendingSolution}, and the disabled
 test is what keeps the gate green until the solution lands.
 
 The full gate is @command{just lint}: @code{./gradlew build}, which
-compiles the runtime and all five source sets of every chapter, applies
+compiles the runtime and the four source sets of every chapter, applies
 @command{ktlint} 1.8.0, and fails on any compiler warning, because the
 build sets @code{allWarningsAsErrors}. The file names that carry section
 numbers, like @code{E1_10Ackermann.kt}, are why the stock ktlint naming

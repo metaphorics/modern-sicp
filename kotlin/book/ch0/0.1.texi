@@ -41,8 +41,8 @@ and the one typed error @code{SchemeError}. Chapters 1 to 3 host their
 programs in plain Kotlin; the interpreters of chapters 4 and 5 run on the
 runtime types.
 
-Each chapter module wires three source sets, and each source set reads one
-top-level directory:
+Each chapter module wires three source sets beyond @code{main}, and each
+of the three reads one top-level directory:
 
 @multitable @columnfractions .25 .25 .50
 @item Source set @tab Directory @tab Contents
@@ -53,8 +53,8 @@ top-level directory:
 
 @noindent
 Exercises and solutions share fully qualified names, and a test run receives
-exactly one of the two on its classpath (@ref{0.7} shows the flag that
-chooses). Chapter 0 itself is the primer you are reading; its module also
+exactly one of the two on its classpath (@ref{0.7} shows the tasks that
+choose). Chapter 0 itself is the primer you are reading; its module also
 carries the three directories, and @ref{0.2} through @ref{0.7} use them as
 they teach.
 
@@ -65,13 +65,13 @@ The @command{just} recipes wrap the Gradle tasks worth remembering:
 @example
 just setup      # ./gradlew --version: provision the JDK 25 toolchain
 just fmt        # ./gradlew ktlintCheck
-just lint       # ./gradlew build: compile every source set, run every test
+just lint       # ./gradlew build: the full gate
 just test       # ./gradlew test examplesTest solutionsTest
 just scaffold   # ./gradlew exercisesTest --continue: the pending report
 @end example
 
 @noindent
-@command{just lint} is the gate: it compiles the runtime and all three
+@command{just lint} is the gate: it compiles the runtime and the four
 source sets of every chapter, applies ktlint, and runs the example and
 solution tests. A scaffold that is still pending does not break it, which is
 what @code{PendingSolution} is for.

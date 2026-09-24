@@ -1622,11 +1622,13 @@ let p2 = make_polynomial(
     &[make_term(3, Value::Int(1)), make_term(1, Value::Int(-1))],
 )?;
 greatest_common_divisor(&table, &p1, &p2)?
-// => (polynomial (x (2 1) (1 -1)))   ; x^2 - x
+// => (polynomial (x (2 -1) (1 1)))   ; -x^2 + x, i.e. -(x^2 - x)
 @end example
 
 @noindent
-and check your result by hand.
+Euclid's algorithm determines the @abbr{GCD} only up to a constant
+factor, and this run's factor is negative; checking the result by hand
+means confirming that it divides both @code{p1} and @code{p2} exactly.
 @end quotation
 
 @quotation

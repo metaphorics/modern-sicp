@@ -195,12 +195,6 @@ mod term_lists {
     /// order to reduce by); whatever the term-list arithmetic raises.
     pub fn reduce_terms(n: &[Term], d: &[Term]) -> Result<(Vec<Term>, Vec<Term>), SchemeError> {
         let gcd = gcd_terms(n, d)?;
-        eprintln!(
-            "DEBUG n={:?} d={:?} gcd={:?}",
-            as_pairs(n),
-            as_pairs(d),
-            as_pairs(&gcd)
-        );
         let Some(leading) = gcd.first() else {
             return Err(SchemeError::TypeMismatch(
                 "reduce_terms: n and d have no nonzero common divisor".into(),

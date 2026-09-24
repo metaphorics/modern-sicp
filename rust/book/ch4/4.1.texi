@@ -1553,17 +1553,14 @@ restriction will in fact run in such implementations.}
 
 @quotation
 @strong{In this language: the driver loop, the tail-position trampoline, and the worker stack.}
-
-The book's evaluator is a pair of procedures; this edition's evaluator is a
-trait with one required hook, @code{step}, and the book's clause procedures as
-provided methods that recurse through it, so an exercise adds or replaces a
-clause by implementing the hook and falling back to @code{base_step} -- the
-new clause fires at every nesting depth, and the base evaluator stays
-reachable in one call.  The driver's loop unwinds the book's tail positions,
-the branch of an @code{if}, the last expression of a body, the body of an
-applied procedure, in constant host stack; what still grows the host stack is
-non-tail recursion, which @code{run_program} postpones on a worker thread
-with a 256 MiB stack.
+The book's evaluator is a pair of procedures; this edition's is a trait with
+one required hook, @code{step}, and the book's clauses as provided methods
+recursing through it, so an exercise adds a clause by implementing the hook
+and falling back to @code{base_step}; the new clause fires at every nesting
+depth.  The driver's loop unwinds the book's tail positions, the branch of an
+@code{if}, the last expression of a body, the body of an applied procedure,
+in constant host stack; non-tail recursion, which still grows the stack, is
+postponed by @code{run_program} on a worker thread with a 256 MiB stack.
 
 @example rust
 impl Evaluator for WithLet {
@@ -1577,9 +1574,9 @@ impl Evaluator for WithLet {
 }
 @end example
 
-The book's mechanism still wins when the set of forms must grow while
-the program runs: exercise 4.3's put/get table accepts a clause for a new
-type at runtime, where a @code{match} must be edited and recompiled.
+The book's mechanism still wins when forms must grow at runtime: exercise
+4.3's put/get table accepts a clause for a new type where a @code{match}
+must be edited and recompiled.
 @end quotation
 
 @quotation

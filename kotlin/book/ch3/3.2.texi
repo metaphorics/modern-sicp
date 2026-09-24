@@ -792,7 +792,8 @@ the code specified by the lambda expression in the body of
 physical code stored in the computer, or whether they each keep a copy of the
 code, is a detail of the implementation -- for the JVM, the compiled bytecode
 of the lambda is a single class shared by every function value created from
-it, and only the captured environment differs between instances.} We see here
+it, and only the captured environment differs between instances.  For the
+interpreter we implement in @ref{Chapter 4}, the code is in fact shared.} We see here
 why @code{w1} and @code{w2} behave as independent objects.  Calls to @code{w1}
 reference the state variable @code{b} stored in E1, whereas calls to @code{w2}
 reference the @code{b} stored in E2.  Thus, changes to the local state of one

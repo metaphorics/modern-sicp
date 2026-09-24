@@ -19,7 +19,7 @@ public class E3_21Test :
             q1.insert(VSym("d"))
             q1.printQueue() shouldBe "(a b c d)"
             q1.frontCell()?.toString() shouldBe "(a b c d)"
-            q1.rearCell()?.car shouldBe VSym("d")
+            q1.rearCell()?.toString() shouldBe "(d)"
             benView(q1) shouldBe "((a b c d) d)"
         }
 

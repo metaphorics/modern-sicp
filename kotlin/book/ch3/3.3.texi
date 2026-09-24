@@ -712,7 +712,7 @@ about where the state of a procedural pair lives?  (Compare
 @node	3.3.2, 3.3.3, 3.3.1, 3.3
 @subsection Representing Queues
 
-The mutators @code{set-car!} and @code{set-cdr!} enable us to use pairs to
+The mutators @code{setCar} and @code{setCdr} enable us to use pairs to
 construct data structures that cannot be built with @code{cons}, @code{car},
 and @code{cdr} alone.  This section shows how to use pairs to represent a data
 structure called a queue.  Section @ref{3.3.3} will show how to represent data

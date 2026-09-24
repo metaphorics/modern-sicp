@@ -71,10 +71,32 @@ mod ex_1_23 {
         let found = search_for_primes(1_000_000, 3);
         [found[0], found[1], found[2]]
     }
+
+    /// The 12 primes exercise 1.22 found across its four search ranges,
+    /// stated as literal values rather than re-derived by
+    /// `search_for_primes`: the exercise statement asks the `next`-stepped
+    /// `smallest_divisor` to be run "on each of the 12 primes found in
+    /// that exercise", not to search for primes independently.
+    const PRIMES_FROM_EX_1_22: [u64; 12] = [
+        1009, 1013, 1019, 10_007, 10_009, 10_037, 100_003, 100_019, 100_043, 1_000_003, 1_000_033,
+        1_000_037,
+    ];
+
+    /// Runs the `next`-stepped `smallest_divisor` on each of the 12
+    /// primes exercise 1.22 found, confirming the faster algorithm still
+    /// reports every one of them prime, as the exercise statement asks.
+    pub fn confirms_ex_1_22_primes() -> bool {
+        PRIMES_FROM_EX_1_22.into_iter().all(is_prime)
+    }
 }
 
 #[test]
 fn ex_1_23() {
     let values = ex_1_23::ex_1_23();
     assert_eq!(values, [1_000_003, 1_000_033, 1_000_037]);
+}
+
+#[test]
+fn ex_1_23_confirms_all_twelve_primes_from_ex_1_22() {
+    assert!(ex_1_23::confirms_ex_1_22_primes());
 }

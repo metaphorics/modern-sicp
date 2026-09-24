@@ -73,15 +73,25 @@ mod ex_1_22 {
 
     /// Exercise 1.22: the timed prime search
     ///
-    /// Returns the three smallest primes larger than 1000, then the three
-    /// smallest primes larger than 1,000,000.
-    pub fn ex_1_22() -> [u64; 6] {
+    /// Returns the three smallest primes larger than 1000, then larger
+    /// than 10,000, then larger than 100,000, then larger than
+    /// 1,000,000: all twelve of the primes the exercise statement asks
+    /// `search_for_primes` to find and time.
+    pub fn ex_1_22() -> [u64; 12] {
         let near_thousand = search_for_primes(1000, 3);
+        let near_ten_thousand = search_for_primes(10_000, 3);
+        let near_hundred_thousand = search_for_primes(100_000, 3);
         let near_million = search_for_primes(1_000_000, 3);
         [
             near_thousand[0],
             near_thousand[1],
             near_thousand[2],
+            near_ten_thousand[0],
+            near_ten_thousand[1],
+            near_ten_thousand[2],
+            near_hundred_thousand[0],
+            near_hundred_thousand[1],
+            near_hundred_thousand[2],
             near_million[0],
             near_million[1],
             near_million[2],
@@ -92,5 +102,11 @@ mod ex_1_22 {
 #[test]
 fn ex_1_22() {
     let values = ex_1_22::ex_1_22();
-    assert_eq!(values, [1009, 1013, 1019, 1_000_003, 1_000_033, 1_000_037]);
+    assert_eq!(
+        values,
+        [
+            1009, 1013, 1019, 10_007, 10_009, 10_037, 100_003, 100_019, 100_043, 1_000_003,
+            1_000_033, 1_000_037,
+        ]
+    );
 }

@@ -695,3 +695,183 @@ insta = { workspace = true }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "sec_2_5_1_generic_arithmetic"
+path = "examples/sec_2_5_1_generic_arithmetic.rs"
+
+[[example]]
+name = "sec_2_5_2_coercion"
+path = "examples/sec_2_5_2_coercion.rs"
+
+[[example]]
+name = "sec_2_5_3_symbolic_algebra"
+path = "examples/sec_2_5_3_symbolic_algebra.rs"
+
+[[test]]
+name = "scaffold_sec_2_77"
+path = "../../exercises/ch02/sec_2_77.rs"
+
+[[test]]
+name = "scaffold_sec_2_78"
+path = "../../exercises/ch02/sec_2_78.rs"
+
+[[test]]
+name = "scaffold_sec_2_79"
+path = "../../exercises/ch02/sec_2_79.rs"
+
+[[test]]
+name = "scaffold_sec_2_80"
+path = "../../exercises/ch02/sec_2_80.rs"
+
+[[test]]
+name = "scaffold_sec_2_81"
+path = "../../exercises/ch02/sec_2_81.rs"
+
+[[test]]
+name = "scaffold_sec_2_82"
+path = "../../exercises/ch02/sec_2_82.rs"
+
+[[test]]
+name = "scaffold_sec_2_83"
+path = "../../exercises/ch02/sec_2_83.rs"
+
+[[test]]
+name = "scaffold_sec_2_84"
+path = "../../exercises/ch02/sec_2_84.rs"
+
+[[test]]
+name = "scaffold_sec_2_85"
+path = "../../exercises/ch02/sec_2_85.rs"
+
+[[test]]
+name = "scaffold_sec_2_86"
+path = "../../exercises/ch02/sec_2_86.rs"
+
+[[test]]
+name = "scaffold_sec_2_87"
+path = "../../exercises/ch02/sec_2_87.rs"
+
+[[test]]
+name = "scaffold_sec_2_88"
+path = "../../exercises/ch02/sec_2_88.rs"
+
+[[test]]
+name = "scaffold_sec_2_89"
+path = "../../exercises/ch02/sec_2_89.rs"
+
+[[test]]
+name = "scaffold_sec_2_90"
+path = "../../exercises/ch02/sec_2_90.rs"
+
+[[test]]
+name = "scaffold_sec_2_91"
+path = "../../exercises/ch02/sec_2_91.rs"
+
+[[test]]
+name = "scaffold_sec_2_92"
+path = "../../exercises/ch02/sec_2_92.rs"
+
+[[test]]
+name = "scaffold_sec_2_93"
+path = "../../exercises/ch02/sec_2_93.rs"
+
+[[test]]
+name = "scaffold_sec_2_94"
+path = "../../exercises/ch02/sec_2_94.rs"
+
+[[test]]
+name = "scaffold_sec_2_95"
+path = "../../exercises/ch02/sec_2_95.rs"
+
+[[test]]
+name = "scaffold_sec_2_96"
+path = "../../exercises/ch02/sec_2_96.rs"
+
+[[test]]
+name = "scaffold_sec_2_97"
+path = "../../exercises/ch02/sec_2_97.rs"
+
+[[test]]
+name = "solution_sec_2_77"
+path = "../../solutions/ch02/sec_2_77.rs"
+
+[[test]]
+name = "solution_sec_2_78"
+path = "../../solutions/ch02/sec_2_78.rs"
+
+[[test]]
+name = "solution_sec_2_79"
+path = "../../solutions/ch02/sec_2_79.rs"
+
+[[test]]
+name = "solution_sec_2_80"
+path = "../../solutions/ch02/sec_2_80.rs"
+
+[[test]]
+name = "solution_sec_2_81"
+path = "../../solutions/ch02/sec_2_81.rs"
+
+[[test]]
+name = "solution_sec_2_82"
+path = "../../solutions/ch02/sec_2_82.rs"
+
+[[test]]
+name = "solution_sec_2_83"
+path = "../../solutions/ch02/sec_2_83.rs"
+
+[[test]]
+name = "solution_sec_2_84"
+path = "../../solutions/ch02/sec_2_84.rs"
+
+[[test]]
+name = "solution_sec_2_85"
+path = "../../solutions/ch02/sec_2_85.rs"
+
+[[test]]
+name = "solution_sec_2_86"
+path = "../../solutions/ch02/sec_2_86.rs"
+
+[[test]]
+name = "solution_sec_2_87"
+path = "../../solutions/ch02/sec_2_87.rs"
+
+[[test]]
+name = "solution_sec_2_88"
+path = "../../solutions/ch02/sec_2_88.rs"
+
+[[test]]
+name = "solution_sec_2_89"
+path = "../../solutions/ch02/sec_2_89.rs"
+
+[[test]]
+name = "solution_sec_2_90"
+path = "../../solutions/ch02/sec_2_90.rs"
+
+[[test]]
+name = "solution_sec_2_91"
+path = "../../solutions/ch02/sec_2_91.rs"
+
+[[test]]
+name = "solution_sec_2_92"
+path = "../../solutions/ch02/sec_2_92.rs"
+
+[[test]]
+name = "solution_sec_2_93"
+path = "../../solutions/ch02/sec_2_93.rs"
+
+[[test]]
+name = "solution_sec_2_94"
+path = "../../solutions/ch02/sec_2_94.rs"
+
+[[test]]
+name = "solution_sec_2_95"
+path = "../../solutions/ch02/sec_2_95.rs"
+
+[[test]]
+name = "solution_sec_2_96"
+path = "../../solutions/ch02/sec_2_96.rs"
+
+[[test]]
+name = "solution_sec_2_97"
+path = "../../solutions/ch02/sec_2_97.rs"

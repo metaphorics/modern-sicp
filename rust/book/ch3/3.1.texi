@@ -28,9 +28,13 @@ system being modeled change over time, the state variables of the corresponding
 computational objects must also change.  If we choose to model the flow of time
 in the system by the elapsed time in the computer, then we must have a way to
 construct computational objects whose behaviors change as our programs run.  In
-particular, if we wish to model state variables by ordinary symbolic names in
-the programming language, then the language must provide an @newterm{assignment operator} 
-to enable us to change the value associated with a name.
+particular, if we wish to model state variables by ordinary names in the
+programming language, then the language must provide an @newterm{assignment
+operator} to enable us to change the value associated with a name.  Rust
+provides one, and it adds a rule the book's Lisp never needed: a name can be
+assigned again only if its binding is declared @code{mut}, and state that
+several procedures share lives behind a cell whose interior the type system
+guards, as we will see throughout this chapter.
 
 @menu
 * 3.1.1::            Local State Variables
@@ -43,7 +47,7 @@ to enable us to change the value associated with a name.
 
 To illustrate what we mean by having a computational object with time-varying
 state, let us model the situation of withdrawing money from a bank account.  We
-will do this using a procedure @code{withdraw}, which takes as argument an
+will do this using a function @code{withdraw}, which takes as argument an
 @code{amount} to be withdrawn.  If there is enough money in the account to
 accommodate the withdrawal, then @code{withdraw} should return the balance
 remaining after the withdrawal.  Otherwise, @code{withdraw} should return the
@@ -51,263 +55,293 @@ message @emph{Insufficient funds}. For example, if we begin with $100 in the
 account, we should obtain the following sequence of responses using
 @code{withdraw}:
 
-@lisp
-(withdraw 25)
-@i{75}
+@example rust
+let balance = Cell::new(100);
 
-(withdraw 25)
-@i{50}
+let withdraw = |amount: i128| @{
+    if balance.get() >= amount @{
+        balance.set(balance.get() - amount);
+        Reply::Balance(balance.get())
+    @} else @{
+        Reply::Message("Insufficient funds")
+    @}
+@};
 
-(withdraw 60)
-@i{"Insufficient funds"}
+withdraw(25)
+// => 75
 
-(withdraw 15)
-@i{35}
-@end lisp
+withdraw(25)
+// => 50
+
+withdraw(60)
+// => "Insufficient funds"
+
+withdraw(15)
+// => 35
+@end example
 
 @noindent
-Observe that the expression @code{(withdraw 25)}, evaluated twice, yields
+Observe that the expression @code{withdraw(25)}, evaluated twice, yields
 different values.  This is a new kind of behavior for a procedure.  Until now,
 all our procedures could be viewed as specifications for computing mathematical
 functions.  A call to a procedure computed the value of the function applied to
 the given arguments, and two calls to the same procedure with the same
 arguments always produced the same result.@footnote{Actually, this is not quite
 true.  One exception was the random-number generator in @ref{1.2.6}.
-Another exception involved the operation/type tables we introduced in 
+Another exception involved the operation/type tables we introduced in
 @ref{2.4.3}, where the values of two calls to @code{get} with the same
 arguments depended on intervening calls to @code{put}.  On the other hand,
 until we introduce assignment, we have no way to create such procedures
 ourselves.}
 
-To implement @code{withdraw}, we can use a variable @code{balance} to indicate
-the balance of money in the account and define @code{withdraw} as a procedure
-that accesses @code{balance}.  The @code{withdraw} procedure checks to see if
-@code{balance} is at least as large as the requested @code{amount}.  If so,
-@code{withdraw} decrements @code{balance} by @code{amount} and returns the new
-value of @code{balance}.  Otherwise, @code{withdraw} returns the
-@emph{Insufficient funds} message.  Here are the definitions of @code{balance}
-and @code{withdraw}:
+To implement @code{withdraw}, we use a @code{Cell} holding the @code{balance}
+of money in the account and define @code{withdraw} as the closure above, which
+reaches that cell every time it runs.  The @code{withdraw} closure checks to
+see if @code{balance} is at least as large as the requested @code{amount}.  If
+so, @code{withdraw} decrements @code{balance} by @code{amount} and returns the
+new value of @code{balance}.  Otherwise, @code{withdraw} returns the
+@emph{Insufficient funds} message.  Decrementing @code{balance} is accomplished
+by the statement
 
-@lisp
-(define balance 100)
-
-(define (withdraw amount)
-  (if (>= balance amount)
-      (begin (set! balance (- balance amount))
-             balance)
-      "Insufficient funds"))
-@end lisp
+@example rust
+balance.set(balance.get() - amount);
+@end example
 
 @noindent
-Decrementing @code{balance} is accomplished by the expression
+This is an assignment to state held in a @code{Cell}, this edition's
+@newterm{interior mutability}: the cell's contents change while the cell itself
+is only ever borrowed.  The general form of the book's @code{set!} has two
+spellings here:
 
-@lisp
-(set! balance (- balance amount))
-@end lisp
-
-@noindent
-This uses the @code{set!} special form, whose syntax is
-
-@lisp
-(set! ⟨@var{name}⟩ ⟨@var{new-value}⟩)
-@end lisp
+@example rust
+@code{⟨}@var{name}@code{⟩} = @code{⟨}@var{new-value}@code{⟩};
+@code{⟨}@var{cell}@code{⟩}.set(@code{⟨}@var{new-value}@code{⟩});
+@end example
 
 @noindent
-Here @code{⟨}@var{name}@code{⟩} is a symbol and @code{⟨}@var{new-value}@code{⟩} is any expression.
-@code{Set!} changes @code{⟨}@var{name}@code{⟩} so that its value is the result obtained by
-evaluating @code{⟨}@var{new-value}@code{⟩}.  In the case at hand, we are changing
+Here @code{⟨}@var{name}@code{⟩} is a @code{mut} binding and
+@code{⟨}@var{cell}@code{⟩} is a cell whose contents may change.  Each changes
+its target so that its value is the result obtained by evaluating
+@code{⟨}@var{new-value}@code{⟩}.  In the case at hand, we are changing
 @code{balance} so that its new value will be the result of subtracting
-@code{amount} from the previous value of @code{balance}.@footnote{The value of
-a @code{set!} expression is implementation-dependent.  @code{Set!} should be
-used only for its effect, not for its value.
+@code{amount} from the previous value of @code{balance}.@footnote{Assignment
+in Rust evaluates to the unit value @code{()}, which carries no information;
+like the book's @code{set!}, it should be used only for its effect, not for
+its value.
 
-The name @code{set!} reflects a naming convention used in Scheme: Operations
+The book's @code{set!} reflects a Scheme naming convention in which operations
 that change the values of variables (or that change data structures, as we will
-see in @ref{3.3}) are given names that end with an exclamation point.
-This is similar to the convention of designating predicates by names that end
-with a question mark.}
+see in @ref{3.3}) are given names that end with an exclamation point.  Rust
+marks the mutation in the type instead of the name: a plain binding must
+declare @code{mut} to be assignable, and interior state must sit behind a
+@code{Cell} or a @code{RefCell}.  Predicates in Rust are conventionally named
+to begin with @code{is_}, in the role of Scheme's question mark.}
 
-@code{Withdraw} also uses the @code{begin} special form to cause two
-expressions to be evaluated in the case where the @code{if} test is true: first
-decrementing @code{balance} and then returning the value of @code{balance}.  In
-general, evaluating the expression
+@code{Withdraw} also relies on sequencing to first decrement @code{balance}
+and then return the value of @code{balance}.  In general, evaluating the block
 
-@lisp
-(begin ⟨@var{exp₁}⟩ ⟨@var{exp₂}⟩ @r{…} ⟨@var{expₖ}⟩)
-@end lisp
+@example rust
+@{
+    @code{⟨}@var{statement-1}@code{⟩};
+    @code{⟨}@var{statement-2}@code{⟩};
+    @r{…}
+    @code{⟨}@var{expression-k}@code{⟩}
+@}
+@end example
 
 @noindent
-causes the expressions @math{{⟨exp_1⟩}} through @math{{⟨exp_k⟩}} to be evaluated
-in sequence and the value of the final expression @math{{⟨exp_k⟩}} to be
-returned as the value of the entire @code{begin} form.@footnote{We have already
-used @code{begin} implicitly in our programs, because in Scheme the body of a
-procedure can be a sequence of expressions.  Also, the @code{⟨}@var{consequent}@code{⟩} part
-of each clause in a @code{cond} expression can be a sequence of expressions
-rather than a single expression.}
+causes the statements @math{{⟨statement_1⟩}} through @math{{⟨statement_{k-1}⟩}}
+to be executed in sequence and the value of the final expression
+@math{{⟨exp_k⟩}} to be the value of the entire block.@footnote{Rust needs no
+separate sequencing form, where the book's Scheme reaches for @code{begin}:
+the body of a function is always a block, and so is each arm of a
+@code{match}.  Where the book writes @code{begin}, this edition simply writes
+the statements in order and lets the block's final expression be the answer.}
 
-Although @code{withdraw} works as desired, the variable @code{balance} presents
-a problem.  As specified above, @code{balance} is a name defined in the global
-environment and is freely accessible to be examined or modified by any
-procedure.  It would be much better if we could somehow make @code{balance}
-internal to @code{withdraw}, so that @code{withdraw} would be the only
-procedure that could access @code{balance} directly and any other procedure
-could access @code{balance} only indirectly (through calls to @code{withdraw}).
-This would more accurately model the notion that @code{balance} is a local
-state variable used by @code{withdraw} to keep track of the state of the
-account.
+Although @code{withdraw} works as desired, the variable @code{balance}
+presents a problem.  As specified above, @code{balance} is a name in the
+enclosing scope and is freely accessible to be examined or modified by any
+later code that can name it: one call to @code{balance.set} is all it takes to
+reach past @code{withdraw} and change the account.  It would be much better if
+we could somehow make @code{balance} internal to @code{withdraw}, so that
+@code{withdraw} would be the only procedure that could access @code{balance}
+directly and any other procedure could access @code{balance} only indirectly
+(through calls to @code{withdraw}).  This would more accurately model the
+notion that @code{balance} is a local state variable used by @code{withdraw}
+to keep track of the state of the account.
 
 We can make @code{balance} internal to @code{withdraw} by rewriting the
 definition as follows:
 
-@lisp
-(define new-withdraw
-  (let ((balance 100))
-    (lambda (amount)
-      (if (>= balance amount)
-          (begin (set! balance 
-                       (- balance amount))
-                 balance)
-          "Insufficient funds"))))
-@end lisp
+@example rust
+pub fn new_withdraw() -> impl FnMut(i128) -> Reply @{
+    let balance = Cell::new(100);
+    move |amount| @{
+        if balance.get() >= amount @{
+            balance.set(balance.get() - amount);
+            Reply::Balance(balance.get())
+        @} else @{
+            Reply::Message("Insufficient funds")
+        @}
+    @}
+@}
+@end example
 
 @noindent
-What we have done here is use @code{let} to establish an environment with a
-local variable @code{balance}, bound to the initial value 100.  Within this
-local environment, we use @code{lambda} to create a procedure that takes
-@code{amount} as an argument and behaves like our previous @code{withdraw}
-procedure.  This procedure---returned as the result of evaluating the
-@code{let} expression---is @code{new-withdraw}, which behaves in precisely the
-same way as @code{withdraw} but whose variable @code{balance} is not accessible
-by any other procedure.@footnote{In programming-language jargon, the variable
-@code{balance} is said to be @newterm{encapsulated} within the
-@code{new-withdraw} procedure.  Encapsulation reflects the general
-system-design principle known as the @newterm{hiding principle}: One can make a
-system more modular and robust by protecting parts of the system from each
-other; that is, by providing information access only to those parts of the
-system that have a ``need to know.''}
+What we have done here is bind a local variable @code{balance}, initialized to
+100, inside the body of @code{new_withdraw}, and then use @code{move} to hand
+the returned closure its own ownership of that cell.  Because the closure is
+an @code{FnMut}, it may write the cell it captured on every call.  This
+closure---returned as the result of calling @code{new_withdraw}---behaves in
+precisely the same way as @code{withdraw} but whose variable @code{balance} is
+not accessible by any other procedure.@footnote{In programming-language
+jargon, the variable @code{balance} is said to be @newterm{encapsulated} within
+the closure that @code{new_withdraw} returns.  Encapsulation reflects the
+general system-design principle known as the @newterm{hiding principle}: One
+can make a system more modular and robust by protecting parts of the system
+from each other; that is, by providing information access only to those parts
+of the system that have a ``need to know.''}
 
-Combining @code{set!} with local variables is the general programming technique
+Combining assignment with local variables is the general programming technique
 we will use for constructing computational objects with local state.
-Unfortunately, using this technique raises a serious problem: When we first
-introduced procedures, we also introduced the substitution model of evaluation
-(@ref{1.1.5}) to provide an interpretation of what procedure
-application means.  We said that applying a procedure should be interpreted as
-evaluating the body of the procedure with the formal parameters replaced by
-their values.  The trouble is that, as soon as we introduce assignment into our
-language, substitution is no longer an adequate model of procedure application.
-(We will see why this is so in @ref{3.1.3}.)  As a consequence, we
-technically have at this point no way to understand why the @code{new-withdraw}
-procedure behaves as claimed above.  In order to really understand a procedure
-such as @code{new-withdraw}, we will need to develop a new model of procedure
-application.  In @ref{3.2} we will introduce such a model, together
-with an explanation of @code{set!} and local variables.  First, however, we
-examine some variations on the theme established by @code{new-withdraw}.
+Unfortunately, using this technique raises a serious problem: procedures with
+local state are no longer specifications for computing mathematical functions,
+so we cannot understand them by the substitution-style reasoning of
+@ref{1.1.5}.  As a consequence, we technically have at this point no way to
+understand why the closure returned by @code{new_withdraw} behaves as claimed
+above.  In order to really understand a procedure such as @code{new_withdraw},
+we will need a new model of procedure application.  In @ref{3.2} we will
+develop such a model, together with an explanation of assignment and local
+variables in terms of what a closure captures and who owns it.  First, however,
+we examine some variations on the theme established by @code{new_withdraw}.
 
-The following procedure, @code{make-withdraw}, creates ``withdrawal
-processors.''  The formal parameter @code{balance} in @code{make-withdraw}
+The following function, @code{make_withdraw}, creates ``withdrawal
+processors.''  The formal parameter @code{balance} in @code{make_withdraw}
 specifies the initial amount of money in the account.@footnote{In contrast with
-@code{new-withdraw} above, we do not have to use @code{let} to make
-@code{balance} a local variable, since formal parameters are already local.
-This will be clearer after the discussion of the environment model of
-evaluation in @ref{3.2}.  (See also @ref{Exercise 3.10}.)}
+@code{new_withdraw} above, we do not have to bind a @code{Cell} to make
+@code{balance} a local variable, since formal parameters are already local:
+the @code{move} closure takes ownership of the parameter itself.  This will be
+clearer after the discussion of the environment model of evaluation in
+@ref{3.2}.  (See also @ref{Exercise 3.10}.)}
 
-@lisp
-(define (make-withdraw balance)
-  (lambda (amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds")))
-@end lisp
-
-@noindent
-@code{Make-withdraw} can be used as follows to create two objects @code{W1} and
-@code{W2}:
-
-@lisp
-(define W1 (make-withdraw 100))
-(define W2 (make-withdraw 100))
-
-(W1 50)
-@i{50}
-
-(W2 70)
-@i{30}
-
-(W2 40)
-@i{"Insufficient funds"}
-
-(W1 40)
-@i{10}
-@end lisp
+@example rust
+pub fn make_withdraw(mut balance: i128) -> impl FnMut(i128) -> Reply @{
+    move |amount| @{
+        if balance >= amount @{
+            balance -= amount;
+            Reply::Balance(balance)
+        @} else @{
+            Reply::Message("Insufficient funds")
+        @}
+    @}
+@}
+@end example
 
 @noindent
-Observe that @code{W1} and @code{W2} are completely independent objects, each
+@code{Make_withdraw} can be used as follows to create two objects @code{w1}
+and @code{w2}:
+
+@example rust
+let mut w1 = make_withdraw(100);
+let mut w2 = make_withdraw(100);
+
+w1(50)
+// => 50
+
+w2(70)
+// => 30
+
+w2(40)
+// => "Insufficient funds"
+
+w1(40)
+// => 10
+@end example
+
+@noindent
+Observe that @code{w1} and @code{w2} are completely independent objects, each
 with its own local state variable @code{balance}.  Withdrawals from one do not
 affect the other.
 
 We can also create objects that handle deposits as well as withdrawals, and
-thus we can represent simple bank accounts.  Here is a procedure that returns a
-``bank-account object'' with a specified initial balance:
+thus we can represent simple bank accounts.  Here is the definition that
+returns a ``bank-account object'' with a specified initial balance:
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (define (dispatch m)
-    (cond ((eq? m 'withdraw) withdraw)
-          ((eq? m 'deposit) deposit)
-          (else (error "Unknown request: 
-                 MAKE-ACCOUNT" m))))
-  dispatch)
-@end lisp
+@example rust
+pub struct Account @{
+    balance: Rc<Cell<i128>>,
+@}
 
-@noindent
-Each call to @code{make-account} sets up an environment with a local state
-variable @code{balance}.  Within this environment, @code{make-account} defines
-procedures @code{deposit} and @code{withdraw} that access @code{balance} and an
-additional procedure @code{dispatch} that takes a ``message'' as input and
-returns one of the two local procedures.  The @code{dispatch} procedure itself
-is returned as the value that represents the bank-account object.  This is
-precisely the @newterm{message-passing} style of programming that we saw in
-@ref{2.4.3}, although here we are using it in conjunction with the
-ability to modify local variables.
+pub fn make_account(balance: i128) -> Account @{
+    Account @{
+        balance: Rc::new(Cell::new(balance)),
+    @}
+@}
 
-@code{Make-account} can be used as follows:
-
-@lisp
-(define acc (make-account 100))
-
-((acc 'withdraw) 50)
-@i{50}
-
-((acc 'withdraw) 60)
-@i{"Insufficient funds"}
-
-((acc 'deposit) 40)
-@i{90}
-
-((acc 'withdraw) 60)
-@i{30}
-@end lisp
+impl Account @{
+    /// Sends the account a message and returns its answer.
+    pub fn send(&self, request: Request) -> Reply @{
+        match request @{
+            Request::Withdraw(amount) => @{
+                if self.balance.get() >= amount @{
+                    self.balance.set(self.balance.get() - amount);
+                    Reply::Balance(self.balance.get())
+                @} else @{
+                    Reply::Message("Insufficient funds")
+                @}
+            @}
+            Request::Deposit(amount) => @{
+                self.balance.set(self.balance.get() + amount);
+                Reply::Balance(self.balance.get())
+            @}
+        @}
+    @}
+@}
+@end example
 
 @noindent
-Each call to @code{acc} returns the locally defined @code{deposit} or
-@code{withdraw} procedure, which is then applied to the specified
-@code{amount}.  As was the case with @code{make-withdraw}, another call to
-@code{make-account}
+Each call to @code{make_account} sets up an object with a local state variable
+@code{balance}, held in a reference-counted cell so that the object can be
+named more than once (a need that will arise in @ref{3.1.3} and in
+@ref{Exercise 3.7}).  Within the object, @code{send} dispatches on the
+message it is given and answers with the new balance or with the
+@emph{Insufficient funds} message.  The @code{Request} type is this edition's
+@newterm{shared ownership} made concrete: the count in the @code{Rc} is what
+lets two names hold one balance, while the @code{Cell} is what lets the
+balance change under a shared name.  This is precisely the
+@newterm{message-passing} style of programming that we saw in @ref{2.4.3},
+although here we are using it in conjunction with the ability to modify local
+variables.  Where the book's @code{dispatch} needs an error arm for an
+unknown message, the @code{match} over @code{Request} needs none: the
+compiler proves that every message is handled, because a message that is not
+one of the two variants cannot be spelled.
 
-@lisp
-(define acc2 (make-account 100))
-@end lisp
+@code{Make_account} can be used as follows:
+
+@example rust
+let acc = make_account(100);
+
+acc.send(Request::Withdraw(50))
+// => 50
+
+acc.send(Request::Withdraw(60))
+// => "Insufficient funds"
+
+acc.send(Request::Deposit(40))
+// => 90
+
+acc.send(Request::Withdraw(60))
+// => 30
+@end example
+
+@noindent
+Each call to @code{acc.send} dispatches to the handling for the message it
+carries, applied to the specified @code{amount}.  As was the case with
+@code{make_withdraw}, another call to @code{make_account}
+
+@example rust
+let acc2 = make_account(100);
+@end example
 
 @noindent
 will produce a completely separate account object, which maintains its own
@@ -315,77 +349,79 @@ local @code{balance}.
 
 @quotation
 @strong{@anchor{Exercise 3.1}Exercise 3.1:} An @newterm{accumulator} is a
-procedure that is called repeatedly with a single numeric argument and
+function that is called repeatedly with a single numeric argument and
 accumulates its arguments into a sum.  Each time it is called, it returns the
-currently accumulated sum.  Write a procedure @code{make-accumulator} that
+currently accumulated sum.  Write a function @code{make_accumulator} that
 generates accumulators, each maintaining an independent sum.  The input to
-@code{make-accumulator} should specify the initial value of the sum; for
+@code{make_accumulator} should specify the initial value of the sum; for
 example
 
-@lisp
-(define A (make-accumulator 5))
+@example rust
+let mut a = make_accumulator(5);
 
-(A 10)
-@i{15}
+a(10)
+// => 15
 
-(A 10)
-@i{25}
-@end lisp
+a(10)
+// => 25
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.2}Exercise 3.2:} In software-testing applications,
 it is useful to be able to count the number of times a given procedure is
-called during the course of a computation.  Write a procedure
-@code{make-monitored} that takes as input a procedure, @code{f}, that itself
-takes one input.  The result returned by @code{make-monitored} is a third
-procedure, say @code{mf}, that keeps track of the number of times it has been
-called by maintaining an internal counter.  If the input to @code{mf} is the
-special symbol @code{how-many-calls?}, then @code{mf} returns the value of the
-counter.  If the input is the special symbol @code{reset-count}, then @code{mf}
-resets the counter to zero.  For any other input, @code{mf} returns the result
-of calling @code{f} on that input and increments the counter.  For instance, we
-could make a monitored version of the @code{sqrt} procedure:
+called during the course of a computation.  Write a function
+@code{make_monitored} that takes as input a function, @code{f}, that itself
+takes one @code{f64} input.  The result returned by @code{make_monitored} is a
+third function, say @code{mf}, that keeps track of the number of times it has
+been called by maintaining an internal counter.  The input to @code{mf} is a
+request: if the request is the value @code{MonitorRequest::HowManyCalls},
+then @code{mf} returns the value of the counter; if the request is
+@code{MonitorRequest::ResetCount}, then @code{mf} resets the counter to zero;
+and for any other request, @code{MonitorRequest::Call(x)}, @code{mf} returns
+the result of calling @code{f} on @code{x} and increments the counter.  For
+instance, we could make a monitored version of @code{sqrt}:
 
-@lisp
-(define s (make-monitored sqrt))
+@example rust
+let mut s = make_monitored(f64::sqrt);
 
-(s 100)
-@i{10}
+s(MonitorRequest::Call(100.0))
+// => MonitorReply::Result(10)
 
-(s 'how-many-calls?)
-@i{1}
-@end lisp
+s(MonitorRequest::HowManyCalls)
+// => MonitorReply::Count(1)
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.3}Exercise 3.3:} Modify the @code{make-account}
-procedure so that it creates password-protected accounts.  That is,
-@code{make-account} should take a symbol as an additional argument, as in
+@strong{@anchor{Exercise 3.3}Exercise 3.3:} Modify the @code{make_account}
+function so that it creates password-protected accounts.  That is,
+@code{make_account} should take a password as an additional argument, as in
 
-@lisp
-(define acc 
-  (make-account 100 'secret-password))
-@end lisp
+@example rust
+let acc = make_account_with_password(100, "secret-password");
+@end example
 
+@noindent
 The resulting account object should process a request only if it is accompanied
 by the password with which the account was created, and should otherwise return
 a complaint:
 
-@lisp
-((acc 'secret-password 'withdraw) 40)
-@i{60}
+@example rust
+acc.send("secret-password", Request::Withdraw(40))
+// => 60
 
-((acc 'some-other-password 'deposit) 50)
-@i{"Incorrect password"}
-@end lisp
+acc.send("some-other-password", Request::Deposit(50))
+// => "Incorrect password"
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.4}Exercise 3.4:} Modify the @code{make-account}
-procedure of @ref{Exercise 3.3} by adding another local state variable so that,
+@strong{@anchor{Exercise 3.4}Exercise 3.4:} Modify the @code{make_account}
+function of @ref{Exercise 3.3} by adding another local state variable so that,
 if an account is accessed more than seven consecutive times with an incorrect
-password, it invokes the procedure @code{call-the-cops}.
+password, it calls the function @code{call_the_cops} that the account was
+given when it was built.
 @end quotation
 
 @node	3.1.2, 3.1.3, 3.1.1, 3.1
@@ -395,57 +431,72 @@ As we shall see, introducing assignment into our programming language leads us
 into a thicket of difficult conceptual issues.  Nevertheless, viewing systems
 as collections of objects with local state is a powerful technique for
 maintaining a modular design.  As a simple example, consider the design of a
-procedure @code{rand} that, whenever it is called, returns an integer chosen at
-random.
+random-number generator @code{rand} that, whenever it is called, returns an
+integer chosen at random.
 
 It is not at all clear what is meant by ``chosen at random.''  What we
 presumably want is for successive calls to @code{rand} to produce a sequence of
 numbers that has statistical properties of uniform distribution.  We will not
 discuss methods for generating suitable sequences here.  Rather, let us assume
-that we have a procedure @code{rand-update} that has the property that if we
+that we have a function @code{rand_update} that has the property that if we
 start with a given number @math{x_1} and form
 
-@lisp
-@var{x₂} = (rand-update @var{x₁})
-@var{x₃} = (rand-update @var{x₂})
-@end lisp
+@example rust
+let x2 = rand_update(x1);
+let x3 = rand_update(x2);
+@end example
 
 @noindent
 then the sequence of values @math{x_1}, @math{x_2}, @math{x_3}, @dots{} will have the
 desired statistical properties.@footnote{One common way to implement
-@code{rand-update} is to use the rule that @math{x} is updated to @math{{ax + b}} 
+@code{rand_update} is to use the rule that @math{x} is updated to @math{{ax + b}}
 modulo @math{m}, where @math{a}, @math{b}, and @math{m} are appropriately chosen
 integers.  Chapter 3 of @ref{Knuth 1981} includes an extensive discussion of
 techniques for generating sequences of random numbers and establishing their
-statistical properties.  Notice that the @code{rand-update} procedure computes
+statistical properties.  Notice that the @code{rand_update} function computes
 a mathematical function: Given the same input twice, it produces the same
-output.  Therefore, the number sequence produced by @code{rand-update}
+output.  Therefore, the number sequence produced by @code{rand_update}
 certainly is not ``random,'' if by ``random'' we insist that each number in the
 sequence is unrelated to the preceding number.  The relation between ``real
 randomness'' and so-called @newterm{pseudo-random} sequences, which are
 produced by well-determined computations and yet have suitable statistical
 properties, is a complex question involving difficult issues in mathematics and
 philosophy.  Kolmogorov, Solomonoff, and Chaitin have made great progress in
-clarifying these issues; a discussion can be found in @ref{Chaitin 1975}.}
+clarifying these issues; a discussion can be found in @ref{Chaitin 1975}.
+This edition's @code{rand_update} is the step function of the seeded
+@code{xorshift64*} generator (Vigna 2016) that every runtime in this book
+ships.}
 
-We can implement @code{rand} as a procedure with a local state variable
-@code{x} that is initialized to some fixed value @code{random-init}.  Each call
-to @code{rand} computes @code{rand-update} of the current value of @code{x},
-returns this as the random number, and also stores this as the new value of
-@code{x}.
+We can implement @code{rand} as an object with a local state variable
+@code{x} that is initialized to some fixed value @code{RANDOM_INIT}.  Each
+call to @code{rand.generate()} computes @code{rand_update} of the current
+value of @code{x}, returns this as the random number, and also stores this as
+the new value of @code{x}.
 
-@lisp
-(define rand
-  (let ((x random-init))
-    (lambda () (set! x (rand-update x)) x)))
-@end lisp
+@example rust
+pub struct Rand @{
+    x: u64,
+@}
+
+impl Rand @{
+    /// Produces the next random number of the stream.
+    pub fn generate(&mut self) -> u64 @{
+        self.x = rand_update(self.x);
+        self.x
+    @}
+@}
+@end example
 
 @noindent
+The generator is started at the fixed seed with @code{Rand::new(RANDOM_INIT)},
+and @code{generate} requires @code{&mut self} for exactly the reason this
+section exists: calling it changes the object.
+
 Of course, we could generate the same sequence of random numbers without using
-assignment by simply calling @code{rand-update} directly.  How@-ever, this would
+assignment by simply calling @code{rand_update} directly.  How@-ever, this would
 mean that any part of our program that used random numbers would have to
 explicitly remember the current value of @code{x} to be passed as an argument
-to @code{rand-update}.  To realize what an annoyance this would be, consider
+to @code{rand_update}.  To realize what an annoyance this would be, consider
 using random numbers to implement a technique called @newterm{Monte Carlo simulation}.
 
 The Monte Carlo method consists of choosing sample experiments at random from a
@@ -461,80 +512,75 @@ if their @abbr{GCD} is 1.  The fraction of times that the test is passed
 gives us our estimate of @math{{6/\pi^2}}, and from this we obtain our
 approximation to @math{\pi}.
 
-The heart of our program is a procedure @code{monte-carlo}, which takes as
+The heart of our program is a function @code{monte_carlo}, which takes as
 arguments the number of times to try an experiment, together with the
-experiment, represented as a no-argument procedure that will return either true
-or false each time it is run.  @code{Monte-carlo} runs the experiment for the
+experiment, represented as a closure that will return either true
+or false each time it is run.  @code{Monte_carlo} runs the experiment for the
 designated number of trials and returns a number telling the fraction of the
 trials in which the experiment was found to be true.
 
-@lisp
-(define (estimate-pi trials)
-  (sqrt (/ 6 (monte-carlo trials 
-                          cesaro-test))))
-(define (cesaro-test)
-   (= (gcd (rand) (rand)) 1))
+@example rust
+fn estimate_pi(trials: u32, rand: &mut Rand) -> f64 @{
+    let mut cesaro_test = || gcd(rand.generate(), rand.generate()) == 1;
+    let coprime_fraction = monte_carlo(trials, &mut cesaro_test);
+    (6.0 / coprime_fraction).sqrt()
+@}
 
-(define (monte-carlo trials experiment)
-  (define (iter trials-remaining trials-passed)
-    (cond ((= trials-remaining 0)
-           (/ trials-passed trials))
-          ((experiment)
-           (iter (- trials-remaining 1) 
-                 (+ trials-passed 1)))
-          (else
-           (iter (- trials-remaining 1) 
-                 trials-passed))))
-  (iter trials 0))
-@end lisp
+fn monte_carlo(trials: u32, experiment: &mut dyn FnMut() -> bool) -> f64 @{
+    let mut passed = 0;
+    for _ in 0..trials @{
+        if experiment() @{
+            passed += 1;
+        @}
+    @}
+    f64::from(passed) / f64::from(trials)
+@}
+@end example
 
 @noindent
-Now let us try the same computation using @code{rand-update} directly rather
+Now let us try the same computation using @code{rand_update} directly rather
 than @code{rand}, the way we would be forced to proceed if we did not use
 assignment to model local state:
 
-@lisp
-(define (estimate-pi trials)
-  (sqrt (/ 6 (random-gcd-test trials 
-                              random-init))))
+@example rust
+fn estimate_pi_stateless(trials: u32, initial_x: u64) -> f64 @{
+    let coprime_fraction = random_gcd_test(trials, initial_x);
+    (6.0 / coprime_fraction).sqrt()
+@}
 
-(define (random-gcd-test trials initial-x)
-  (define (iter trials-remaining 
-                trials-passed 
-                x)
-    (let ((x1 (rand-update x)))
-      (let ((x2 (rand-update x1)))
-        (cond ((= trials-remaining 0)
-               (/ trials-passed trials))
-              ((= (gcd x1 x2) 1)
-               (iter (- trials-remaining 1)
-                     (+ trials-passed 1)
-                     x2))
-              (else
-               (iter (- trials-remaining 1)
-                     trials-passed
-                     x2))))))
-  (iter trials 0 initial-x))
-@end lisp
+fn random_gcd_test(trials: u32, initial_x: u64) -> f64 @{
+    let mut passed = 0;
+    let mut x = initial_x;
+    for _ in 0..trials @{
+        let x1 = rand_update(x);
+        let x2 = rand_update(x1);
+        if gcd(x1, x2) == 1 @{
+            passed += 1;
+        @}
+        x = x2;
+    @}
+    f64::from(passed) / f64::from(trials)
+@}
+@end example
 
 @noindent
 While the program is still simple, it betrays some painful breaches of
 modularity.  In our first version of the program, using @code{rand}, we can
-express the Monte Carlo method directly as a general @code{monte-carlo}
-procedure that takes as an argument an arbitrary @code{experiment} procedure.
+express the Monte Carlo method directly as a general @code{monte_carlo}
+function that takes as an argument an arbitrary @code{experiment} closure.
 In our second version of the program, with no local state for the random-number
-generator, @code{random-gcd-test} must explicitly manipulate the random numbers
+generator, @code{random_gcd_test} must explicitly manipulate the random numbers
 @code{x1} and @code{x2} and recycle @code{x2} through the iterative loop as the
-new input to @code{rand-update}.  This explicit handling of the random numbers
+new input to @code{rand_update}.  This explicit handling of the random numbers
 intertwines the structure of accumulating test results with the fact that our
 particular experiment uses two random numbers, whereas other Monte Carlo
-experiments might use one random number or three.  Even the top-level procedure
-@code{estimate-pi} has to be concerned with supplying an initial random number.
-The fact that the random-number generator's insides are leaking out into other
-parts of the program makes it difficult for us to isolate the Monte Carlo idea
+experiments might use one random number or three.  Even the top-level function
+@code{estimate_pi_stateless} has to be concerned with supplying an initial random
+number.  The fact that the random-number generator's insides are leaking out
+into other parts of the program makes it difficult for us to isolate the Monte Carlo idea
 so that it can be applied to other tasks.  In the first version of the program,
 assignment encapsulates the state of the random-number generator within the
-@code{rand} procedure, so that the details of random-number generation remain
+@code{Rand} object, so that the details of random-number generation remain
 independent of the rest of the program.
 
 The general phenomenon illustrated by the Monte Carlo example is this: From the
@@ -571,37 +617,54 @@ estimate of the proportion of the rectangle that lies in the region.  Hence,
 multiplying this fraction by the area of the entire rectangle should produce an
 estimate of the integral.
 
-Implement Monte Carlo integration as a procedure @code{estimate-integral} that
-takes as arguments a predicate @code{P}, upper and lower bounds @code{x1},
-@code{x2}, @code{y1}, and @code{y2} for the rectangle, and the number of trials
-to perform in order to produce the estimate.  Your procedure should use the
-same @code{monte-carlo} procedure that was used above to estimate @math{\pi}.
-Use your @code{estimate-integral} to produce an estimate of @math{\pi} by
+Implement Monte Carlo integration as a function @code{estimate_integral} that
+takes as arguments a predicate @code{p}, upper and lower bounds @code{x1},
+@code{x2}, @code{y1}, and @code{y2} for the rectangle, the number of trials
+to perform in order to produce the estimate, and a generator @code{rand}.
+Your function should use the
+same @code{monte_carlo} function that was used above to estimate @math{\pi}.
+Use your @code{estimate_integral} to produce an estimate of @math{\pi} by
 measuring the area of a unit circle.
 
-You will find it useful to have a procedure that returns a number chosen at
-random from a given range.  The following @code{random-in-range} procedure
-implements this in terms of the @code{random} procedure used in 
-@ref{1.2.6}, which returns a nonnegative number less than its
-input.@footnote{@abbr{MIT} Scheme provides such a procedure.  If
-@code{random} is given an exact integer (as in @ref{1.2.6}) it returns
-an exact integer, but if it is given a decimal value (as in this exercise) it
-returns a decimal value.}
+You will find it useful to have a function that returns a number chosen at
+random from a given range.  The following @code{random_in_range} function
+implements this in terms of the runtime's seeded @code{Random} generator,
+whose draws are whole 64-bit words rather than the book's decimals in
+@math{[0, @var{n})} (see @ref{1.2.6}).@footnote{The book's
+@code{random}, as provided by @abbr{MIT} Scheme, returns an exact integer when
+given an exact integer (as in @ref{1.2.6}) and a decimal value when given a
+decimal value (as in this exercise).  The runtime's generator draws 64-bit
+words only, so this edition scales a word into the requested range.}
 
-@lisp
-(define (random-in-range low high)
-  (let ((range (- high low)))
-    (+ low (random range))))
-@end lisp
+@example rust
+fn random_in_range(rand: &mut Rand, low: f64, high: f64) -> f64 @{
+    let range = high - low;
+    low + i128::from(rand.generate()) as f64 / i128::from(u64::MAX) as f64 * range
+@}
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.5a}Exercise 3.5a:} @emph{Exercise 3.5a is added by
+this edition and extends exercise 3.5; SICP numbers stop at 3.5.}  Every
+runtime in this edition ships a seeded generator, so a probabilistic program
+can be replayed exactly.  @code{Rand::new(seed)} starts a generator at any
+nonzero word, and @code{rand_update} is a pure function of its input.  Draw
+the first five numbers of the generator started from @code{RANDOM_INIT}; then
+produce the Cesaro estimate of @math{\pi} at 100, 1,000, and 10,000 trials,
+each from a generator freshly seeded at @code{RANDOM_INIT}, and check the
+three estimates against @math{\pi} with the loose tolerances 0.5, 0.2, and
+0.05.  The exercise has two payoffs: the stream of draws is a constant for a
+fixed seed, so a test can pin it draw for draw, and the three-entry table
+shows the estimate settling toward @math{\pi} as the trial count grows.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.6}Exercise 3.6:} It is useful to be able to reset a
 random-number generator to produce a sequence starting from a given value.
-Design a new @code{rand} procedure that is called with an argument that is
-either the symbol @code{generate} or the symbol @code{reset} and behaves as
-follows: @code{(rand 'generate)} produces a new random number; @code{((rand
-'reset) ⟨@var{new-value}⟩)} resets the internal state variable to the
+Design a new @code{rand} object that handles a @code{Command} value: the
+variant @code{Command::Generate} produces a new random number, and the variant
+@code{Command::Reset(new_value)} resets the internal state variable to the
 designated @code{⟨}@var{new-value}@code{⟩}.  Thus, by resetting the state, one can generate
 repeatable sequences.  These are very handy to have when testing and debugging
 programs that use random numbers.
@@ -610,10 +673,10 @@ programs that use random numbers.
 @node	3.1.3, 3.2, Chapter 3, 3.1
 @subsection The Costs of Introducing Assignment
 
-As we have seen, the @code{set!} operation enables us to model objects that
-have local state.  However, this advantage comes at a price.  Our programming
-language can no longer be interpreted in terms of the substitution model of
-procedure application that we introduced in @ref{1.1.5}.  Moreover, no
+As we have seen, assignment enables us to model objects that
+have local state.  However, this advantage comes at a price.  Our reasoning
+about procedures can no longer run on the substitution model of procedure
+application that we introduced in @ref{1.1.5}.  Moreover, no
 simple model with ``nice'' mathematical properties can be an adequate framework
 for dealing with objects and assignment in programming languages.
 
@@ -624,122 +687,134 @@ assignments, as we did throughout the first two chapters of this book, is
 accordingly known as @newterm{functional programming}.
 
 To understand how assignment complicates matters, consider a simplified version
-of the @code{make-withdraw} procedure of @ref{3.1.1} that does not
+of the @code{make_withdraw} function of @ref{3.1.1} that does not
 bother to check for an insufficient amount:
 
-@lisp
-(define (make-simplified-withdraw balance)
-  (lambda (amount)
-    (set! balance (- balance amount))
-    balance))
+@example rust
+pub fn make_simplified_withdraw(mut balance: i128) -> impl FnMut(i128) -> i128 @{
+    move |amount| @{
+        balance -= amount;
+        balance
+    @}
+@}
 
-(define W (make-simplified-withdraw 25))
+let mut w = make_simplified_withdraw(25);
 
-(W 20)
-@i{5}
+w(20)
+// => 5
 
-(W 10)
-@i{-5}
-@end lisp
-
-@noindent
-Compare this procedure with the following @code{make-decrementer} procedure,
-which does not use @code{set!}:
-
-@lisp
-(define (make-decrementer balance)
-  (lambda (amount)
-    (- balance amount)))
-@end lisp
+w(10)
+// => -5
+@end example
 
 @noindent
-@code{Make-decrementer} returns a procedure that subtracts its input from a
+Compare this function with the following @code{make_decrementer} function,
+which does not use assignment:
+
+@example rust
+pub fn make_decrementer(balance: i128) -> impl Fn(i128) -> i128 @{
+    move |amount| balance - amount
+@}
+@end example
+
+@noindent
+@code{Make_decrementer} returns a function that subtracts its input from a
 designated amount @code{balance}, but there is no accumulated effect over
-successive calls, as with @code{make-simplified-withdraw}:
+successive calls, as with @code{make_simplified_withdraw}.  The returned
+closure is an @code{Fn}, not an @code{FnMut}: the type system itself records
+that it never changes what it captures.
 
-@lisp
-(define D (make-decrementer 25))
+@example rust
+let d = make_decrementer(25);
 
-(D 20)
-@i{5}
+d(20)
+// => 5
 
-(D 10)
-@i{15}
-@end lisp
+d(10)
+// => 15
+@end example
 
 @noindent
-We can use the substitution model to explain how @code{make-decrementer} works.
+We can use the substitution model to explain how @code{make_decrementer} works.
 For instance, let us analyze the evaluation of the expression
 
-@lisp
-((make-decrementer 25) 20)
-@end lisp
+@example rust
+make_decrementer(25)(20)
+@end example
 
 @noindent
-We first simplify the operator of the combination by substituting 25 for
-@code{balance} in the body of @code{make-decrementer}.  This reduces the
+We first simplify the operator of the call by substituting 25 for
+@code{balance} in the body of @code{make_decrementer}.  This reduces the
 expression to
 
-@lisp
-((lambda (amount) (- 25 amount)) 20)
-@end lisp
+@example rust
+(move |amount: i128| 25 - amount)(20)
+@end example
 
 @noindent
 Now we apply the operator by substituting 20 for @code{amount} in the body of
-the @code{lambda} expression:
+the closure:
 
-@lisp
-(- 25 20)
-@end lisp
+@example rust
+25 - 20
+// => 5
+@end example
 
 @noindent
 The final answer is 5.
 
 Observe, however, what happens if we attempt a similar substitution analysis
-with @code{make-simplified-withdraw}:
+with @code{make_simplified_withdraw}:
 
-@lisp
-((make-simplified-withdraw 25) 20)
-@end lisp
+@example rust
+make_simplified_withdraw(25)(20)
+@end example
 
 @noindent
 We first simplify the operator by substituting 25 for @code{balance} in the
-body of @code{make-simplified-withdraw}.  This reduces the expression
-to@footnote{We don't substitute for the occurrence of @code{balance} in the
-@code{set!} expression because the @code{⟨}@var{name}@code{⟩} in a @code{set!} is not
-evaluated.  If we did substitute for it, we would get @code{(set! 25 (- 25
-amount))}, which makes no sense.}
+body of @code{make_simplified_withdraw}.  The assignment does not survive the
+trip:
 
-@lisp
-((lambda (amount) 
-   (set! balance (- 25 amount)) 25)
- 20)
-@end lisp
+@example rust
+(move |amount: i128| @{
+    balance.set(25 - amount);
+    25
+@})(20)
+@end example
 
 @noindent
-Now we apply the operator by substituting 20 for @code{amount} in the body of
-the @code{lambda} expression:
+The body still names @code{balance}, as if nothing had been substituted,
+because the assignment's target is not a value position.@footnote{We cannot
+substitute for the occurrence of @code{balance} in the assignment, because
+that occurrence names the place to be changed rather than a value to be used.
+If we did substitute for it, we would get @code{(25).set(25 - amount)}, which
+makes no sense: a number has no interior to change.}  Now we apply the
+operator by substituting 20 for @code{amount} in the body of the closure:
 
-@lisp
-(set! balance (- 25 20)) 25
-@end lisp
+@example rust
+balance.set(25 - 20);
+25
+@end example
 
 @noindent
 If we adhered to the substitution model, we would have to say that the meaning
-of the procedure application is to first set @code{balance} to 5 and then
+of this application is to first set @code{balance} to 5 and then
 return 25 as the value of the expression.  This gets the wrong answer.  In
 order to get the correct answer, we would have to somehow distinguish the first
-occurrence of @code{balance} (before the effect of the @code{set!})  from the
-second occurrence of @code{balance} (after the effect of the @code{set!}), and
-the substitution model cannot do this.
+occurrence of @code{balance} (before the effect of the assignment)  from the
+second occurrence of @code{balance} (after the effect of the assignment), and
+the substitution model cannot do this.  The real program answers 5, and it
+answers 5 because both occurrences of @code{balance} in the body are one
+captured word, read only after the assignment has changed it.
 
 The trouble here is that substitution is based ultimately on the notion that
 the symbols in our language are essentially names for values.  But as soon as
-we introduce @code{set!} and the idea that the value of a variable can change,
+we introduce assignment and the idea that the value of a variable can change,
 a variable can no longer be simply a name.  Now a variable somehow refers to a
 place where a value can be stored, and the value stored at this place can
-change.  In @ref{3.2} we will see how environments play this role of
-``place'' in our computational model.
+change.  In Rust this is literal: a @code{mut} binding and a @code{Cell} are
+places, the borrow checker polices every path to them, and in @ref{3.2} we
+will see how closures capture such places in our computational model.
 
 @subsubheading Sameness and change
 
@@ -748,53 +823,53 @@ particular model of computation.  As soon as we introduce change into our
 computational models, many notions that were previously straightforward become
 problematical.  Consider the concept of two things being ``the same.''
 
-Suppose we call @code{make-decrementer} twice with the same argument to create
-two procedures:
+Suppose we call @code{make_decrementer} twice with the same argument to create
+two functions:
 
-@lisp
-(define D1 (make-decrementer 25))
-(define D2 (make-decrementer 25))
-@end lisp
-
-@noindent
-Are @code{D1} and @code{D2} the same?  An acceptable answer is yes, because
-@code{D1} and @code{D2} have the same computational behavior---each is a
-procedure that subtracts its input from 25.  In fact, @code{D1} could be
-substituted for @code{D2} in any computation without changing the result.
-
-Contrast this with making two calls to @code{make-simplified-withdraw}:
-
-@lisp
-(define W1 (make-simplified-withdraw 25))
-(define W2 (make-simplified-withdraw 25))
-@end lisp
+@example rust
+let d1 = make_decrementer(25);
+let d2 = make_decrementer(25);
+@end example
 
 @noindent
-Are @code{W1} and @code{W2} the same?  Surely not, because calls to @code{W1}
-and @code{W2} have distinct effects, as shown by the following sequence of
+Are @code{d1} and @code{d2} the same?  An acceptable answer is yes, because
+@code{d1} and @code{d2} have the same computational behavior---each is a
+function that subtracts its input from 25.  In fact, @code{d1} could be
+substituted for @code{d2} in any computation without changing the result.
+
+Contrast this with making two calls to @code{make_simplified_withdraw}:
+
+@example rust
+let mut w1 = make_simplified_withdraw(25);
+let mut w2 = make_simplified_withdraw(25);
+@end example
+
+@noindent
+Are @code{w1} and @code{w2} the same?  Surely not, because calls to @code{w1}
+and @code{w2} have distinct effects, as shown by the following sequence of
 interactions:
 
-@lisp
-(W1 20)
-@i{5}
+@example rust
+w1(20)
+// => 5
 
-(W1 20)
-@i{-15}
+w1(20)
+// => -15
 
-(W2 20)
-@i{5}
-@end lisp
+w2(20)
+// => 5
+@end example
 
 @noindent
-Even though @code{W1} and @code{W2} are ``equal'' in the sense that they are
-both created by evaluating the same expression, @code{(make-simplified-withdraw
-25)}, it is not true that @code{W1} could be substituted for @code{W2} in any
+Even though @code{w1} and @code{w2} are ``equal'' in the sense that they are
+both created by evaluating the same expression, @code{make_simplified_withdraw(25)},
+it is not true that @code{w1} could be substituted for @code{w2} in any
 expression without changing the result of evaluating the expression.
 
 A language that supports the concept that ``equals can be substituted for
 equals'' in an expression without changing the value of the expression is said
 to be @newterm{referentially transparent}.  Referential transparency is
-violated when we include @code{set!} in our computer language.  This makes it
+violated when we include assignment in our computer language.  This makes it
 tricky to determine when we can simplify expressions by substituting equivalent
 expressions.  Consequently, reasoning about programs that use assignment
 becomes drastically more difficult.
@@ -815,43 +890,47 @@ As an example of how this issue arises in programming, consider the situation
 where Peter and Paul have a bank account with $100 in it.  There is a
 substantial difference between modeling this as
 
-@lisp
-(define peter-acc (make-account 100))
-(define paul-acc (make-account 100))
-@end lisp
+@example rust
+let peter_acc = make_account(100);
+let paul_acc = make_account(100);
+@end example
 
 @noindent
 and modeling it as
 
-@lisp
-(define peter-acc (make-account 100))
-(define paul-acc peter-acc)
-@end lisp
+@example rust
+let peter_acc = make_account(100);
+let paul_acc = peter_acc.clone();
+@end example
 
 @noindent
 In the first situation, the two bank accounts are distinct.  Transactions made
 by Peter will not affect Paul's account, and vice versa.  In the second
-situation, however, we have defined @code{paul-acc} to be @emph{the same thing}
-as @code{peter-acc}.  In effect, Peter and Paul now have a joint bank account,
-and if Peter makes a withdrawal from @code{peter-acc} Paul will observe less
-money in @code{paul-acc}.  These two similar but distinct situations can cause
-confusion in building computational models.  With the shared account, in
-particular, it can be especially confusing that there is one object (the bank
-account) that has two different names (@code{peter-acc} and @code{paul-acc});
-if we are searching for all the places in our program where @code{paul-acc} can
-be changed, we must remember to look also at things that change
-@code{peter-acc}.@footnote{The phenomenon of a single computational object
-being accessed by more than one name is known as @newterm{aliasing}.  The joint
-bank account situation illustrates a very simple example of an alias.  In
-@ref{3.3} we will see much more complex examples, such as ``distinct''
-compound data structures that share parts.  Bugs can occur in our programs if
-we forget that a change to an object may also, as a ``side effect,'' change a
-``different'' object because the two ``different'' objects are actually a
-single object appearing under different aliases.  These so-called
-@newterm{side-effect bugs} are so difficult to locate and to analyze that some
-people have proposed that programming languages be designed in such a way as to
-not allow side effects or aliasing (@ref{Lampson et al. 1981}; 
-@ref{Morris et al. 1980}).}
+situation, however, we have made @code{paul_acc} to be @emph{the same thing}
+as @code{peter_acc}: cloning an @code{Account} copies the reference-counted
+handle, not the balance, so both names now hold one cell.  In effect, Peter and
+Paul now have a joint bank account, and if Peter makes a withdrawal from
+@code{peter_acc} Paul will observe less money in @code{paul_acc}.  These two
+similar but distinct situations can cause confusion in building computational
+models.  With the shared account, in particular, it can be especially
+confusing that there is one object (the bank account) that has two different
+names (@code{peter_acc} and @code{paul_acc}); if we are searching for all the
+places in our program where @code{paul_acc} can be changed, we must remember
+to look also at things that change @code{peter_acc}.@footnote{The phenomenon
+of a single computational object being accessed by more than one name is known
+as @newterm{aliasing}.  The joint bank account situation illustrates a very
+simple example of an alias.  In @ref{3.3} we will see much more complex
+examples, such as ``distinct'' compound data structures that share parts.  Bugs
+can occur in our programs if we forget that a change to an object may also, as
+a ``side effect,'' change a ``different'' object because the two ``different''
+objects are actually a single object appearing under different aliases.  These
+so-called @newterm{side-effect bugs} are so difficult to locate and to analyze
+that some people have proposed that programming languages be designed in such
+a way as to not allow side effects or aliasing (@ref{Lampson et al. 1981};
+@ref{Morris et al. 1980}).  Rust answers half of that proposal at compile
+time: a value with one owner cannot be aliased at all, and the aliasing that
+@code{Rc} permits is visible in the type of every name that participates in
+it.}
 
 With reference to the above remarks on ``sameness'' and ``change,'' observe
 that if Peter and Paul could only examine their bank balances, and could not
@@ -876,37 +955,35 @@ In contrast to functional programming, programming that makes extensive use of
 assignment is known as @newterm{imperative programming}.  In addition to
 raising complications about computational models, programs written in
 imperative style are susceptible to bugs that cannot occur in functional
-programs.  For example, recall the iterative factorial program from 
+programs.  For example, recall the iterative factorial program from
 @ref{1.2.1}:
 
-@lisp
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
-@end lisp
+@example rust
+fn factorial(n: u32) -> u128 @{
+    if n <= 1 @{
+        1
+    @} else @{
+        u128::from(n) * factorial(n - 1)
+    @}
+@}
+@end example
 
 @noindent
-Instead of passing arguments in the internal iterative loop, we could adopt a
+Instead of passing arguments in the internal loop, we could adopt a
 more imperative style by using explicit assignment to update the values of the
 variables @code{product} and @code{counter}:
 
-@lisp
-(define (factorial n)
-  (let ((product 1)
-        (counter 1))
-    (define (iter)
-      (if (> counter n)
-          product
-          (begin (set! product (* counter 
-                                  product))
-                 (set! counter (+ counter 1))
-                 (iter))))
-    (iter)))
-@end lisp
+@example rust
+fn factorial(n: u32) -> u128 @{
+    let mut product = 1;
+    let mut counter = 1;
+    while counter <= n @{
+        product *= u128::from(counter);
+        counter += 1;
+    @}
+    product
+@}
+@end example
 
 @noindent
 This does not change the results produced by the program, but it does introduce
@@ -914,25 +991,28 @@ a subtle trap.  How do we decide the order of the assignments?  As it happens,
 the program is correct as written.  But writing the assignments in the opposite
 order
 
-@lisp
-(set! counter (+ counter 1))
-(set! product (* counter product))
-@end lisp
+@example rust
+counter += 1;
+product *= u128::from(counter);
+@end example
 
 @noindent
 would have produced a different, incorrect result.  In general, programming
 with assignment forces us to carefully consider the relative orders of the
 assignments to make sure that each statement is using the correct version of
 the variables that have been changed.  This issue simply does not arise in
-functional programs.@footnote{In view of this, it is ironic that introductory
-programming is most often taught in a highly imperative style.  This may be a
-vestige of a belief, common throughout the 1960s and 1970s, that programs that
-call procedures must inherently be less efficient than programs that perform
-assignments.  (@ref{Steele 1977} debunks this argument.)  Alternatively it may
-reflect a view that step-by-step assignment is easier for beginners to
-visualize than procedure call.  Whatever the reason, it often saddles beginning
-programmers with ``should I set this variable before or after that one''
-concerns that can complicate programming and obscure the important ideas.}
+functional programs.  Rust makes the sequencing explicit but does not check
+it: the two statements above type-check in either order, and only the
+comparison against the book's answer exposes the difference.@footnote{In view
+of this, it is ironic that introductory programming is most often taught in a
+highly imperative style.  This may be a vestige of a belief, common throughout
+the 1960s and 1970s, that programs that call procedures must inherently be
+less efficient than programs that perform assignments.  (@ref{Steele 1977}
+debunks this argument.)  Alternatively it may reflect a view that
+step-by-step assignment is easier for beginners to visualize than procedure
+call.  Whatever the reason, it often saddles beginning programmers with
+``should I set this variable before or after that one'' concerns that can
+complicate programming and obscure the important ideas.}
 
 The complexity of imperative programs becomes even worse if we consider
 applications in which several processes execute concurrently.  We will return
@@ -942,28 +1022,35 @@ explore the uses of objects with local state in designing simulations.
 
 @quotation
 @strong{@anchor{Exercise 3.7}Exercise 3.7:} Consider the bank account objects
-created by @code{make-account}, with the password modification described in
-@ref{Exercise 3.3}.  Suppose that our banking system requires the ability to
-make joint accounts.  Define a procedure @code{make-joint} that accomplishes
-this.  @code{Make-joint} should take three arguments.  The first is a
-password-protected account.  The second argument must match the password with
-which the account was defined in order for the @code{make-joint} operation to
-proceed.  The third argument is a new password.  @code{Make-joint} is to create
-an additional access to the original account using the new password.  For
-example, if @code{peter-acc} is a bank account with password
-@code{open-sesame}, then
+created by @code{make_account_with_password}, with the password modification
+described in @ref{Exercise 3.3}.  Suppose that our banking system requires the
+ability to make joint accounts.  Define a function @code{make_joint} that
+accomplishes this.  @code{Make_joint} should take three arguments.  The first
+is a password-protected account.  The second argument must match the password
+with which the account was defined in order for the @code{make_joint}
+operation to proceed; if it does not, @code{make_joint} should return the
+account's complaint.  The third argument is a new password.  @code{Make_joint}
+is to create an additional access to the original account under the new
+password, sharing the original account's balance.  For example, if
+@code{peter_acc} is a bank account with password @code{open-sesame}, then
 
-@lisp
-(define paul-acc
-  (make-joint peter-acc 
-              'open-sesame 
-              'rosebud))
-@end lisp
+@example rust
+let peter_acc = make_account_with_password(100, "open-sesame");
+let paul_acc = make_joint(&peter_acc, "open-sesame", "rosebud")?;
+@end example
 
 @noindent
-will allow one to make transactions on @code{peter-acc} using the name
-@code{paul-acc} and the password @code{rosebud}.  You may wish to modify your
-solution to @ref{Exercise 3.3} to accommodate this new feature.
+will allow one to make transactions on @code{peter_acc} using the name
+@code{paul_acc} and the password @code{rosebud}:
+
+@example rust
+paul_acc.send("rosebud", Request::Withdraw(40))
+// => 60
+@end example
+
+@noindent
+You may wish to modify your solution to @ref{Exercise 3.3} to accommodate this
+new feature.
 @end quotation
 
 @quotation
@@ -972,16 +1059,28 @@ model in @ref{1.1.3}, we said that the first step in evaluating an
 expression is to evaluate its subexpressions.  But we never specified the order
 in which the subexpressions should be evaluated (e.g., left to right or right
 to left).  When we introduce assignment, the order in which the arguments to a
-procedure are evaluated can make a difference to the result.  Define a simple
-procedure @code{f} such that evaluating 
+procedure are evaluated can make a difference to the result.  Rust settles the
+question: the operands of an operator are evaluated left to right, in the
+order written, for every operator that takes more than one.  Define a function
+@code{make_order_probe} that builds a function @code{f} with local state such
+that @code{f} answers its argument on the first call and answers 0 on every
+call after that.  Then the value of
 
-@lisp
-(+ (f 0) (f 1))
-@end lisp
+@example rust
+f(0) + f(1)
+// => 0
+@end example
 
 @noindent
-will return 0 if
-the arguments to @code{+} are evaluated from left to right but will return 1 if
-the arguments are evaluated from right to left.
-@end quotation
+shows the left operand was evaluated first, while a fresh probe's
 
+@example rust
+g(1) + g(0)
+// => 1
+@end example
+
+@noindent
+shows the same left-to-right order from the other side: the book's two
+possible answers have become one defined answer, and this exercise verifies
+it.
+@end quotation

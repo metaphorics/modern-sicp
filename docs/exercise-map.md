@@ -320,7 +320,7 @@ Cell key: `T` translate; `A: reason` adapt; `R: topic` replace.
 | 3.2 | monitored procedure counts and resets | T | T | T | T | monitored reports min and max |
 | 3.3 | password-protected account dispatch | T | T | T | T |  |
 | 3.4 | lockout after seven bad passwords | T | T | T | T | lockout with audit log |
-| 3.5 | Monte Carlo integration via rand | T | T | T | T | seeded rand for reproducible tests |
+| 3.5 | Monte Carlo integration via rand | T | T | T | T | seeded rand for reproducible tests (chosen: rust — implemented as 3.5a, seeded stream snapshot plus Cesaro estimates at 100/1,000/10,000 trials) |
 | 3.6 | rand with generate, reset messages | T | T | T | T |  |
 | 3.7 | make-joint shares one account | T | T | T | T | multi-signature joint account (chosen: ocaml — implemented as 3.7a, read-only account capability by record projection, not the literal "multi-signature joint account" text; see report) |
 | 3.8 | expose operand evaluation order | A: order defined; exercise verifies it | T | A: order defined; exercise verifies it | A: order defined; exercise verifies it | operand order in nested calls |

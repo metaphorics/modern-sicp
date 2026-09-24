@@ -24,6 +24,8 @@
   sec_3_27
   sec_3_28
   sec_3_29
+  sec_3_38
+  sec_3_39
   sec_3_3
   sec_3_30
   sec_3_31
@@ -34,6 +36,16 @@
   sec_3_36
   sec_3_37
   sec_3_4
+  sec_3_40
+  sec_3_41
+  sec_3_42
+  sec_3_43
+  sec_3_44
+  sec_3_45
+  sec_3_46
+  sec_3_47
+  sec_3_48
+  sec_3_49
   sec_3_5
   sec_3_6
   sec_3_7
@@ -49,6 +61,16 @@
  (alias scaffold)
  (action
   (run ./scaffold_sec_3_1.exe)))
+
+(executable
+ (name scaffold_sec_3_4)
+ (modules scaffold_sec_3_4)
+ (libraries sicp_ch3_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_3_4.exe)))
 
 (executable
  (name scaffold_sec_3_2)

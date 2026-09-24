@@ -359,7 +359,7 @@ All three are environment-diagram exercises about Scheme frames, so all four edi
 | 3.27 | memoized fib via table | A: RefCell memo table; diagram becomes trace | A: Hashtbl memo; diagram becomes trace | A: Map memo; diagram becomes trace | A: HashMap memo; diagram becomes trace |  |
 | 3.28 | or-gate primitive | T | T | T | T |  |
 | 3.29 | or-gate from and plus inverter | T | T | T | T |  |
-| 3.30 | ripple-carry adder composition | T | T | T | T | verify adder against integer addition |
+| 3.30 | ripple-carry adder composition | T | T | T | T | verify adder against integer addition; chosen: kotlin |
 | 3.31 | why accept-action runs immediately | T | T | T | T |  |
 | 3.32 | agenda segment FIFO order | T | T | T | T |  |
 | 3.33 | averager constraint network | T | T | T | T | product constraint with division |
@@ -385,7 +385,7 @@ Statements quote the book's `parallel-execute` and serializers; under the shared
 | 3.44 | transfer needs no joint lock | T | T | T | T |  |
 | 3.45 | double serialization deadlocks | T | T | T | T |  |
 | 3.46 | test-and-set race window | T | T | T | T | demonstrate race via stress test |
-| 3.47 | semaphore from mutex or test-and-set | T | T | A: Effect provides Semaphore; build anyway | A: kotlinx provides Semaphore; build anyway | chosen: ocaml |
+| 3.47 | semaphore from mutex or test-and-set | T | T | A: Effect provides Semaphore; build anyway | A: kotlinx provides Semaphore; build anyway | blocking bounded semaphore with try-acquire; chosen: ocaml — implemented as 3.47a, a bounded semaphore on Mutex and Condition; see report |
 | 3.48 | deadlock avoidance by lock ordering | T | T | T | T |  |
 | 3.49 | ordering avoidance fails scenario | T | T | T | T | resource acquisition without known set |
 

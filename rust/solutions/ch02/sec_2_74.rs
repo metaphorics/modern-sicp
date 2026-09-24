@@ -98,7 +98,8 @@ mod ex_2_74 {
         Rc::new(|args| {
             let [record] = args else {
                 return Err(SchemeError::WrongArity {
-                    expected: 1,
+                    procedure: "get-salary".into(),
+                    expected: "1".into(),
                     got: args.len(),
                 });
             };
@@ -136,7 +137,8 @@ mod ex_2_74 {
         Rc::new(|args| {
             let [record] = args else {
                 return Err(SchemeError::WrongArity {
-                    expected: 1,
+                    procedure: "get-salary".into(),
+                    expected: "1".into(),
                     got: args.len(),
                 });
             };

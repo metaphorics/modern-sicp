@@ -147,7 +147,7 @@ fn ex_3_10a() {
 
     // The closure is as wide as the handle it captured: a pointer and
     // its two counts, not the balance itself. The difference from
-    // exercise 3.10's eight-byte capture measures exactly the
+    // exercise 3.10's sixteen-byte capture measures exactly the
     // indirection that makes the state observable from outside.
     assert_eq!(closure_size, size_of::<Rc<Cell<i128>>>());
 

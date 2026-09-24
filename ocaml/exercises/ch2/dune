@@ -77,7 +77,28 @@
   sec_2_73
   sec_2_74
   sec_2_75
-  sec_2_76))
+  sec_2_76
+  sec_2_77
+  sec_2_78
+  sec_2_79
+  sec_2_80
+  sec_2_81
+  sec_2_82
+  sec_2_83
+  sec_2_84
+  sec_2_85
+  sec_2_86
+  sec_2_87
+  sec_2_88
+  sec_2_89
+  sec_2_90
+  sec_2_91
+  sec_2_92
+  sec_2_93
+  sec_2_94
+  sec_2_95
+  sec_2_96
+  sec_2_97))
 
 (executable
  (name scaffold_sec_2_1)
@@ -118,3 +139,13 @@
  (alias scaffold)
  (action
   (run ./scaffold_sec_2_4.exe)))
+
+(executable
+ (name scaffold_sec_2_5)
+ (modules scaffold_sec_2_5)
+ (libraries sicp_ch2_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_2_5.exe)))

@@ -21,7 +21,8 @@ val balance_of : raw_account -> int
 
 (** [exchange a1 a2] is the text's first version: it reads both
     balances, withdraws the difference from [a1], and deposits it into
-    [a2], with each step serialized only per account. *)
+    [a2], with nothing stopping two exchanges from interleaving those
+    steps. *)
 val exchange : raw_account -> raw_account -> unit
 
 (** [serialized_exchange a1 a2] runs [exchange] under both accounts'
@@ -36,8 +37,9 @@ val serialized_exchange : raw_account -> raw_account -> unit
 val multiset_preserved_by_serialized_exchange : int -> int list -> bool
 
 (** [sum_preserved_by_plain_exchange rounds balances] runs the same
-    workload with the plain exchange and answers whether the sum of
-    the balances is unchanged after every round. *)
+    workload with the plain exchange over accounts whose individual
+    withdraw and deposit are serialized, and answers whether the sum
+    of the balances is unchanged after every round. *)
 val sum_preserved_by_plain_exchange : int -> int list -> bool
 
 (** [ex_3_43 ()] is the serialized-exchange multiset verdict, the

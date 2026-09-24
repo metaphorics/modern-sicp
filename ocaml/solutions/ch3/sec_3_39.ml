@@ -55,8 +55,8 @@ let race () =
   let s = Serializers.make_serializer () in
   ignore
     (Parallel.parallel
-       (fun () -> x := s.protect (fun () -> !x * !x))
-       (fun () -> s.protect (fun () -> incr x)));
+       (fun _ -> x := s.protect (fun () -> !x * !x))
+       (fun _ -> s.protect (fun () -> incr x)));
   !x
 ;;
 

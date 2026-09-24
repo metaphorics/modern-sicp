@@ -30,39 +30,24 @@ let simulate schedule =
   !x
 ;;
 
-(* Every interleaving of [lists] that keeps each list's own order. *)
-let rec interleavings lists =
-  if List.for_all (( = ) []) lists
-  then [ [] ]
-  else
-    List.concat_map (fun index -> extend_at index lists) (List.mapi (fun i _ -> i) lists)
-
-and extend_at index lists =
-  match List.nth lists index with
-  | [] -> []
-  | head :: tail ->
-    let lists' = List.mapi (fun j l -> if j = index then tail else l) lists in
-    List.map (fun rest -> head :: rest) (interleavings lists')
-;;
-
-let unserialized_values () =
-  interleavings [ [ R1; R1; W1 ]; [ R2; R2; R2; W2 ] ]
-  |> List.map simulate
-  |> List.sort_uniq compare
-;;
-
 (* Serialized, the two statements can no longer interleave with each
    other at all, so the outcome is whatever a sequential order gives;
    both orders agree here, since [(x^2)^3 = (x^3)^2 = x^6]. *)
 let serialized_value () = 1_000_000
+
+let unserialized_values () =
+  Interleaving.interleavings [ [ R1; R1; W1 ]; [ R2; R2; R2; W2 ] ]
+  |> List.map simulate
+  |> List.sort_uniq compare
+;;
 
 let sample_unserialized_runs n =
   let one_run () =
     let x = ref 10 in
     ignore
       (Sicp_ch3.Sec_3_4.Parallel.parallel
-         (fun () -> x := !x * !x)
-         (fun () -> x := !x * !x * !x));
+         (fun _ -> x := !x * !x)
+         (fun _ -> x := !x * !x * !x));
     !x
   in
   List.init n (fun _ -> one_run ()) |> List.sort_uniq compare

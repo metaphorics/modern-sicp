@@ -153,7 +153,7 @@ access.}
 @float
 @anchor{Figure 3.29}
 @ifinfo
-@strong{Figure 3.29:} Timing diagram showing how interleaving the order of events 
+@strong{Figure 3.29:} Timing diagram showing how interleaving the order of events
 in two banking withdrawals can lead to an incorrect final balance.
 
 @example
@@ -163,11 +163,11 @@ in two banking withdrawals can lead to an incorrect final balance.
  |             .--------------| $100 |-------------.
  |             |               \____/              |
  |             V                                   V
- |  .----------------------.            .----------------------.           
+ |  .----------------------.            .----------------------.
  |  | Access balance: $100 |            | Access balance: $100 |
  |  `----------+-----------'            `----------+-----------'
  |             V                                   V
- |  .----------------------.            .----------------------.           
+ |  .----------------------.            .----------------------.
  |  | new value: 100-10=90 |            | new value: 100-25=75 |
  |  `----------+-----------'            `----------+-----------'
  |             V                                   |
@@ -242,27 +242,27 @@ Peter's withdrawal from the shared account.
 @float
 @anchor{Figure 3.30}
 @ifinfo
-@strong{Figure 3.30:} Concurrent deposits and withdrawals from a joint account 
+@strong{Figure 3.30:} Concurrent deposits and withdrawals from a joint account
 in Bank1 and a private account in Bank2.
 
 @example
  |    Peter          Bank1          Paul           Bank2
- |    ____           ____           ____           ____  
- |   /    \         /    \         /    \         /    \ 
+ |    ____           ____           ____           ____
+ |   /    \         /    \         /    \         /    \
  |  |  $7  |--. .--| $100 |       |  $5  |--. .--| $300 |
- |   \____/   V V   \____/         \____/   V V   \____/ 
- |           +---+                         +---+         
- |           | W |                         | D |         
- |    ____   ++-++   ____           ____   ++-++   ____  
- |   /    \   | |   /    \         /    \   | |   /    \ 
+ |   \____/   V V   \____/         \____/   V V   \____/
+ |           +---+                         +---+
+ |           | W |                         | D |
+ |    ____   ++-++   ____           ____   ++-++   ____
+ |   /    \   | |   /    \         /    \   | |   /    \
  |  | $17  |<-' `->| $90  |--. .--|  $0  |<-' `->| $305 |
- |   \____/         \____/   V V   \____/         \____/ 
+ |   \____/         \____/   V V   \____/         \____/
  |                          +---+
  |                          | W |
- |    ____           ____   ++-++   ____           ____  
- |   /    \         /    \   | |   /    \         /    \ 
+ |    ____           ____   ++-++   ____           ____
+ |   /    \         /    \   | |   /    \         /    \
  |  | $17  |       | $65  |<-' `->| $25  |       | $305 |
- |   \____/         \____/         \____/         \____/ 
+ |   \____/         \____/         \____/         \____/
  V
 time
 @end example
@@ -328,7 +328,7 @@ three processes to run sequentially in some order.
 
 @item
 What are some other values that could be produced if the system allows the
-processes to be interleaved?  Draw timing diagrams like the one in @ref{Figure 3.29} 
+processes to be interleaved?  Draw timing diagrams like the one in @ref{Figure 3.29}
 to explain how these values can occur.
 
 @end enumerate
@@ -347,12 +347,12 @@ possible orderings for the events that are consistent with the individual
 orderings for the two processes:
 
 @example
-(a,b,c,x,y,z)  (a,x,b,y,c,z)  (x,a,b,c,y,z)  
-(x,a,y,z,b,c)  (a,b,x,c,y,z)  (a,x,b,y,z,c)  
-(x,a,b,y,c,z)  (x,y,a,b,c,z)  (a,b,x,y,c,z)  
+(a,b,c,x,y,z)  (a,x,b,y,c,z)  (x,a,b,c,y,z)
+(x,a,y,z,b,c)  (a,b,x,c,y,z)  (a,x,b,y,z,c)
+(x,a,b,y,c,z)  (x,y,a,b,c,z)  (a,b,x,y,c,z)
 (a,x,y,b,c,z)  (x,a,b,y,z,c)  (x,y,a,b,z,c)
-(a,b,x,y,z,c)  (a,x,y,b,z,c)  (x,a,y,b,c,z)  
-(x,y,a,z,b,c)  (a,x,b,c,y,z)  (a,x,y,z,b,c)  
+(a,b,x,y,z,c)  (a,x,y,b,z,c)  (x,a,y,b,c,z)
+(x,y,a,z,b,c)  (a,x,b,c,y,z)  (a,x,y,z,b,c)
 (x,a,y,b,z,c)  (x,y,z,a,b,c)
 @end example
 
@@ -397,24 +397,28 @@ parallel ⟨@var{p₁}⟩ ⟨@var{p₂}⟩
 @end example
 
 @noindent
-Each @code{⟨}@var{p}@code{⟩} must be a function of no arguments.
+Each @code{⟨}@var{p}@code{⟩} must be a function of one argument, the run's
+handle; a procedure that does not care about stopping ignores it.
 @code{Parallel} runs the two procedures concurrently: the first on a freshly
 spawned @newterm{domain}, the second on the calling domain, and the call
-returns the pair of their two results once the spawned domain has joined.  The
-two procedures are therefore genuinely in flight at the same time, each with
-its own stack on its own core.@footnote{@code{Parallel} is not part of the base
+returns the pair of their two results together with the handle once the
+spawned domain has joined.  The two procedures are therefore genuinely in
+flight at the same time, each with its own stack on its own core.@footnote{@code{Parallel} is not part of the base
 language; it is a thin layer over @code{Domain.spawn} and
 @code{Domain.join}.  The runtime answers @code{Domain.count ()} with the
 number of live domains, so one can watch the section's processes come and go.
-The procedures run to completion: nothing in this edition's @code{parallel}
-halts them, and the demonstrations that follow observe shared state to see who
-did what, rather than stopping anyone.}
+Both procedures are handed the same handle: its @code{halted} probe answers
+whether anyone has asked the run to stop, and its @code{halt} raises that
+request by setting the flag the probe reads.  A procedure that loops can poll
+the probe between two of its own steps and give up early; the demonstrations
+that follow let every procedure run to completion and observe shared state to
+see who did what.}
 
 As an example of how this is used, consider
 
 @example ocaml
 let x = ref 10
-parallel (fun () -> x := !x * !x) (fun () -> incr x)
+parallel (fun _ -> x := !x * !x) (fun _ -> incr x)
 @end example
 
 @noindent
@@ -428,10 +432,10 @@ depending on the interleaving of the events of @math{P_1} and @math{P_2}:
      @code{x} to 101.
 121: @math{P_2} increments @code{x} to 11 and then @math{P_1} sets
      @code{x} to @code{x} times @code{x}.
-110: @math{P_2} changes @code{x} from 10 to 11 between the 
-     two times that @math{P_1} accesses the value of 
+110: @math{P_2} changes @code{x} from 10 to 11 between the
+     two times that @math{P_1} accesses the value of
      @code{x} during the evaluation of @code{!x * !x}.
- 11: @math{P_2} accesses @code{x}, then @math{P_1} sets @code{x} to 100, 
+ 11: @math{P_2} accesses @code{x}, then @math{P_1} sets @code{x} to 100,
      then @math{P_2} sets @code{x}.
 100: @math{P_1} accesses @code{x} (twice), then @math{P_2} sets
      @code{x} to 11, then @math{P_1} sets @code{x}.
@@ -451,8 +455,8 @@ Thus, in contrast to the example above, executing
 let x = ref 10
 let s = make_serializer ()
 parallel
-  (fun () -> s.protect (fun () -> x := !x * !x))
-  (fun () -> s.protect (fun () -> incr x))
+  (fun _ -> s.protect (fun () -> x := !x * !x))
+  (fun _ -> s.protect (fun () -> incr x))
 @end example
 
 @noindent
@@ -460,7 +464,7 @@ can produce only two possible values for @code{x}, 101 or 121.  The other
 possibilities are eliminated, because the execution of @math{P_1} and @math{P_2}
 cannot be interleaved.
 
-Here is a version of the @code{make_account} procedure from 
+Here is a version of the @code{make_account} procedure from
 @ref{3.1.1}, where the deposits and withdrawals have been serialized.
 Scheme's quoted messages become the constructors of a @code{message} variant,
 and the dispatch procedure becomes a pattern match that answers with a
@@ -522,8 +526,8 @@ as follows:
 let x = ref 10
 let s = make_serializer ()
 parallel
-  (fun () -> x := s.protect (fun () -> !x * !x))
-  (fun () -> s.protect (fun () -> incr x))
+  (fun _ -> x := s.protect (fun () -> !x * !x))
+  (fun _ -> s.protect (fun () -> incr x))
 @end example
 @end quotation
 
@@ -534,8 +538,8 @@ parallel
 @example ocaml
 let x = ref 10
 parallel
-  (fun () -> x := !x * !x)
-  (fun () -> x := !x * !x * !x)
+  (fun _ -> x := !x * !x)
+  (fun _ -> x := !x * !x * !x)
 @end example
 
 Which of these possibilities remain if we instead use serialized procedures:
@@ -544,8 +548,8 @@ Which of these possibilities remain if we instead use serialized procedures:
 let x = ref 10
 let s = make_serializer ()
 parallel
-  (fun () -> s.protect (fun () -> x := !x * !x))
-  (fun () -> s.protect (fun () -> x := !x * !x * !x))
+  (fun _ -> s.protect (fun () -> x := !x * !x))
+  (fun _ -> s.protect (fun () -> x := !x * !x * !x))
 @end example
 @end quotation
 
@@ -876,9 +880,8 @@ let clear cell = Atomic.set cell false
 
 let make_mutex () =
   let cell = Atomic.make false in
-  let rec acquire () = if atomic_test_and_set cell then acquire () in
+  let rec acquire () = if atomic_test_and_set cell then acquire () (* retry *) in
   { acquire; release = fun () -> clear cell }
-(* retry *)
 @end example
 
 @noindent
@@ -1006,13 +1009,13 @@ unique identification number and rewrite @code{serialized_exchange} so that a
 process will always attempt to enter a procedure protecting the lowest-numbered
 account first.  Although this method works well for the exchange problem, there
 are other situations that require more sophisticated deadlock-avoidance
-techniques, or where deadlock cannot be avoided at all.  (See @ref{Exercise 3.48} 
+techniques, or where deadlock cannot be avoided at all.  (See @ref{Exercise 3.48}
 and @ref{Exercise 3.49}.)@footnote{The general technique for avoiding
 deadlock by numbering the shared resources and acquiring them in order is due
 to @ref{Havender (1968)}.  Situations where deadlock cannot be avoided require
 @newterm{deadlock-recovery} methods, which entail having processes ``back out''
 of the deadlocked state and try again.  Deadlock-recovery mechanisms are widely
-used in database management systems, a topic that is treated in detail in 
+used in database management systems, a topic that is treated in detail in
 @ref{Gray and Reuter 1993}.}
 
 @quotation
@@ -1055,7 +1058,7 @@ to execute as they please, but establishes certain synchronization points
 have reached the barrier.  Modern processors provide machine instructions that
 permit programmers to establish synchronization points at places where
 consistency is required.  The @abbr{PowerPC}, for example, includes for
-this purpose two instructions called @abbr{SYNC} and @abbr{EIEIO} 
+this purpose two instructions called @abbr{SYNC} and @abbr{EIEIO}
 (Enforced In-order Execution of Input/Output).}
 
 The problematic aspects of shared state also arise in large, distributed

@@ -1,6 +1,7 @@
 (library
  (name sicp_ch3_solutions)
  (modules
+  interleaving
   sec_3_1
   sec_3_10
   sec_3_11

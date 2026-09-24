@@ -28,13 +28,27 @@ end
 
 (** The edition's [parallel]: the first procedure runs on a freshly
     spawned domain, the second on the calling domain, and the call
-    returns only when both have finished. *)
+    returns only when both have finished. Both procedures are handed
+    the same run handle, whose [halted] probe reads the shared flag
+    its [halt] sets, so a procedure that loops can watch for a
+    request to stop. *)
 module Parallel = struct
+  type handle =
+    { halt : unit -> unit
+    ; halted : unit -> bool
+    }
+
   let parallel left right =
-    let domain = Domain.spawn left in
-    let right_result = right () in
+    let stopped = Atomic.make false in
+    let handle =
+      { halt = (fun () -> Atomic.set stopped true)
+      ; halted = (fun () -> Atomic.get stopped)
+      }
+    in
+    let domain = Domain.spawn (fun () -> left handle) in
+    let right_result = right handle in
     let left_result = Domain.join domain in
-    left_result, right_result
+    left_result, right_result, handle
   ;;
 end
 
@@ -59,7 +73,7 @@ module X_race = struct
 
   let run_unserialized () =
     let x = ref 10 in
-    ignore (Parallel.parallel (fun () -> x := !x * !x) (fun () -> incr x));
+    ignore (Parallel.parallel (fun _ -> x := !x * !x) (fun _ -> incr x));
     !x
   ;;
 
@@ -68,8 +82,8 @@ module X_race = struct
     let s = Serializers.make_serializer () in
     ignore
       (Parallel.parallel
-         (fun () -> s.protect (fun () -> x := !x * !x))
-         (fun () -> s.protect (fun () -> incr x)));
+         (fun _ -> s.protect (fun () -> x := !x * !x))
+         (fun _ -> s.protect (fun () -> incr x)));
     !x
   ;;
 end
@@ -171,11 +185,11 @@ module Account = struct
     let half = count / 2 in
     ignore
       (Parallel.parallel
-         (fun () ->
+         (fun _ ->
             for _ = 1 to half do
               ignore (account (Deposit 1))
             done)
-         (fun () ->
+         (fun _ ->
             for _ = 1 to count - half do
               ignore (account (Deposit 1))
             done));

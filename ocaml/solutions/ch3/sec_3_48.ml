@@ -69,8 +69,8 @@ let survives_reversed_concurrent_exchanges rounds =
   for _ = 1 to rounds do
     ignore
       (Parallel.parallel
-         (fun () -> ordered_serialized_exchange a1 a2)
-         (fun () -> ordered_serialized_exchange a2 a1));
+         (fun _ -> ordered_serialized_exchange a1 a2)
+         (fun _ -> ordered_serialized_exchange a2 a1));
     let now = List.sort compare [ balance_of a1; balance_of a2; balance_of a3 ] in
     if now <> expected then all_completed := false
   done;

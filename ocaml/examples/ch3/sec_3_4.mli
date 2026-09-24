@@ -24,9 +24,21 @@ end
 
 (** The edition's [parallel]: the first procedure runs on a freshly
     spawned domain, the second on the calling domain, and the call
-    returns only when both have finished. *)
+    returns only when both have finished. Both procedures are handed
+    the same run handle, whose [halted] probe reads the shared flag
+    its [halt] sets. *)
 module Parallel : sig
-  val parallel : (unit -> 'a) -> (unit -> 'b) -> 'a * 'b
+  (** The run handle [parallel] hands to both procedures: [halted]
+      polls the shared stop flag and [halt] sets it. *)
+  type handle =
+    { halt : unit -> unit
+    ; halted : unit -> bool
+    }
+
+  (** [parallel left right] runs the two procedures concurrently,
+      handing both the same handle, and answers their two results and
+      the handle once the spawned domain has joined. *)
+  val parallel : (handle -> 'a) -> (handle -> 'b) -> 'a * 'b * handle
 end
 
 (** 3.4.2: the serializer. A serializer wraps one mutex and answers

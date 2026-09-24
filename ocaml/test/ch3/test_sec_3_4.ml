@@ -224,10 +224,46 @@ let ex_3_49_routing_defeats_numbering () =
   Alcotest.(check bool) "and that is a deadlock" true deadlock
 ;;
 
+(* The run handle of [Parallel.parallel]: [halt] sets the flag the
+   workers' [halted] probes read, so a worker still polling gives up. *)
+let parallel_halt_reaches_a_polling_worker () =
+  let module P = Sicp_ch3.Sec_3_4.Parallel in
+  let started = Atomic.make false in
+  let released = Atomic.make false in
+  let gave_up, _, _ =
+    P.parallel
+      (fun handle ->
+         Atomic.set started true;
+         let rec spin budget =
+           if Atomic.get released
+           then handle.P.halted ()
+           else if budget = 0
+           then false
+           else (
+             Domain.cpu_relax ();
+             spin (budget - 1))
+         in
+         spin 20_000_000)
+      (fun handle ->
+         while not (Atomic.get started) do
+           Domain.cpu_relax ()
+         done;
+         handle.P.halt ();
+         Atomic.set released true)
+  in
+  Alcotest.(check bool) "the halt flag reaches the worker still polling" true gave_up
+;;
+
 let () =
   Alcotest.run
     "sicp_ch3 solutions, section 3.4"
-    [ ( "3.38 interleaved balances"
+    [ ( "parallel halt handle"
+      , [ Alcotest.test_case
+            "halt reaches a worker still polling"
+            `Quick
+            parallel_halt_reaches_a_polling_worker
+        ] )
+    ; ( "3.38 interleaved balances"
       , [ Alcotest.test_case
             "sequential, interleaved, and live outcomes"
             `Quick

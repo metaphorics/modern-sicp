@@ -59,11 +59,11 @@ let () =
   let s = M.make_serializer () in
   ignore
     (Sec_3_4.Parallel.parallel
-       (fun () ->
+       (fun _ ->
           for _ = 1 to 1000 do
             s.protect (fun () -> incr counter)
           done)
-       (fun () ->
+       (fun _ ->
           for _ = 1 to 1000 do
             s.protect (fun () -> incr counter)
           done));

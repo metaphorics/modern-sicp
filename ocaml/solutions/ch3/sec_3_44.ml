@@ -37,8 +37,8 @@ let total_preserved_under_concurrent_transfers rounds per_transfer =
   for _ = 1 to rounds do
     ignore
       (Sicp_ch3.Sec_3_4.Parallel.parallel
-         (fun () -> transfer a1 a2 per_transfer)
-         (fun () -> transfer a2 a3 per_transfer));
+         (fun _ -> transfer a1 a2 per_transfer)
+         (fun _ -> transfer a2 a3 per_transfer));
     if total_of [ a1; a2; a3 ] <> expected then all_ok := false
   done;
   !all_ok

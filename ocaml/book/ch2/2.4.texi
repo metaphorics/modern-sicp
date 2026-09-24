@@ -9,11 +9,11 @@ program that uses rational numbers from the task of implementing rational
 numbers in terms of the computer language's primitive mechanisms for
 constructing compound data.  The key idea was to erect an abstraction barrier
 -- in this case, the selectors and constructors for rational numbers
-(@code{make-rat}, @code{numer}, @code{denom})---that isolates the way rational
-numbers are used from their underlying representation in terms of list
-structure.  A similar abstraction barrier isolates the details of the
-procedures that perform rational arithmetic (@code{add-rat}, @code{sub-rat},
-@code{mul-rat}, and @code{div-rat}) from the ``higher-level'' procedures that
+(@code{make_rat}, @code{numer}, @code{denom})---that isolates the way rational
+numbers are used from their underlying representation as an OCaml pair.
+A similar abstraction barrier isolates the details of the
+procedures that perform rational arithmetic (@code{add_rat}, @code{sub_rat},
+@code{mul_rat}, and @code{div_rat}) from the ``higher-level'' procedures that
 use rational numbers.  The resulting program has the structure shown in
 @ref{Figure 2.1}.
 

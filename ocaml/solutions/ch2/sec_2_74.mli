@@ -15,8 +15,9 @@ end
 
 (** One division: a first-class [PERSONNEL_FILE] module paired with
     its own file value. This is the "type information" part (a)
-    asks about: a division supplies not just data but the module that
+    asks about: a division supplies data plus the module that
     knows how to read it. *)
+
 type division
 
 (** [make_division (module D) file] packages [file] with the module

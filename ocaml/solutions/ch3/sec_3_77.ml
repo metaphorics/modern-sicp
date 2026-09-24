@@ -22,8 +22,10 @@ let rec integral delayed_integrand initial_value dt =
 ;;
 
 let solve f y0 dt =
-  let rec y_stream () = integral (lazy (Streams.stream_map f (y_stream ()))) y0 dt in
-  y_stream ()
+  let y_cell = ref (lazy Streams.the_empty_stream) in
+  let y = integral (lazy (Streams.stream_map f (Lazy.force !y_cell))) y0 dt in
+  y_cell := lazy y;
+  y
 ;;
 
 let ex_3_77 () =

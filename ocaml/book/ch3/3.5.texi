@@ -102,7 +102,7 @@ let sum_primes a b =
 @noindent
 In carrying out the computation, the first program needs to store only the sum
 being accumulated.  In contrast, the filter in the second program cannot do any
-testing until @code{enumerate-interval} has constructed a complete list of the
+testing until @code{enumerate_interval} has constructed a complete list of the
 numbers in the interval.  The filter generates another list, which in turn is
 passed to @code{accumulate} before being collapsed to form a sum.  Such large
 intermediate storage is not needed by the first program, which we can think of
@@ -146,8 +146,8 @@ selectors, @code{stream_car} and @code{stream_cdr}, which satisfy the
 constraints
 
 @example
-(stream-car (cons-stream x y)) = x
-(stream-cdr (cons-stream x y)) = y
+(stream_car (cons_stream x y)) = x
+(stream_cdr (cons_stream x y)) = y
 @end example
 
 @noindent
@@ -251,6 +251,16 @@ will see below how the same device can be built by hand as @code{memo_proc},
 but first
 let us use it to construct streams.
 
+@noindent
+OCaml ships its own lazy sequences: the @code{Seq} type of the standard
+library.  A sequence is a one-shot cursor: two computations over it cannot
+share one memoized spine, it cannot name its own earlier elements, and it
+cannot be produced before its input exists, which is exactly what the
+feedback loops of @ref{3.5.4} demand.  The book's stream makes the sharing and
+the demand-driven construction explicit, and the exercises of this section
+measure the difference; the cold @code{Seq} is a comparison here and
+carries no book example of its own.
+
 @code{Cons_stream} is an ordinary function whose second argument is written
 as a thunk, so that
 
@@ -339,7 +349,7 @@ Cons (10000, lazy (stream_enumerate_interval 10001 1000000))
 @end example
 
 @noindent
-That is, @code{stream-enumerate-interval} returns a stream represented as a
+That is, @code{stream_enumerate_interval} returns a stream represented as a
 pair whose @code{car} is 10,000 and whose @code{cdr} is a promise to enumerate
 more of the interval if so requested.  This stream is now filtered for primes,
 using the stream analog of the @code{filter} procedure (@ref{2.2.3}):
@@ -906,9 +916,9 @@ let factorials = cons_stream 1 (mul_streams ⟨??⟩ ⟨??⟩)
 
 @quotation
 @strong{@anchor{Exercise 3.55}Exercise 3.55:} Define a procedure
-@code{partial-sums} that takes as argument a stream @math{S} and returns the
+@code{partial_sums} that takes as argument a stream @math{S} and returns the
 stream whose elements are @math{S_0}, @math{{S_0 + S_1}}, @math{{S_0 + S_1} + {S_2, \dots}}.  
-For example, @code{(partial-sums integers)} should be the
+For example, @code{partial_sums integers} should be the
 stream 1, 3, 6, 10, 15, @dots{}.
 @end quotation
 
@@ -975,7 +985,7 @@ Fill in the missing expressions in the places marked @code{⟨??⟩} above.
 @quotation
 @strong{@anchor{Exercise 3.57}Exercise 3.57:} How many additions are performed
 when we compute the @math{n^{\hbox{th}}} Fibonacci number using the definition of
-@code{fibs} based on the @code{add-streams} procedure?  Show that the number of
+@code{fibs} based on the @code{add_streams} procedure?  Show that the number of
 additions would be exponentially greater if the tails had been plain thunks
 @code{fun () -> ⟨@var{exp}⟩}, without the
 memoization that @code{lazy} and the @code{memo_proc} of
@@ -1084,7 +1094,7 @@ let rec sine_series = Cons (0.0, lazy (⟨??⟩))
 @quotation
 @strong{@anchor{Exercise 3.60}Exercise 3.60:} With power series represented as
 streams of coefficients as in @ref{Exercise 3.59}, adding series is implemented
-by @code{add-streams}.  Complete the definition of the following procedure for
+by @code{add_streams_float}.  Complete the definition of the following procedure for
 multiplying series:
 
 @example ocaml
@@ -1129,7 +1139,7 @@ for a power series @math{S} with constant term 1.  You will need to use
 
 @quotation
 @strong{@anchor{Exercise 3.62}Exercise 3.62:} Use the results of @ref{Exercise 3.60} 
-and @ref{Exercise 3.61} to define a procedure @code{div-series} that
+and @ref{Exercise 3.61} to define a procedure @code{div_series} that
 divides two power series.  @code{div_series} should work for any two series,
 provided that the denominator series begins with a nonzero constant term.  (If
 the denominator has a zero constant term, then @code{div_series} should signal
@@ -1905,7 +1915,7 @@ let rec make_zero_crossings input_stream last_value =
 
 This does not correctly implement Alyssa's plan.  Find the bug that Louis has
 installed and fix it without changing the structure of the program.  (Hint: You
-will need to increase the number of arguments to @code{make-zero-crossings}.)
+will need to increase the number of arguments to @code{make_zero_crossings}.)
 @end quotation
 
 @quotation
@@ -1950,7 +1960,7 @@ would outlaw loops.
 
 @noindent
 Unfortunately, stream models of systems with loops may require uses of
-@code{delay} beyond the ``hidden'' @code{delay} supplied by @code{cons-stream}.
+@code{delay} beyond the ``hidden'' @code{delay} supplied by @code{cons_stream}.
 For instance, @ref{Figure 3.34} shows a signal-processing system for solving
 the differential equation @math{{dy / dt = f(y)}} where @math{f} is a given
 function.  The figure shows a mapping component, which applies @math{f} to its
@@ -2004,12 +2014,12 @@ does not happen until the second line of @code{solve}.
 On the other hand, the intent of our definition does make sense, because we
 can, in principle, begin to generate the @code{y} stream without knowing
 @code{dy}.  Indeed, @code{integral} and many other stream operations have
-properties similar to those of @code{cons-stream}, in that we can generate part
+properties similar to those of @code{cons_stream}, in that we can generate part
 of the answer given only partial information about the arguments.  For
 @code{integral}, the first element of the output stream is the specified
 @code{initial-value}.  Thus, we can generate the first element of the output
 stream without evaluating the integrand @code{dy}.  Once we know the first
-element of @code{y}, the @code{stream-map} in the second line of @code{solve}
+element of @code{y}, the @code{stream_map} in the second line of @code{solve}
 can begin working to generate the first element of @code{dy}, which will
 produce the next element of @code{y}, and so on.
 
@@ -2034,20 +2044,20 @@ let integral_delayed delayed_integrand initial_value dt =
 
 @noindent
 Now we can implement our @code{solve} procedure by delaying the evaluation of
-@code{dy} -- writing the recursive call as the promise
-@code{lazy (stream_map f (y_stream ()))} -- in the definition of
-@code{y}:@footnote{The book's original footnote worries that Scheme
+@code{dy} -- the integrand is a promise that reads one cell holding @code{y},
+and the definition backpatches the cell with the stream it builds before
+anything is forced:@footnote{The book's original footnote worries that Scheme
 implementations differ in how they handle internal definitions
-(see @ref{4.1.6}); this edition sidesteps the variance by writing the
-recursion as a thunk @code{y_stream} whose single call builds the stream, with
-the loop closed inside the promise.}
+(see @ref{4.1.6}); this edition sidesteps the variance by planting one
+promise cell and backpatching it, so every demand advances the single
+shared stream instead of building a fresh copy.}
 
 @example ocaml
 let solve f y0 dt =
-  let rec y_stream () =
-    integral_delayed (lazy (stream_map f (y_stream ()))) y0 dt
-  in
-  y_stream ()
+  let y_cell = ref (lazy the_empty_stream) in
+  let y = integral_delayed (lazy (stream_map f (Lazy.force !y_cell))) y0 dt in
+  y_cell := lazy y;
+  y
 ;;
 @end example
 

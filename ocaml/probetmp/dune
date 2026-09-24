@@ -1,3 +1,0 @@
-(executable
- (name probe)
- (libraries sicp_ch3 sicp_ch1 sicp_ch3_solutions))

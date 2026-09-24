@@ -46,7 +46,6 @@ module Sec_3_82 = Sicp_ch3_solutions.Sec_3_82
 
 let check_int_list = Alcotest.(check (list int))
 let check_float_list = Alcotest.(check (list (float 1e-12)))
-let check_pair_list = Alcotest.(check (list (pair int int)))
 let check_triple_list = Alcotest.(check (list (triple int int int)))
 
 let ex_3_50_multi_map () =
@@ -296,10 +295,18 @@ let ex_3_70_weighted_orders () =
     "the first ten pairs of the 2i + 3j + 5ij order appear in nondecreasing weight"
     true
     (sorted_by by_235 (fun (i, j) -> (2 * i) + (3 * j) + (5 * i * j)));
-  check_pair_list
+  Alcotest.(check bool)
     "the 2i + 3j + 5ij order uses only integers coprime to 2, 3, 5"
-    (List.map (fun (i, j) -> i, j) by_235)
-    by_235
+    true
+    (List.for_all
+       (fun (i, j) ->
+          i mod 2 <> 0
+          && i mod 3 <> 0
+          && i mod 5 <> 0
+          && j mod 2 <> 0
+          && j mod 3 <> 0
+          && j mod 5 <> 0)
+       by_235)
 ;;
 
 let ex_3_71_ramanujan () =

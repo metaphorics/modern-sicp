@@ -343,12 +343,17 @@ module Solve = struct
   ;;
 
   (** Solves dy/dt = f(y) by delaying [dy] in the definition of [y].
-      The stream is tied through one recursive call: [y_stream ()] is
-      evaluated once here, and the promise [lazy (stream_map f ...)]
-      closes the loop exactly as [delay dy] does in the book. *)
+      The stream is one shared self-referential knot, as in exercises
+      3.78 to 3.80: the integrand promise reads [y_cell] only when
+      forced, and the cell is backpatched with the finished stream
+      before anything is demanded, so every demand advances the one
+      spine the loop closes through -- [delay dy] exactly as in the
+      book, with no fresh copy built per element. *)
   let solve f y0 dt =
-    let rec y_stream () = integral_delayed (lazy (stream_map f (y_stream ()))) y0 dt in
-    y_stream ()
+    let y_cell = ref (lazy the_empty_stream) in
+    let y = integral_delayed (lazy (stream_map f (Lazy.force !y_cell))) y0 dt in
+    y_cell := lazy y;
+    y
   ;;
 end
 

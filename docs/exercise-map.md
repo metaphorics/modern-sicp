@@ -212,7 +212,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.56 | Exponentiation rule | A: exponentiation case added to expression enum | A: exponentiation variant added to expression type | A: exponentiation case added to union | A: exponentiation case added to sealed hierarchy | |
 | 2.57 | N-ary sums products | A: n-ary sums products change enum shapes | A: n-ary sums products change variants | A: n-ary sums products widen unions | A: n-ary sums products widen constructors | prefix sums as variadic union |
 | 2.58 | Infix notation | A: infix parsing changes expression constructors | A: infix notation needs new variant layer | A: infix notation needs parser into union | A: infix notation needs parser into hierarchy | |
-| 2.59 | Union-set unordered | T | T | T | T | set union via Set operations |
+| 2.59 | Union-set unordered | T | T | T | T | set union via Set operations (chosen: rust) |
 | 2.60 | Duplicate-allowed sets | T | T | T | T | |
 | 2.61 | Adjoin ordered | T | T | T | T | |
 | 2.62 | Ordered union | T | T | T | T | |
@@ -223,7 +223,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.67 | Sample decode | T | T | T | T | decode via pattern match |
 | 2.68 | Encode-symbol | T | T | T | T | |
 | 2.69 | Successive merge | T | T | T | T | |
-| 2.70 | Rock song encoding | T | T | T | T | bit savings assertion test |
+| 2.70 | Rock song encoding | T | T | T | T | bit savings assertion test (chosen: ocaml) |
 | 2.71 | Skewed tree shape | T | T | T | T | |
 | 2.72 | Encode order of growth | T | T | T | T | |
 

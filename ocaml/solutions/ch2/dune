@@ -52,5 +52,25 @@
   sec_2_49
   sec_2_50
   sec_2_51
-  sec_2_52)
+  sec_2_52
+  sec_2_53
+  sec_2_54
+  sec_2_55
+  sec_2_56
+  sec_2_57
+  sec_2_58
+  sec_2_59
+  sec_2_60
+  sec_2_61
+  sec_2_62
+  sec_2_63
+  sec_2_64
+  sec_2_65
+  sec_2_66
+  sec_2_67
+  sec_2_68
+  sec_2_69
+  sec_2_70
+  sec_2_71
+  sec_2_72)
  (libraries sicp_common))

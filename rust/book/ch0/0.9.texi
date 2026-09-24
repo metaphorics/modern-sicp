@@ -88,6 +88,7 @@ book adapts prints its interpreter's responses in italics after each
 expression; a comment is this edition's equivalent, and it stays a valid
 Rust comment in every renderer, including a PDF with no syntax highlighting
 at all. The value shown after @code{=>} is not asserted by the prose: it is
+asserted by a real @code{assert_eq!} in the runnable file the listing names,
 which fires when the reader runs the example with
 @code{cargo run --example}. The verification gate compiles every example, so
 a listing that stops compiling fails the gate; whether a printed value

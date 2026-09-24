@@ -1434,8 +1434,8 @@ let even_fibs n =
 
 @noindent
 The @code{square}, @code{odd}, and @code{even} used here are the one-line
-procedures of @ref{2.1.1}'s exercises, and @code{fib} is @ref{1.2.2}'s
-@code{Fibonacci.recursive}.
+helpers defined just above in this section, and @code{fib} is
+@ref{1.2.2}'s @code{Fibonacci.recursive}.
 
 The value of expressing programs as sequence operations is that this helps us
 make program designs that are modular, that is, designs that are constructed by

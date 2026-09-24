@@ -13,6 +13,7 @@ fn main() {
     queue.push_front(0);
     println!("{queue:?}");
     // => [0, 1, 2]
+    assert_eq!(queue, VecDeque::from([0, 1, 2]));
 
     let front = queue.pop_front();
     println!("{front:?}");

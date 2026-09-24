@@ -367,3 +367,114 @@ fn write_list(f: &mut Formatter<'_>, start: &Rc<ConsCell>) -> fmt::Result {
     }
     f.write_str(")")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::Env;
+    use crate::error::SchemeError;
+    use crate::pair::cons_cell;
+
+    #[test]
+    fn list_items_round_trips_a_proper_list() {
+        assert_eq!(Value::Nil.list_items(), Ok(Vec::new()));
+        let list = Value::list(vec![Value::int(1), Value::int(2), Value::int(3)]);
+        assert_eq!(
+            list.list_items(),
+            Ok(vec![Value::int(1), Value::int(2), Value::int(3)])
+        );
+    }
+
+    #[test]
+    fn list_items_rejects_a_dotted_list() {
+        let dotted = Value::Pair(cons_cell(Value::int(1), Value::int(2)));
+        assert_eq!(
+            dotted.list_items(),
+            Err(SchemeError::TypeMismatch(
+                "not a proper list: (1 . 2)".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn call_runs_the_primitive_handler() {
+        let sum: Handler = Rc::new(|args: &[Value]| {
+            args.iter()
+                .try_fold(0i128, |acc, v| match v {
+                    Value::Int(n) => Ok(acc + n),
+                    other => Err(SchemeError::TypeMismatch(format!("not a number: {other}"))),
+                })
+                .map(Value::int)
+        });
+        let plus = Value::Primitive {
+            name: Rc::from("+"),
+            f: sum,
+        };
+        assert_eq!(
+            plus.call(&[Value::int(3), Value::int(4)]),
+            Ok(Value::int(7))
+        );
+    }
+
+    #[test]
+    fn call_on_a_non_procedure_raises_not_procedure() {
+        assert_eq!(
+            Value::int(3).call(&[]),
+            Err(SchemeError::NotProcedure(Value::int(3)))
+        );
+    }
+
+    #[test]
+    fn display_prints_tagged_data_both_ways() {
+        let bare = Value::tagged("rectangular", Value::Nil);
+        assert_eq!(bare.to_string(), "(rectangular)");
+        let payload = Value::tagged(
+            "rectangular",
+            Value::list(vec![Value::real(3.0), Value::real(4.0)]),
+        );
+        assert_eq!(payload.to_string(), "(rectangular (3 4))");
+    }
+
+    #[test]
+    fn display_prints_procedure_variants() {
+        let identity: Handler = Rc::new(|args: &[Value]| Ok(args[0].clone()));
+        let primitive = Value::Primitive {
+            name: Rc::from("identity"),
+            f: identity,
+        };
+        assert_eq!(primitive.to_string(), "#[primitive identity]");
+
+        let closure = Value::Closure(Rc::new(Closure {
+            params: vec![Rc::from("x")],
+            rest: None,
+            body: vec![Value::sym("x")],
+            env: Env::global(),
+        }));
+        assert_eq!(closure.to_string(), "#[compound-procedure]");
+
+        let thunk = ThunkState::delay(Value::int(1), &Env::global());
+        assert_eq!(thunk.to_string(), "#[thunk]");
+
+        let compiled = Value::CompiledProc(Rc::new(CompiledProc {
+            entry: Rc::from("compiled-entry"),
+            params: vec![Rc::from("x")],
+            env: Env::global(),
+        }));
+        assert_eq!(compiled.to_string(), "#[compiled-procedure compiled-entry]");
+    }
+
+    #[test]
+    fn display_escapes_quotes_and_backslashes_in_strings() {
+        assert_eq!(Value::string("plain").to_string(), "\"plain\"");
+        assert_eq!(Value::string("a\"b\\c").to_string(), "\"a\\\"b\\\\c\"");
+    }
+
+    #[test]
+    fn display_prints_a_dotted_pair() {
+        let dotted = Value::Pair(cons_cell(
+            Value::int(1),
+            Value::Pair(cons_cell(Value::int(2), Value::int(3))),
+        ));
+        assert_eq!(dotted.to_string(), "(1 2 . 3)");
+    }
+}

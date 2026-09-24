@@ -15,13 +15,13 @@ same value.  In contrast, recall the example of modeling withdrawals from a
 bank account and returning the resulting balance, introduced at the beginning
 of @ref{3.1.1}:
 
-@lisp
-(withdraw 25)
-@i{75}
+@example kotlin
+withdraw(25L)
+// => Either.Right(75)
 
-(withdraw 25)
-@i{50}
-@end lisp
+withdraw(25L)
+// => Either.Right(50)
+@end example
 
 @noindent
 Here successive evaluations of the same expression yield different values.
@@ -61,7 +61,16 @@ producing a speed advantage proportional to the number of processors available.
 Unfortunately, the complexities introduced by assignment become even more
 problematic in the presence of concurrency.  The fact of concurrent execution,
 either because the world operates in parallel or because our computers do,
-entails additional complexity in our understanding of time.
+entails additional complexity in our understanding of time.  In Kotlin a
+process of this section is a @newterm{coroutine}: @code{launch} starts one,
+@code{coroutineScope} waits for the ones it spawned, and the coroutines of one
+demonstration all live in one structured-concurrency family.  The JVM
+scheduler is free to interleave coroutines however it likes, so no run of this
+section's demonstrations may promise which interleaving it got.  Every
+enumeration below therefore runs under the deterministic test scheduler
+(@code{runTest}) with explicit @code{yield()} calls marking the points where
+control may switch, and the text says which schedule each demonstration
+forces.
 
 @menu
 * 3.4.1::            The Nature of Time in Concurrent Systems
@@ -81,8 +90,8 @@ Paul withdraws $25 from a joint account that initially contains $100, leaving
 $65 in the account.  Depending on the order of the two withdrawals, the
 sequence of balances in the account is either $100 @math{\to} $90 @math{\to} $65 or $100 @math{\to} $75
 @math{\to} $65.  In a computer implementation of the banking system, this changing
-sequence of balances could be modeled by successive assignments to a variable
-@code{balance}.
+sequence of balances could be modeled by successive assignments to a shared
+variable @code{balance}.
 
 In complex situations, however, such a view can be problematic.  Suppose that
 Peter and Paul, and other people besides, are accessing the same bank account
@@ -95,30 +104,45 @@ This indeterminacy in the order of events can pose serious problems in the
 design of concurrent systems.  For instance, suppose that the withdrawals made
 by Peter and Paul are implemented as two separate processes sharing a common
 variable @code{balance}, each process specified by the procedure given in
-@ref{3.1.1}:
+@ref{3.1.1}.
 
-@lisp
-(define (withdraw amount)
-  (if (>= balance amount)
-      (begin 
-        (set! balance 
-              (- balance amount))
-        balance)
-      "Insufficient funds"))
-@end lisp
+First, the type system has nothing to say.  The state of sections 3.1 to 3.3
+was a captured @code{var}, and Kotlin hands the same captured @code{var} to
+every coroutine that closes over it, exactly as it handed the same cell to the
+two aliases of @ref{3.1.3}.  The compiler raises no objection to the data race
+this section is about, because on the single thread where our demonstrations
+run the race is just an interleaving; what changes here is not the
+representation but the discipline.  To make the sharing visible, the balance
+moves into a one-field holder, and both withdrawal processors close over that
+holder:
+
+@example kotlin
+class Cell(public var value: Long)
+
+val balance = Cell(100L)
+
+fun withdraw(amount: Long): Either<WithdrawError, Long> =
+    if (balance.value < amount) {
+        Either.Left(WithdrawError.InsufficientFunds)
+    } else {
+        balance.value -= amount
+        Either.Right(balance.value)
+    }
+@end example
 
 @noindent
 If the two processes operate independently, then Peter might test the
 balance and attempt to withdraw a legitimate amount.  However, Paul
 might withdraw some funds in between the time that Peter checks the
 balance and the time Peter completes the withdrawal, thus invalidating
-Peter's test.
+Peter's test.  The check and the assignment are two separate accesses, so
+nothing in the language stands between them.
 
-Things can be worse still.  Consider the expression
+Things can be worse still.  Consider the statement
 
-@lisp
-(set! balance (- balance amount))
-@end lisp
+@example kotlin
+balance.value = balance.value - balance.value / 2
+@end example
 
 @noindent
 executed as part of each withdrawal process.  This consists of three steps: (1)
@@ -139,7 +163,7 @@ That assumption, however, became invalid when Peter changed @code{balance} to
 amount of money in the system is not conserved.  Before the transactions, the
 total amount of money was $100.  Afterwards, Peter has $10, Paul has $25, and
 the bank has $75.@footnote{An even worse failure for this system could occur if
-the two @code{set!} operations attempt to change the balance simultaneously, in
+the two assignment operations attempt to change the balance simultaneously, in
 which case the actual data appearing in memory might end up being a random
 combination of the information being written by the two processes.  Most
 computers have interlocks on the primitive memory-write operations, which
@@ -209,7 +233,7 @@ just before the moment of change, the balance is still what he thought it was.
 The above example typifies the subtle bugs that can creep into concurrent
 programs.  The root of this complexity lies in the assignments to variables
 that are shared among the different processes.  We already know that we must be
-careful in writing programs that use @code{set!}, because the results of a
+careful in writing programs that use assignment, because the results of a
 computation depend on the order in which the assignments occur.@footnote{The
 factorial program in @ref{3.1.3} illustrates this for a single
 sequential process.}  With concurrent processes we must be especially careful
@@ -261,7 +285,7 @@ in Bank1 and a private account in Bank2.
  |                          +---+
  |                          | W |
  |    ____           ____   ++-++   ____           ____  
- |   /    \         /    \   | |   /    \         /    \ 
+ |   /    \         /    \   | |   /    \   | |   ____  
  |  | $17  |       | $65  |<-' `->| $25  |       | $305 |
  |   \____/         \____/         \____/         \____/ 
  V
@@ -314,11 +338,10 @@ Mary share a joint bank account that initially contains $100.  Concurrently,
 Peter deposits $10, Paul withdraws $20, and Mary withdraws half the money in
 the account, by executing the following commands:
 
-@example
-Peter: (set! balance (+ balance 10))
-Paul:  (set! balance (- balance 20))
-Mary:  (set! balance (- balance 
-                        (/ balance 2)))
+@example kotlin
+Peter: balance.value = balance.value + 10
+Paul:  balance.value = balance.value - 20
+Mary:  balance.value = balance.value - balance.value / 2
 @end example
 
 @enumerate a
@@ -389,42 +412,60 @@ concurrently with this procedure by serializing all of these procedures with
 the same serializer.  This guarantees that the value of the variable cannot be
 changed between an access and the corresponding assignment.
 
-@subsubheading Serializers in Scheme
+@subsubheading Serializers in Kotlin
 
-To make the above mechanism more concrete, suppose that we have extended Scheme
-to include a procedure called @code{parallel-execute}:
+To make the above mechanism more concrete, suppose that we have extended Kotlin
+with a function called @code{parallel-execute}:
 
-@lisp
-(parallel-execute ⟨@var{p₁}⟩ 
-                  ⟨@var{p₂}⟩ 
-                  @r{…} 
-                  ⟨@var{pₖ}⟩)
-@end lisp
-
-@noindent
-Each @code{⟨}@var{p}@code{⟩} must be a procedure of no arguments.  @code{Parallel-execute}
-creates a separate process for each @code{⟨}@var{p}@code{⟩}, which applies 
-@code{⟨}@var{p}@code{⟩} (to no arguments).  These processes all run
-concurrently.@footnote{@code{Parallel-execute} is not part of standard Scheme,
-but it can be implemented in @abbr{MIT} Scheme.  In our implementation, the
-new concurrent processes also run concurrently with the original Scheme
-process.  Also, in our implementation, the value returned by
-@code{parallel-execute} is a special control object that can be used to halt
-the newly created processes.}
-
-As an example of how this is used, consider
-
-@lisp
-(define x 10)
-(parallel-execute (lambda () (set! x (* x x)))
-                  (lambda () (set! x (+ x 1))))
-@end lisp
+@example kotlin
+parallel-execute(⟨@var{p₁}⟩,
+                 ⟨@var{p₂}⟩,
+                 @dots{})
+@end example
 
 @noindent
-This creates two concurrent processes---@math{P_1}, which sets @code{x} to
-@code{x} times @code{x}, and @math{P_2}, which increments @code{x}.  After
-execution is complete, @code{x} will be left with one of five possible values,
-depending on the interleaving of the events of @math{P_1} and @math{P_2}:
+Each @code{⟨}@var{p}@code{⟩} must be a suspending procedure of no arguments.
+@code{Parallel-execute} creates a separate coroutine for each
+@code{⟨}@var{p}@code{⟩}, and returns only when every coroutine has finished.
+In Kotlin the form is structured concurrency, @code{launch} inside
+@code{coroutineScope}, which is exactly that contract:
+
+@example kotlin
+coroutineScope {
+    launch { ⟨@var{p₁}⟩() }   // each ⟨p⟩ is a suspend () -> Unit
+    launch { ⟨@var{p₂}⟩() }
+    @dots{}
+}
+@end example
+
+@noindent
+These processes all run
+concurrently.@footnote{@code{Parallel-execute} is not part of the language;
+it is the structured-concurrency form above, which joins the coroutines it
+spawns before returning.  The book's primitive comes with a control object
+that can halt the newly created processes.  Structured concurrency is that
+control object here: the job returned by @code{launch} can be cancelled, and
+cancelling the scope's own job stops every process it spawned, so a run whose
+wait can never end can still be ended.}  Two procedures at a time suffice for
+every program of this section:
+
+@example kotlin
+var x = 10L
+
+coroutineScope {
+    launch { x = x * x }   // P1 sets x to x times x
+    launch { x = x + 1 }   // P2 increments x
+}
+@end example
+
+@noindent
+The two @code{launch} bodies close over the same @code{x}; the second name is
+not a second variable but a second handle on the first variable, which is the
+point.  This creates two concurrent processes---@math{P_1}, which sets @code{x} to
+@code{x} times @code{x}, and @math{P_2}, which increments @code{x}.  Each of
+@math{P_1}'s accesses of @code{x} is a separate read, so after execution is
+complete, @code{x} will be left with one of five possible values, depending on
+the interleaving of the events of @math{P_1} and @math{P_2}:
 
 @example
 101: @math{P_1} sets @code{x} to 100 and then @math{P_2} increments
@@ -433,7 +474,7 @@ depending on the interleaving of the events of @math{P_1} and @math{P_2}:
      @code{x} to @code{x} times @code{x}.
 110: @math{P_2} changes @code{x} from 10 to 11 between the 
      two times that @math{P_1} accesses the value of 
-     @code{x} during the evaluation of @code{(* x x)}.
+     @code{x} during the evaluation of @code{x * x}.
  11: @math{P_2} accesses @code{x}, then @math{P_1} sets @code{x} to 100, 
      then @math{P_2} sets @code{x}.
 100: @math{P_1} accesses @code{x} (twice), then @math{P_2} sets
@@ -441,55 +482,77 @@ depending on the interleaving of the events of @math{P_1} and @math{P_2}:
 @end example
 
 @noindent
+On the JVM the scheduler is free to pick any of these interleavings on each
+run, so a program that prints @code{x} after the scope joins may print a
+different answer every time.  The demonstrations of this section and its
+exercises therefore force each interleaving: the processes call @code{yield()}
+at chosen points, and the test scheduler resumes the coroutines first-in,
+first-out, so the schedule is fixed by where the @code{yield()} calls sit.
+
 We can constrain the concurrency by using serialized procedures, which are
 created by @newterm{serializers}. Serializers are constructed by
-@code{make-serializer}, whose implementation is given below.  A serializer
+@code{Serializer()}, whose own construction is given below in the part of
+the section that implements serializers.  A serializer
 takes a procedure as argument and returns a serialized procedure that behaves
 like the original procedure.  All calls to a given serializer return serialized
 procedures in the same set.
 
 Thus, in contrast to the example above, executing
 
-@lisp
-(define x 10)
-(define s (make-serializer))
-(parallel-execute 
- (s (lambda () (set! x (* x x))))
- (s (lambda () (set! x (+ x 1)))))
-@end lisp
+@example kotlin
+var x = 10L
+val s = Serializer()
+
+coroutineScope {
+    launch { s.serialized { x = x * x }() }
+    launch { s.serialized { x = x + 1 }() }
+}
+@end example
 
 @noindent
 can produce only two possible values for @code{x}, 101 or 121.  The other
 possibilities are eliminated, because the execution of @math{P_1} and @math{P_2}
-cannot be interleaved.
+cannot be interleaved.  Both @code{launch} bodies name the same serializer, so
+the two wrapped lambdas belong to one set.
 
 Here is a version of the @code{make-account} procedure from 
-@ref{3.1.1}, where the deposits and withdrawals have been serialized:
+@ref{3.1.1}, where the deposits and withdrawals have been serialized.  The
+balance stays a captured @code{var} for the reason 3.1 gave, and the book's
+dispatch symbol becomes a method:
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((protected (make-serializer)))
-    (define (dispatch m)
-      (cond ((eq? m 'withdraw) 
-             (protected withdraw))
-            ((eq? m 'deposit) 
-             (protected deposit))
-            ((eq? m 'balance) 
-             balance)
-            (else (error "Unknown request: 
-                          MAKE-ACCOUNT"
-                         m))))
-    dispatch))
-@end lisp
+@example kotlin
+interface SerializedAccount {
+    suspend fun withdraw(amount: Long): Either<WithdrawError, Long>
+
+    suspend fun deposit(amount: Long): Long
+
+    suspend fun balance(): Long
+}
+
+fun makeSerializedAccount(balance: Long): SerializedAccount {
+    var b = balance
+    val s = Serializer()
+    return object : SerializedAccount {
+        override suspend fun withdraw(amount: Long) =
+            s.serialized {
+                if (b < amount) {
+                    Either.Left(WithdrawError.InsufficientFunds)
+                } else {
+                    b -= amount
+                    Either.Right(b)
+                }
+            }()
+
+        override suspend fun deposit(amount: Long): Long =
+            s.serialized {
+                b += amount
+                b
+            }()
+
+        override suspend fun balance(): Long = b
+    }
+}
+@end example
 
 @noindent
 With this implementation, two processes cannot be withdrawing from or
@@ -505,72 +568,77 @@ accounts can proceed concurrently.
 in the parallel execution shown above remain if we instead serialize execution
 as follows:
 
-@lisp
-(define x 10)
-(define s (make-serializer))
-(parallel-execute 
-  (lambda () 
-    (set! x ((s (lambda () (* x x))))))
-  (s (lambda () (set! x (+ x 1)))))
-@end lisp
+@example kotlin
+var x = 10L
+val s = Serializer()
+
+coroutineScope {
+    launch {
+        val squared = s.serialized { x * x }()
+        x = squared // the assignment is outside the serializer
+    }
+    launch { s.serialized { x = x + 1 }() }
+}
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.40}Exercise 3.40:} Give all possible values of
 @code{x} that can result from executing
 
-@lisp
-(define x 10)
-(parallel-execute 
- (lambda () (set! x (* x x)))
- (lambda () (set! x (* x x x))))
-@end lisp
+@example kotlin
+var x = 10L
+
+coroutineScope {
+    launch { x = x * x }      // P1
+    launch { x = x * x * x }  // P2
+}
+@end example
 
 Which of these possibilities remain if we instead use serialized procedures:
 
-@lisp
-(define x 10)
-(define s (make-serializer))
-(parallel-execute 
- (s (lambda () (set! x (* x x))))
- (s (lambda () (set! x (* x x x)))))
-@end lisp
+@example kotlin
+var x = 10L
+val s = Serializer()
+
+coroutineScope {
+    launch { s.serialized { x = x * x }() }
+    launch { s.serialized { x = x * x * x }() }
+}
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.41}Exercise 3.41:} Ben Bitdiddle worries that it
 would be better to implement the bank account as follows (where the commented
-line has been changed):
+method has been changed):
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin 
-          (set! balance 
-                (- balance amount))
-          balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((protected (make-serializer)))
-    (define (dispatch m)
-      (cond ((eq? m 'withdraw) 
-             (protected withdraw))
-            ((eq? m 'deposit) 
-             (protected deposit))
-            ((eq? m 'balance)
-             ((protected 
-                (lambda () 
-                  balance)))) @r{; serialized}
-            (else 
-             (error 
-              "Unknown request: 
-               MAKE-ACCOUNT"
-              m))))
-    dispatch))
-@end lisp
+@example kotlin
+fun bensAccount(balance: Long): SerializedAccount {
+    var b = balance
+    val s = Serializer()
+    return object : SerializedAccount {
+        override suspend fun withdraw(amount: Long) =
+            s.serialized {
+                if (b < amount) {
+                    Either.Left(WithdrawError.InsufficientFunds)
+                } else {
+                    b -= amount
+                    Either.Right(b)
+                }
+            }()
+
+        override suspend fun deposit(amount: Long): Long =
+            s.serialized {
+                b += amount
+                b
+            }()
+
+        override suspend fun balance(): Long =
+            s.serialized { b }() // serialized
+    }
+}
+@end example
 
 @noindent
 because allowing unserialized access to the bank balance can result in
@@ -579,43 +647,56 @@ Ben's concern?
 @end quotation
 
 @quotation
+@emph{Exercise 3.41a is added by this edition and extends exercise 3.41; SICP
+numbers stop at 3.41.}
+@strong{@anchor{Exercise 3.41a}Exercise 3.41a:} Ben's serialized read of
+@ref{Exercise 3.41} removes the anomalies within one account, but a read that
+crosses accounts can still answer from the past.  Build the demonstration:
+one serialized writer moves $60 between two $100 accounts through a withdraw
+that and a deposit, while an unserialized reader sums the two balances.  Give
+the reader two schedules under the test scheduler---@code{yield()} between its
+two reads in the first, @code{yield()} only after both reads in the
+second---and check that the first schedule reports a total of $260, money that
+never existed, while the second reports $200.  Then state when such a stale
+read is acceptable (the distributed branches of the last subsection reconcile
+on a schedule), and what kind of decision may not be made on one.
+@end quotation
+
+@quotation
 @strong{@anchor{Exercise 3.42}Exercise 3.42:} Ben Bitdiddle suggests that it's
 a waste of time to create a new serialized procedure in response to every
 @code{withdraw} and @code{deposit} message.  He says that @code{make-account}
-could be changed so that the calls to @code{protected} are done outside the
-@code{dispatch} procedure.  That is, an account would return the same
-serialized procedure (which was created at the same time as the account) each
-time it is asked for a withdrawal procedure.
+could be changed so that the calls to the serializer are done outside the
+dispatch.  That is, an account would answer the same serialized procedures
+(which were created at the same time as the account) each time it is asked for
+a withdrawal or deposit.
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((protected (make-serializer)))
-    (let ((protected-withdraw 
-           (protected withdraw))
-          (protected-deposit 
-           (protected deposit)))
-      (define (dispatch m)
-        (cond ((eq? m 'withdraw) 
-               protected-withdraw)
-              ((eq? m 'deposit) 
-               protected-deposit)
-              ((eq? m 'balance) 
-               balance)
-              (else 
-               (error "Unknown request: 
-                       MAKE-ACCOUNT"
-                      m))))
-      dispatch)))
-@end lisp
+@example kotlin
+class BenAccount(balance: Long) : SerializedAccount {
+    private var b = balance
+    private val s = Serializer()
+    private val protectedWithdraw =
+        s.serializedArg { amount: Long ->
+            if (b < amount) {
+                Either.Left(WithdrawError.InsufficientFunds)
+            } else {
+                b -= amount
+                Either.Right(b)
+            }
+        }
+    private val protectedDeposit =
+        s.serializedArg { amount: Long ->
+            b += amount
+            b
+        }
+
+    override suspend fun withdraw(amount: Long) = protectedWithdraw(amount)
+
+    override suspend fun deposit(amount: Long) = protectedDeposit(amount)
+
+    override suspend fun balance(): Long = b
+}
+@end example
 
 Is this a safe change to make?  In particular, is there any difference in what
 concurrency is allowed by these two versions of @code{make-account}?
@@ -635,16 +716,17 @@ the balances in two bank accounts.  We access each account to find the balance,
 compute the difference between the balances, withdraw this difference from one
 account, and deposit it in the other account.  We could implement this as
 follows:@footnote{We have simplified @code{exchange} by exploiting the fact
-that our @code{deposit} message accepts negative amounts.  (This is a serious
+that our @code{deposit} accepts negative amounts.  (This is a serious
 bug in our banking system!)}
 
-@lisp
-(define (exchange account1 account2)
-  (let ((difference (- (account1 'balance)
-                       (account2 'balance))))
-    ((account1 'withdraw) difference)
-    ((account2 'deposit) difference)))
-@end lisp
+@example kotlin
+suspend fun exchange(account1: RawAccount, account2: RawAccount): Long {
+    val difference = account1.balance() - account2.balance()
+    account1.withdraw(difference)
+    account2.deposit(difference)
+    return difference
+}
+@end example
 
 @noindent
 This procedure works well when only a single process is trying to do the
@@ -669,32 +751,45 @@ for access to an account's serializer.  Note that we are deliberately breaking
 the modularity of the bank-account object by exposing the serializer.  The
 following version of @code{make-account} is identical to the original version
 given in @ref{3.1.1}, except that a serializer is provided to protect
-the balance variable, and the serializer is exported via message passing:
+the balance variable, and the serializer is exported via the interface:
 
-@lisp
-(define (make-account-and-serializer balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin 
-          (set! balance (- balance amount))
-          balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((balance-serializer 
-         (make-serializer)))
-    (define (dispatch m)
-      (cond ((eq? m 'withdraw) withdraw)
-            ((eq? m 'deposit) deposit)
-            ((eq? m 'balance) balance)
-            ((eq? m 'serializer) 
-             balance-serializer)
-            (else (error "Unknown request: 
-                          MAKE-ACCOUNT"
-                         m))))
-    dispatch))
-@end lisp
+@example kotlin
+interface RawAccount {
+    suspend fun withdraw(amount: Long): Either<WithdrawError, Long>
+
+    suspend fun deposit(amount: Long): Long
+
+    suspend fun balance(): Long
+
+    /** The book's 'serializer message: the account's own serializer. */
+    fun serializer(): Serializer
+}
+
+fun makeAccountAndSerializer(balance: Long): RawAccount {
+    var b = balance
+    val s = Serializer()
+    // The raw procedures the book's dispatch returned: serialization is
+    // the caller's job now.
+    return object : RawAccount {
+        override suspend fun withdraw(amount: Long): Either<WithdrawError, Long> =
+            if (b < amount) {
+                Either.Left(WithdrawError.InsufficientFunds)
+            } else {
+                b -= amount
+                Either.Right(b)
+            }
+
+        override suspend fun deposit(amount: Long): Long {
+            b += amount
+            return b
+        }
+
+        override suspend fun balance(): Long = b
+
+        override fun serializer(): Serializer = s
+    }
+}
+@end example
 
 @noindent
 We can use this to do serialized deposits and withdrawals.  However, unlike our
@@ -703,26 +798,29 @@ bank-account objects to explicitly manage the serialization, for example as
 follows:@footnote{@ref{Exercise 3.45} investigates why deposits and withdrawals
 are no longer automatically serialized by the account.}
 
-@lisp
-(define (deposit account amount)
-  (let ((s (account 'serializer))
-        (d (account 'deposit)))
-    ((s d) amount)))
-@end lisp
+@example kotlin
+suspend fun deposit(account: RawAccount, amount: Long): Long =
+    account.serializer().serialized {
+        account.deposit(amount)
+    }()
+@end example
 
 @noindent
 Exporting the serializer in this way gives us enough flexibility to implement a
 serialized exchange program.  We simply serialize the original @code{exchange}
 procedure with the serializers for both accounts:
 
-@lisp
-(define (serialized-exchange account1 account2)
-  (let ((serializer1 (account1 'serializer))
-        (serializer2 (account2 'serializer)))
-    ((serializer1 (serializer2 exchange))
-     account1
-     account2)))
-@end lisp
+@example kotlin
+suspend fun serializedExchange(
+    account1: RawAccount,
+    account2: RawAccount,
+): Long =
+    account1.serializer().serialized {
+        account2.serializer().serialized {
+            exchange(account1, account2)
+        }()
+    }()
+@end example
 
 @quotation
 @strong{@anchor{Exercise 3.43}Exercise 3.43:} Suppose that the balances in
@@ -746,12 +844,16 @@ multiple people concurrently transferring money among multiple accounts, using
 any account mechanism that serializes deposit and withdrawal transactions, for
 example, the version of @code{make-account} in the text above.
 
-@lisp
-(define 
-  (transfer from-account to-account amount)
-  ((from-account 'withdraw) amount)
-  ((to-account 'deposit) amount))
-@end lisp
+@example kotlin
+suspend fun transfer(
+    fromAccount: SerializedAccount,
+    toAccount: SerializedAccount,
+    amount: Long,
+) {
+    fromAccount.withdraw(amount)
+    toAccount.deposit(amount)
+}
+@end example
 
 Louis Reasoner claims that there is a problem here, and that we need to use a
 more sophisticated method, such as the one required for dealing with the
@@ -769,41 +871,40 @@ by such procedures as @code{serialized-exchange}) in addition to (rather than
 instead of) using it to serialize accounts and deposits as @code{make-account}
 did.  He proposes to redefine accounts as follows:
 
-@lisp
-(define 
-  (make-account-and-serializer balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((balance-serializer 
-         (make-serializer)))
-    (define (dispatch m)
-      (cond ((eq? m 'withdraw) 
-             (balance-serializer withdraw))
-            ((eq? m 'deposit) 
-             (balance-serializer deposit))
-            ((eq? m 'balance) 
-             balance)
-            ((eq? m 'serializer) 
-             balance-serializer)
-            (else (error "Unknown request: 
-                          MAKE-ACCOUNT"
-                         m))))
-    dispatch))
-@end lisp
+@example kotlin
+fun louisAccount(balance: Long): RawAccount {
+    var b = balance
+    val s = Serializer()
+    return object : RawAccount {
+        override suspend fun withdraw(amount: Long) =
+            s.serialized {
+                if (b < amount) {
+                    Either.Left(WithdrawError.InsufficientFunds)
+                } else {
+                    b -= amount
+                    Either.Right(b)
+                }
+            }()
+
+        override suspend fun deposit(amount: Long): Long =
+            s.serialized {
+                b += amount
+                b
+            }()
+
+        override suspend fun balance(): Long = b
+
+        override fun serializer(): Serializer = s
+    }
+}
+@end example
 
 Then deposits are handled as with the original @code{make-account}:
 
-@lisp
-(define (deposit account amount)
-  ((account 'deposit) amount))
-@end lisp
+@example kotlin
+suspend fun deposit(account: RawAccount, amount: Long): Long =
+    account.deposit(amount)
+@end example
 
 Explain what is wrong with Louis's reasoning.  In particular, consider what
 happens when @code{serialized-exchange} is called.
@@ -834,92 +935,144 @@ the mutex.  This ensures that only one of the procedures produced by the
 serializer can be running at once, which is precisely the serialization
 property that we need to guarantee.
 
-@lisp
-(define (make-serializer)
-  (let ((mutex (make-mutex)))
-    (lambda (p)
-      (define (serialized-p . args)
-        (mutex 'acquire)
-        (let ((val (apply p args)))
-          (mutex 'release)
-          val))
-      serialized-p)))
-@end lisp
+@example kotlin
+import kotlinx.coroutines.sync.Mutex
+
+class Serializer {
+    private val mutex = Mutex() // kotlinx's Mutex: a waiter parks in lock
+
+    /** The book's make-serializer over a procedure of no arguments. */
+    fun <A> serialized(p: suspend () -> A): suspend () -> A = {
+        mutex.lock()
+        try {
+            p()
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    /** The same set over a one-argument procedure: the book's
+     * make-serializer is indifferent to the wrapped procedure's shape.
+     * A separate name, not an overload: a brace lambda matches both
+     * arities through its implicit `it`. */
+    fun <P, A> serializedArg(p: suspend (P) -> A): suspend (P) -> A = {
+        mutex.lock()
+        try {
+            p(it)
+        } finally {
+            mutex.unlock()
+        }
+    }
+}
+@end example
 
 @noindent
-The mutex is a mutable object (here we'll use a one-element list, which we'll
+The hand-rolled mutex of the next part is the book's construction; the
+serializer above parks its waiters in @code{kotlinx} because a Kotlin
+process that waits must suspend, not spin.
+
+@noindent
+The mutex is a mutable object (here we'll use a one-field holder, which we'll
 refer to as a @newterm{cell}) that can hold the value true or false.  When the
 value is false, the mutex is available to be acquired.  When the value is true,
 the mutex is unavailable, and any process that attempts to acquire the mutex
 must wait.
 
-Our mutex constructor @code{make-mutex} begins by initializing the cell
+Our mutex constructor @code{makeMutex} begins by initializing the cell
 contents to false.  To acquire the mutex, we test the cell.  If the mutex is
 available, we set the cell contents to true and proceed.  Otherwise, we wait in
 a loop, attempting to acquire over and over again, until we find that the mutex
 is available.@footnote{In most time-shared operating systems, processes that
 are blocked by a mutex do not waste time ``busy-waiting'' as above.  Instead,
 the system schedules another process to run while the first is waiting, and the
-blocked process is awakened when the mutex becomes available.}  To release the
-mutex, we set the cell contents to false.
+blocked process is awakened when the mutex becomes available.  Kotlin's own
+@code{kotlinx.coroutines.sync.Mutex} works this way, and a waiter parks in
+@code{lock} instead of spinning.  The hand-rolled loop below keeps the book's
+plainer shape; its @code{yield()} is the book's ``retry,'' made cooperative so
+the waiter hands the thread back each turn instead of burning it.}  To release
+the mutex, we set the cell contents to false.
 
-@lisp
-(define (make-mutex)
-  (let ((cell (list false)))
-    (define (the-mutex m)
-      (cond ((eq? m 'acquire)
-             (if (test-and-set! cell)
-                 (the-mutex 'acquire))) @r{; retry}
-            ((eq? m 'release) (clear! cell))))
-    the-mutex))
-(define (clear! cell) (set-car! cell false))
-@end lisp
+@example kotlin
+interface BookMutex {
+    suspend fun acquire()
+
+    fun release()
+}
+
+class FlagCell(public var value: Boolean)
+
+fun makeMutex(): BookMutex {
+    val cell = FlagCell(false)
+    return object : BookMutex {
+        override suspend fun acquire() {
+            while (testAndSet(cell)) {
+                yield() // retry: hand the thread back, then test again
+            }
+        }
+
+        override fun release() {
+            cell.value = false
+        }
+    }
+}
+@end example
 
 @noindent
-@code{Test-and-set!} tests the cell and returns the result of the test.  In
-addition, if the test was false, @code{test-and-set!} sets the cell contents to
+@code{Test-and-set} tests the cell and returns the result of the test.  In
+addition, if the test was false, @code{test-and-set} sets the cell contents to
 true before returning false.  We can express this behavior as the following
 procedure:
 
-@lisp
-(define (test-and-set! cell)
-  (if (car cell)
-      true
-      (begin (set-car! cell true)
-             false)))
-@end lisp
+@example kotlin
+fun testAndSet(cell: Cell): Boolean =
+    if (cell.value) {
+        true
+    } else {
+        cell.value = true
+        false
+    }
+@end example
 
 @noindent
-However, this implementation of @code{test-and-set!} does not suffice as it
+However, this implementation of @code{test-and-set} does not suffice as it
 stands.  There is a crucial subtlety here, which is the essential place where
-concurrency control enters the system: The @code{test-and-set!} operation must
+concurrency control enters the system: The @code{test-and-set} operation must
 be performed @newterm{atomically}.  That is, we must guarantee that, once a
 process has tested the cell and found it to be false, the cell contents will
 actually be set to true before any other process can test the cell.  If we do
 not make this guarantee, then the mutex can fail in a way similar to the
 bank-account failure in @ref{Figure 3.29}.  (See @ref{Exercise 3.46}.)
 
-The actual implementation of @code{test-and-set!} depends on the details of how
+The actual implementation of @code{test-and-set} depends on the details of how
 our system runs concurrent processes.  For example, we might be executing
 concurrent processes on a sequential processor using a time-slicing mechanism
 that cycles through the processes, permitting each process to run for a short
 time before interrupting it and moving on to the next process.  In that case,
-@code{test-and-set!}  can work by disabling time slicing during the testing and
-setting.@footnote{In @abbr{MIT} Scheme for a single processor, which uses a
-time-slicing model, @code{test-and-set!} can be implemented as follows:
+@code{test-and-set} can work by disabling time slicing during the testing and
+setting.@footnote{A runtime that schedules its coroutines by time slicing on a
+single thread could make the test indivisible by disallowing preemption while
+the test-and-set runs.  Kotlin takes the hardware route instead:
+@code{AtomicBoolean.compareAndSet} is one indivisible compare-and-exchange,
+and the cell becomes an atomic boolean holding the mutex's state:
 
-@lisp
-(define (test-and-set! cell)
-  (without-interrupts
-   (lambda ()
-     (if (car cell)
-         true
-         (begin (set-car! cell true)
-                false)))))
-@end lisp
+@example kotlin
+import java.util.concurrent.atomic.AtomicBoolean
 
-@code{Without-interrupts} disables time-slicing interrupts while its procedure
-ar@-gu@-ment is being executed.}  Alternatively, multiprocessing computers provide
+class AtomicCell(private val flag: AtomicBoolean = AtomicBoolean(false)) {
+    /** The book's test-and-set, atomic: true when the cell was already set. */
+    fun testAndSet(): Boolean = !flag.compareAndSet(false, true)
+
+    fun clear() {
+        flag.set(false)
+    }
+}
+@end example
+
+@noindent
+The call flips the cell from false to true exactly when it found it false, so
+the atomic version negates the outcome of the hardware operation to keep the
+book's contract.}
+Alternatively, multiprocessing computers provide
 instructions that support atomic operations directly in
 hardware.@footnote{There are many variants of such instructions---including
 test-and-set, test-and-clear, swap, compare-and-exchange, load-reserve, and
@@ -940,7 +1093,7 @@ deciding which to go to first.}
 
 @quotation
 @strong{@anchor{Exercise 3.46}Exercise 3.46:} Suppose that we implement
-@code{test-and-set!}  using an ordinary procedure as shown in the text, without
+@code{test-and-set} using an ordinary procedure as shown in the text, without
 attempting to make the operation atomic.  Draw a timing diagram like the one in
 @ref{Figure 3.29} to demonstrate how the mutex implementation can fail by
 allowing two processes to acquire the mutex at the same time.
@@ -959,9 +1112,14 @@ semaphore must wait for release operations.  Give implementations of semaphores
 in terms of mutexes
 
 @item
-in terms of atomic @code{test-and-set!} operations.
+in terms of atomic @code{test-and-set} operations.
 
 @end enumerate
+
+@noindent
+Kotlin ships @code{kotlinx.coroutines.sync.Semaphore}, so in this language the
+exercise is a reimplementation exercise: build the semaphore anyway, and then
+check the built ones against the library's for permit conservation.
 @end quotation
 
 @subsubheading Deadlock
@@ -1021,7 +1179,7 @@ achieve this control through judicious use of serializers.  But the problems of
 concurrency lie deeper than this, because, from a fundamental point of view,
 it's not always clear what is meant by ``shared state.''
 
-Mechanisms such as @code{test-and-set!} require processes to examine a global
+Mechanisms such as @code{test-and-set} require processes to examine a global
 shared flag at arbitrary times.  This is problematic and inefficient to
 implement in modern high-speed processors, where due to optimization techniques
 such as pipelining and cached memory, the contents of memory may not be in a
@@ -1070,3 +1228,28 @@ synchronize events) is a fundamental constant relating time and space.  The
 complexities we encounter in dealing with time and state in our computational
 models may in fact mirror a fundamental complexity of the physical universe.
 
+@quotation
+@strong{In this language: concurrency.}
+
+The state of 3.1 to 3.3 was a captured @code{var}, and Kotlin hands the same
+captured @code{var} to every coroutine that closes over it, so the type system
+does not stand between this section's processes and the race.  The book's
+@code{parallel-execute} becomes structured concurrency, @code{launch} inside
+@code{coroutineScope}, whose job is the control object that can halt the run.
+Serializers are one @code{Mutex} with wrapped suspending procedures;
+@code{test-and-set} is @code{AtomicBoolean.compareAndSet}; and the semaphore
+of exercise 3.47 is a token @code{Channel<Unit>(n)}, receive to acquire and
+send in @code{finally} to release.
+
+@example kotlin
+coroutineScope {
+    val done = launch { x = x * x }
+    launch { x = x + 1 }
+    done.cancel() // the control object halts P1 mid-flight
+}
+@end example
+
+The lock makes the serializer's contract visible to the reader: the protected
+code is whatever runs between @code{acquire} and the @code{finally} that
+releases, and the @code{finally} cannot be forgotten.
+@end quotation

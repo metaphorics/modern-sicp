@@ -379,7 +379,7 @@ Statements quote the book's `parallel-execute` and serializers; under the shared
 | 3.38 | enumerate interleaved balance outcomes | T | T | T | T | run interleavings with real threads (chosen: rust) |
 | 3.39 | which serialized outcomes remain | T | T | T | T |  |
 | 3.40 | all values of concurrent x squared | T | T | T | T |  |
-| 3.41 | should balance reads serialize | T | T | T | T | stale reads under eventual consistency |
+| 3.41 | should balance reads serialize | T | T | T | T | stale reads under eventual consistency (chosen: kotlin — implemented as 3.41a, a stale authorization on a balance read before a concurrent withdraw commits; see report) |
 | 3.42 | serialize once outside dispatch | T | T | T | T |  |
 | 3.43 | exchange preserves multiset of balances | T | T | T | T |  |
 | 3.44 | transfer needs no joint lock | T | T | T | T |  |

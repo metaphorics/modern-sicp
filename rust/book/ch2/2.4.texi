@@ -943,7 +943,7 @@ like the book's own table.
 table.put(Key::sym("real-part"), tag_list_key(&["rectangular"]), handler);
 // => ()
 table.get(&Key::sym("real-part"), &tag_list_key(&["polar"]));
-// => None until Alyssa's package installs
+// => None
 @end example
 
 The book's table still wins whenever packages are installed by code the

@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(type_tag(&z)?.as_ref(), "rectangular");
 
     println!("{}", contents(&z)?);
-    // => (3 4)
+    // => (3 . 4)
     assert_eq!(contents(&z)?.to_string(), "(3 . 4)");
 
     // Attaching a tag to the same pair the other way, to show the tag is

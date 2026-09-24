@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         real_value(real_part(&table, &difference))?,
         real_value(imag_part(&table, &difference))?
     );
-    // => ... - (rectangular (3 . 4)) = real 6.123233995736766e-17 + i*1
+    // => real 0 + i*1
     assert!(close(real_value(real_part(&table, &difference))?, 0.0));
     assert!(close(real_value(imag_part(&table, &difference))?, 1.0));
 

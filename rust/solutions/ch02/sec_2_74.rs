@@ -96,7 +96,12 @@ mod ex_2_74 {
     /// contents.
     fn north_get_salary() -> Handler {
         Rc::new(|args| {
-            let record = &args[0];
+            let [record] = args else {
+                return Err(SchemeError::WrongArity {
+                    expected: 1,
+                    got: args.len(),
+                });
+            };
             assoc("salary", record)
                 .ok_or_else(|| SchemeError::TypeMismatch("no salary field".into()))
         })
@@ -129,7 +134,12 @@ mod ex_2_74 {
     /// South's `get-salary`: a property-list lookup.
     fn south_get_salary() -> Handler {
         Rc::new(|args| {
-            let record = &args[0];
+            let [record] = args else {
+                return Err(SchemeError::WrongArity {
+                    expected: 1,
+                    got: args.len(),
+                });
+            };
             property("salary", record)
                 .ok_or_else(|| SchemeError::TypeMismatch("no salary field".into()))
         })

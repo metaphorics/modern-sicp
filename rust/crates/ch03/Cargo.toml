@@ -355,6 +355,14 @@ path = "examples/sec_3_3_4_circuit.rs"
 name = "sec_3_3_5_constraints"
 path = "examples/sec_3_3_5_constraints.rs"
 
+[[example]]
+name = "sec_3_4_1_time"
+path = "examples/sec_3_4_1_time.rs"
+
+[[example]]
+name = "sec_3_4_2_serializers"
+path = "examples/sec_3_4_2_serializers.rs"
+
 [dependencies]
 sicp-runtime = { workspace = true }
 
@@ -365,3 +373,99 @@ insta = { workspace = true }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "solution_sec_3_38"
+path = "../../solutions/ch03/sec_3_38.rs"
+
+[[test]]
+name = "solution_sec_3_39"
+path = "../../solutions/ch03/sec_3_39.rs"
+
+[[test]]
+name = "solution_sec_3_40"
+path = "../../solutions/ch03/sec_3_40.rs"
+
+[[test]]
+name = "solution_sec_3_41"
+path = "../../solutions/ch03/sec_3_41.rs"
+
+[[test]]
+name = "scaffold_sec_3_38"
+path = "../../exercises/ch03/sec_3_38.rs"
+
+[[test]]
+name = "scaffold_sec_3_39"
+path = "../../exercises/ch03/sec_3_39.rs"
+
+[[test]]
+name = "scaffold_sec_3_40"
+path = "../../exercises/ch03/sec_3_40.rs"
+
+[[test]]
+name = "scaffold_sec_3_41"
+path = "../../exercises/ch03/sec_3_41.rs"
+
+[[test]]
+name = "scaffold_sec_3_42"
+path = "../../exercises/ch03/sec_3_42.rs"
+
+[[test]]
+name = "scaffold_sec_3_43"
+path = "../../exercises/ch03/sec_3_43.rs"
+
+[[test]]
+name = "scaffold_sec_3_44"
+path = "../../exercises/ch03/sec_3_44.rs"
+
+[[test]]
+name = "scaffold_sec_3_45"
+path = "../../exercises/ch03/sec_3_45.rs"
+
+[[test]]
+name = "scaffold_sec_3_46"
+path = "../../exercises/ch03/sec_3_46.rs"
+
+[[test]]
+name = "scaffold_sec_3_47"
+path = "../../exercises/ch03/sec_3_47.rs"
+
+[[test]]
+name = "scaffold_sec_3_48"
+path = "../../exercises/ch03/sec_3_48.rs"
+
+[[test]]
+name = "scaffold_sec_3_49"
+path = "../../exercises/ch03/sec_3_49.rs"
+
+[[test]]
+name = "solution_sec_3_42"
+path = "../../solutions/ch03/sec_3_42.rs"
+
+[[test]]
+name = "solution_sec_3_43"
+path = "../../solutions/ch03/sec_3_43.rs"
+
+[[test]]
+name = "solution_sec_3_44"
+path = "../../solutions/ch03/sec_3_44.rs"
+
+[[test]]
+name = "solution_sec_3_45"
+path = "../../solutions/ch03/sec_3_45.rs"
+
+[[test]]
+name = "solution_sec_3_46"
+path = "../../solutions/ch03/sec_3_46.rs"
+
+[[test]]
+name = "solution_sec_3_47"
+path = "../../solutions/ch03/sec_3_47.rs"
+
+[[test]]
+name = "solution_sec_3_48"
+path = "../../solutions/ch03/sec_3_48.rs"
+
+[[test]]
+name = "solution_sec_3_49"
+path = "../../solutions/ch03/sec_3_49.rs"

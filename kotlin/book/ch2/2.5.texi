@@ -1022,7 +1022,8 @@ A pair of polys under different variables raises the typed
 
 To incorporate polynomials into our generic arithmetic system, we supply them
 to the tower as @code{Poly} values, which present the tag @code{polynomial}.
-We install appropriate operations on them in the operation table; the internal
+We install appropriate operations on them in the operation table, in an
+installation procedure like the ones in @ref{2.5.1}; the internal
 functions -- the poly operations above and the term-list operations below --
 live at the top level of the package's own file, so the installer itself only
 wires the table:

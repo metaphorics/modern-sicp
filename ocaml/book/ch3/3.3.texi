@@ -52,8 +52,9 @@ structure built from them, and the same is true of list operations such as
 @code{cons}, @code{car}, and @code{cdr} alone.  To model compound objects with
 changing state we need a genuinely mutable pair, so this section defines one:
 a record @code{mpair} of two mutable fields, wrapped in a variant @code{mobj}
-that also names the empty list, numbers, and symbols, so a list built from
-these pairs stays close to the book's own untyped pointers.
+that also names the empty list, numbers, symbols, and the zero-argument
+procedures that only the agenda of @ref{3.3.4} will schedule, so a list built
+from these pairs stays close to the book's own untyped pointers.
 
 @example ocaml
 type mobj =
@@ -61,6 +62,7 @@ type mobj =
   | Sym of string
   | Pair of mpair
   | Nil
+  | Proc of (unit -> unit)
 
 and mpair =
   { mutable car : mobj
@@ -567,7 +569,7 @@ As will be seen in the following sections, we can exploit sharing to greatly
 extend the repertoire of data structures that can be represented by pairs.  On
 the other hand, sharing can also be dangerous, since modifications made to
 structures will also affect other structures that happen to share the modified
-parts.  The mutation operations @code{set-car!} and @code{set-cdr!} should be
+parts.  The mutation operations @code{set_car} and @code{set_cdr} should be
 used with care; unless we have a good understanding of how our data objects are
 shared, mutation can have unanticipated results.@footnote{The subtleties of
 dealing with sharing of mutable data objects reflect the underlying issues of
@@ -586,6 +588,7 @@ models.}
 
 @quotation
 @strong{@anchor{Exercise 3.15}Exercise 3.15:} Draw box-and-pointer diagrams to
+explain the effect of @code{set_to_wow} on the structures @code{z1} and
 @code{z2} above.
 @end quotation
 
@@ -1907,7 +1910,7 @@ We begin by creating the simulator, specifying delays for the primitive
 function boxes:
 
 @example ocaml
-let sim = make_sim ~inverter_delay:2 ~and_gate_delay:3 ~or_gate_delay ()
+let sim = make_sim ~inverter_delay:2 ~and_gate_delay:3 ~or_gate_delay:5 ()
 @end example
 
 @noindent
@@ -1978,7 +1981,13 @@ let accept_action_procedure proc =
 @subsubheading Implementing the agenda
 
 Finally, we give details of the agenda data structure, which holds the
-procedures that are scheduled for future execution.
+procedures that are scheduled for future execution.@footnote{OCaml 5.4 added
+the @code{Pqueue} module, heap-backed priority queues via
+@code{Pqueue.MakeMin}, with @code{pop_min} and @code{min_elt}; equal
+priorities pop in unspecified order.  A priority queue could serve as an
+alternative to the hand-built agenda below, but the main text keeps the
+hand-built agenda because the book's deterministic time-order story is the
+lesson.}
 
 The agenda is made up of @newterm{time segments}.  Each time segment is a pair
 consisting of a number (the time) and a queue (see @ref{Exercise 3.32}) that

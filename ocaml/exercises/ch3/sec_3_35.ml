@@ -1,12 +1,9 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from the Scheme program of SICP section 3.3 exercise 3.35 *)
 
 (* The pending scaffold of the solution with the same name under
    solutions/ch3: every entry raises the pending marker until the
    exercise is solved. *)
-
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 3.3 exercise 3.35 *)
 
 (** Exercise 3.35: the squarer as a primitive constraint. *)
 
@@ -21,8 +18,8 @@
 
 (** [negative_raises ()] is whether setting b to a negative value
     raises [Invalid_argument]. *)
-let isqrt = raise Sicp_common.Pending.Pending_solution
+let isqrt _v = raise Sicp_common.Pending.Pending_solution
 
-let squarer = raise Sicp_common.Pending.Pending_solution
-let ex_3_35 = raise Sicp_common.Pending.Pending_solution
-let negative_raises = raise Sicp_common.Pending.Pending_solution
+let squarer _a _b = raise Sicp_common.Pending.Pending_solution
+let ex_3_35 () = raise Sicp_common.Pending.Pending_solution
+let negative_raises () = raise Sicp_common.Pending.Pending_solution

@@ -1,12 +1,9 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from the Scheme program of SICP section 3.3 exercise 3.13 *)
 
 (* The pending scaffold of the solution with the same name under
    solutions/ch3: every entry raises the pending marker until the
    exercise is solved. *)
-
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 3.3 exercise 3.13 *)
 
 (** Exercise 3.13 (and the edition's addition 3.13a): [make_cycle]
     closes the last pair onto the first; the addition prints cyclic
@@ -30,9 +27,9 @@
 
 (** [ex_3_13a ()] is [(the printed form of the (a b c) ring, of the
     (a b) ring, and of the plain list (a b))]. *)
-let make_cycle = raise Sicp_common.Pending.Pending_solution
+let make_cycle _x = raise Sicp_common.Pending.Pending_solution
 
-let last_pair_bounded = raise Sicp_common.Pending.Pending_solution
-let ex_3_13 = raise Sicp_common.Pending.Pending_solution
-let show_cycle = raise Sicp_common.Pending.Pending_solution
-let ex_3_13a = raise Sicp_common.Pending.Pending_solution
+let last_pair_bounded _n _x = raise Sicp_common.Pending.Pending_solution
+let ex_3_13 () = raise Sicp_common.Pending.Pending_solution
+let show_cycle ?fuel:_ _o = raise Sicp_common.Pending.Pending_solution
+let ex_3_13a () = raise Sicp_common.Pending.Pending_solution

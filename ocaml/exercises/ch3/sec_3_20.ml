@@ -1,12 +1,9 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from the Scheme program of SICP section 3.3 exercise 3.20 *)
 
 (* The pending scaffold of the solution with the same name under
    solutions/ch3: every entry raises the pending marker until the
    exercise is solved. *)
-
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 3.3 exercise 3.20 *)
 
 (** Exercise 3.20, replaced for this edition: tracing the aliasing the
     procedural pairs create, by physical equality of the objects the
@@ -26,6 +23,6 @@ type 'a proc_pair =
 (** [ex_3_20 ()] is [(the printed value of (car x) after (set-car! (cdr
     z) 17), whether both slots of z physically hold the same object
     as x)] for x = (proc_cons 1 2) and z = (proc_cons x x). *)
-let proc_cons = raise Sicp_common.Pending.Pending_solution
+let proc_cons _x _y = raise Sicp_common.Pending.Pending_solution
 
-let ex_3_20 = raise Sicp_common.Pending.Pending_solution
+let ex_3_20 () = raise Sicp_common.Pending.Pending_solution

@@ -1,12 +1,9 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from the Scheme program of SICP section 3.3 exercise 3.25 *)
 
 (* The pending scaffold of the solution with the same name under
    solutions/ch3: every entry raises the pending marker until the
    exercise is solved. *)
-
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 3.3 exercise 3.25 *)
 
 (** Exercise 3.25: tables under an arbitrary number of keys. *)
 
@@ -21,7 +18,7 @@
     [a; b], the value under [a; b; c] after an overwrite, and the
     value under [a; b; d] which the overwrite left alone)]; the
     never-inserted lookup answers [None]. *)
-let lookup = raise Sicp_common.Pending.Pending_solution
+let lookup _keys _table = raise Sicp_common.Pending.Pending_solution
 
-let insert = raise Sicp_common.Pending.Pending_solution
-let ex_3_25 = raise Sicp_common.Pending.Pending_solution
+let insert _keys _value _table = raise Sicp_common.Pending.Pending_solution
+let ex_3_25 () = raise Sicp_common.Pending.Pending_solution

@@ -1,12 +1,9 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from the Scheme program of SICP section 3.3 exercise 3.30 *)
 
 (* The pending scaffold of the solution with the same name under
    solutions/ch3: every entry raises the pending marker until the
    exercise is solved. *)
-
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 3.3 exercise 3.30 *)
 
 (** Exercise 3.30: the ripple-carry adder for n-bit numbers. *)
 
@@ -23,9 +20,11 @@
 
 (** [ex_3_30 ()] is [((5 + 3 on four bits), (7 + 7 on four bits), (15 +
     1 on four bits))], each answer the sum value with its carry. *)
-let ripple_carry_adder = raise Sicp_common.Pending.Pending_solution
+let ripple_carry_adder _sim _a_list _b_list _s_list _c =
+  raise Sicp_common.Pending.Pending_solution
+;;
 
-let bits_of = raise Sicp_common.Pending.Pending_solution
-let value_of = raise Sicp_common.Pending.Pending_solution
-let add = raise Sicp_common.Pending.Pending_solution
-let ex_3_30 = raise Sicp_common.Pending.Pending_solution
+let bits_of _value _width = raise Sicp_common.Pending.Pending_solution
+let value_of _bits = raise Sicp_common.Pending.Pending_solution
+let add _sim _a_value _b_value _width = raise Sicp_common.Pending.Pending_solution
+let ex_3_30 () = raise Sicp_common.Pending.Pending_solution

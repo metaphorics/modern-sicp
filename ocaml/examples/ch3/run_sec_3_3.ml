@@ -142,7 +142,7 @@ let () =
   (match
      match f.set_value 212 K.User with
      | () -> false
-     | exception Invalid_argument _ -> true
+     | exception Invalid_argument msg -> msg = "Contradiction (77 212)"
    with
    | true -> ()
    | false -> failwith "expected a contradiction");

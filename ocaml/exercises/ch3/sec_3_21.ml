@@ -1,12 +1,9 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from the Scheme program of SICP section 3.3 exercise 3.21 *)
 
 (* The pending scaffold of the solution with the same name under
    solutions/ch3: every entry raises the pending marker until the
    exercise is solved. *)
-
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 3.3 exercise 3.21 *)
 
 (** Exercise 3.21: the naive pointer rendering versus [print_queue]. *)
 
@@ -20,7 +17,7 @@
     operations, the print_queue answer afterwards, whether the queue is
     empty, the naive view at the end)], reproducing the statement's
     transcript and Eva Lu's explanation. *)
-let ben_view = raise Sicp_common.Pending.Pending_solution
+let ben_view _q = raise Sicp_common.Pending.Pending_solution
 
-let print_queue = raise Sicp_common.Pending.Pending_solution
-let ex_3_21 = raise Sicp_common.Pending.Pending_solution
+let print_queue _q = raise Sicp_common.Pending.Pending_solution
+let ex_3_21 () = raise Sicp_common.Pending.Pending_solution

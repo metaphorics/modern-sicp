@@ -1,7 +1,7 @@
 (library
  (name sicp_ch4)
  (libraries sicp_common)
- (modules sec_4_1))
+ (modules sec_4_1 sec_4_2))
 
 (executable
  (name run_sec_4_1)
@@ -12,3 +12,13 @@
  (alias runtest)
  (action
   (run ./run_sec_4_1.exe)))
+
+(executable
+ (name run_sec_4_2)
+ (modules run_sec_4_2)
+ (libraries sicp_ch4 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_4_2.exe)))

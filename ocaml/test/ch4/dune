@@ -17,3 +17,13 @@
  (alias runtest)
  (action
   (run ./test_sec_4_1.exe)))
+
+(executable
+ (name test_sec_4_2)
+ (modules test_sec_4_2)
+ (libraries sicp_ch4_solutions sicp_ch4 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_4_2.exe)))

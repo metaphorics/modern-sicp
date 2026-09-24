@@ -72,5 +72,9 @@
   sec_2_69
   sec_2_70
   sec_2_71
-  sec_2_72)
+  sec_2_72
+  sec_2_73
+  sec_2_74
+  sec_2_75
+  sec_2_76)
  (libraries sicp_common))

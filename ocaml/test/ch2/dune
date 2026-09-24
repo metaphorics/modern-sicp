@@ -58,3 +58,13 @@
  (alias runtest)
  (action
   (run ./prop_sec_2_70.exe)))
+
+(executable
+ (name test_sec_2_4)
+ (modules test_sec_2_4)
+ (libraries sicp_ch2_solutions alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_2_4.exe)))

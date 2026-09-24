@@ -231,8 +231,8 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 2.73 | Data-directed deriv | A: enum for expression variants replaces type tags | A: variant types replace tags and dispatch tables | A: discriminated union replaces type tags | A: sealed hierarchy replaces type tags | add atan rule via new variant |
-| 2.74 | Division records | A: division record schemas need per-division adapters | A: first-class modules model division-specific records | A: Schema variants model division record formats | A: sealed interfaces model division record formats | add salary-records division with schema |
+| 2.73 | Data-directed deriv | A: enum for expression variants replaces type tags | A: variant types replace tags and dispatch tables | A: discriminated union replaces type tags | A: sealed hierarchy replaces type tags | add atan rule via new variant (chosen: rust) |
+| 2.74 | Division records | A: division record schemas need per-division adapters | A: first-class modules model division-specific records | A: Schema variants model division record formats | A: sealed interfaces model division record formats | add salary-records division with schema (chosen: ocaml) |
 | 2.75 | Message-passing make-from-mag-ang | A: message dispatch needs closure objects per instance | A: message passing natural with closures | A: message dispatch needs closure returning dispatch | A: message dispatch needs function types per instance | |
 | 2.76 | Adding types versus operations | A: compare trait objects, enums, visitor dispatch | A: compare variants, functors, first-class modules | A: compare unions, Schema tags, method objects | A: compare sealed hierarchies, extension dispatch, interfaces | add type via module extension |
 

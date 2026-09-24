@@ -1,0 +1,14 @@
+(library
+ (name sicp_ch3)
+ (libraries sicp_common sicp_ch1)
+ (modules sec_3_1))
+
+(executable
+ (name run_sec_3_1)
+ (modules run_sec_3_1)
+ (libraries sicp_ch3 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_3_1.exe)))

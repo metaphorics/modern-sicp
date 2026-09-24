@@ -322,7 +322,7 @@ Cell key: `T` translate; `A: reason` adapt; `R: topic` replace.
 | 3.4 | lockout after seven bad passwords | T | T | T | T | lockout with audit log |
 | 3.5 | Monte Carlo integration via rand | T | T | T | T | seeded rand for reproducible tests |
 | 3.6 | rand with generate, reset messages | T | T | T | T |  |
-| 3.7 | make-joint shares one account | T | T | T | T | multi-signature joint account |
+| 3.7 | make-joint shares one account | T | T | T | T | multi-signature joint account (chosen: ocaml — implemented as 3.7a, read-only account capability by record projection, not the literal "multi-signature joint account" text; see report) |
 | 3.8 | expose operand evaluation order | A: order defined; exercise verifies it | T | A: order defined; exercise verifies it | A: order defined; exercise verifies it | operand order in nested calls |
 
 Notes: local state in a single closure works everywhere (Rust `impl FnMut`, OCaml `ref`, TS `let`, Kotlin `var`). OCaml keeps 3.8 as T because OCaml operand order is unspecified, matching Scheme's premise. Rust 3.7 returns `Box<dyn FnMut>` for wrappability.

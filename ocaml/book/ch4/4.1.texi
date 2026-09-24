@@ -697,7 +697,7 @@ expressions, then false is returned.
 
 Install @code{and} and @code{or} as new special forms for the evaluator by
 defining appropriate syntax procedures and evaluation procedures
-@code{eval-and} and @code{eval-or}.  Alternatively, show how to implement
+@code{eval_and} and @code{eval_or}.  Alternatively, show how to implement
 @code{and} and @code{or} as derived expressions.
 @end quotation
 
@@ -739,7 +739,7 @@ is equivalent to
  ⟨@var{expₙ}⟩)
 @end example
 
-Implement a syntactic transformation @code{let->combination} that reduces
+Implement a syntactic transformation @code{let_to_combination} that reduces
 evaluating @code{let} expressions to evaluating combinations of the type shown
 above, and add the appropriate clause to @code{eval} to handle @code{let}
 expressions.
@@ -760,13 +760,14 @@ which all of the preceding bindings are visible.  For example
 
 @noindent
 returns 39.  Explain how a @code{let*} expression can be rewritten as a set of
-nested @code{let} expressions, and write a procedure @code{let*->nested-lets}
-that performs this transformation.  If we have already implemented @code{let}
-(@ref{Exercise 4.6}) and we want to extend the evaluator to handle @code{let*},
-is it sufficient to add a clause to @code{eval} whose action is
+nested @code{let} expressions, and write a procedure
+@code{let_star_to_nested_lets} that performs this transformation.  If we have
+already implemented @code{let} (@ref{Exercise 4.6}) and we want to extend the
+evaluator to handle @code{let*}, is it sufficient to add a clause to
+@code{eval} whose action is
 
-@example
-(eval (let*->nested-lets exp) env)
+@example ocaml
+let_star_to_nested_lets shape >>= fun rewritten -> eval rewritten env
 @end example
 
 @noindent
@@ -796,7 +797,7 @@ named @code{⟨}@var{var}@code{⟩}.  For example, the iterative Fibonacci proce
         (fib-iter (+ a b) a (- count 1)))))
 @end example
 
-Modify @code{let->combination} of @ref{Exercise 4.6} to also support named
+Modify @code{let_to_combination} of @ref{Exercise 4.6} to also support named
 @code{let}.
 @end quotation
 
@@ -991,8 +992,8 @@ alternative representation.
 
 @quotation
 @strong{@anchor{Exercise 4.12}Exercise 4.12:} The procedures
-@code{define-variable!}, @code{set-variable-value!} and
-@code{lookup-variable-value} can be expressed in terms of more abstract
+@code{define_variable_}, @code{set_variable_value_} and
+@code{lookup_variable_value} can be expressed in terms of more abstract
 procedures for traversing the environment structure.  Define abstractions that
 capture the common patterns and redefine the three procedures in terms of these
 abstractions.
@@ -1517,18 +1518,21 @@ the evaluator supports @code{let} (see @ref{Exercise 4.6}).
 @enumerate a
 
 @item
-Change @code{lookup-variable-value} (@ref{4.1.3}) to signal an error if
+Change @code{lookup_variable_value} (@ref{4.1.3}) to signal an error if
 the value it finds is the symbol @code{*unassigned*}.
 
 @item
-Write a procedure @code{scan-out-defines} that takes a procedure body and
+Write a procedure @code{scan_out_defines} that takes a procedure body and
 returns an equivalent one that has no internal definitions, by making the
 transformation described above.
 
 @item
-Install @code{scan-out-defines} in the interpreter, either in
-@code{make-procedure} or in @code{procedure-body} (see @ref{4.1.3}).
-Which place is better?  Why?
+Install @code{scan_out_defines} in the interpreter, either where compound
+procedures are constructed---the @code{Lambda} clause of @code{eval} and the
+@code{Define_function} clause of @code{eval_definition}, each building the
+procedure with @code{Value.compound}---or where the body is taken for
+evaluation, in the @code{Compound_procedure} branch of @code{apply_procedure}
+(see @ref{4.1.3}).  Which place is better?  Why?
 
 @end enumerate
 @end quotation
@@ -2007,25 +2011,29 @@ section to support the special form @code{let}.  (See @ref{Exercise 4.6}.)
 
 @quotation
 @strong{@anchor{Exercise 4.23}Exercise 4.23:} Alyssa P. Hacker doesn't
-understand why @code{analyze-sequence} needs to be so complicated.  All the
+understand why @code{analyze_sequence} needs to be so complicated.  All the
 other analysis procedures are straightforward transformations of the
-corresponding evaluation procedures (or @code{eval} clauses) in 
-@ref{4.1.1}.  She expected @code{analyze-sequence} to look like this:
+corresponding evaluation procedures (or @code{eval} clauses) in
+@ref{4.1.1}.  She expected @code{analyze_sequence} to look like this:
 
-@example
-(define (analyze-sequence exps)
-  (define (execute-sequence procs env)
-    (cond ((null? (cdr procs)) 
-           ((car procs) env))
-          (else ((car procs) env)
-                (execute-sequence 
-                 (cdr procs) env))))
-  (let ((procs (map analyze exps)))
-    (if (null? procs)
-        (error "Empty sequence: 
-                ANALYZE"))
-    (lambda (env) 
-      (execute-sequence procs env))))
+@example ocaml
+let analyze_sequence exps =
+  let rec execute_sequence procs env =
+    match procs with
+    | [ proc ] -> proc env
+    | proc :: rest -> proc env >>= fun _ -> execute_sequence rest env
+  in
+  let rec collect = function
+    | [] -> Ok []
+    | exp :: rest ->
+      analyze exp >>= fun proc ->
+      collect rest >>= fun procs -> Ok (proc :: procs)
+  in
+  collect exps
+  >>= fun procs ->
+  if procs = []
+  then Error (Eval_error.Invalid_form "the body of the sequence is empty")
+  else Ok (fun env -> execute_sequence procs env)
 @end example
 
 Eva Lu Ator explains to Alyssa that the version in the text does more of the
@@ -2035,7 +2043,7 @@ built in, loops through the procedures in order to call them: In effect,
 although the individual expressions in the sequence have been analyzed, the
 sequence itself has not been.
 
-Compare the two versions of @code{analyze-sequence}.  For example, consider the
+Compare the two versions of @code{analyze_sequence}.  For example, consider the
 common case (typical of procedure bodies) where the sequence has just one
 expression.  What work will the execution procedure produced by Alyssa's
 program do?  What about the execution procedure produced by the program in the

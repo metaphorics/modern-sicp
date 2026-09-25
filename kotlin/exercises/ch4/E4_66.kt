@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.66: to be solved in kotlin/solutions/4/E4_66.kt. */
+/** Exercise 4.66: to be solved in kotlin/solutions/ch4/E4_66.kt. */
 public fun salarySums(): List<String> = throw PendingSolution()

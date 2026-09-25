@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.64: to be solved in kotlin/solutions/4/E4_64.kt. */
+/** Exercise 4.64: to be solved in kotlin/solutions/ch4/E4_64.kt. */
 public fun louisOutranked(): List<String> = throw PendingSolution()

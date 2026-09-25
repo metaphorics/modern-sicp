@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.63: to be solved in kotlin/solutions/4/E4_63.kt. */
+/** Exercise 4.63: to be solved in kotlin/solutions/ch4/E4_63.kt. */
 public fun genesisQueries(): List<String> = throw PendingSolution()

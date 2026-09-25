@@ -58,6 +58,12 @@ public class MergeAndSystem : QuerySystem() {
         val rest = mergeConjoin(restConjuncts(conjuncts), singletonStream(Frame.Empty))
         return flatmapFrames(
             { left ->
+                // The merge side is consumed only up to 1000 frames. The
+                // largest second-conjunct stream the pinned comparisons
+                // produce is the full job scan (9 frames), so the cap never
+                // binds there; it only bounds a runaway second stream from a
+                // hand-written query in the demo driver instead of merging
+                // forever.
                 listStream(rest.take(1000).mapNotNull { right -> mergeFrames(left, right) })
             },
             first,

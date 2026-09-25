@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.72: to be solved in kotlin/solutions/4/E4_72.kt. */
+/** Exercise 4.72: to be solved in kotlin/solutions/ch4/E4_72.kt. */
 public fun interleaveVersusAppend(): List<String> = throw PendingSolution()

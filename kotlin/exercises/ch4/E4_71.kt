@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.71: to be solved in kotlin/solutions/4/E4_71.kt. */
+/** Exercise 4.71: to be solved in kotlin/solutions/ch4/E4_71.kt. */
 public fun delayDebate(): List<String> = throw PendingSolution()

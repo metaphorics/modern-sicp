@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.79: to be solved in kotlin/solutions/4/E4_79.kt. */
+/** Exercise 4.79: to be solved in kotlin/solutions/ch4/E4_79.kt. */
 public fun scopedVersusRenaming(): List<String> = throw PendingSolution()

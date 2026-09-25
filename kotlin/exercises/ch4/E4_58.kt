@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.58: to be solved in kotlin/solutions/4/E4_58.kt. */
+/** Exercise 4.58: to be solved in kotlin/solutions/ch4/E4_58.kt. */
 public fun bigShotQuery(): List<String> = throw PendingSolution()

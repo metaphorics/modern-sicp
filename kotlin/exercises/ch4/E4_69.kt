@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.69: to be solved in kotlin/solutions/4/E4_69.kt. */
+/** Exercise 4.69: to be solved in kotlin/solutions/ch4/E4_69.kt. */
 public fun greatsQueries(): List<String> = throw PendingSolution()

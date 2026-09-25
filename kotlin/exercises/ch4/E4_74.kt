@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.74: to be solved in kotlin/solutions/4/E4_74.kt. */
+/** Exercise 4.74: to be solved in kotlin/solutions/ch4/E4_74.kt. */
 public fun simpleFlatmapDemo(): List<String> = throw PendingSolution()

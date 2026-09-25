@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.76: to be solved in kotlin/solutions/4/E4_76.kt. */
+/** Exercise 4.76: to be solved in kotlin/solutions/ch4/E4_76.kt. */
 public fun mergeAndDemos(): List<String> = throw PendingSolution()

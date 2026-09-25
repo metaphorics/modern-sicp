@@ -2001,8 +2001,14 @@ public fun qeval(
 @end example
 
 @noindent
-@code{typeOf} and @code{contentsOf}, defined in @ref{4.4.4.7}, implement
-the abstract syntax of the special forms.
+Dispatch is by head symbol: @code{getQuery} looks up the symbol in the
+query's @code{car} in the table that @code{putQuery} installs for each
+special form below, and the handler it returns receives the
+@code{cdr}.  This folds the abstract-syntax role of the book's
+@code{type} and @code{contents} (@ref{4.4.4.7}) into the guard of
+@code{qeval} itself: a query that is not a pair with a symbol head, or
+whose head is not in the table, falls back to @code{simpleQuery}
+instead of raising.
 
 @subsubheading Simple queries
 

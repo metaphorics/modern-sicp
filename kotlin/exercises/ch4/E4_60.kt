@@ -5,5 +5,5 @@ package sicp.ch4.exercises
 
 import sicp.runtime.PendingSolution
 
-/** Exercise 4.60: to be solved in kotlin/solutions/4/E4_60.kt. */
+/** Exercise 4.60: to be solved in kotlin/solutions/ch4/E4_60.kt. */
 public fun livesNearQueries(): List<String> = throw PendingSolution()

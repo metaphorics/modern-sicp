@@ -632,7 +632,7 @@ Editorial calls that would change the output if reversed:
 | 5.9 | forbid labels as operation operands | T | T | T | T |  |
 | 5.10 | new surface syntax, isolated syntax procedures | T | T | T | T |  |
 | 5.11 | three save and restore disciplines | T | T | T | T |  |
-| 5.12 | assembler collects instruction and register summary | T | T | T | T | report instruction counts by type |
+| 5.12 | assembler collects instruction and register summary | T | T | T | T | report instruction counts by type (chosen: kotlin) |
 | 5.13 | derive register set from controller text | T | T | T | T |  |
 | 5.14 | measure pushes and depth for factorial | T | T | T | T |  |
 | 5.15 | instruction counting in machine model | T | T | T | T | alert when count exceeds a budget |

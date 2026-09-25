@@ -95,17 +95,20 @@ public class QueryAmbEvaluator(
 
     private fun disjoinExec(disjuncts: List<Value>): AmbExec {
         if (disjuncts.isEmpty()) return { _, _ -> throw AmbFail }
-        val entryFrame = frame
-        val alternatives: List<AmbExec> =
-            disjuncts.map { disjunct -> restartFrom(entryFrame, analyzeQuery(disjunct)) }
-        return { env, succeed -> deliverChoice(alternatives, env, succeed) }
+        val alternatives: List<AmbExec> = disjuncts.map { analyzeQuery(it) }
+        return { env, succeed ->
+            val entryFrame = frame
+            deliverChoice(alternatives.map { restartFrom(entryFrame, it) }, env, succeed)
+        }
     }
 
-    /** Each disjunct runs from the frame the or was evaluated in: on
-     * choice-point re-entry after a sibling disjunct exhausted, the
-     * shared var still holds the sibling's last binding, which would
-     * filter this disjunct's matches away. (`and` wants the sequential
-     * flow the shared var provides; only or re-entry restores.) */
+    /** Each disjunct runs from the frame captured when the or is
+     * delivered -- its true runtime entry frame. The wrapper restores
+     * on every entry, so on choice-point re-entry after a sibling
+     * disjunct exhausted, the shared var no longer holds the sibling's
+     * last binding, which would filter this disjunct's matches away.
+     * (`and` keeps the sequential flow of the shared var between
+     * conjuncts.) */
     private fun restartFrom(
         entryFrame: Frame,
         exec: AmbExec,

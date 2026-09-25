@@ -1874,6 +1874,15 @@ Compile this procedure and compare the resulting code with that produced for
 @code{factorial}.  Explain any differences you find.  Does either program
 execute more efficiently than the other?
 @end quotation
+@quotation
+@strong{@anchor{Exercise 5.33a}Exercise 5.33a:} @emph{Hand-optimize the
+alternative version's compiled code, and measure the win.} Take the
+compilation of @code{factorial-alt} produced for @ref{Exercise 5.33} and
+rewrite it by hand: fold the constant operands straight into the argument
+lists, drop the saves of registers whose values are re-derivable, and
+remove the labels nothing references. Run both versions on the machine
+and report the executed-instruction counts.
+@end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.34}Exercise 5.34:} Compile the iterative factorial
@@ -2709,3 +2718,38 @@ into sequences of C instructions.  Compile the metacircular evaluator of
 @ref{4.1} to produce a Scheme interpreter written in C.
 @end quotation
 
+
+@strong{Edition notes.} In this edition the compiler of this section is
+implemented in OCaml in @code{examples/ch5/sec_5_5.ml}, and the
+following documented deviations from the book's listings apply.
+
+In this edition labels used as operation inputs are spelled
+@code{(const l)} rather than @code{(label l)}, because the controller
+language of @ref{5.1} forbids labels as operation inputs (the pin of
+exercise 5.9). List and string constants ride in a compile-time
+constant table: the book's parameter list @code{(const (x))} becomes
+one @code{(const x)} input per parameter, and a quotation such as
+@code{(const 'x)} becomes @code{(const compile-time-constant-N)},
+naming the datum built by the emitted initializer.
+
+In this edition a compiled procedure object is a value tagged
+@code{compiled-procedure} whose second element indexes a machine-side
+entry-and-environment table, so that the object world stays free of
+machine addresses. The 5.5.7 machine's environments are identified by
+id symbols: @code{extend-environment} registers the new frame list and
+answers an id, and the lookup, set, and define operations resolve ids
+through that machine's own table.
+
+In this edition the compound-call branch of exercise 5.47 routes the
+apply through the @code{unev} register (dead at every call site)
+instead of declaring the book's @code{compapp} register, because the
+machine's register set is the @ref{5.4} substrate's.
+
+In this edition exercises 5.51 and 5.52 are realized as embedded C
+programs built and run by the system @code{cc}. The 5.51 translation
+reads the driver's program from the file named by @code{argv[1]}; the
+5.52 backend emits the runtime, the compile-time constant initializer,
+and the compiled program as one C file. Both answer the book's
+sessions: 5.51 prints @code{ok} and @code{120} for the factorial
+session, and 5.52's C-compiled metacircular answers @code{120} for
+@code{(m-eval '(factorial 5) the-global-environment)}.

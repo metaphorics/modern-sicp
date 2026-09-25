@@ -1,6 +1,6 @@
 (library
  (name sicp_ch5_solutions)
- (libraries sicp_common sicp_ch5)
+ (libraries sicp_common sicp_ch5 str unix)
  (modules
   sec_5_1
   sec_5_2
@@ -31,4 +31,26 @@
   sec_5_27
   sec_5_28
   sec_5_29
-  sec_5_30))
+  sec_5_30
+  sec_5_31
+  sec_5_32
+  sec_5_33
+  sec_5_34
+  sec_5_35
+  sec_5_36
+  sec_5_37
+  sec_5_38
+  sec_5_39
+  sec_5_40
+  sec_5_41
+  sec_5_42
+  sec_5_43
+  sec_5_44
+  sec_5_45
+  sec_5_46
+  sec_5_47
+  sec_5_48
+  sec_5_49
+  sec_5_50
+  sec_5_51
+  sec_5_52))

@@ -31,6 +31,27 @@
   sec_5_27
   sec_5_28
   sec_5_29
+  sec_5_31
+  sec_5_32
+  sec_5_34
+  sec_5_35
+  sec_5_36
+  sec_5_37
+  sec_5_38
+  sec_5_39
+  sec_5_40
+  sec_5_41
+  sec_5_42
+  sec_5_43
+  sec_5_44
+  sec_5_45
+  sec_5_46
+  sec_5_47
+  sec_5_48
+  sec_5_49
+  sec_5_50
+  sec_5_51
+  sec_5_52
   sec_5_30))
 
 (executable
@@ -72,3 +93,13 @@
  (alias scaffold)
  (action
   (run ./scaffold_sec_5_4.exe)))
+
+(executable
+ (name scaffold_sec_5_5)
+ (modules scaffold_sec_5_5)
+ (libraries sicp_ch5_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_5_5.exe)))

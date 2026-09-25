@@ -57,7 +57,7 @@ Counts, summing to 8 per language: Rust 5 T / 2 A / 1 R; OCaml 7 / 0 / 1; TypeSc
 | 1.19 | transform squaring Fibonacci | A: integer width forces choice | A: 63-bit int overflows fast | A: number precision, use bigint | A: Long overflow, use BigInteger | 1.19a: probe overflow boundary of native integers (chosen: kotlin) |
 | 1.20 | normal order remainder count | R: count remainder calls in traced eager gcd | R: count remainder calls in traced eager gcd | R: count remainder calls in traced eager gcd | R: count remainder calls in traced eager gcd | |
 | 1.21 | smallest divisors of three numbers | T | T | T | T | |
-| 1.22 | timed prime search ranges | A: Instant replaces runtime | A: Sys.time replaces runtime | A: performance.now replaces runtime | A: System.nanoTime replaces runtime | 1.22a: time with warmup, report median timings |
+| 1.22 | timed prime search ranges | A: Instant replaces runtime | A: Sys.time replaces runtime | A: performance.now replaces runtime | A: System.nanoTime replaces runtime | 1.22a: time with warmup, report median timings (chosen: typescript) |
 | 1.23 | skip even divisors, remeasure | A: clock API as in 1.22 | A: clock API as in 1.22 | A: clock API as in 1.22 | A: clock API as in 1.22 | |
 | 1.24 | timed Fermat test | A: rand crate plus Instant | A: Random module plus Sys.time | A: Math.random plus performance.now | A: Random plus System.nanoTime | |
 | 1.25 | naive expmod critique | A: i128 overflows, debug panics | A: 63-bit overflow wraps silently | A: f64 precision, bigint slow | A: Long wraps, BigInteger slow | 1.25a: compare overflow behavior across build modes |
@@ -76,7 +76,7 @@ Counts, summing to 20 per language: Rust 10 T / 9 A / 1 R; OCaml 15 / 4 / 1; Typ
 | 1.31 | product abstraction, Wallis formula | A: iterative variant as loop | T | A: iterative variant as loop | T | |
 | 1.32 | accumulate general combiner | A: iterative variant as loop | T | A: iterative variant as loop | T | |
 | 1.33 | filtered accumulate with predicate | T | T | T | T | 1.33a: re-express filter and accumulate with fold (chosen: rust) |
-| 1.34 | apply procedure to itself | A: type checker rejects it | A: type checker rejects it | A: type checker rejects it | A: type checker rejects it | 1.34a: compare compile rejection with runtime failure |
+| 1.34 | apply procedure to itself | A: type checker rejects it | A: type checker rejects it | A: type checker rejects it | A: type checker rejects it | 1.34a: compare compile rejection with runtime failure (chosen: typescript) |
 | 1.35 | golden ratio fixed point | T | T | T | T | |
 | 1.36 | printed fixed-point iterations | T | T | T | T | |
 | 1.37 | continued fraction, both processes | A: iterative variant as loop | T | A: iterative variant as loop | T | 1.37a: find k for ten digits, note float limits |
@@ -404,7 +404,7 @@ Notes: Rust 3.47 is a natural fit: `AtomicBool::compare_exchange` is literally t
 | 3.56 | Hamming numbers via merge | T | T | T | T | Hamming numbers with uniqueness proof |
 | 3.57 | fib additions with memoized delay | T | T | T | T |  |
 | 3.58 | expand computes long division digits | T | T | T | T |  |
-| 3.59 | integrate-series, exp sin cos | T | T | T | T | differentiate series termwise |
+| 3.59 | integrate-series, exp sin cos | T | T | T | T | differentiate series termwise; chosen: kotlin |
 | 3.60 | mul-series convolution | T | T | T | T |  |
 | 3.61 | invert-unit-series | T | T | T | T |  |
 | 3.62 | div-series and tangent series | T | T | T | T |  |
@@ -488,10 +488,10 @@ Reading coverage: 65 of the 79 statements were read verbatim from the Texinfo th
 | 4.17 | extra frame from scan-out | T | T | T | T | 4.17a: print environment structure during evaluation |
 | 4.18 | alternative scan-out strategy | T | T | T | T | |
 | 4.19 | internal definition scoping debate | T | T | T | T | |
-| 4.20 | letrec as derived expression | T | T | T | T | 4.20a: add nested letrec shadowing error test |
+| 4.20 | letrec as derived expression | T | T | T | T | 4.20a: add nested letrec shadowing error test (chosen: kotlin) |
 | 4.21 | recursion without define | T | T | T | T | |
 | 4.22 | let in analyze evaluator | T | T | T | T | |
-| 4.23 | analyze-sequence comparison | T | T | T | T | 4.23a: count analysis invocations with a counter |
+| 4.23 | analyze-sequence comparison | T | T | T | T | 4.23a: count analysis invocations with a counter (chosen: rust) |
 | 4.24 | benchmark analysis versus execution | T | T | T | T | |
 
 Counts, summing to 24 per language: Rust 23 T / 1 A / 0 R; OCaml 24 / 0 / 0; TypeScript 23 / 1 / 0; Kotlin 23 / 1 / 0.
@@ -504,10 +504,10 @@ Counts, summing to 24 per language: Rust 23 T / 1 A / 0 R; OCaml 24 / 0 / 0; Typ
 | 4.26 | unless as special form debate | T | T | T | T | 4.26a: add when as derived expression |
 | 4.27 | lazy id with set! | T | T | T | T | |
 | 4.28 | forcing the operator | T | T | T | T | |
-| 4.29 | memoization speed difference | T | T | T | T | 4.29a: toggle memoization and count forcings |
+| 4.29 | memoization speed difference | T | T | T | T | 4.29a: toggle memoization and count forcings (chosen: ocaml) |
 | 4.30 | forcing in eval-sequence | T | T | T | T | |
 | 4.31 | lazy and memo parameter declarations | T | T | T | T | |
-| 4.32 | chapter 3 streams versus lazy lists | T | T | T | T | 4.32a: build lazy tree, force selectively |
+| 4.32 | chapter 3 streams versus lazy lists | T | T | T | T | 4.32a: build lazy tree, force selectively (chosen: rust) |
 | 4.33 | quote produces lazy lists | T | T | T | T | |
 | 4.34 | printing lazy pairs | T | T | T | T | |
 
@@ -526,13 +526,13 @@ Counts, summing to 10 per language: Rust 10 T / 0 A / 0 R; OCaml 10 / 0 / 0; Typ
 | 4.41 | ordinary program solves puzzle | A: ordinary host program, reword language | A: ordinary host program, reword language | A: ordinary host program, reword language | A: ordinary host program, reword language | 4.41a: compare host solver nodes with amb |
 | 4.42 | liars puzzle | T | T | T | T | |
 | 4.43 | yacht puzzle | T | T | T | T | |
-| 4.44 | eight queens puzzle | T | T | T | T | 4.44a: count backtracks per board size |
+| 4.44 | eight queens puzzle | T | T | T | T | 4.44a: count backtracks per board size (chosen: ocaml) |
 | 4.45 | five parses of ambiguous sentence | T | T | T | T | |
 | 4.46 | left-to-right operands in amb | T | T | T | T | |
 | 4.47 | Louis's recursive parse-verb-phrase | T | T | T | T | 4.47a: compare parse counts before after change |
 | 4.48 | extend grammar | T | T | T | T | |
 | 4.49 | sentence generation | T | T | T | T | |
-| 4.50 | ramble random choice | T | T | T | T | 4.50a: seed host RNG for reproducible ramble |
+| 4.50 | ramble random choice | T | T | T | T | 4.50a: seed host RNG for reproducible ramble (chosen: rust) |
 | 4.51 | permanent-set! | T | T | T | T | |
 | 4.52 | if-fail | T | T | T | T | |
 | 4.53 | permanent-set! with if-fail | T | T | T | T | 4.53a: predict, then verify, permanent-set! interaction |
@@ -563,7 +563,7 @@ Counts, summing to 20 per language: Rust 19 T / 1 A / 0 R; OCaml 19 / 1 / 0; Typ
 | 4.71 | explicit delay in simple-query | T | T | T | T | 4.71a: find query where undelayed version diverges |
 | 4.72 | interleave versus append | T | T | T | T | |
 | 4.73 | delay in flatten-stream | T | T | T | T | |
-| 4.74 | simple-stream-flatmap | T | T | T | T | 4.74a: measure frame counts, old versus simple |
+| 4.74 | simple-stream-flatmap | T | T | T | T | 4.74a: measure frame counts, old versus simple (chosen: ocaml) |
 | 4.75 | unique special form | T | T | T | T | |
 | 4.76 | merging frames for and | T | T | T | T | |
 | 4.77 | delayed filtering for not | T | T | T | T | 4.77a: test delayed filter on partial bindings |

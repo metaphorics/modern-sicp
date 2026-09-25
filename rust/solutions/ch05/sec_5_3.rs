@@ -41,7 +41,7 @@ mod ex_5_03 {
         reason = "the pins reproduce the model's printed values verbatim"
     )]
     fn ex_5_03() {
-        // x = 9 converges to 3.00009155413138 in five improvements;
+        // x = 9 converges to 3.00009155413138 in four improvements;
         // the next test's |guess^2 - x| is below 0.001.
         let nine_p = sqrt_primitive().run(&[("x", Value::Int(9))]).expect("run");
         let nine_e = sqrt_expanded().run(&[("x", Value::Int(9))]).expect("run");

@@ -620,7 +620,7 @@ Editorial calls that would change the output if reversed:
 | 5.2 | write iterative factorial controller sequence | T | T | T | T |  |
 | 5.3 | sqrt machine via Newton's method, two stages | T | T | T | T |  |
 | 5.4 | controller sequences for two expt machines | T | T | T | T |  |
-| 5.5 | hand-simulate factorial and fib machines | T | T | T | T | annotate each restore with its matching save |
+| 5.5 | hand-simulate factorial and fib machines | T | T | T | T | annotate each restore with its matching save (chosen: rust) |
 | 5.6 | remove redundant save and restore | T | T | T | T |  |
 
 ### Section 5.2, the simulator (13 rows)

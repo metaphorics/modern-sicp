@@ -43,21 +43,22 @@ Let us begin by assuming that we already have a way of constructing a rational
 number from a numerator and a denominator.  We also assume that, given a
 rational number, we have a way of extracting (or selecting) its numerator and
 its denominator.  Let us further assume that the constructor and selectors are
-available as procedures:
+available as procedures.  In this edition the rational number is a pair of the
+host's exact integers, named @code{Rat} in the section module:
 
 @itemize @bullet
 
 @item
-@code{(make-rat ⟨@var{n}⟩ ⟨@var{d}⟩)} returns the rational number whose numerator 
-is the integer @code{⟨@var{n}⟩} and whose denominator is the integer 
+@code{makeRat(⟨@var{n}⟩, ⟨@var{d}⟩)} returns the rational number whose numerator
+is the integer @code{⟨@var{n}⟩} and whose denominator is the integer
 @code{⟨@var{d}⟩}.
 
 @item
-@code{(numer ⟨@var{x}⟩)} returns the numerator of the rational number 
+@code{numer(⟨@var{x}⟩)} returns the numerator of the rational number
 @code{⟨@var{x}⟩}.
 
 @item
-@code{(denom ⟨@var{x}⟩)} returns the denominator of the rational number 
+@code{denom(⟨@var{x}⟩)} returns the denominator of the rational number
 @code{⟨@var{x}⟩}.
 
 @end itemize
@@ -65,7 +66,7 @@ is the integer @code{⟨@var{n}⟩} and whose denominator is the integer
 @noindent
 We are using here a powerful strategy of synthesis: @newterm{wishful thinking}.
 We haven't yet said how a rational number is represented, or how the procedures
-@code{numer}, @code{denom}, and @code{make-rat} should be implemented.  Even
+@code{numer}, @code{denom}, and @code{makeRat} should be implemented.  Even
 so, if we did have these three procedures, we could then add, subtract,
 multiply, divide, and test equality by using the following relations:
 @displaymath
@@ -75,8 +76,8 @@ multiply, divide, and test equality by using the following relations:
 {n_1 \over d_1} \times {n_2 \over d_2} 	&= {n_1 n_2 \over d_1 d_2}, \cr
 {n_1 \,/\, d_1} \over {n_2 \,/\, d_2} 	&= {n_1 d_2 \over d_1 n_2}, \cr
 {n_1 \over d_1} 			&= {n_2 \over d_2} \quad
-						{\rm\ if\ and\ only\ if\quad} 
-						n_1 d_2 = n_2 d_1. 
+						{\rm\ if\ and\ only\ if\quad}
+						n_1 d_2 = n_2 d_1.
 }
 @end displaymath
 @ifinfo
@@ -105,196 +106,201 @@ d_1   d_2
 
 @end ifinfo
 @noindent
-We can express these rules as procedures:
+We can express these rules as procedures.  The exact-integer pair keeps every
+product exact, so the formulas translate term for term:
 
-@lisp
-(define (add-rat x y)
-  (make-rat (+ (* (numer x) (denom y))
-               (* (numer y) (denom x)))
-            (* (denom x) (denom y))))
+@example typescript
+const addRat = (x: Rat, y: Rat): Rat =>
+  makeRat(numer(x) * denom(y) + numer(y) * denom(x), denom(x) * denom(y));
 
-(define (sub-rat x y)
-  (make-rat (- (* (numer x) (denom y))
-               (* (numer y) (denom x)))
-            (* (denom x) (denom y))))
+const subRat = (x: Rat, y: Rat): Rat =>
+  makeRat(numer(x) * denom(y) - numer(y) * denom(x), denom(x) * denom(y));
 
-(define (mul-rat x y)
-  (make-rat (* (numer x) (numer y))
-            (* (denom x) (denom y))))
+const mulRat = (x: Rat, y: Rat): Rat => makeRat(numer(x) * numer(y), denom(x) * denom(y));
 
-(define (div-rat x y)
-  (make-rat (* (numer x) (denom y))
-            (* (denom x) (numer y))))
+const divRat = (x: Rat, y: Rat): Rat => makeRat(numer(x) * denom(y), denom(x) * numer(y));
 
-(define (equal-rat? x y)
-  (= (* (numer x) (denom y))
-     (* (numer y) (denom x))))
-@end lisp
+const equalRat = (x: Rat, y: Rat): boolean => numer(x) * denom(y) === numer(y) * denom(x);
+@end example
 
 @noindent
 Now we have the operations on rational numbers defined in terms of the selector
-and constructor procedures @code{numer}, @code{denom}, and @code{make-rat}.
+and constructor procedures @code{numer}, @code{denom}, and @code{makeRat}.
 But we haven't yet defined these.  What we need is some way to glue together a
 numerator and a denominator to form a rational number.
 
 @subsubheading Pairs
 
-To enable us to implement the concrete level of our data abstraction, our
-language provides a compound structure called a @newterm{pair}, which can be
-constructed with the primitive procedure @code{cons}.  This procedure takes two
+To enable us to implement the concrete level of our data abstraction, this
+edition's language provides a compound structure called a @newterm{pair}: the
+host's readonly two-element tuple.  The constructor @code{cons} takes two
 arguments and returns a compound data object that contains the two arguments as
-parts.  Given a pair, we can extract the parts using the primitive procedures
-@code{car} and @code{cdr}.@footnote{The name @code{cons} stands for
+parts.  Given a pair, we can extract the parts using the selectors @code{car}
+and @code{cdr}.@footnote{The name @code{cons} stands for
 ``construct.''  The names @code{car} and @code{cdr} derive from the original
 implementation of Lisp on the IBM 704.  That machine had an addressing scheme
 that allowed one to reference the ``address'' and ``decrement'' parts of a
 memory location.  @code{Car} stands for ``Contents of Address part of
 Register'' and @code{cdr} (pronounced ``could-er'') stands for ``Contents of
-Decrement part of Register.''} Thus, we can use @code{cons}, @code{car}, and
-@code{cdr} as follows:
+Decrement part of Register.''} The whole glue is the host's tuple: @code{cons}
+builds it, and @code{car} and @code{cdr} read its two element positions, named
+so that the book's pair language reads the same:
 
-@lisp
-(define x (cons 1 2))
+@example typescript
+const cons = <A, B>(x: A, y: B): readonly [A, B] => [x, y];
 
-(car x)
-@i{1}
+const car = <A, B>(p: readonly [A, B]): A => p[0];
 
-(cdr x)
-@i{2}
-@end lisp
+const cdr = <A, B>(p: readonly [A, B]): B => p[1];
+@end example
+
+@noindent
+Thus, we can use @code{cons}, @code{car}, and @code{cdr} as follows:
+
+@example typescript
+const x = cons(1, 2);
+
+car(x);
+// => 1
+
+cdr(x);
+// => 2
+@end example
 
 @noindent
 Notice that a pair is a data object that can be given a name and manipulated,
 just like a primitive data object.  Moreover, @code{cons} can be used to form
 pairs whose elements are pairs, and so on:
 
-@lisp
-(define x (cons 1 2))
-(define y (cons 3 4))
-(define z (cons x y))
+@example typescript
+const x = cons(1, 2);
+const y = cons(3, 4);
+const z = cons(x, y);
 
-(car (car z))
-@i{1}
+car(car(z));
+// => 1
 
-(car (cdr z))
-@i{3}
-@end lisp
+car(cdr(z));
+// => 3
+@end example
 
 @noindent
 In @ref{2.2} we will see how this ability to combine pairs means that
 pairs can be used as general-purpose building blocks to create all sorts of
 complex data structures.  The single compound-data primitive @newterm{pair},
-implemented by the procedures @code{cons}, @code{car}, and @code{cdr}, is the
-only glue we need.  Data objects constructed from pairs are called
+the host's tuple built by @code{cons} and read by @code{car} and @code{cdr},
+is the only glue we need.  Data objects constructed from pairs are called
 @newterm{list-structured} data.
 
 @subsubheading Representing rational numbers
 
 Pairs offer a natural way to complete the rational-number system.  Simply
 represent a rational number as a pair of two integers: a numerator and a
-denominator.  Then @code{make-rat}, @code{numer}, and @code{denom} are readily
-implemented as follows:@footnote{Another way to define the selectors and
-constructor is
+denominator.  Then @code{makeRat}, @code{numer}, and @code{denom} are readily
+implemented as follows:@footnote{Another way to define the constructor and
+selectors is
 
-@lisp
-(define make-rat cons)
-(define numer car)
-(define denom cdr)
-@end lisp
+@example typescript
+const makeRat: (n: bigint, d: bigint) => Rat = cons;
 
-The first definition associates the name @code{make-rat} with the value of the
-expression @code{cons}, which is the primitive procedure that constructs pairs.
-Thus @code{make-rat} and @code{cons} are names for the same primitive
-constructor.
+const numer: (x: Rat) => bigint = car;
+const denom: (x: Rat) => bigint = cdr;
+@end example
+
+The first definition associates the name @code{makeRat} with the value of the
+expression @code{cons}, which is the constructor that builds pairs.  Thus
+@code{makeRat} and @code{cons} are names for the same constructor.
 
 Defining selectors and constructors in this way is efficient: Instead of
-@code{make-rat} @emph{calling} @code{cons}, @code{make-rat} @emph{is}
-@code{cons}, so there is only one procedure called, not two, when
-@code{make-rat} is called.  On the other hand, doing this defeats debugging
-aids that trace procedure calls or put breakpoints on procedure calls: You may
-want to watch @code{make-rat} being called, but you certainly don't want to
-watch every call to @code{cons}.
+@code{makeRat} @emph{calling} @code{cons}, @code{makeRat} @emph{is}
+@code{cons}, so there is only one function called, not two, when
+@code{makeRat} is called.  On the other hand, doing this defeats debugging
+aids that trace calls or put breakpoints on calls: You may want to watch
+@code{makeRat} being called, but you certainly don't want to watch every call
+to @code{cons}.  We have chosen not to use this style of definition in this
+book: the named selectors of the main text also carry the
+numerator/denominator intent in their types, where the bare aliases would
+leave the two tuple positions unlabeled.}
 
-We have chosen not to use this style of definition in this book.}
+@example typescript
+const makeRat = (n: bigint, d: bigint): Rat => cons(n, d);
 
-@lisp
-(define (make-rat n d) (cons n d))
-(define (numer x) (car x))
-(define (denom x) (cdr x))
-@end lisp
+const numer = (x: Rat): bigint => x[0];
+
+const denom = (x: Rat): bigint => x[1];
+@end example
 
 @noindent
 Also, in order to display the results of our computations, we can print
 rational numbers by printing the numerator, a slash, and the
-denominator:@footnote{@code{Display} is the Scheme primitive for printing data.
-The Scheme primitive @code{newline} starts a new line for printing.  Neither of
-these procedures returns a useful value, so in the uses of @code{print-rat}
-below, we show only what @code{print-rat} prints, not what the interpreter
-prints as the value returned by @code{print-rat}.}
+denominator:@footnote{In the Scheme original, @code{display} is the primitive
+for printing data and @code{newline} starts a new line, and neither returns a
+useful value, so the interactions below show only what @code{print-rat}
+prints.  This edition has no printing primitive in its pure code:
+@code{printRat} renders the same three pieces --- the numerator, a slash, and
+the denominator --- into a string, and the interaction shows that string as
+the result.}
 
-@lisp
-(define (print-rat x)
-  (newline)
-  (display (numer x))
-  (display "/")
-  (display (denom x)))
-@end lisp
+@example typescript
+const printRat = (x: Rat): string => `@{numer(x)@}/@{denom(x)@}`;
+@end example
 
 @noindent
 Now we can try our rational-number procedures:
 
-@lisp
-(define one-half (make-rat 1 2))
-(print-rat one-half)
-@i{1/2}
+@example typescript
+const oneHalf = makeRat(1n, 2n);
+printRat(oneHalf);
+// => "1/2"
 
-(define one-third (make-rat 1 3))
-(print-rat
- (add-rat one-half one-third))
-@i{5/6}
+const oneThird = makeRat(1n, 3n);
+printRat(addRat(oneHalf, oneThird));
+// => "5/6"
 
-(print-rat
- (mul-rat one-half one-third))
-@i{1/6}
+printRat(mulRat(oneHalf, oneThird));
+// => "1/6"
 
-(print-rat
- (add-rat one-third one-third))
-@i{6/9}
-@end lisp
+printRat(addRat(oneThird, oneThird));
+// => "6/9"
+@end example
 
 @noindent
 As the final example shows, our rational-number implementation does not reduce
 rational numbers to lowest terms.  We can remedy this by changing
-@code{make-rat}. If we have a @code{gcd} procedure like the one in 
+@code{makeRat}. If we have a @code{gcd} procedure like the one in
 @ref{1.2.5} that produces the greatest common divisor of two integers, we can
 use @code{gcd} to reduce the numerator and the denominator to lowest terms
 before constructing the pair:
 
-@lisp
-(define (make-rat n d)
-  (let ((g (gcd n d)))
-    (cons (/ n g) 
-          (/ d g))))
-@end lisp
+@example typescript
+const makeRat = (n: bigint, d: bigint): Rat => @{
+  const g = gcd(n, d);
+  return [n / g, d / g];
+@};
+@end example
 
 @noindent
 Now we have
 
-@lisp
-(print-rat 
- (add-rat one-third one-third))
-@i{2/3}
-@end lisp
+@example typescript
+printRat(addRat(oneThird, oneThird));
+// => "2/3"
+@end example
 
 @noindent
 as desired.  This modification was accomplished by changing the constructor
-@code{make-rat} without changing any of the procedures (such as @code{add-rat}
-and @code{mul-rat}) that implement the actual operations.
+@code{makeRat} without changing any of the procedures (such as @code{addRat}
+and @code{mulRat}) that implement the actual operations.  (The section module,
+@code{packages/ch2/src/01-data-abstraction.ts}, carries the final reducing
+constructor as @code{makeRat} and keeps the first spelling, the bare pair, as
+@code{makeRatUnreduced}, so both halves of the story are runnable; the
+unreduced @code{6/9} interaction above is the addition formula on that bare
+pair.)
 
 @quotation
 @strong{@anchor{Exercise 2.1}Exercise 2.1:} Define a better version of
-@code{make-rat} that handles both positive and negative arguments.
-@code{Make-rat} should normalize the sign so that if the rational number is
+@code{makeRat} that handles both positive and negative arguments.
+@code{MakeRat} should normalize the sign so that if the rational number is
 positive, both the numerator and denominator are positive, and if the rational
 number is negative, only the numerator is negative.
 @end quotation
@@ -305,22 +311,22 @@ number is negative, only the numerator is negative.
 Before continuing with more examples of compound data and data abstraction, let
 us consider some of the issues raised by the rational-number example.  We
 defined the rational-number operations in terms of a constructor
-@code{make-rat} and selectors @code{numer} and @code{denom}.  In general, the
+@code{makeRat} and selectors @code{numer} and @code{denom}.  In general, the
 underlying idea of data abstraction is to identify for each type of data object
 a basic set of operations in terms of which all manipulations of data objects
 of that type will be expressed, and then to use only those operations in
 manipulating the data.
 
-We can envision the structure of the rational-number system as shown in 
-@ref{Figure 2.1}.  The horizontal lines represent @newterm{abstraction barriers} 
+We can envision the structure of the rational-number system as shown in
+@ref{Figure 2.1}.  The horizontal lines represent @newterm{abstraction barriers}
 that isolate different ``levels'' of the system.  At each level, the
 barrier separates the programs (above) that use the data abstraction from the
 programs (below) that implement the data abstraction.  Programs that use
 rational numbers manipulate them solely in terms of the procedures supplied
-``for public use'' by the rational-number package: @code{add-rat},
-@code{sub-rat}, @code{mul-rat}, @code{div-rat}, and @code{equal-rat?}. These,
+``for public use'' by the rational-number package: @code{addRat},
+@code{subRat}, @code{mulRat}, @code{divRat}, and @code{equalRat}. These,
 in turn, are implemented solely in terms of the constructor and selectors
-@code{make-rat}, @code{numer}, and @code{denom}, which themselves are
+@code{makeRat}, @code{numer}, and @code{denom}, which themselves are
 implemented in terms of pairs.  The details of how pairs are implemented are
 irrelevant to the rest of the rational-number package so long as pairs can be
 manipulated by the use of @code{cons}, @code{car}, and @code{cdr}.  In effect,
@@ -379,27 +385,32 @@ numbers to lowest terms is to perform the reduction whenever we access the
 parts of a rational number, rather than when we construct it.  This leads to
 different constructor and selector procedures:
 
-@lisp
-(define (make-rat n d)
-  (cons n d))
+@example typescript
+const makeRat = (n: bigint, d: bigint): Rat => cons(n, d);
 
-(define (numer x)
-  (let ((g (gcd (car x) (cdr x))))
-    (/ (car x) g)))
+const numer = (x: Rat): bigint => @{
+  const g = gcd(car(x), cdr(x));
+  return car(x) / g;
+@};
 
-(define (denom x)
-  (let ((g (gcd (car x) (cdr x))))
-    (/ (cdr x) g)))
-@end lisp
+const denom = (x: Rat): bigint => @{
+  const g = gcd(car(x), cdr(x));
+  return cdr(x) / g;
+@};
+@end example
 
 @noindent
-The difference between this implementation and the previous one lies in when we
+(The section module names this spelling @code{makeRatAtAccess},
+@code{numerAtAccess}, and @code{denomAtAccess}, since its own @code{makeRat}
+and selectors are the reducing and non-reducing construction-time pair already
+defined; the prose keeps the book's names for the narrative.)  The difference
+between this implementation and the previous one lies in when we
 compute the @code{gcd}.  If in our typical use of rational numbers we access
 the numerators and denominators of the same rational numbers many times, it
 would be preferable to compute the @code{gcd} when the rational numbers are
 constructed.  If not, we may be better off waiting until access time to compute
 the @code{gcd}.  In any case, when we change from one representation to the
-other, the procedures @code{add-rat}, @code{sub-rat}, and so on do not have to
+other, the procedures @code{addRat}, @code{subRat}, and so on do not have to
 be modified at all.
 
 Constraining the dependence on the representation to a few interface procedures
@@ -415,25 +426,19 @@ the system.
 @strong{@anchor{Exercise 2.2}Exercise 2.2:} Consider the problem of
 representing line segments in a plane.  Each segment is represented as a pair
 of points: a starting point and an ending point.  Define a constructor
-@code{make-segment} and selectors @code{start-segment} and @code{end-segment}
+@code{makeSegment} and selectors @code{startSegment} and @code{endSegment}
 that define the representation of segments in terms of points.  Furthermore, a
 point can be represented as a pair of numbers: the @math{x} coordinate and the
-@math{y} coordinate.  Accordingly, specify a constructor @code{make-point} and
-selectors @code{x-point} and @code{y-point} that define this representation.
+@math{y} coordinate.  Accordingly, specify a constructor @code{makePoint} and
+selectors @code{xPoint} and @code{yPoint} that define this representation.
 Finally, using your selectors and constructors, define a procedure
-@code{midpoint-segment} that takes a line segment as argument and returns its
+@code{midpointSegment} that takes a line segment as argument and returns its
 midpoint (the point whose coordinates are the average of the coordinates of the
 endpoints).  To try your procedures, you'll need a way to print points:
 
-@lisp
-(define (print-point p)
-  (newline)
-  (display "(")
-  (display (x-point p))
-  (display ",")
-  (display (y-point p))
-  (display ")"))
-@end lisp
+@example typescript
+const printPoint = (p: Point): string => `(@{xPoint(p)@},@{yPoint(p)@})`;
+@end example
 @end quotation
 
 @quotation
@@ -450,8 +455,8 @@ using either representation?
 @subsection What Is Meant by Data?
 
 We began the rational-number implementation in @ref{2.1.1} by
-implementing the rational-number operations @code{add-rat}, @code{sub-rat}, and
-so on in terms of three unspecified procedures: @code{make-rat}, @code{numer},
+implementing the rational-number operations @code{addRat}, @code{subRat}, and
+so on in terms of three unspecified procedures: @code{makeRat}, @code{numer},
 and @code{denom}.  At that point, we could think of the operations as being
 defined in terms of data objects---numerators, denominators, and rational
 numbers---whose behavior was specified by the latter three procedures.
@@ -463,9 +468,9 @@ for the rational-number implementation.  We need to guarantee that, if we
 construct a rational number @code{x} from a pair of integers @code{n} and
 @code{d}, then extracting the @code{numer} and the @code{denom} of @code{x} and
 dividing them should yield the same result as dividing @code{n} by @code{d}.
-In other words, @code{make-rat}, @code{numer}, and @code{denom} must satisfy
+In other words, @code{makeRat}, @code{numer}, and @code{denom} must satisfy
 the condition that, for any integer @code{n} and any non-zero integer @code{d},
-if @code{x} is @code{(make-rat n d)}, then
+if @code{x} is @code{makeRat(n, d)}, then
 @displaymath
 {\hbox{(numer x)} \over \hbox{(denom x)}} = {{\hbox{n} \over \hbox{d}}.}
 @end displaymath
@@ -478,14 +483,14 @@ if @code{x} is @code{(make-rat n d)}, then
 @end example
 
 @end ifinfo
-In fact, this is the only condition @code{make-rat}, @code{numer}, and
+In fact, this is the only condition @code{makeRat}, @code{numer}, and
 @code{denom} must fulfill in order to form a suitable basis for a
 rational-number representation.  In general, we can think of data as defined by
 some collection of selectors and constructors, together with specified
 conditions that these procedures must fulfill in order to be a valid
 representation.@footnote{Surprisingly, this idea is very difficult to formulate
 rigorously. There are two approaches to giving such a formulation.  One,
-pioneered by C. A. R. @ref{Hoare (1972)}, is known as the method of @newterm{abstract models}.  
+pioneered by C. A. R. @ref{Hoare (1972)}, is known as the method of @newterm{abstract models}.
 It formalizes the ``procedures plus conditions'' specification as
 outlined in the rational-number example above.  Note that the condition on the
 rational-number representation was stated in terms of facts about integers
@@ -493,8 +498,8 @@ rational-number representation was stated in terms of facts about integers
 objects in terms of previously defined types of data objects.  Assertions about
 data objects can therefore be checked by reducing them to assertions about
 previously defined data objects.  Another approach, introduced by Zilles at
-@abbr{MIT}, by Goguen, Thatcher, Wagner, and Wright at IBM 
-(see @ref{Thatcher et al. 1978}), 
+@abbr{MIT}, by Goguen, Thatcher, Wagner, and Wright at IBM
+(see @ref{Thatcher et al. 1978}),
 and by Guttag at Toronto (see @ref{Guttag 1977}), is called
 @newterm{algebraic specification}.  It regards the ``procedures'' as elements
 of an abstract algebraic system whose behavior is specified by axioms that
@@ -510,51 +515,58 @@ actually said what a pair was, only that the language supplied procedures
 thing we need to know about these three operations is that if we glue two
 objects together using @code{cons} we can retrieve the objects using @code{car}
 and @code{cdr}.  That is, the operations satisfy the condition that, for any
-objects @code{x} and @code{y}, if @code{z} is @code{(cons x y)} then @code{(car
-z)} is @code{x} and @code{(cdr z)} is @code{y}.  Indeed, we mentioned that
-these three procedures are included as primitives in our language.  However,
-any triple of procedures that satisfies the above condition can be used as the
-basis for implementing pairs.  This point is illustrated strikingly by the fact
-that we could implement @code{cons}, @code{car}, and @code{cdr} without using
-any data structures at all but only using procedures.  Here are the
-definitions:
+objects @code{x} and @code{y}, if @code{z} is @code{cons(x, y)} then @code{car
+(z)} is @code{x} and @code{cdr(z)} is @code{y}.  Indeed, we mentioned that
+these three procedures are included among this edition's own definitions.
+However, any triple of procedures that satisfies the above condition can be
+used as the basis for implementing pairs.  This point is illustrated strikingly
+by the fact that we could implement @code{cons}, @code{car}, and @code{cdr}
+without using any data structures at all but only using procedures.  Here are
+the definitions:
 
-@lisp
-(define (cons x y)
-  (define (dispatch m)
-    (cond ((= m 0) x)
-          ((= m 1) y)
-          (else 
-           (error "Argument not 0 or 1:
-                   CONS" m))))
-  dispatch)
+@example typescript
+const consProc = <T>(x: T, y: T): ProcPair<T> => (m) =>
+  (m === 0 ? ok(x) : m === 1 ? ok(y) : err(@{ _tag: "UnknownMessage", m @}));
 
-(define (car z) (z 0))
-(define (cdr z) (z 1))
-@end lisp
+const carProc = <T>(z: ProcPair<T>): Result<T, PairMessageError> => z(0);
+
+const cdrProc = <T>(z: ProcPair<T>): Result<T, PairMessageError> => z(1);
+@end example
 
 @noindent
-This use of procedures corresponds to nothing like our intuitive notion of what
+(@code{ProcPair<T>} is the type of the dispatch procedure this @code{consProc}
+returns: a function from a message, @code{0} or @code{1}, to the selected
+part.  The two-sided value @code{Result} is the one of @ref{0.6}: a value or
+an error, never a throw, so the book's @code{error} string becomes the typed
+@code{UnknownMessage} of a message that is neither 0 nor 1.)  This use of
+procedures corresponds to nothing like our intuitive notion of what
 data should be.  Nevertheless, all we need to do to show that this is a valid
 way to represent pairs is to verify that these procedures satisfy the condition
 given above.
 
-The subtle point to notice is that the value returned by @code{(cons x y)} is a
-procedure---namely the internally defined procedure @code{dispatch}, which
+The subtle point to notice is that the value returned by @code{consProc(x,
+y)} is a procedure---namely the dispatch procedure of the listing, which
 takes one argument and returns either @code{x} or @code{y} depending on whether
-the argument is 0 or 1.  Correspondingly, @code{(car z)} is defined to apply
-@code{z} to 0.  Hence, if @code{z} is the procedure formed by @code{(cons x
-y)}, then @code{z} applied to 0 will yield @code{x}. Thus, we have shown that
-@code{(car (cons x y))} yields @code{x}, as desired.  Similarly, @code{(cdr
-(cons x y))} applies the procedure returned by @code{(cons x y)} to 1, which
-returns @code{y}.  Therefore, this procedural implementation of pairs is a
-valid implementation, and if we access pairs using only @code{cons},
-@code{car}, and @code{cdr} we cannot distinguish this implementation from one
-that uses ``real'' data structures.
+the argument is 0 or 1.  Correspondingly, @code{carProc(z)} is defined to apply
+@code{z} to 0.  Hence, if @code{z} is the procedure formed by @code{consProc(x,
+y)}, then @code{z} applied to 0 will yield @code{ok(x)}, the first part wrapped
+in the success side of the two-sided value. Thus, we have shown that
+@code{carProc(consProc(x, y))} yields @code{x}, as desired.  Similarly,
+@code{cdrProc(consProc(x, y))} applies the procedure returned by
+@code{consProc(x, y)} to 1, which returns @code{ok(y)}.  Therefore, this
+procedural implementation of pairs is a valid implementation, and if we access
+pairs using only @code{consProc}, @code{carProc}, and @code{cdrProc}
+we cannot distinguish this implementation from one that uses ``real'' data
+structures.  (Both parts must share one type @code{T} here, since a function's
+return type is fixed once, at its own definition; @ref{Exercise 2.4} shows the
+alternative representation, whose message is itself a procedure, and its
+generic pair type lets @code{car} and @code{cdr} request two different result
+types.)
 
-The point of exhibiting the procedural representation of pairs is not that our
-language works this way (Scheme, and Lisp systems in general, implement pairs
-directly, for efficiency reasons) but that it could work this way.  The
+The point of exhibiting the procedural representation of pairs is not that
+this edition works this way (the @code{cons}, @code{car}, and @code{cdr} of
+2.1.1 build the host's readonly tuple directly, for simplicity and
+efficiency) but that it could work this way.  The
 procedural representation, although obscure, is a perfectly adequate way to
 represent pairs, since it fulfills the only conditions that pairs need to
 fulfill.  This example also demonstrates that the ability to manipulate
@@ -567,16 +579,22 @@ simulation.
 
 @quotation
 @strong{@anchor{Exercise 2.4}Exercise 2.4:} Here is an alternative procedural
-representation of pairs.  For this representation, verify that @code{(car (cons
-x y))} yields @code{x} for any objects @code{x} and @code{y}.
+representation of pairs, in the style of the original @code{(lambda (m) (m x
+y))}: @code{cons} returns a function whose only operation is handing both
+parts to a selector, and the selector determines the result's type.  A
+function's type is fixed once, at its own definition, so the pair is spelled
+as the function pair type @code{Pair<A, B>}, generic in its result:
 
-@lisp
-(define (cons x y) 
-  (lambda (m) (m x y)))
+@example typescript
+type Pair<A, B> = <R>(m: (x: A, y: B) => R) => R;
 
-(define (car z) 
-  (z (lambda (p q) p)))
-@end lisp
+const cons = <A, B>(x: A, y: B): Pair<A, B> => (m) => m(x, y);
+
+const car = <A, B>(z: Pair<A, B>): A => z((p) => p);
+@end example
+
+For this representation, verify that @code{car(cons(x, y))} yields
+@code{x} for any objects @code{x} and @code{y}.
 
 What is the corresponding definition of @code{cdr}? (Hint: To verify that this
 works, make use of the substitution model of @ref{1.1.5}.)
@@ -585,9 +603,13 @@ works, make use of the substitution model of @ref{1.1.5}.)
 @quotation
 @strong{@anchor{Exercise 2.5}Exercise 2.5:} Show that we can represent pairs of
 nonnegative integers using only numbers and arithmetic operations if we
-represent the pair @math{a} and @math{b} as the integer that is the product @math{{2^a 3^b}}.
+represent the pair @math{a} and @math{b} as the integer that is the product
+@math{{2^a 3^b}}.
 Give the corresponding definitions of the procedures @code{cons},
-@code{car}, and @code{cdr}.
+@code{car}, and @code{cdr}.  Keep the encoded value in this edition's
+@code{bigint}: the encoding outgrows the 53 exact bits of @code{number}
+almost immediately, and the point of the encoding is that the arithmetic
+stays exact.
 @end quotation
 
 @quotation
@@ -597,23 +619,39 @@ manipulate procedures, we can get by without numbers (at least insofar as
 nonnegative integers are concerned) by implementing 0 and the operation of
 adding 1 as
 
-@lisp
-(define zero (lambda (f) (lambda (x) x)))
+@example typescript
+const churchZero: Church = (f) => (x) => x;
 
-(define (add-1 n)
-  (lambda (f) (lambda (x) (f ((n f) x)))))
-@end lisp
+const add1 = (n: Church): Church => (f) => (x) => f(n(f)(x));
+@end example
 
 This representation is known as @newterm{Church numerals}, after its inventor,
-Alonzo Church, the logician who invented the λ-calculus.
-
-Define @code{one} and @code{two} directly (not in terms of @code{zero} and
-@code{add-1}).  (Hint: Use substitution to evaluate @code{(add-1 zero)}).  Give
-a direct definition of the addition procedure @code{+} (not in terms of
-repeated application of @code{add-1}).
+Alonzo Church, the logician who invented the @math{\lambda}-calculus.  (A
+numeral here is an ordinary function type, @code{type Church = <T>(f: (x: T)
+=> T) => (x: T) => T}, so nothing needs a wrapper to name it: the zero is
+itself a function --- the function that never applies its step --- and the
+number is carried by how many times the step gets applied.)  Define
+@code{one} and @code{two} directly (not in terms of @code{churchZero} and
+@code{add1}).  (Hint: Use substitution to evaluate @code{add1(churchZero)}).
+Give a direct definition of the addition procedure @code{churchAdd} (not in
+terms of repeated application of @code{add1}).
 @end quotation
 
-@node	2.1.4, 2.2, Chapter 2, 2.1
+@quotation
+@strong{@anchor{Exercise 2.6a}Exercise 2.6a:} @emph{Exercise 2.6a is added by
+this edition and extends exercise 2.6; SICP numbers stop at 2.6.}  This
+edition's Church numerals are plain function values, so a numeral can be
+decoded by handing it a successor step and a zero seed:
+@code{churchToInt(n) = n((x) => x + 1)(0)}.  Define @code{three} directly,
+define the successor function @code{succ} --- the operation of adding 1 at
+the Church level, the book's @code{add1} under its arithmetic name --- and
+check the arithmetic from both ends: the direct @code{three},
+@code{succ(two)}, and @code{churchAdd(two, one)} must all decode to 3;
+@code{succ(three)} must decode to 4 and @code{churchAdd(three, three)} to 6;
+and @code{succ(succ(one))} must decode the same as the direct @code{three}.
+@end quotation
+
+@node	2.1.4, 2.2, 2.1.3, 2.1
 @subsection Extended Exercise: Interval Arithmetic
 
 Alyssa P. Hacker is designing a system to help people solve engineering
@@ -624,8 +662,8 @@ quantities the results will be numbers of known precision.
 
 Electrical engineers will be using Alyssa's system to compute electrical
 quantities.  It is sometimes necessary for them to compute the value of a
-parallel equivalent resistance @math{R_p} of two resistors @math{R_1} and @math{R_2}
-using the formula
+parallel equivalent resistance @math{R_p} of two resistors @math{R_1} and
+@math{R_2} using the formula
 @displaymath
 R_p \,=\, {{1 \over 1 / R_1 + 1 / R_2}.}
 @end displaymath
@@ -641,11 +679,11 @@ R_p = -------------
 Resistance values are usually known only up to some tolerance guaranteed by the
 manufacturer of the resistor.  For example, if you buy a resistor labeled ``6.8
 ohms with 10% tolerance'' you can only be sure that the resistor has a
-resistance between 6.8 @math{-} 0.68 = 6.12 and 6.8 + 0.68 = 7.48 ohms.  Thus, if you
+resistance between 6.8 - 0.68 = 6.12 and 6.8 + 0.68 = 7.48 ohms.  Thus, if you
 have a 6.8-ohm 10% resistor in parallel with a 4.7-ohm 5% resistor, the
 resistance of the combination can range from about 2.58 ohms (if the two
-resistors are at the lower bounds) to about 2.97 ohms (if the two resistors are
-at the upper bounds).
+resistors are at the lower bounds) to about 2.97 ohms (if the two
+resistors are at the upper bounds).
 
 Alyssa's idea is to implement ``interval arithmetic'' as a set of arithmetic
 operations for combining ``intervals'' (objects that represent the range of
@@ -656,69 +694,72 @@ range of the result.
 Alyssa postulates the existence of an abstract object called an ``interval''
 that has two endpoints: a lower bound and an upper bound.  She also presumes
 that, given the endpoints of an interval, she can construct the interval using
-the data constructor @code{make-interval}.  Alyssa first writes a procedure for
+the data constructor @code{makeInterval}.  Alyssa first writes a procedure for
 adding two intervals.  She reasons that the minimum value the sum could be is
 the sum of the two lower bounds and the maximum value it could be is the sum of
 the two upper bounds:
 
-@lisp
-(define (add-interval x y)
-  (make-interval (+ (lower-bound x) 
-                    (lower-bound y))
-                 (+ (upper-bound x) 
-                    (upper-bound y))))
-@end lisp
+@example typescript
+const addInterval = (x: Interval, y: Interval): Interval =>
+  (@{ lo: x.lo + y.lo, hi: x.hi + y.hi @});
+@end example
 
 @noindent
 Alyssa also works out the product of two intervals by finding the minimum and
 the maximum of the products of the bounds and using them as the bounds of the
-resulting interval.  (@code{Min} and @code{max} are primitives that find the
-minimum or maximum of any number of arguments.)
+resulting interval.  (The host's @code{Math.min} and @code{Math.max} take any
+number of arguments, so the four corner products chain into one call.)
 
-@lisp
-(define (mul-interval x y)
-  (let ((p1 (* (lower-bound x) 
-               (lower-bound y)))
-        (p2 (* (lower-bound x) 
-               (upper-bound y)))
-        (p3 (* (upper-bound x) 
-               (lower-bound y)))
-        (p4 (* (upper-bound x) 
-               (upper-bound y))))
-    (make-interval (min p1 p2 p3 p4)
-                   (max p1 p2 p3 p4))))
-@end lisp
+@example typescript
+const mulInterval = (x: Interval, y: Interval): Interval => @{
+  const p1 = x.lo * y.lo;
+  const p2 = x.lo * y.hi;
+  const p3 = x.hi * y.lo;
+  const p4 = x.hi * y.hi;
+  return @{ lo: Math.min(p1, p2, p3, p4), hi: Math.max(p1, p2, p3, p4) @};
+@};
+@end example
 
 @noindent
 To divide two intervals, Alyssa multiplies the first by the reciprocal of the
 second.  Note that the bounds of the reciprocal interval are the reciprocal of
 the upper bound and the reciprocal of the lower bound, in that order.
 
-@lisp
-(define (div-interval x y)
-  (mul-interval x 
-                (make-interval 
-                 (/ 1.0 (upper-bound y)) 
-                 (/ 1.0 (lower-bound y)))))
-@end lisp
+@example typescript
+const divInterval = (x: Interval, y: Interval): Interval =>
+  mulInterval(x, @{ lo: 1 / y.hi, hi: 1 / y.lo @});
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.7}Exercise 2.7:} Alyssa's program is incomplete
 because she has not specified the implementation of the interval abstraction.
 Here is a definition of the interval constructor:
 
-@lisp
-(define (make-interval a b) (cons a b))
-@end lisp
+@example typescript
+const makeInterval = (a: number, b: number): Interval => (@{ lo: a, hi: b @});
+@end example
 
-Define selectors @code{upper-bound} and @code{lower-bound} to complete the
+Define selectors @code{upperBound} and @code{lowerBound} to complete the
 implementation.
 @end quotation
+
+@noindent
+(The main-text listings above, reproduced runnably in the section module
+@code{packages/ch2/src/01-data-abstraction.ts}, use this edition's own
+@code{Interval}, whose constructor @code{makeInterval} enforces the ordered
+form @code{lo <= hi} and reports an @code{UnorderedBounds} error otherwise;
+that enforcement is this edition's answer to the invariant question exercise
+2.9 raises below, settled once here rather than left open at every call site.
+@code{addInterval} and @code{mulInterval} never need to recheck it, since a
+minimum and a maximum of already-ordered bounds stay ordered;
+@code{divInterval}, reproducing this section's undefined pre-2.10 behavior on
+purpose, is the one function in the module that bypasses the check, as its own
+doc comment explains.)
 
 @quotation
 @strong{@anchor{Exercise 2.8}Exercise 2.8:} Using reasoning analogous to
 Alyssa's, describe how the difference of two intervals may be computed.  Define
-a corresponding subtraction procedure, called @code{sub-interval}.
+a corresponding subtraction procedure, called @code{subInterval}.
 @end quotation
 
 @quotation
@@ -727,7 +768,7 @@ is half of the difference between its upper and lower bounds.  The width is a
 measure of the uncertainty of the number specified by the interval.  For some
 arithmetic operations the width of the result of combining two intervals is a
 function only of the widths of the argument intervals, whereas for others the
-width of the combination is not a function of the widths of the argument
+width of the combination is not a function only of the widths of the argument
 intervals.  Show that the width of the sum (or difference) of two intervals is
 a function only of the widths of the intervals being added (or subtracted).
 Give examples to show that this is not true for multiplication or division.
@@ -743,42 +784,42 @@ check for this condition and to signal an error if it occurs.
 @quotation
 @strong{@anchor{Exercise 2.11}Exercise 2.11:} In passing, Ben also cryptically
 comments: ``By testing the signs of the endpoints of the intervals, it is
-possible to break @code{mul-interval} into nine cases, only one of which
+possible to break @code{mulInterval} into nine cases, only one of which
 requires more than two multiplications.''  Rewrite this procedure using Ben's
 suggestion.
+@end quotation
 
-After debugging her program, Alyssa shows it to a potential user, who complains
-that her program solves the wrong problem.  He wants a program that can deal
-with numbers represented as a center value and an additive tolerance; for
-example, he wants to work with intervals such as 3.5 @math{\pm} 0.15 rather than
+After debugging her program, Alyssa shows it to a potential user, who
+complains that her program solves the wrong problem.  He wants a program that
+can deal with numbers represented as a center value and an additive tolerance;
+for example, he wants to work with intervals such as 3.5 @math{\pm} 0.15 rather than
 [3.35, 3.65].  Alyssa returns to her desk and fixes this problem by supplying
 an alternate constructor and alternate selectors:
 
-@lisp
-(define (make-center-width c w)
-  (make-interval (- c w) (+ c w)))
+@example typescript
+const makeCenterWidth = (c: number, w: number): Interval =>
+  (@{ lo: c - w, hi: c + w @});
 
-(define (center i)
-  (/ (+ (lower-bound i) 
-        (upper-bound i)) 
-     2))
+const center = (i: Interval): number => (i.lo + i.hi) / 2;
 
-(define (width i)
-  (/ (- (upper-bound i) 
-        (lower-bound i)) 
-     2))
-@end lisp
+const width = (i: Interval): number => (i.hi - i.lo) / 2;
+@end example
+
+@noindent
+(The book's @code{make-center-width} routes through @code{make-interval};
+constructing the ordered interval directly is safe here exactly because
+@code{w} is nonnegative in every caller, so @code{c - w <= c + w} and the
+ordered-bounds invariant of @code{makeInterval} holds on sight.)
 
 Unfortunately, most of Alyssa's users are engineers.  Real engineering
 situations usually involve measurements with only a small uncertainty, measured
 as the ratio of the width of the interval to the midpoint of the interval.
 Engineers usually specify percentage tolerances on the parameters of devices,
 as in the resistor specifications given earlier.
-@end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.12}Exercise 2.12:} Define a constructor
-@code{make-center-percent} that takes a center and a percentage tolerance and
+@code{makeCenterPercent} that takes a center and a percentage tolerance and
 produces the desired interval.  You must also define a selector @code{percent}
 that produces the percentage tolerance for a given interval.  The @code{center}
 selector is the same as the one shown above.
@@ -790,6 +831,7 @@ small percentage tolerances there is a simple formula for the approximate
 percentage tolerance of the product of two intervals in terms of the tolerances
 of the factors.  You may simplify the problem by assuming that all numbers are
 positive.
+@end quotation
 
 After considerable work, Alyssa P. Hacker delivers her finished system.
 Several years later, after she has forgotten all about it, she gets a frenzied
@@ -822,33 +864,28 @@ and
 @end example
 
 @end ifinfo
-He has written the following two programs, each of which computes the
+He has written the following two procedures, each of which computes the
 parallel-resistors formula differently:
 
-@lisp
-(define (par1 r1 r2)
-  (div-interval 
-   (mul-interval r1 r2)
-   (add-interval r1 r2)))
+@example typescript
+const par1 = (r1: Interval, r2: Interval): Interval =>
+  divInterval(mulInterval(r1, r2), addInterval(r1, r2));
 
-(define (par2 r1 r2)
-  (let ((one (make-interval 1 1)))
-    (div-interval 
-     one
-     (add-interval 
-      (div-interval one r1) 
-      (div-interval one r2)))))
-@end lisp
+const par2 = (r1: Interval, r2: Interval): Interval => @{
+  const one: Interval = @{ lo: 1, hi: 1 @};
+  return divInterval(one, addInterval(divInterval(one, r1), divInterval(one, r2)));
+@};
+@end example
 
+@noindent
 Lem complains that Alyssa's program gives different answers for the two ways of
 computing. This is a serious complaint.
-@end quotation
 
 @quotation
 @strong{@anchor{Exercise 2.14}Exercise 2.14:} Demonstrate that Lem is right.
 Investigate the behavior of the system on a variety of arithmetic
 expressions. Make some intervals @math{A} and @math{B}, and use them in computing the
-expressions @math{{A / A}} and @math{{A / B}}.  You will get the most insight by
+expressions @math{A / A} and @math{A / B}.  You will get the most insight by
 using intervals whose width is a small percentage of the center value. Examine
 the results of the computation in center-percent form (see @ref{Exercise 2.12}).
 @end quotation
@@ -869,5 +906,3 @@ equivalent algebraic expressions may lead to different answers.  Can you devise
 an interval-arithmetic package that does not have this shortcoming, or is this
 task impossible?  (Warning: This problem is very difficult.)
 @end quotation
-
-

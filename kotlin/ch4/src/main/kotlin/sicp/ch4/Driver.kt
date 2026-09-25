@@ -90,8 +90,9 @@ public fun runForm(
 }
 
 /** Whether the application names one of the two print-into-the-sink
- * primitives, whose value line the driver suppresses. */
-private fun isSinkCall(expr: AppE): Boolean {
+ * primitives, whose value line the driver suppresses. The lazy driver and
+ * the exercise runners share it. */
+public fun isSinkCall(expr: AppE): Boolean {
     val operator = expr.operator as? VarE ?: return false
     return operator.name == "display" || operator.name == "newline"
 }

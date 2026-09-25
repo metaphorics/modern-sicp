@@ -1,11 +1,11 @@
 @node	4.1, 4.2, Chapter 4, Chapter 4
 @section The Metacircular Evaluator
 
-Our evaluator for Lisp will be implemented as a Lisp program.  It may seem
-circular to think about evaluating Lisp programs using an evaluator that is
-itself implemented in Lisp.  However, evaluation is a process, so it is
-appropriate to describe the evaluation process using Lisp, which, after all, is
-our tool for describing processes.@footnote{Even so, there will remain
+Our evaluator for the object language will be implemented as a Kotlin
+program.  It may seem circular to think about evaluating a language with an
+evaluator that is itself a program.  However, evaluation is a process, so it is
+appropriate to describe the evaluation process as a program, which, after all,
+is our tool for describing processes.@footnote{Even so, there will remain
 important aspects of the evaluation process that are not elucidated by our
 evaluator.  The most important of these are the detailed mechanisms by which
 procedures call other procedures and return values to their callers.  We will
@@ -78,8 +78,8 @@ from procedure calls.
 @end itemize
 } 
 This evaluation cycle will be embodied by the interplay between the two
-critical procedures in the evaluator, @code{eval} and @code{apply}, which are
-described in @ref{4.1.1} (see @ref{Figure 4.1}).
+critical procedures in the evaluator, @code{eval} and @code{applyProcedure},
+which are described in @ref{4.1.1} (see @ref{Figure 4.1}).
 
 @float
 @anchor{Figure 4.1}
@@ -120,19 +120,17 @@ Arguments   |  8     Eval          `888888888888888888) | Environment
 @caption{@strong{Figure 4.1:} The @code{eval}-@code{apply} cycle exposes the essence of a computer language.}
 @end float
 
-The implementation of the evaluator will depend upon procedures that define the
-@newterm{syntax} of the expressions to be evaluated.  We will use data
-abstraction to make the evaluator independent of the representation of the
-language.  For example, rather than committing to a choice that an assignment
-is to be represented by a list beginning with the symbol @code{set!} we use an
-abstract predicate @code{assignment?} to test for an assignment, and we use
-abstract selectors @code{assignment-variable} and @code{assignment-value} to
-access the parts of an assignment.  Implementation of expressions will be
-described in detail in @ref{4.1.2}.  There are also operations,
+The implementation of the evaluator will depend upon the @newterm{syntax} of
+the expressions to be evaluated being pinned down once, in a parser.  The
+parser takes the data the given-code reader produces and maps each datum onto a
+typed node: an assignment is no longer a list that happens to begin with the
+symbol @code{set!} but a @code{SetE} value whose fields are the variable and
+the value expression.  Implementation of expressions will be described in
+detail in @ref{4.1.2}.  There are also operations,
 described in @ref{4.1.3}, that specify the representation of procedures
-and environments.  For example, @code{make-procedure} constructs compound
-procedures, @code{lookup-variable-value} accesses the values of variables, and
-@code{apply-primitive-procedure} applies a primitive procedure to a given list
+and environments.  For example, @code{makeProcedure} constructs compound
+procedures, @code{lookup} accesses the values of variables, and
+@code{callPrimitive} applies a primitive procedure to a given list
 of arguments.
 
 @menu
@@ -149,20 +147,19 @@ of arguments.
 @subsection The Core of the Evaluator
 
 The evaluation process can be described as the interplay between two
-procedures: @code{eval} and @code{apply}.
+procedures: @code{eval} and @code{applyProcedure}.
 
 @subsubheading Eval
 
 @code{Eval} takes as arguments an expression and an environment.  It classifies
 the expression and directs its evaluation.  @code{Eval} is structured as a case
-analysis of the syntactic type of the expression to be evaluated.  In order to
-keep the procedure general, we express the determination of the type of an
-expression abstractly, making no commitment to any particular representation
-for the various types of expressions.  Each type of expression has a predicate
-that tests for it and an abstract means for selecting its parts.  This
-@newterm{abstract syntax} makes it easy to see how we can change the syntax of
-the language by using the same evaluator, but with a different collection of
-syntax procedures.
+analysis of the syntactic type of the expression to be evaluated.  In this
+edition the syntactic type is literal: the parser has already handed @code{eval}
+one @code{Expr} value whose type @emph{is} the expression type, so the case
+analysis is a @code{when} with one arm per node, and the compiler counts the
+arms.  This @newterm{abstract syntax} is what makes it easy to see how we can
+change the syntax of the language by using the same evaluator with a different
+parser: @code{eval} never sees surface lists at all.
 
 @noindent
 @b{Primitive expressions}
@@ -219,175 +216,249 @@ expressions and then evaluated.
 @item
 For a procedure application, @code{eval} must recursively evaluate the operator
 part and the operands of the combination.  The resulting procedure and
-arguments are passed to @code{apply}, which handles the actual procedure
-application.
+arguments are passed to @code{applyProcedure}, which handles the actual
+procedure application.
 
 @end itemize
 
 @noindent
-Here is the definition of @code{eval}:
+Here is the definition of @code{eval}.  Kotlin has no mutual tail-call
+elimination, so @code{eval} is a @newterm{dispatch loop}: each round runs one
+clause of the case analysis, and a clause that would recurse in a tail position
+--- the chosen branch of an @code{if}, the last expression of a sequence, the
+body of an applied compound procedure --- answers the next expression to run
+instead of calling.  The book's tail positions are made explicit as the two
+alternatives of an @code{EvalStep}:
 
-@lisp
-(define (eval exp env)
-  (cond ((self-evaluating? exp) 
-         exp)
-        ((variable? exp) 
-         (lookup-variable-value exp env))
-        ((quoted? exp) 
-         (text-of-quotation exp))
-        ((assignment? exp) 
-         (eval-assignment exp env))
-        ((definition? exp) 
-         (eval-definition exp env))
-        ((if? exp) 
-         (eval-if exp env))
-        ((lambda? exp)
-         (make-procedure 
-          (lambda-parameters exp)
-          (lambda-body exp)
-          env))
-        ((begin? exp)
-         (eval-sequence 
-          (begin-actions exp) 
-          env))
-        ((cond? exp) 
-         (eval (cond->if exp) env))
-        ((application? exp)
-         (apply (eval (operator exp) env)
-                (list-of-values 
-                 (operands exp) 
-                 env)))
-        (else
-         (error "Unknown expression 
-                 type: EVAL" exp))))
-@end lisp
+@example kotlin
+public sealed interface EvalStep @{
+    public data class Done(
+        val v: Value,
+    ) : EvalStep
+
+    public data class Continue(
+        val expr: Expr,
+        val env: Env,
+    ) : EvalStep
+@}
+
+context(r: Raise<SchemeError>)
+public fun eval(
+    expr: Expr,
+    env: Env,
+): Value @{
+    var e = expr
+    var en = env
+    while (true) @{
+        when (val s = step(e, en)) @{
+            is EvalStep.Done -> @{
+                return s.v
+            @}
+
+            is EvalStep.Continue -> @{
+                e = s.expr
+                en = s.env
+            @}
+        @}
+    @}
+@}
+@end example
 
 @noindent
-For clarity, @code{eval} has been implemented as a case analysis using
-@code{cond}.  The disadvantage of this is that our procedure handles only a few
-distinguishable types of expressions, and no new ones can be defined without
-editing the definition of @code{eval}.  In most Lisp implementations,
-dispatching on the type of an expression is done in a data-directed style.
-This allows a user to add new types of expressions that @code{eval} can
-distinguish, without modifying the definition of @code{eval} itself.  (See
-@ref{Exercise 4.3}.)
+The clause chain lives in @code{step} and its @code{baseStep} fallback:
+
+@example kotlin
+context(r: Raise<SchemeError>)
+protected fun baseStep(
+    expr: Expr,
+    env: Env,
+): EvalStep =
+    when (expr) @{
+        is LitE -> EvalStep.Done(expr.v)
+
+        // self-evaluating?
+        is VarE -> EvalStep.Done(lookupVariable(expr.name, env))
+
+        // variable?
+        is QuoteE -> EvalStep.Done(expr.datum)
+
+        // quoted?
+        is SetE -> evalAssignment(expr, env)
+
+        // assignment?
+        is DefineE -> evalDefinition(expr, env)
+
+        // definition?
+        is IfE -> evalIf(expr, env)
+
+        // if?
+        is LambdaE -> EvalStep.Done(makeProcedure(expr.params, expr.rest, expr.body, env, null))
+
+        // lambda?
+        is BeginE -> evalSequence(expr.actions, env)
+
+        // begin?
+        is CondE -> EvalStep.Continue(condToIf(expr), env)
+
+        // cond? -> derived
+        is LetE -> EvalStep.Continue(letToCombination(expr), env)
+
+        // derived
+        is AppE -> evalApplication(expr, env) // application?
+    @}
+@end example
+
+@noindent
+For clarity, @code{eval}'s chain has been implemented as a case analysis using
+a @code{when}.  The disadvantage of this is that our evaluator handles only a
+few distinguishable types of expressions, and no new ones can be defined
+without editing @code{baseStep}.  In most Lisp implementations, dispatching on
+the type of an expression is done in a data-directed style.  This edition keeps
+one deliberate seam in its place: @code{step} is an overridable member that
+@code{eval} consults on every round, so an exercise can check for the forms it
+adds and fall back to @code{baseStep} for everything else, and the check fires
+at every nesting depth because every clause recurses through @code{eval}.  (See
+@ref{Exercise 4.3} for the data-directed alternative.)  Note also that the
+book's ``unknown expression type'' fault cannot fire here: the parser maps
+every well-formed datum onto a typed node, so a malformed form fails at parse
+time with the typed parse error of the edition's @newterm{typed errors}.
 
 @subsubheading Apply
 
-@code{Apply} takes two arguments, a procedure and a list of arguments to which
-the procedure should be applied.  @code{Apply} classifies procedures into two
-kinds: It calls @code{apply-primitive-procedure} to apply primitives; it
+@code{ApplyProcedure} takes two arguments, a procedure and a list of arguments
+to which the procedure should be applied.  It classifies procedures into two
+kinds: a primitive applies through the runtime (we show that arm in
+@ref{4.1.4}, where the book's @code{apply-primitive-procedure} lives); it
 applies compound procedures by sequentially evaluating the expressions that
 make up the body of the procedure.  The environment for the evaluation of the
 body of a compound procedure is constructed by extending the base environment
 carried by the procedure to include a frame that binds the parameters of the
-procedure to the arguments to which the procedure is to be applied.  Here is
-the definition of @code{apply}:
+procedure to the arguments to which the procedure is to be applied.  The
+application clause of @code{eval} feeds it:
 
-@lisp
-(define (apply procedure arguments)
-  (cond ((primitive-procedure? procedure)
-         (apply-primitive-procedure 
-          procedure 
-          arguments))
-        ((compound-procedure? procedure)
-         (eval-sequence
-           (procedure-body procedure)
-           (extend-environment
-             (procedure-parameters 
-              procedure)
-             arguments
-             (procedure-environment 
-              procedure))))
-        (else
-         (error "Unknown procedure 
-                 type: APPLY" 
-                procedure))))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+protected open fun evalApplication(
+    expr: AppE,
+    env: Env,
+): EvalStep @{
+    val procedure = eval(expr.operator, env)
+    val arguments = listOfValues(expr.operands, env)
+    return applyProcedure(procedure, arguments)
+@}
+@end example
+
+@noindent
+and the compound arm of @code{applyProcedure} evaluates all but the last body
+expression and answers the last one as the next expression for the dispatch
+loop:
+
+@example kotlin
+when (procedure) @{
+    is VProc -> @{
+        val frame = extendEnvironment(procedure.params.toList(), arguments, procedure.env, procedure.rest)
+        for (i in 0 until procedure.body.size - 1) eval(procedure.body[i], frame)
+        EvalStep.Continue(procedure.body.last(), frame)
+    @}
+
+    else -> @{
+        r.raise(SchemeError.NotApplicable(procedure))
+    @}
+@}
+@end example
 
 @subsubheading Procedure arguments
 
 When @code{eval} processes a procedure application, it uses
-@code{list-of-values} to produce the list of arguments to which the procedure
-is to be applied. @code{List-of-values} takes as an argument the operands of
+@code{listOfValues} to produce the list of arguments to which the procedure
+is to be applied. @code{listOfValues} takes as an argument the operands of
 the combination.  It evaluates each operand and returns a list of the
-corresponding values:@footnote{We could have simplified the @code{application?}
-clause in @code{eval} by using @code{map} (and stipulating that @code{operands}
-returns a list) rather than writing an explicit @code{list-of-values}
-procedure.  We chose not to use @code{map} here to emphasize the fact that the
-evaluator can be implemented without any use of higher-order procedures (and
-thus could be written in a language that doesn't have higher-order procedures),
-even though the language that it supports will include higher-order
-procedures.}
+corresponding values:@footnote{The book's original @code{list-of-values} was
+an explicit recursion, written (rather than using @code{map}) to emphasize the
+fact that the evaluator can be implemented without any use of higher-order
+procedures (and thus could be written in a language that doesn't have
+higher-order procedures), even though the language that it supports will
+include higher-order procedures.  In this edition @code{listOfValues} is the
+@code{map} version the book contemplated: the host's @code{map} visits the
+operands in order, which is exactly where the fixed operand order that
+exercise 4.1 discusses comes from.}
 
-@lisp
-(define (list-of-values exps env)
-  (if (no-operands? exps)
-      '()
-      (cons (eval (first-operand exps) env)
-            (list-of-values 
-             (rest-operands exps) 
-             env))))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+protected open fun listOfValues(
+    operands: PersistentList<Expr>,
+    env: Env,
+): List<Value> = operands.map @{ eval(it, env) @}
+@end example
 
 @subsubheading Conditionals
 
-@code{Eval-if} evaluates the predicate part of an @code{if} expression in the
-given environment.  If the result is true, @code{eval-if} evaluates the
-consequent, otherwise it evaluates the alternative:
+@code{evalIf} evaluates the predicate part of an @code{if} expression in the
+given environment.  If the result is true, @code{evalIf} continues with the
+consequent, otherwise it continues with the alternative:
 
-@lisp
-(define (eval-if exp env)
-  (if (true? (eval (if-predicate exp) env))
-      (eval (if-consequent exp) env)
-      (eval (if-alternative exp) env)))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+private fun evalIf(
+    expr: IfE,
+    env: Env,
+): EvalStep @{
+    val predicate = eval(expr.predicate, env)
+    return EvalStep.Continue(if (isTrue(predicate)) expr.consequent else expr.alternative, env)
+@}
+@end example
 
 @noindent
-The use of @code{true?} in @code{eval-if} highlights the issue of the
+The use of @code{isTrue} in @code{evalIf} highlights the issue of the
 connection between an implemented language and an implementation language.  The
-@code{if-predicate} is evaluated in the language being implemented and thus
-yields a value in that language.  The interpreter predicate @code{true?}
-translates that value into a value that can be tested by the @code{if} in the
+predicate is evaluated in the language being implemented and thus yields a
+value in that language.  The interpreter predicate @code{isTrue} translates
+that value into a value that can be tested by the @code{if} in the
 implementation language: The metacircular representation of truth might not be
-the same as that of the underlying Scheme.@footnote{In this case, the language
-being implemented and the implementation language are the same.  Contemplation
-of the meaning of @code{true?} here yields expansion of consciousness without
-the abuse of substance.}
+the same as that of the host, Kotlin.@footnote{Here the language being
+implemented is the Scheme subset and the implementation language is Kotlin.
+Contemplation of the meaning of @code{isTrue} here yields expansion of
+consciousness without the abuse of substance.}
 
 @subsubheading Sequences
 
-@code{Eval-sequence} is used by @code{apply} to evaluate the sequence of
+@code{evalSequence} is used by @code{applyProcedure} to evaluate the sequence of
 expressions in a procedure body and by @code{eval} to evaluate the sequence of
 expressions in a @code{begin} expression.  It takes as arguments a sequence of
 expressions and an environment, and evaluates the expressions in the order in
-which they occur.  The value returned is the value of the final expression.
+which they occur.  The value returned is the value of the final expression ---
+in the dispatch loop, the final expression is the next tail expression, not a
+recursive call:
 
-@lisp
-(define (eval-sequence exps env)
-  (cond ((last-exp? exps) 
-         (eval (first-exp exps) env))
-        (else 
-         (eval (first-exp exps) env)
-         (eval-sequence (rest-exps exps) 
-                        env))))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+private fun evalSequence(
+    actions: PersistentList<Expr>,
+    env: Env,
+): EvalStep @{
+    if (actions.isEmpty()) r.raise(SchemeError.Parse("empty sequence"))
+    for (i in 0 until actions.size - 1) eval(actions[i], env)
+    return EvalStep.Continue(actions.last(), env)
+@}
+@end example
 
 @subsubheading Assignments and definitions
 
 The following procedure handles assignments to variables.  It calls @code{eval}
 to find the value to be assigned and transmits the variable and the resulting
-value to @code{set-variable-value!} to be installed in the designated
+value to @code{setVariable} to be installed in the designated
 environment.
 
-@lisp
-(define (eval-assignment exp env)
-  (set-variable-value! 
-   (assignment-variable exp)
-   (eval (assignment-value exp) env)
-   env)
-  'ok)
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+private fun evalAssignment(
+    expr: SetE,
+    env: Env,
+): EvalStep @{
+    setVariable(expr.name, eval(expr.value, env), env)
+    return EvalStep.Done(VSym("ok"))
+@}
+@end example
 
 @noindent
 Definitions of variables are handled in a similar manner.@footnote{This
@@ -395,14 +466,23 @@ implementation of @code{define} ignores a subtle issue in the handling of
 internal definitions, although it works correctly in most cases.  We will see
 what the problem is and how to solve it in @ref{4.1.6}.}
 
-@lisp
-(define (eval-definition exp env)
-  (define-variable! 
-    (definition-variable exp)
-    (eval (definition-value exp) env)
-    env)
-  'ok)
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+private fun evalDefinition(
+    expr: DefineE,
+    env: Env,
+): EvalStep @{
+    val value = expr.value
+    val v =
+        if (value is LambdaE) @{
+            makeProcedure(value.params, value.rest, value.body, env, expr.name)
+        @} else @{
+            eval(value, env)
+        @}
+    defineVariable(expr.name, v, env)
+    return EvalStep.Done(VSym("ok"))
+@}
+@end example
 
 @noindent
 We have chosen here to return the symbol @code{ok} as the value of an
@@ -411,17 +491,16 @@ assignment or a definition.@footnote{As we said when we introduced
 Scheme---that is, the implementor can choose what value to return.}
 
 @quotation
-@strong{@anchor{Exercise 4.1}Exercise 4.1:} Notice that we cannot tell whether
-the metacircular evaluator evaluates operands from left to right or from right
-to left.  Its evaluation order is inherited from the underlying Lisp: If the
-arguments to @code{cons} in @code{list-of-values} are evaluated from left to
-right, then @code{list-of-values} will evaluate operands from left to right;
-and if the arguments to @code{cons} are evaluated from right to left, then
-@code{list-of-values} will evaluate operands from right to left.
-
-Write a version of @code{list-of-values} that evaluates operands from left to
-right regardless of the order of evaluation in the underlying Lisp.  Also write
-a version of @code{list-of-values} that evaluates operands from right to left.
+@strong{@anchor{Exercise 4.1}Exercise 4.1:} This host settles the question the
+original leaves open: Kotlin always evaluates a procedure's operands from left
+to right, so the metacircular evaluator inherits a fixed order, and we can
+already tell which one --- there is nothing to observe.  The order becomes a
+property of the evaluator itself only when the evaluator's own code decides
+it: write @code{listOfValues} out by hand, as an explicit recursion, and the
+host stops deciding for us.  Write a version of @code{listOfValues} that
+evaluates operands from left to right by construction, and a version that
+evaluates them from right to left, and run the same operand-recording program
+under both to see exactly what the host order had been deciding for us.
 @end quotation
 
 @node	4.1.2, 4.1.3, 4.1.1, 4.1
@@ -437,8 +516,8 @@ details of how expressions are represented.  In the differentiation program
 this meant that the same differentiation procedure could deal with algebraic
 expressions in prefix form, in infix form, or in some other form.  For the
 evaluator, this means that the syntax of the language being evaluated is
-determined solely by the procedures that classify and extract pieces of
-expressions.
+determined solely by the parser that classifies each datum and carries its
+pieces in a typed node.
 
 Here is the specification of the syntax of our language:
 
@@ -447,117 +526,101 @@ Here is the specification of the syntax of our language:
 @item
 The only self-evaluating items are numbers and strings:
 
-@lisp
-(define (self-evaluating? exp)
-  (cond ((number? exp) true)
-        ((string? exp) true)
-        (else false)))
-@end lisp
+@example kotlin
+// the parser's self-evaluating arms: a string, and the numbers
+// and booleans that fall through to the literal node
+is VStr -> LitE(v)
+else -> LitE(v) // numbers, booleans, and, for safety, the empty list
+@end example
 
 @item
 Variables are represented by symbols:
 
-@lisp
-(define (variable? exp) (symbol? exp))
-@end lisp
+@example kotlin
+// a symbol parses to the variable node
+is VSym -> VarE(v.name)
+@end example
 
 @item
 Quotations have the form @code{(quote ⟨@var{text-of-quotation}⟩)}:@footnote{As
-mentioned in @ref{2.3.1}, the evaluator sees a quoted expression as a
-list beginning with @code{quote}, even if the expression is typed with the
-quotation mark.  For example, the expression @code{'a} would be seen by the
-evaluator as @code{(quote a)}.  See @ref{Exercise 2.55}.}
+mentioned in @ref{2.3.1}, the reader sees a quoted expression as a
+quotation, even if the expression is typed with the
+quotation mark.  For example, the expression @code{'a} is read as the
+quotation of the symbol @code{a}, the same datum as @code{(quote a)}.  See
+@ref{Exercise 2.55}.}
 
-@lisp
-(define (quoted? exp)
-  (tagged-list? exp 'quote))
+@example kotlin
+// the quotation node: QuoteE carries the quoted datum
+"quote" -> QuoteE(operandOf(v, "quote"))
+@end example
 
-(define (text-of-quotation exp)
-  (cadr exp))
-@end lisp
-
-@code{Quoted?} is defined in terms of the procedure @code{tagged-list?}, which
-identifies lists beginning with a designated symbol:
-
-@lisp
-(define (tagged-list? exp tag)
-  (if (pair? exp)
-      (eq? (car exp) tag)
-      false))
-@end lisp
+@noindent
+The parser has already identified each list beginning with the symbol
+@code{quote} by its head symbol, and the evaluator matches on the node.
 
 @item
 Assignments have the form @code{(set! ⟨@var{var}⟩ ⟨@var{value}⟩)}:
 
-@lisp
-(define (assignment? exp)
-  (tagged-list? exp 'set!))
-
-(define (assignment-variable exp) 
-  (cadr exp))
-
-(define (assignment-value exp) (caddr exp))
-@end lisp
+@example kotlin
+// the assignment node: SetE carries the name and the value expression
+"set!" -> parseSet(v)
+@end example
 
 @item
 Definitions have the form
 
-@lisp
+@example
 (define ⟨@var{var}⟩ ⟨@var{value}⟩)
-@end lisp
+@end example
 
 @noindent
 or the form
 
-@lisp
+@example
 (define (⟨@var{var}⟩ ⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
   ⟨@var{body}⟩)
-@end lisp
+@end example
 
 The latter form (standard procedure definition) is syntactic sugar for
 
-@lisp
+@example
 (define ⟨@var{var}⟩
   (lambda (⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
     ⟨@var{body}⟩))
-@end lisp
+@end example
 
-The corresponding syntax procedures are the following:
+The parser handles both shapes:
 
-@lisp
-(define (definition? exp)
-  (tagged-list? exp 'define))
-
-(define (definition-variable exp)
-  (if (symbol? (cadr exp))
-      (cadr exp)
-      (caadr exp)))
-
-(define (definition-value exp)
-  (if (symbol? (cadr exp))
-      (caddr exp)
-      (make-lambda 
-       (cdadr exp)   @r{; formal parameters}
-       (cddr exp)))) @r{; body}
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+private fun parseDefine(v: VPair): Expr @{
+    val items = cdrList(v, "define")
+    if (items.isEmpty()) r.raise(SchemeError.Parse("bad define form: $v"))
+    val target = items[0]
+    return if (target is VSym) @{
+        if (items.size != 2) r.raise(SchemeError.Parse("bad define form: $v"))
+        DefineE(target.name, parseExpr(items[1]))
+    @} else @{
+        val signature = target as? VPair ?: r.raise(SchemeError.Parse("bad define form: $v"))
+        val name = signature.car as? VSym ?: r.raise(SchemeError.Parse("bad define name: $v"))
+        val (params, rest) = parseParamList(signature.cdr)
+        val lambda = LambdaE(params, rest, parseBody(items.drop(1), "define"))
+        DefineE(name.name, lambda)
+    @}
+@}
+@end example
 
 @item
-@code{Lambda} expressions are lists that begin with the symbol @code{lambda}:
+@code{Lambda} expressions are the lambda node:
 
-@lisp
-(define (lambda? exp) 
-  (tagged-list? exp 'lambda))
-(define (lambda-parameters exp) (cadr exp))
-(define (lambda-body exp) (cddr exp))
-@end lisp
+@example kotlin
+// the lambda node: LambdaE carries the parameters, an optional
+// rest parameter, and the body
+"lambda" -> parseLambda(v)
+@end example
 
-We also provide a constructor for @code{lambda} expressions, which is used by
-@code{definition-value}, above:
-
-@lisp
-(define (make-lambda parameters body)
-  (cons 'lambda (cons parameters body)))
-@end lisp
+The parser builds the same node when it expands the procedure-definition sugar
+above, which is what the book's @code{make-lambda} constructor did.
 
 @item
 Conditionals begin with @code{if} and have a predicate, a consequent, and an
@@ -568,76 +631,47 @@ Scheme; we have chosen here to make it false.  We will support the use of the
 variables @code{true} and @code{false} in expressions to be evaluated by
 binding them in the global environment.  See @ref{4.1.4}.}
 
-@lisp
-(define (if? exp) (tagged-list? exp 'if))
-(define (if-predicate exp) (cadr exp))
-(define (if-consequent exp) (caddr exp))
-(define (if-alternative exp)
-  (if (not (null? (cdddr exp)))
-      (cadddr exp)
-      'false))
-@end lisp
+@example kotlin
+// a missing alternative parses as the false variable, the book's choice
+val alternative = if (items.size == 3) parseExpr(items[2]) else VarE("false")
+return IfE(parseExpr(items[0]), parseExpr(items[1]), alternative)
+@end example
 
-We also provide a constructor for @code{if} expressions, to be used by
-@code{cond->if} to transform @code{cond} expressions into @code{if}
-expressions:
-
-@lisp
-(define (make-if predicate 
-                 consequent 
-                 alternative)
-  (list 'if 
-        predicate 
-        consequent 
-        alternative))
-@end lisp
+The @code{IfE} constructor is the node's own; the derived-expression lowering
+of @ref{4.1.2} builds @code{IfE} values when it transforms @code{cond}
+expressions into @code{if} expressions.
 
 @item
-@code{Begin} packages a sequence of expressions into a single expression.  We
-include syntax operations on @code{begin} expressions to extract the actual
-sequence from the @code{begin} expression, as well as selectors that return the
-first expression and the rest of the expressions in the
-sequence.@footnote{These selectors for a list of expressions---and the
+@code{Begin} packages a sequence of expressions into a single expression.  The
+node carries the actual sequence, and ordinary list operations give the first
+expression and the rest of the expressions.@footnote{These selectors for a
+list of expressions---and the
 corresponding ones for a list of operands---are not intended as a data
 abstraction.  They are introduced as mnemonic names for the basic list
 operations in order to make it easier to understand the explicit-control
 evaluator in @ref{5.4}.}
 
-@lisp
-(define (begin? exp) 
-  (tagged-list? exp 'begin))
-(define (begin-actions exp) (cdr exp))
-(define (last-exp? seq) (null? (cdr seq)))
-(define (first-exp seq) (car seq))
-(define (rest-exps seq) (cdr seq))
-@end lisp
+@example kotlin
+// the sequence node: BeginE carries the actions in order
+"begin" -> BeginE(parseBody(cdrList(v, "begin"), "begin"))
+@end example
 
-We also include a constructor @code{sequence->exp} (for use by @code{cond->if})
-that transforms a sequence into a single expression, using @code{begin} if
-necessary:
+We also include a constructor @code{sequenceToExp} (for use by
+@code{condToIfChain}) that transforms a sequence into a single expression,
+using @code{begin} if necessary:
 
-@lisp
-(define (sequence->exp seq)
-  (cond ((null? seq) seq)
-        ((last-exp? seq) (first-exp seq))
-        (else (make-begin seq))))
-
-(define (make-begin seq) (cons 'begin seq))
-@end lisp
+@example kotlin
+internal fun sequenceToExp(actions: PersistentList<Expr>): Expr = if (actions.size == 1) actions.first() else BeginE(actions)
+@end example
 
 @item
 A procedure application is any compound expression that is not one of the above
-expression types.  The @code{car} of the expression is the operator, and the
-@code{cdr} is the list of operands:
+expression types.  The node carries the operator and the list of operands:
 
-@lisp
-(define (application? exp) (pair? exp))
-(define (operator exp) (car exp))
-(define (operands exp) (cdr exp))
-(define (no-operands? ops) (null? ops))
-(define (first-operand ops) (car ops))
-(define (rest-operands ops) (cdr ops))
-@end lisp
+@example kotlin
+// every other compound form is an application: AppE(operator, operands)
+else -> parseApplication(v)
+@end example
 
 @end itemize
 
@@ -649,68 +683,51 @@ example is @code{cond}, which can be implemented as a nest of @code{if}
 expressions.  For example, we can reduce the problem of evaluating the
 expression
 
-@lisp
+@example
 (cond ((> x 0) x)
       ((= x 0) (display 'zero) 0)
       (else (- x)))
-@end lisp
+@end example
 
 @noindent
 to the problem of evaluating the following expression involving @code{if} and
 @code{begin} expressions:
 
-@lisp
+@example
 (if (> x 0)
     x
     (if (= x 0)
         (begin (display 'zero) 0)
         (- x)))
-@end lisp
+@end example
 
 @noindent
 Implementing the evaluation of @code{cond} in this way simplifies the evaluator
 because it reduces the number of special forms for which the evaluation process
 must be explicitly specified.
 
-We include syntax procedures that extract the parts of a @code{cond}
-expression, and a procedure @code{cond->if} that transforms @code{cond}
-expressions into @code{if} expressions.  A case analysis begins with
+The parser carries the clauses of a @code{cond} expression as typed
+@code{CondClause} values --- an ordinary clause or the @code{Else} clause --- and
+the function @code{condToIfChain} transforms @code{cond} expressions into
+@code{if} expressions.  A case analysis begins with
 @code{cond} and has a list of predicate-action clauses.  A clause is an
 @code{else} clause if its predicate is the symbol @code{else}.@footnote{The
 value of a @code{cond} expression when all the predicates are false and there
 is no @code{else} clause is unspecified in Scheme; we have chosen here to make
 it false.}
 
-@lisp
-(define (cond? exp) 
-  (tagged-list? exp 'cond))
-(define (cond-clauses exp) (cdr exp))
-(define (cond-else-clause? clause)
-  (eq? (cond-predicate clause) 'else))
-(define (cond-predicate clause) 
-  (car clause))
-(define (cond-actions clause) 
-  (cdr clause))
-(define (cond->if exp)
-  (expand-clauses (cond-clauses exp)))
-(define (expand-clauses clauses)
-  (if (null? clauses)
-      'false     @r{; no @code{else} clause}
-      (let ((first (car clauses))
-            (rest (cdr clauses)))
-        (if (cond-else-clause? first)
-            (if (null? rest)
-                (sequence->exp 
-                 (cond-actions first))
-                (error "ELSE clause isn't 
-                        last: COND->IF"
-                       clauses))
-            (make-if (cond-predicate first)
-                     (sequence->exp 
-                      (cond-actions first))
-                     (expand-clauses 
-                      rest))))))
-@end lisp
+@example kotlin
+public fun condToIfChain(clauses: PersistentList<CondClause>): Expr @{
+    if (clauses.isEmpty()) return VarE("false") // no else clause
+    val first = clauses.first()
+    val rest = clauses.removingAt(0)
+    val alternative = condToIfChain(rest)
+    return when (first) @{
+        is CondClause.Else -> sequenceToExp(first.body)
+        is CondClause.Clause -> IfE(first.test, sequenceToExp(first.body), alternative)
+    @}
+@}
+@end example
 
 @noindent
 Expressions (such as @code{cond}) that we choose to implement as syntactic
@@ -727,11 +744,11 @@ definition that do not cause these difficulties.  See, for example, @ref{Kohlbec
 
 @quotation
 @strong{@anchor{Exercise 4.2}Exercise 4.2:} Louis Reasoner plans to reorder the
-@code{cond} clauses in @code{eval} so that the clause for procedure
+clauses in @code{step}'s @code{when} so that the clause for procedure
 applications appears before the clause for assignments.  He argues that this
 will make the interpreter more efficient: Since programs usually contain more
-applications than assignments, definitions, and so on, his modified @code{eval}
-will usually check fewer clauses than the original @code{eval} before
+applications than assignments, definitions, and so on, his modified evaluator
+will usually check fewer clauses than the original before
 identifying the type of an expression.
 
 @enumerate a
@@ -754,8 +771,10 @@ factorial 3)} and instead of @code{(+ 1 2)} we will have to write @code{(call +
 
 @quotation
 @strong{@anchor{Exercise 4.3}Exercise 4.3:} Rewrite @code{eval} so that the
-dispatch is done in data-directed style.  Compare this with the data-directed
-differentiation procedure of @ref{Exercise 2.73}.  (You may use the @code{car}
+dispatch is done in data-directed style, using the runtime's @code{OpTable} of
+@ref{2.4.3}, keyed by the head symbol of a compound expression.  Compare this
+with the data-directed
+differentiation procedure of @ref{Exercise 2.73}.  (You may use the operator
 of a compound expression as the type of the expression, as is appropriate for
 the syntax implemented in this section.)
 @end quotation
@@ -783,7 +802,7 @@ expressions, then false is returned.
 
 Install @code{and} and @code{or} as new special forms for the evaluator by
 defining appropriate syntax procedures and evaluation procedures
-@code{eval-and} and @code{eval-or}.  Alternatively, show how to implement
+@code{evalAnd} and @code{evalOr}.  Alternatively, show how to implement
 @code{and} and @code{or} as derived expressions.
 @end quotation
 
@@ -795,10 +814,10 @@ Its value must be a procedure of one argument; this procedure is then invoked
 on the value of the @code{⟨}@var{test}@code{⟩}, and the result is returned as the value of
 the @code{cond} expression.  For example
 
-@lisp
+@example
 (cond ((assoc 'b '((a 1) (b 2))) => cadr)
       (else false))
-@end lisp
+@end example
 
 @noindent
 returns 2.  Modify the handling of @code{cond} so that it supports this
@@ -809,25 +828,25 @@ extended syntax.
 @strong{@anchor{Exercise 4.6}Exercise 4.6:} @code{Let} expressions are derived
 expressions, because
 
-@lisp
+@example
 (let ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
   ⟨@var{body}⟩)
-@end lisp
+@end example
 
 @noindent
 is equivalent to
 
-@lisp
+@example
 ((lambda (⟨@var{var₁}⟩ @r{…} ⟨@var{varₙ}⟩)
    ⟨@var{body}⟩)
  ⟨@var{exp₁}⟩
  @r{…}
  ⟨@var{expₙ}⟩)
-@end lisp
+@end example
 
-Implement a syntactic transformation @code{let->combination} that reduces
+Implement a syntactic transformation @code{letToCombinationExpr} that reduces
 evaluating @code{let} expressions to evaluating combinations of the type shown
-above, and add the appropriate clause to @code{eval} to handle @code{let}
+above, and add the appropriate clause to @code{step} to handle @code{let}
 expressions.
 @end quotation
 
@@ -837,23 +856,25 @@ expressions.
 sequentially from left to right, and each binding is made in an environment in
 which all of the preceding bindings are visible.  For example
 
-@lisp
+@example
 (let* ((x 3)
        (y (+ x 2))
        (z (+ x y 5)))
   (* x z))
-@end lisp
+@end example
 
 @noindent
 returns 39.  Explain how a @code{let*} expression can be rewritten as a set of
-nested @code{let} expressions, and write a procedure @code{let*->nested-lets}
+nested @code{let} expressions, and write a procedure @code{letStarToNestedLets}
 that performs this transformation.  If we have already implemented @code{let}
 (@ref{Exercise 4.6}) and we want to extend the evaluator to handle @code{let*},
-is it sufficient to add a clause to @code{eval} whose action is
+is it sufficient to add a clause to @code{step} whose action is
 
-@lisp
-(eval (let*->nested-lets exp) env)
-@end lisp
+@example kotlin
+// a step override clause: let* parses to your own node, and the
+// clause continues with the rewrite
+is LetStarE -> EvalStep.Continue(letStarToNestedLets(expr), env)
+@end example
 
 @noindent
 or must we explicitly expand @code{let*} in terms of non-derived expressions?
@@ -863,9 +884,9 @@ or must we explicitly expand @code{let*} in terms of non-derived expressions?
 @strong{@anchor{Exercise 4.8}Exercise 4.8:} ``Named @code{let}'' is a variant
 of @code{let} that has the form 
 
-@lisp
+@example
 (let ⟨@var{var}⟩ ⟨@var{bindings}⟩ ⟨@var{body}⟩)
-@end lisp
+@end example
 
 The @code{⟨}@var{bindings}@code{⟩} and @code{⟨}@var{body}@code{⟩} are just as in ordinary @code{let},
 except that @code{⟨}@var{var}@code{⟩} is bound within @code{⟨}@var{body}@code{⟩} to a procedure whose body
@@ -874,17 +895,15 @@ Thus, one can repeatedly execute the @code{⟨}@var{body}@code{⟩} by invoking 
 named @code{⟨}@var{var}@code{⟩}.  For example, the iterative Fibonacci procedure 
 (@ref{1.2.2}) can be rewritten using named @code{let} as follows:
 
-@lisp
+@example
 (define (fib n)
   (let fib-iter ((a 1) (b 0) (count n))
     (if (= count 0)
         b
-        (fib-iter (+ a b) 
-                  a 
-                  (- count 1)))))
-@end lisp
+        (fib-iter (+ a b) a (- count 1)))))
+@end example
 
-Modify @code{let->combination} of @ref{Exercise 4.6} to also support named
+Modify @code{letToCombinationExpr} of @ref{Exercise 4.6} to also support named
 @code{let}.
 @end quotation
 
@@ -902,8 +921,9 @@ show how to implement them as derived expressions.
 @strong{@anchor{Exercise 4.10}Exercise 4.10:} By using data abstraction, we
 were able to write an @code{eval} procedure that is independent of the
 particular syntax of the language to be evaluated.  To illustrate this, design
-and implement a new syntax for Scheme by modifying the procedures in this
-section, without changing @code{eval} or @code{apply}.
+and implement a new syntax for Scheme by editing the parser of this
+section, without changing @code{Evaluator}'s @code{step} or
+@code{applyProcedure}.
 @end quotation
 
 @node	4.1.3, 4.1.4, 4.1.2, 4.1
@@ -918,15 +938,11 @@ and false.
 @subsubheading Testing of predicates
 
 For conditionals, we accept anything to be true that is not the explicit
-@code{false} object.
+@code{false} object --- in this edition, the boolean value @code{VBool(false)}:
 
-@lisp
-(define (true? x)
-  (not (eq? x false)))
-
-(define (false? x)
-  (eq? x false))
-@end lisp
+@example kotlin
+public fun isTrue(v: Value): Boolean = v != VBool(false)
+@end example
 
 @subsubheading Representing procedures
 
@@ -936,17 +952,17 @@ procedures:
 @itemize @bullet
 
 @item
-@code{(apply-primitive-procedure ⟨@var{proc}⟩ ⟨@var{args}⟩)}
+@code{callPrimitive ⟨@var{proc}⟩ ⟨@var{args}⟩}
 
 @noindent
 applies the given primitive procedure to the argument values in the list
 @code{⟨}@var{args}@code{⟩} and returns the result of the application.
 
 @item
-@code{(primitive-procedure? ⟨@var{proc}⟩)}
+the test @code{v is VPrimitive}
 
 @noindent
-tests whether @code{⟨}@var{proc}@code{⟩} is a primitive procedure.
+tests whether @code{⟨}@var{v}@code{⟩} is a primitive procedure.
 
 @end itemize
 
@@ -955,17 +971,25 @@ These mechanisms for handling primitives are further described in
 @ref{4.1.4}.
 
 Compound procedures are constructed from parameters, procedure bodies, and
-environments using the constructor @code{make-procedure}:
+environments using the constructor @code{makeProcedure}:
 
-@lisp
-(define (make-procedure parameters body env)
-  (list 'procedure parameters body env))
-(define (compound-procedure? p)
-  (tagged-list? p 'procedure))
-(define (procedure-parameters p) (cadr p))
-(define (procedure-body p) (caddr p))
-(define (procedure-environment p) (cadddr p))
-@end lisp
+@example kotlin
+protected open fun makeProcedure(
+    params: PersistentList<String>,
+    rest: String?,
+    body: PersistentList<Expr>,
+    env: Env,
+    name: String?,
+): Value = VProc(params, rest, body, env, name)
+@end example
+
+@noindent
+The value is a @code{VProc}: the parameter names, the body expressions, the
+environment the @code{lambda} captured, and the definition name, if any.  The
+printer keeps the environment part out of sight, the way the book's
+@code{user-print} does (see @ref{4.1.4}): a named procedure prints as
+@code{#[compound-procedure name]}, an anonymous one as
+@code{#[compound-procedure]}.
 
 @subsubheading Operations on Environments
 
@@ -977,154 +1001,135 @@ We use the following operations for manipulating environments:
 @itemize @bullet
 
 @item
-@code{(lookup-variable-value ⟨@var{var}⟩ ⟨@var{env}⟩)}
+@code{lookup(⟨@var{env}⟩, ⟨@var{name}⟩)}
 
-returns the value that is bound to the symbol @code{⟨}@var{var}@code{⟩} in the environment
+returns the value that is bound to the name @code{⟨}@var{name}@code{⟩} in the environment
 @code{⟨}@var{env}@code{⟩}, or signals an error if the variable is unbound.
 
 @item
-@code{(extend-environment ⟨@var{variables}⟩ ⟨@var{values}⟩ ⟨@var{base-env}⟩)}
+@code{extend(⟨@var{names}⟩, ⟨@var{values}⟩, ⟨@var{base-env}⟩)}
 
 returns a new environment, consisting of a new frame in which the symbols in
-the list @code{⟨}@var{variables}@code{⟩} are bound to the corresponding elements in the list
+the list @code{⟨}@var{names}@code{⟩} are bound to the corresponding elements in the list
 @code{⟨}@var{values}@code{⟩}, where the enclosing environment is the environment
 @code{⟨}@var{base-env}@code{⟩}.
 
 @item
-@code{(define-variable! ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩)}
+@code{define(⟨@var{env}⟩, ⟨@var{name}⟩, ⟨@var{value}⟩)}
 
 adds to the first frame in the environment @code{⟨}@var{env}@code{⟩} a new binding that
-associates the variable @code{⟨}@var{var}@code{⟩} with the value @code{⟨}@var{value}@code{⟩}.
+associates the variable @code{⟨}@var{name}@code{⟩} with the value @code{⟨}@var{value}@code{⟩}.
 
 @item
-@code{(set-variable-value! ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩)}
+@code{set(⟨@var{env}⟩, ⟨@var{name}⟩, ⟨@var{value}⟩)}
 
-changes the binding of the variable @code{⟨}@var{var}@code{⟩} in the environment @code{⟨}@var{env}@code{⟩}
+changes the binding of the variable @code{⟨}@var{name}@code{⟩} in the environment @code{⟨}@var{env}@code{⟩}
 so that the variable is now bound to the value @code{⟨}@var{value}@code{⟩}, or signals an
 error if the variable is unbound.
 
 @end itemize
 
 @noindent
-To implement these operations we represent an environment as a list of frames.
-The enclosing environment of an environment is the @code{cdr} of the list.  The
-empty environment is simply the empty list.
+To implement these operations we use the environments of @ref{3.2}: an
+environment is a chain of frames, each frame a name-to-value table, and the
+enclosing environment of an environment is the frame's parent.  There is no
+empty-environment sentinel: the chain simply ends at the global frame, where
+the parent is absent.  The four operations are thin members of @code{Env},
+each a single step over that representation.
 
-@lisp
-(define (enclosing-environment env) (cdr env))
-(define (first-frame env) (car env))
-(define the-empty-environment '())
-@end lisp
-
-@noindent
-Each frame of an environment is represented as a pair of lists: a list of the
-variables bound in that frame and a list of the associated
-values.@footnote{Frames are not really a data abstraction in the following
-code: @code{Set-variable-value!} and @code{define-variable!} use
-@code{set-car!}  to directly modify the values in a frame.  The purpose of the
-frame procedures is to make the environment-manipulation procedures easy to
-read.}
-
-@lisp
-(define (make-frame variables values)
-  (cons variables values))
-(define (frame-variables frame) (car frame))
-(define (frame-values frame) (cdr frame))
-(define (add-binding-to-frame! var val frame)
-  (set-car! frame (cons var (car frame)))
-  (set-cdr! frame (cons val (cdr frame))))
-@end lisp
-
-@noindent
 To extend an environment by a new frame that associates variables with values,
-we make a frame consisting of the list of variables and the list of values, and
-we adjoin this to the environment.  We signal an error if the number of
+we make a frame binding each name to the value at the same position, and we
+adjoin this to the environment.  We signal a typed error if the number of
 variables does not match the number of values.
 
-@lisp
-(define (extend-environment vars vals base-env)
-  (if (= (length vars) (length vals))
-      (cons (make-frame vars vals) base-env)
-      (if (< (length vars) (length vals))
-          (error "Too many arguments supplied" 
-                 vars 
-                 vals)
-          (error "Too few arguments supplied" 
-                 vars 
-                 vals))))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+public fun extend(
+    names: List<String>,
+    values: List<Value>,
+    parent: Env,
+    rest: String? = null,
+): Env @{
+    if (rest == null && names.size != values.size) @{
+        r.raise(SchemeError.WrongArity("extend", names.size.toString(), values.size))
+    @}
+    if (rest != null && values.size < names.size) @{
+        r.raise(SchemeError.WrongArity("extend", "at least $@{names.size@}", values.size))
+    @}
+    val bound = names.zip(values).toMap(persistentMapOf<String, Value>().builder())
+    val env = Env(bound.build(), parent)
+    if (rest != null) @{
+        env.frame = env.frame.putting(rest, vlist(values.drop(names.size)))
+    @}
+    return env
+@}
+@end example
 
 @noindent
-To look up a variable in an environment, we scan the list of variables in the
-first frame.  If we find the desired variable, we return the corresponding
-element in the list of values.  If we do not find the variable in the current
-frame, we search the enclosing environment, and so on.  If we reach the empty
-environment, we signal an ``unbound variable'' error.
+To look up a variable in an environment, we search the table of the first
+frame.  If we find the desired variable, we return its value.  If we do not
+find the variable in the current frame, we search the enclosing environment,
+and so on.  If the chain runs out, we raise the edition's ``unbound variable''
+error.
 
-@lisp
-(define (lookup-variable-value var env)
-  (define (env-loop env)
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (env-loop 
-              (enclosing-environment env)))
-            ((eq? var (car vars))
-             (car vals))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (if (eq? env the-empty-environment)
-        (error "Unbound variable" var)
-        (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
-                (frame-values frame)))))
-  (env-loop env))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+public fun lookup(name: String): Value @{
+    var cursor: Env? = this
+    while (cursor != null) @{
+        val hit = cursor.frame[name]
+        if (hit != null) return hit
+        cursor = cursor.parent
+    @}
+    r.raise(SchemeError.Unbound(name))
+@}
+@end example
 
 @noindent
-To set a variable to a new value in a specified environment, we scan for the
-variable, just as in @code{lookup-variable-value}, and change the corresponding
-value when we find it.
+To set a variable to a new value in a specified environment, we search for the
+variable, just as in @code{lookup}, and change the corresponding value when we
+find it.
 
-@lisp
-(define (set-variable-value! var val env)
-  (define (env-loop env)
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (env-loop 
-              (enclosing-environment env)))
-            ((eq? var (car vars))
-             (set-car! vals val))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (if (eq? env the-empty-environment)
-        (error "Unbound variable: SET!" var)
-        (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
-                (frame-values frame)))))
-  (env-loop env))
-@end lisp
-
-@noindent
-To define a variable, we search the first frame for a binding for the variable,
-and change the binding if it exists (just as in @code{set-variable-value!}).
-If no such binding exists, we adjoin one to the first frame.
-
-@lisp
-(define (define-variable! var val env)
-  (let ((frame (first-frame env)))
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (add-binding-to-frame! 
-              var val frame))
-            ((eq? var (car vars))
-             (set-car! vals val))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (scan (frame-variables frame)
-          (frame-values frame))))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+public fun set(
+    name: String,
+    value: Value,
+) @{
+    var cursor: Env? = this
+    while (cursor != null) @{
+        if (cursor.frame.containsKey(name)) @{
+            cursor.frame = cursor.frame.putting(name, value)
+            return
+        @}
+        cursor = cursor.parent
+    @}
+    r.raise(SchemeError.Unbound(name))
+@}
+@end example
 
 @noindent
+To define a variable, we add the binding to the first frame's table, shadowing
+any outer binding of the same name without touching it.
+
+@example kotlin
+public fun define(
+    name: String,
+    value: Value,
+) @{
+    frame = frame.putting(name, value)
+@}
+@end example
+
+@noindent
+Each frame is a persistent map behind a @code{var}, the frame model of the
+re-cut @ref{3.2}: @code{define} rebinds the frame's map on the same node, so
+every holder of the node sees the new binding, while @code{set} rebinds the map
+of the frame that owns the name.@footnote{Frames are not really a data
+abstraction in the following code: @code{set} and @code{define} rewrite the
+frame's map directly.  The purpose of the @code{Env} operations is to make the
+environment-manipulation procedures easy to read.}
+
 The method described here is only one of many plausible ways to represent
 environments.  Since we used data abstraction to isolate the rest of the
 evaluator from the detailed choice of representation, we could change the
@@ -1141,18 +1146,18 @@ inefficiency is to make use of a strategy called @newterm{lexical addressing},
 which will be discussed in @ref{5.5.6}.}
 
 @quotation
-@strong{@anchor{Exercise 4.11}Exercise 4.11:} Instead of representing a frame
-as a pair of lists, we can represent a frame as a list of bindings, where each
+@strong{@anchor{Exercise 4.11}Exercise 4.11:} Instead of the runtime's frame
+(a name-to-value map), represent a frame as a list of bindings, where each
 binding is a name-value pair.  Rewrite the environment operations to use this
 alternative representation.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.12}Exercise 4.12:} The procedures
-@code{define-variable!}, @code{set-variable-value!} and
-@code{lookup-variable-value} can be expressed in terms of more abstract
+@strong{@anchor{Exercise 4.12}Exercise 4.12:} The operations
+@code{define}, @code{set} and
+@code{lookup} can be expressed in terms of more abstract
 procedures for traversing the environment structure.  Define abstractions that
-capture the common patterns and redefine the three procedures in terms of these
+capture the common patterns and redefine the three operations in terms of these
 abstractions.
 @end quotation
 
@@ -1170,188 +1175,188 @@ justify any choices you make.
 @node	4.1.4, 4.1.5, 4.1.3, 4.1
 @subsection Running the Evaluator as a Program
 
-Given the evaluator, we have in our hands a description (expressed in Lisp) of
-the process by which Lisp expressions are evaluated.  One advantage of
+Given the evaluator, we have in our hands a description (expressed in Kotlin) of
+the process by which the language's expressions are evaluated.  One advantage of
 expressing the evaluator as a program is that we can run the program.  This
-gives us, running within Lisp, a working model of how Lisp itself evaluates
-expressions.  This can serve as a framework for experimenting with evaluation
-rules, as we shall do later in this chapter.
+gives us, running within Kotlin, a working model of how the language itself
+evaluates expressions.  This can serve as a framework for experimenting with
+evaluation rules, as we shall do later in this chapter.
 
 Our evaluator program reduces expressions ultimately to the application of
 primitive procedures.  Therefore, all that we need to run the evaluator is to
-create a mechanism that calls on the underlying Lisp system to model the
+create a mechanism that calls on the underlying Kotlin runtime to model the
 application of primitive procedures.
 
 There must be a binding for each primitive procedure name, so that when
 @code{eval} evaluates the operator of an application of a primitive, it will
-find an object to pass to @code{apply}.  We thus set up a global environment
+find an object to pass to @code{applyProcedure}.  We thus set up a global environment
 that associates unique objects with the names of the primitive procedures that
 can appear in the expressions we will be evaluating.  The global environment
 also includes bindings for the symbols @code{true} and @code{false}, so that
 they can be used as variables in expressions to be evaluated.
 
-@lisp
-(define (setup-environment)
-  (let ((initial-env
-         (extend-environment 
-          (primitive-procedure-names)
-          (primitive-procedure-objects)
-          the-empty-environment)))
-    (define-variable! 'true true initial-env)
-    (define-variable! 'false false initial-env)
-    initial-env))
-
-(define the-global-environment 
-  (setup-environment))
-@end lisp
+@example kotlin
+public fun setupEnvironment(out: OutputSink): Env @{
+    val env = Env.global()
+    for (entry in defaultPrimitives(out)) @{
+        env.define(entry.name, entry.toValue())
+    @}
+    env.define("true", VBool(true))
+    env.define("false", VBool(false))
+    return env
+@}
+@end example
 
 @noindent
 It does not matter how we represent the primitive procedure objects, so long as
-@code{apply} can identify and apply them by using the procedures
-@code{primitive-procedure?} and @code{apply-primitive-procedure}.  We have
-chosen to represent a primitive procedure as a list beginning with the symbol
-@code{primitive} and containing a procedure in the underlying Lisp that
-implements that primitive.
+@code{applyProcedure} can identify and apply them.  We have chosen to represent
+a primitive procedure as a value carrying its printed name and the Kotlin
+function that implements it:
 
-@lisp
-(define (primitive-procedure? proc)
-  (tagged-list? proc 'primitive))
-
-(define (primitive-implementation proc) 
-  (cadr proc))
-@end lisp
+@example kotlin
+// a primitive procedure value: VPrimitive(name, f), where f is the
+// Kotlin function applied to the argument values
+@end example
 
 @noindent
-@code{Setup-environment} will get the primitive names and implementation
-procedures from a list:@footnote{Any procedure defined in the underlying Lisp
+@code{setupEnvironment} will get the primitive names and implementation
+functions from a table:@footnote{Any function written in Kotlin
 can be used as a primitive for the metacircular evaluator.  The name of a
 primitive installed in the evaluator need not be the same as the name of its
-implementation in the underlying Lisp; the names are the same here because the
+implementation in Kotlin; the names are the same here because the
 metacircular evaluator implements Scheme itself.  Thus, for example, we could
-put @code{(list 'first car)} or @code{(list 'square (lambda (x) (* x x)))} in
-the list of @code{primitive-procedures}.}
+put an entry named @code{first} for the function of @code{car}, or an entry
+named @code{square} for a squaring function, in the table of
+@code{defaultPrimitives}.}
 
-@lisp
-(define primitive-procedures
-  (list (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
-        (list 'null? null?)
-        ⟨@var{more primitives}⟩ ))
-
-(define (primitive-procedure-names)
-  (map car primitive-procedures))
-
-(define (primitive-procedure-objects)
-  (map (lambda (proc) 
-         (list 'primitive (cadr proc)))
-       primitive-procedures))
-@end lisp
+@example kotlin
+public fun defaultPrimitives(out: OutputSink): List<PrimitiveEntry> =
+    listOf(
+        PrimitiveEntry("car") @{ args -> pairOf("car", one("car", args)).car @},
+        PrimitiveEntry("cdr") @{ args -> pairOf("cdr", one("cdr", args)).cdr @},
+        PrimitiveEntry("cons") @{ args ->
+            val (a, b) = two("cons", args)
+            cons(a, b)
+        @},
+        PrimitiveEntry("null?") @{ args -> VBool(one("null?", args) is VNil) @},
+        // ⟨more primitives⟩
+    )
+@end example
 
 @noindent
-To apply a primitive procedure, we simply apply the implementation procedure to
-the arguments, using the underlying Lisp
-system:@footnote{@code{Apply-in-underlying-scheme} is the @code{apply}
-procedure we have used in earlier chapters.  The metacircular evaluator's
-@code{apply} procedure (@ref{4.1.1}) models the working of this
-primitive.  Having two different things called @code{apply} leads to a
-technical problem in running the metacircular evaluator, because defining the
-metacircular evaluator's @code{apply} will mask the definition of the
-primitive.  One way around this is to rename the metacircular @code{apply} to
-avoid conflict with the name of the primitive procedure.  We have assumed
-instead that we have saved a reference to the underlying @code{apply} by doing
+To apply a primitive procedure, we simply apply the implementation function to
+the arguments --- an ordinary Kotlin call, the role the book's
+@code{apply-in-underlying-scheme} played:@footnote{The book needed
+@code{apply-in-underlying-scheme} because its metacircular @code{apply} and
+the host's @code{apply} shared one name, and the definition of the former
+masked the latter.  In Kotlin the two never share a name: the host's
+application is an ordinary call, and the metacircular @code{applyProcedure}
+(@ref{4.1.1}) models its working.  There is one twist: the object language's
+@code{apply} and @code{map} must apply procedure values, which a plain
+primitive function cannot do, so @code{applyProcedure} intercepts those two
+names and re-enters itself before the plain handler call would run.}
 
-@lisp
-(define apply-in-underlying-scheme apply)
-@end lisp
+@example kotlin
+is VPrimitive -> @{
+    when (procedure.name) @{
+        "apply" -> @{
+            if (arguments.size != 2) @{
+                r.raise(SchemeError.WrongArity("apply", "2", arguments.size))
+            @}
+            applyProcedure(arguments[0], listItems(arguments[1]))
+        @}
+
+        "map" -> @{
+            if (arguments.size != 2) @{
+                r.raise(SchemeError.WrongArity("map", "2", arguments.size))
+            @}
+            val items = listItems(arguments[1])
+            EvalStep.Done(vlist(items.map @{ applyFully(arguments[0], listOf(it)) @}))
+        @}
+
+        else -> @{
+            EvalStep.Done(callPrimitive(procedure, arguments))
+        @}
+    @}
+@}
+@end example
 
 @noindent
-before defining the metacircular @code{apply}.  This allows us to access the
-original version of @code{apply} under a different name.}
+where the helper @code{applyFully} runs the dispatch loop to a value when an
+intercepted application lands in a tail position.
 
-@lisp
-(define (apply-primitive-procedure proc args)
-  (apply-in-underlying-scheme
-   (primitive-implementation proc) args))
-@end lisp
-
-@noindent
 For convenience in running the metacircular evaluator, we provide a
-@newterm{driver loop} that models the read-eval-print loop of the underlying
-Lisp system.  It prints a @newterm{prompt}, reads an input expression,
-evaluates this expression in the global environment, and prints the result.  We
-precede each printed result by an @newterm{output prompt} so as to distinguish
-the value of the expression from other output that may be printed.@footnote{The
-primitive procedure @code{read} waits for input from the user, and returns the
-next complete expression that is typed.  For example, if the user types
-@code{(+ 23 x)}, @code{read} returns a three-element list containing the symbol
-@code{+}, the number 23, and the symbol @code{x}.  If the user types @code{'x},
-@code{read} returns a two-element list containing the symbol @code{quote} and
-the symbol @code{x}.}
+@newterm{driver loop} that models the read-eval-print loop of a Lisp
+system: it prints a @newterm{prompt}, reads an input expression,
+evaluates this expression in the global environment, and prints the result,
+preceding each printed result by an @newterm{output prompt} so as to
+distinguish the value of the expression from other output.  An interleaved
+prompt would bury a program's own output, so this edition's driver records a
+bare transcript instead, under the one-transcript contract: a definition prints
+nothing, @code{display} and @code{newline} applications write their side effect
+with no value line, every other expression contributes one value line, and an
+@code{Error:} line stops the program.@footnote{The reader is given code, like
+the book's @code{read}: @code{readProgram} takes the program text and returns
+the sequence of data the forms denote.  For example, if the text is
+@code{(+ 23 x)}, the reader produces an application whose operator is the
+symbol @code{+} and whose operands are the number 23 and the symbol @code{x}.
+If the text is @code{'x}, it produces the quotation of the symbol @code{x}.}
 
-@lisp
-(define input-prompt  ";;; M-Eval input:")
-(define output-prompt ";;; M-Eval value:")
-
-(define (driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((input (read)))
-    (let ((output 
-           (eval input 
-                 the-global-environment)))
-      (announce-output output-prompt)
-      (user-print output)))
-  (driver-loop))
-
-(define (prompt-for-input string)
-  (newline) (newline) 
-  (display string) (newline))
-
-(define (announce-output string)
-  (newline) (display string) (newline))
-@end lisp
-
-@noindent
-We use a special printing procedure, @code{user-print}, to avoid printing the
-environment part of a compound procedure, which may be a very long list (or may
-even contain cycles).
-
-@lisp
-(define (user-print object)
-  (if (compound-procedure? object)
-      (display 
-       (list 'compound-procedure
-             (procedure-parameters object)
-             (procedure-body object)
-             '<procedure-env>))
-      (display object)))
-@end lisp
+@example kotlin
+public fun runProgram(
+    text: String,
+    env: Env,
+    sink: OutputSink,
+): String @{
+    either @{
+        val forms = readProgram(text)
+        val exprs = parseProgram(forms)
+        for (expr in exprs) @{
+            runForm(expr, env, sink)
+        @}
+    @}.fold(
+        @{ e -> sink.line("Error: $@{formatError(e)@}") @},
+        @{ @},
+    )
+    return sink.toString()
+@}
+@end example
 
 @noindent
-Now all we need to do to run the evaluator is to initialize the global
-environment and start the driver loop.  Here is a sample interaction:
+The shared printer plays the role of the book's @code{user-print}, avoiding the
+printing of the environment part of a compound procedure, which may be a very
+large structure (or may even contain cycles):
 
-@lisp
-(define the-global-environment 
-  (setup-environment))
+@example kotlin
+runProgram(
+    """
+    (define (square x) (* x x))
+    square
+    """.trimIndent(),
+)
+// => #[compound-procedure square]
+@end example
 
-(driver-loop)
+@noindent
+Now all we need to do to run the evaluator is to set up the global environment
+and run a program in it.  Here is a sample interaction:
 
-@i{;;; M-Eval input:}
-(define (append x y)
-  (if (null? x)
-      y
-      (cons (car x) (append (cdr x) y))))
+@example kotlin
+runProgram(
+    """
+    (define (append x y)
+      (if (null? x)
+          y
+          (cons (car x) (append (cdr x) y))))
+    (append '(a b c) '(d e f))
+    """.trimIndent(),
+)
+// => (a b c d e f)
+@end example
 
-@i{;;; M-Eval value:}
-@i{ok}
-
-@i{;;; M-Eval input:}
-(append '(a b c) '(d e f))
-
-@i{;;; M-Eval value:}
-@i{(a b c d e f)}
-@end lisp
+@noindent
+The definition prints nothing; the application's value line is the transcript's
+only line.
 
 @quotation
 @strong{@anchor{Exercise 4.14}Exercise 4.14:} Eva Lu Ator and Louis Reasoner
@@ -1365,17 +1370,23 @@ wrong.  Explain why Louis's @code{map} fails even though Eva's works.
 @node	4.1.5, 4.1.6, 4.1.4, 4.1
 @subsection Data as Programs
 
-In thinking about a Lisp program that evaluates Lisp expressions, an analogy
+In thinking about a Kotlin program that evaluates Lisp expressions, an analogy
 might be helpful.  One operational view of the meaning of a program is that a
 program is a description of an abstract (perhaps infinitely large) machine.
 For example, consider the familiar program to compute factorials:
 
-@lisp
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))
-@end lisp
+@example kotlin
+runProgram(
+    """
+    (define (factorial n)
+      (if (= n 1)
+          1
+          (* (factorial (- n 1)) n)))
+    (factorial 5)
+    """.trimIndent(),
+)
+// => 120
+@end example
 
 @noindent
 We may regard this program as the description of a machine containing parts
@@ -1505,7 +1516,7 @@ explores some of these ideas (@ref{Hofstadter 1979}).}
 Another striking aspect of the evaluator is that it acts as a bridge between
 the data objects that are manipulated by our programming language and the
 programming language itself.  Imagine that the evaluator program (implemented
-in Lisp) is running, and that a user is typing expressions to the evaluator and
+in Kotlin) is running, and that a user is typing expressions to the evaluator and
 observing the results.  From the perspective of the user, an input expression
 such as @code{(* x x)} is an expression in the programming language, which the
 evaluator should execute.  From the perspective of the evaluator, however, the
@@ -1519,33 +1530,30 @@ to give the user the ability to explicitly evaluate a data object as a Lisp
 expression, by making @code{eval} available for use in programs.  Many Lisp
 dialects provide a primitive @code{eval} procedure that takes as arguments an
 expression and an environment and evaluates the expression relative to the
-environment.@footnote{Warning: This @code{eval} primitive is not identical to
-the @code{eval} procedure we implemented in @ref{4.1.1}, because it
-uses @emph{actual} Scheme environments rather than the sample environment
-structures we built in @ref{4.1.3}.  These actual environments cannot
-be manipulated by the user as ordinary lists; they must be accessed via
-@code{eval} or other special operations.  Similarly, the @code{apply} primitive
-we saw earlier is not identical to the metacircular @code{apply}, because it
-uses actual Scheme procedures rather than the procedure objects we constructed
-in @ref{4.1.3} and @ref{4.1.4}.} Thus,
+environment.@footnote{This edition's counterpart is the driver-level function
+@code{evalText}, which takes the @emph{text} of one expression and an
+environment and evaluates the expression relative to that environment.  It is
+not an object-language primitive: the evaluated text can build and return data,
+but the evaluated program cannot call @code{eval} on its own.} Thus,
 
-@lisp
-(eval '(* 5 5) user-initial-environment)
-@end lisp
+@example kotlin
+evalText("(* 5 5)", env)
+// => 25
+@end example
 
 @noindent
 and
 
-@lisp
-(eval (cons '* (list 5 5)) 
-      user-initial-environment)
-@end lisp
+@example kotlin
+evalText(printValue(cons(VSym("*"), vlist(listOf(VInt(5), VInt(5))))), env)
+// => 25
+@end example
 
 @noindent
-will both return 25.@footnote{The @abbr{MIT} implementation of Scheme
-includes @code{eval}, as well as a symbol @code{user-initial-environment} that
-is bound to the initial environment in which the user's input expressions are
-evaluated.}
+will both return 25: the second builds the very same expression as data, prints
+it back as the surface text @code{(* 5 5)}, and evaluates that.@footnote{The
+environment here is the driver's global environment, the role the
+@abbr{MIT} implementation's @code{user-initial-environment} plays.}
 
 @quotation
 @strong{@anchor{Exercise 4.15}Exercise 4.15:} Given a one-argument procedure
@@ -1557,7 +1565,7 @@ impossible to write a procedure @code{halts?} that correctly determines whether
 the following reasoning: If you had such a procedure @code{halts?}, you could
 implement the following program:
 
-@lisp
+@example
 (define (run-forever)
   (run-forever))
 
@@ -1565,7 +1573,7 @@ implement the following program:
   (if (halts? p p)
       (run-forever)
       'halted))
-@end lisp
+@end example
 
 Now consider evaluating the expression @code{(try try)} and show that any
 possible outcome (either halting or running forever) violates the intended
@@ -1591,7 +1599,7 @@ not be the best way to define local variables.
 
 Consider a procedure with internal definitions, such as
 
-@lisp
+@example
 (define (f x)
   (define (even? n)
     (if (= n 0)
@@ -1602,7 +1610,7 @@ Consider a procedure with internal definitions, such as
         false
         (even? (- n 1))))
   ⟨@var{rest of body of @code{f}}⟩)
-@end lisp
+@end example
 
 @noindent
 Our intention here is that the name @code{odd?} in the body of the procedure
@@ -1648,24 +1656,24 @@ eliminate all the internal definitions in the body.  The internally defined
 variables will be created with a @code{let} and then set to their values by
 assignment.  For example, the procedure
 
-@lisp
+@example
 (lambda ⟨@var{vars}⟩
   (define u ⟨@var{e1}⟩)
   (define v ⟨@var{e2}⟩)
   ⟨@var{e3}⟩)
-@end lisp
+@end example
 
 @noindent
 would be transformed into
 
-@lisp
+@example
 (lambda ⟨@var{vars}⟩
   (let ((u '*unassigned*)
         (v '*unassigned*))
     (set! u ⟨@var{e1}⟩)
     (set! v ⟨@var{e2}⟩)
     ⟨@var{e3}⟩))
-@end lisp
+@end example
 
 @noindent
 where @code{*unassigned*} is a special symbol that causes looking up a variable
@@ -1683,25 +1691,47 @@ the transformation shown above.  Thus, some programs that don't obey this
 restriction will in fact run in such implementations.}
 
 @quotation
+@strong{In this language: the metacircular evaluator.}
+
+The evaluator is a Kotlin program, and what it evaluates is still the text of
+the language: @code{runProgram} reads the text with the given-code reader,
+parses each form onto a typed @code{Expr} node, and evaluates the forms in
+order with @code{Evaluator} --- the @code{eval}-@code{apply} cycle as the
+@code{when} in @code{step}.  The whole tower in three lines:
+
+@example kotlin
+runProgram("(define (square x) (* x x))\n(square 12)")
+// => 144
+@end example
+
+Every exercise of this section edits that cycle the same way: subclass
+@code{Evaluator}, have the @code{step} override check for the forms it adds,
+and fall back to @code{baseStep} for everything else, so the book's clause
+chain stays intact while the language grows.
+@end quotation
+
+@quotation
 @strong{@anchor{Exercise 4.16}Exercise 4.16:} In this exercise we implement the
-method just described for interpreting internal definitions.  We assume that
-the evaluator supports @code{let} (see @ref{Exercise 4.6}).
+method just described for interpreting internal definitions.  The base
+evaluator already derives @code{let} (see @ref{Exercise 4.6}).
 
 @enumerate a
 
 @item
-Change @code{lookup-variable-value} (@ref{4.1.3}) to signal an error if
+Change the evaluator's variable lookup (@code{lookupVariable},
+@ref{4.1.3}) to signal an error if
 the value it finds is the symbol @code{*unassigned*}.
 
 @item
-Write a procedure @code{scan-out-defines} that takes a procedure body and
+Write a procedure @code{scanOutDefines} that takes a procedure body and
 returns an equivalent one that has no internal definitions, by making the
 transformation described above.
 
 @item
-Install @code{scan-out-defines} in the interpreter, either in
-@code{make-procedure} or in @code{procedure-body} (see @ref{4.1.3}).
-Which place is better?  Why?
+Install @code{scanOutDefines} in the interpreter, either where compound
+procedures are constructed (@code{makeProcedure}, @ref{4.1.3}) or
+where a compound procedure's body is taken for evaluation (the compound arm of
+@code{applyProcedure}).  Which place is better?  Why?
 
 @end enumerate
 @end quotation
@@ -1722,7 +1752,7 @@ the extra frame.
 @strong{@anchor{Exercise 4.18}Exercise 4.18:} Consider an alternative strategy
 for scanning out definitions that translates the example in the text to
 
-@lisp
+@example
 (lambda ⟨@var{vars}⟩
   (let ((u '*unassigned*)
         (v '*unassigned*))
@@ -1731,18 +1761,18 @@ for scanning out definitions that translates the example in the text to
       (set! u a)
       (set! v b))
     ⟨@var{e3}⟩))
-@end lisp
+@end example
 
 Here @code{a} and @code{b} are meant to represent new variable names, created
 by the interpreter, that do not appear in the user's program.  Consider the
 @code{solve} procedure from @ref{3.5.4}:
 
-@lisp
+@example
 (define (solve f y0 dt)
   (define y (integral (delay dy) y0 dt))
   (define dy (stream-map f y))
   y)
-@end lisp
+@end example
 
 Will this procedure work if internal definitions are scanned out as shown in
 this exercise?  What if they are scanned out as shown in the text?  Explain.
@@ -1753,14 +1783,14 @@ this exercise?  What if they are scanned out as shown in the text?  Explain.
 and Eva Lu Ator are arguing about the desired result of evaluating the
 expression
 
-@lisp
+@example
 (let ((a 1))
   (define (f x)
     (define b (+ a x))
     (define a 5)
     (+ a b))
   (f 10))
-@end lisp
+@end example
 
 Ben asserts that the result should be obtained using the sequential rule for
 @code{define}: @code{b} is defined to be 11, then @code{a} is defined to be 5,
@@ -1793,7 +1823,7 @@ simultaneously and have the same scope as each other.  The sample procedure
 @code{f} above can be written without internal definitions, but with exactly
 the same meaning, as
 
-@lisp
+@example
 (define (f x)
   (letrec
       ((even?
@@ -1807,14 +1837,14 @@ the same meaning, as
               false
               (even? (- n 1))))))
     ⟨@var{rest of body of @code{f}}⟩))
-@end lisp
+@end example
 
 @code{Letrec} expressions, which have the form
 
-@lisp
+@example
 (letrec ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
   ⟨@var{body}⟩)
-@end lisp
+@end example
 
 @noindent
 are a variation on @code{let} in which the expressions
@@ -1824,7 +1854,7 @@ that includes all the @code{letrec} bindings.  This permits recursion in the
 bindings, such as the mutual recursion of @code{even?} and @code{odd?} in the
 example above, or the evaluation of 10 factorial with
 
-@lisp
+@example
 (letrec
     ((fact
       (lambda (n)
@@ -1832,7 +1862,7 @@ example above, or the evaluation of 10 factorial with
             1
             (* n (fact (- n 1)))))))
   (fact 10))
-@end lisp
+@end example
 
 @enumerate a
 
@@ -1857,6 +1887,10 @@ environment diagram for the same evaluation, but with @code{let} in place of
 @end quotation
 
 @quotation
+@emph{Exercise 4.20a is added by this edition and extends exercise 4.20; SICP numbers stop at 4.20.} @strong{@anchor{Exercise 4.20a}Exercise 4.20a:} Under the edition's scoping rule, the variables a @code{letrec} binds are in scope, but unassigned, while its initializers run.  Add a test to your evaluator of exercise 4.20 with a nested @code{letrec} whose inner binding shadows an outer recursive name and whose inner initializers use the shadowed name while it is still unassigned; confirm the typed premature-read error it raises, and explain why the same program read with the outer binding in scope would have recursed instead.
+@end quotation
+
+@quotation
 @strong{@anchor{Exercise 4.21}Exercise 4.21:} Amazingly, Louis's intuition in
 @ref{Exercise 4.20} is correct.  It is indeed possible to specify recursive
 procedures without using @code{letrec} (or even @code{define}), although the
@@ -1869,15 +1903,21 @@ trick of this sort is the @math{Y} @newterm{operator}, which can be used to give
 details on the λ-calculus, and @ref{Gabriel 1988} for an exposition of the
 @math{Y} operator in Scheme.)}
 
-@lisp
-((lambda (n)
-   ((lambda (fact) (fact fact n))
-    (lambda (ft k)
-      (if (= k 1)
-          1
-          (* k (ft ft (- k 1)))))))
- 10)
-@end lisp
+@example kotlin
+evalText(
+    """
+    ((lambda (n)
+       ((lambda (fact) (fact fact n))
+        (lambda (ft k)
+          (if (= k 1)
+              1
+              (* k (ft ft (- k 1)))))))
+     10)
+    """.trimIndent(),
+    env,
+)
+// => 3628800
+@end example
 
 @enumerate a
 
@@ -1889,7 +1929,7 @@ Devise an analogous expression for computing Fibonacci numbers.
 Consider the following procedure, which includes mutually recursive internal
 definitions:
 
-@lisp
+@example
 (define (f x)
   (define (even? n)
     (if (= n 0)
@@ -1900,12 +1940,12 @@ definitions:
         false
         (even? (- n 1))))
   (even? x))
-@end lisp
+@end example
 
 Fill in the missing expressions to complete an alternative definition of
 @code{f}, which uses neither internal definitions nor @code{letrec}:
 
-@lisp
+@example
 (define (f x)
   ((lambda (even? odd?)
      (even? even? odd? x))
@@ -1917,7 +1957,7 @@ Fill in the missing expressions to complete an alternative definition of
      (if (= n 0) 
          false 
          (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
-@end lisp
+@end example
 @end enumerate
 @end quotation
 
@@ -1930,12 +1970,18 @@ Thus if a program is executed many times, its syntax is analyzed many times.
 Consider, for example, evaluating @code{(factorial 4)} using the following
 definition of @code{factorial}:
 
-@lisp
-(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))
-@end lisp
+@example kotlin
+runProgram(
+    """
+    (define (factorial n)
+      (if (= n 1)
+          1
+          (* (factorial (- n 1)) n)))
+    (factorial 4)
+    """.trimIndent(),
+)
+// => 24
+@end example
 
 @noindent
 Each time @code{factorial} is called, the evaluator must determine that the
@@ -1958,15 +2004,26 @@ environment, into two parts.  The procedure @code{analyze} takes only the
 expression.  It performs the syntactic analysis and returns a new procedure,
 the @newterm{execution procedure}, that encapsulates the work to be done in
 executing the analyzed expression.  The execution procedure takes an
-environment as its argument and completes the evaluation.  This saves work
+environment as its argument and completes the evaluation.  In this edition the
+execution procedure is a Kotlin function value --- an environment-to-value
+function over the @code{Raise<SchemeError>} context through which the edition's
+typed errors travel.  This saves work
 because @code{analyze} will be called only once on an expression, while the
 execution procedure may be called many times.
 
 With the separation into analysis and execution, @code{eval} now becomes
 
-@lisp
-(define (eval exp env) ((analyze exp) env))
-@end lisp
+@example kotlin
+// The execution procedure: the analyzed expression awaiting an environment.
+public typealias Exec = context(Raise<SchemeError>)
+(Env) -> Value
+
+context(r: Raise<SchemeError>)
+public fun eval(
+    expr: Expr,
+    env: Env,
+): Value = analyze(expr)(env)
+@end example
 
 @noindent
 The result of calling @code{analyze} is the execution procedure to be applied
@@ -1974,55 +2031,87 @@ to the environment.  The @code{analyze} procedure is the same case analysis as
 performed by the original @code{eval} of @ref{4.1.1}, except that the
 procedures to which we dispatch perform only analysis, not full evaluation:
 
-@lisp
-(define (analyze exp)
-  (cond ((self-evaluating? exp)
-         (analyze-self-evaluating exp))
-        ((quoted? exp) 
-         (analyze-quoted exp))
-        ((variable? exp) 
-         (analyze-variable exp))
-        ((assignment? exp) 
-         (analyze-assignment exp))
-        ((definition? exp) 
-         (analyze-definition exp))
-        ((if? exp) 
-         (analyze-if exp))
-        ((lambda? exp) 
-         (analyze-lambda exp))
-        ((begin? exp) 
-         (analyze-sequence 
-          (begin-actions exp)))
-        ((cond? exp) 
-         (analyze (cond->if exp)))
-        ((application? exp) 
-         (analyze-application exp))
-        (else
-         (error "Unknown expression 
-                 type: ANALYZE" 
-                exp))))
-@end lisp
+@example kotlin
+public open fun analyze(expr: Expr): Exec = baseAnalyze(expr)
+
+context(r: Raise<SchemeError>)
+protected fun baseAnalyze(expr: Expr): Exec =
+    when (expr) @{
+        is LitE -> @{
+            analyzedSelfEvaluating(expr.v)
+        @}
+
+        is QuoteE -> @{
+            analyzedQuoted(expr.datum)
+        @}
+
+        is VarE -> @{
+            analyzedVariable(expr.name)
+        @}
+
+        is SetE -> @{
+            analyzedAssignment(expr.name, analyze(expr.value))
+        @}
+
+        is DefineE -> @{
+            analyzedDefinition(expr, expr.value as? LambdaE)
+        @}
+
+        is IfE -> @{
+            analyzedIf(
+                analyze(expr.predicate),
+                analyze(expr.consequent),
+                analyze(expr.alternative),
+            )
+        @}
+
+        is LambdaE -> @{
+            analyzedLambda(expr.params, expr.rest, expr.body, null)
+        @}
+
+        is BeginE -> @{
+            analyzeSequence(expr.actions)
+        @}
+
+        is CondE -> @{
+            analyze(condToIfChain(expr.clauses))
+        @}
+
+        // derived
+        is LetE -> @{
+            analyze(letToCombinationExpr(expr))
+        @}
+
+        // derived
+        is AppE -> @{
+            analyzedApplication(expr)
+        @}
+    @}
+@end example
 
 @noindent
+The seam mirrors @code{Evaluator}: @code{analyze} is the overridable hook, an
+extension checks its forms and falls back to @code{baseAnalyze}, and the hook
+fires at every nesting depth because every analysis recurses through
+@code{analyze}.  And as in @ref{4.1.1}, the book's ``unknown expression type''
+fault cannot fire: the parser's typed nodes leave nothing unrecognized.
+
 Here is the simplest syntactic analysis procedure, which handles
 self-evaluating expressions.  It returns an execution procedure that ignores
-its environment argument and just returns the expression:
+its environment argument and just returns the value:
 
-@lisp
-(define (analyze-self-evaluating exp)
-  (lambda (env) exp))
-@end lisp
+@example kotlin
+protected fun analyzedSelfEvaluating(v: Value): Exec = @{ _ -> v @}
+@end example
 
 @noindent
 For a quoted expression, we can gain a little efficiency by extracting the text
 of the quotation only once, in the analysis phase, rather than in the execution
-phase.
+phase:
 
-@lisp
-(define (analyze-quoted exp)
-  (let ((qval (text-of-quotation exp)))
-    (lambda (env) qval)))
-@end lisp
+@example kotlin
+protected fun analyzedQuoted(datum: Value): Exec = @{ _ -> datum @}
+@end example
 
 @noindent
 Looking up a variable value must still be done in the execution phase, since
@@ -2033,67 +2122,91 @@ the position in the environment structure where the value of the variable will
 be found, thus obviating the need to scan the environment for the entry that
 matches the variable.}
 
-@lisp
-(define (analyze-variable exp)
-  (lambda (env) 
-    (lookup-variable-value exp env)))
-@end lisp
+@example kotlin
+protected fun analyzedVariable(name: String): Exec = @{ env -> env.lookup(name) @}
+@end example
 
 @noindent
-@code{Analyze-assignment} also must defer actually setting the variable until
+@code{analyzedAssignment} also must defer actually setting the variable until
 the execution, when the environment has been supplied.  However, the fact that
-the @code{assignment-value} expression can be analyzed (recursively) during
-analysis is a major gain in efficiency, because the @code{assignment-value}
-expression will now be analyzed only once.  The same holds true for
-definitions.
+the assigned expression can be analyzed (recursively) during analysis is a major
+gain in efficiency, because the assigned expression will now be analyzed only
+once.  The same holds true for definitions.  The @code{SetE} and
+@code{DefineE} clauses of @code{baseAnalyze} pass the name and the already
+analyzed value procedure:
 
-@lisp
-(define (analyze-assignment exp)
-  (let ((var (assignment-variable exp))
-        (vproc (analyze 
-                (assignment-value exp))))
-    (lambda (env)
-      (set-variable-value! 
-       var (vproc env) env)
-      'ok)))
+@example kotlin
+protected fun analyzedAssignment(
+    name: String,
+    vproc: Exec,
+): Exec =
+    @{ env ->
+        env.set(name, vproc(env))
+        VSym("ok")
+    @}
+@end example
 
-(define (analyze-definition exp)
-  (let ((var (definition-variable exp))
-        (vproc (analyze 
-                (definition-value exp))))
-    (lambda (env)
-      (define-variable! var (vproc env) env)
-      'ok)))
-@end lisp
+@noindent
+The definition clause builds the named procedure at execution time and binds
+it:
+
+@example kotlin
+protected fun analyzedDefinition(
+    expr: DefineE,
+    lambda: LambdaE?,
+): Exec @{
+    val vproc: Exec =
+        if (lambda != null) @{
+            analyzedLambda(lambda.params, lambda.rest, lambda.body, expr.name)
+        @} else @{
+            analyze(expr.value)
+        @}
+    return @{ env ->
+        env.define(expr.name, vproc(env))
+        VSym("ok")
+    @}
+@}
+@end example
 
 @noindent
 For @code{if} expressions, we extract and analyze the predicate, consequent,
 and alternative at analysis time.
 
-@lisp
-(define (analyze-if exp)
-  (let ((pproc (analyze (if-predicate exp)))
-        (cproc (analyze (if-consequent exp)))
-        (aproc (analyze (if-alternative exp))))
-    (lambda (env)
-      (if (true? (pproc env))
-          (cproc env)
-          (aproc env)))))
-@end lisp
+@example kotlin
+protected fun analyzedIf(
+    pproc: Exec,
+    cproc: Exec,
+    aproc: Exec,
+): Exec =
+    @{ env ->
+        if (isTrue(pproc(env))) cproc(env) else aproc(env)
+    @}
+@end example
 
 @noindent
 Analyzing a @code{lambda} expression also achieves a major gain in efficiency:
 We analyze the @code{lambda} body only once, even though procedures resulting
-from evaluation of the @code{lambda} may be applied many times.
+from evaluation of the @code{lambda} may be applied many times.  The analyzed
+body is stored in a table keyed by the procedure object's identity, at the
+moment the execution procedure creates the procedure, so every later
+application finds the body already analyzed (this is what @ref{Exercise 4.24}
+measures):
 
-@lisp
-(define (analyze-lambda exp)
-  (let ((vars (lambda-parameters exp))
-        (bproc (analyze-sequence 
-                (lambda-body exp))))
-    (lambda (env) 
-      (make-procedure vars bproc env))))
-@end lisp
+@example kotlin
+protected fun analyzedLambda(
+    params: PersistentList<String>,
+    rest: String?,
+    body: PersistentList<Expr>,
+    name: String?,
+): Exec @{
+    val bproc = analyzeSequence(body)
+    return @{ env ->
+        val procedure = VProc(params, rest, body, env, name)
+        bodies[procedure] = bproc
+        procedure
+    @}
+@}
+@end example
 
 @noindent
 Analysis of a sequence of expressions (as in a @code{begin} or the body of a
@@ -2102,58 +2215,74 @@ for some insight into the processing of sequences.} Each expression in the
 sequence is analyzed, yielding an execution procedure.  These execution
 procedures are combined to produce an execution procedure that takes an
 environment as argument and sequentially calls each individual execution
-procedure with the environment as argument.
+procedure with the environment as argument:
 
-@lisp
-(define (analyze-sequence exps)
-  (define (sequentially proc1 proc2)
-    (lambda (env) (proc1 env) (proc2 env)))
-  (define (loop first-proc rest-procs)
-    (if (null? rest-procs)
-        first-proc
-        (loop (sequentially first-proc 
-                            (car rest-procs))
-              (cdr rest-procs))))
-  (let ((procs (map analyze exps)))
-    (if (null? procs)
-        (error "Empty sequence: ANALYZE"))
-    (loop (car procs) (cdr procs))))
-@end lisp
+@example kotlin
+protected open fun analyzeSequence(actions: PersistentList<Expr>): Exec @{
+    if (actions.isEmpty()) @{
+        return @{ fail(SchemeError.TypeMismatch("Empty sequence: ANALYZE")) @}
+    @}
+    val procs = actions.map @{ analyze(it) @}
+    var combined: Exec = procs.last()
+    for (i in procs.size - 2 downTo 0) @{
+        val earlier = procs[i]
+        val later = combined
+        combined = @{ env ->
+            earlier(env)
+            later(env)
+        @}
+    @}
+    return combined
+@}
+@end example
 
 @noindent
 To analyze an application, we analyze the operator and operands and construct
 an execution procedure that calls the operator execution procedure (to obtain
 the actual procedure to be applied) and the operand execution procedures (to
 obtain the actual arguments).  We then pass these to
-@code{execute-application}, which is the analog of @code{apply} in 
-@ref{4.1.1}.  @code{Execute-application} differs from @code{apply} in that the
+@code{executeApplication}, which is the analog of @code{applyProcedure} in 
+@ref{4.1.1}.  @code{executeApplication} differs from @code{applyProcedure} in that the
 procedure body for a compound procedure has already been analyzed, so there is
-no need to do further analysis.  Instead, we just call the execution procedure
-for the body on the extended environment.
+no need to do further analysis.  Instead, we just call the stored execution procedure for
+the body on the extended environment:
 
-@lisp
-(define (analyze-application exp)
-  (let ((fproc (analyze (operator exp)))
-        (aprocs (map analyze (operands exp))))
-    (lambda (env)
-      (execute-application 
-       (fproc env)
-       (map (lambda (aproc) (aproc env))
-            aprocs)))))
+@example kotlin
+protected fun analyzedApplication(expr: AppE): Exec @{
+    val fproc = analyze(expr.operator)
+    val aprocs = expr.operands.map @{ analyze(it) @}
+    return @{ env ->
+        val procedure = fproc(env)
+        val arguments = aprocs.map @{ it(env) @}
+        executeApplication(procedure, arguments)
+    @}
+@}
+@end example
 
-(define (execute-application proc args)
-  (cond ((primitive-procedure? proc)
-         (apply-primitive-procedure proc args))
-        ((compound-procedure? proc)
-         ((procedure-body proc)
-          (extend-environment 
-           (procedure-parameters proc)
-           args
-           (procedure-environment proc))))
-        (else (error "Unknown procedure type: 
-                      EXECUTE-APPLICATION"
-                     proc))))
-@end lisp
+@example kotlin
+context(r: Raise<SchemeError>)
+protected open fun executeApplication(
+    procedure: Value,
+    arguments: List<Value>,
+): Value =
+    when (procedure) @{
+        is VPrimitive -> @{
+            callPrimitive(procedure, arguments)
+        @}
+
+        is VProc -> @{
+            val body =
+                bodies[procedure]
+                    ?: r.raise(SchemeError.MachineFault("unanalyzed procedure: $procedure"))
+            val frame = Env.extend(procedure.params.toList(), arguments, procedure.env, procedure.rest)
+            body(frame)
+        @}
+
+        else -> @{
+            r.raise(SchemeError.NotApplicable(procedure))
+        @}
+    @}
+@end example
 
 @noindent
 Our new evaluator uses the same data structures, syntax procedures, and
@@ -2161,32 +2290,35 @@ run-time support procedures as in @ref{4.1.2}, @ref{4.1.3}, and
 @ref{4.1.4}.
 
 @quotation
-@strong{@anchor{Exercise 4.22}Exercise 4.22:} Extend the evaluator in this
-section to support the special form @code{let}.  (See @ref{Exercise 4.6}.)
+@strong{@anchor{Exercise 4.22}Exercise 4.22:} Extend the analyzer of this
+section to support the special form @code{let}.  This edition's
+@code{Analyzer} already derives @code{let} by reusing the direct evaluator's
+rewrite (@code{letToCombinationExpr}, @ref{Exercise 4.6}); do the exercise from
+scratch instead: an @code{analyze} override whose @code{LetE} clause builds the
+execution procedure for the lambda-application combination itself, without
+calling @code{letToCombinationExpr}.  (See @ref{Exercise 4.6}.)
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.23}Exercise 4.23:} Alyssa P. Hacker doesn't
-understand why @code{analyze-sequence} needs to be so complicated.  All the
+understand why @code{analyzeSequence} needs to be so complicated.  All the
 other analysis procedures are straightforward transformations of the
 corresponding evaluation procedures (or @code{eval} clauses) in 
-@ref{4.1.1}.  She expected @code{analyze-sequence} to look like this:
+@ref{4.1.1}.  She expected @code{analyzeSequence} to look like this:
 
-@lisp
-(define (analyze-sequence exps)
-  (define (execute-sequence procs env)
-    (cond ((null? (cdr procs)) 
-           ((car procs) env))
-          (else ((car procs) env)
-                (execute-sequence 
-                 (cdr procs) env))))
-  (let ((procs (map analyze exps)))
-    (if (null? procs)
-        (error "Empty sequence: 
-                ANALYZE"))
-    (lambda (env) 
-      (execute-sequence procs env))))
-@end lisp
+@example kotlin
+override fun analyzeSequence(actions: PersistentList<Expr>): Exec @{
+    val procs = actions.map @{ analyze(it) @}
+    if (procs.isEmpty()) @{
+        return @{ fail(SchemeError.TypeMismatch("Empty sequence: ANALYZE")) @}
+    @}
+    return @{ env ->
+        var value: Value = procs.first()(env)
+        for (proc in procs.drop(1)) value = proc(env)
+        value
+    @}
+@}
+@end example
 
 Eva Lu Ator explains to Alyssa that the version in the text does more of the
 work of evaluating a sequence at analysis time.  Alyssa's sequence-execution
@@ -2195,7 +2327,7 @@ built in, loops through the procedures in order to call them: In effect,
 although the individual expressions in the sequence have been analyzed, the
 sequence itself has not been.
 
-Compare the two versions of @code{analyze-sequence}.  For example, consider the
+Compare the two versions of @code{analyzeSequence}.  For example, consider the
 common case (typical of procedure bodies) where the sequence has just one
 expression.  What work will the execution procedure produced by Alyssa's
 program do?  What about the execution procedure produced by the program in the
@@ -2209,4 +2341,3 @@ experiments to compare the speed of the original metacircular evaluator with
 the version in this section.  Use your results to estimate the fraction of time
 that is spent in analysis versus execution for various procedures.
 @end quotation
-

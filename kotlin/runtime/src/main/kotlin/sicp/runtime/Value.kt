@@ -183,8 +183,16 @@ public class VProc(
     public val body: PersistentList<Expr>,
     /** The environment captured at `lambda` time. */
     public val env: Env,
+    /** The definition name, if the procedure was defined by a `define`
+     * of a `(name params...)` form; anonymous otherwise. */
+    public val name: String? = null,
 ) : Value {
-    public override fun toString(): String = "#[compound-procedure]"
+    public override fun toString(): String =
+        if (name == null) {
+            "#[compound-procedure]"
+        } else {
+            "#[compound-procedure $name]"
+        }
 }
 
 /** The thunk state of 4.2: a delayed expression and its environment, or

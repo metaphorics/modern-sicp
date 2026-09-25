@@ -21,7 +21,18 @@ configure<KotlinJvmProjectExtension> {
     }
 }
 
+// Section 4.1's evaluator library (the D23 reader and printer, the parser,
+// the evaluator of 4.1.1 to 4.1.5, and the analyzer of 4.1.7) lives in this
+// project's `main` source set under sicp.ch4, the chapter-crate equivalent of
+// the sibling editions. The three root-level source sets compile against it.
+val libraryOutput = sourceSets.getByName("main").output
+
 dependencies {
+    "implementation"(project(":runtime"))
+    "implementation"(libs.immutable)
+    "examplesImplementation"(libraryOutput)
+    "exercisesImplementation"(libraryOutput)
+    "solutionsImplementation"(libraryOutput)
     "examplesImplementation"(project(":runtime"))
     "examplesImplementation"(libs.immutable)
     "examplesImplementation"(libs.kotest.runner.junit5)

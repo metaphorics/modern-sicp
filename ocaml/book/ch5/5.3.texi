@@ -887,8 +887,10 @@ Ok (Memory.dump mem, Memory.word_to_string gx)
 
 @noindent
 The cells of the pre-allocated list itself were copied along with the data (the
-collector reaches them through @code{root}), which is why @code{free} moved to
-@code{p9} for seven useful cells: the relocated list is garbage from the next
+collector reaches them through @code{root}): the collection relocates seven
+cells, and the two follow-on allocations in the demo machine, @code{(const 5)}
+and @code{(const 6)}, take @code{p7} and @code{p8}, which is why the dump
+shows @code{free} at @code{p9}. The relocated list is garbage from the next
 collection's viewpoint and is reclaimed then. The pointer-swap of
 @code{gc-flip} is visible in the machine's vector registers: collecting twice
 in a row moves the working semispace back, and the structure at @code{x}

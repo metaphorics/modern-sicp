@@ -68,6 +68,9 @@ type instruction =
 (** [instruction_to_string i] renders [i] back in the book's notation. *)
 val instruction_to_string : instruction -> string
 
+(** [source_to_string s] renders one source in the book's notation. *)
+val source_to_string : source -> string
+
 (** A parsed controller: the instructions in order, and each label with
     the position of the instruction it names. 5.2's assembler supersedes
     this view; 5.1's hand simulations step over the same [code]. *)

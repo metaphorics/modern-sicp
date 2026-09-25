@@ -1,7 +1,26 @@
 (library
  (name sicp_ch5_exercises)
  (libraries sicp_common sicp_ch5)
- (modules sec_5_1 sec_5_2 sec_5_3 sec_5_4 sec_5_5 sec_5_6))
+ (modules
+  sec_5_1
+  sec_5_2
+  sec_5_3
+  sec_5_4
+  sec_5_5
+  sec_5_6
+  sec_5_7
+  sec_5_8
+  sec_5_9
+  sec_5_10
+  sec_5_11
+  sec_5_12
+  sec_5_13
+  sec_5_14
+  sec_5_15
+  sec_5_16
+  sec_5_17
+  sec_5_18
+  sec_5_19))
 
 (executable
  (name scaffold_sec_5_1)
@@ -12,3 +31,13 @@
  (alias scaffold)
  (action
   (run ./scaffold_sec_5_1.exe)))
+
+(executable
+ (name scaffold_sec_5_2)
+ (modules scaffold_sec_5_2)
+ (libraries sicp_ch5_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_5_2.exe)))

@@ -635,7 +635,7 @@ Editorial calls that would change the output if reversed:
 | 5.12 | assembler collects instruction and register summary | T | T | T | T | report instruction counts by type (chosen: kotlin) |
 | 5.13 | derive register set from controller text | T | T | T | T |  |
 | 5.14 | measure pushes and depth for factorial | T | T | T | T |  |
-| 5.15 | instruction counting in machine model | T | T | T | T | alert when count exceeds a budget |
+| 5.15 | instruction counting in machine model | T | T | T | T | alert when count exceeds a budget (chosen: rust) |
 | 5.16 | instruction tracing on and off | T | T | T | T |  |
 | 5.17 | print labels preceding traced instruction | T | T | T | T |  |
 | 5.18 | per-register tracing in make-register | T | T | T | T |  |

@@ -567,7 +567,8 @@ We can abstract this general idea and capture it as a common pattern expressed
 as a higher-order procedure, just as in @ref{1.3}.  The higher-order
 procedure here is called @code{map}.  @code{Map} takes as arguments a procedure
 of one argument and a list, and returns a list of the results produced by
-applying the procedure to each element in the list:@footnote{Scheme
+applying the procedure to each element in the list:@footnote{@anchor{Footnote 78}
+Scheme
 standardly provides a @code{map} procedure that is more general than the one
 described here.  This more general @code{map} takes a procedure of @math{n}
 arguments, together with @math{n} lists, and applies the procedure to all the

@@ -32,6 +32,10 @@ name = "scaffold_sec_5_5"
 path = "../../exercises/ch05/sec_5_5.rs"
 
 [[test]]
+name = "scaffold_sec_5_6"
+path = "../../exercises/ch05/sec_5_6.rs"
+
+[[test]]
 name = "solution_sec_5_1"
 path = "../../solutions/ch05/sec_5_1.rs"
 
@@ -50,6 +54,10 @@ path = "../../solutions/ch05/sec_5_4.rs"
 [[test]]
 name = "solution_sec_5_5"
 path = "../../solutions/ch05/sec_5_5.rs"
+
+[[test]]
+name = "solution_sec_5_6"
+path = "../../solutions/ch05/sec_5_6.rs"
 
 [dependencies]
 sicp-runtime = { workspace = true }

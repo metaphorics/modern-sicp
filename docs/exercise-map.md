@@ -668,7 +668,7 @@ Editorial calls that would change the output if reversed:
 |---|---|---|---|---|---|---|
 | 5.31 | which evaluator saves are superfluous | T | T | T | T |  |
 | 5.32 | symbol-operator fast path and design opinion | T | T | T | T |  |
-| 5.33 | compile factorial-alt, explain differences | T | T | T | T | hand-optimize the alt version's code |
+| 5.33 | compile factorial-alt, explain differences | T | T | T | T | hand-optimize the alt version's code (chosen: ocaml) |
 | 5.34 | compile iterative factorial, annotate stack | T | T | T | T |  |
 | 5.35 | reverse-engineer source from Figure 5.18 | T | T | T | T |  |
 | 5.36 | operand evaluation order in compiler | T | T | T | T | measure code size after reordering |

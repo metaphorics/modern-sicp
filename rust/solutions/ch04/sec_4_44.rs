@@ -4,7 +4,7 @@
 //! The reference solution of exercise 4.44: eight queens with `amb`.
 //! Each row draws a column from the board, `require` rejects a column
 //! that a placed queen attacks, and the recursion descends row by row;
-//! the answer is the column list in row order, first row outermost.
+//! the answer list accumulates in cons order, last row first.
 
 use ch04::eval_support::{AMB_SEED, Amb, SchemeError, setup_amb_environment, with_eval_stack};
 

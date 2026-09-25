@@ -62,8 +62,9 @@ mod ex_4_46 {
 #[test]
 fn ex_4_46() {
     let (displayed, answers) = ex_4_46::trace();
-    // The answers enumerate left-major, and the search runs dry after
-    // (2 1) -- the right list has no second element past it.
+    // The answers enumerate left-major; the probe stops at two
+    // try-agains after the first answer ((2 2) still exists beyond the
+    // pinned prefix).
     assert_eq!(answers, vec!["(1 1)", "(1 2)", "(2 1)"]);
     // The left operand announced itself before the right one, exactly
     // once for the first answer. The third answer's `try-again` resumed

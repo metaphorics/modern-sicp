@@ -93,3 +93,30 @@ fn ex_4_74() {
         ]
     );
 }
+
+#[test]
+fn ex_4_74_rules() {
+    // The rule-bearing probe: `apply-rules` must stay on the book's
+    // stream-flatmap. A rule application's inner stream is the rule
+    // body's whole answer stream -- neither empty nor singleton -- so
+    // simple-flatten there keeps only the first frame per rule (three
+    // answers collapse to one) and its eager collection would diverge
+    // on a recursive rule. Alyssa's simplification covers `negate`,
+    // `lisp-value`, and `find-assertions` only.
+    let rule = "(rule (pair ?x ?y) \
+         (and (supervisor ?x ?s) (supervisor ?y ?s)))";
+    let query = "(pair (Hacker Alyssa P) ?who)";
+
+    let book_engine = ex_4_74::engine_with(Rc::new(ch04::sec_4_4::Interleaved));
+    book_engine.load(&[rule]);
+    let book_answers = book_engine.answers(query);
+    assert_eq!(book_answers.len(), 3, "the rule answers three pairs");
+
+    let alyssa_engine = ex_4_74::engine_with(Rc::new(ex_4_74::SimpleFlatmap));
+    alyssa_engine.load(&[rule]);
+    assert_eq!(
+        alyssa_engine.answers(query),
+        book_answers,
+        "apply-rules behaves identically under the simple combiner"
+    );
+}

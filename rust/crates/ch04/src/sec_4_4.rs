@@ -705,7 +705,8 @@ impl QueryEngine {
         self.combiner.borrow().combine_frames(proc, s)
     }
 
-    /// Runs the engine's combinator over data values.
+    /// Runs the engine's combinator over data values, `find-assertions`'s
+    /// shape; `apply-rules` stays on the book combinator (4.74).
     pub fn flatmap_values(&self, proc: StepFn<Value, Frame>, s: Stream<Value>) -> Stream<Frame> {
         self.combiner.borrow().combine_values(proc, s)
     }
@@ -884,14 +885,19 @@ impl QueryEngine {
         )
     }
 
-    /// The book's `apply-rules` over the fetched rules.
+    /// The book's `apply-rules` over the fetched rules. The book composes
+    /// it with the plain `stream-flatmap`: a rule application's inner
+    /// stream is the rule body's whole answer stream, neither empty nor
+    /// singleton, so 4.74's simple combiner must not serve it (it would
+    /// keep only the first frame per rule and its eager collection
+    /// diverges on recursive rules).
     #[must_use]
     pub fn apply_rules(self: &Rc<Self>, pattern: &Value, frame: &Frame) -> Stream<Frame> {
         let engine = Rc::clone(self);
         let pattern = pattern.clone();
         let frame = frame.clone();
         let rules = engine.fetch_rules(&pattern);
-        self.flatmap_values(
+        Interleaved.combine_values(
             Rc::new(move |rule: &Value| engine.apply_a_rule(rule, &pattern, &frame)),
             rules,
         )

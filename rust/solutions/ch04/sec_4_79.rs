@@ -59,13 +59,6 @@ mod ex_4_79 {
         let conclusion = ch04::sec_4_4::conclusion(rule);
         let formals = pattern_variables(&conclusion);
         let shadowed = frame_without(frame, &formals);
-        if std::env::var("SCOPED_DEBUG").is_ok() {
-            eprintln!(
-                "APPLY pattern={} frame={:?} formals={formals:?}",
-                sicp_runtime::print_value(pattern),
-                frame.bindings()
-            );
-        }
         let Some(mut extended) = ch04::sec_4_4::unify_match(pattern, &conclusion, &shadowed) else {
             return Vec::new();
         };
@@ -121,13 +114,6 @@ mod ex_4_79 {
                 while !rest.is_nil() {
                     let (first, remaining) = split_list(&rest);
                     current = qeval_scoped(engine, &first, current);
-                    if std::env::var("SCOPED_DEBUG").is_ok() {
-                        eprintln!(
-                            "AND step first={} -> current={}",
-                            sicp_runtime::print_value(&first),
-                            current.len()
-                        );
-                    }
                     rest = remaining;
                 }
                 current
@@ -148,56 +134,16 @@ mod ex_4_79 {
     }
 
     fn simple_scoped(engine: &Engine, pattern: &Value, scopes: Vec<Frame>) -> Vec<Frame> {
-        if std::env::var("SCOPED_DEBUG").is_ok() {
-            eprintln!(
-                "enter pattern={} scopes={} fetch_rules={}",
-                sicp_runtime::print_value(pattern),
-                scopes.len(),
-                engine.fetch_rules(pattern).iter().count()
-            );
-        }
         let mut out = Vec::new();
-        let mut n_assertions = 0usize;
-        let mut n_rules = 0usize;
         for scope in scopes {
             for assertion in &engine.fetch_assertions(pattern) {
                 if let Some(extended) = ch04::sec_4_4::pattern_match(pattern, &assertion, &scope) {
                     out.push(extended);
-                    n_assertions += 1;
                 }
             }
             for rule in &engine.fetch_rules(pattern) {
-                let got = apply_rule(engine, &rule, pattern, &scope);
-                n_rules += got.len();
-                out.extend(got);
+                out.extend(apply_rule(engine, &rule, pattern, &scope));
             }
-        }
-        if std::env::var("SCOPED_DEBUG").is_ok() {
-            let who = query_syntax_process(&sicp_runtime::read("(outranked-by x ?who)").unwrap());
-            let who = match &who {
-                Value::Pair(cell) => {
-                    let v = cell.car.borrow().clone();
-                    let _ = v;
-                    query_syntax_process(&sicp_runtime::read("?who").unwrap())
-                }
-                _ => query_syntax_process(&sicp_runtime::read("?who").unwrap()),
-            };
-            let who_values: Vec<String> = out
-                .iter()
-                .map(|frame| {
-                    frame.binding_in_frame(&who).map_or_else(
-                        || "<unbound>".to_string(),
-                        |v| sicp_runtime::print_value(&v),
-                    )
-                })
-                .collect();
-            eprintln!(
-                "simple_scoped exit: pattern={} asserts={} rules={} total={} who-bindings={who_values:?}",
-                sicp_runtime::print_value(pattern),
-                n_assertions,
-                n_rules,
-                out.len(),
-            );
         }
         out
     }

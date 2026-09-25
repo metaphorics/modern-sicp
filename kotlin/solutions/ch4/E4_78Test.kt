@@ -47,6 +47,10 @@ public class E4_78Test :
                     (or (supervisor (Tweakit Lem E) (Bitdiddle Ben)) (supervisor (Tweakit Lem E) (Hacker Alyssa P)))
                     ;;; Amb-Eval input:
                     try-again
+                    ;;; Amb-Eval value:
+                    (or (supervisor (Reasoner Louis) (Bitdiddle Ben)) (supervisor (Reasoner Louis) (Hacker Alyssa P)))
+                    ;;; Amb-Eval input:
+                    try-again
                     ;;; There are no more values of
                     the pending problem
                     """.trimIndent() + "\n",
@@ -65,4 +69,25 @@ public class E4_78Test :
                     """.trimIndent() + "\n",
                 )
         }
+        test("Exercise 4.78: the or restores the or-entry frame, so both disjuncts answer in order") {
+            val demos = ambQueryDemos()
+            val session = demos[demos.indexOf(OR_SESSION_LABEL) + 1]
+            answerValues(session) shouldBe
+                listOf(
+                    "(or (supervisor (Hacker Alyssa P) (Bitdiddle Ben)) (supervisor (Hacker Alyssa P) (Hacker Alyssa P)))",
+                    "(or (supervisor (Fect Cy D) (Bitdiddle Ben)) (supervisor (Fect Cy D) (Hacker Alyssa P)))",
+                    "(or (supervisor (Tweakit Lem E) (Bitdiddle Ben)) (supervisor (Tweakit Lem E) (Hacker Alyssa P)))",
+                    "(or (supervisor (Reasoner Louis) (Bitdiddle Ben)) (supervisor (Reasoner Louis) (Hacker Alyssa P)))",
+                )
+        }
     })
+
+private const val OR_SESSION_LABEL =
+    "session: (or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P))) -- amb is depth-first"
+
+/** The delivered answer of each `;;; Amb-Eval value:` round: the line
+ * the driver printed after the marker. */
+private fun answerValues(session: String): List<String> {
+    val lines = session.lines()
+    return lines.withIndex().filter { it.value == ";;; Amb-Eval value:" }.map { lines[it.index + 1] }
+}

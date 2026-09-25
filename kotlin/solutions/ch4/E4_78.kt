@@ -95,9 +95,25 @@ public class QueryAmbEvaluator(
 
     private fun disjoinExec(disjuncts: List<Value>): AmbExec {
         if (disjuncts.isEmpty()) return { _, _ -> throw AmbFail }
-        val alternatives = disjuncts.map { analyzeQuery(it) }
+        val entryFrame = frame
+        val alternatives: List<AmbExec> =
+            disjuncts.map { disjunct -> restartFrom(entryFrame, analyzeQuery(disjunct)) }
         return { env, succeed -> deliverChoice(alternatives, env, succeed) }
     }
+
+    /** Each disjunct runs from the frame the or was evaluated in: on
+     * choice-point re-entry after a sibling disjunct exhausted, the
+     * shared var still holds the sibling's last binding, which would
+     * filter this disjunct's matches away. (`and` wants the sequential
+     * flow the shared var provides; only or re-entry restores.) */
+    private fun restartFrom(
+        entryFrame: Frame,
+        exec: AmbExec,
+    ): AmbExec =
+        { env, succeed ->
+            frame = entryFrame
+            exec(env, succeed)
+        }
 
     private fun simpleQueryExec(queryPattern: Value): AmbExec =
         { _, succeed ->
@@ -153,7 +169,7 @@ public fun ambQueryDemos(): List<String> {
     val orAmb = queryAmb(microshaftDatabase)
     val orSession = StringBuilder()
     orSession.append(orAmb.input("(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))"))
-    repeat(3) { orSession.append(orAmb.input("try-again")) }
+    repeat(4) { orSession.append(orAmb.input("try-again")) }
     out.add("session: (or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P))) -- amb is depth-first")
     out.add(orSession.toString())
     val streamOrder = answersOf(microshaftSystem(), "(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))")

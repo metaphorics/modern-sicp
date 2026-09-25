@@ -149,7 +149,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.3 | Two rectangle representations | T | T | T | T | |
 | 2.4 | Procedural cons, car, cdr | A: closures as pairs need function traits | A: closures as pairs need function records | A: closure pairs need function pair type | A: closures as pairs need function types | verify cons identity law property test (chosen: kotlin) |
 | 2.5 | Pairs as 2^a 3^b | A: 2^a 3^b overflows i64, needs bigint | A: 2^a 3^b overflows int, needs Z | A: 2^a 3^b overflows number, needs bigint | A: 2^a 3^b overflows Long, needs BigInteger | |
-| 2.6 | Church numerals | A: church numerals need function-typed traits | A: church numerals need function encoding | A: church numerals need function-encoded zero | A: church numerals need function-encoded zero | arithmetic on three plus successor |
+| 2.6 | Church numerals | A: church numerals need function-typed traits | A: church numerals need function encoding | A: church numerals need function-encoded zero | A: church numerals need function-encoded zero | arithmetic on three plus successor (chosen: typescript) |
 | 2.7 | Interval selectors | T | T | T | T | |
 | 2.8 | Sub-interval | T | T | T | T | |
 | 2.9 | Interval width algebra | A: width forces interval invariant decision | A: width forces interval invariant decision | A: width forces interval invariant decision | A: width forces interval invariant decision | forbid zero-width interval construction |
@@ -197,7 +197,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.46 | Vector abstraction | T | T | T | T | vectors as data class or tuple chosen: kotlin |
 | 2.47 | Frame constructors | T | T | T | T | |
 | 2.48 | Segment from vectors | T | T | T | T | |
-| 2.49 | Primitive painters | T | T | T | T | painter output as SVG strings |
+| 2.49 | Primitive painters | T | T | T | T | painter output as SVG strings (chosen: typescript) |
 | 2.50 | Flip and rotations | T | T | T | T | |
 | 2.51 | Below two ways | A: below needs painter function, two constructions | A: below needs painter function, adapts | A: below needs painter function type | A: below needs painter function type | below via rotate composition check (chosen: rust) |
 | 2.52 | Square limit variations | T | T | T | T | euler square-limit variant chosen: ocaml |
@@ -220,7 +220,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.64 | List-to-tree | A: partial-tree returns pair, needs tuple | A: partial-tree returns pair, needs tuple | A: partial-tree returns pair, needs tuple | A: partial-tree returns pair, needs Pair | |
 | 2.65 | Tree set operations | T | T | T | T | tree sets as balanced maps (chosen: kotlin) |
 | 2.66 | Tree lookup | T | T | T | T | |
-| 2.67 | Sample decode | T | T | T | T | decode via pattern match |
+| 2.67 | Sample decode | T | T | T | T | decode via pattern match (chosen: typescript) |
 | 2.68 | Encode-symbol | T | T | T | T | |
 | 2.69 | Successive merge | T | T | T | T | |
 | 2.70 | Rock song encoding | T | T | T | T | bit savings assertion test (chosen: ocaml) |
@@ -260,7 +260,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.94 | Polynomial gcd | A: gcd needs division loop over term lists | A: gcd-terms via Euclid on term lists | A: gcd-terms via Euclid on term lists | A: gcd-terms via Euclid on term lists | |
 | 2.95 | Integer arithmetic factors | T | T | T | T | factor P2 coefficients explanation |
 | 2.96 | Pseudoremainder | A: integer division on coefficients needs generic div | A: pseudoremainder scales coefficients generically | A: pseudoremainder scales coefficients generically | A: pseudoremainder scales coefficients generically | |
-| 2.97 | Reduce-terms | A: reduce-terms plus package-wide generic rewire | A: reduce-terms plus system-wide install | A: reduce-terms plus system-wide install | A: reduce-terms plus system-wide install | drop gcd-terms after reduce test |
+| 2.97 | Reduce-terms | A: reduce-terms plus package-wide generic rewire | A: reduce-terms plus system-wide install | A: reduce-terms plus system-wide install | A: reduce-terms plus system-wide install | drop gcd-terms after reduce test (chosen: typescript) |
 
 ### Counts (rows sum to 97 per language)
 
@@ -501,7 +501,7 @@ Counts, summing to 24 per language: Rust 23 T / 1 A / 0 R; OCaml 24 / 0 / 0; Typ
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
 | 4.25 | unless breaks under applicative order | T | T | T | T | |
-| 4.26 | unless as special form debate | T | T | T | T | 4.26a: add when as derived expression |
+| 4.26 | unless as special form debate | T | T | T | T | 4.26a: add when as derived expression (chosen: kotlin) |
 | 4.27 | lazy id with set! | T | T | T | T | |
 | 4.28 | forcing the operator | T | T | T | T | |
 | 4.29 | memoization speed difference | T | T | T | T | 4.29a: toggle memoization and count forcings (chosen: ocaml) |
@@ -517,7 +517,7 @@ Counts, summing to 10 per language: Rust 10 T / 0 A / 0 R; OCaml 10 / 0 / 0; Typ
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 4.35 | an-integer-between and triples | T | T | T | T | 4.35a: count amb choices per triple |
+| 4.35 | an-integer-between and triples | T | T | T | T | 4.35a: count amb choices per triple (chosen: kotlin) |
 | 4.36 | unbounded Pythagorean triples | T | T | T | T | |
 | 4.37 | Ben's triple generator efficiency | T | T | T | T | |
 | 4.38 | multiple dwelling minus Smith-Fletcher clause | T | T | T | T | 4.38a: rank solutions by violated constraints |
@@ -554,13 +554,13 @@ Counts, summing to 20 per language: Rust 19 T / 1 A / 0 R; OCaml 19 / 1 / 0; Typ
 | 4.62 | logic gates as rules | T | T | T | T | 4.62a: implement not-gate as a rule |
 | 4.63 | family relations rules | T | T | T | T | |
 | 4.64 | outranked-by infinite loop | T | T | T | T | |
-| 4.65 | wheel listed four times | T | T | T | T | 4.65a: deduplicate wheel answers with same rule |
+| 4.65 | wheel listed four times | T | T | T | T | 4.65a: deduplicate wheel answers with same rule (chosen: kotlin) |
 | 4.66 | accumulation over frames | T | T | T | T | |
 | 4.67 | query loop detector | T | T | T | T | |
 | 4.68 | reverse as rules | T | T | T | T | 4.68a: write palindrome rule using reverse |
 | 4.69 | great-grandson rules | T | T | T | T | |
 | 4.70 | let binding in add-assertion! | T | T | T | T | |
-| 4.71 | explicit delay in simple-query | T | T | T | T | 4.71a: find query where undelayed version diverges |
+| 4.71 | explicit delay in simple-query | T | T | T | T | 4.71a: find query where undelayed version diverges (chosen: rust) |
 | 4.72 | interleave versus append | T | T | T | T | |
 | 4.73 | delay in flatten-stream | T | T | T | T | |
 | 4.74 | simple-stream-flatmap | T | T | T | T | 4.74a: measure frame counts, old versus simple (chosen: ocaml) |
@@ -616,7 +616,7 @@ Editorial calls that would change the output if reversed:
 
 | Exercise | Topic (8 words max) | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 5.1 | design factorial machine, draw diagrams | T | T | T | T | loop the controller over repeated inputs |
+| 5.1 | design factorial machine, draw diagrams | T | T | T | T | loop the controller over repeated inputs (chosen: ocaml) |
 | 5.2 | write iterative factorial controller sequence | T | T | T | T |  |
 | 5.3 | sqrt machine via Newton's method, two stages | T | T | T | T |  |
 | 5.4 | controller sequences for two expt machines | T | T | T | T |  |
@@ -627,7 +627,7 @@ Editorial calls that would change the output if reversed:
 
 | Exercise | Topic (8 words max) | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 5.7 | test designed machines on the simulator | T | T | T | T | compare simulator result with direct computation |
+| 5.7 | test designed machines on the simulator | T | T | T | T | compare simulator result with direct computation (chosen: ocaml) |
 | 5.8 | duplicate label detection in assembler | T | T | T | T |  |
 | 5.9 | forbid labels as operation operands | T | T | T | T |  |
 | 5.10 | new surface syntax, isolated syntax procedures | T | T | T | T |  |
@@ -645,7 +645,7 @@ Editorial calls that would change the output if reversed:
 
 | Exercise | Topic (8 words max) | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 5.20 | draw pair and memory-vector representations | T | T | T | T | show free pointer after three conses |
+| 5.20 | draw pair and memory-vector representations | T | T | T | T | show free pointer after three conses (chosen: ocaml) |
 | 5.21 | count-leaves machines over list memory | T | T | T | T |  |
 | 5.22 | append and append! machines | T | T | T | T |  |
 

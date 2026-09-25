@@ -272,6 +272,13 @@ implementation.  We will discuss this in @ref{5.3.1}.  In JavaScript the object
 literal plays this part, and the engine's allocator stands behind it.}
 
 @example typescript
+// The allocator's fresh pair; both fields are set before use.
+const getNewPair = <A>(): MCons<A> => (@{
+  _tag: "MCons", head: undefined as A, tail: mnil
+@});
+@end example
+
+@example typescript
 const mconsFromMutators = <A>(x: A, y: MList<A>): MCons<A> => @{
   // getNewPair is the book's allocator: a fresh pair in no list yet.
   const fresh = getNewPair<A>();
@@ -1087,6 +1094,10 @@ as an object with two pointer fields, we can build a queue as a closure with
 local state.  The local state will consist of pointers to the beginning and the
 end of an ordinary list.  Thus, the @code{makeQueueClosure} procedure will have
 the form
+
+@example typescript
+type QueueDispatch = (m: string) => unknown;
+@end example
 
 @example typescript
 const makeQueueClosure = (): QueueDispatch => @{

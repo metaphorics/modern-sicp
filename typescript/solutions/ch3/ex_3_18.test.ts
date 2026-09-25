@@ -3,13 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  type MCons,
-  type MList,
-  mcons,
-  mlist,
-  mnil,
-} from "../../packages/ch3/src/03-mutable-data.js";
+import { type MCons, type MList, mcons, mlist } from "../../packages/ch3/src/03-mutable-data.js";
 
 import { hasCycle } from "./ex_3_18.js";
 

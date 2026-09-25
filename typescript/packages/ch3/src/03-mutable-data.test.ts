@@ -75,9 +75,10 @@ describe("section 3.3.1: mutable list structure", () => {
   it("mlist and showMList render nesting the way the book prints it", () => {
     expect(showMList(mlist(1, 2, 3))).toBe("(1 2 3)");
     expect(showMList(mnil)).toBe("()");
-    const innerList = mcons<number>(2, mnil);
-    const first = mcons<number | MCons<number>>(1, mcons(innerList, mnil));
-    const outer = mcons<MCons<number> | number>(first, mcons(3, mnil));
+    type Nested = number | MCons<Nested>;
+    const two = mcons<Nested>(2, mnil);
+    const oneTwo = mcons<Nested>(1, mcons<Nested>(two, mnil));
+    const outer = mcons<Nested>(oneTwo, mcons<Nested>(3, mnil));
     expect(showMList(outer)).toBe("((1 (2)) 3)");
   });
 });

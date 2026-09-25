@@ -35,7 +35,27 @@
   sec_4_31
   sec_4_32
   sec_4_33
-  sec_4_34))
+  sec_4_34
+  sec_4_35
+  sec_4_36
+  sec_4_37
+  sec_4_38
+  sec_4_39
+  sec_4_40
+  sec_4_41
+  sec_4_42
+  sec_4_43
+  sec_4_44
+  sec_4_45
+  sec_4_46
+  sec_4_47
+  sec_4_48
+  sec_4_49
+  sec_4_50
+  sec_4_51
+  sec_4_52
+  sec_4_53
+  sec_4_54))
 
 (executable
  (name scaffold_sec_4_1)

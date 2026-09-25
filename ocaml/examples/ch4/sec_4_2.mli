@@ -156,7 +156,8 @@ val the_global_environment : unit -> Sicp_common.Value.env
     over the section's primitive table: 4.1's [Core] dispatch with the
     application clause evaluating the operands before the call and
     resolving the operator against [primitive_table], the section's
-    table. A division in an unchosen branch raises under [Strict_eval]
+    table. A division in an unchosen branch is a returned [Error] under
+    [Strict_eval]
     where the lazy driver would answer. *)
 module Strict_eval : sig
   (** [eval exp env] evaluates one expression in one environment under

@@ -654,7 +654,7 @@ Editorial calls that would change the output if reversed:
 | Exercise | Topic (8 words max) | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
 | 5.23 | derived expressions via transformer operations | T | T | T | T |  |
-| 5.24 | cond as basic controller form | T | T | T | T | add and and or as special forms |
+| 5.24 | cond as basic controller form | T | T | T | T | add and and or as special forms (chosen: ocaml) |
 | 5.25 | normal-order evaluation in the controller | T | T | T | T |  |
 | 5.26 | stack behavior of iterative factorial | T | T | T | T | plot maximum depth against n |
 | 5.27 | stack behavior of recursive factorial | T | T | T | T |  |

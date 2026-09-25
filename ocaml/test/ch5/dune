@@ -1,0 +1,9 @@
+(executable
+ (name test_sec_5_1)
+ (modules test_sec_5_1)
+ (libraries sicp_ch5_solutions sicp_ch5 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_5_1.exe)))

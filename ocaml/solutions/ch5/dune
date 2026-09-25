@@ -1,0 +1,4 @@
+(library
+ (name sicp_ch5_solutions)
+ (libraries sicp_common sicp_ch5)
+ (modules sec_5_1 sec_5_2 sec_5_3 sec_5_4 sec_5_5 sec_5_6))

@@ -5,20 +5,20 @@ We have seen that procedures are, in effect, abstractions that describe
 compound operations on numbers independent of the particular numbers.  For
 example, when we
 
-@lisp
-(define (cube x) (* x x x))
-@end lisp
+@example typescript
+const cube = (x: number): number => x * x * x;
+@end example
 
 @noindent
 we are not talking about the cube of a particular number, but rather about a
 method for obtaining the cube of any number.  Of course we could get along
 without ever defining this procedure, by always writing expressions such as
 
-@lisp
-(* 3 3 3)
-(* x x x)
-(* y y y)
-@end lisp
+@example typescript
+3 * 3 * 3;
+x * x * x;
+y * y * y;
+@end example
 
 @noindent
 and never mentioning @code{cube} explicitly.  This would place us at a serious
@@ -44,7 +44,7 @@ expressive power of our language.
 
 @menu
 * 1.3.1::            Procedures as Arguments
-* 1.3.2::            Constructing Procedures Using @code{Lambda}
+* 1.3.2::            Constructing Procedures Using Arrow Functions
 * 1.3.3::            Procedures as General Methods
 * 1.3.4::            Procedures as Returned Values
 @end menu
@@ -55,23 +55,18 @@ expressive power of our language.
 Consider the following three procedures.  The first computes the sum of the
 integers from @code{a} through @code{b}:
 
-@lisp
-(define (sum-integers a b)
-  (if (> a b) 
-      0 
-      (+ a (sum-integers (+ a 1) b))))
-@end lisp
+@example typescript
+const sumIntegers = (a: number, b: number): number =>
+  a > b ? 0 : a + sumIntegers(a + 1, b);
+@end example
 
 @noindent
 The second computes the sum of the cubes of the integers in the given range:
 
-@lisp
-(define (sum-cubes a b)
-  (if (> a b) 
-      0 
-      (+ (cube a) 
-         (sum-cubes (+ a 1) b))))
-@end lisp
+@example typescript
+const sumCubes = (a: number, b: number): number =>
+  a > b ? 0 : cube(a) + sumCubes(a + 1, b);
+@end example
 
 @noindent
 The third computes the sum of a sequence of terms in the series
@@ -89,18 +84,15 @@ The third computes the sum of a sequence of terms in the series
 @end ifinfo
 @noindent
 which converges to @math{{\pi / 8}} (very slowly):@footnote{This series, usually
-written in the equivalent form 
-@math{{\pi\over4} = {1 - {1\over3} + {1\over5}} - {{1\over7} + \dots}}, 
+written in the equivalent form
+@math{{\pi\over4} = {1 - {1\over3} + {1\over5}} - {{1\over7} + \dots}},
 is due to Leibniz.  We'll see how to use this as the basis for some
 fancy numerical tricks in @ref{3.5.3}.}
 
-@lisp
-(define (pi-sum a b)
-  (if (> a b)
-      0
-      (+ (/ 1.0 (* a (+ a 2))) 
-         (pi-sum (+ a 4) b))))
-@end lisp
+@example typescript
+const piSum = (a: number, b: number): number =>
+  a > b ? 0 : 1.0 / (a * (a + 2)) + piSum(a + 4, b);
+@end example
 
 @noindent
 These three procedures clearly share a common underlying pattern.  They are for
@@ -109,13 +101,10 @@ function of @code{a} used to compute the term to be added, and the function
 that provides the next value of @code{a}.  We could generate each of the
 procedures by filling in slots in the same template:
 
-@lisp
-(define (⟨@var{name}⟩ a b)
-  (if (> a b)
-      0
-      (+ (⟨@var{term}⟩ a) 
-         (⟨@var{name}⟩ (⟨@var{next}⟩ a) b))))
-@end lisp
+@example typescript
+const ⟨@var{name}⟩ = (a: number, b: number): number =>
+  a > b ? 0 : ⟨@var{term}⟩(a) + ⟨@var{name}⟩(⟨@var{next}⟩(a), b);
+@end example
 
 @noindent
 The presence of such a common pattern is strong evidence that there is a useful
@@ -148,78 +137,76 @@ itself rather than only procedures that compute particular sums.  We can do so
 readily in our procedural language by taking the common template shown above
 and transforming the ``slots'' into formal parameters:
 
-@lisp
-(define (sum term a next b)
-  (if (> a b)
-      0
-      (+ (term a)
-         (sum term (next a) next b))))
-@end lisp
+@example typescript
+const sum = (
+  term: (x: number) => number,
+  a: number,
+  next: (x: number) => number,
+  b: number,
+): number => (a > b ? 0 : term(a) + sum(term, next(a), next, b));
+@end example
 
 @noindent
 Notice that @code{sum} takes as its arguments the lower and upper bounds
 @code{a} and @code{b} together with the procedures @code{term} and @code{next}.
 We can use @code{sum} just as we would any procedure.  For example, we can use
 it (along with a procedure @code{inc} that increments its argument by 1) to
-define @code{sum-cubes}:
+define @code{sumCubes}:
 
-@lisp
-(define (inc n) (+ n 1))
+@example typescript
+const inc = (n: number): number => n + 1;
 
-(define (sum-cubes a b)
-  (sum cube a inc b))
-@end lisp
+const sumCubesViaSum = (a: number, b: number): number => sum(cube, a, inc, b);
+@end example
 
 @noindent
 Using this, we can compute the sum of the cubes of the integers from 1 to 10:
 
-@lisp
-(sum-cubes 1 10)
-@i{3025}
-@end lisp
+@example typescript
+sumCubesViaSum(1, 10);
+// => 3025
+@end example
 
 @noindent
 With the aid of an identity procedure to compute the term, we can define
-@code{sum-integers} in terms of @code{sum}:
+@code{sumIntegers} in terms of @code{sum}:
 
-@lisp
-(define (identity x) x)
+@example typescript
+const identity = (x: number): number => x;
 
-(define (sum-integers a b)
-  (sum identity a inc b))
-@end lisp
+const sumIntegersViaSum = (a: number, b: number): number => sum(identity, a, inc, b);
+@end example
 
 @noindent
 Then we can add up the integers from 1 to 10:
 
-@lisp
-(sum-integers 1 10)
-@i{55}
-@end lisp
+@example typescript
+sumIntegersViaSum(1, 10);
+// => 55
+@end example
 
 @noindent
-We can also define @code{pi-sum} in the same way:@footnote{Notice that we have
+We can also define @code{piSum} in the same way:@footnote{Notice that we have
 used block structure (@ref{1.1.8}) to embed the definitions of
-@code{pi-next} and @code{pi-term} within @code{pi-sum}, since these procedures
+@code{piTerm} and @code{piNext} within @code{piSumViaSum}, since these procedures
 are unlikely to be useful for any other purpose.  We will see how to get rid of
 them altogether in @ref{1.3.2}.}
 
-@lisp
-(define (pi-sum a b)
-  (define (pi-term x)
-    (/ 1.0 (* x (+ x 2))))
-  (define (pi-next x)
-    (+ x 4))
-  (sum pi-term a pi-next b))
-@end lisp
+@example typescript
+const piSumViaSum = (a: number, b: number): number => @{
+  const piTerm = (x: number): number => 1.0 / (x * (x + 2));
+  const piNext = (x: number): number => x + 4;
+  return sum(piTerm, a, piNext, b);
+@};
+@end example
 
 @noindent
 Using these procedures, we can compute an approximation to @math{\pi}:
 
-@lisp
-(* 8 (pi-sum 1 1000))
-@i{3.139592655589783}
-@end lisp
+@example typescript
+8 * piSumViaSum(1, 1000);
+// => 3.139592655589783
+@end example
 
 @noindent
 Once we have @code{sum}, we can use it as a building block in formulating
@@ -245,21 +232,36 @@ formula
 @noindent
 for small values of @math{{dx}}.  We can express this directly as a procedure:
 
-@lisp
-(define (integral f a b dx)
-  (define (add-dx x) (+ x dx))
-  (* (sum f (+ a (/ dx 2.0)) add-dx b) 
-     dx))
+@example typescript
+const integral = (
+  f: (x: number) => number,
+  a: number,
+  b: number,
+  dx: number,
+): number => @{
+  const addDx = (x: number): number => x + dx;
+  return sum(f, a + dx / 2.0, addDx, b) * dx;
+@};
 
-(integral cube 0 1 0.01)
-@i{.24998750000000042}
+integral(cube, 0, 1, 0.01);
+// => 0.24998750000000042
 
-(integral cube 0 1 0.001)
-@i{.249999875000001}
-@end lisp
+integral(cube, 0, 1, 0.001);
+// => 0.249999875000001
+@end example
 
 @noindent
 (The exact value of the integral of @code{cube} between 0 and 1 is 1/4.)
+
+@noindent
+One habit of the host deserves a sentence before we go on.  Each of the
+procedures above is a linear recursion: every self-call defers one operation
+and waits for the rest of the range.  The runtime that executes TypeScript,
+Node's V8 engine, gives no guarantee that such a self-call in the last
+position reuses the caller's frame, so a recursion can grow as deep as the
+range is long.  When this book says an iterative process ``carries the state
+in variables,'' this edition writes an explicit loop over those variables, as
+@ref{Exercise 1.30} will ask of @code{sum}.
 
 @quotation
 @strong{@anchor{Exercise 1.29}Exercise 1.29:} Simpson's Rule is a more accurate
@@ -291,21 +293,15 @@ the @code{integral} procedure shown above.
 @quotation
 @strong{@anchor{Exercise 1.30}Exercise 1.30:} The @code{sum} procedure above
 generates a linear recursion.  The procedure can be rewritten so that the sum
-is performed iteratively.  Show how to do this by filling in the missing
-expressions in the following definition:
-
-@lisp
-(define (sum term a next b)
-  (define (iter a result)
-    (if ⟨??⟩
-        ⟨??⟩
-        (iter ⟨??⟩ ⟨??⟩)))
-  (iter ⟨??⟩ ⟨??⟩))
-@end lisp
+is performed iteratively.  Node gives no tail-call guarantee, so in this
+edition the iterative process is a @code{while} loop whose state is the
+running result and the current value of @code{a}.  Write this loop-shaped
+@code{sumIter} and check that it produces the same values as the recursive
+@code{sum}.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.31}Exercise 1.31:} 
+@strong{@anchor{Exercise 1.31}Exercise 1.31:}
 
 @enumerate a
 
@@ -339,16 +335,17 @@ pi   2 * 4 * 4 * 6 * 6 * 8 ...
 @end example
 
 @end ifinfo
+
 @item
-If your @code{product} procedure generates a recursive process, write one that
-generates an iterative process.  If it generates an iterative process, write
-one that generates a recursive process.
+Node gives no tail-call guarantee, so write the iterative @code{product} as a
+@code{while} loop that carries the running result, and check that the loop and
+the recursion agree.
 
 @end enumerate
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.32}Exercise 1.32:} 
+@strong{@anchor{Exercise 1.32}Exercise 1.32:}
 
 @enumerate a
 
@@ -357,23 +354,29 @@ Show that @code{sum} and @code{product} (@ref{Exercise 1.31}) are both special
 cases of a still more general notion called @code{accumulate} that combines a
 collection of terms, using some general accumulation function:
 
-@lisp
-(accumulate 
- combiner null-value term a next b)
-@end lisp
+@example typescript
+accumulate(
+  combiner,
+  nullValue,
+  term,
+  a,
+  next,
+  b,
+)
+@end example
 
 @code{Accumulate} takes as arguments the same term and range specifications as
 @code{sum} and @code{product}, together with a @code{combiner} procedure (of
 two arguments) that specifies how the current term is to be combined with the
-accumulation of the preceding terms and a @code{null-value} that specifies what
+accumulation of the preceding terms and a @code{nullValue} that specifies what
 base value to use when the terms run out.  Write @code{accumulate} and show how
 @code{sum} and @code{product} can both be defined as simple calls to
 @code{accumulate}.
 
 @item
-If your @code{accumulate} procedure generates a recursive process, write one
-that generates an iterative process.  If it generates an iterative process,
-write one that generates a recursive process.
+Node gives no tail-call guarantee, so write the iterative @code{accumulate} as
+a @code{while} loop that carries the accumulation, and check that the loop and
+the recursion agree.
 
 @end enumerate
 @end quotation
@@ -383,130 +386,136 @@ write one that generates a recursive process.
 general version of @code{accumulate} (@ref{Exercise 1.32}) by introducing the
 notion of a @newterm{filter} on the terms to be combined.  That is, combine
 only those terms derived from values in the range that satisfy a specified
-condition.  The resulting @code{filtered-accumulate} abstraction takes the same
+condition.  The resulting @code{filteredAccumulate} abstraction takes the same
 arguments as accumulate, together with an additional predicate of one argument
-that specifies the filter.  Write @code{filtered-accumulate} as a procedure.
-Show how to express the following using @code{filtered-accumulate}:
+that specifies the filter.  Write @code{filteredAccumulate} as a procedure.
+Show how to express the following using @code{filteredAccumulate}:
 
 @enumerate a
 
 @item
 the sum of the squares of the prime numbers in the interval @math{a} to @math{b}
-(assuming that you have a @code{prime?} predicate already written)
+(assuming that you have an @code{isPrime} predicate already written, as in
+@ref{1.2.2})
 
 @item
 the product of all the positive integers less than @math{n} that are relatively
 prime to @math{n} (i.e., all positive integers @math{{i < n}} such that
-@math{{\hbox{GCD}(i, n) = 1}}).
+@math{{\hbox{GCD}(i, n) = 1}}, for which the @code{gcd} of @ref{1.2.5} serves).
 
 @end enumerate
 @end quotation
 
 @node	1.3.2, 1.3.3, 1.3.1, 1.3
-@subsection Constructing Procedures Using @code{Lambda}
+@subsection Constructing Procedures Using Arrow Functions
 
 In using @code{sum} as in @ref{1.3.1}, it seems terribly awkward to
-have to define trivial procedures such as @code{pi-term} and @code{pi-next}
+have to define trivial procedures such as @code{piTerm} and @code{piNext}
 just so we can use them as arguments to our higher-order procedure.  Rather
-than define @code{pi-next} and @code{pi-term}, it would be more convenient to
+than define @code{piNext} and @code{piTerm}, it would be more convenient to
 have a way to directly specify ``the procedure that returns its input
 incremented by 4'' and ``the procedure that returns the reciprocal of its input
-times its input plus 2.''  We can do this by introducing the special form
-@code{lambda}, which creates procedures.  Using @code{lambda} we can describe
-what we want as
+times its input plus 2.''  We can do this by writing an @newterm{arrow
+function}, which creates a procedure without naming it.  Using arrow functions
+we can describe what we want as
 
-@lisp
-(lambda (x) (+ x 4))
-@end lisp
+@example typescript
+(x: number): number => x + 4
+@end example
 
 @noindent
 and
 
-@lisp
-(lambda (x) (/ 1.0 (* x (+ x 2))))
-@end lisp
+@example typescript
+(x: number): number => 1.0 / (x * (x + 2))
+@end example
 
 @noindent
-Then our @code{pi-sum} procedure can be expressed without defining any
+Then our @code{piSum} procedure can be expressed without defining any
 auxiliary procedures as
 
-@lisp
-(define (pi-sum a b)
-  (sum (lambda (x) (/ 1.0 (* x (+ x 2))))
-       a
-       (lambda (x) (+ x 4))
-       b))
-@end lisp
+@example typescript
+const piSumArrow = (a: number, b: number): number =>
+  sum(
+    (x) => 1.0 / (x * (x + 2)),
+    a,
+    (x) => x + 4,
+    b,
+  );
+@end example
 
 @noindent
-Again using @code{lambda}, we can write the @code{integral} procedure without
-having to define the auxiliary procedure @code{add-dx}:
+Again using an arrow function, we can write the @code{integral} procedure
+without having to define the auxiliary procedure @code{addDx}:
 
-@lisp
-(define (integral f a b dx)
-  (* (sum f (+ a (/ dx 2.0))
-            (lambda (x) (+ x dx))
-            b)
-     dx))
-@end lisp
-
-@noindent
-In general, @code{lambda} is used to create procedures in the same way as
-@code{define}, except that no name is specified for the procedure:
-
-@lisp
-(lambda (⟨@var{formal-parameters}⟩) ⟨@var{body}⟩)
-@end lisp
+@example typescript
+const integralArrow = (
+  f: (x: number) => number,
+  a: number,
+  b: number,
+  dx: number,
+): number => sum(f, a + dx / 2.0, (x) => x + dx, b) * dx;
+@end example
 
 @noindent
-The resulting procedure is just as much a procedure as one that is created
-using @code{define}.  The only difference is that it has not been associated
-with any name in the environment.  In fact,
+In general, an arrow function is used to create a procedure in the same way as
+a definition, except that no name is specified for the procedure:
 
-@lisp
-(define (plus4 x) (+ x 4))
-@end lisp
+@example typescript
+(⟨@var{formal-parameters}⟩) => ⟨@var{body}⟩
+@end example
+
+@noindent
+The resulting procedure is just as much a procedure as one that is created by a
+definition.  The only difference is that it has not been associated with any
+name in the environment.  In fact,
+
+@example typescript
+function plus4(x: number): number @{
+  return x + 4;
+@}
+@end example
 
 @noindent
 is equivalent to
 
-@lisp
-(define plus4 (lambda (x) (+ x 4)))
-@end lisp
+@example typescript
+const plus4Arrow = (x: number): number => x + 4;
+@end example
 
 @noindent
-We can read a @code{lambda} expression as follows:
+We can read an arrow function as follows:
 
 @example
-(lambda                     (x)     (+   x     4))
-    |                        |       |   |     |
+(x)                     =>    x + 4
+ |                      |     |
 the procedure of an argument x that adds x and 4
 @end example
 
 @noindent
-Like any expression that has a procedure as its value, a @code{lambda}
-expression can be used as the operator in a combination such as
+Like any expression that has a procedure as its value, an arrow function
+can be used as the operator in a combination such as
 
-@lisp
-((lambda (x y z) (+ x y (square z))) 1 2 3)
-@i{12}
-@end lisp
+@example typescript
+((x: number, y: number, z: number): number => x + y + square(z))(1, 2, 3);
+// => 12
+@end example
 
 @noindent
 or, more generally, in any context where we would normally use a procedure
-name.@footnote{It would be clearer and less intimidating to people learning
-Lisp if a name more obvious than @code{lambda}, such as @code{make-procedure},
-were used.  But the convention is firmly entrenched.  The notation is adopted
-from the λ-calculus, a mathematical formalism introduced by the
-mathematical logician Alonzo @ref{Church (1941)}.  Church developed the 
-λ-calculus to provide a rigorous foundation for studying the 
+name.@footnote{The arrow notation is the everyday spelling of the
+@math{\lambda}-calculus, a mathematical formalism introduced by the
+mathematical logician Alonzo @ref{Church (1941)}.  Church developed the
+@math{\lambda}-calculus to provide a rigorous foundation for studying the
 notions of function
-and function application.  The λ-calculus has become a basic tool
-for mathematical investigations of the semantics of programming languages.}
+and function application.  The @math{\lambda}-calculus has become a basic tool
+for mathematical investigations of the semantics of programming languages, and
+``lambda'' is still the everyday word for the anonymous procedures the arrow
+creates.}
 
-@subsubheading Using @code{let} to create local variables
+@subsubheading Using local bindings to create local variables
 
-Another use of @code{lambda} is in creating local variables.  We often need
+Another use of arrow functions is in creating local variables.  We often need
 local variables in our procedures other than those that have been bound as
 formal parameters.  For example, suppose we wish to compute the function
 @displaymath
@@ -542,55 +551,48 @@ variables not only @math{x} and @math{y} but also the names of intermediate
 quantities like @math{a} and @math{b}.  One way to accomplish this is to use an
 auxiliary procedure to bind the local variables:
 
-@lisp
-(define (f x y)
-  (define (f-helper a b)
-    (+ (* x (square a))
-       (* y b)
-       (* a b)))
-  (f-helper (+ 1 (* x y)) 
-            (- 1 y)))
-@end lisp
+@example typescript
+const fxy = (x: number, y: number): number => @{
+  function fHelper(a: number, b: number): number @{
+    return x * square(a) + y * b + a * b;
+  @}
+  return fHelper(1 + x * y, 1 - y);
+@};
+@end example
 
 @noindent
-Of course, we could use a @code{lambda} expression to specify an anonymous
-procedure for binding our local variables.  The body of @code{f} then becomes a
+Of course, we could use an arrow function to specify an anonymous
+procedure for binding our local variables.  The body of @code{fxy} then becomes a
 single call to that procedure:
 
-@lisp
-(define (f x y)
-  ((lambda (a b)
-     (+ (* x (square a)) 
-        (* y b) 
-        (* a b)))
-   (+ 1 (* x y))
-   (- 1 y)))
-@end lisp
+@example typescript
+const fxyAnonymous = (x: number, y: number): number =>
+  ((a: number, b: number): number => x * square(a) + y * b + a * b)(1 + x * y, 1 - y);
+@end example
 
 @noindent
-This construct is so useful that there is a special form called @code{let} to
-make its use more convenient.  Using @code{let}, the @code{f} procedure could
-be written as
+This construct is so useful that the host spells it directly: a block whose
+opening lines bind the locals.  Using a block, the @code{fxy} procedure could be written as
 
-@lisp
-(define (f x y)
-  (let ((a (+ 1 (* x y)))
-        (b (- 1 y)))
-    (+ (* x (square a))
-       (* y b)
-       (* a b))))
-@end lisp
+@example typescript
+const fxyBlock = (x: number, y: number): number => @{
+  const a = 1 + x * y;
+  const b = 1 - y;
+  return x * square(a) + y * b + a * b;
+@};
+@end example
 
 @noindent
-The general form of a @code{let} expression is
+The general form of such a block is
 
-@lisp
-(let ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩)
-      (⟨@var{var₂}⟩ ⟨@var{exp₂}⟩)
-      @r{…}
-      (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
-  ⟨@var{body}⟩)
-@end lisp
+@example typescript
+@{
+  const ⟨@var{var₁}⟩ = ⟨@var{exp₁}⟩;
+  const ⟨@var{var₂}⟩ = ⟨@var{exp₂}⟩;
+  @dots{}
+  ⟨@var{body}⟩;
+@}
+@end example
 
 @noindent
 which can be thought of as saying
@@ -604,106 +606,116 @@ let ⟨@var{var₁}⟩ @r{have the value} ⟨@var{exp₁}⟩ @r{and}
 @end example
 
 @noindent
-The first part of the @code{let} expression is a list of name-expression pairs.
-When the @code{let} is evaluated, each name is associated with the value of the
-corresponding expression.  The body of the @code{let} is evaluated with these
-names bound as local variables.  The way this happens is that the @code{let}
-expression is interpreted as an alternate syntax for
+The first lines of the block are a list of name-expression pairs.
+When the block is evaluated, each name is associated with the value of the
+corresponding expression, computed before the block's own bindings open.  The
+body of the block is evaluated with these names bound as local variables.  The
+way this happens is exactly what @code{fxyAnonymous} shows: the block is
+shorthand for an arrow function applied to the initializer values, with the
+initializers evaluated in the surrounding scope.
 
-@lisp
-((lambda (⟨@var{var₁}⟩ @r{…} ⟨@var{varₙ}⟩)
-   ⟨@var{body}⟩)
- ⟨@var{exp₁}⟩
- @r{…}
- ⟨@var{expₙ}⟩)
-@end lisp
+No new mechanism is required in the language in order to provide local
+variables.  A binding block is simply syntactic sugar for the
+underlying arrow-function application.
 
-@noindent
-No new mechanism is required in the interpreter in order to provide local
-variables.  A @code{let} expression is simply syntactic sugar for the
-underlying @code{lambda} application.
-
-We can see from this equivalence that the scope of a variable specified by a
-@code{let} expression is the body of the @code{let}.  This implies that:
+We can see from this equivalence that the scope of a name specified by a
+binding block is the body of the block.  This implies that:
 
 @itemize @bullet
 
 @item
-@code{Let} allows one to bind variables as locally as possible to where they
+A block allows one to bind variables as locally as possible to where they
 are to be used.  For example, if the value of @code{x} is 5, the value of the
 expression
 
-@lisp
-(+ (let ((x 3))
-     (+ x (* x 10)))
-   x)
-@end lisp
+@example typescript
+const x = 5;
+((x: number): number => x + x * 10)(3) + x;
+// => 38
+@end example
 
 @noindent
-is 38.  Here, the @code{x} in the body of the @code{let} is 3, so the value of
-the @code{let} expression is 33.  On the other hand, the @code{x} that is the
-second argument to the outermost @code{+} is still 5.
+is 38.  Here, the @code{x} inside the arrow function is 3, so the value of the
+call is 33.  On the other hand, the @code{x} that is the second operand of the
+outermost @code{+} is still 5.
 
 @item
-The variables' values are computed outside the @code{let}.  This matters when
-the expressions that provide the values for the local variables depend upon
-variables having the same names as the local variables themselves.  For
-example, if the value of @code{x} is 2, the expression
+The variables' values are computed before the block's own bindings open.  This
+matters when the expressions that provide the values for the local variables
+depend upon variables having the same names as the local variables themselves.
+For example, if the value of @code{x} is 2, the expression
 
-@lisp
-(let ((x 3)
-      (y (+ x 2)))
-  (* x y))
-@end lisp
+@example typescript
+const x = 2;
+const y = x + 2;
+(() => @{
+  const x = 3;
+  return x * y;
+@})();
+// => 12
+@end example
 
 @noindent
-will have the value 12 because, inside the body of the @code{let}, @code{x}
-will be 3 and @code{y} will be 4 (which is the outer @code{x} plus 2).
+will have the value 12 because @code{y} is computed from the outer @code{x},
+so it will be 4, while inside the body of the block @code{x}
+will be 3.  Had the block declared @code{const x = 3} and only then read
+@code{x} in another initializer of the same block, the host would raise an
+error instead: a @code{const} binding exists from the top of its scope, but
+reading it before its declaration line is a temporal-dead-zone error.  Computing
+the initializers before the block opens, as here, sidesteps the trap.
 
 @end itemize
 
 @noindent
-Sometimes we can use internal definitions to get the same effect as with
-@code{let}.  For example, we could have defined the procedure @code{f} above as
-
-@lisp
-(define (f x y)
-  (define a 
-    (+ 1 (* x y)))
-  (define b (- 1 y))
-  (+ (* x (square a))
-     (* y b)
-     (* a b)))
-@end lisp
-
-@noindent
-We prefer, however, to use @code{let} in situations like this and to use
-internal @code{define} only for internal procedures.@footnote{Understanding
+Sometimes we can use nested definitions to get the same effect as with a
+binding block, as the @code{fHelper} version of @code{fxy} above does.  We
+prefer, however, to use a block in situations like this and to use nested
+definitions only for internal procedures.@footnote{Understanding
 internal definitions well enough to be sure a program means what we intend it
 to mean requires a more elaborate model of the evaluation process than we have
 presented in this chapter.  The subtleties do not arise with internal
-definitions of procedures, however.  We will return to this issue in 
+definitions of procedures, however.  We will return to this issue in
 @ref{4.1.6}, after we learn more about evaluation.}
 
 @quotation
 @strong{@anchor{Exercise 1.34}Exercise 1.34:} Suppose we define the procedure
 
-@lisp
-(define (f g) (g 2))
-@end lisp
+@example typescript
+const f = (g: (n: number) => number): number => g(2);
+@end example
 
+@noindent
 Then we have
 
-@lisp
-(f square)
-@i{4}
+@example typescript
+f(square);
+// => 4
 
-(f (lambda (z) (* z (+ z 1))))
-@i{6}
-@end lisp
+f((z: number): number => z * (z + 1));
+// => 6
+@end example
 
-What happens if we (perversely) ask the interpreter to evaluate the combination
-@code{(f f)}?  Explain.
+@noindent
+What happens if we (perversely) ask the host to evaluate the combination
+@code{f(f)}?  In the interpreter of @ref{1.1.5} the question is whether
+applying the number 2 as a procedure can ever happen; in TypeScript the
+question never reaches the interpreter at all.  Explain why the program does
+not type check, and what the type checker complains about.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.34a}Exercise 1.34a:} @emph{Exercise 1.34a is
+added by this edition and extends exercise 1.34; SICP numbers stop at
+1.34.}  Exercise 1.34 stops at the type checker's refusal, so the dynamic half
+of the question goes unasked.  Ask both halves of the same program.  First,
+write the typed @code{f} of @ref{Exercise 1.34} together with the call
+@code{f(f)}, run the host's type checker on the file, and quote the diagnostic
+it prints in the rationale.  Second, erase the types: give @code{f} the host's
+escape hatch, the @code{any} type, so that the checker stands down, and run the
+program, catching the error the host raises when the call finally executes.
+Pin the kind of error and its message, and explain which application turned the
+number 2 into the callee.  The lesson of the pair is that the type checker
+refuses statically exactly what the host would fail on at runtime.
 @end quotation
 
 @node	1.3.3, 1.3.4, 1.3.2, 1.3
@@ -737,20 +749,26 @@ length of the original interval and @math{T} is the error tolerance (that is, th
 size of the interval we will consider ``small enough'').  Here is a procedure
 that implements this strategy:
 
-@lisp
-(define (search f neg-point pos-point)
-  (let ((midpoint 
-         (average neg-point pos-point)))
-    (if (close-enough? neg-point pos-point)
-        midpoint
-        (let ((test-value (f midpoint)))
-          (cond 
-           ((positive? test-value)
-            (search f neg-point midpoint))
-           ((negative? test-value)
-            (search f midpoint pos-point))
-           (else midpoint))))))
-@end lisp
+@example typescript
+const search = (
+  f: (x: number) => number,
+  negPoint: number,
+  posPoint: number,
+): number => @{
+  const midpoint = average(negPoint, posPoint);
+  if (closeEnough(negPoint, posPoint)) @{
+    return midpoint;
+  @}
+  const testValue = f(midpoint);
+  if (testValue > 0) @{
+    return search(f, negPoint, midpoint);
+  @}
+  if (testValue < 0) @{
+    return search(f, midpoint, posPoint);
+  @}
+  return midpoint;
+@};
+@end example
 
 @noindent
 We assume that we are initially given the function @math{f} together with points
@@ -762,7 +780,9 @@ is positive, then we continue the process with a new interval running from the
 original negative point to the midpoint.  If the test value is negative, we
 continue with the interval from the midpoint to the positive point.  Finally,
 there is the possibility that the test value is 0, in which case the midpoint
-is itself the root we are searching for.
+is itself the root we are searching for.  The recursion is safe here: each pass
+halves the interval, so the depth is the @math{{\Theta(\log(L / T))}} of the method
+itself.
 
 To test whether the endpoints are ``close enough'' we can use a procedure
 similar to the one used in @ref{1.1.7} for computing square
@@ -773,10 +793,9 @@ solved and the limitations of the computer and the algorithm.  This is often a
 very subtle consideration, requiring help from a numerical analyst or some
 other kind of magician.}
 
-@lisp
-(define (close-enough? x y) 
-  (< (abs (- x y)) 0.001))
-@end lisp
+@example typescript
+const closeEnough = (x: number, y: number): boolean => abs(x - y) < 0.001;
+@end example
 
 @noindent
 @code{Search} is awkward to use directly, because we can accidentally give it
@@ -786,44 +805,48 @@ procedure, which checks to see which of the endpoints has a negative function
 value and which has a positive value, and calls the @code{search} procedure
 accordingly.  If the function has the same sign on the two given points, the
 half-interval method cannot be used, in which case the procedure signals an
-error.@footnote{This can be accomplished using @code{error}, which takes as
-arguments a number of items that are printed as error messages.}
+error.@footnote{This can be accomplished by returning a domain error as a
+value, the way @ref{0.6} introduced.}
 
-@lisp
-(define (half-interval-method f a b)
-  (let ((a-value (f a))
-        (b-value (f b)))
-    (cond ((and (negative? a-value) 
-                (positive? b-value))
-           (search f a b))
-          ((and (negative? b-value) 
-                (positive? a-value))
-           (search f b a))
-          (else
-           (error "Values are not of 
-                   opposite sign" a b)))))
-@end lisp
+@example typescript
+type HalfIntervalResult =
+  | @{ readonly _tag: "Ok"; readonly value: number @}
+  | @{ readonly _tag: "SameSign"; readonly a: number; readonly b: number @};
+
+const halfIntervalMethod = (
+  f: (x: number) => number,
+  a: number,
+  b: number,
+): HalfIntervalResult => @{
+  const aValue = f(a);
+  const bValue = f(b);
+  if (aValue < 0 && bValue > 0) @{
+    return @{ _tag: "Ok", value: search(f, a, b) @};
+  @}
+  if (bValue < 0 && aValue > 0) @{
+    return @{ _tag: "Ok", value: search(f, b, a) @};
+  @}
+  return @{ _tag: "SameSign", a, b @};
+@};
+@end example
 
 @noindent
 The following example uses the half-interval method to approximate @math{\pi} as
 the root between 2 and 4 of @math{{\sin x = 0}}:
 
-@lisp
-(half-interval-method sin 2.0 4.0)
-@i{3.14111328125}
-@end lisp
+@example typescript
+halfIntervalMethod(Math.sin, 2.0, 4.0);
+// => @{ _tag: "Ok", value: 3.14111328125 @}
+@end example
 
 @noindent
 Here is another example, using the half-interval method to search for a root of
 the equation @math{{x^3 - 2x - 3 = 0}} between 1 and 2:
 
-@lisp
-(half-interval-method 
- (lambda (x) (- (* x x x) (* 2 x) 3))
- 1.0
- 2.0)
-@i{1.89306640625}
-@end lisp
+@example typescript
+halfIntervalMethod((x) => cube(x) - 2 * x - 3, 1.0, 2.0);
+// => @{ _tag: "Ok", value: 1.89306640625 @}
+@end example
 
 @subsubheading Finding fixed points of functions
 
@@ -843,25 +866,26 @@ f(x), f(f(x)), f(f(f(x))), ...
 @end ifinfo
 @noindent
 until the value does not change very much.  Using this idea, we can devise a
-procedure @code{fixed-point} that takes as inputs a function and an initial
+procedure @code{fixedPoint} that takes as inputs a function and an initial
 guess and produces an approximation to a fixed point of the function.  We apply
 the function repeatedly until we find two successive values whose difference is
-less than some prescribed tolerance:
+less than some prescribed tolerance.  Node gives no tail-call guarantee, so the
+repeatedly-improving guess runs as a loop over the state:
 
-@lisp
-(define tolerance 0.00001)
+@example typescript
+const TOLERANCE = 0.00001;
 
-(define (fixed-point f first-guess)
-  (define (close-enough? v1 v2)
-    (< (abs (- v1 v2)) 
-       tolerance))
-  (define (try guess)
-    (let ((next (f guess)))
-      (if (close-enough? guess next)
-          next
-          (try next))))
-  (try first-guess))
-@end lisp
+const fixedPoint = (f: (x: number) => number, firstGuess: number): number => @{
+  let guess = firstGuess;
+  for (;;) @{
+    const next = f(guess);
+    if (abs(guess - next) < TOLERANCE) @{
+      return next;
+    @}
+    guess = next;
+  @}
+@};
+@end example
 
 @noindent
 For example, we can use this method to approximate the fixed point of the
@@ -869,20 +893,19 @@ cosine function, starting with 1 as an initial approximation:@footnote{Try this
 during a boring lecture: Set your calculator to radians mode and then
 repeatedly press the @code{cos} button until you obtain the fixed point.}
 
-@lisp
-(fixed-point cos 1.0)
-@i{.7390822985224023}
-@end lisp
+@example typescript
+fixedPoint(Math.cos, 1.0);
+// => 0.7390822985224023
+@end example
 
 @noindent
-Similarly, we can find a solution to the equation 
+Similarly, we can find a solution to the equation
 @math{{y = \sin y + \cos y}}:
 
-@lisp
-(fixed-point (lambda (y) (+ (sin y) (cos y)))
-             1.0)
-@i{1.2587315962971173}
-@end lisp
+@example typescript
+fixedPoint((y) => Math.sin(y) + Math.cos(y), 1.0);
+// => 1.2587315962971173
+@end example
 
 @noindent
 The fixed-point process is reminiscent of the process we used for finding
@@ -890,41 +913,39 @@ square roots in @ref{1.1.7}.  Both are based on the idea of repeatedly
 improving a guess until the result satisfies some criterion.  In fact, we can
 readily formulate the square-root computation as a fixed-point search.
 Computing the square root of some number @math{x} requires finding a @math{y} such
-that @math{{y^2 = x}}.  Putting this equation into the equivalent form 
+that @math{{y^2 = x}}.  Putting this equation into the equivalent form
 @math{{y = x / y}}, we recognize that we are looking for a fixed point of the
 function@footnote{@math{\mapsto} (pronounced ``maps to'') is the mathematician's way of
-writing @code{lambda}.  @math{{y \mapsto x / y}} means @code{(lambda (y) (/ x y))},
-that is, the function whose value at @math{y} is @math{{x / y}}.} @math{{y \mapsto x / y}}, 
+writing an arrow function.  @math{{y \mapsto x / y}} means @code{(y) => x / y},
+that is, the function whose value at @math{y} is @math{{x / y}}.} @math{{y \mapsto x / y}},
 and we can therefore try to compute square roots as
 
-@lisp
-(define (sqrt x)
-  (fixed-point (lambda (y) (/ x y))
-               1.0))
-@end lisp
+@example typescript
+const sqrtByFixedPointNaive = (x: number): number => fixedPoint((y) => x / y, 1.0);
+@end example
 
 @noindent
 Unfortunately, this fixed-point search does not converge.  Consider an initial
 guess @math{y_1}.  The next guess is @math{{y_2 = x / y_1}} and the next guess is
 @math{y_3 = {x / y_2} = {x / (x / y_1)} = y_1}.  This results in an
-infinite loop in which the two guesses @math{y_1} and @math{y_2} repeat over and
-over, oscillating about the answer.
+infinite loop in which the two guesses @math{y_1} and @math{y_2}
+repeat over and over, oscillating about the answer.
 
 One way to control such oscillations is to prevent the guesses from changing so
 much.  Since the answer is always between our guess @math{y} and @math{{x / y}}, we
 can make a new guess that is not as far from @math{y} as @math{{x / y}} by averaging
-@math{y} with @math{{x / y}}, so that the next guess after @math{y} is 
-@math{{{1\over2}(y + x / y)}} 
+@math{y} with @math{{x / y}}, so that the next guess after @math{y} is
+@math{{{1\over2}(y + x / y)}}
 instead of @math{{x / y}}.  The process of making such a sequence of
-guesses is simply the process of looking for a fixed point of 
-@math{y \mapsto {{1\over2}(y + x / y)}}: 
+guesses is simply the process of looking for a fixed point of
+@math{y \mapsto {{1\over2}(y + x / y)}}:
 
-@lisp
-(define (sqrt x)
-  (fixed-point 
-   (lambda (y) (average y (/ x y)))
-   1.0))
-@end lisp
+@example typescript
+const sqrtByAverageDamp = (x: number): number => fixedPoint((y) => average(y, x / y), 1.0);
+
+sqrtByAverageDamp(2.0);
+// => 1.4142135623746899
+@end example
 
 @noindent
 (Note that @math{y = {{1\over2}(y + x / y)}} is a simple transformation of the
@@ -940,25 +961,26 @@ averaging successive approximations to a solution, a technique that we call
 
 @quotation
 @strong{@anchor{Exercise 1.35}Exercise 1.35:} Show that the golden ratio
-@math{\varphi} (@ref{1.2.2}) is a fixed point of the transformation 
-@math{{x \mapsto 1 + 1 / x}}, and use this fact to compute @math{\varphi} by means 
-of the @code{fixed-point} procedure.
+@math{\varphi} (@ref{1.2.2}) is a fixed point of the transformation
+@math{{x \mapsto 1 + 1 / x}}, and use this fact to compute @math{\varphi} by means
+of the @code{fixedPoint} procedure.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.36}Exercise 1.36:} Modify @code{fixed-point} so that
-it prints the sequence of approximations it generates, using the @code{newline}
-and @code{display} primitives shown in @ref{Exercise 1.22}.  Then find a
-solution to @math{{x^x = 1000}} by finding a fixed point of @math{x \mapsto
-{\log(1000) / \log(x)}}.  (Use Scheme's primitive @code{log}
-procedure, which computes natural logarithms.)  Compare the number of steps
+@strong{@anchor{Exercise 1.36}Exercise 1.36:} Modify @code{fixedPoint} so that
+it reports the sequence of approximations it generates, handing each new guess
+to an @code{emit} callback (the host's @code{console.log} can serve at the call
+site, the way @code{display} and @code{newline} served in @ref{Exercise 1.22}).
+Then find a solution to @math{{x^x = 1000}} by finding a fixed point of @math{x \mapsto
+{\log(1000) / \log(x)}}.  (The host's @code{Math.log}
+procedure computes natural logarithms.)  Compare the number of steps
 this takes with and without average damping.  (Note that you cannot start
-@code{fixed-point} with a guess of 1, as this would cause division by
+the search at 1, as this would cause division by
 @math{{\log(1) = 0}}.)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.37}Exercise 1.37:} 
+@strong{@anchor{Exercise 1.37}Exercise 1.37:}
 
 @enumerate a
 
@@ -1003,25 +1025,23 @@ D_1 + -----------
 
 @end ifinfo
 Suppose that @code{n} and @code{d} are procedures of one argument (the term
-index @math{i}) that return the @math{N_i} and @math{D_i} of the terms of the
-continued fraction.  Define a procedure @code{cont-frac} such that evaluating
-@code{(cont-frac n d k)} computes the value of the @math{k}-term finite continued
+index @math{i}) that return the @math{N_i} and the @math{D_i} of the terms of the
+continued fraction.  Define a procedure @code{contFrac} such that evaluating
+@code{contFrac(n, d, k)} computes the value of the @math{k}-term finite continued
 fraction.  Check your procedure by approximating @math{{1 / \varphi}} using
 
-@lisp
-(cont-frac (lambda (i) 1.0)
-           (lambda (i) 1.0)
-           k)
-@end lisp
+@example typescript
+contFrac((i) => 1.0, (i) => 1.0, k);
+@end example
 
 @noindent
 for successive values of @code{k}.  How large must you make @code{k} in order
 to get an approximation that is accurate to 4 decimal places?
 
 @item
-If your @code{cont-frac} procedure generates a recursive process, write one
-that generates an iterative process.  If it generates an iterative process,
-write one that generates a recursive process.
+Node gives no tail-call guarantee, so write the iterative @code{contFrac} as a
+@code{while} loop that folds the fraction up from the @math{k}-th term, and
+check that the loop and the recursion agree.
 
 @end enumerate
 @end quotation
@@ -1032,7 +1052,7 @@ Leonhard Euler published a memoir @cite{De Fractionibus Continuis}, which
 included a continued fraction expansion for @math{{e - 2}}, where @math{e} is the base
 of the natural logarithms.  In this fraction, the @math{N_i} are all 1, and
 the @math{D_i} are successively 1, 2, 1, 1, 4, 1, 1, 6, 1, 1, 8, @dots{}.
-Write a program that uses your @code{cont-frac} procedure from @ref{Exercise 1.37} 
+Write a program that uses your @code{contFrac} procedure from @ref{Exercise 1.37}
 to approximate @math{e}, based on Euler's expansion.
 @end quotation
 
@@ -1057,7 +1077,7 @@ tan x = ---------------
 
 @end ifinfo
 @noindent
-where @math{x} is in radians.  Define a procedure @code{(tan-cf x k)} that
+where @math{x} is in radians.  Define a procedure @code{tanCf(x, k)} that
 computes an approximation to the tangent function based on Lambert's formula.
 @code{k} specifies the number of terms to compute, as in @ref{Exercise 1.37}.
 @end quotation
@@ -1081,17 +1101,18 @@ average of @math{x} and @math{{f(x)}}.
 
 We can express the idea of average damping by means of the following procedure:
 
-@lisp
-(define (average-damp f)
-  (lambda (x) 
-    (average x (f x))))
-@end lisp
+@example typescript
+const averageDamp =
+  (f: (x: number) => number): ((x: number) => number) =>
+  (x) =>
+    average(x, f(x));
+@end example
 
 @noindent
-@code{Average-damp} is a procedure that takes as its argument a procedure
-@code{f} and returns as its value a procedure (produced by the @code{lambda})
-that, when applied to a number @code{x}, produces the average of @code{x} and
-@code{(f x)}.  For example, applying @code{average-damp} to the @code{square}
+@code{AverageDamp} is a procedure that takes as its argument a procedure
+@code{f} and returns as its value a procedure (produced by an arrow function)
+that, when applied to a number @math{x}, produces the average of @math{x} and
+@math{{f(x)}}.  For example, applying @code{averageDamp} to the @code{square}
 procedure produces a procedure whose value at some number @math{x} is the average
 of @math{x} and @math{x^2}.  Applying this resulting procedure to 10 returns the
 average of 10 and 100, or 55:@footnote{Observe that this is a combination whose
@@ -1100,22 +1121,22 @@ ability to form such combinations, but that was only a toy example.  Here we
 begin to see the real need for such combinations---when applying a procedure
 that is obtained as the value returned by a higher-order procedure.}
 
-@lisp
-((average-damp square) 10)
-@i{55}
-@end lisp
+@example typescript
+averageDamp(square)(10);
+// => 55
+@end example
 
 @noindent
-Using @code{average-damp}, we can reformulate the square-root procedure as
+Using @code{averageDamp}, we can reformulate the square-root procedure as
 follows:
 
-@lisp
-(define (sqrt x)
-  (fixed-point 
-   (average-damp 
-    (lambda (y) (/ x y)))
-   1.0))
-@end lisp
+@example typescript
+const sqrtByDampedFixedPoint = (x: number): number =>
+  fixedPoint(
+    averageDamp((y) => x / y),
+    1.0,
+  );
+@end example
 
 @noindent
 Notice how this formulation makes explicit the three ideas in the method:
@@ -1133,19 +1154,18 @@ function @math{{y \mapsto x / y^2}}, so we can immediately generalize our
 square-root procedure to one that extracts cube roots:@footnote{See
 @ref{Exercise 1.45} for a further generalization.}
 
-@lisp
-(define (cube-root x)
-  (fixed-point 
-   (average-damp 
-    (lambda (y) 
-      (/ x (square y))))
-   1.0))
-@end lisp
+@example typescript
+const cubeRoot = (x: number): number =>
+  fixedPoint(
+    averageDamp((y) => x / square(y)),
+    1.0,
+  );
+@end example
 
 @subsubheading Newton's method
 
 When we first introduced the square-root procedure, in @ref{1.1.7}, we
-mentioned that this was a special case of @newterm{Newton's method}.  
+mentioned that this was a special case of @newterm{Newton's method}.
 If @math{{x \mapsto g(x)}} is a differentiable function, then a solution of the equation
 @math{{g(x) = 0}} is a fixed point of the function @math{{x \mapsto f(x)}} where
 @displaymath
@@ -1165,8 +1185,8 @@ and @math{{Dg(x)}} is the derivative of @math{g} evaluated at @math{x}.  Newton'
 method is the use of the fixed-point method we saw above to approximate a
 solution of the equation by finding a fixed point of the function
 @math{{f}}.@footnote{Elementary calculus books usually describe Newton's method in
-terms of the sequence of approximations @math{x_{n+1} = x_n - {g(x_n)\,/ Dg(x_n)}}. 
-Having language for talking about processes and using the idea of fixed points 
+terms of the sequence of approximations @math{x_{n+1} = x_n - {g(x_n)\,/ Dg(x_n)}}.
+Having language for talking about processes and using the idea of fixed points
 simplifies the description of the method.}
 
 For many functions @math{g} and for sufficiently good initial guesses for @math{x},
@@ -1196,53 +1216,49 @@ Dg(x) = ----------------
 
 @end ifinfo
 @noindent
-Thus, we can express the idea of derivative (taking @math{{dx}} to be, say,
-0.00001) as the procedure
+Thus, we can express the idea of derivative as the procedure
 
-@lisp
-(define (deriv g)
-  (lambda (x)
-    (/ (- (g (+ x dx)) (g x))
-       dx)))
-@end lisp
+@example typescript
+const deriv =
+  (g: (x: number) => number): ((x: number) => number) =>
+  (x) =>
+    (g(x + dx) - g(x)) / dx;
+@end example
 
 @noindent
 along with the definition
 
-@lisp
-(define dx 0.00001)
-@end lisp
+@example typescript
+const dx = 0.00001;
+@end example
 
 @noindent
-Like @code{average-damp}, @code{deriv} is a procedure that takes a procedure as
+Like @code{averageDamp}, @code{deriv} is a procedure that takes a procedure as
 argument and returns a procedure as value.  For example, to approximate the
 derivative of @math{{x \mapsto x^3}} at 5 (whose exact value is 75) we can evaluate
 
-@lisp
-(define (cube x) (* x x x))
-
-((deriv cube) 5)
-@i{75.00014999664018}
-@end lisp
+@example typescript
+deriv(cube)(5);
+// => 75.00014999664018
+@end example
 
 @noindent
 With the aid of @code{deriv}, we can express Newton's method as a fixed-point
 process:
 
-@lisp
-(define (newton-transform g)
-  (lambda (x)
-    (- x (/ (g x) 
-            ((deriv g) x)))))
+@example typescript
+const newtonTransform =
+  (g: (x: number) => number): ((x: number) => number) =>
+  (x) =>
+    x - g(x) / deriv(g)(x);
 
-(define (newtons-method g guess)
-  (fixed-point (newton-transform g) 
-               guess))
-@end lisp
+const newtonsMethod = (g: (x: number) => number, guess: number): number =>
+  fixedPoint(newtonTransform(g), guess);
+@end example
 
 @noindent
-The @code{newton-transform} procedure expresses the formula at the beginning of
-this section, and @code{newtons-method} is readily defined in terms of this.
+The @code{newtonTransform} procedure expresses the formula at the beginning of
+this section, and @code{newtonsMethod} is readily defined in terms of this.
 It takes as arguments a procedure that computes the function for which we want
 to find a zero, together with an initial guess.  For instance, to find the
 square root of @math{x}, we can use Newton's method to find a zero of the function
@@ -1252,13 +1268,9 @@ from any starting point.}
 
 This provides yet another form of the square-root procedure:
 
-@lisp
-(define (sqrt x)
-  (newtons-method 
-   (lambda (y) 
-     (- (square y) x)) 
-   1.0))
-@end lisp
+@example typescript
+const sqrtByNewtonsMethod = (x: number): number => newtonsMethod((y) => square(y) - x, 1.0);
+@end example
 
 @subsubheading Abstractions and first-class procedures
 
@@ -1269,11 +1281,13 @@ we actually saw two ways to compute square roots as fixed points.  Each method
 begins with a function and finds a fixed point of some transformation of the
 function.  We can express this general idea itself as a procedure:
 
-@lisp
-(define (fixed-point-of-transform 
-         g transform guess)
-  (fixed-point (transform g) guess))
-@end lisp
+@example typescript
+const fixedPointOfTransform = (
+  g: (x: number) => number,
+  transform: (g: (x: number) => number) => (x: number) => number,
+  guess: number,
+): number => fixedPoint(transform(g), guess);
+@end example
 
 @noindent
 This very general procedure takes as its arguments a procedure @code{g} that
@@ -1284,26 +1298,20 @@ Using this abstraction, we can recast the first square-root computation from
 this section (where we look for a fixed point of the average-damped version of
 @math{{y \mapsto x / y}}) as an instance of this general method:
 
-@lisp
-(define (sqrt x)
-  (fixed-point-of-transform 
-   (lambda (y) (/ x y))
-   average-damp
-   1.0))
-@end lisp
+@example typescript
+const sqrtByDampedTransform = (x: number): number =>
+  fixedPointOfTransform((y) => x / y, averageDamp, 1.0);
+@end example
 
 @noindent
 Similarly, we can express the second square-root computation from this section
 (an instance of Newton's method that finds a fixed point of the Newton
 transform of @math{{y \mapsto y^2 - x}}) as
 
-@lisp
-(define (sqrt x)
-  (fixed-point-of-transform 
-   (lambda (y) (- (square y) x))
-   newton-transform
-   1.0))
-@end lisp
+@example typescript
+const sqrtByNewtonTransform = (x: number): number =>
+  fixedPointOfTransform((y) => square(y) - x, newtonTransform, 1.0);
+@end example
 
 @noindent
 We began section @ref{1.3} with the observation that compound procedures are a
@@ -1348,23 +1356,22 @@ after we introduce data structures in @ref{Chapter 2,,@w{Chapter 2}}.}
 @end itemize
 
 @noindent
-Lisp, unlike other common programming languages, awards procedures full
+TypeScript, like Lisp among common programming languages, awards functions full
 first-class status.  This poses challenges for efficient implementation, but
 the resulting gain in expressive power is enormous.@footnote{The major
 implementation cost of first-class procedures is that allowing procedures to be
 returned as values requires reserving storage for a procedure's free variables
-even while the procedure is not executing.  In the Scheme implementation we
-will study in @ref{4.1}, these variables are stored in the procedure's
-environment.}
+even while the procedure is not executing.  In the interpreter we will build in
+@ref{4.1}, these variables live in the procedure's environment.}
 
 @quotation
 @strong{@anchor{Exercise 1.40}Exercise 1.40:} Define a procedure @code{cubic}
-that can be used together with the @code{newtons-method} procedure in
+that can be used together with the @code{newtonsMethod} procedure in
 expressions of the form
 
-@lisp
-(newtons-method (cubic a b c) 1)
-@end lisp
+@example typescript
+newtonsMethod(cubic(a, b, c), 1.0)
+@end example
 
 @noindent
 to approximate zeros of the cubic @math{{x^3 + ax^2 + bx + c}}.
@@ -1374,12 +1381,12 @@ to approximate zeros of the cubic @math{{x^3 + ax^2 + bx + c}}.
 @strong{@anchor{Exercise 1.41}Exercise 1.41:} Define a procedure @code{double}
 that takes a procedure of one argument as argument and returns a procedure that
 applies the original procedure twice.  For example, if @code{inc} is a
-procedure that adds 1 to its argument, then @code{(double inc)} should be a
+procedure that adds 1 to its argument, then @code{double(inc)} should be a
 procedure that adds 2.  What value is returned by
 
-@lisp
-(((double (double double)) inc) 5)
-@end lisp
+@example typescript
+double(double(double))(inc)(5)
+@end example
 @end quotation
 
 @quotation
@@ -1389,10 +1396,10 @@ to be the function @math{{x \mapsto f(g(x))}}.  Define a procedure
 @code{compose} that implements composition.  For example, if @code{inc} is a
 procedure that adds 1 to its argument,
 
-@lisp
-((compose square inc) 6)
-@i{49}
-@end lisp
+@example typescript
+compose(square, inc)(6);
+// => 49
+@end example
 @end quotation
 
 @quotation
@@ -1408,11 +1415,12 @@ inputs a procedure that computes @math{f} and a positive integer @math{n} and re
 the procedure that computes the @math{n^{\hbox{th}}} repeated application of @math{f}.  Your
 procedure should be able to be used as follows:
 
-@lisp
-((repeated square 2) 5)
-@i{625}
-@end lisp
+@example typescript
+repeated(square, 2)(5);
+// => 625
+@end example
 
+@noindent
 Hint: You may find it convenient to use @code{compose} from @ref{Exercise 1.42}.
 @end quotation
 
@@ -1420,7 +1428,7 @@ Hint: You may find it convenient to use @code{compose} from @ref{Exercise 1.42}.
 @strong{@anchor{Exercise 1.44}Exercise 1.44:} The idea of @newterm{smoothing} a
 function is an important concept in signal processing.  If @math{f} is a function
 and @math{{dx}} is some small number, then the smoothed version of @math{f} is the
-function whose value at a point @math{x} is the average of @math{{f(x - dx)}}, 
+function whose value at a point @math{x} is the average of @math{{f(x - dx)}},
 @math{{f(x)}}, and @math{{f(x + dx)}}.  Write a procedure
 @code{smooth} that takes as input a procedure that computes @math{f} and returns a
 procedure that computes the smoothed @math{f}.  It is sometimes valuable to
@@ -1438,14 +1446,14 @@ damping.  The same method works for finding cube roots as fixed points of the
 average-damped @math{{y \mapsto x / y^2}}.  Unfortunately, the process does not
 work for fourth roots---a single average damp is not enough to make a
 fixed-point search for @math{{y \mapsto x / y^3}} converge.  On the other hand, if
-we average damp twice (i.e., use the average damp of the average damp of 
+we average damp twice (i.e., use the average damp of the average damp of
 @math{{y \mapsto x / y^3}}) the fixed-point search does converge.  Do some experiments
 to determine how many average damps are required to compute @math{n^{\hbox{th}}} roots as a
-fixed-point search based upon repeated average damping of @math{{y \mapsto x / y^{\kern0.1em n-1}}}.  
+fixed-point search based upon repeated average damping of @math{{y \mapsto x / y^{\kern0.1em n-1}}}.
 Use this to implement a simple procedure for computing
-@math{n^{\hbox{th}}} roots using @code{fixed-point}, @code{average-damp}, and the
+@math{n^{\hbox{th}}} roots using @code{fixedPoint}, @code{averageDamp}, and the
 @code{repeated} procedure of @ref{Exercise 1.43}.  Assume that any arithmetic
-operations you need are available as primitives.
+operations you need are available as host primitives.
 @end quotation
 
 @quotation
@@ -1455,13 +1463,16 @@ strategy known as @newterm{iterative improvement}.  Iterative improvement says
 that, to compute something, we start with an initial guess for the answer, test
 if the guess is good enough, and otherwise improve the guess and continue the
 process using the improved guess as the new guess.  Write a procedure
-@code{iterative-improve} that takes two procedures as arguments: a method for
+@code{iterativeImprove} that takes two procedures as arguments: a method for
 telling whether a guess is good enough and a method for improving a guess.
-@code{Iterative-improve} should return as its value a procedure that takes a
-guess as argument and keeps improving the guess until it is good enough.
-Rewrite the @code{sqrt} procedure of @ref{1.1.7} and the
-@code{fixed-point} procedure of @ref{1.3.3} in terms of
-@code{iterative-improve}.
+@code{IterativeImprove} should return as its value a procedure that takes a
+guess as argument and keeps improving the guess until it is good enough.  An
+arrow function cannot call itself by name---the name being defined is not yet
+in scope while the arrow is being written---and Node gives no tail-call
+guarantee anyway, so run the improvement as a @code{while} loop inside the
+returned function.  Rewrite the @code{sqrt} procedure of @ref{1.1.7} and the
+@code{fixedPoint} procedure of @ref{1.3.3} in terms of
+@code{iterativeImprove}.
 @end quotation
 
 @node    Chapter 2, 2.1, 1.3, Top
@@ -1482,13 +1493,13 @@ We concentrated in @ref{Chapter 1} on computational processes and on the role
 of procedures in program design.  We saw how to use primitive data (numbers)
 and primitive operations (arithmetic operations), how to combine procedures to
 form compound procedures through composition, conditionals, and the use of
-parameters, and how to abstract procedures by using @code{define}.  We saw that
-a procedure can be regarded as a pattern for the local evolution of a process,
-and we classified, reasoned about, and performed simple algorithmic analyses of
-some common patterns for processes as embodied in procedures.  We also saw that
-higher-order procedures enhance the power of our language by enabling us to
-manipulate, and thereby to reason in terms of, general methods of computation.
-This is much of the essence of programming.
+parameters, and how to abstract procedures by naming them with definitions.  We
+saw that a procedure can be regarded as a pattern for the local evolution of a
+process, and we classified, reasoned about, and performed simple algorithmic
+analyses of some common patterns for processes as embodied in procedures.  We
+also saw that higher-order procedures enhance the power of our language by
+enabling us to manipulate, and thereby to reason in terms of, general methods
+of computation.  This is much of the essence of programming.
 
 In this chapter we are going to look at more complex data.  All the procedures
 in chapter 1 operate on simple numerical data, and simple data are not
@@ -1511,11 +1522,11 @@ compound data objects enables us to deal with data at a higher conceptual level
 than that of the primitive data objects of the language.
 
 Consider the task of designing a system to perform arithmetic with rational
-numbers.  We could imagine an operation @code{add-rat} that takes two rational
+numbers.  We could imagine an operation @code{addRat} that takes two rational
 numbers and produces their sum.  In terms of simple data, a rational number can
 be thought of as two integers: a numerator and a denominator.  Thus, we could
 design a program in which each rational number would be represented by two
-integers (a numerator and a denominator) and where @code{add-rat} would be
+integers (a numerator and a denominator) and where @code{addRat} would be
 implemented by two procedures (one producing the numerator of the sum and one
 producing the denominator).  But this would be awkward, because we would then
 need to explicitly keep track of which numerators corresponded to which
@@ -1530,12 +1541,12 @@ conceptual unit.
 The use of compound data also enables us to increase the modularity of our
 programs.  If we can manipulate rational numbers directly as objects in their
 own right, then we can separate the part of our program that deals with
-rational numbers per se from the details of how rational numbers may be
-represented as pairs of integers.  The general technique of isolating the parts
-of a program that deal with how data objects are represented from the parts of
-a program that deal with how data objects are used is a powerful design
-methodology called @newterm{data abstraction}.  We will see how data
-abstraction makes programs much easier to design, maintain, and modify.
+rational numbers per se from the details of how they may be represented as
+pairs of integers.  The general technique of isolating the parts of our program
+that deal with how data objects are represented from the parts of our program
+that deal with how data objects are used is a powerful design methodology called
+@newterm{data abstraction}.  We will see how data abstraction makes programs much
+easier to design, maintain, and modify.
 
 The use of compound data leads to a real increase in the expressive
 power of our programming language.  Consider the idea of forming a
@@ -1545,10 +1556,10 @@ arguments and return the value of @math{{ax + by}}.  This
 presents no difficulty if the arguments are to be numbers, because we
 can readily define the procedure
 
-@lisp
-(define (linear-combination a b x y)
-  (+ (* a x) (* b y)))
-@end lisp
+@example typescript
+const linearCombination = (a: number, b: number, x: number, y: number): number =>
+  a * x + b * y;
+@end example
 
 @noindent
 But suppose we are not concerned only with numbers.  Suppose we would like to
@@ -1557,28 +1568,34 @@ whenever addition and multiplication are defined---for rational numbers,
 complex numbers, polynomials, or whatever.  We could express this as a
 procedure of the form
 
-@lisp
-(define (linear-combination a b x y)
-  (add (mul a x) (mul b y)))
-@end lisp
+@example typescript
+const linearCombinationGeneric = (
+  add: (x: number, y: number) => number,
+  mul: (x: number, y: number) => number,
+  a: number,
+  b: number,
+  x: number,
+  y: number,
+): number => add(mul(a, x), mul(b, y));
+@end example
 
 @noindent
-where @code{add} and @code{mul} are not the primitive procedures @code{+} and
+where @code{add} and @code{mul} are not the primitive operations @code{+} and
 @code{*} but rather more complex things that will perform the appropriate
 operations for whatever kinds of data we pass in as the arguments @code{a},
 @code{b}, @code{x}, and @code{y}. The key point is that the only thing
-@code{linear-combination} should need to know about @code{a}, @code{b},
+@code{linearCombinationGeneric} should need to know about @code{a}, @code{b},
 @code{x}, and @code{y} is that the procedures @code{add} and @code{mul} will
 perform the appropriate manipulations.  From the perspective of the procedure
-@code{linear-combination}, it is irrelevant what @code{a}, @code{b}, @code{x},
-and @code{y} are and even more irrelevant how they might happen to be
+@code{linearCombinationGeneric}, it is irrelevant what @code{a}, @code{b},
+@code{x}, and @code{y} are and even more irrelevant how they might happen to be
 represented in terms of more primitive data.  This same example shows why it is
 important that our programming language provide the ability to manipulate
 compound objects directly: Without this, there is no way for a procedure such
-as @code{linear-combination} to pass its arguments along to @code{add} and
+as @code{linearCombinationGeneric} to pass its arguments along to @code{add} and
 @code{mul} without having to know their detailed structure.@footnote{The
 ability to directly manipulate procedures provides an analogous increase in the
-expressive power of a programming language.  For example, in 
+expressive power of a programming language.  For example, in
 @ref{1.3.1} we introduced the @code{sum} procedure, which takes a procedure
 @code{term} as an argument and computes the sum of the values of @code{term}
 over some specified interval.  In order to define @code{sum}, it is crucial
@@ -1628,7 +1645,7 @@ differently by different parts of a program.  This leads to the need to
 implement @newterm{generic operations}, which must handle many different types
 of data.  Maintaining modularity in the presence of generic operations requires
 more powerful abstraction barriers than can be erected with simple data
-abstraction alone.  In particular, we introduce @newterm{data-directed programming} 
+abstraction alone.  In particular, we introduce @newterm{data-directed programming}
 as a technique that allows individual data representations to be
 designed in isolation and then combined @newterm{additively} (i.e., without
 modification).  To illustrate the power of this approach to system design, we
@@ -1644,4 +1661,3 @@ numbers, and even other polynomials.
 * 2.4::              Multiple Representations for Abstract Data
 * 2.5::              Systems with Generic Operations
 @end menu
-

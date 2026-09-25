@@ -2459,6 +2459,10 @@ not a constant symbol.  We avoid building our criteria for indexing (using the
 @code{car}, handling only the case of constant symbols) into the program;
 instead we call on predicates and selectors that embody our criteria.
 
+This edition stores the data base in insertion order, so the row order
+of the transcripts below reproduces the order in which the assertions
+were added.
+
 @example ocaml
 let the_assertions : Value.t list ref = ref []
 

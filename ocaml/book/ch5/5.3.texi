@@ -28,7 +28,11 @@ support the illusion of an infinite memory.  When a data object is no longer
 needed, the memory allocated to it is automatically recycled and used to
 construct new data objects.  There are various techniques for providing such
 automatic storage allocation.  The method we shall discuss in this section is
-called @newterm{garbage collection}.
+called @newterm{garbage collection}.  In this edition the list-structured
+memory is the module @code{Sec_5_3}: two semispaces of cells, the typed words
+of 5.3.1 that name them, the allocation path of 5.3.1, and the stop-and-copy
+collector of 5.3.2, which is the book's controller listing run verbatim by a
+machine built from that text.
 @menu
 * 5.3.1::            Memory as Vectors
 * 5.3.2::            Maintaining the Illusion of Infinite Memory
@@ -54,8 +58,11 @@ individual elements can be accessed by means of an integer index in an amount
 of time that is independent of the index.@footnote{We could represent memory as
 lists of items.  However, the access time would then not be independent of the
 index, since accessing the @math{n^{\hbox{th}}} element of a list requires @math{{n - 1}}
-@code{cdr} operations.} In order to describe memory operations, we use two
-primitive Scheme procedures for manipulating vectors:
+@code{cdr} operations.} In this edition the vectors of the memory are the
+edition's arrays of words, and @code{vector-ref} and @code{vector-set!} are
+array reads and writes; a word is the typed pointer of the next subsection.  In
+order to describe memory operations, we use two primitive Scheme procedures for
+manipulating vectors:
 
 @itemize @bullet
 
@@ -122,7 +129,10 @@ denoted by the pointer @code{e0}, and a pointer to the number 4 is denoted
 of each pair the vector index that specifies where the @code{car} and
 @code{cdr} of the pair are stored.  The blank locations in @code{the-cars} and
 @code{the-cdrs} may contain parts of other list structures (not of interest
-here).
+here).  In this edition the typed pointers are the constructors of the word
+type: @code{Pair} of an index renders as @code{p5}, @code{Num} as @code{n4},
+the empty list as @code{e0}, and the collector's moved-object tag of 5.3.2 as
+@code{broken-heart}.
 
 @float
 @anchor{Figure 5.14}
@@ -204,49 +214,66 @@ memory vectors, and will assume that @code{vector-ref} and @code{vector-set!}
 are available as primitive operations.  We also assume that numeric operations
 on pointers (such as incrementing a pointer, using a pair pointer to index a
 vector, or adding two numbers) use only the index portion of the typed pointer.
+In this edition the two memory vectors are the two arrays of the working
+semispace, and the selectors and mutators below are the functions over them
+that the module installs as the machine's default operations.
 
 For example, we can make a register machine support the instructions
 
-@lisp
+@example
 (assign ⟨@var{reg₁}⟩ (op car) (reg ⟨@var{reg₂}⟩))
 (assign ⟨@var{reg₁}⟩ (op cdr) (reg ⟨@var{reg₂}⟩))
-@end lisp
+@end example
 
 @noindent
 if we implement these, respectively, as
 
-@lisp
-(assign ⟨@var{reg₁}⟩ 
-        (op vector-ref)
-        (reg the-cars)
-        (reg ⟨@var{reg₂}⟩))
-(assign ⟨@var{reg₁}⟩
-        (op vector-ref)
-        (reg the-cdrs)
-        (reg ⟨@var{reg₂}⟩))
-@end lisp
+@example ocaml
+let car mem = function
+  | Pair i -> read_cars mem mem.working i
+  | w -> Error (Op_failed ("car: not a pair: " ^ word_to_string w))
+
+let cdr mem = function
+  | Pair i -> read_cdrs mem mem.working i
+  | w -> Error (Op_failed ("cdr: not a pair: " ^ word_to_string w))
+@end example
+
+@noindent
+@code{Car} is one array read through the index part of the pair pointer:
+building @code{(cons 1 2)} in a fresh memory and reading it back answers the
+words @code{p0}, @code{n1}, and @code{n2} -- the pointer the allocation
+answered, then the car and the cdr.
+
+@example ocaml
+Memory.cons mem (Memory.Num 1) (Memory.Num 2) >>= fun x ->
+Memory.car mem x >>= fun a ->
+Memory.cdr mem x >>= fun d -> Ok (x, a, d)
+;;
+(* = p0, n1, n2 -- the cell p0 holds (n1 n2) *)
+@end example
 
 @noindent
 The instructions
 
-@lisp
+@example
 (perform (op set-car!) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩))
 (perform (op set-cdr!) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩))
-@end lisp
+@end example
 
 @noindent
 are implemented as
 
-@lisp
-(perform (op vector-set!)
-         (reg the-cars)
-         (reg ⟨@var{reg₁}⟩)
-         (reg ⟨@var{reg₂}⟩))
-(perform (op vector-set!)
-         (reg the-cdrs)
-         (reg ⟨@var{reg₁}⟩)
-         (reg ⟨@var{reg₂}⟩))
-@end lisp
+@example ocaml
+let set_car mem w v =
+  match w with
+  | Pair i -> store_cars mem mem.working i v
+  | _ -> Error (Op_failed ("set-car!: not a pair: " ^ word_to_string w))
+
+let set_cdr mem w v =
+  match w with
+  | Pair i -> store_cdrs mem mem.working i v
+  | _ -> Error (Op_failed ("set-cdr!: not a pair: " ^ word_to_string w))
+@end example
 
 @noindent
 @code{Cons} is performed by allocating an unused index and storing the
@@ -260,12 +287,12 @@ free locations are consecutive (and hence can be accessed by incrementing a
 pointer) because we are using a compacting garbage collector, as we will see in
 @ref{5.3.2}.}  For example, the instruction
 
-@lisp
+@example
 (assign ⟨@var{reg₁}⟩
         (op cons)
         (reg ⟨@var{reg₂}⟩)
         (reg ⟨@var{reg₃}⟩))
-@end lisp
+@end example
 
 @noindent
 is implemented as the following sequence of vector operations:@footnote{This is
@@ -274,30 +301,45 @@ essentially the implementation of @code{cons} in terms of @code{set-car!} and
 @code{get-new-pair} used in that implementation is realized here by the
 @code{free} pointer.}
 
-@lisp
-(perform (op vector-set!)
-         (reg the-cars)
-         (reg free)
-         (reg ⟨@var{reg₂}⟩))
-(perform (op vector-set!)
-         (reg the-cdrs)
-         (reg free)
-         (reg ⟨@var{reg₃}⟩))
-(assign ⟨@var{reg₁}⟩ (reg free))
-(assign free (op +) (reg free) (const 1))
-@end lisp
+@example ocaml
+let cons mem a d =
+  if mem.free >= mem.size then Error (Op_failed "the memory is exhausted")
+  else
+    let i = mem.free in
+    let here = word_to_string (Pair i) in
+    store_cars mem mem.working i a >>= fun () ->
+    store_cdrs mem mem.working i d >>= fun () ->
+    mem.free <- i + 1;
+    record mem
+      ( "cons -> " ^ here ^ " = (" ^ word_to_string a ^ " "
+        ^ word_to_string d ^ "); free " ^ here ^ " -> "
+        ^ word_to_string (Pair mem.free) );
+    Ok (Pair i)
+;;
+(* cons mem (Num 1) (Num 2) = Ok p0, and the trace records
+   "cons -> p0 = (n1 n2); free p0 -> p1" *)
+@end example
 
 @noindent
 The @code{eq?} operation
 
-@lisp
+@example
 (op eq?) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩)
-@end lisp
+@end example
 
 @noindent
 simply tests the equality of all fields in the registers, and predicates such
 as @code{pair?}, @code{null?}, @code{symbol?}, and @code{number?} need only
 check the type field.
+
+@example ocaml
+let equal_word (a : word) (b : word) = a = b
+
+let is_pair = function Pair _ -> true | _ -> false
+let is_null = function Empty -> true | _ -> false
+let is_symbol = function Sym _ -> true | _ -> false
+let is_number = function Num _ -> true | _ -> false
+@end example
 
 @subsubheading Implementing stacks
 
@@ -306,48 +348,87 @@ since stacks can be modeled in terms of lists.  The stack can be a list of the
 saved values, pointed to by a special register @code{the-stack}.  Thus, 
 @code{(save ⟨@var{reg}⟩)} can be implemented as
 
-@lisp
-(assign the-stack 
-        (op cons)
-        (reg ⟨@var{reg}⟩)
-        (reg the-stack))
-@end lisp
+@example ocaml
+(* [push_stack m v] is (assign the-stack (op cons) (reg v)
+   (reg the-stack)), with the monitored counters advanced *)
+let push_stack m v =
+  register_of m "the-stack" >>= fun stk ->
+  machine_cons m v !stk >>= fun w ->
+  stk := w;
+  m.pushes := !(m.pushes) + 1;
+  m.depth := !(m.depth) + 1;
+  if !(m.depth) > !(m.max_depth) then m.max_depth := !(m.depth);
+  Ok ()
+;;
+@end example
 
 @noindent
 Similarly, @code{(restore ⟨@var{reg}⟩)} can be implemented as
 
-@lisp
-(assign ⟨@var{reg}⟩ (op car) (reg the-stack))
-(assign the-stack (op cdr) (reg the-stack))
-@end lisp
+@example ocaml
+(* [pop_stack m name] is (assign name (op car) (reg the-stack))
+   and (assign the-stack (op cdr) (reg the-stack)) *)
+let pop_stack m name =
+  register_of m "the-stack" >>= fun stk ->
+  match !stk with
+  | Pair _ ->
+    car m.mem !stk >>= fun top ->
+    cdr m.mem !stk >>= fun rest ->
+    stk := rest;
+    m.depth := !(m.depth) - 1;
+    Ok top
+  | _ -> Error (Stack_underflow name)
+;;
+@end example
 
 @noindent
 and @code{(perform (op initialize-stack))} can be implemented as
 
-@lisp
-(assign the-stack (const ()))
-@end lisp
+@example ocaml
+(* the book's (assign the-stack (const ())) -- the empty list
+   of the memory is the word e0 *)
+("initialize-stack", Action_op (fun _ ->
+     register_of m "the-stack" >>= fun stk ->
+     stk := Empty;
+     m.depth := 0;
+     Ok ()))
+@end example
 
 @noindent
-These operations can be further expanded in terms of the vector operations
+Saving twice and restoring once in a fresh machine leaves the last saved cell
+in the memory -- @code{the-stack = p0} -- and the counters answer
+@code{total-pushes = 2 maximum-depth = 2}.  These operations can be further
+expanded in terms of the vector operations
 given above.  In conventional computer architectures, however, it is usually
 advantageous to allocate the stack as a separate vector.  Then pushing and
 popping the stack can be accomplished by incrementing or decrementing an index
-into that vector.
+into that vector.  In this edition the stack stays a list in the memory, and
+that is what makes the collector of 5.3.2 reach it: the stack register is one
+of the roots.
 
 @quotation
 @strong{@anchor{Exercise 5.20}Exercise 5.20:} Draw the box-and-pointer
 representation and the memory-vector representation (as in @ref{Figure 5.14})
 of the list structure produced by
 
-@lisp
+@example
 (define x (cons 1 2))
 (define y (list x x))
-@end lisp
+@end example
 
 @noindent
 with the @code{free} pointer initially @code{p1}.  What is the final value of
 @code{free}?  What pointers represent the values of @code{x} and @code{y}?
+@end quotation
+
+@quotation
+@emph{Exercise 5.20a is added by this edition and extends exercise 5.20;
+SICP numbers stop at 5.20.} @strong{@anchor{Exercise 5.20a}Exercise 5.20a:}
+Instrument the allocation path so that every @code{cons} records the free
+pointer before and after the allocation, together with the pair stored in the
+cell it filled. Run the instrumented allocator over the three @code{cons}es of
+Exercise 5.20, and read the trace against your drawing: the pointer values and
+the cell layout must agree.
 @end quotation
 
 @quotation
@@ -360,19 +441,19 @@ available as machine primitives.
 @item
 Recursive @code{count-leaves}:
 
-@lisp
+@example
 (define (count-leaves tree)
   (cond ((null? tree) 0)
         ((not (pair? tree)) 1)
         (else 
          (+ (count-leaves (car tree))
             (count-leaves (cdr tree))))))
-@end lisp
+@end example
 
 @item
 Recursive @code{count-leaves} with explicit counter:
 
-@lisp
+@example
 (define (count-leaves tree)
   (define (count-iter tree n)
     (cond ((null? tree) n)
@@ -383,7 +464,7 @@ Recursive @code{count-leaves} with explicit counter:
             (count-iter (car tree) 
                         n)))))
   (count-iter tree 0))
-@end lisp
+@end example
 @end enumerate
 @end quotation
 
@@ -415,12 +496,12 @@ most of the pairs generated in a typical computation are used only to hold
 intermediate results.  After these results are accessed, the pairs are no
 longer needed---they are @newterm{garbage}.  For instance, the computation
 
-@lisp
+@example
 (accumulate 
  + 
  0
  (filter odd? (enumerate-interval 0 n)))
-@end lisp
+@end example
 
 @noindent
 constructs two lists: the enumeration and the result of filtering the
@@ -494,7 +575,16 @@ machine registers in a pre-allocated list pointed at by @code{root} just before
 starting garbage collection.@footnote{This list of registers does not include
 the registers used by the storage-allocation system---@code{root},
 @code{the-cars}, @code{the-cdrs}, and the other registers that will be
-introduced in this section.} We also assume that, in addition to the current
+introduced in this section.}  In this edition that arrangement is literal: the
+collector is a second machine built from the controller listings below, its
+@code{the-cars}/@code{the-cdrs}/@code{new-cars}/@code{new-cdrs} registers hold
+the two semispaces' vector bases, and before each collection the application
+machine's registers are stored in a pre-allocated list in the reserved strip at
+the top of the working semispace.  After the collection, the relocated list is
+walked to hand every application register -- the stack register among them --
+its forwarded word.
+
+We also assume that, in addition to the current
 working memory, there is free memory available into which we can copy the
 useful data.  The current working memory consists of vectors whose base
 addresses are in registers called @code{the-cars} and @code{the-cdrs}, and the
@@ -610,7 +700,7 @@ and @code{scan}.  When the relocation of @code{root} has been accomplished, we
 install the new pointer as the new @code{root} and enter the main loop of the
 garbage collector.
 
-@lisp
+@example
 begin-garbage-collection
   (assign free (const 0))
   (assign scan (const 0))
@@ -621,7 +711,7 @@ begin-garbage-collection
 reassign-root
   (assign root (reg new))
   (goto (label gc-loop))
-@end lisp
+@end example
 
 @noindent
 In the main loop of the garbage collector we must determine whether there are
@@ -634,7 +724,7 @@ subroutine to relocate the @code{car} of the next pair (by placing the
 @code{car} pointer in @code{old}).  The @code{relocate-continue} register is
 set up so that the subroutine will return to update the @code{car} pointer.
 
-@lisp
+@example
 gc-loop
   (test (op =) (reg scan) (reg free))
   (branch (label gc-flip))
@@ -645,7 +735,7 @@ gc-loop
   (assign relocate-continue 
           (label update-car))
   (goto (label relocate-old-result-in-new))
-@end lisp
+@end example
 
 @noindent
 At @code{update-car}, we modify the @code{car} pointer of the pair being
@@ -654,7 +744,7 @@ scanned, then proceed to relocate the @code{cdr} of the pair.  We return to
 and updating the @code{cdr}, we are finished scanning that pair, so we continue
 with the main loop.
 
-@lisp
+@example
 update-car
   (perform (op vector-set!)
            (reg new-cars)
@@ -674,7 +764,7 @@ update-cdr
            (reg new))
   (assign  scan (op +) (reg scan) (const 1))
   (goto (label gc-loop))
-@end lisp
+@end example
 
 @noindent
 The subroutine @code{relocate-old-result-in-new} relocates objects as follows:
@@ -701,7 +791,7 @@ as a special kind of ``pair'' that doesn't satisfy the @code{pair?} predicate.
 For simulation purposes, @code{pointer-to-pair?} can be implemented as
 @code{pair?}.}
 
-@lisp
+@example
 relocate-old-result-in-new
   (test (op pointer-to-pair?) (reg old))
   (branch (label pair))
@@ -746,7 +836,7 @@ already-moved
            (reg the-cdrs)
            (reg old))
   (goto (reg relocate-continue))
-@end lisp
+@end example
 
 @noindent
 At the very end of the garbage-collection process, we interchange the role of
@@ -754,7 +844,7 @@ old and new memories by interchanging pointers: interchanging @code{the-cars}
 with @code{new-cars}, and @code{the-cdrs} with @code{new-cdrs}.  We will then
 be ready to perform another garbage collection the next time memory runs out.
 
-@lisp
+@example
 gc-flip
   (assign temp (reg the-cdrs))
   (assign the-cdrs (reg new-cdrs))
@@ -762,5 +852,44 @@ gc-flip
   (assign temp (reg the-cars))
   (assign the-cars (reg new-cars))
   (assign new-cars (reg temp))
-@end lisp
+@end example
 
+@noindent
+In this edition the five listings above are one controller: the module joins
+them in the order printed into a single controller text, builds a machine from
+it whose vector operations are the semispaces' array reads and writes and
+whose @code{(const 0)} names the zero pair pointer @code{p0} -- 5.3.1 gives
+@code{free} ``a pair pointer containing the next available index,'' so the
+pointer kind rides through @code{new} and the forwarding addresses -- and runs
+that machine for every collection. The application's registers went into the
+pre-allocated list before the controller started, and the relocated list is
+walked afterwards to hand each register its forwarded word. The
+reconfiguration of @ref{Figure 5.15}, on a memory of fourteen cells holding
+the list @code{(4 3 2 1)} and six dropped junk cells:
+
+@example ocaml
+Memory.collect_garbage m >>= fun () ->
+Memory.get_register m "x" >>= fun gx ->
+Ok (Memory.dump mem, Memory.word_to_string gx)
+;;
+(* the before-memory is the mixture of useful data and garbage:
+   index    0   1   2   3   4   5   6   7   8   9   10  11  12  13
+   the-cars n1  n2  n3  n4  n9  n9  n9  n9  n9  n9  e0  e0  e0  e0
+   the-cdrs e0  p0  p1  p2  n9  n9  n9  n9  n9  n9  e0  e0  e0  e0
+   and the after-memory is the useful data compacted at the front of
+   the other semispace, the junk gone:
+   index    0   1   2   3   4   5   6   7   8   9   10  11  12  13
+   the-cars p1  n4  p1  n3  e0  n2  n1  e0  e0  e0  e0  e0  e0  e0
+   the-cdrs p2  p3  p4  p5  e0  p6  e0  e0  e0  e0  e0  e0  e0  e0
+   x before = p3, after the collection = p1 -- forwarded --,
+   free = p9, the working semispace is now the one numbered 1 *)
+@end example
+
+@noindent
+The cells of the pre-allocated list itself were copied along with the data (the
+collector reaches them through @code{root}), which is why @code{free} moved to
+@code{p9} for seven useful cells: the relocated list is garbage from the next
+collection's viewpoint and is reclaimed then. The pointer-swap of
+@code{gc-flip} is visible in the machine's vector registers: collecting twice
+in a row moves the working semispace back, and the structure at @code{x}
+follows it.

@@ -71,12 +71,15 @@ takes two lists as arguments and combines their elements to form a single list.
 In a procedural language such as Lisp, we could define @code{append} in terms
 of the basic list constructor @code{cons}, as we did in @ref{2.2.1}:
 
-@lisp
-(define (append x y)
-  (if (null? x) 
-      y 
-      (cons (car x) (append (cdr x) y))))
-@end lisp
+@example kotlin
+fun append(x: Value, y: Value): Value =
+    if (x is VNil) {
+        y
+    } else {
+        cons(x.car, append(x.cdr as VPair, y))
+    }
+// => the append of 2.2.1, over the runtime's pairs
+@end example
 
 @noindent
 This procedure can be regarded as a translation into Lisp of the following two
@@ -199,12 +202,17 @@ The personnel data base for Microshaft contains @newterm{assertions} about
 company personnel.  Here is the information about Ben Bitdiddle, the resident
 computer wizard:
 
-@lisp
-(address (Bitdiddle Ben) 
-         (Slumerville (Ridge Road) 10))
-(job (Bitdiddle Ben) (computer wizard))
-(salary (Bitdiddle Ben) 60000)
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (address (Bitdiddle Ben) (Slumerville (Ridge Road) 10)))
+    (assert! (job (Bitdiddle Ben) (computer wizard)))
+    (assert! (salary (Bitdiddle Ben) 60000))
+    """.trimIndent(),
+)
+// each assert! answers Asserted: the driver prints "Assertion added to
+// data base."
+@end example
 
 @noindent
 Each assertion is a list (in this case a triple) whose elements can themselves
@@ -214,38 +222,42 @@ As resident wizard, Ben is in charge of the company's computer division, and he
 supervises two programmers and one technician.  Here is the information about
 them:
 
-@lisp
-(address (Hacker Alyssa P) 
-         (Cambridge (Mass Ave) 78))
-(job (Hacker Alyssa P) (computer programmer))
-(salary (Hacker Alyssa P) 40000)
-(supervisor (Hacker Alyssa P) (Bitdiddle Ben))
-
-(address (Fect Cy D) 
-         (Cambridge (Ames Street) 3))
-(job (Fect Cy D) (computer programmer))
-(salary (Fect Cy D) 35000)
-(supervisor (Fect Cy D) (Bitdiddle Ben))
-
-(address (Tweakit Lem E) 
-         (Boston (Bay State Road) 22))
-(job (Tweakit Lem E) (computer technician))
-(salary (Tweakit Lem E) 25000)
-(supervisor (Tweakit Lem E) (Bitdiddle Ben))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (address (Hacker Alyssa P) (Cambridge (Mass Ave) 78)))
+    (assert! (job (Hacker Alyssa P) (computer programmer)))
+    (assert! (salary (Hacker Alyssa P) 40000))
+    (assert! (supervisor (Hacker Alyssa P) (Bitdiddle Ben)))
+    (assert! (address (Fect Cy D) (Cambridge (Ames Street) 3)))
+    (assert! (job (Fect Cy D) (computer programmer)))
+    (assert! (salary (Fect Cy D) 35000))
+    (assert! (supervisor (Fect Cy D) (Bitdiddle Ben)))
+    (assert! (address (Tweakit Lem E) (Boston (Bay State Road) 22)))
+    (assert! (job (Tweakit Lem E) (computer technician)))
+    (assert! (salary (Tweakit Lem E) 25000))
+    (assert! (supervisor (Tweakit Lem E) (Bitdiddle Ben)))
+    (assert! (address (Reasoner Louis) (Slumerville (Pine Tree Road) 80)))
+    (assert! (job (Reasoner Louis) (computer programmer trainee)))
+    (assert! (salary (Reasoner Louis) 30000))
+    (assert! (supervisor (Reasoner Louis) (Hacker Alyssa P)))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 There is also a programmer trainee, who is supervised by Alyssa:
 
-@lisp
-(address (Reasoner Louis) 
-         (Slumerville (Pine Tree Road) 80))
-(job (Reasoner Louis) 
-     (computer programmer trainee))
-(salary (Reasoner Louis) 30000)
-(supervisor (Reasoner Louis) 
-            (Hacker Alyssa P))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (supervisor (Bitdiddle Ben) (Warbucks Oliver)))
+    (assert! (address (Warbucks Oliver) (Swellesley (Top Heap Road))))
+    (assert! (job (Warbucks Oliver) (administration big wheel)))
+    (assert! (salary (Warbucks Oliver) 150000))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 All of these people are in the computer division, as indicated by the word
@@ -254,73 +266,77 @@ All of these people are in the computer division, as indicated by the word
 Ben is a high-level employee.  His supervisor is the company's big wheel
 himself:
 
-@lisp
-(supervisor (Bitdiddle Ben) (Warbucks Oliver))
-(address (Warbucks Oliver) 
-         (Swellesley (Top Heap Road)))
-(job (Warbucks Oliver) 
-     (administration big wheel))
-(salary (Warbucks Oliver) 150000)
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (address (Scrooge Eben) (Weston (Shady Lane) 10)))
+    (assert! (job (Scrooge Eben) (accounting chief accountant)))
+    (assert! (salary (Scrooge Eben) 75000))
+    (assert! (supervisor (Scrooge Eben) (Warbucks Oliver)))
+    (assert! (address (Cratchet Robert) (Allston (N Harvard Street) 16)))
+    (assert! (job (Cratchet Robert) (accounting scrivener)))
+    (assert! (salary (Cratchet Robert) 18000))
+    (assert! (supervisor (Cratchet Robert) (Scrooge Eben)))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 Besides the computer division supervised by Ben, the company has an accounting
 division, consisting of a chief accountant and his assistant:
 
-@lisp
-(address (Scrooge Eben) 
-         (Weston (Shady Lane) 10))
-(job (Scrooge Eben) 
-     (accounting chief accountant))
-(salary (Scrooge Eben) 75000)
-(supervisor (Scrooge Eben) (Warbucks Oliver))
-
-(address (Cratchet Robert) 
-         (Allston (N Harvard Street) 16))
-(job (Cratchet Robert) (accounting scrivener))
-(salary (Cratchet Robert) 18000)
-(supervisor (Cratchet Robert) (Scrooge Eben))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (address (Aull DeWitt) (Slumerville (Onion Square) 5)))
+    (assert! (job (Aull DeWitt) (administration secretary)))
+    (assert! (salary (Aull DeWitt) 25000))
+    (assert! (supervisor (Aull DeWitt) (Warbucks Oliver)))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 There is also a secretary for the big wheel:
 
-@lisp
-(address (Aull DeWitt) 
-         (Slumerville (Onion Square) 5))
-(job (Aull DeWitt) (administration secretary))
-(salary (Aull DeWitt) 25000)
-(supervisor (Aull DeWitt) (Warbucks Oliver))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (address (Aull DeWitt) (Slumerville (Onion Square) 5)))
+    (assert! (job (Aull DeWitt) (administration secretary)))
+    (assert! (salary (Aull DeWitt) 25000))
+    (assert! (supervisor (Aull DeWitt) (Warbucks Oliver)))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 The data base also contains assertions about which kinds of jobs can be done by
 people holding other kinds of jobs.  For instance, a computer wizard can do the
 jobs of both a computer programmer and a computer technician:
 
-@lisp
-(can-do-job (computer wizard) 
-            (computer programmer))
-
-(can-do-job (computer wizard) 
-            (computer technician))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (can-do-job (computer wizard) (computer programmer)))
+    (assert! (can-do-job (computer wizard) (computer technician)))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 A computer programmer could fill in for a trainee:
 
-@lisp
-(can-do-job (computer programmer)
-            (computer programmer trainee))
-@end lisp
+@example kotlin
+querySystem.load("(assert! (can-do-job (computer programmer) (computer programmer trainee)))")
+@end example
 
 @noindent
 Also, as is well known,
 
-@lisp
-(can-do-job (administration secretary)
-            (administration big wheel))
-@end lisp
+@example kotlin
+querySystem.load("(assert! (can-do-job (administration secretary) (administration big wheel)))")
+@end example
 
 @subsubheading Simple queries
 
@@ -328,19 +344,20 @@ The query language allows users to retrieve information from the data base by
 posing queries in response to the system's prompt.  For example, to find all
 computer programmers one can say
 
-@lisp
-@i{;;; Query input:}
-(job ?x (computer programmer))
-@end lisp
+@example kotlin
+querySystem.repl("(job ?x (computer programmer))")
+// => ;;; Query input:
+//    (job ?x (computer programmer))
+@end example
 
 @noindent
 The system will respond with the following items:
 
-@lisp
-@i{;;; Query results:}
-(job (Hacker Alyssa P) (computer programmer))
-(job (Fect Cy D) (computer programmer))
-@end lisp
+@example kotlin
+// ;;; Query results:
+// => (job (Hacker Alyssa P) (computer programmer))
+//    (job (Fect Cy D) (computer programmer))
+@end example
 
 @noindent
 The input query specifies that we are looking for entries in the data base that
@@ -357,9 +374,10 @@ showing all entries in the data base that match the specified pattern.
 
 A pattern can have more than one variable.  For example, the query
 
-@lisp
-(address ?x ?y)
-@end lisp
+@example kotlin
+querySystem.run("(address ?x ?y)")
+// => the nine employees' addresses, in data-base order
+@end example
 
 @noindent
 will list all the employees' addresses.
@@ -372,9 +390,10 @@ The same pattern variable can appear more than once in a query, specifying that
 the same ``anything'' must appear in each position.  This is why variables have
 names.  For example,
 
-@lisp
-(supervisor ?x ?x)
-@end lisp
+@example kotlin
+querySystem.run("(supervisor ?x ?x)")
+// => []
+@end example
 
 @noindent
 finds all people who supervise themselves (though there are no such assertions
@@ -382,28 +401,32 @@ in our sample data base).
 
 The query
 
-@lisp
-(job ?x (computer ?type))
-@end lisp
+@example kotlin
+querySystem.run("(job ?x (computer ?type))")
+// => [(job (Bitdiddle Ben) (computer wizard)),
+//     (job (Hacker Alyssa P) (computer programmer)),
+//     (job (Fect Cy D) (computer programmer)),
+//     (job (Tweakit Lem E) (computer technician))]
+@end example
 
 @noindent
 matches all job entries whose third item is a two-element list whose first item
 is @code{computer}:
 
-@lisp
-(job (Bitdiddle Ben) (computer wizard))
-(job (Hacker Alyssa P) (computer programmer))
-(job (Fect Cy D) (computer programmer))
-(job (Tweakit Lem E) (computer technician))
-@end lisp
+@example kotlin
+// the entries that do not match: the trainee's third item is a
+// three-element list
+// => (job (Reasoner Louis) (computer programmer trainee))
+@end example
 
 @noindent
 This same pattern does @emph{not} match
 
-@lisp
-(job (Reasoner Louis) 
-     (computer programmer trainee))
-@end lisp
+@example kotlin
+// the entries that do not match: the trainee's third item is a
+// three-element list
+// => (job (Reasoner Louis) (computer programmer trainee))
+@end example
 
 @noindent
 because the third item in the entry is a list of three elements, and the
@@ -412,38 +435,42 @@ to change the pattern so that the third item could be any list beginning with
 @code{computer}, we could specify@footnote{This uses the dotted-tail notation
 introduced in @ref{Exercise 2.20}.}
 
-@lisp
-(job ?x (computer . ?type))
-@end lisp
+@example kotlin
+querySystem.run("(job ?x (computer . ?type))")
+// => the four two-element jobs above, then
+//    (job (Reasoner Louis) (computer programmer trainee))
+@end example
 
 @noindent
 For example,
 
-@lisp
-(computer . ?type)
-@end lisp
+@example kotlin
+// the pattern (computer . ?type): the dot puts what follows into the
+// pair's cdr slot, so ?type matches the rest of the data list
+@end example
 
 @noindent
 matches the data
 
-@lisp
-(computer programmer trainee)
-@end lisp
+@example kotlin
+// matches (computer programmer trainee), binding ?type to
+// (programmer trainee)
+@end example
 
 @noindent
 with @code{?type} as the list @code{(programmer trainee)}.  It also
 matches the data
 
-@lisp
-(computer programmer)
-@end lisp
+@example kotlin
+// and (computer programmer), binding ?type to (programmer)
+@end example
 
 @noindent
 with @code{?type} as the list @code{(programmer)}, and matches the data
 
-@lisp
-(computer)
-@end lisp
+@example kotlin
+// and (computer), binding ?type to ()
+@end example
 
 @noindent
 with @code{?type} as the empty list @code{()}.
@@ -501,32 +528,27 @@ built into the query language.)
 We can use @code{and} as follows to find the addresses of all the computer
 programmers:
 
-@lisp
-(and (job ?person (computer programmer))
-     (address ?person ?where))
-@end lisp
+@example kotlin
+querySystem.run("(and (job ?person (computer programmer)) (address ?person ?where))")
+// => [(and (job (Hacker Alyssa P) (computer programmer))
+//         (address (Hacker Alyssa P) (Cambridge (Mass Ave) 78))),
+//     (and (job (Fect Cy D) (computer programmer))
+//         (address (Fect Cy D) (Cambridge (Ames Street) 3)))]
+@end example
 
 @noindent
 The resulting output is
 
-@lisp
-(and (job (Hacker Alyssa P) 
-          (computer programmer))
-     (address (Hacker Alyssa P) 
-              (Cambridge (Mass Ave) 78)))
-
-(and (job (Fect Cy D) (computer programmer))
-     (address (Fect Cy D) 
-              (Cambridge (Ames Street) 3)))
-@end lisp
+@example kotlin
+// the same two instantiations, one per frame
+@end example
 
 @noindent
 In general,
 
-@lisp
+@example
 (and ⟨@var{query₁}⟩ ⟨@var{query₂}⟩ @r{…} ⟨@var{queryₙ}⟩)
-@end lisp
-
+@end example
 @noindent
 is satisfied by all sets of values for the pattern variables that
 simultaneously satisfy @math{{⟨\kern0.1em query_1⟩}} @r{…} @math{{⟨\kern0.1em query_n⟩}}.
@@ -538,62 +560,53 @@ instantiations of the query with those values.
 Another means of constructing compound queries is through @code{or}.  For
 example,
 
-@lisp
-(or (supervisor ?x (Bitdiddle Ben))
-    (supervisor ?x (Hacker Alyssa P)))
-@end lisp
+@example kotlin
+querySystem.run("(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))")
+// the disjunct streams interleave, so Reasoner lands in the second slot
+// => [(or (supervisor (Hacker Alyssa P) (Bitdiddle Ben))
+//         (supervisor (Hacker Alyssa P) (Hacker Alyssa P))),
+//     (or (supervisor (Reasoner Louis) (Bitdiddle Ben))
+//         (supervisor (Reasoner Louis) (Hacker Alyssa P))),
+//     (or (supervisor (Fect Cy D) (Bitdiddle Ben))
+//         (supervisor (Fect Cy D) (Hacker Alyssa P))),
+//     (or (supervisor (Tweakit Lem E) (Bitdiddle Ben))
+//         (supervisor (Tweakit Lem E) (Hacker Alyssa P)))]
+@end example
 
 @noindent
 will find all employees supervised by Ben Bitdiddle or Alyssa P.  Hacker:
 
-@lisp
-(or (supervisor (Hacker Alyssa P) 
-                (Bitdiddle Ben))
-    (supervisor (Hacker Alyssa P) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Fect Cy D) 
-                (Bitdiddle Ben))
-    (supervisor (Fect Cy D) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Tweakit Lem E) 
-                (Bitdiddle Ben))
-    (supervisor (Tweakit Lem E) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Reasoner Louis) 
-                (Bitdiddle Ben))
-    (supervisor (Reasoner Louis) 
-                (Hacker Alyssa P)))
-@end lisp
+@example kotlin
+// the same four instantiations in the interleave order shown above
+@end example
 
 @noindent
 In general,
 
-@lisp
+@example
 (or ⟨@var{query₁}⟩ ⟨@var{query₂}⟩ @r{…} ⟨@var{queryₙ}⟩)
-@end lisp
-
+@end example
 @noindent
 is satisfied by all sets of values for the pattern variables that satisfy at
 least one of @math{{⟨\kern0.1em query_1⟩}} @r{…} @math{{⟨\kern0.1em query_n⟩}}.
 
 Compound queries can also be formed with @code{not}. For example,
 
-@lisp
-(and (supervisor ?x (Bitdiddle Ben))
-     (not (job ?x (computer programmer))))
-@end lisp
+@example kotlin
+querySystem.run("(and (supervisor ?x (Bitdiddle Ben)) (not (job ?x (computer technician))))")
+// => [(and (supervisor (Hacker Alyssa P) (Bitdiddle Ben))
+//         (not (job (Hacker Alyssa P) (computer technician)))),
+//     (and (supervisor (Fect Cy D) (Bitdiddle Ben))
+//         (not (job (Fect Cy D) (computer technician))))]
+@end example
 
 @noindent
 finds all people supervised by Ben Bitdiddle who are not computer programmers.
 In general,
 
-@lisp
+@example
 (not ⟨@var{query₁}⟩)
-@end lisp
-
+@end example
 @noindent
 is satisfied by all assignments to the pattern variables that do not satisfy
 @math{{⟨\kern0.1em query_1⟩}}.@footnote{Actually, this description of @code{not} is valid
@@ -601,15 +614,14 @@ only for simple cases.  The real behavior of @code{not} is more complex.  We
 will examine @code{not}'s peculiarities in @ref{4.4.2} and
 @ref{4.4.3}.}
 
-The final combining form is called @code{lisp-value}.  When @code{lisp-value}
+The final combining form is called @code{lispValue}.  When @code{lispValue}
 is the first element of a pattern, it specifies that the next element is a Lisp
 predicate to be applied to the rest of the (instantiated) elements as
 arguments.  In general,
 
-@lisp
-(lisp-value ⟨@var{predicate}⟩ ⟨@var{arg₁}⟩ @r{…} ⟨@var{argₙ}⟩)
-@end lisp
-
+@example
+(lispValue ⟨@var{predicate}⟩ ⟨@var{arg₁}⟩ @r{…} ⟨@var{argₙ}⟩)
+@end example
 @noindent
 will be satisfied by assignments to the pattern variables for which the
 @code{⟨}@var{predicate}@code{⟩} applied to the instantiated @math{{⟨\kern0.1em arg_1⟩}} @r{…}
@@ -620,10 +632,14 @@ particular, it should not be used to test equality (since that is what the
 matching in the query language is designed to do) or inequality (since that can
 be done with the @code{same} rule shown below).}
 
-@lisp
-(and (salary ?person ?amount)
-     (lisp-value > ?amount 30000))
-@end lisp
+@example kotlin
+querySystem.run("(and (salary ?person ?amount) (lispValue > ?amount 30000))")
+// => [(and (salary (Bitdiddle Ben) 60000) (lisp-value > 60000 30000)),
+//     (and (salary (Hacker Alyssa P) 40000) (lisp-value > 40000 30000)),
+//     (and (salary (Fect Cy D) 35000) (lisp-value > 35000 30000)),
+//     (and (salary (Warbucks Oliver) 150000) (lisp-value > 150000 30000)),
+//     (and (salary (Scrooge Eben) 75000) (lisp-value > 75000 30000))]
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.56}Exercise 4.56:} Formulate compound queries that
@@ -652,14 +668,16 @@ In addition to primitive queries and compound queries, the query language
 provides means for abstracting queries.  These are given by @newterm{rules}.
 The rule
 
-@lisp
-(rule (lives-near ?person-1 ?person-2)
-      (and (address ?person-1 
-                    (?town . ?rest-1))
-           (address ?person-2 
-                    (?town . ?rest-2))
-           (not (same ?person-1 ?person-2))))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (rule (lives-near ?person-1 ?person-2)
+                   (and (address ?person-1 (?town . ?rest-1))
+                        (address ?person-2 (?town . ?rest-2))
+                        (not (same ?person-1 ?person-2)))))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 specifies that two people live near each other if they live in the same town.
@@ -676,73 +694,79 @@ of a query forces the same value to appear in both places, using different
 pattern variables does not force different values to appear.  (The values
 assigned to different pattern variables may be the same or different.)}
 
-@lisp
-(rule (same ?x ?x))
-@end lisp
+@example kotlin
+querySystem.load("(assert! (rule (same ?x ?x)))")
+// a bodyless rule: the conclusion holds for any value of ?x
+@end example
 
 @noindent
 The following rule declares that a person is a ``wheel'' in an organization if
 he supervises someone who is in turn a supervisor:
 
-@lisp
-(rule (wheel ?person)
-      (and (supervisor ?middle-manager 
-                       ?person)
-           (supervisor ?x ?middle-manager)))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (rule (wheel ?person)
+                   (and (supervisor ?middle-manager ?person)
+                        (supervisor ?x ?middle-manager))))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 The general form of a rule is
 
-@lisp
-(rule ⟨@var{conclusion}⟩ ⟨@var{body}⟩)
-@end lisp
-
+@example
+(rule ⟨@var{conclusionOf}⟩ ⟨@var{body}⟩)
+@end example
 @noindent
-where @code{⟨}@var{conclusion}@code{⟩} is a pattern and @code{⟨}@var{body}@code{⟩} is any
+where @code{⟨}@var{conclusionOf}@code{⟩} is a pattern and @code{⟨}@var{body}@code{⟩} is any
 query.@footnote{We will also allow rules without bodies, as in @code{same}, and
-we will interpret such a rule to mean that the rule conclusion is satisfied by
+we will interpret such a rule to mean that the rule conclusionOf is satisfied by
 any values of the variables.} We can think of a rule as representing a large
 (even infinite) set of assertions, namely all instantiations of the rule
-conclusion with variable assignments that satisfy the rule body.  When we
+conclusionOf with variable assignments that satisfy the rule body.  When we
 described simple queries (patterns), we said that an assignment to variables
 satisfies a pattern if the instantiated pattern is in the data base.  But the
 pattern needn't be explicitly in the data base as an assertion.  It can be an
 implicit assertion implied by a rule.  For example, the query
 
-@lisp
-(lives-near ?x (Bitdiddle Ben))
-@end lisp
+@example kotlin
+querySystem.run("(lives-near ?x (Bitdiddle Ben))")
+// => [(lives-near (Reasoner Louis) (Bitdiddle Ben)),
+//     (lives-near (Aull DeWitt) (Bitdiddle Ben))]
+@end example
 
 @noindent
 results in
 
-@lisp
-(lives-near (Reasoner Louis) (Bitdiddle Ben))
-(lives-near (Aull DeWitt) (Bitdiddle Ben))
-@end lisp
+@example kotlin
+// the same two answers, in data-base order
+@end example
 
 @noindent
 To find all computer programmers who live near Ben Bitdiddle, we can ask
 
-@lisp
-(and (job ?x (computer programmer))
-     (lives-near ?x (Bitdiddle Ben)))
-@end lisp
+@example kotlin
+querySystem.run("(and (job ?x (computer programmer)) (lives-near ?x (Bitdiddle Ben)))")
+// => []
+@end example
 
 @noindent
 As in the case of compound procedures, rules can be used as parts of other
 rules (as we saw with the @code{lives-near} rule above) or even be defined
 recursively.  For instance, the rule
 
-@lisp
-(rule (outranked-by ?staff-person ?boss)
-      (or (supervisor ?staff-person ?boss)
-          (and (supervisor ?staff-person 
-                           ?middle-manager)
-               (outranked-by ?middle-manager 
-                             ?boss))))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (rule (outranked-by ?staff-person ?boss)
+                   (or (supervisor ?staff-person ?boss)
+                       (and (supervisor ?staff-person ?middle-manager)
+                            (outranked-by ?middle-manager ?boss)))))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
 says that a staff person is outranked by a boss in the organization if the boss
@@ -780,20 +804,24 @@ meeting too many.  Fearing that his habit of forgetting meetings could cost him
 his job, Ben decides to do something about it.  He adds all the weekly meetings
 of the firm to the Microshaft data base by asserting the following:
 
-@lisp
-(meeting accounting (Monday 9am))
-(meeting administration (Monday 10am))
-(meeting computer (Wednesday 3pm))
-(meeting administration (Friday 1pm))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (meeting accounting (Monday 9am)))
+    (assert! (meeting administration (Monday 10am)))
+    (assert! (meeting computer (Wednesday 3pm)))
+    (assert! (meeting administration (Friday 1pm)))
+    """.trimIndent(),
+)
+@end example
 
 Each of the above assertions is for a meeting of an entire division.  Ben also
 adds an entry for the company-wide meeting that spans all the divisions.  All
 of the company's employees attend this meeting.
 
-@lisp
-(meeting whole-company (Wednesday 4pm))
-@end lisp
+@example kotlin
+querySystem.load("(assert! (meeting whole-company (Wednesday 4pm)))")
+@end example
 
 @enumerate a
 
@@ -808,10 +836,16 @@ that says that a person's meetings include all @code{whole-company} meetings
 plus all meetings of that person's division.  Fill in the body of Alyssa's
 rule.
 
-@lisp
-(rule (meeting-time ?person ?day-and-time)
-      ⟨@var{rule-body}⟩)
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (rule (meeting-time ?person ?day-and-time)
+                   (or (meeting whole-company ?day-and-time)
+                       (and (meeting ?division ?day-and-time)
+                            (job ?person (?division . ?rest))))))
+    """.trimIndent(),
+)
+@end example
 
 @item
 Alyssa arrives at work on Wednesday morning and wonders what meetings she has
@@ -824,27 +858,24 @@ to find this out?
 @quotation
 @strong{@anchor{Exercise 4.60}Exercise 4.60:} By giving the query
 
-@lisp
+@example
 (lives-near ?person (Hacker Alyssa P))
-@end lisp
-
+@end example
 Alyssa P. Hacker is able to find people who live near her, with whom she can
 ride to work.  On the other hand, when she tries to find all pairs of people
 who live near each other by querying
 
-@lisp
+@example
 (lives-near ?person-1 ?person-2)
-@end lisp
-
+@end example
 @noindent
 she notices that each pair of people who live near each other is listed twice;
 for example,
 
-@lisp
+@example
 (lives-near (Hacker Alyssa P) (Fect Cy D))
 (lives-near (Fect Cy D) (Hacker Alyssa P))
-@end lisp
-
+@end example
 Why does this happen?  Is there a way to find a list of people who live near
 each other, in which each pair appears only once?  Explain.
 @end quotation
@@ -853,7 +884,7 @@ each other, in which each pair appears only once?  Explain.
 
 We can regard a rule as a kind of logical implication: @emph{If} an assignment
 of values to pattern variables satisfies the body, @emph{then} it satisfies the
-conclusion.  Consequently, we can regard the query language as having the
+conclusionOf.  Consequently, we can regard the query language as having the
 ability to perform @newterm{logical deductions} based upon the rules.  As an
 example, consider the @code{append} operation described at the beginning of
 @ref{4.4}.  As we said, @code{append} can be characterized by the
@@ -875,64 +906,68 @@ For any @code{u}, @code{v}, @code{y}, and @code{z}, @code{(cons u v)} and
 @noindent
 To express this in our query language, we define two rules for a relation
 
-@lisp
+@example
 (append-to-form x y z)
-@end lisp
+@end example
 
 @noindent
 which we can interpret to mean ``@code{x} and @code{y} @code{append} to form
 @code{z}'':
 
-@lisp
-(rule (append-to-form () ?y ?y))
-(rule (append-to-form (?u . ?v) ?y (?u . ?z))
-      (append-to-form ?v ?y ?z))
-@end lisp
+@example kotlin
+querySystem.load(
+    """
+    (assert! (rule (append-to-form () ?y ?y)))
+    (assert! (rule (append-to-form (?u . ?v) ?y (?u . ?z))
+                   (append-to-form ?v ?y ?z)))
+    """.trimIndent(),
+)
+@end example
 
 @noindent
-The first rule has no body, which means that the conclusion holds for any value
+The first rule has no body, which means that the conclusionOf holds for any value
 of @code{?y}.  Note how the second rule makes use of dotted-tail notation to
 name the @code{car} and @code{cdr} of a list.
 
 Given these two rules, we can formulate queries that compute the @code{append}
 of two lists:
 
-@lisp
-@i{;;; Query input:}
-(append-to-form (a b) (c d) ?z)
-
-@i{;;; Query results:}
-(append-to-form (a b) (c d) (a b c d))
-@end lisp
+@example kotlin
+querySystem.repl("(append-to-form (a b) (c d) ?z)")
+// => ;;; Query input:
+//    (append-to-form (a b) (c d) ?z)
+//    ;;; Query results:
+//    (append-to-form (a b) (c d) (a b c d))
+@end example
 
 @noindent
 What is more striking, we can use the same rules to ask the question ``Which
 list, when @code{append}ed to @code{(a b)}, yields @code{(a b c d)}?''  This is
 done as follows:
 
-@lisp
-@i{;;; Query input:}
-(append-to-form (a b) ?y (a b c d))
-
-@i{;;; Query results:}
-(append-to-form (a b) (c d) (a b c d))
-@end lisp
+@example kotlin
+querySystem.repl("(append-to-form (a b) ?y (a b c d))")
+// => ;;; Query input:
+//    (append-to-form (a b) ?y (a b c d))
+//    ;;; Query results:
+//    (append-to-form (a b) (c d) (a b c d))
+@end example
 
 @noindent
 We can also ask for all pairs of lists that @code{append} to form @code{(a b c
 d)}:
 
-@lisp
-@i{;;; Query input:}
-(append-to-form ?x ?y (a b c d))
-
-@i{;;; Query results:}
-(append-to-form () (a b c d) (a b c d))
-(append-to-form (a) (b c d) (a b c d))
-(append-to-form (a b) (c d) (a b c d))
-(append-to-form (a b c) (d) (a b c d))
-(append-to-form (a b c d) () (a b c d))
-@end lisp
+@example kotlin
+querySystem.repl("(append-to-form ?x ?y (a b c d))")
+// => ;;; Query input:
+//    (append-to-form ?x ?y (a b c d))
+//    ;;; Query results:
+//    (append-to-form () (a b c d) (a b c d))
+//    (append-to-form (a) (b c d) (a b c d))
+//    (append-to-form (a b) (c d) (a b c d))
+//    (append-to-form (a b c) (d) (a b c d))
+//    (append-to-form (a b c d) () (a b c d))
+@end example
 
 @noindent
 The query system may seem to exhibit quite a bit of intelligence in using the
@@ -946,19 +981,17 @@ cases, as we will see in @ref{4.4.3}.
 @strong{@anchor{Exercise 4.61}Exercise 4.61:} The following rules implement a
 @code{next-to} relation that finds adjacent elements of a list:
 
-@lisp
+@example
 (rule (?x next-to ?y in (?x ?y . ?u)))
 (rule (?x next-to ?y in (?v . ?z))
       (?x next-to ?y in ?z))
-@end lisp
-
+@end example
 What will the response be to the following queries?
 
-@lisp
+@example
 (?x next-to ?y in (1 (2 3) 4))
 (?x next-to 1 in (2 1 3 1))
-@end lisp
-@end quotation
+@end example@end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.62}Exercise 4.62:} Define rules to implement the
@@ -974,15 +1007,14 @@ such as @code{(last-pair (3) ?x)}, @code{(last-pair (1 2 3) ?x)} and
 Genesis 4) traces the genealogy of the descendants of Ada back to Adam, by way
 of Cain:
 
-@lisp
+@example
 (son Adam Cain) (son Cain Enoch)
 (son Enoch Irad) (son Irad Mehujael)
 (son Mehujael Methushael)
 (son Methushael Lamech)
 (wife Lamech Ada) (son Ada Jabal)
 (son Ada Jubal)
-@end lisp
-
+@end example
 Formulate rules such as ``If @math{S} is the son of @math{f}, and @math{f} is the son of
 @math{G}, then @math{S} is the grandson of @math{G}'' and ``If @math{W} is the wife of
 @math{M}, and @math{S} is the son of @math{W}, then @math{S} is the son of @math{M}'' (which
@@ -1050,9 +1082,9 @@ will return the given frame augmented by a binding of @code{?x} to @code{a}.
 The pattern matcher is all the mechanism that is needed to process simple
 queries that don't involve rules.  For instance, to process the query
 
-@lisp
+@example
 (job ?x (computer programmer))
-@end lisp
+@end example
 
 @noindent
 we scan through all assertions in the data base and select those that match the
@@ -1131,28 +1163,33 @@ deal with compound queries.  The processing of compound queries makes use of
 the ability of our matcher to demand that a match be consistent with a
 specified frame.  For example, to handle the @code{and} of two queries, such as
 
-@lisp
-(and (can-do-job 
-      ?x 
-      (computer programmer trainee))
-     (job ?person ?x))
-@end lisp
+@example kotlin
+querySystem.run(
+    "(and (can-do-job ?x (computer programmer trainee))" +
+        " (job ?person ?x))",
+)
+// => [(and (can-do-job (computer programmer)
+//             (computer programmer trainee))
+//         (job (Hacker Alyssa P) (computer programmer trainee)))]
+@end example
 
 @noindent
 (informally, ``Find all people who can do the job of a computer programmer
 trainee''), we first find all entries that match the pattern
 
-@lisp
-(can-do-job ?x (computer programmer trainee))
-@end lisp
+@example kotlin
+// the first conjunct's match: one frame, ?x bound to the programmer job
+// => (can-do-job (computer programmer) (computer programmer trainee))
+@end example
 
 @noindent
 This produces a stream of frames, each of which contains a binding for
 @code{?x}.  Then for each frame in the stream we find all entries that match
 
-@lisp
-(job ?person ?x)
-@end lisp
+@example kotlin
+// the second conjunct, consistent with that frame
+// => (job (Hacker Alyssa P) (computer programmer trainee))
+@end example
 
 @noindent
 in a way that is consistent with the given binding for @code{?x}.  Each such
@@ -1254,9 +1291,9 @@ From the stream-of-frames viewpoint, the @code{not} of some query acts as a
 filter that removes all frames for which the query can be satisfied.  For
 instance, given the pattern
 
-@lisp
-(not (job ?x (computer programmer)))
-@end lisp
+@example kotlin
+// the filter (not (job ?x (computer programmer)))
+@end example
 
 @noindent
 we attempt, for each frame in the input stream, to produce extension frames
@@ -1266,10 +1303,11 @@ consisting of only those frames in which the binding for @code{?x} does not
 satisfy @code{(job ?x (computer programmer))}.  For example, in processing the
 query
 
-@lisp
-(and (supervisor ?x ?y)
-     (not (job ?x (computer programmer))))
-@end lisp
+@example kotlin
+querySystem.run("(and (supervisor ?x ?y) (not (job ?x (computer programmer))))")
+// => six frames: Tweakit, Reasoner, Ben, Scrooge, Cratchet, and Aull,
+//    each instantiating both conjuncts
+@end example
 
 @noindent
 the first clause will generate frames with bindings for @code{?x} and
@@ -1279,7 +1317,7 @@ a computer programmer.@footnote{There is a subtle difference between this
 filter implementation of @code{not} and the usual meaning of @code{not} in
 mathematical logic.  See @ref{4.4.3}.}
 
-The @code{lisp-value} special form is implemented as a similar filter on frame
+The @code{lispValue} special form is implemented as a similar filter on frame
 streams.  We use each frame in the stream to instantiate any variables in the
 pattern, then apply the Lisp predicate.  We remove from the input stream all
 frames for which the predicate fails.
@@ -1287,7 +1325,7 @@ frames for which the predicate fails.
 @subsubheading Unification
 
 In order to handle rules in the query language, we must be able to find the
-rules whose conclusions match a given query pattern.  Rule conclusions are like
+rules whose conclusionOfs match a given query pattern.  Rule conclusionOfs are like
 assertions except that they can contain variables, so we will need a
 generalization of pattern matching---called @newterm{unification}---in which
 both the ``pattern'' and the ``datum'' may contain variables.
@@ -1318,32 +1356,28 @@ the unknown (the pattern variable).} For example, unifying @code{(?x ?x)} and
 @code{((a ?y c) (a b ?z))} may be thought of as specifying the simultaneous
 equations
 
-@lisp
+@example
 ?x = (a ?y c)
 ?x = (a b ?z)
-@end lisp
-
+@end example
 @noindent
 These equations imply that
 
-@lisp
+@example
 (a ?y c) = (a b ?z)
-@end lisp
-
+@end example
 @noindent
 which in turn implies that
 
-@lisp
+@example
 a = a, ?y = b, c = ?z,
-@end lisp
-
+@end example
 @noindent
 and hence that
 
-@lisp
+@example
 ?x = (a b c)
-@end lisp
-
+@end example
 @noindent
 In a successful pattern match, all pattern variables become bound, and the
 values to which they are bound contain only constants.  This is also true of
@@ -1377,26 +1411,22 @@ Unification is the key to the component of the query system that makes
 inferences from rules. To see how this is accomplished, consider processing a
 query that involves applying a rule, such as
 
-@lisp
-(lives-near ?x (Hacker Alyssa P))
-@end lisp
+@example kotlin
+querySystem.run("(lives-near ?x (Hacker Alyssa P))")
+// => [(lives-near (Fect Cy D) (Hacker Alyssa P))]
+@end example
 
 @noindent
-To process this query, we first use the ordinary pattern-match procedure
+To process this query, we first use the ordinary patternMatch procedure
 described above to see if there are any assertions in the data base that match
 this pattern.  (There will not be any in this case, since our data base
 includes no direct assertions about who lives near whom.)  The next step is to
-attempt to unify the query pattern with the conclusion of each rule.  We find
-that the pattern unifies with the conclusion of the rule
+attempt to unify the query pattern with the conclusionOf of each rule.  We find
+that the pattern unifies with the conclusionOf of the rule
 
-@lisp
-(rule (lives-near ?person-1 ?person-2)
-      (and (address ?person-1 
-                    (?town . ?rest-1))
-           (address ?person-2 
-                    (?town . ?rest-2))
-           (not (same ?person-1 ?person-2))))
-@end lisp
+@example kotlin
+// the rule unifies with the query through its conclusion
+@end example
 
 @noindent
 resulting in a frame specifying that @code{?person-2} is bound to @code{(Hacker
@@ -1413,7 +1443,7 @@ of the pattern variables:
 @itemize @bullet
 
 @item
-Unify the query with the conclusion of the rule to form, if successful, an
+Unify the query with the conclusionOf of the rule to form, if successful, an
 extension of the original frame.
 
 @item
@@ -1488,10 +1518,10 @@ corresponding to successful matches to the query pattern, that extend some
 frame in the input stream, as indicated in @ref{Figure 4.4}.  Like @code{eval},
 @code{qeval} classifies the different types of expressions (queries) and
 dispatches to an appropriate procedure for each.  There is a procedure for each
-special form (@code{and}, @code{or}, @code{not}, and @code{lisp-value}) and one
+special form (@code{and}, @code{or}, @code{not}, and @code{lispValue}) and one
 for simple queries.
 
-The driver loop, which is analogous to the @code{driver-loop} procedure for the
+The driver loop, which is analogous to the @code{run} driver for the
 other evaluators in this chapter, reads queries from the terminal.  For each
 query, it calls @code{qeval} with the query and a stream that consists of a
 single empty frame.  This will produce the stream of all possible matches (all
@@ -1508,18 +1538,16 @@ The driver also checks for the special command @code{assert!}, which signals
 that the input is not a query but rather an assertion or rule to be added to
 the data base.  For instance,
 
-@lisp
-(assert!
- (job (Bitdiddle Ben)
-      (computer wizard)))
-
-(assert!
- (rule (wheel ?person)
-       (and (supervisor 
-             ?middle-manager ?person)
-            (supervisor
-             ?x ?middle-manager))))
-@end lisp
+@example kotlin
+querySystem.run("(assert! (job (Bitdiddle Ben) (computer wizard)))")
+// => Asserted
+querySystem.run(
+    "(assert! (rule (wheel ?person)" +
+        " (and (supervisor ?middle-manager ?person)" +
+        " (supervisor ?x ?middle-manager))))",
+)
+// => Asserted
+@end example
 
 @node	4.4.3, 4.4.4, 4.4.2, 4.4
 @subsection Is Logic Programming Mathematical Logic?
@@ -1529,7 +1557,7 @@ to the operations @code{and}, @code{or}, and @code{not} of mathematical logic,
 and the application of query-language rules is in fact accomplished through a
 legitimate method of inference.@footnote{That a particular method of inference
 is legitimate is not a trivial assertion.  One must prove that if one starts
-with true premises, only true conclusions can be derived.  The method of
+with true premises, only true conclusionOfs can be derived.  The method of
 inference represented by rule applications is @newterm{modus ponens}, the
 familiar method of inference that says that if @math{A} is true and @emph{A
 implies B} is true, then we may conclude that @math{B} is true.} This
@@ -1540,18 +1568,21 @@ take advantage of this control structure.  For example, to find all of the
 supervisors of programmers we could formulate a query in either of two
 logically equivalent forms:
 
-@lisp
-(and (job ?x (computer programmer))
-     (supervisor ?x ?y))
-@end lisp
+@example kotlin
+querySystem.run("(and (job ?x (computer programmer)) (supervisor ?x ?y))")
+// => [(and (job (Hacker Alyssa P) (computer programmer))
+//         (supervisor (Hacker Alyssa P) (Bitdiddle Ben))),
+//     (and (job (Fect Cy D) (computer programmer))
+//         (supervisor (Fect Cy D) (Bitdiddle Ben)))]
+@end example
 
 @noindent
 or
 
-@lisp
-(and (supervisor ?x ?y)
-     (job ?x (computer programmer)))
-@end lisp
+@example kotlin
+querySystem.run("(and (supervisor ?x ?y) (job ?x (computer programmer)))")
+// => the same two answers, in the same order
+@end example
 
 @noindent
 If a company has many more supervisors than programmers (the usual case), it is
@@ -1576,9 +1607,9 @@ laws of logic.
 
 Our query language can be regarded as just such a procedurally interpretable
 subset of mathematical logic.  An assertion represents a simple fact (an atomic
-proposition).  A rule represents the implication that the rule conclusion holds
+proposition).  A rule represents the implication that the rule conclusionOf holds
 for those cases where the rule body holds.  A rule has a natural procedural
-interpretation: To establish the conclusion of the rule, establish the body of
+interpretation: To establish the conclusionOf of the rule, establish the body of
 the rule.  Rules, therefore, specify computations.  However, because rules can
 also be regarded as statements of mathematical logic, we can justify any
 ``inference'' accomplished by a logic program by asserting that the same result
@@ -1588,11 +1619,11 @@ accomplished by a logic program, we assume that the computation terminates.
 Unfortunately, even this qualified statement is false for our implementation of
 the query language (and also false for programs in Prolog and most other
 current logic programming languages) because of our use of @code{not} and
-@code{lisp-value}.  As we will describe below, the @code{not} implemented in
+@code{lispValue}.  As we will describe below, the @code{not} implemented in
 the query language is not always consistent with the @code{not} of mathematical
-logic, and @code{lisp-value} introduces additional complications.  We could
+logic, and @code{lispValue} introduces additional complications.  We could
 implement a language consistent with mathematical logic by simply removing
-@code{not} and @code{lisp-value} from the language and agreeing to write
+@code{not} and @code{lispValue} from the language and agreeing to write
 programs using only simple queries, @code{and}, and @code{or}.  However, this
 would greatly restrict the expressive power of the language.  One of the major
 concerns of research in logic programming is to find ways to achieve more
@@ -1607,32 +1638,37 @@ problems.  An extreme case of inefficiency occurs when the system falls into
 infinite loops in making deductions.  As a simple example, suppose we are
 setting up a data base of famous marriages, including
 
-@lisp
-(assert! (married Minnie Mickey))
-@end lisp
+@example kotlin
+querySystem.run("(assert! (married Minnie Mickey))")
+// => Asserted
+@end example
 
 @noindent
 If we now ask
 
-@lisp
-(married Mickey ?who)
-@end lisp
+@example kotlin
+querySystem.run("(married Mickey ?who)")
+// the loop: the rule derives (married Minnie Mickey), whose rule
+// derives it back, forever
+// => [(married Minnie Mickey), (married Minnie Mickey), ...]
+@end example
 
 @noindent
 we will get no response, because the system doesn't know that if @math{A} is
 married to @math{B}, then @math{B} is married to @math{A}.  So we assert the rule
 
-@lisp
-(assert! (rule (married ?x ?y)
-               (married ?y ?x)))
-@end lisp
+@example kotlin
+querySystem.run("(assert! (rule (married ?x ?y) (married ?y ?x)))")
+// => Asserted
+@end example
 
 @noindent
 and again query
 
-@lisp
-(married Mickey ?who)
-@end lisp
+@example kotlin
+querySystem.run("(married Mickey ?who)")
+// => the same endless stream
+@end example
 
 Unfortunately, this will drive the system into an infinite loop, as follows:
 
@@ -1640,7 +1676,7 @@ Unfortunately, this will drive the system into an infinite loop, as follows:
 
 @item
 The system finds that the @code{married} rule is applicable; that is, the rule
-conclusion @code{(married ?x ?y)} successfully unifies with the query pattern
+conclusionOf @code{(married ?x ?y)} successfully unifies with the query pattern
 @code{(married Mickey ?who)} to produce a frame in which @code{?x} is bound to
 @code{Mickey} and @code{?y} is bound to @code{?who}.  So the interpreter
 proceeds to evaluate the rule body @code{(married ?y ?x)} in this frame---in
@@ -1685,13 +1721,14 @@ suitably chosen function @math{f}.}
 Another quirk in the query system concerns @code{not}.  Given the data base of
 @ref{4.4.1}, consider the following two queries:
 
-@lisp
-(and (supervisor ?x ?y)
-     (not (job ?x (computer programmer))))
-
-(and (not (job ?x (computer programmer)))
-     (supervisor ?x ?y))
-@end lisp
+@example kotlin
+querySystem.run("(and (supervisor ?x ?y) (not (job ?x (computer programmer))))")
+// => [(and (supervisor (Tweakit Lem E) (Bitdiddle Ben))
+//         (not (job (Tweakit Lem E) (computer programmer)))),
+//     (and (supervisor (Reasoner Louis) (Hacker Alyssa P))
+//         (not (job (Reasoner Louis) (computer programmer)))),
+//     ... four more, ending with Aull DeWitt ...]
+@end example
 
 @noindent
 These two queries do not produce the same result.  The first query begins by
@@ -1710,7 +1747,7 @@ The trouble is that our implementation of @code{not} really is meant to serve
 as a filter on values for the variables.  If a @code{not} clause is processed
 with a frame in which some of the variables remain unbound (as does @code{?x}
 in the example above), the system will produce unexpected results. Similar
-problems occur with the use of @code{lisp-value}---the Lisp predicate can't
+problems occur with the use of @code{lispValue}---the Lisp predicate can't
 work if some of its arguments are unbound.  See @ref{Exercise 4.77}.
 
 There is also a much more serious way in which the @code{not} of the query
@@ -1738,22 +1775,20 @@ the @code{outranked-by} rule (@ref{4.4.1}) from the data base.  When he
 realizes this, he quickly reinstalls it.  Unfortunately, he makes a slight
 change in the rule, and types it in as
 
-@lisp
+@example
 (rule (outranked-by ?staff-person ?boss)
   (or (supervisor ?staff-person ?boss)
       (and (outranked-by ?middle-manager
                          ?boss)
            (supervisor ?staff-person 
                        ?middle-manager))))
-@end lisp
-
+@end example
 Just after Louis types this information into the system, DeWitt Aull comes by
 to find out who outranks Ben Bitdiddle. He issues the query
 
-@lisp
+@example
 (outranked-by (Bitdiddle Ben) ?who)
-@end lisp
-
+@end example
 After answering, the system goes into an infinite loop.  Explain why.
 @end quotation
 
@@ -1762,22 +1797,24 @@ After answering, the system goes into an infinite loop.  Explain why.
 the day when he will rise in the organization, gives a query to find all the
 wheels (using the @code{wheel} rule of @ref{4.4.1}):
 
-@lisp
+@example
 (wheel ?who)
-@end lisp
-
+@end example
 To his surprise, the system responds
 
-@lisp
+@example
 @i{;;; Query results:}
 (wheel (Warbucks Oliver))
 (wheel (Bitdiddle Ben))
 (wheel (Warbucks Oliver))
 (wheel (Warbucks Oliver))
 (wheel (Warbucks Oliver))
-@end lisp
-
+@end example
 Why is Oliver Warbucks listed four times?
+@end quotation
+
+@quotation
+@emph{Exercise 4.65a is added by this edition and extends exercise 4.65; SICP numbers stop at 4.65.} @strong{@anchor{Exercise 4.65a}Exercise 4.65a:} The wheel rule of @ref{4.4.1} lists the same person once for every deduction route that reaches them: under the chronological data base of this edition, Ben appears once and Warbucks four times. Give a procedure that runs the same wheel rule and produces the @emph{deduplicated} answer set: state the deduplication rule -- which answers count as the same answer, and which occurrence is kept -- and pin the deduplicated listing your procedure produces.
 @end quotation
 
 @quotation
@@ -1785,19 +1822,17 @@ Why is Oliver Warbucks listed four times?
 query system to provide statistics about the company.  For example, to find the
 total salaries of all the computer programmers one will be able to say
 
-@lisp
+@example
 (sum ?amount
      (and (job ?x (computer programmer))
           (salary ?x ?amount)))
-@end lisp
-
+@end example
 In general, Ben's new system allows expressions of the form
 
-@lisp
+@example
 (accumulation-function ⟨@var{variable}⟩
                        ⟨@var{query pattern}⟩)
-@end lisp
-
+@end example
 @noindent
 where @code{accumulation-function} can be things like @code{sum},
 @code{average}, or @code{maximum}.  Ben reasons that it should be a cinch to
@@ -1879,49 +1914,39 @@ of copies of the original query in which the variables are instantiated with
 values supplied by the stream of frames, and this final stream is printed at
 the terminal:
 
-@lisp
-(define input-prompt  ";;; Query input:")
-(define output-prompt ";;; Query results:")
+@example kotlin
+/** The driver's prompts; `repl` runs one input through the loop. */
+public val inputPrompt: String = ";;; Query input:"
+public val outputPrompt: String = ";;; Query results:"
 
-(define (query-driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((q (query-syntax-process (read))))
-    (cond ((assertion-to-be-added? q)
-           (add-rule-or-assertion! 
-            (add-assertion-body q))
-           (newline)
-           (display 
-            "Assertion added to data base.")
-           (query-driver-loop))
-          (else
-           (newline)
-           (display output-prompt)
-           (display-stream
-            (stream-map
-             (lambda (frame)
-               (instantiate
-                q
-                frame
-                (lambda (v f)
-                  (contract-question-mark v))))
-             (qeval q (singleton-stream '()))))
-           (query-driver-loop)))))
-@end lisp
+public fun QuerySystem.repl(text: String): String {
+    val lines = mutableListOf(";;; Query input:")
+    val parsed = either { readDatum(text) }
+    when (parsed) {
+        is Either.Left -> lines.add("Error: ${formatError(parsed.value)}")
+        is Either.Right -> {
+            lines.add(printValue(parsed.value))
+            recordOutcome(lines, run(text))
+        }
+    }
+    return lines.joinToString(separator = "\n", postfix = "\n")
+}
+@end example
 
 @noindent
 Here, as in the other evaluators in this chapter, we use an abstract syntax for
 the expressions of the query language.  The implementation of the expression
-syntax, including the predicate @code{assertion-to-be-added?} and the selector
-@code{add-assertion-body}, is given in @ref{4.4.4.7}.
-@code{Add-rule-or-assertion!} is defined in @ref{4.4.4.5}.
+syntax, including the check for an @code{assert!} input and the selection of its
+body, is given in @ref{4.4.4.7}.
+@code{addRuleOrAssertion} is defined in @ref{4.4.4.5}.
 
 Before doing any processing on an input expression, the driver loop transforms
 it syntactically into a form that makes the processing more efficient.  This
 involves changing the representation of pattern variables.  When the query is
 instantiated, any variables that remain unbound are transformed back to the
 input representation before being printed.  These transformations are performed
-by the two procedures @code{query-syntax-process} and
-@code{contract-question-mark} (@ref{4.4.4.7}).
+by the two procedures @code{querySyntaxProcess} and
+@code{contractQuestionMark} (@ref{4.4.4.7}).
 
 To instantiate an expression, we copy it, replacing any variables in the
 expression by their values in a given frame.  The values are themselves
@@ -1930,25 +1955,24 @@ instantiated, since they could contain variables (for example, if @code{?x} in
 in turn bound to 5).  The action to take if a variable cannot be instantiated
 is given by a procedural argument to @code{instantiate}.
 
-@lisp
-(define (instantiate 
-         exp frame unbound-var-handler)
-  (define (copy exp)
-    (cond ((var? exp)
-           (let ((binding 
-                  (binding-in-frame 
-                   exp frame)))
-             (if binding
-                 (copy 
-                  (binding-value binding))
-                 (unbound-var-handler 
-                  exp frame))))
-          ((pair? exp)
-           (cons (copy (car exp)) 
-                 (copy (cdr exp))))
-          (else exp)))
-  (copy exp))
-@end lisp
+@example kotlin
+public fun instantiate(
+    exp: Value,
+    frame: Frame,
+    unboundVarHandler: (Value, Frame) -> Value,
+): Value =
+    when {
+        isVar(exp) -> {
+            val binding = bindingInFrame(exp, frame)
+            if (binding != null) instantiate(binding, frame, unboundVarHandler) else unboundVarHandler(exp, frame)
+        }
+
+        exp is VPair ->
+            cons(instantiate(exp.car, frame, unboundVarHandler), instantiate(exp.cdr, frame, unboundVarHandler))
+
+        else -> exp
+    }
+@end example
 
 @noindent
 The procedures that manipulate bindings are defined in @ref{4.4.4.8}.
@@ -1956,55 +1980,62 @@ The procedures that manipulate bindings are defined in @ref{4.4.4.8}.
 @node 4.4.4.2, 4.4.4.3, 4.4.4.1, 4.4.4
 @subsubsection The Evaluator
 
-The @code{qeval} procedure, called by the @code{query-driver-loop}, is the
+The @code{qeval} procedure, called by @code{run}, is the
 basic evaluator of the query system.  It takes as inputs a query and a stream
 of frames, and it returns a stream of extended frames.  It identifies special
 forms by a data-directed dispatch using @code{get} and @code{put}, just as we
 did in implementing generic operations in @ref{Chapter 2}.  Any query that is
 not identified as a special form is assumed to be a simple query, to be
-processed by @code{simple-query}.
+processed by @code{simpleQuery}.
 
-@lisp
-(define (qeval query frame-stream)
-  (let ((qproc (get (type query) 'qeval)))
-    (if qproc
-        (qproc (contents query) frame-stream)
-        (simple-query query frame-stream))))
-@end lisp
+@example kotlin
+public fun qeval(
+    query: Value,
+    frameStream: LStream<Frame>,
+): LStream<Frame> {
+    if (query !is VPair) return simpleQuery(query, frameStream)
+    val head = query.car as? VSym ?: return simpleQuery(query, frameStream)
+    val proc = getQuery(head.name) ?: return simpleQuery(query, frameStream)
+    return proc(query.cdr, frameStream)
+}
+@end example
 
 @noindent
-@code{Type} and @code{contents}, defined in @ref{4.4.4.7}, implement
+@code{typeOf} and @code{contentsOf}, defined in @ref{4.4.4.7}, implement
 the abstract syntax of the special forms.
 
 @subsubheading Simple queries
 
-The @code{simple-query} procedure handles simple queries.  It takes as
+The @code{simpleQuery} procedure handles simple queries.  It takes as
 arguments a simple query (a pattern) together with a stream of frames, and it
 returns the stream formed by extending each frame by all data-base matches of
 the query.
 
-@lisp
-(define (simple-query query-pattern 
-                      frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (stream-append-delayed
-      (find-assertions query-pattern frame)
-      (delay 
-        (apply-rules query-pattern frame))))
-   frame-stream))
-@end lisp
+@example kotlin
+public open fun simpleQuery(
+    queryPattern: Value,
+    frameStream: LStream<Frame>,
+): LStream<Frame> =
+    flatmapFrames(
+        { frame ->
+            streamAppendDelayed(
+                findAssertions(queryPattern, frame),
+            ) { applyRules(queryPattern, frame) }
+        },
+        frameStream,
+    )
+@end example
 
 @noindent
-For each frame in the input stream, we use @code{find-assertions} 
+For each frame in the input stream, we use @code{findAssertions} 
 (@ref{4.4.4.3}) to match the pattern against all assertions in the data base,
-producing a stream of extended frames, and we use @code{apply-rules} 
+producing a stream of extended frames, and we use @code{applyRules} 
 (@ref{4.4.4.4}) to apply all possible rules, producing another stream of
 extended frames.  These two streams are combined (using
-@code{stream-append-delayed}, @ref{4.4.4.6}) to make a stream of all
+@code{streamAppendDelayed}, @ref{4.4.4.6}) to make a stream of all
 the ways that the given pattern can be satisfied consistent with the original
 frame (see @ref{Exercise 4.71}).  The streams for the individual input frames
-are combined using @code{stream-flatmap} (@ref{4.4.4.6}) to form one
+are combined using @code{streamFlatmap} (@ref{4.4.4.6}) to form one
 large stream of all the ways that any of the frames in the original input
 stream can be extended to produce a match with the given pattern.
 
@@ -2018,44 +2049,46 @@ extensions that satisfy the first query in the conjunction.  Then, using this
 as the new frame stream, it recursively applies @code{conjoin} to the rest of
 the queries.
 
-@lisp
-(define (conjoin conjuncts frame-stream)
-  (if (empty-conjunction? conjuncts)
-      frame-stream
-      (conjoin (rest-conjuncts conjuncts)
-               (qeval 
-                (first-conjunct conjuncts)
-                frame-stream))))
-@end lisp
+@example kotlin
+public open fun conjoin(
+    conjuncts: Value,
+    frameStream: LStream<Frame>,
+): LStream<Frame> {
+    if (isEmptyConjunction(conjuncts)) return frameStream
+    return conjoin(restConjuncts(conjuncts), qeval(firstConjunct(conjuncts), frameStream))
+}
+
+putQuery("and", ::conjoin)
+@end example
 
 @noindent
 The expression
 
-@lisp
+@example
 (put 'and 'qeval conjoin)
-@end lisp
-
+@end example
 @noindent
 sets up @code{qeval} to dispatch to @code{conjoin} when an @code{and} form is
 encountered.
 
 @code{Or} queries are handled similarly, as shown in @ref{Figure 4.6}.  The
 output streams for the various disjuncts of the @code{or} are computed
-separately and merged using the @code{interleave-delayed} procedure from
+separately and merged using the @code{interleaveDelayed} procedure from
 @ref{4.4.4.6}.  (See @ref{Exercise 4.71} and @ref{Exercise 4.72}.)
 
-@lisp
-(define (disjoin disjuncts frame-stream)
-  (if (empty-disjunction? disjuncts)
-      the-empty-stream
-      (interleave-delayed
-       (qeval (first-disjunct disjuncts) 
-              frame-stream)
-       (delay (disjoin 
-               (rest-disjuncts disjuncts)
-               frame-stream)))))
-(put 'or 'qeval disjoin)
-@end lisp
+@example kotlin
+public open fun disjoin(
+    disjuncts: Value,
+    frameStream: LStream<Frame>,
+): LStream<Frame> {
+    if (isEmptyDisjunction(disjuncts)) return LStream.Empty
+    return interleaveDelayed(qeval(firstDisjunct(disjuncts), frameStream)) {
+        disjoin(restDisjuncts(disjuncts), frameStream)
+    }
+}
+
+putQuery("or", ::disjoin)
+@end example
 
 @noindent
 The predicates and selectors for the syntax of conjuncts and disjuncts are
@@ -2068,114 +2101,123 @@ attempt to extend each frame in the input stream to satisfy the query being
 negated, and we include a given frame in the output stream only if it cannot be
 extended.
 
-@lisp
-(define (negate operands frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (if (stream-null? 
-          (qeval (negated-query operands)
-                 (singleton-stream frame)))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
-(put 'not 'qeval negate)
-@end lisp
+@example kotlin
+public open fun negate(
+    operands: Value,
+    frameStream: LStream<Frame>,
+): LStream<Frame> =
+    flatmapFrames(
+        { frame ->
+            if (qeval(negatedQuery(operands), singletonStream(frame)) is LStream.Empty) {
+                singletonStream(frame)
+            } else {
+                LStream.Empty
+            }
+        },
+        frameStream,
+    )
+
+putQuery("not", ::negate)
+@end example
 
 @noindent
-@code{Lisp-value} is a filter similar to @code{not}.  Each frame in the stream
+@code{lispValue} is a filter similar to @code{negate}.  Each frame in the stream
 is used to instantiate the variables in the pattern, the indicated predicate is
 applied, and the frames for which the predicate returns false are filtered out
 of the input stream.  An error results if there are unbound pattern variables.
 
-@lisp
-(define (lisp-value call frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (if (execute
-          (instantiate
-           call
-           frame
-           (lambda (v f)
-             (error 
-              "Unknown pat var: LISP-VALUE" 
-              v))))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
-(put 'lisp-value 'qeval lisp-value)
-@end lisp
+@example kotlin
+public open fun lispValue(
+    operands: Value,
+    frameStream: LStream<Frame>,
+): LStream<Frame> =
+    flatmapFrames(
+        { frame ->
+            if (executeCall(instantiateCall(operands, frame))) singletonStream(frame) else LStream.Empty
+        },
+        frameStream,
+    )
+
+putQuery("lispValue", ::lispValue)
+@end example
 
 @noindent
-@code{Execute}, which applies the predicate to the arguments, must @code{eval}
-the predicate expression to get the procedure to apply.  However, it must not
-evaluate the arguments, since they are already the actual arguments, not
-expressions whose evaluation (in Lisp) will produce the arguments.  Note that
-@code{execute} is implemented using @code{eval} and @code{apply} from the
-underlying Lisp system.
+@code{executeCall}, which applies the predicate to the arguments, looks the
+predicate up in the underlying system's procedure registry -- the one the
+driver of @ref{4.1} installs -- to get the procedure to apply.  It does not
+evaluate the arguments, since they are already the actual argument values.
 
-@lisp
-(define (execute exp)
-  (apply (eval (predicate exp) 
-               user-initial-environment)
-         (args exp)))
-@end lisp
+@example kotlin
+/** The book's `execute`: apply the named underlying procedure. */
+private fun executeCall(call: List<Value>): Boolean =
+    queryScoped {
+        val name = (call[0] as VSym).name
+        val op =
+            primitives[name]
+                ?: raise(SchemeError.NotApplicable(VSym(name)))
+        isTrue(op(call.drop(1)))
+    }
+// the predicates are the registry the 4.1 driver installs
+@end example
 
 @noindent
 The @code{always-true} special form provides for a query that is always
 satisfied.  It ignores its contents (normally empty) and simply passes through
 all the frames in the input stream.  @code{Always-true} is used by the
-@code{rule-body} selector (@ref{4.4.4.7}) to provide bodies for rules
-that were defined without bodies (that is, rules whose conclusions are always
+@code{ruleBodyOf} selector (@ref{4.4.4.7}) to provide bodies for rules
+that were defined without bodies (that is, rules whose conclusionOfs are always
 satisfied).
 
-@lisp
-(define (always-true ignore frame-stream) 
-  frame-stream)
-(put 'always-true 'qeval always-true)
-@end lisp
+@example kotlin
+public open fun alwaysTrue(
+    ignored: Value,
+    frameStream: LStream<Frame>,
+): LStream<Frame> = frameStream
+
+putQuery("always-true", ::alwaysTrue)
+@end example
 
 @noindent
-The selectors that define the syntax of @code{not} and @code{lisp-value} are
+The selectors that define the syntax of @code{not} and @code{lispValue} are
 given in @ref{4.4.4.7}.
 
 @node 4.4.4.3, 4.4.4.4, 4.4.4.2, 4.4.4
 @subsubsection Finding Assertions by Pattern Matching
 
-@code{Find-assertions}, called by @code{simple-query} (@ref{4.4.4.2}),
+@code{findAssertions}, called by @code{simpleQuery} (@ref{4.4.4.2}),
 takes as input a pattern and a frame.  It returns a stream of frames, each
 extending the given one by a data-base match of the given pattern.  It uses
-@code{fetch-assertions} (@ref{4.4.4.5}) to get a stream of all the
+@code{fetchAssertions} (@ref{4.4.4.5}) to get a stream of all the
 assertions in the data base that should be checked for a match against the
-pattern and the frame.  The reason for @code{fetch-assertions} here is that we
+pattern and the frame.  The reason for @code{fetchAssertions} here is that we
 can often apply simple tests that will eliminate many of the entries in the
 data base from the pool of candidates for a successful match.  The system would
-still work if we eliminated @code{fetch-assertions} and simply checked a stream
+still work if we eliminated @code{fetchAssertions} and simply checked a stream
 of all assertions in the data base, but the computation would be less efficient
 because we would need to make many more calls to the matcher.
 
-@lisp
-(define (find-assertions pattern frame)
-  (stream-flatmap 
-    (lambda (datum) 
-      (check-an-assertion datum pattern frame))
-    (fetch-assertions pattern frame)))
-@end lisp
+@example kotlin
+public fun findAssertions(
+    pattern: Value,
+    frame: Frame,
+): LStream<Frame> = flatmapFrames({ checkAnAssertion(it, pattern, frame) }, fetchAssertions(pattern))
+@end example
 
 @noindent
-@code{Check-an-assertion} takes as arguments a pattern, a data object
+@code{checkAnAssertion} takes as arguments a pattern, a data object
 (assertion), and a frame and returns either a one-element stream containing the
-extended frame or @code{the-empty-stream} if the match fails.
+extended frame or the empty stream if the match fails.
 
-@lisp
-(define (check-an-assertion 
-         assertion query-pat query-frame)
-  (let ((match-result
-         (pattern-match 
-          query-pat assertion query-frame)))
-    (if (eq? match-result 'failed)
-        the-empty-stream
-        (singleton-stream match-result))))
-@end lisp
+@example kotlin
+public fun checkAnAssertion(
+    assertion: Value,
+    queryPat: Value,
+    queryFrame: Frame,
+): LStream<Frame> {
+    val matchResult = patternMatch(queryPat, assertion, queryFrame) ?: return LStream.Empty
+    return singletonStream(matchResult)
+}
+@end example
 
 @noindent
 The basic pattern matcher returns either the symbol @code{failed} or an
@@ -2191,41 +2233,44 @@ frame; in this frame we then match the @code{cdr} of the pattern against the
 @code{cdr} of the data.  If none of these cases are applicable, the match fails
 and we return the symbol @code{failed}.
 
-@lisp
-(define (pattern-match pat dat frame)
-  (cond ((eq? frame 'failed) 'failed)
-        ((equal? pat dat) frame)
-        ((var? pat) 
-         (extend-if-consistent 
-          pat dat frame))
-        ((and (pair? pat) (pair? dat))
-         (pattern-match 
-          (cdr pat) 
-          (cdr dat)
-          (pattern-match
-           (car pat) (car dat) frame)))
-        (else 'failed)))
-@end lisp
+@example kotlin
+public fun patternMatch(
+    pat: Value,
+    dat: Value,
+    frame: Frame?,
+): Frame? {
+    if (frame == null) return null
+    if (equalv(pat, dat)) return frame
+    if (isVar(pat)) return extendIfConsistent(pat, dat, frame)
+    if (pat is VPair && dat is VPair) {
+        return patternMatch(pat.cdr, dat.cdr, patternMatch(pat.car, dat.car, frame))
+    }
+    return null
+}
+// failure is the option type: null, never a sentinel
+@end example
 
 @noindent
 Here is the procedure that extends a frame by adding a new binding, if this is
 consistent with the bindings already in the frame:
 
-@lisp
-(define (extend-if-consistent var dat frame)
-  (let ((binding (binding-in-frame var frame)))
-    (if binding
-        (pattern-match 
-         (binding-value binding) dat frame)
-        (extend var dat frame))))
-@end lisp
+@example kotlin
+public fun extendIfConsistent(
+    v: Value,
+    dat: Value,
+    frame: Frame,
+): Frame? {
+    val bound = bindingInFrame(v, frame) ?: return frame.extended(v, dat)
+    return patternMatch(bound, dat, frame)
+}
+@end example
 
 @noindent
 If there is no binding for the variable in the frame, we simply add the binding
 of the variable to the data.  Otherwise we match, in the frame, the data
 against the value of the variable in the frame.  If the stored value contains
 only constants, as it must if it was stored during pattern matching by
-@code{extend-if-consistent}, then the match simply tests whether the stored and
+@code{extendIfConsistent}, then the match simply tests whether the stored and
 new values are the same.  If so, it returns the unmodified frame; if not, it
 returns a failure indication.  The stored value may, however, contain pattern
 variables if it was stored during unification (see @ref{4.4.4.4}).  The
@@ -2240,7 +2285,7 @@ frame.  Eventually this match extends the frame by adding a binding of
 modify a stored binding and we never store more than one binding for a given
 variable.
 
-The procedures used by @code{extend-if-consistent} to manipulate bindings are
+The procedures used by @code{extendIfConsistent} to manipulate bindings are
 defined in @ref{4.4.4.8}.
 
 @subsubheading Patterns with dotted tails
@@ -2250,7 +2295,7 @@ variable matches the rest of the data list (rather than the next element of the
 data list), just as one would expect with the dotted-tail notation described in
 @ref{Exercise 2.20}.  Although the pattern matcher we have just implemented
 doesn't look for dots, it does behave as we want.  This is because the Lisp
-@code{read} primitive, which is used by @code{query-driver-loop} to read the
+@code{read} primitive, which is used by @code{run} to read the
 query and represent it as a list structure, treats dots in a special way.
 
 When @code{read} sees a dot, instead of making the next item be the next
@@ -2262,7 +2307,7 @@ expression @code{(cons 'computer (cons '?type '()))}, and that for
 @code{(computer . ?type)} could be constructed by evaluating the expression
 @code{(cons 'computer '?type)}.
 
-Thus, as @code{pattern-match} recursively compares @code{car}s and @code{cdr}s
+Thus, as @code{patternMatch} recursively compares @code{car}s and @code{cdr}s
 of a data list and a pattern that had a dot, it eventually matches the variable
 after the dot (which is a @code{cdr} of the pattern) against a sublist of the
 data list, binding the variable to that list.  For example, matching the
@@ -2272,25 +2317,24 @@ will match @code{?type} against the list @code{(programmer trainee)}.
 @node 4.4.4.4, 4.4.4.5, 4.4.4.3, 4.4.4
 @subsubsection Rules and Unification
 
-@code{Apply-rules} is the rule analog of @code{find-assertions} 
+@code{applyRules} is the rule analog of @code{findAssertions} 
 (@ref{4.4.4.3}).  It takes as input a pattern and a frame, and it forms a stream
 of extension frames by applying rules from the data base.
-@code{Stream-flatmap} maps @code{apply-a-rule} down the stream of possibly
-applicable rules (selected by @code{fetch-rules}, @ref{4.4.4.5}) and
+@code{streamFlatmap} maps @code{applyARule} down the stream of possibly
+applicable rules (selected by @code{fetchRules}, @ref{4.4.4.5}) and
 combines the resulting streams of frames.
 
-@lisp
-(define (apply-rules pattern frame)
-  (stream-flatmap 
-   (lambda (rule)
-     (apply-a-rule rule pattern frame))
-   (fetch-rules pattern frame)))
-@end lisp
+@example kotlin
+public fun applyRules(
+    pattern: Value,
+    frame: Frame,
+): LStream<Frame> = flatmapFrames({ applyARule(it, pattern, frame) }, fetchRules(pattern))
+@end example
 
 @noindent
-@code{Apply-a-rule} applies rules using the method outlined in 
+@code{applyARule} applies rules using the method outlined in 
 @ref{4.4.2}.  It first augments its argument frame by unifying the rule
-conclusion with the pattern in the given frame.  If this succeeds, it evaluates
+conclusionOf with the pattern in the given frame.  If this succeeds, it evaluates
 the rule body in this new frame.
 
 Before any of this happens, however, the program renames all the variables in
@@ -2303,27 +2347,22 @@ fooled into thinking that the two bindings must be consistent.  Rather than
 rename variables, we could devise a more clever environment structure; however,
 the renaming approach we have chosen here is the most straightforward, even if
 not the most efficient.  (See @ref{Exercise 4.79}.)  Here is the
-@code{apply-a-rule} procedure:
+@code{applyARule} procedure:
 
-@lisp
-(define (apply-a-rule rule
-                      query-pattern
-                      query-frame)
-  (let ((clean-rule 
-         (rename-variables-in rule)))
-    (let ((unify-result
-           (unify-match query-pattern
-                        (conclusion clean-rule)
-                        query-frame)))
-      (if (eq? unify-result 'failed)
-          the-empty-stream
-          (qeval (rule-body clean-rule)
-                 (singleton-stream 
-                  unify-result))))))
-@end lisp
+@example kotlin
+public open fun applyARule(
+    rule: Value,
+    queryPattern: Value,
+    queryFrame: Frame,
+): LStream<Frame> {
+    val cleanRule = renameVariablesIn(rule)
+    val unifyResult = unifyMatch(queryPattern, conclusionOfOf(cleanRule), queryFrame) ?: return LStream.Empty
+    return qeval(ruleBodyOf(cleanRule), singletonStream(unifyResult))
+}
+@end example
 
 @noindent
-The selectors @code{rule-body} and @code{conclusion} that extract parts of a
+The selectors @code{ruleBodyOf} and @code{conclusionOfOf} that extract parts of a
 rule are defined in @ref{4.4.4.7}.
 
 We generate unique variable names by associating a unique identifier (such as a
@@ -2331,62 +2370,57 @@ number) with each rule application and combining this identifier with the
 original variable names.  For example, if the rule-application identifier is 7,
 we might change each @code{?x} in the rule to @code{?x-7} and each @code{?y} in
 the rule to @code{?y-7}.  (@code{Make-new-variable} and
-@code{new-rule-application-id} are included with the syntax procedures in
+@code{newRuleApplicationId} are included with the syntax procedures in
 @ref{4.4.4.7}.)
 
-@lisp
-(define (rename-variables-in rule)
-  (let ((rule-application-id 
-         (new-rule-application-id)))
-    (define (tree-walk exp)
-      (cond ((var? exp)
-             (make-new-variable 
-              exp 
-              rule-application-id))
-            ((pair? exp)
-             (cons (tree-walk (car exp))
-                   (tree-walk (cdr exp))))
-            (else exp)))
-    (tree-walk rule)))
-@end lisp
+@example kotlin
+public fun renameVariablesIn(rule: Value): Value {
+    val id = newRuleApplicationId()
+    return renameTreeWalk(rule, id)
+}
+
+private fun renameTreeWalk(
+    exp: Value,
+    id: Int,
+): Value =
+    when {
+        isVar(exp) -> makeNewVariable(exp, id)
+        exp is VPair -> cons(renameTreeWalk(exp.car, id), renameTreeWalk(exp.cdr, id))
+        else -> exp
+    }
+@end example
 
 @noindent
 The unification algorithm is implemented as a procedure that takes as inputs
-two patterns and a frame and returns either the extended frame or the symbol
-@code{failed}.  The unifier is like the pattern matcher except that it is
+two patterns and a frame and returns either the extended frame or nothing.  The
+unifier is like the pattern matcher except that it is
 symmetrical---variables are allowed on both sides of the match.
-@code{Unify-match} is basically the same as @code{pattern-match}, except that
+@code{unifyMatch} is basically the same as @code{patternMatch}, except that
 there is extra code (marked ``@code{***}'' below) to handle the case where the
 object on the right side of the match is a variable.
 
-@lisp
-(define (unify-match p1 p2 frame)
-  (cond ((eq? frame 'failed) 'failed)
-        ((equal? p1 p2) frame)
-        ((var? p1)
-         (extend-if-possible p1 p2 frame))
-        ((var? p2)
-         (extend-if-possible 
-          p2 
-          p1 
-          frame))        ; @r{***}
-        ((and (pair? p1) 
-              (pair? p2))
-         (unify-match 
-          (cdr p1) 
-          (cdr p2)
-          (unify-match 
-           (car p1)
-           (car p2)
-           frame)))
-        (else 'failed)))
-@end lisp
+@example kotlin
+public fun unifyMatch(
+    p1: Value,
+    p2: Value,
+    frame: Frame?,
+): Frame? {
+    if (frame == null) return null
+    if (equalv(p1, p2)) return frame
+    if (isVar(p1)) return extendIfPossible(p1, p2, frame)
+    if (isVar(p2)) return extendIfPossible(p2, p1, frame)
+    if (p1 is VPair && p2 is VPair) {
+        return unifyMatch(p1.cdr, p2.cdr, unifyMatch(p1.car, p2.car, frame))
+    }
+    return null
+}
+@end example
 
 @noindent
 In unification, as in one-sided pattern matching, we want to accept a proposed
 extension of the frame only if it is consistent with existing bindings.  The
-procedure @code{extend-if-possible} used in unification is the same as the
-@code{extend-if-consistent} used in pattern matching except for two special
+procedure @code{extendIfPossible} used in unification is the same as the
+@code{extendIfConsistent} used in pattern matching except for two special
 checks, marked ``@code{***}'' in the program below.  In the first case, if the
 variable we are trying to match is not bound, but the value we are trying to
 match it with is itself a (different) variable, it is necessary to check to see
@@ -2406,7 +2440,7 @@ of values for the pattern variables that make the patterns the same, then these
 patterns imply instructions to find a @code{?y} such that @code{?y} is equal to
 the expression involving @code{?y}.  There is no general method for solving
 such equations, so we reject such bindings; these cases are recognized by the
-predicate @code{depends-on?}.@footnote{In general, unifying @code{?y} with an
+predicate @code{dependsOn}.@footnote{In general, unifying @code{?y} with an
 expression involving @code{?y} would require our being able to find a fixed
 point of the equation @code{?y} = @code{⟨}@var{expression involving @code{?y}}@code{⟩}.  It
 is sometimes possible to syntactically form an expression that appears to be
@@ -2475,58 +2509,47 @@ other hand, we do not want to reject attempts to bind a variable to itself.
 For example, consider unifying @code{(?x ?x)} and @code{(?y ?y)}.  The second
 attempt to bind @code{?x} to @code{?y} matches @code{?y} (the stored value of
 @code{?x}) against @code{?y} (the new value of @code{?x}).  This is taken care
-of by the @code{equal?}  clause of @code{unify-match}.
+of by the @code{equal?}  clause of @code{unifyMatch}.
 
-@lisp
-(define (extend-if-possible var val frame)
-  (let ((binding (binding-in-frame var frame)))
-    (cond (binding
-           (unify-match
-            (binding-value binding) val frame))
-          ((var? val)                   @r{; ***}
-           (let ((binding 
-                  (binding-in-frame 
-                   val
-                   frame)))
-             (if binding
-                 (unify-match
-                  var 
-                  (binding-value binding) 
-                  frame)
-                 (extend var val frame))))
-          ((depends-on? val var frame)  @r{; ***}
-           'failed)
-          (else (extend var val frame)))))
-@end lisp
+@example kotlin
+public fun extendIfPossible(
+    v: Value,
+    value: Value,
+    frame: Frame,
+): Frame? {
+    val bound = bindingInFrame(v, frame)
+    if (bound != null) return unifyMatch(bound, value, frame)
+    if (isVar(value)) {
+        val boundValue = bindingInFrame(value, frame)
+        return if (boundValue != null) unifyMatch(v, boundValue, frame) else frame.extended(v, value)
+    }
+    if (dependsOn(value, v, frame)) return null
+    return frame.extended(v, value)
+}
+@end example
 
 @noindent
-@code{Depends-on?} is a predicate that tests whether an expression proposed to
+@code{dependsOn} is a predicate that tests whether an expression proposed to
 be the value of a pattern variable depends on the variable.  This must be done
 relative to the current frame because the expression may contain occurrences of
 a variable that already has a value that depends on our test variable.  The
-structure of @code{depends-on?} is a simple recursive tree walk in which we
+structure of @code{dependsOn} is a simple recursive tree walk in which we
 substitute for the values of variables whenever necessary.
 
-@lisp
-(define (depends-on? exp var frame)
-  (define (tree-walk e)
-    (cond ((var? e)
-           (if (equal? var e)
-               true
-               (let
-                 ((b (binding-in-frame 
-                      e 
-                      frame)))
-                  (if b
-                      (tree-walk 
-                       (binding-value b))
-                      false))))
-          ((pair? e)
-           (or (tree-walk (car e))
-               (tree-walk (cdr e))))
-          (else false)))
-  (tree-walk exp))
-@end lisp
+@example kotlin
+public fun dependsOn(
+    exp: Value,
+    v: Value,
+    frame: Frame,
+): Boolean =
+    when {
+        isVar(exp) ->
+            if (equalv(exp, v)) true else bindingInFrame(exp, frame)?.let { dependsOn(it, v, frame) } ?: false
+
+        exp is VPair -> dependsOn(exp.car, v, frame) || dependsOn(exp.cdr, v, frame)
+        else -> false
+    }
+@end example
 
 @node 4.4.4.5, 4.4.4.6, 4.4.4.4, 4.4.4
 @subsubsection Maintaining the Data Base
@@ -2534,8 +2557,8 @@ substitute for the values of variables whenever necessary.
 One important problem in designing logic programming languages is that of
 arranging things so that as few irrelevant data-base entries as possible will
 be examined in checking a given pattern.  In our system, in addition to storing
-all assertions in one big stream, we store all assertions whose @code{car}s are
-constant symbols in separate streams, in a table indexed by the symbol.  To
+all assertions in one big collection, we store all assertions whose @code{car}s are
+constant symbols in separate collections, in a table indexed by the symbol.  To
 fetch an assertion that may match a pattern, we first check to see if the
 @code{car} of the pattern is a constant symbol.  If so, we return (to be tested
 using the matcher) all the stored assertions that have the same @code{car}.  If
@@ -2544,196 +2567,175 @@ assertions.  Cleverer methods could also take advantage of information in the
 frame, or try also to optimize the case where the @code{car} of the pattern is
 not a constant symbol.  We avoid building our criteria for indexing (using the
 @code{car}, handling only the case of constant symbols) into the program;
-instead we call on predicates and selectors that embody our criteria.
+instead we call on predicates and selectors that embody our criteria.  The
+collections are chronological -- appended, not consed in front -- because
+every transcript the book pins lists answers in insertion order.
 
-@lisp
-(define THE-ASSERTIONS the-empty-stream)
+@example kotlin
+// THE-ASSERTIONS is a chronological collection behind the stream
+// interface; the book's newest-first cons-stream would reverse every
+// pinned transcript (the job queries, lives-near, append-to-form)
+private var assertions: PersistentList<Value> = persistentListOf()
 
-(define (fetch-assertions pattern frame)
-  (if (use-index? pattern)
-      (get-indexed-assertions pattern)
-      (get-all-assertions)))
+public fun fetchAssertions(pattern: Value): LStream<Value> =
+    if (useIndex(pattern)) listStream(assertionIndex[indexKeyOf(pattern)].orEmpty()) else listStream(assertions)
 
-(define (get-all-assertions) THE-ASSERTIONS)
-
-(define (get-indexed-assertions pattern)
-  (get-stream (index-key-of pattern)
-              'assertion-stream))
-@end lisp
+public fun getIndexedAssertions(pattern: Value): LStream<Value> = fetchAssertions(pattern)
+@end example
 
 @noindent
 @code{Get-stream} looks up a stream in the table and returns an empty stream if
 nothing is stored there.
 
-@lisp
-(define (get-stream key1 key2)
-  (let ((s (get key1 key2)))
-    (if s s the-empty-stream)))
-@end lisp
+@example kotlin
+// get-stream: an index bucket, or the empty stream when nothing is
+// stored there; the buckets are the table's streams, chronological
+@end example
 
 @noindent
-Rules are stored similarly, using the @code{car} of the rule conclusion.  Rule
-conclusions are arbitrary patterns, however, so they differ from assertions in
+Rules are stored similarly, using the @code{car} of the rule conclusionOf.  Rule
+conclusionOfs are arbitrary patterns, however, so they differ from assertions in
 that they can contain variables.  A pattern whose @code{car} is a constant
-symbol can match rules whose conclusions start with a variable as well as rules
-whose conclusions have the same @code{car}.  Thus, when fetching rules that
+symbol can match rules whose conclusionOfs start with a variable as well as rules
+whose conclusionOfs have the same @code{car}.  Thus, when fetching rules that
 might match a pattern whose @code{car} is a constant symbol we fetch all rules
-whose conclusions start with a variable as well as those whose conclusions have
+whose conclusionOfs start with a variable as well as those whose conclusionOfs have
 the same @code{car} as the pattern.  For this purpose we store all rules whose
-conclusions start with a variable in a separate stream in our table, indexed by
+conclusionOfs start with a variable in a separate stream in our table, indexed by
 the symbol @code{?}.
 
-@lisp
-(define THE-RULES the-empty-stream)
+@example kotlin
+private var rules: PersistentList<Value> = persistentListOf()
 
-(define (fetch-rules pattern frame)
-  (if (use-index? pattern)
-      (get-indexed-rules pattern)
-      (get-all-rules)))
-
-(define (get-all-rules) THE-RULES)
-
-(define (get-indexed-rules pattern)
-  (stream-append
-   (get-stream (index-key-of pattern)
-               'rule-stream)
-   (get-stream '? 'rule-stream)))
-@end lisp
+public fun fetchRules(pattern: Value): LStream<Value> {
+    if (!useIndex(pattern)) return listStream(rules)
+    val indexed = ruleIndex[indexKeyOf(pattern)].orEmpty()
+    val variableHeaded = ruleIndex[VSym("?")].orEmpty()
+    return listStream(indexed + variableHeaded)
+}
+@end example
 
 @noindent
-@code{Add-rule-or-assertion!} is used by @code{query-driver-loop} to add
+@code{Add-rule-or-assertion!} is used by @code{run} to add
 assertions and rules to the data base.  Each item is stored in the index, if
 appropriate, and in a stream of all assertions or rules in the data base.
 
-@lisp
-(define (add-rule-or-assertion! assertion)
-  (if (rule? assertion)
-      (add-rule! assertion)
-      (add-assertion! assertion)))
+@example kotlin
+public fun addRuleOrAssertion(assertion: Value) {
+    if (isRule(assertion)) addRule(assertion) else addAssertion(assertion)
+}
 
-(define (add-assertion! assertion)
-  (store-assertion-in-index assertion)
-  (let ((old-assertions THE-ASSERTIONS))
-    (set! THE-ASSERTIONS
-          (cons-stream assertion 
-                       old-assertions))
-    'ok))
+public fun addAssertion(assertion: Value) {
+    storeAssertionInIndex(assertion)
+    val old = assertions
+    assertions = old.adding(assertion)
+}
 
-(define (add-rule! rule)
-  (store-rule-in-index rule)
-  (let ((old-rules THE-RULES))
-    (set! THE-RULES
-          (cons-stream rule old-rules))
-    'ok))
-@end lisp
+public fun addRule(rule: Value) {
+    storeRuleInIndex(rule)
+    val old = rules
+    rules = old.adding(rule)
+}
+// each let binding of the book becomes an `old` val read before the
+// collection is reinstalled (exercise 4.70)
+@end example
 
 @noindent
 To actually store an assertion or a rule, we check to see if it can be indexed.
 If so, we store it in the appropriate stream.
 
-@lisp
-(define (store-assertion-in-index assertion)
-  (if (indexable? assertion)
-      (let ((key (index-key-of assertion)))
-        (let ((current-assertion-stream
-               (get-stream 
-                key 'assertion-stream)))
-          (put key
-               'assertion-stream
-               (cons-stream 
-                assertion
-                current-assertion-stream))))))
+@example kotlin
+private fun storeAssertionInIndex(assertion: Value) {
+    if (isIndexable(assertion)) storeInIndex(assertionIndex, indexKeyOf(assertion), assertion)
+}
 
-(define (store-rule-in-index rule)
-  (let ((pattern (conclusion rule)))
-    (if (indexable? pattern)
-        (let ((key (index-key-of pattern)))
-          (let ((current-rule-stream
-                 (get-stream 
-                  key 'rule-stream)))
-            (put key
-                 'rule-stream
-                 (cons-stream 
-                  rule
-                  current-rule-stream)))))))
-@end lisp
+private fun storeRuleInIndex(rule: Value) {
+    val pattern = conclusionOfOf(rule)
+    if (isIndexable(pattern)) storeInIndex(ruleIndex, indexKeyOf(pattern), rule)
+}
+
+private fun storeInIndex(
+    index: HashMap<Value, MutableList<Value>>,
+    key: Value,
+    item: Value,
+) {
+    index.getOrPut(key) { mutableListOf() }.add(item)
+}
+@end example
 
 @noindent
 The following procedures define how the data-base index is used.  A pattern (an
-assertion or a rule conclusion) will be stored in the table if it starts with a
+assertion or a rule conclusionOf) will be stored in the table if it starts with a
 variable or a constant symbol.
 
-@lisp
-(define (indexable? pat)
-  (or (constant-symbol? (car pat))
-      (var? (car pat))))
-@end lisp
+@example kotlin
+public fun isIndexable(pat: Value): Boolean =
+    pat is VPair && (isConstantSymbol(pat.car) || isVar(pat.car))
+@end example
 
 @noindent
 The key under which a pattern is stored in the table is either @code{?} (if it
 starts with a variable) or the constant symbol with which it starts.
 
-@lisp
-(define (index-key-of pat)
-  (let ((key (car pat)))
-    (if (var? key) '? key)))
-@end lisp
+@example kotlin
+public fun indexKeyOf(pat: Value): Value {
+    val key = (pat as VPair).car
+    return if (isVar(key)) VSym("?") else key
+}
+@end example
 
 @noindent
 The index will be used to retrieve items that might match a pattern if the
 pattern starts with a constant symbol.
 
-@lisp
-(define (use-index? pat)
-  (constant-symbol? (car pat)))
-@end lisp
+@example kotlin
+public fun useIndex(pat: Value): Boolean = pat is VPair && isConstantSymbol(pat.car)
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.70}Exercise 4.70:} What is the purpose of the
-@code{let} bindings in the procedures @code{add-assertion!} and
-@code{add-rule!}?  What would be wrong with the following implementation of
-@code{add-assertion!}?  Hint: Recall the definition of the infinite stream of
+@code{let} bindings in the procedures @code{addAssertion} and
+@code{addRule}?  What would be wrong with the following implementation of
+@code{addAssertion}?  Hint: Recall the definition of the infinite stream of
 ones in @ref{3.5.2}: @code{(define ones (cons-stream 1 ones))}.
 
-@lisp
-(define (add-assertion! assertion)
-  (store-assertion-in-index assertion)
+@example
+(define (addAssertion assertion)
+  (storeAssertionInIndex assertion)
   (set! THE-ASSERTIONS
         (cons-stream assertion 
                      THE-ASSERTIONS))
   'ok)
-@end lisp
-@end quotation
+@end example@end quotation
 
 @node 4.4.4.6, 4.4.4.7, 4.4.4.5, 4.4.4
 @subsubsection Stream Operations
 
-The query system uses a few stream operations that were not presented in
-@ref{Chapter 3}.
+The query system uses a few stream operations over the memoized stream of
+@ref{3.5.3} that were not presented there.
 
-@code{Stream-append-delayed} and @code{interleave-delayed} are just like
+@code{Stream-append-delayed} and @code{interleaveDelayed} are just like
 @code{stream-append} and @code{interleave} (@ref{3.5.3}), except that
 they take a delayed argument (like the @code{integral} procedure in 
 @ref{3.5.4}).  This postpones looping in some cases (see @ref{Exercise 4.71}).
 
-@lisp
-(define (stream-append-delayed s1 delayed-s2)
-  (if (stream-null? s1)
-      (force delayed-s2)
-      (cons-stream
-       (stream-car s1)
-       (stream-append-delayed (stream-cdr s1)
-                              delayed-s2))))
+@example kotlin
+public fun <T> streamAppendDelayed(
+    s1: LStream<T>,
+    delayedS2: () -> LStream<T>,
+): LStream<T> {
+    val first = s1 as? LStream.Cons ?: return delayedS2()
+    return consStream(first.head) { streamAppendDelayed(first.tail, delayedS2) }
+}
 
-(define (interleave-delayed s1 delayed-s2)
-  (if (stream-null? s1)
-      (force delayed-s2)
-      (cons-stream
-       (stream-car s1)
-       (interleave-delayed 
-        (force delayed-s2)
-        (delay (stream-cdr s1))))))
-@end lisp
+public fun <T> interleaveDelayed(
+    s1: LStream<T>,
+    delayedS2: () -> LStream<T>,
+): LStream<T> {
+    val first = s1 as? LStream.Cons ?: return delayedS2()
+    return consStream(first.head) { interleaveDelayed(delayedS2()) { first.tail } }
+}
+@end example
 
 @noindent
 @code{Stream-flatmap}, which is used throughout the query evaluator to map a
@@ -2743,27 +2745,25 @@ lists in @ref{2.2.3}.  Unlike ordinary @code{flatmap}, however, we
 accumulate the streams with an interleaving process, rather than simply
 appending them (see @ref{Exercise 4.72} and @ref{Exercise 4.73}).
 
-@lisp
-(define (stream-flatmap proc s)
-  (flatten-stream (stream-map proc s)))
+@example kotlin
+public fun <T> streamFlatmap(
+    proc: (T) -> LStream<Frame>,
+    s: LStream<T>,
+): LStream<Frame> = flattenStream(streamMap(proc, s))
 
-(define (flatten-stream stream)
-  (if (stream-null? stream)
-      the-empty-stream
-      (interleave-delayed
-       (stream-car stream)
-       (delay (flatten-stream
-               (stream-cdr stream))))))
-@end lisp
+public fun flattenStream(stream: LStream<LStream<Frame>>): LStream<Frame> {
+    val first = stream as? LStream.Cons ?: return LStream.Empty
+    return interleaveDelayed(first.head) { flattenStream(first.tail) }
+}
+@end example
 
 @noindent
 The evaluator also uses the following simple procedure to generate a stream
 consisting of a single element:
 
-@lisp
-(define (singleton-stream x)
-  (cons-stream x the-empty-stream))
-@end lisp
+@example kotlin
+public fun <T> singletonStream(x: T): LStream<T> = consStream(x) { LStream.Empty }
+@end example
 
 @node 4.4.4.7, 4.4.4.8, 4.4.4.6, 4.4.4
 @subsubsection Query Syntax Procedures
@@ -2773,67 +2773,58 @@ specify that a special form is identified by the symbol in its @code{car}.
 They are the same as the @code{type-tag} and @code{contents} procedures in
 @ref{2.4.2}, except for the error message.
 
-@lisp
-(define (type exp)
-  (if (pair? exp)
-      (car exp)
-      (error "Unknown expression TYPE"
-             exp)))
-
-(define (contents exp)
-  (if (pair? exp)
-      (cdr exp)
-      (error "Unknown expression CONTENTS"
-             exp)))
-@end lisp
+@example kotlin
+// the book's `type` and `contents`: the dispatch tag is the pair's car
+// and the qeval handlers receive its cdr; qeval guards the shape and
+// falls back to simple_query instead of raising
+@end example
 
 @noindent
-The following procedures, used by @code{query-driver-loop} (in 
+The following procedures, used by @code{run} (in 
 @ref{4.4.4.1}), specify that rules and assertions are added to the data base by
 expressions of the form @code{(assert! ⟨@var{rule-or-assertion}⟩)}:
 
-@lisp
-(define (assertion-to-be-added? exp)
-  (eq? (type exp) 'assert!))
+@example kotlin
+public fun isAssertionToBeAdded(exp: Value): Boolean =
+    exp is VPair && exp.car is VSym && (exp.car as VSym).name == "assert!"
 
-(define (add-assertion-body exp)
-  (car (contents exp)))
-@end lisp
+public fun addAssertionBody(exp: Value): Value = ((exp as VPair).cdr as VPair).car
+@end example
 
 @noindent
 Here are the syntax definitions for the @code{and}, @code{or}, @code{not}, and
-@code{lisp-value} special forms (@ref{4.4.4.2}):
+@code{lispValue} special forms (@ref{4.4.4.2}):
 
-@lisp
-(define (empty-conjunction? exps) (null? exps))
-(define (first-conjunct exps) (car exps))
-(define (rest-conjuncts exps) (cdr exps))
-(define (empty-disjunction? exps) (null? exps))
-(define (first-disjunct exps) (car exps))
-(define (rest-disjuncts exps) (cdr exps))
-(define (negated-query exps) (car exps))
-(define (predicate exps) (car exps))
-(define (args exps) (cdr exps))
-@end lisp
+@example kotlin
+public fun isEmptyConjunction(exps: Value): Boolean = exps is VNil
+public fun firstConjunct(exps: Value): Value = (exps as VPair).car
+public fun restConjuncts(exps: Value): Value = (exps as VPair).cdr
+public fun isEmptyDisjunction(exps: Value): Boolean = exps is VNil
+public fun firstDisjunct(exps: Value): Value = (exps as VPair).car
+public fun restDisjuncts(exps: Value): Value = (exps as VPair).cdr
+public fun negatedQuery(exps: Value): Value = (exps as VPair).car
+public fun predicateOf(exps: Value): Value = (exps as VPair).car
+public fun argsOf(exps: Value): Value = (exps as VPair).cdr
+@end example
 
 @noindent
 The following three procedures define the syntax of rules:
 
-@lisp
-(define (rule? statement)
-  (tagged-list? statement 'rule))
+@example kotlin
+public fun isRule(statement: Value): Boolean =
+    statement is VPair && statement.car is VSym && (statement.car as VSym).name == "rule"
 
-(define (conclusion rule) (cadr rule))
+public fun conclusionOfOf(rule: Value): Value = ((rule as VPair).cdr as VPair).car
 
-(define (rule-body rule)
-  (if (null? (cddr rule))
-      '(always-true)
-      (caddr rule)))
-@end lisp
+public fun ruleBodyOf(rule: Value): Value {
+    val rest = ((rule as VPair).cdr as VPair).cdr
+    return if (rest is VNil) valueListOf(listOf(VSym("always-true"))) else (rest as VPair).car
+}
+@end example
 
 @noindent
-@code{Query-driver-loop} (@ref{4.4.4.1}) calls
-@code{query-syntax-process} to transform pattern variables in the expression,
+@code{run} (@ref{4.4.4.1}) calls
+@code{querySyntaxProcess} to transform pattern variables in the expression,
 which have the form @code{?symbol}, into the internal format @code{(? symbol)}.
 That is to say, a pattern such as @code{(job ?x ?y)} is actually represented
 internally by the system as @code{(job (? x) (? y))}.  This increases the
@@ -2850,42 +2841,35 @@ this way: The reader automatically translates @code{'expression} into
 way; however, for the sake of clarity we have included the transformation
 procedure here explicitly.
 
-@code{Expand-question-mark} and @code{contract-question-mark} use several
+@code{Expand-question-mark} and @code{contractQuestionMark} use several
 procedures with @code{string} in their names.  These are Scheme primitives.}
 
-@lisp
-(define (query-syntax-process exp)
-  (map-over-symbols expand-question-mark exp))
+@example kotlin
+public fun querySyntaxProcess(exp: Value): Value =
+    mapOverSymbols({ symbol -> if (symbol.name.startsWith("?")) patternVar(symbol.name.substring(1)) else symbol }, exp)
 
-(define (map-over-symbols proc exp)
-  (cond ((pair? exp)
-         (cons (map-over-symbols 
-                proc (car exp))
-               (map-over-symbols 
-                proc (cdr exp))))
-        ((symbol? exp) (proc exp))
-        (else exp)))
-
-(define (expand-question-mark symbol)
-  (let ((chars (symbol->string symbol)))
-    (if (string=? (substring chars 0 1) "?")
-        (list '? (string->symbol
-                  (substring
-                   chars 
-                   1 
-                   (string-length chars))))
-        symbol)))
-@end lisp
+public fun mapOverSymbols(
+    proc: (VSym) -> Value,
+    exp: Value,
+): Value =
+    when (exp) {
+        is VPair -> cons(mapOverSymbols(proc, exp.car), mapOverSymbols(proc, exp.cdr))
+        is VSym -> proc(exp)
+        else -> exp
+    }
+// a written ?name becomes the tagged datum (? name), which VTagged
+// renders exactly as the book's internal form
+@end example
 
 @noindent
 Once the variables are transformed in this way, the variables in a pattern are
 lists starting with @code{?}, and the constant symbols (which need to be
 recognized for data-base indexing, @ref{4.4.4.5}) are just the symbols.
 
-@lisp
-(define (var? exp) (tagged-list? exp '?))
-(define (constant-symbol? exp) (symbol? exp))
-@end lisp
+@example kotlin
+public fun isVar(v: Value): Boolean = v is VTagged && v.tag == "?"
+public fun isConstantSymbol(v: Value): Boolean = v is VSym
+@end example
 
 @noindent
 Unique variables are constructed during rule application (in 
@@ -2893,113 +2877,124 @@ Unique variables are constructed during rule application (in
 a rule application is a number, which is incremented each time a rule is
 applied.
 
-@lisp
-(define rule-counter 0)
+@example kotlin
+private var ruleCounter: Int = 0
 
-(define (new-rule-application-id)
-  (set! rule-counter (+ 1 rule-counter))
-  rule-counter)
+public fun newRuleApplicationId(): Int {
+    ruleCounter += 1
+    return ruleCounter
+}
 
-(define (make-new-variable 
-         var rule-application-id)
-  (cons '? (cons rule-application-id
-                 (cdr var))))
-@end lisp
+public fun makeNewVariable(
+    variable: Value,
+    ruleApplicationId: Int,
+): Value = VTagged("?", VSym("$ruleApplicationId ${patternVarName(variable)}"))
+// the renamed form keeps the id in the symbol so two occurrences of one
+// renamed variable stay equal, and it prints as the book's (? 7 x)
+@end example
 
 @noindent
-When @code{query-driver-loop} instantiates the query to print the answer, it
+When @code{run} instantiates the query to print the answer, it
 converts any unbound pattern variables back to the right form for printing,
 using
 
-@lisp
-(define (contract-question-mark variable)
-  (string->symbol
-   (string-append "?"
-     (if (number? (cadr variable))
-         (string-append
-          (symbol->string (caddr variable))
-          "-"
-          (number->string (cadr variable)))
-         (symbol->string (cadr variable))))))
-@end lisp
+@example kotlin
+public fun contractQuestionMark(variable: Value): String {
+    val name = ((variable as VTagged).data as VSym).name
+    val space = name.indexOf(' ')
+    return if (space < 0) "?$name" else "?${name.substring(space + 1)}-${name.substring(0, space)}"
+}
+// (? x) prints ?x; (? 7 x) prints ?x-7
+@end example
 
 @node 4.4.4.8, Chapter 5, 4.3, 4.4.4
 @subsubsection Frames and Bindings
 
-Frames are represented as lists of bindings, which are variable-value pairs:
+Frames are represented as persistent maps of bindings, keyed by variable:
 
-@lisp
-(define (make-binding variable value)
-  (cons variable value))
+@example kotlin
+public data class Frame(
+    public val bindings: PersistentMap<Value, Value>,
+) {
+    public companion object {
+        public val Empty: Frame = Frame(persistentMapOf())
+    }
 
-(define (binding-variable binding)
-  (car binding))
+    public operator fun get(variable: Value): Value? = bindings[variable]
 
-(define (binding-value binding)
-  (cdr binding))
+    public fun extended(
+        variable: Value,
+        value: Value,
+    ): Frame = Frame(bindings.putting(variable, value))
+}
 
-(define (binding-in-frame variable frame)
-  (assoc variable frame))
+public fun bindingInFrame(
+    variable: Value,
+    frame: Frame,
+): Value? = frame[variable]
 
-(define (extend variable value frame)
-  (cons (make-binding variable value) frame))
-@end lisp
+public fun extend(
+    variable: Value,
+    value: Value,
+    frame: Frame,
+): Frame = frame.extended(variable, value)
+// frames are immutable persistent maps; the matcher's failure is the
+// option type, never a sentinel inhabitant
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.71}Exercise 4.71:} Louis Reasoner wonders why the
-@code{simple-query} and @code{disjoin} procedures (@ref{4.4.4.2}) are
+@code{simpleQuery} and @code{disjoin} procedures (@ref{4.4.4.2}) are
 implemented using explicit @code{delay} operations, rather than being defined
 as follows:
 
-@lisp
-(define (simple-query 
+@example
+(define (simpleQuery 
          query-pattern frame-stream)
-  (stream-flatmap
+  (streamFlatmap
    (lambda (frame)
      (stream-append
-      (find-assertions query-pattern frame)
-      (apply-rules query-pattern frame)))
+      (findAssertions query-pattern frame)
+      (applyRules query-pattern frame)))
    frame-stream))
 
 (define (disjoin disjuncts frame-stream)
-  (if (empty-disjunction? disjuncts)
-      the-empty-stream
+  (if (isEmptyDisjunction disjuncts)
+      the empty stream
       (interleave
-       (qeval (first-disjunct disjuncts)
+       (qeval (firstDisjunct disjuncts)
               frame-stream)
-       (disjoin (rest-disjuncts disjuncts)
+       (disjoin (restDisjuncts disjuncts)
                 frame-stream))))
-@end lisp
-
+@end example
 Can you give examples of queries where these simpler definitions would lead to
 undesirable behavior?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.72}Exercise 4.72:} Why do @code{disjoin} and
-@code{stream-flatmap} interleave the streams rather than simply append them?
+@code{streamFlatmap} interleave the streams rather than simply append them?
 Give examples that illustrate why interleaving works better.  (Hint: Why did we
 use @code{interleave} in @ref{3.5.3}?)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.73}Exercise 4.73:} Why does @code{flatten-stream}
+@strong{@anchor{Exercise 4.73}Exercise 4.73:} Why does @code{flattenStream}
 use @code{delay} explicitly?  What would be wrong with defining it as follows:
 
-@lisp
-(define (flatten-stream stream)
+@example
+(define (flattenStream stream)
   (if (stream-null? stream)
-      the-empty-stream
+      the empty stream
       (interleave (stream-car stream)
-                  (flatten-stream 
+                  (flattenStream 
                    (stream-cdr stream)))))
-@end lisp
-@end quotation
+@end example@end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.74}Exercise 4.74:} Alyssa P. Hacker proposes to use
-a simpler version of @code{stream-flatmap} in @code{negate}, @code{lisp-value},
-and @code{find-assertions}.  She observes that the procedure that is mapped
+a simpler version of @code{streamFlatmap} in @code{negate}, @code{lispValue},
+and @code{findAssertions}.  She observes that the procedure that is mapped
 over the frame stream in these cases always produces either the empty stream or
 a singleton stream, so no interleaving is needed when combining these streams.
 
@@ -3008,16 +3003,15 @@ a singleton stream, so no interleaving is needed when combining these streams.
 @item
 Fill in the missing expressions in Alyssa's program.
 
-@lisp
-(define (simple-stream-flatmap proc s)
+@example
+(define (simple-streamFlatmap proc s)
   (simple-flatten (stream-map proc s)))
 
 (define (simple-flatten stream)
   (stream-map ⟨??⟩
               (stream-filter ⟨??⟩ 
                              stream)))
-@end lisp
-
+@end example
 @item
 Does the query system's behavior change if we change it in this way?
 
@@ -3030,34 +3024,30 @@ a new special form called @code{unique}.  @code{Unique} should succeed if there
 is precisely one item in the data base satisfying a specified query.  For
 example,
 
-@lisp
+@example
 (unique (job ?x (computer wizard)))
-@end lisp
-
+@end example
 @noindent
 should print the one-item stream
 
-@lisp
+@example
 (unique (job (Bitdiddle Ben)
              (computer wizard)))
-@end lisp
-
+@end example
 @noindent
 since Ben is the only computer wizard, and
 
-@lisp
+@example
 (unique (job ?x (computer programmer)))
-@end lisp
-
+@end example
 @noindent
 should print the empty stream, since there is more than one computer
 programmer.  Moreover,
 
-@lisp
+@example
 (and (job ?x ?j) 
      (unique (job ?anyone ?j)))
-@end lisp
-
+@end example
 @noindent
 should list all the jobs that are filled by only one person, and the people who
 fill them.
@@ -3068,10 +3058,9 @@ procedure that handles this special form, and the second is to make
 @code{qeval} does its dispatching in a data-directed way.  If your procedure is
 called @code{uniquely-asserted}, all you need to do is
 
-@lisp
+@example
 (put 'unique 'qeval uniquely-asserted)
-@end lisp
-
+@end example
 @noindent
 and @code{qeval} will dispatch to this procedure for every query whose
 @code{type} (@code{car}) is the symbol @code{unique}.
@@ -3111,7 +3100,7 @@ the two sets of bindings.  This operation is similar to unification.
 
 @quotation
 @strong{@anchor{Exercise 4.77}Exercise 4.77:} In @ref{4.4.3} we saw
-that @code{not} and @code{lisp-value} can cause the query language to give
+that @code{not} and @code{lispValue} can cause the query language to give
 ``wrong'' answers if these filtering operations are applied to frames in which
 variables are unbound.  Devise a way to fix this shortcoming.  One idea is to
 perform the filtering in a ``delayed'' manner by appending to the frame a
@@ -3140,7 +3129,7 @@ evaluator in @ref{4.1}, we saw how to use local environments to avoid
 name conflicts between the parameters of procedures.  For example, in
 evaluating
 
-@lisp
+@example
 (define (square x) 
   (* x x))
 
@@ -3148,8 +3137,7 @@ evaluating
   (+ (square x) (square y)))
 
 (sum-of-squares 3 4)
-@end lisp
-
+@end example
 @noindent
 there is no confusion between the @code{x} in @code{square} and the @code{x} in
 @code{sum-of-squares}, because we evaluate the body of each procedure in an

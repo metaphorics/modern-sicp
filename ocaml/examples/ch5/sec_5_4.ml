@@ -839,16 +839,16 @@ ev-sequence-last-exp
     )
   ; ( "if"
     , {|ev-if
-  (save continue)
-  (save env)
   (save exp)
+  (save env)
+  (save continue)
   (assign continue (label ev-if-decide))
   (assign exp (op if-predicate) (reg exp))
   (goto (label eval-dispatch))
 ev-if-decide
-  (restore exp)
-  (restore env)
   (restore continue)
+  (restore env)
+  (restore exp)
   (test (op true?) (reg val))
   (branch (label ev-if-consequent))
 ev-if-alternative

@@ -316,7 +316,7 @@ Cell key: `T` translate; `A: reason` adapt; `R: topic` replace.
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 3.1 | accumulator keeps running sum | T | T | T | T | accumulator returning transaction history |
+| 3.1 | accumulator keeps running sum | T | T | T | T | accumulator returning transaction history (chosen: typescript) |
 | 3.2 | monitored procedure counts and resets | T | T | T | T | monitored reports min and max |
 | 3.3 | password-protected account dispatch | T | T | T | T |  |
 | 3.4 | lockout after seven bad passwords | T | T | T | T | lockout with audit log (chosen: kotlin — implemented as 3.4a, an audit log recording every access attempt with its operation and outcome; see report) |

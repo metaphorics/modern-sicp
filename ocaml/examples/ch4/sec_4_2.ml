@@ -365,3 +365,62 @@ let setup_environment () =
 (** [the_global_environment ()] is a fresh global environment, the
     book's [the-global-environment] of this section. *)
 let the_global_environment = setup_environment
+
+(** {2 4.2.1: the applicative-order contrast}
+
+    [Strict_eval] is the applicative-order evaluator of 4.1 applied
+    over the section's primitive table: the dispatch is 4.1's [Core]
+    recursing through [eval], and application -- the one clause the
+    section changes -- evaluates every operand before the call and
+    resolves the operator against [primitive_table], the table that
+    installs [/]. The book's [try] example dies in the operand under
+    [Strict_eval] where the lazy driver answers [1]. *)
+
+module rec Strict_eval : sig
+  (** [eval exp env] evaluates one expression in one environment under
+      the applicative-order dispatch. *)
+  val eval : eval_t
+
+  (** [run env text] reads one object-language form from [text] and
+      evaluates it in [env]: the strict counterpart of the lazy
+      driver. *)
+  val run
+    :  Sicp_common.Value.env
+    -> string
+    -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+end = struct
+  module C = SE.Core (Strict_eval)
+
+  (** [apply_procedure proc args] is 4.1's [apply] over the section's
+      table: a primitive is looked up in [primitive_table] by the name
+      its value carries; a compound procedure extends its captured
+      environment. *)
+  let apply_procedure proc args =
+    match Value.view proc with
+    | Value.Primitive_procedure name ->
+      (match List.assoc_opt name primitive_table with
+       | Some f -> f args
+       | None ->
+         Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
+    | Value.Compound_procedure { parameters; body; env = proc_env; _ } ->
+      SE.extend_environment parameters args proc_env
+      >>= fun extended -> C.eval_sequence body extended
+    | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
+  ;;
+
+  (** [eval exp env] is 4.1's dispatch with the application clause
+      resolved over the section's table; every other clause is
+      [Core]'s. *)
+  let eval exp env =
+    match Ast.view exp with
+    | Ast.Application (operator, operands) ->
+      Strict_eval.eval operator env
+      >>= fun proc ->
+      C.list_of_values operands env >>= fun args -> apply_procedure proc args
+    | _ -> C.eval exp env
+  ;;
+
+  let run env text =
+    Reader.read text |> Result.map_error read_error >>= fun exp -> eval exp env
+  ;;
+end

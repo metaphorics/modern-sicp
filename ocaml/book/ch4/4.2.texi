@@ -47,6 +47,7 @@ this is not a hard-and-fast distinction, and the two terminologies are often
 used interchangeably.}  Consider the procedure
 
 @example ocaml
+let env = the_global_environment () in
 Strict_eval.run env "(define (try a b) (if (= a 0) 1 b))"
 (* => ok *)
 @end example
@@ -54,9 +55,11 @@ Strict_eval.run env "(define (try a b) (if (= a 0) 1 b))"
 @noindent
 Evaluating @code{(try 0 (/ 1 0))} generates an error in Scheme.  With lazy
 evaluation, there would be no error.  Evaluating the expression would return 1,
-because the argument @code{(/ 1 0)} would never be evaluated.  The
-applicative-order evaluator of @ref{4.1}, given the same program in an
-environment that carries the section's arithmetic, dies in the operand:
+because the argument @code{(/ 1 0)} would never be evaluated.  The edition
+holds the applicative-order evaluator of @ref{4.1} ready as
+@code{Strict_eval}, the same dispatch applied over the section's primitive
+table; given the same program in an environment that carries the section's
+arithmetic, it dies in the operand:
 
 @example ocaml
 Strict_eval.run env "(try 0 (/ 1 0))"
@@ -204,7 +207,8 @@ attempts to clarify the multiple dimensions of confusion that arise here.}
 @subsubheading Modifying the evaluator
 
 The main difference between the lazy evaluator and the one in @ref{4.1}
-is in the handling of procedure applications in @code{eval} and @code{apply}.
+is in the handling of procedure applications in @code{eval} and
+@code{apply_procedure}.
 
 The application clause of @code{eval} becomes
 
@@ -361,13 +365,13 @@ something that is not a thunk:
 @example ocaml
 let rec force_value (v : Value.t) : (Value.t, Eval_error.t) result =
   if is_thunk v
-  then
+  then (
     let rec go = function
       | [] ->
         Error (Eval_error.Type_error "force_value: not a thunk of this evaluator")
       | (w, force) :: rest -> if Value.physical_equal w v then force () else go rest
     in
-    go !thunks >>= force_value
+    go !thunks >>= force_value)
   else Ok v
 ;;
 @end example
@@ -423,9 +427,9 @@ was evaluated) after storing its value.}
    cached and re-answered on every later forcing. *)
 let delay_it ?(memo = true) ~(eval : eval_t) exp env =
   if memo
-  then
+  then (
     let cell = lazy (eval exp env >>= force_value) in
-    thunk_of (fun () -> Lazy.force cell)
+    thunk_of (fun () -> Lazy.force cell))
   else thunk_of (fun () -> eval exp env >>= force_value)
 ;;
 @end example
@@ -473,10 +477,10 @@ count
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.28}Exercise 4.28:} @code{Eval} uses
-@code{actual-value} rather than @code{eval} to evaluate the operator before
-passing it to @code{apply}, in order to force the value of the operator.  Give
-an example that demonstrates the need for this forcing.
+@strong{@anchor{Exercise 4.28}Exercise 4.28:} @code{eval} uses
+@code{actual_value} rather than @code{eval} to evaluate the operator before
+passing it to @code{apply_procedure}, in order to force the value of the
+operator.  Give an example that demonstrates the need for this forcing.
 
 @noindent
 @strong{@anchor{Exercise 4.29}Exercise 4.29:} Exhibit a program that you would
@@ -512,8 +516,8 @@ memoized or unmemoized without rebuilding the evaluator. Alongside the
 toggle, install counters over the thunk machinery: one for thunk
 creations, one for forcings that reach a thunk, and one for thunk bodies
 actually evaluated. Run one fixed program under each mode and give the
-three counts it produces; explain which counters the two modes may
-share, and why the third one cannot.
+three counts it produces; explain which of the three counters the two modes
+share, and why the other two differ.
 @end quotation
 
 @quotation
@@ -525,8 +529,8 @@ is there only for its effect, such as assigning to a variable or printing),
 there can be no subsequent use of this value (e.g., as an argument to a
 primitive procedure) that will cause it to be forced.  Cy thus thinks that when
 evaluating sequences, we must force all expressions in the sequence except the
-final one.  He proposes to modify @code{eval-sequence} from @ref{4.1.1}
-to use @code{actual-value} rather than @code{eval}:
+final one.  He proposes to modify @code{eval_sequence} from @ref{4.1.1}
+to use @code{actual_value} rather than @code{eval}:
 
 @example
 (define (eval-sequence exps env)
@@ -556,7 +560,7 @@ sequence with side effects:
 @end example
 
 He claims that the evaluator in the text (with the original
-@code{eval-sequence}) handles this correctly:
+@code{eval_sequence}) handles this correctly:
 
 @example
 @i{;;; L-Eval input:}
@@ -576,7 +580,7 @@ Explain why Ben is right about the behavior of @code{for-each}.
 @item
 Cy agrees that Ben is right about the @code{for-each} example, but says that
 that's not the kind of program he was thinking about when he proposed his
-change to @code{eval-sequence}.  He defines the following two procedures in the
+change to @code{eval_sequence}.  He defines the following two procedures in the
 lazy evaluator:
 
 @example
@@ -589,11 +593,11 @@ lazy evaluator:
 @end example
 
 What are the values of @code{(p1 1)} and @code{(p2 1)} with the original
-@code{eval-sequence}?  What would the values be with Cy's proposed change to
-@code{eval-sequence}?
+@code{eval_sequence}?  What would the values be with Cy's proposed change to
+@code{eval_sequence}?
 
 @item
-Cy also points out that changing @code{eval-sequence} as he proposes does not
+Cy also points out that changing @code{eval_sequence} as he proposes does not
 affect the behavior of the example in part a.  Explain why this is true.
 
 @item
@@ -628,9 +632,9 @@ every compound procedure will produce the behavior of the lazy evaluator
 defined in this section. Design and implement the changes required to produce
 such an extension to Scheme.  You will have to implement new syntax procedures
 to handle the new syntax for @code{define}.  You must also arrange for
-@code{eval} or @code{apply} to determine when arguments are to be delayed, and
-to force or delay arguments accordingly, and you must arrange for forcing to
-memoize or not, as appropriate.
+@code{eval} or @code{apply_procedure} to determine when arguments are to
+be delayed, and to force or delay arguments accordingly, and you must
+arrange for forcing to memoize or not, as appropriate.
 @end quotation
 
 @node	4.2.3, 4.3, 4.1, 4.2

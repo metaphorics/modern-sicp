@@ -147,5 +147,26 @@ val run_program
   -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
 
 (** [the_global_environment ()] is a fresh global environment with the
-    4.1 primitive table and the bindings of [true] and [false]. *)
+    section's primitive table and the bindings of [true] and [false]. *)
 val the_global_environment : unit -> Sicp_common.Value.env
+
+(** {2 4.2.1: the applicative-order contrast} *)
+
+(** [Strict_eval] is the applicative-order evaluator of 4.1 applied
+    over the section's primitive table: 4.1's [Core] dispatch with the
+    application clause evaluating the operands before the call and
+    resolving the operator against [primitive_table], the section's
+    table. A division in an unchosen branch raises under [Strict_eval]
+    where the lazy driver would answer. *)
+module Strict_eval : sig
+  (** [eval exp env] evaluates one expression in one environment under
+      the applicative-order dispatch. *)
+  val eval : eval_t
+
+  (** [run env text] reads one object-language form from [text] and
+      evaluates it in [env]. *)
+  val run
+    :  Sicp_common.Value.env
+    -> string
+    -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+end

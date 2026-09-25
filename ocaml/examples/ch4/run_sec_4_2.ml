@@ -5,9 +5,7 @@ module Replay = Sicp_ch1.Replay
 module Eval_error = Sicp_common.Eval_error
 module Value = Sicp_common.Value
 module Lazy_eval = Sicp_ch4.Sec_4_2
-module Strict_eval = Sicp_ch4.Sec_4_1
-
-let ( >>= ) = Result.bind
+module Strict_eval = Lazy_eval.Strict_eval
 
 let show = function
   | Ok v -> Value.to_string v
@@ -16,91 +14,12 @@ let show = function
 
 let show_lazy env text expected = Replay.expect (show (Lazy_eval.run env text)) expected
 
-(* The applicative-order contrast of 4.2.1: the 4.1 dispatch applied
-   over the section's primitive table, where every operand is evaluated
-   before the call, so the same try expression dies in the division the
-   lazy evaluator never runs. *)
-module rec Strict : sig
-  val eval : Strict_eval.eval_t
-end = struct
-  module C = Strict_eval.Core (Strict)
-  module Ast = Sicp_common.Ast
-
-  let apply_procedure proc args =
-    match Value.view proc with
-    | Value.Primitive_procedure name ->
-      (match List.assoc_opt name Lazy_eval.primitive_table with
-       | Some f -> f args
-       | None ->
-         Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
-    | Value.Compound_procedure cv ->
-      Strict_eval.extend_environment cv.parameters args cv.env
-      >>= fun extended -> C.eval_sequence cv.body extended
-    | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
-  ;;
-
-  let eval exp env =
-    match Ast.view exp with
-    | Ast.Int n -> Ok (Value.int n)
-    | Ast.Float f -> Ok (Value.float f)
-    | Ast.Bool b -> Ok (Value.bool b)
-    | Ast.String s -> Ok (Value.string s)
-    | Ast.Variable name -> Strict_eval.lookup_variable_value name env
-    | Ast.Quote datum -> Ok (Strict_eval.datum_to_value datum)
-    | Ast.Definition d ->
-      (match Ast.view_definition d with
-       | Ast.Define_variable (name, e) ->
-         Strict.eval e env >>= fun value -> Strict_eval.define_variable_ name value env
-       | Ast.Define_function { name; parameters; body } ->
-         let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
-         Strict_eval.define_variable_ name proc env)
-    | Ast.Set (name, e) ->
-      Strict.eval e env
-      >>= fun value ->
-      Strict_eval.set_variable_value_ name value env >>= fun () -> Ok (Value.symbol "ok")
-    | Ast.If (predicate, consequent, alternative) ->
-      Strict.eval predicate env
-      >>= fun tested ->
-      if Lazy_eval.true_ tested
-      then Strict.eval consequent env
-      else (
-        match alternative with
-        | Some branch -> Strict.eval branch env
-        | None -> Ok (Value.bool false))
-    | Ast.Lambda (parameters, body) ->
-      Ok (Value.compound ~name:None ~parameters ~body ~env)
-    | Ast.Sequence body -> C.eval_sequence body env
-    | Ast.Cond _ ->
-      Strict_eval.cond_to_if exp >>= fun rewritten -> Strict.eval rewritten env
-    | Ast.Application (operator, operands) ->
-      Strict.eval operator env
-      >>= fun proc ->
-      C.list_of_values operands env >>= fun args -> apply_procedure proc args
-    | Ast.And _ | Ast.Or _ | Ast.Let _ ->
-      Error (Eval_error.Invalid_form "unknown expression type: EVAL")
-  ;;
-end
-
-let strict_env () =
-  let env = Strict_eval.setup_environment () in
-  List.iter
-    (fun (name, f) -> Value.env_define env name (Value.primitive ~name f))
-    [ "+", List.assoc "+" Lazy_eval.primitive_table
-    ; "-", List.assoc "-" Lazy_eval.primitive_table
-    ; "*", List.assoc "*" Lazy_eval.primitive_table
-    ; "/", List.assoc "/" Lazy_eval.primitive_table
-    ];
-  env
-;;
-
+(* The applicative-order contrast of 4.2.1: the section's 4.1 dispatch
+   applied over the section's primitive table, where every operand is
+   evaluated before the call, so the same try expression dies in the
+   division the lazy evaluator never runs. *)
 let show_strict env text expected =
-  let parsed = Sicp_common.Reader.read text in
-  let outcome =
-    match parsed with
-    | Ok exp -> show (Strict.eval exp env)
-    | Error e -> "Error: " ^ Sicp_common.Reader.to_string e
-  in
-  Replay.expect outcome expected
+  Replay.expect (show (Strict_eval.run env text)) expected
 ;;
 
 (* The 4.2.3 lazy-list program: pairs as procedures, so cons is
@@ -121,7 +40,7 @@ let lazy_lists =
 let () =
   (* 4.2.1: the try expression errors under applicative order and
      answers 1 under lazy evaluation. *)
-  let strict = strict_env () in
+  let strict = Lazy_eval.the_global_environment () in
   show_strict strict "(define (try a b) (if (= a 0) 1 b))" "ok";
   show_strict strict "(try 0 (/ 1 0))" "Error: division by zero";
   let lazy_env = Lazy_eval.the_global_environment () in

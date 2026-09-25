@@ -79,12 +79,10 @@ Thus, we can compute @math{{n!}} by computing @math{{(n - 1)!}} and multiplying 
 result by @math{n}.  If we add the stipulation that 1! is equal to 1, this
 observation translates directly into a procedure:
 
-@lisp
-(define (factorial n)
-  (if (= n 1) 
-      1 
-      (* n (factorial (- n 1)))))
-@end lisp
+@example typescript
+const factorialRecursive = (n: number): number =>
+  n === 1 ? 1 : n * factorialRecursive(n - 1);
+@end example
 
 @noindent
 We can use the substitution model of @ref{1.1.5} to watch this
@@ -97,18 +95,18 @@ procedure in action computing 6!, as shown in @ref{Figure 1.3}.
 @strong{Figure 1.3:} A linear recursive process for computing 6!.
 
 @example
-(factorial 6)        ----------------
-(* 6 (factorial 5))                   \
-(* 6 (* 5 (factorial 4)))               \
-(* 6 (* 5 (* 4 (factorial 3))))           \
-(* 6 (* 5 (* 4 (* 3 (factorial 2)))))       \
-(* 6 (* 5 (* 4 (* 3 (* 2 (factorial 1))))))  |
-(* 6 (* 5 (* 4 (* 3 (* 2 1)))))             /
-(* 6 (* 5 (* 4 (* 3 2))))                 /
-(* 6 (* 5 (* 4 6)))                     /
-(* 6 (* 5 24))                        /
-(* 6 120)                           /
-720          <---------------------
+factorialRecursive(6)                            ----------------
+6 * factorialRecursive(5)                                        \
+6 * (5 * factorialRecursive(4))                                    \
+6 * (5 * (4 * factorialRecursive(3)))                                \
+6 * (5 * (4 * (3 * factorialRecursive(2))))                            \
+6 * (5 * (4 * (3 * (2 * factorialRecursive(1)))))                        |
+6 * (5 * (4 * (3 * (2 * 1))))                                            /
+6 * (5 * (4 * (3 * 2)))                                                /
+6 * (5 * (4 * 6))                                                    /
+6 * (5 * 24)                                                       /
+6 * 120                                                          /
+720          <-------------------------------------------------
 @end example
 @end quotation
 @end ifinfo
@@ -143,32 +141,34 @@ exceeds @math{n}.
 Once again, we can recast our description as a procedure for computing
 factorials:@footnote{In a real program we would probably use the block
 structure introduced in the last section to hide the definition of
-@code{fact-iter}:
+the stepper:
 
-@lisp
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
-@end lisp
+@example typescript
+const factorialBlockStructured = (n: number): number => @{
+  function iter(product: number, counter: number): number @{
+    if (counter > n) @{
+      return product;
+    @}
+    return iter(counter * product, counter + 1);
+  @}
+  return iter(1, 1);
+@};
+@end example
 
 We avoided doing this here so as to minimize the number of things to think
 about at once.}
 
-@lisp
-(define (factorial n) 
-  (fact-iter 1 1 n))
-
-(define (fact-iter product counter max-count)
-  (if (> counter max-count)
-      product
-      (fact-iter (* counter product)
-                 (+ counter 1)
-                 max-count)))
-@end lisp
+@example typescript
+const factorialIter = (n: number): number => @{
+  let product = 1;
+  let counter = 1;
+  while (counter <= n) @{
+    product = counter * product;
+    counter += 1;
+  @}
+  return product;
+@};
+@end example
 
 @noindent
 As before, we can use the substitution model to visualize the process of
@@ -181,14 +181,15 @@ computing 6!, as shown in @ref{Figure 1.4}.
 @strong{Figure 1.4:} A linear iterative process for computing 6!.
 
 @example
-(factorial 6)   -----.
-(fact-iter   1 1 6)  |
-(fact-iter   1 2 6)  |
-(fact-iter   2 3 6)  |
-(fact-iter   6 4 6)  |
-(fact-iter  24 5 6)  |
-(fact-iter 120 6 6)  |
-(fact-iter 720 7 6)  V
+factorialIter(6)   n = 6
+product counter         -----.
+    1       1                 |
+    1       2                 |
+    2       3                 |
+    6       4                 |
+   24       5                 |
+  120       6                 |
+  720       7   counter > n    V
 720
 @end example
 @end quotation
@@ -227,7 +228,7 @@ needed to keep track of it, grows linearly with @math{n} (is proportional to
 
 By contrast, the second process does not grow and shrink.  At each step, all we
 need to keep track of, for any @math{n}, are the current values of the variables
-@code{product}, @code{counter}, and @code{max-count}.  We call this an
+@code{product}, @code{counter}, and @code{n}.  We call this an
 @newterm{iterative process}.  In general, an iterative process is one whose
 state can be summarized by a fixed number of @newterm{state variables},
 together with a fixed rule that describes how the state variables should be
@@ -258,26 +259,37 @@ referring to the syntactic fact that the procedure definition refers (either
 directly or indirectly) to the procedure itself.  But when we describe a
 process as following a pattern that is, say, linearly recursive, we are
 speaking about how the process evolves, not about the syntax of how a procedure
-is written.  It may seem disturbing that we refer to a recursive procedure such
-as @code{fact-iter} as generating an iterative process.  However, the process
+is written.  It may seem disturbing that a recursive procedure such as the
+footnote's @code{iter} can be said to generate an iterative process.  However,
+the process
 really is iterative: Its state is captured completely by its three state
 variables, and an interpreter need keep track of only three variables in order
 to execute the process.
 
 One reason that the distinction between process and procedure may be confusing
-is that most implementations of common languages (including Ada, Pascal, and C)
+is that most implementations of common languages (including Ada, Pascal, C,
+and the V8 engine that runs this book's TypeScript)
 are designed in such a way that the interpretation of any recursive procedure
 consumes an amount of memory that grows with the number of procedure calls,
 even when the process described is, in principle, iterative.  As a consequence,
 these languages can describe iterative processes only by resorting to
-special-purpose ``looping constructs'' such as @code{do}, @code{repeat},
-@code{until}, @code{for}, and @code{while}.  The implementation of Scheme we
-shall consider in @ref{Chapter 5} does not share this defect.  It will execute
-an iterative process in constant space, even if the iterative process is
-described by a recursive procedure.  An implementation with this property is
-called @newterm{tail-recursive}.  With a tail-recursive implementation,
+special-purpose ``looping constructs'' such as @code{for} and
+@code{while}.  Left to itself, V8 grows the call stack for a
+self-call in tail position exactly as it does for any other call: the
+@code{factorialIter} above is written as such a loop for this reason, and that
+is this edition's standing convention---the iterative shape of a process is
+written as an explicit loop that updates the state variables directly, never
+as a chain of calls that would rely on the engine to collapse it.  (The trick
+of wrapping self-calls in a driver loop that keeps re-invoking a thunk, called
+a @newterm{trampoline}, can buy constant space where a loop is awkward; later
+chapters use one where the book's evaluators would rely on that guarantee.)  An
+implementation that does execute an iterative process in constant space, even
+when the iterative process is described by a recursive procedure, is called
+@newterm{tail-recursive}.  With a tail-recursive implementation,
 iteration can be expressed using the ordinary procedure call mechanism, so that
-special iteration constructs are useful only as syntactic sugar.@footnote{Tail
+special iteration constructs are useful only as syntactic sugar; TypeScript on
+Node gives no such guarantee, so this book treats every call as a frame that
+takes space.@footnote{Tail
 recursion has long been known as a compiler optimization trick.  A coherent
 semantic basis for tail recursion was provided by Carl @ref{Hewitt (1977)}, who
 explained it in terms of the ``message-passing'' model of computation that we
@@ -289,61 +301,80 @@ Scheme requires that Scheme implementations be tail-recursive.}
 
 @quotation
 @strong{@anchor{Exercise 1.9}Exercise 1.9:} Each of the following two
-procedures defines a method for adding two positive integers in terms of the
-procedures @code{inc}, which increments its argument by 1, and @code{dec},
-which decrements its argument by 1.
+functions adds two positive integers in terms of @code{inc} (add
+one) and @code{dec} (subtract one).
 
-@lisp
-(define (+ a b)
-  (if (= a 0) 
-      b 
-      (inc (+ (dec a) b))))
+@example typescript
+const plusRecursive = (a: number, b: number): number =>
+  a === 0 ? b : inc(plusRecursive(dec(a), b));
+@end example
 
-(define (+ a b)
-  (if (= a 0) 
-      b 
-      (+ (dec a) (inc b))))
-@end lisp
+@noindent
+The second function has the iterative shape: its self-call is the whole
+result, with nothing left pending once the call returns.  Node performs no
+tail-call optimization, so left as a call chain this spelling would grow the
+call stack exactly as the recursive one does; this edition writes the
+iterative process as a loop that updates the state variables directly:
 
-Using the substitution model, illustrate the process generated by each
-procedure in evaluating @code{(+ 4 5)}.  Are these processes iterative or
-recursive?
+@example typescript
+const plusIterative = (a: number, b: number): number => @{
+  let x = a;
+  let y = b;
+  while (x > 0) @{
+    x = dec(x);
+    y = inc(y);
+  @}
+  return y;
+@};
+@end example
+
+Using the substitution model, illustrate the process each generates in
+evaluating @code{plusRecursive(4, 5)} and @code{plusIterative(4, 5)}.  Are
+these processes iterative or recursive?  Which of the two functions can run
+in constant space in TypeScript, and why?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.10}Exercise 1.10:} The following procedure computes
 a mathematical function called Ackermann's function.
 
-@lisp
-(define (A x y)
-  (cond ((= y 0) 0)
-        ((= x 0) (* 2 y))
-        ((= y 1) 2)
-        (else (A (- x 1)
-                 (A x (- y 1))))))
-@end lisp
+@example typescript
+const ackermann = (x: number, y: number): number => @{
+  if (y === 0) @{
+    return 0;
+  @}
+  if (x === 0) @{
+    return 2 * y;
+  @}
+  if (y === 1) @{
+    return 2;
+  @}
+  return ackermann(x - 1, ackermann(x, y - 1));
+@};
+@end example
 
 What are the values of the following expressions?
 
-@lisp
-(A 1 10)
-(A 2 4)
-(A 3 3)
-@end lisp
+@example typescript
+ackermann(1, 10)
+ackermann(2, 4)
+ackermann(3, 3)
+@end example
 
-Consider the following procedures, where @code{A} is the procedure
+Consider the following procedures, where @code{ackermann} is the procedure
 defined above:
 
-@lisp
-(define (f n) (A 0 n))
-(define (g n) (A 1 n))
-(define (h n) (A 2 n))
-(define (k n) (* 5 n n))
-@end lisp
+@example typescript
+const ackermannF = (n: number): number => ackermann(0, n);
+const ackermannG = (n: number): number => ackermann(1, n);
+const ackermannH = (n: number): number => ackermann(2, n);
+const ackermannK = (n: number): number => 5 * n * n;
+@end example
 
 Give concise mathematical definitions for the functions computed by the
-procedures @code{f}, @code{g}, and @code{h} for positive integer values of
-@math{n}.  For example, @code{(k n)} computes @math{{5n^2}}.
+procedures @code{ackermannF}, @code{ackermannG}, and @code{ackermannH} for
+positive integer values of @math{n}.  For example, @code{ackermannK(n)}
+computes @math{{5n^2}}.
 @end quotation
 
 @node	1.2.2, 1.2.3, 1.2.1, 1.2
@@ -379,26 +410,23 @@ Fib(n) = <  1                        if n = 1
 We can immediately translate this definition into a recursive procedure for
 computing Fibonacci numbers:
 
-@lisp
-(define (fib n)
-  (cond ((= n 0) 0)
-        ((= n 1) 1)
-        (else (+ (fib (- n 1))
-                 (fib (- n 2))))))
-@end lisp
+@example typescript
+const fibRecursive = (n: number): number =>
+  n === 0 ? 0 : n === 1 ? 1 : fibRecursive(n - 1) + fibRecursive(n - 2);
+@end example
 
 @noindent
-Consider the pattern of this computation.  To compute @code{(fib 5)}, we
-compute @code{(fib 4)} and @code{(fib 3)}.  To compute @code{(fib 4)}, we
-compute @code{(fib 3)} and @code{(fib 2)}.  In general, the evolved process
+Consider the pattern of this computation.  To compute @code{fibRecursive(5)}, we
+compute @code{fibRecursive(4)} and @code{fibRecursive(3)}.  To compute @code{fibRecursive(4)}, we
+compute @code{fibRecursive(3)} and @code{fibRecursive(2)}.  In general, the evolved process
 looks like a tree, as shown in @ref{Figure 1.5}.  Notice that the branches
 split into two at each level (except at the bottom); this reflects the fact
-that the @code{fib} procedure calls itself twice each time it is invoked.
+that the @code{fibRecursive} procedure calls itself twice each time it is invoked.
 
 @float
 @anchor{Figure 1.5}
 @ifinfo
-@strong{Figure 1.5:} The tree-recursive process generated in computing @code{(fib 5)}.
+@strong{Figure 1.5:} The tree-recursive process generated in computing @code{fibRecursive(5)}.
 
 @example
 
@@ -423,22 +451,22 @@ V     /  . \   . 1  .  . 1  .  . 0  .  . 1  .  . 0  ..
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap1/Fig1.5d,,147mm,Figure 1.5: The tree-recursive process generated in computing (fib 5).,.std.svg}
+@image{../../text/original/figures/chap1/Fig1.5d,,147mm,Figure 1.5: The tree-recursive process generated in computing fibRecursive(5).,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap1/Fig1.5d.std,,147mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 1.5:} The tree-recursive process generated in computing @code{(fib 5)}.}
+@caption{@strong{Figure 1.5:} The tree-recursive process generated in computing @code{fibRecursive(5)}.}
 @end float
 
 @noindent
 This procedure is instructive as a prototypical tree recursion, but it is a
 terrible way to compute Fibonacci numbers because it does so much redundant
 computation.  Notice in @ref{Figure 1.5} that the entire computation of
-@code{(fib 3)}---almost half the work---is duplicated.  In fact, it is not hard
-to show that the number of times the procedure will compute @code{(fib 1)} or
-@code{(fib 0)} (the number of leaves in the above tree, in general) is
+@code{fibRecursive(3)}---almost half the work---is duplicated.  In fact, it is not hard
+to show that the number of times the procedure will compute @code{fibRecursive(1)} or
+@code{fibRecursive(0)} (the number of leaves in the above tree, in general) is
 precisely @math{{\hbox{Fib}(n+1)}}.  To get an idea of how bad this is, one can
 show that the value of @math{{\hbox{Fib}(n)}} grows exponentially with @math{n}.  More
 precisely (see @ref{Exercise 1.13}), @math{{\hbox{Fib}(n)}} is the closest integer
@@ -497,15 +525,20 @@ It is not hard to show that, after applying this transformation @math{n} times,
 @math{{\hbox{Fib}(n)}}.  Thus, we can compute Fibonacci numbers iteratively using
 the procedure
 
-@lisp
-(define (fib n) 
-  (fib-iter 1 0 n))
-
-(define (fib-iter a b count)
-  (if (= count 0)
-      b
-      (fib-iter (+ a b) a (- count 1))))
-@end lisp
+@example typescript
+const fibIter = (n: number): number => @{
+  let a = 1;
+  let b = 0;
+  let count = n;
+  while (count > 0) @{
+    const next = a + b;
+    a = b;
+    b = next;
+    count -= 1;
+  @}
+  return b;
+@};
+@end example
 
 @noindent
 This second method for computing @math{{\hbox{Fib}(n)}} is a linear iteration.  The
@@ -520,8 +553,8 @@ tool.@footnote{An example of this was hinted at in @ref{1.1.3}. The
 interpreter itself evaluates expressions using a tree-recursive process.} But
 even in numerical operations, tree-recursive processes can be useful in helping
 us to understand and design programs.  For instance, although the first
-@code{fib} procedure is much less efficient than the second one, it is more
-straightforward, being little more than a translation into Lisp of the
+@code{fibRecursive} procedure is much less efficient than the second one, it is more
+straightforward, being little more than a translation into TypeScript of the
 definition of the Fibonacci sequence.  To formulate the iterative algorithm
 required noticing that the computation could be recast as an iteration with
 three state variables.
@@ -585,44 +618,51 @@ If @math{n} is 0, we should count that as 0 ways to make change.
 @noindent
 We can easily translate this description into a recursive procedure:
 
-@lisp
-(define (count-change amount)
-  (cc amount 5))
+@example typescript
+const countChange = (amount: number): number => cc(amount, 5);
 
-(define (cc amount kinds-of-coins)
-  (cond ((= amount 0) 1)
-        ((or (< amount 0) 
-             (= kinds-of-coins 0)) 
-         0)
-        (else 
-         (+ (cc amount (- kinds-of-coins 1))
-            (cc (- amount (first-denomination 
-                           kinds-of-coins))
-                kinds-of-coins)))))
+const cc = (amount: number, kindsOfCoins: number): number => @{
+  if (amount === 0) @{
+    return 1;
+  @}
+  if (amount < 0 || kindsOfCoins === 0) @{
+    return 0;
+  @}
+  return cc(amount, kindsOfCoins - 1) + cc(amount - firstDenomination(kindsOfCoins), kindsOfCoins);
+@};
 
-(define (first-denomination kinds-of-coins)
-  (cond ((= kinds-of-coins 1) 1)
-        ((= kinds-of-coins 2) 5)
-        ((= kinds-of-coins 3) 10)
-        ((= kinds-of-coins 4) 25)
-        ((= kinds-of-coins 5) 50)))
-@end lisp
+const firstDenomination = (kindsOfCoins: number): number => @{
+  if (kindsOfCoins === 1) @{
+    return 1;
+  @}
+  if (kindsOfCoins === 2) @{
+    return 5;
+  @}
+  if (kindsOfCoins === 3) @{
+    return 10;
+  @}
+  if (kindsOfCoins === 4) @{
+    return 25;
+  @}
+  return 50;
+@};
+@end example
 
 @noindent
-(The @code{first-denomination} procedure takes as input the number of kinds of
+(The @code{firstDenomination} procedure takes as input the number of kinds of
 coins available and returns the denomination of the first kind.  Here we are
 thinking of the coins as arranged in order from largest to smallest, but any
 order would do as well.)  We can now answer our original question about
 changing a dollar:
 
-@lisp
-(count-change 100)
-@i{292}
-@end lisp
+@example typescript
+countChange(100)
+// => 292
+@end example
 
 @noindent
-@code{Count-change} generates a tree-recursive process with redundancies
-similar to those in our first implementation of @code{fib}.  (It will take
+@code{countChange} generates a tree-recursive process with redundancies
+similar to those in our first implementation of @code{fibRecursive}.  (It will take
 quite a while for that 292 to be computed.)  On the other hand, it is not
 obvious how to design a better algorithm for computing the result, and we leave
 this problem as a challenge.  The observation that a tree-recursive process may
@@ -637,14 +677,16 @@ in the table, in which case we avoid performing the redundant computation.
 This strategy, known as @newterm{tabulation} or @newterm{memoization}, can be
 implemented in a straightforward way.  Tabulation can sometimes be used to
 transform processes that require an exponential number of steps (such as
-@code{count-change}) into processes whose space and time requirements grow
+@code{countChange}) into processes whose space and time requirements grow
 linearly with the input.  See @ref{Exercise 3.27}.}
 
 @quotation
 @strong{@anchor{Exercise 1.11}Exercise 1.11:} A function @math{f} is defined by
 the rule that @math{{f(n) = n}} if @math{{n < 3}} and @math{{f(n)} = {f(n-1)} + {2f(n-2)} + {3f(n-3)}} if @math{{n \ge 3}}.  
 Write a procedure that computes @math{f} by means of a recursive process.  Write a procedure that
-computes @math{f} by means of an iterative process.
+computes @math{f} by means of an iterative process---in TypeScript that second
+spelling is an explicit loop over the state variables, in the style of
+@code{factorialIter} of @ref{1.2.1}, not a chain of tail calls.
 @end quotation
 
 @quotation
@@ -746,7 +788,7 @@ constant amount.
 
 @quotation
 @strong{@anchor{Exercise 1.14}Exercise 1.14:} Draw the tree illustrating the
-process generated by the @code{count-change} procedure of @ref{1.2.2}
+process generated by the @code{countChange} procedure of @ref{1.2.2}
 in making change for 11 cents.  What are the orders of growth of the space and
 number of steps used by this process as the amount to be changed increases?
 @end quotation
@@ -774,19 +816,17 @@ exercise an angle is considered ``sufficiently small'' if its magnitude is not
 greater than 0.1 radians.) These ideas are incorporated in the following
 procedures:
 
-@lisp
-(define (cube x) (* x x x))
-(define (p x) (- (* 3 x) (* 4 (cube x))))
-(define (sine angle)
-   (if (not (> (abs angle) 0.1))
-       angle
-       (p (sine (/ angle 3.0)))))
-@end lisp
+@example typescript
+const cube = (x: number): number => x * x * x;
+const p = (x: number): number => 3 * x - 4 * cube(x);
+const sine = (angle: number): number =>
+  !(Math.abs(angle) > 0.1) ? angle : p(sine(angle / 3));
+@end example
 
 @enumerate a
 
 @item
-How many times is the procedure @code{p} applied when @code{(sine 12.15)} is
+How many times is the procedure @code{p} applied when @code{sine(12.15)} is
 evaluated?
 
 @item
@@ -820,29 +860,26 @@ b^0 = 1
 @end ifinfo
 which translates readily into the procedure
 
-@lisp
-(define (expt b n)
-  (if (= n 0) 
-      1 
-      (* b (expt b (- n 1)))))
-@end lisp
+@example typescript
+const exptRecursive = (b: number, n: number): number => (n === 0 ? 1 : b * exptRecursive(b, n - 1));
+@end example
 
 @noindent
 This is a linear recursive process, which requires @math{{\Theta(n)}} steps and
 @math{{\Theta(n)}} space.  Just as with factorial, we can readily formulate an
 equivalent linear iteration:
 
-@lisp
-(define (expt b n) 
-  (expt-iter b n 1))
-
-(define (expt-iter b counter product)
-  (if (= counter 0)
-      product
-      (expt-iter b
-                 (- counter 1)
-                 (* b product))))
-@end lisp
+@example typescript
+const exptIter = (b: number, n: number): number => @{
+  let counter = n;
+  let product = 1;
+  while (counter > 0) @{
+    product = b * product;
+    counter -= 1;
+  @}
+  return product;
+@};
+@end example
 
 @noindent
 This version requires @math{{\Theta(n)}} steps and @math{{\Theta(1)}} space.
@@ -895,29 +932,31 @@ b^n = b * b^(n - 1)  if n is odd
 @end ifinfo
 We can express this method as a procedure:
 
-@lisp
-(define (fast-expt b n)
-  (cond ((= n 0) 
-         1)
-        ((even? n) 
-         (square (fast-expt b (/ n 2))))
-        (else 
-         (* b (fast-expt b (- n 1))))))
-@end lisp
+@example typescript
+const fastExpt = (b: number, n: number): number => @{
+  if (n === 0) @{
+    return 1;
+  @}
+  if (isEven(n)) @{
+    return square(fastExpt(b, n / 2));
+  @}
+  return b * fastExpt(b, n - 1);
+@};
+@end example
 
 @noindent
-where the predicate to test whether an integer is even is defined in terms of
-the primitive procedure @code{remainder} by
+where @code{square} is the one of @ref{1.1.4}, and the predicate to test
+whether an integer is even is defined in terms of
+the primitive procedure @code{%} by
 
-@lisp
-(define (even? n)
-  (= (remainder n 2) 0))
-@end lisp
+@example typescript
+const isEven = (n: number): boolean => n % 2 === 0;
+@end example
 
 @noindent
-The process evolved by @code{fast-expt} grows logarithmically with @math{n} in
+The process evolved by @code{fastExpt} grows logarithmically with @math{n} in
 both space and number of steps.  To see this, observe that computing
-@math{b^{2n}} using @code{fast-expt} requires only one more multiplication
+@math{b^{2n}} using @code{fastExpt} requires only one more multiplication
 than computing @math{b^n}.  The size of the exponent we can compute therefore
 doubles (approximately) with every new multiplication we are allowed.  Thus,
 the number of multiplications required for an exponent of @math{n} grows about as
@@ -932,7 +971,7 @@ processes are described as @math{{\Theta(\log n)}}.}
 
 The difference between @math{{\Theta(\log n)}} growth and
 @math{{\Theta(n)}} growth becomes striking as @math{n} becomes large.  For
-example, @code{fast-expt} for @math{n} = 1000 requires only 14
+example, @code{fastExpt} for @math{n} = 1000 requires only 14
 multiplications.@footnote{You may wonder why anyone would care about raising
 numbers to the 1000th power.  See @ref{1.2.6}.} It is also possible to
 use the idea of successive squaring to devise an iterative algorithm that
@@ -947,13 +986,16 @@ exponentiation.}
 @quotation
 @strong{@anchor{Exercise 1.16}Exercise 1.16:} Design a procedure that evolves
 an iterative exponentiation process that uses successive squaring and uses a
-logarithmic number of steps, as does @code{fast-expt}.  (Hint: Using the
+logarithmic number of steps, as does @code{fastExpt}.  (Hint: Using the
 observation that @math{{(b^{n / 2})^2} = {(b^2)^{n / 2}}}, keep, along with
 the exponent @math{n} and the base @math{b}, an additional state variable @math{a}, and
 define the state transformation in such a way that the product @math{{ab^n}} 
 is unchanged from state to state.  At the beginning of the process
 @math{a} is taken to be 1, and the answer is given by the value of @math{a} at the
-end of the process.  In general, the technique of defining an
+end of the process.  In TypeScript the iterative shape is an explicit loop
+that keeps @code{a}, @code{b}, and @code{n} as local variables and updates them in
+place, so the state transformations are ordinary assignments.  In general,
+the technique of defining an
 @newterm{invariant quantity} that remains unchanged from state to state is a
 powerful way to think about the design of iterative algorithms.)
 @end quotation
@@ -963,20 +1005,17 @@ powerful way to think about the design of iterative algorithms.)
 this section are based on performing exponentiation by means of repeated
 multiplication.  In a similar way, one can perform integer multiplication by
 means of repeated addition.  The following multiplication procedure (in which
-it is assumed that our language can only add, not multiply) is analogous to the
-@code{expt} procedure:
+it is assumed that our language can only add, not multiply) is analogous to
+@code{exptRecursive}:
 
-@lisp
-(define (* a b)
-  (if (= b 0)
-      0
-      (+ a (* a (- b 1)))))
-@end lisp
+@example typescript
+const multiply = (a: number, b: number): number => (b === 0 ? 0 : a + multiply(a, b - 1));
+@end example
 
 This algorithm takes a number of steps that is linear in @code{b}.  Now suppose
 we include, together with addition, operations @code{double}, which doubles an
 integer, and @code{halve}, which divides an (even) integer by 2.  Using these,
-design a multiplication procedure analogous to @code{fast-expt} that uses a
+design a multiplication procedure analogous to @code{fastExpt} that uses a
 logarithmic number of steps.
 @end quotation
 
@@ -984,7 +1023,11 @@ logarithmic number of steps.
 @strong{@anchor{Exercise 1.18}Exercise 1.18:} Using the results of
 @ref{Exercise 1.16} and @ref{Exercise 1.17}, devise a procedure that generates
 an iterative process for multiplying two integers in terms of adding, doubling,
-and halving and uses a logarithmic number of steps.@footnote{This algorithm,
+and halving and uses a logarithmic number of steps.  The procedure the book
+writes for this exercise is a tail-recursive call chain; TypeScript gets no
+tail-call optimization from Node, so write the iterative shape honestly, as an
+explicit loop over the state variables, and keep the book's state
+transformation as the loop body.@footnote{This algorithm,
 which is sometimes known as the ``Russian peasant method'' of multiplication,
 is ancient.  Examples of its use are found in the Rhind Papyrus, one of the two
 oldest mathematical documents in existence, written about 1700 @abbr{B.C.}
@@ -994,7 +1037,7 @@ oldest mathematical documents in existence, written about 1700 @abbr{B.C.}
 @quotation
 @strong{@anchor{Exercise 1.19}Exercise 1.19:} There is a clever algorithm for
 computing the Fibonacci numbers in a logarithmic number of steps.  Recall the
-transformation of the state variables @math{a} and @math{b} in the @code{fib-iter}
+transformation of the state variables @math{a} and @math{b} in the @code{fibIter}
 process of @ref{1.2.2}: @math{a \gets a + b} and @math{b \gets a}.
 Call this transformation @math{T}, and observe that applying @math{T} over and over
 again @math{n} times, starting with 1 and 0, produces the pair @math{{\hbox{Fib}(n+1)}} and 
@@ -1008,34 +1051,33 @@ Show that if we apply such a transformation @math{T_{pq}} twice, the
 effect is the same as using a single transformation @math{T_{p'q'}} of the
 same form, and compute @math{p'\!} and @math{q'\!} in terms of @math{p} and @math{q}.  This
 gives us an explicit way to square these transformations, and thus we can
-compute @math{T^n} using successive squaring, as in the @code{fast-expt}
-procedure.  Put this all together to complete the following procedure, which
-runs in a logarithmic number of steps:@footnote{This exercise was suggested to
+compute @math{T^n} using successive squaring, as in the @code{fastExpt}
+procedure.  @code{Fib(93)} already exceeds the exact-integer range of
+@code{number} (the powers of two past @math{2^{53}} stop landing on integers), so
+compute this edition's @code{fibLog} over @code{bigint} rather than
+@code{number}.@footnote{This exercise was suggested to
 us by Joe Stoy, based on an example in @ref{Kaldewaij 1990}.}
 
-@lisp
-(define (fib n)
-  (fib-iter 1 0 0 1 n))
-
-(define (fib-iter a b p q count)
-  (cond ((= count 0) 
-         b)
-        ((even? count)
-         (fib-iter a
-                   b
-                   ⟨??⟩  ;compute @var{p'}
-                   ⟨??⟩  ;compute @var{q'}
-                   (/ count 2)))
-        (else 
-         (fib-iter (+ (* b q) 
-                      (* a q) 
-                      (* a p))
-                   (+ (* b p) 
-                      (* a q))
-                   p
-                   q
-                   (- count 1)))))
-@end lisp
+@example typescript
+const fibLog = (n: number): bigint => @{
+  let a = 1n;
+  let b = 0n;
+  let p = 0n;
+  let q = 1n;
+  let count = n;
+  while (count > 0) @{
+    if (count % 2 === 0) @{
+      // ⟨compute p'⟩
+      // ⟨compute q'⟩
+      count /= 2;
+    @} else @{
+      // ⟨apply T to (a, b)⟩
+      count -= 1;
+    @}
+  @}
+  return b;
+@};
+@end example
 @end quotation
 
 @node	1.2.5, 1.2.6, 1.2.4, 1.2
@@ -1089,15 +1131,22 @@ examples.}
 
 It is easy to express Euclid's Algorithm as a procedure:
 
-@lisp
-(define (gcd a b)
-  (if (= b 0)
-      a
-      (gcd b (remainder a b))))
-@end lisp
+@example typescript
+const gcd = (a: number, b: number): number => @{
+  let x = a;
+  let y = b;
+  while (y !== 0) @{
+    const r = x % y;
+    x = y;
+    y = r;
+  @}
+  return x;
+@};
+@end example
 
 @noindent
-This generates an iterative process, whose number of steps grows as the
+This generates an iterative process, written in this edition's loop shape,
+whose number of steps grows as the
 logarithm of the numbers involved.
 
 The fact that the number of steps required by Euclid's Algorithm has
@@ -1143,16 +1192,21 @@ grows as the logarithm (to the base @math{\varphi}) of @math{n}.  Hence, the ord
 growth is @math{{\Theta(\log n)}}.
 
 @quotation
-@strong{@anchor{Exercise 1.20}Exercise 1.20:} The process that a procedure
-generates is of course dependent on the rules used by the interpreter.  As an
-example, consider the iterative @code{gcd} procedure given above.  Suppose we
-were to interpret this procedure using normal-order evaluation, as discussed in
-@ref{1.1.5}.  (The normal-order-evaluation rule for @code{if} is
-described in @ref{Exercise 1.5}.)  Using the substitution method (for normal
-order), illustrate the process generated in evaluating @code{(gcd 206 40)} and
-indicate the @code{remainder} operations that are actually performed.  How many
-@code{remainder} operations are actually performed in the normal-order
-evaluation of @code{(gcd 206 40)}?  In the applicative-order evaluation?
+@strong{@anchor{Exercise 1.20}Exercise 1.20:} @emph{SICP exercise 1.20 is about
+Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  SICP's own exercise traces the
+iterative @code{gcd} procedure under normal-order evaluation, contrasted with
+applicative order, and asks how many @code{remainder} operations each performs
+while evaluating @code{(gcd 206 40)}; the substitution model for normal order
+defers every unevaluated argument until a test forces it, so the same
+@code{remainder} expression can be substituted, unevaluated, into several
+later reductions and then run once for each occurrence.  TypeScript, like
+every host language in this book, evaluates its arguments eagerly, so no
+procedure here can be traced under normal order; a thunk-rewriting
+interpreter of the kind chapter 4 builds would simulate it.  Instrument the
+eager @code{gcd} above to count every time it computes a
+@code{%} remainder while evaluating @code{gcd(206, 40)}.  How many remainder
+operations does the eager evaluation actually perform?
 @end quotation
 
 @node	1.2.6, 1.3, 1.1, 1.2
@@ -1174,34 +1228,33 @@ divisor (greater than 1) of a given number @math{n}.  It does this in a
 straightforward way, by testing @math{n} for divisibility by successive integers
 starting with 2.
 
-@lisp
-(define (smallest-divisor n)
-  (find-divisor n 2))
+@example typescript
+const smallestDivisor = (n: number): number => findDivisor(n, 2);
 
-(define (find-divisor n test-divisor)
-  (cond ((> (square test-divisor) n) 
-         n)
-        ((divides? test-divisor n) 
-         test-divisor)
-        (else (find-divisor 
-               n 
-               (+ test-divisor 1)))))
+const findDivisor = (n: number, testDivisor: number): number => @{
+  let d = testDivisor;
+  while (d * d <= n) @{
+    if (divides(d, n)) @{
+      return d;
+    @}
+    d += 1;
+  @}
+  return n;
+@};
 
-(define (divides? a b)
-  (= (remainder b a) 0))
-@end lisp
+const divides = (a: number, b: number): boolean => b % a === 0;
+@end example
 
 @noindent
 We can test whether a number is prime as follows: @math{n} is prime if and only if
 @math{n} is its own smallest divisor.
 
-@lisp
-(define (prime? n)
-  (= n (smallest-divisor n)))
-@end lisp
+@example typescript
+const isPrime = (n: number): boolean => n === smallestDivisor(n);
+@end example
 
 @noindent
-The end test for @code{find-divisor} is based on the fact that if @math{n} is not
+The end test for @code{findDivisor} is based on the fact that if @math{n} is not
 prime it must have a divisor less than or equal to
 @math{\sqrt{n}}.@footnote{If @math{d} is a divisor of @math{n}, then so is
 @math{{n \,/\, d}}.  But @math{d} and @math{{n \,/\, d}} cannot both be greater than
@@ -1253,21 +1306,20 @@ Fermat test.
 To implement the Fermat test, we need a procedure that computes the exponential
 of a number modulo another number:
 
-@lisp
-(define (expmod base exp m)
-  (cond ((= exp 0) 1)
-        ((even? exp)
-         (remainder 
-          (square (expmod base (/ exp 2) m))
-          m))
-        (else
-         (remainder 
-          (* base (expmod base (- exp 1) m))
-          m))))
-@end lisp
+@example typescript
+const expmod = (base: number, exp: number, m: number): number => @{
+  if (exp === 0) @{
+    return 1;
+  @}
+  if (isEven(exp)) @{
+    return square(expmod(base, exp / 2, m)) % m;
+  @}
+  return (base * expmod(base, exp - 1, m)) % m;
+@};
+@end example
 
 @noindent
-This is very similar to the @code{fast-expt} procedure of @ref{1.2.4}.
+This is very similar to the @code{fastExpt} procedure of @ref{1.2.4}.
 It uses successive squaring, so that the number of steps grows logarithmically
 with the exponent.@footnote{The reduction steps in the cases where the exponent
 @math{e} is greater than 1 are based on the fact that, for any integers @math{x},
@@ -1283,30 +1335,43 @@ computation without ever having to deal with numbers much larger than @math{m}.
 The Fermat test is performed by choosing at random a number @math{a} between 1 and
 @math{{n-1}} inclusive and checking whether the remainder modulo @math{n} of the
 @math{n^{\hbox{th}}} power of @math{a} is equal to @math{a}.  The random number @math{a} is chosen
-using the procedure @code{random}, which we assume is included as a primitive
-in Scheme. @code{Random} returns a nonnegative integer less than its integer
-input.  Hence, to obtain a random number between 1 and @math{{n-1}}, we call
-@code{random} with an input of @math{{n-1}} and add 1 to the result:
+from the seeded generator this edition ships for exactly this purpose (see
+@ref{0.7}), so that the stochastic exercises of this section give the same
+transcript on every machine and every run: @code{new Random(seed)} builds a
+generator from any nonzero 64-bit seed, and @code{rng.random(n)} returns a
+nonnegative integer less than its integer input @math{n}.@footnote{The book
+assumes @code{random} is included as a primitive in Scheme.  A live TypeScript
+program could draw from the host's @code{Math.random} in exactly the same
+shape, but its output cannot be replayed, and a test that draws from it could
+flake; the seeded generator exists so every stochastic exercise in this
+section is reproducible under test.}  Hence, to obtain a random number
+between 1 and @math{{n-1}}, we call @code{rng.random} with an input of @math{{n-1}} and
+add 1 to the result:
 
-@lisp
-(define (fermat-test n)
-  (define (try-it a)
-    (= (expmod a n n) a))
-  (try-it (+ 1 (random (- n 1)))))
-@end lisp
+@example typescript
+const fermatTest = (n: number, rng: Random): boolean => @{
+  const a = 1 + rng.random(n - 1);
+  return expmod(a, n, n) === a;
+@};
+@end example
 
 @noindent
 The following procedure runs the test a given number of times, as specified by
 a parameter.  Its value is true if the test succeeds every time, and false
 otherwise.
 
-@lisp
-(define (fast-prime? n times)
-  (cond ((= times 0) true)
-        ((fermat-test n) 
-         (fast-prime? n (- times 1)))
-        (else false)))
-@end lisp
+@example typescript
+const fastPrime = (n: number, times: number, rng: Random): boolean => @{
+  let remaining = times;
+  while (remaining > 0) @{
+    if (!fermatTest(n, rng)) @{
+      return false;
+    @}
+    remaining -= 1;
+  @}
+  return true;
+@};
+@end example
 
 @subsubheading Probabilistic methods
 
@@ -1365,66 +1430,85 @@ now turns out to have important practical applications to cryptography,
 electronic funds transfer, and information retrieval.}
 
 @quotation
-@strong{@anchor{Exercise 1.21}Exercise 1.21:} Use the @code{smallest-divisor}
+@strong{@anchor{Exercise 1.21}Exercise 1.21:} Use the @code{smallestDivisor}
 procedure to find the smallest divisor of each of the following numbers: 199,
 1999, 19999.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.22}Exercise 1.22:} Most Lisp implementations include
-a primitive called @code{runtime} that returns an integer that specifies the
-amount of time the system has been running (measured, for example, in
-microseconds).  The following @code{timed-prime-test} procedure, when called
-with an integer @math{n}, prints @math{n} and checks to see if @math{n} is prime.  If
-@math{n} is prime, the procedure prints three asterisks followed by the amount of
+@strong{@anchor{Exercise 1.22}Exercise 1.22:} The host that runs TypeScript
+exposes @code{performance.now()}, which returns the elapsed time since the
+program started, measured in milliseconds as a floating-point number.  The
+following @code{timedPrimeTest} procedure, when called with an integer
+@math{n}, checks to see if @math{n} is prime, and if so, reports the elapsed
 time used in performing the test.
 
-@lisp
-(define (timed-prime-test n)
-  (newline)
-  (display n)
-  (start-prime-test n (runtime)))
-@end lisp
+@example typescript
+interface TimedPrime @{
+  readonly n: number;
+  readonly elapsedMillis: number;
+@}
 
-@lisp
-(define (start-prime-test n start-time)
-  (if (prime? n)
-      (report-prime (- (runtime) 
-                       start-time))))
-@end lisp
+const timedPrimeTest = (n: number): TimedPrime | null => @{
+  const start = performance.now();
+  return isPrime(n) ? @{ n, elapsedMillis: performance.now() - start @} : null;
+@};
+@end example
 
-@lisp
-(define (report-prime elapsed-time)
-  (display " *** ")
-  (display elapsed-time))
-@end lisp
-
-Using this procedure, write a procedure @code{search-for-primes} that checks
+Using this procedure, write a procedure @code{searchForPrimes} that checks
 the primality of consecutive odd integers in a specified range.  Use your
 procedure to find the three smallest primes larger than 1000; larger than
 10,000; larger than 100,000; larger than 1,000,000.  Note the time needed to
 test each prime.  Since the testing algorithm has order of growth of
 @math{{\Theta(\sqrt{n})}}, you should expect that testing for primes
 around 10,000 should take about @math{\sqrt{10}} times as long as testing for
-primes around 1000.  Do your timing data bear this out?  How well do the data
-for 100,000 and 1,000,000 support the @math{{\Theta(\sqrt{n})}} prediction?  Is your
-result compatible with the notion that programs on your machine run in time
-proportional to the number of steps required for the computation?
+primes around 1000.  Two host realities color the answer.  The clock is
+coarsened (about 100 microseconds per tick unless the program opts into
+finer resolution), so a prime test that finishes in a few microseconds reads
+as zero; and the just-in-time compiler warms up while the search runs, so the
+first measurements of a session are not representative.  Read the small
+timings as orders of magnitude, and let the next exercise make the
+measurement discipline explicit.  Do your timing data bear out the
+@math{{\Theta(\sqrt{n})}} prediction across the four decades?  How well do the data
+for 100,000 and 1,000,000 support it?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.23}Exercise 1.23:} The @code{smallest-divisor}
+@strong{@anchor{Exercise 1.22a}Exercise 1.22a:} @emph{Exercise 1.22a is
+added by this edition and extends exercise 1.22; SICP numbers stop at
+1.22.}  Raw first-run timings lie on a just-in-time machine: the first
+compilations, inlining decisions, and clock quantization swamp the few
+microseconds a single prime test needs.  Rework the measurement of
+@ref{Exercise 1.22} into a harness that runs each @code{searchForPrimes}
+search once as a warmup round whose samples are discarded, then runs @math{N}
+timed rounds, reporting the median of the round times rather than any single
+run.  Use a workload large enough to survive the clock's coarsening---say,
+searching for the three smallest primes above 100,000,000, where one search
+takes at least a few hundred microseconds---and report the median for the
+searches above 1000, 10,000, 100,000, and 1,000,000 as well.  Assert that
+each search still finds the three primes of @ref{Exercise 1.22}, and that
+the median is stable across repetitions (the spread of the medians stays
+within a generous factor), never that a median matches an exact millisecond
+value.  The rationale should state why a first-run timing under a
+just-in-time compiler is misleading, and what the warmup-plus-median shape
+buys.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.23}Exercise 1.23:} The @code{smallestDivisor}
 procedure shown at the start of this section does lots of needless testing:
 After it checks to see if the number is divisible by 2 there is no point in
 checking to see if it is divisible by any larger even numbers.  This suggests
-that the values used for @code{test-divisor} should not be 2, 3, 4, 5, 6,
+that the values used for @code{testDivisor} should not be 2, 3, 4, 5, 6,
 @dots{}, but rather 2, 3, 5, 7, 9, @dots{}.  To implement this change, define a
 procedure @code{next} that returns 3 if its input is equal to 2 and otherwise
-returns its input plus 2.  Modify the @code{smallest-divisor} procedure to use
-@code{(next test-divisor)} instead of @code{(+ test-divisor 1)}.  With
-@code{timed-prime-test} incorporating this modified version of
-@code{smallest-divisor}, run the test for each of the 12 primes found in
-@ref{Exercise 1.22}.  Since this modification halves the number of test steps,
+returns its input plus 2.  Modify the @code{findDivisor} loop to step with
+@code{next(d)} instead of @code{d + 1}.  With
+@code{timedPrimeTest} incorporating this modified version of
+@code{smallestDivisor}, run the test for each of the 12 primes found in
+@ref{Exercise 1.22}, with the warmup-plus-median discipline of
+@ref{Exercise 1.22a} and the clock of @ref{Exercise 1.22}.  Since this
+modification halves the number of test steps,
 you should expect it to run about twice as fast.  Is this expectation
 confirmed?  If not, what is the observed ratio of the speeds of the two
 algorithms, and how do you explain the fact that it is different from 2?
@@ -1432,9 +1516,12 @@ algorithms, and how do you explain the fact that it is different from 2?
 
 @quotation
 @strong{@anchor{Exercise 1.24}Exercise 1.24:} Modify the
-@code{timed-prime-test} procedure of @ref{Exercise 1.22} to use
-@code{fast-prime?} (the Fermat method), and test each of the 12 primes you
-found in that exercise.  Since the Fermat test has @math{{\Theta(\log n)}}
+@code{timedPrimeTest} procedure of @ref{Exercise 1.22} to use
+@code{fastPrime} (the Fermat method), drawing the witnesses from the seeded
+@code{Random} of this section in the same shape the host's @code{Math.random}
+would provide, and time each of the 12 primes you
+found in that exercise with the warmup-plus-median discipline of
+@ref{Exercise 1.22a}.  Since the Fermat test has @math{{\Theta(\log n)}}
 growth, how would you expect the time to test primes near 1,000,000 to
 compare with the time needed to test primes near 1000?  Do your data bear this
 out?  Can you explain any discrepancy you find?
@@ -1445,37 +1532,42 @@ out?  Can you explain any discrepancy you find?
 we went to a lot of extra work in writing @code{expmod}.  After all, she says,
 since we already know how to compute exponentials, we could have simply written
 
-@lisp
-(define (expmod base exp m)
-  (remainder (fast-expt base exp) m))
-@end lisp
+@example typescript
+const expmodSimplified = (base: number, exp: number, m: number): number =>
+  fastExpt(base, exp) % m;
+@end example
 
 Is she correct?  Would this procedure serve as well for our fast prime tester?
-Explain.
+Explain---and in TypeScript the answer has two layers.  @code{number} is an
+IEEE double: once an intermediate product passes @math{2^{53}} its low bits are
+lost, and once it passes about @math{10^{308}} it becomes @code{Infinity}, whose
+remainder is @code{NaN}; computing the exact modular value demands
+@code{bigint}, which is exact but far slower than the reduction-on-every-step
+@code{expmod}.  Try @code{expmodSimplified} at the exponents a prime test
+near 1,000,000 needs, and at an exponent where @code{fastExpt} still returns
+a finite @code{number}, and compare against @code{expmod} and against a
+@code{bigint} restatement.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 1.26}Exercise 1.26:} Louis Reasoner is having great
-difficulty doing @ref{Exercise 1.24}.  His @code{fast-prime?} test seems to run
-more slowly than his @code{prime?} test.  Louis calls his friend Eva Lu Ator
+difficulty doing @ref{Exercise 1.24}.  His @code{fastPrime} test seems to run
+more slowly than his @code{isPrime} test.  Louis calls his friend Eva Lu Ator
 over to help.  When they examine Louis's code, they find that he has rewritten
 the @code{expmod} procedure to use an explicit multiplication, rather than
 calling @code{square}:
 
-@lisp
-(define (expmod base exp m)
-  (cond ((= exp 0) 1)
-        ((even? exp)
-         (remainder 
-          (* (expmod base (/ exp 2) m)
-             (expmod base (/ exp 2) m))
-          m))
-        (else
-         (remainder 
-          (* base 
-             (expmod base (- exp 1) m))
-          m))))
-@end lisp
+@example typescript
+const expmodExplicit = (base: number, exp: number, m: number): number => @{
+  if (exp === 0) @{
+    return 1;
+  @}
+  if (isEven(exp)) @{
+    return (expmodExplicit(base, exp / 2, m) * expmodExplicit(base, exp / 2, m)) % m;
+  @}
+  return (base * expmodExplicit(base, exp - 1, m)) % m;
+@};
+@end example
 
 ``I don't see what difference that could make,'' says Louis.  @w{``I do.''}  says
 Eva.  ``By writing the procedure like that, you have transformed the
@@ -1510,8 +1602,10 @@ is not prime, then, for at least half the numbers @math{{a < n}}, computing
 @math{n}.  (This is why the Miller-Rabin test cannot be fooled.)  Modify the
 @code{expmod} procedure to signal if it discovers a nontrivial square root of
 1, and use this to implement the Miller-Rabin test with a procedure analogous
-to @code{fermat-test}.  Check your procedure by testing various known primes
-and non-primes.  Hint: One convenient way to make @code{expmod} signal is to
-have it return 0.
+to @code{fermatTest}, drawing its witnesses from the seeded @code{Random}.
+Check your procedure by testing various known primes
+and non-primes, and by re-running the witnesses one by one for a fixed,
+reproducible transcript.  Hint: One convenient way to make @code{expmod}
+signal is to have it return 0.
 @end quotation
 

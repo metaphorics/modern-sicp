@@ -5,6 +5,8 @@ package sicp.ch4.solutions
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import sicp.ch4.QuerySystem
+import sicp.ch4.ambDriver
 
 public class E4_78Test :
     FunSpec({
@@ -78,6 +80,36 @@ public class E4_78Test :
                     "(or (supervisor (Fect Cy D) (Bitdiddle Ben)) (supervisor (Fect Cy D) (Hacker Alyssa P)))",
                     "(or (supervisor (Tweakit Lem E) (Bitdiddle Ben)) (supervisor (Tweakit Lem E) (Hacker Alyssa P)))",
                     "(or (supervisor (Reasoner Louis) (Bitdiddle Ben)) (supervisor (Reasoner Louis) (Hacker Alyssa P)))",
+                )
+        }
+        test("Exercise 4.78: an or nested under an and restores the and's entry frame: restricted join") {
+            val shared = QuerySystem()
+            shared.load(microshaftDatabase)
+            val amb = ambDriver({ env, random -> QueryAmbEvaluator(env, random, shared) }, "")
+            val answers = mutableListOf<String>()
+            var round = amb.input("(and (supervisor ?x ?y) (or (job ?x ?j) (salary ?x ?s)))")
+            while (!round.contains("There are no more values")) {
+                answerValues(round).forEach(answers::add)
+                round = amb.input("try-again")
+            }
+            answers shouldBe
+                listOf(
+                    "(and (supervisor (Hacker Alyssa P) (Bitdiddle Ben)) (or (job (Hacker Alyssa P) (computer programmer)) (salary (Hacker Alyssa P) ?s)))",
+                    "(and (supervisor (Hacker Alyssa P) (Bitdiddle Ben)) (or (job (Hacker Alyssa P) ?j) (salary (Hacker Alyssa P) 40000)))",
+                    "(and (supervisor (Fect Cy D) (Bitdiddle Ben)) (or (job (Fect Cy D) (computer programmer)) (salary (Fect Cy D) ?s)))",
+                    "(and (supervisor (Fect Cy D) (Bitdiddle Ben)) (or (job (Fect Cy D) ?j) (salary (Fect Cy D) 35000)))",
+                    "(and (supervisor (Tweakit Lem E) (Bitdiddle Ben)) (or (job (Tweakit Lem E) (computer technician)) (salary (Tweakit Lem E) ?s)))",
+                    "(and (supervisor (Tweakit Lem E) (Bitdiddle Ben)) (or (job (Tweakit Lem E) ?j) (salary (Tweakit Lem E) 25000)))",
+                    "(and (supervisor (Reasoner Louis) (Hacker Alyssa P)) (or (job (Reasoner Louis) (computer programmer trainee)) (salary (Reasoner Louis) ?s)))",
+                    "(and (supervisor (Reasoner Louis) (Hacker Alyssa P)) (or (job (Reasoner Louis) ?j) (salary (Reasoner Louis) 30000)))",
+                    "(and (supervisor (Bitdiddle Ben) (Warbucks Oliver)) (or (job (Bitdiddle Ben) (computer wizard)) (salary (Bitdiddle Ben) ?s)))",
+                    "(and (supervisor (Bitdiddle Ben) (Warbucks Oliver)) (or (job (Bitdiddle Ben) ?j) (salary (Bitdiddle Ben) 60000)))",
+                    "(and (supervisor (Scrooge Eben) (Warbucks Oliver)) (or (job (Scrooge Eben) (accounting chief accountant)) (salary (Scrooge Eben) ?s)))",
+                    "(and (supervisor (Scrooge Eben) (Warbucks Oliver)) (or (job (Scrooge Eben) ?j) (salary (Scrooge Eben) 75000)))",
+                    "(and (supervisor (Cratchet Robert) (Scrooge Eben)) (or (job (Cratchet Robert) (accounting scrivener)) (salary (Cratchet Robert) ?s)))",
+                    "(and (supervisor (Cratchet Robert) (Scrooge Eben)) (or (job (Cratchet Robert) ?j) (salary (Cratchet Robert) 18000)))",
+                    "(and (supervisor (Aull DeWitt) (Warbucks Oliver)) (or (job (Aull DeWitt) (administration secretary)) (salary (Aull DeWitt) ?s)))",
+                    "(and (supervisor (Aull DeWitt) (Warbucks Oliver)) (or (job (Aull DeWitt) ?j) (salary (Aull DeWitt) 25000)))",
                 )
         }
     })

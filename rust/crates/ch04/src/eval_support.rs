@@ -627,3 +627,121 @@ fn apply_arity(name: &str, got: usize) -> SchemeError {
 fn closure_display_name(closure: &Closure) -> &str {
     closure.name.as_deref().unwrap_or("#[compound-procedure]")
 }
+
+// ---------------------------------------------------------------------------
+// Section 4.3: the shared amb session helpers.
+// ---------------------------------------------------------------------------
+
+pub use crate::sec_4_3::{
+    Amb, Cont, SpecialHook, amb_table, amb_transcript, run_amb, setup_amb_environment,
+    setup_amb_environment_in,
+};
+
+/// The session seed every 4.3 solution and example threads through its
+/// driver, so `ramb` searches replay identically across runs.
+pub const AMB_SEED: u64 = 20_260_925;
+
+/// Evaluates every form of `program` in one fresh global environment --
+/// each form as its own problem, definitions first -- and collects every
+/// answer of the last form's search, the first answer included, as
+/// printed values. The search running dry ends the collection; a form
+/// whose whole search fails answers an empty vector.
+///
+/// The caller runs the search on the 256 MiB worker stack
+/// ([`with_eval_stack`]): the parser and puzzle searches nest the host
+/// stack a few hundred evaluation frames deep.
+///
+/// # Panics
+/// Panics when a resumed search raises an object error, which only a
+/// broken exercise program causes.
+#[must_use]
+pub fn collect_amb_answers(amb: &Amb, program: &str) -> Vec<String> {
+    let env = setup_amb_environment_in(&output_buffer_sink());
+    let forms = read_program(program).expect("the exercise program parses");
+    let Some(last) = forms.last().cloned() else {
+        return Vec::new();
+    };
+    for form in &forms[..forms.len() - 1] {
+        let _ = amb.run_form(form, &env);
+    }
+    let mut out = Vec::new();
+    if let Ok(first) = amb.run_form(&last, &env) {
+        out.push(print_value(&first));
+        loop {
+            match amb.try_again() {
+                Ok(value) => out.push(print_value(&value)),
+                Err(SchemeError::Backtrack) => break,
+                Err(error) => panic!("resumed search raised: {error}"),
+            }
+        }
+    }
+    out
+}
+
+/// [`collect_amb_answers`] limited to the first `n` answers, for the
+/// unbounded searches the exercises sample: the collection stops at
+/// `n` answers instead of waiting for a search that never runs dry.
+///
+/// # Panics
+/// As [`collect_amb_answers`].
+#[must_use]
+pub fn first_amb_answers(amb: &Amb, program: &str, n: usize) -> Vec<String> {
+    let env = setup_amb_environment_in(&output_buffer_sink());
+    let forms = read_program(program).expect("the exercise program parses");
+    let Some(last) = forms.last().cloned() else {
+        return Vec::new();
+    };
+    for form in &forms[..forms.len() - 1] {
+        let _ = amb.run_form(form, &env);
+    }
+    let mut out = Vec::new();
+    if let Ok(first) = amb.run_form(&last, &env) {
+        out.push(print_value(&first));
+        while out.len() < n {
+            match amb.try_again() {
+                Ok(value) => out.push(print_value(&value)),
+                Err(SchemeError::Backtrack) => break,
+                Err(error) => panic!("resumed search raised: {error}"),
+            }
+        }
+    }
+    out
+}
+
+/// A buffered output sink for the amb session environments.
+fn output_buffer_sink() -> sec_4_1::OutputSink {
+    let (sink, _cell) = crate::sec_4_1::OutputSink::buffer();
+    sink
+}
+
+/// Runs `lines` as one book driver session on the worker stack, from a
+/// driver seeded with [`AMB_SEED`]: the entry the section's listings
+/// use. A `try-again` line resumes the problem in flight; any other
+/// line starts a new problem.
+///
+/// # Panics
+/// Panics when the session seed is zero, which [`AMB_SEED`] never is.
+#[must_use]
+pub fn amb_session(lines: &[&str]) -> String {
+    let lines: Vec<String> = lines.iter().map(|line| (*line).to_owned()).collect();
+    with_eval_stack(move || {
+        let owned: Vec<&str> = lines.iter().map(String::as_str).collect();
+        let amb = Amb::new(AMB_SEED).expect("the session seed is nonzero");
+        amb_transcript(&amb, &owned)
+    })
+}
+
+/// [`collect_amb_answers`] over a fresh seeded driver on the worker
+/// stack: every answer of the last form's search, the entry the
+/// section's listings use for a program's complete answer set.
+///
+/// # Panics
+/// As [`collect_amb_answers`].
+#[must_use]
+pub fn amb_answers(program: &[&str]) -> Vec<String> {
+    let text = program.join("\n");
+    with_eval_stack(move || {
+        let amb = Amb::new(AMB_SEED).expect("the session seed is nonzero");
+        collect_amb_answers(&amb, &text)
+    })
+}

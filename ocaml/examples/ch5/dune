@@ -1,7 +1,7 @@
 (library
  (name sicp_ch5)
  (libraries sicp_common)
- (modules sec_5_1 sec_5_2 sec_5_3))
+ (modules sec_5_1 sec_5_2 sec_5_3 sec_5_4))
 
 (executable
  (name run_sec_5_1)
@@ -32,3 +32,13 @@
  (alias runtest)
  (action
   (run ./run_sec_5_3.exe)))
+
+(executable
+ (name run_sec_5_4)
+ (modules run_sec_5_4)
+ (libraries sicp_ch5 sicp_ch1 sicp_ch5_solutions))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_5_4.exe)))

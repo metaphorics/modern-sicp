@@ -9,8 +9,8 @@ only to define operations that are generic over different representations but
 also to define operations that are generic over different kinds of arguments.
 We have already seen several different packages of arithmetic operations: the
 primitive arithmetic (@code{+}, @code{-}, @code{*}, @code{/}) built into our
-language, the rational-number arithmetic (@code{add-rat}, @code{sub-rat},
-@code{mul-rat}, @code{div-rat}) of @ref{2.1.1}, and the complex-number
+language, the rational-number arithmetic (@code{addRat}, @code{subRat},
+@code{mulRat}, @code{divRat}) of @ref{2.1.1}, and the complex-number
 arithmetic that we implemented in @ref{2.4.3}.  We will now use
 data-directed techniques to construct a package of arithmetic operations that
 incorporates all the arithmetic packages we have already constructed.
@@ -18,11 +18,11 @@ incorporates all the arithmetic packages we have already constructed.
 @ref{Figure 2.23} shows the structure of the system we shall build.  Notice the
 abstraction barriers.  From the perspective of someone using ``numb@-ers,'' there
 is a single procedure @code{add} that operates on whatever numb@-ers are
-supplied.  @code{Add} is part of a generic interface that allows the separate
+supplied.  @code{add} is part of a generic interface that allows the separate
 or@-di@-na@-ry-arithmetic, rational-arithmetic, and complex-arithmetic pack@-ag@-es to be
 accessed uniformly by programs that use numbers.  Any individual arithmetic
 package (such as the complex package) may itself be accessed through generic
-procedures (such as @code{add-complex}) that combine packages designed for
+procedures (such as @code{addComplex}) that combine packages designed for
 different representations (such as rectangular and polar).  Moreover, the
 structure of the system is additive, so that one can design the individual
 arithmetic packages separately and combine them to produce a generic arithmetic
@@ -75,8 +75,8 @@ system.
 The task of designing generic arithmetic operations is analogous to that of
 designing the generic complex-number operations.  We would like, for instance,
 to have a generic addition procedure @code{add} that acts like ordinary
-primitive addition @code{+} on ordinary numbers, like @code{add-rat} on
-rational numbers, and like @code{add-complex} on complex numbers.  We can
+primitive addition @code{+} on ordinary numbers, like @code{addRat} on
+rational numbers, and like @code{addComplex} on complex numbers.  We can
 implement @code{add}, and the other generic arithmetic operations, by following
 the same strategy we used in @ref{2.4.3} to implement the generic
 selectors for complex numbers.  We will attach a type tag to each kind of
@@ -85,47 +85,49 @@ according to the data type of its arguments.
 
 The generic arithmetic procedures are defined as follows:
 
-@lisp
-(define (add x y) (apply-generic 'add x y))
-(define (sub x y) (apply-generic 'sub x y))
-(define (mul x y) (apply-generic 'mul x y))
-(define (div x y) (apply-generic 'div x y))
-@end lisp
+@example typescript
+export const add = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+  applyGeneric("add", x, y);
+export const sub = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+  applyGeneric("sub", x, y);
+export const mul = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+  applyGeneric("mul", x, y);
+export const div = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+  applyGeneric("div", x, y);
+@end example
 
 @noindent
 We begin by installing a package for handling @newterm{ordinary} numbers, that
-is, the primitive numbers of our language.  We will tag these with the symbol
-@code{scheme-number}.  The arithmetic operations in this package are the
+is, the primitive numbers of our language.  We will tag these with the name
+@code{"scheme-number"}.  The arithmetic operations in this package are the
 primitive arithmetic procedures (so there is no need to define extra procedures
 to handle the untagged numbers).  Since these operations each take two
 arguments, they are installed in the table keyed by the list
-@code{(scheme-number scheme-number)}:
+@code{["scheme-number", "scheme-number"]}:
 
-@lisp
-(define (install-scheme-number-package)
-  (define (tag x)
-    (attach-tag 'scheme-number x))
-  (put 'add '(scheme-number scheme-number)
-       (lambda (x y) (tag (+ x y))))
-  (put 'sub '(scheme-number scheme-number)
-       (lambda (x y) (tag (- x y))))
-  (put 'mul '(scheme-number scheme-number)
-       (lambda (x y) (tag (* x y))))
-  (put 'div '(scheme-number scheme-number)
-       (lambda (x y) (tag (/ x y))))
-  (put 'make 'scheme-number
-       (lambda (x) (tag x)))
-  'done)
-@end lisp
+@example typescript
+export const installSchemeNumberPackage = (): void => @{
+  put("add", ["scheme-number", "scheme-number"], bigintOp("add", (x, y) => x + y));
+  put("sub", ["scheme-number", "scheme-number"], bigintOp("sub", (x, y) => x - y));
+  put("mul", ["scheme-number", "scheme-number"], bigintOp("mul", (x, y) => x * y));
+  put("div", ["scheme-number", "scheme-number"], bigintOp("div", (x, y) => x / y));
+  put("make", ["scheme-number"], @{ _tag: "MakeNumber", fn: (n: bigint) => n @});
+@};
+@end example
 
 @noindent
-Users of the Scheme-number package will create (tagged) ordinary numbers by
-means of the procedure:
+Users of the scheme-number package will create (tagged) ordinary numbers by
+means of the constructor:
 
-@lisp
-(define (make-scheme-number n)
-  ((get 'make 'scheme-number) n))
-@end lisp
+@example typescript
+export const makeSchemeNumber = (n: bigint): SchemeNumber => @{
+  const e = get("make", ["scheme-number"]);
+  if (e._tag === "Some" && e.value._tag === "MakeNumber") @{
+    return e.value.fn(n);
+  @}
+  throw new Error("make: no constructor for scheme-number");
+@};
+@end example
 
 @noindent
 Now that the framework of the generic arithmetic system is in place, we can
@@ -134,104 +136,76 @@ arithmetic.  Notice that, as a benefit of additivity, we can use without
 modification the rational-number code from @ref{2.1.1} as the internal
 procedures in the package:
 
-@lisp
-(define (install-rational-package)
-  @r{;; internal procedures}
-  (define (numer x) (car x))
-  (define (denom x) (cdr x))
-  (define (make-rat n d)
-    (let ((g (gcd n d)))
-      (cons (/ n g) (/ d g))))
-  (define (add-rat x y)
-    (make-rat (+ (* (numer x) (denom y))
-                 (* (numer y) (denom x)))
-              (* (denom x) (denom y))))
-  (define (sub-rat x y)
-    (make-rat (- (* (numer x) (denom y))
-                 (* (numer y) (denom x)))
-              (* (denom x) (denom y))))
-  (define (mul-rat x y)
-    (make-rat (* (numer x) (numer y))
-              (* (denom x) (denom y))))
-  (define (div-rat x y)
-    (make-rat (* (numer x) (denom y))
-              (* (denom x) (numer y))))
-  @r{;; interface to rest of the system}
-  (define (tag x) (attach-tag 'rational x))
-  (put 'add '(rational rational)
-       (lambda (x y) (tag (add-rat x y))))
-  (put 'sub '(rational rational)
-       (lambda (x y) (tag (sub-rat x y))))
-  (put 'mul '(rational rational)
-       (lambda (x y) (tag (mul-rat x y))))
-  (put 'div '(rational rational)
-       (lambda (x y) (tag (div-rat x y))))
-  (put 'make 'rational
-       (lambda (n d) (tag (make-rat n d))))
-  'done)
+@example typescript
+export const installRationalPackage = (): void => @{
+  // internal procedures
+  const numer = (x: RatContents): bigint => x[0];
+  const denom = (x: RatContents): bigint => x[1];
+  const makeRat = (n: bigint, d: bigint): RatContents => @{
+    const g = gcdInteger(n, d);
+    return [n / g, d / g];
+  @};
+  const addRat = (x: RatContents, y: RatContents): RatContents =>
+    makeRat(numer(x) * denom(y) + numer(y) * denom(x), denom(x) * denom(y));
+  const subRat = (x: RatContents, y: RatContents): RatContents =>
+    makeRat(numer(x) * denom(y) - numer(y) * denom(x), denom(x) * denom(y));
+  const mulRat = (x: RatContents, y: RatContents): RatContents =>
+    makeRat(numer(x) * numer(y), denom(x) * denom(y));
+  const divRat = (x: RatContents, y: RatContents): RatContents =>
+    makeRat(numer(x) * denom(y), denom(x) * numer(y));
+  // interface to rest of the system
+  const tag = (x: RatContents): Rational => attachTag("rational", x);
+  const rat2 = (name: string, f: (x: RatContents, y: RatContents) => RatContents): ArithHandler =>
+    ratOp(name, (x, y) => ok(tag(f(x, y))));
+  put("add", ["rational", "rational"], rat2("add", addRat));
+  put("sub", ["rational", "rational"], rat2("sub", subRat));
+  put("mul", ["rational", "rational"], rat2("mul", mulRat));
+  put("div", ["rational", "rational"], rat2("div", divRat));
+  put("make", ["rational"], @{ _tag: "MakeRational", fn: (n: bigint, d: bigint) => tag(makeRat(n, d)) @});
+@};
 
-(define (make-rational n d)
-  ((get 'make 'rational) n d))
-@end lisp
+export const makeRational = (n: bigint, d: bigint): Rational => @{
+  const e = get("make", ["rational"]);
+  if (e._tag === "Some" && e.value._tag === "MakeRational") @{
+    return e.value.fn(n, d);
+  @}
+  throw new Error("make: no constructor for rational");
+@};
+@end example
 
 @noindent
 We can install a similar package to handle complex numbers, using the tag
 @code{complex}.  In creating the package, we extract from the table the
-operations @code{make-from-real-imag} and @code{make-from-mag-ang} that were
+operations @code{makeFromRealImag} and @code{makeFromMagAng} that were
 defined by the rectangular and polar packages.  Additivity permits us to use,
-as the internal operations, the same @code{add-complex}, @code{sub-complex},
-@code{mul-complex}, and @code{div-complex} procedures from @ref{2.4.1}.
+as the internal operations, the same @code{addComplex}, @code{subComplex},
+@code{mulComplex}, and @code{divComplex} procedures from @ref{2.4.1}.
 
-@lisp
-(define (install-complex-package)
-  @r{;; imported procedures from rectangular} 
-  @r{;; and polar packages}
-  (define (make-from-real-imag x y)
-    ((get 'make-from-real-imag 
-          'rectangular) 
-     x y))
-  (define (make-from-mag-ang r a)
-    ((get 'make-from-mag-ang 'polar) 
-     r a))
-  @r{;; internal procedures}
-  (define (add-complex z1 z2)
-    (make-from-real-imag 
-     (+ (real-part z1) (real-part z2))
-     (+ (imag-part z1) (imag-part z2))))
-  (define (sub-complex z1 z2)
-    (make-from-real-imag 
-     (- (real-part z1) (real-part z2))
-     (- (imag-part z1) (imag-part z2))))
-  (define (mul-complex z1 z2)
-    (make-from-mag-ang 
-     (* (magnitude z1) (magnitude z2))
-     (+ (angle z1) (angle z2))))
-  (define (div-complex z1 z2)
-    (make-from-mag-ang 
-     (/ (magnitude z1) (magnitude z2))
-     (- (angle z1) (angle z2))))
-  @r{;; interface to rest of the system}
-  (define (tag z) (attach-tag 'complex z))
-  (put 'add '(complex complex)
-       (lambda (z1 z2) 
-         (tag (add-complex z1 z2))))
-  (put 'sub '(complex complex)
-       (lambda (z1 z2) 
-         (tag (sub-complex z1 z2))))
-  (put 'mul '(complex complex)
-       (lambda (z1 z2) 
-         (tag (mul-complex z1 z2))))
-  (put 'div '(complex complex)
-       (lambda (z1 z2) 
-         (tag (div-complex z1 z2))))
-  (put 'make-from-real-imag 'complex
-       (lambda (x y) 
-         (tag (make-from-real-imag x y))))
-  (put 'make-from-mag-ang 'complex
-       (lambda (r a) 
-         (tag (make-from-mag-ang r a))))
-  'done)
-@end lisp
+@example typescript
+export const installComplexPackage = (): void => @{
+  // imported procedures from rectangular
+  // and polar packages
+  const makeFromRealImag = (x: number, y: number): Result<InnerComplex, GenError> =>
+    invokeConstructor("make-from-real-imag", "rectangular", x, y);
+  const makeFromMagAng = (r: number, a: number): Result<InnerComplex, GenError> =>
+    invokeConstructor("make-from-mag-ang", "polar", r, a);
+  // internal procedures
+  const addComplex = (z1: InnerComplex, z2: InnerComplex): Result<InnerComplex, GenError> =>
+    makeFromRealImag(repRealPart(z1) + repRealPart(z2), repImagPart(z1) + repImagPart(z2));
+  const subComplex = (z1: InnerComplex, z2: InnerComplex): Result<InnerComplex, GenError> =>
+    makeFromRealImag(repRealPart(z1) - repRealPart(z2), repImagPart(z1) - repImagPart(z2));
+  const mulComplex = (z1: InnerComplex, z2: InnerComplex): Result<InnerComplex, GenError> =>
+    makeFromMagAng(repMagnitude(z1) * repMagnitude(z2), repAngle(z1) + repAngle(z2));
+  const divComplex = (z1: InnerComplex, z2: InnerComplex): Result<InnerComplex, GenError> =>
+    makeFromMagAng(repMagnitude(z1) / repMagnitude(z2), repAngle(z1) - repAngle(z2));
+  // interface to rest of the system
+  const tag = (z: InnerComplex): ComplexNumber => attachTag("complex", z);
+  put("add", ["complex", "complex"], complexOp("add", (z1, z2) => ok(tag(addComplex(z1, z2).value))));
+  // ... the sub, mul, and div entries follow the same shape:
+  put("make-from-real-imag", ["complex"], @{ _tag: "MakeComplexRealImag", fn: (x: number, y: number) => mapGen(makeFromRealImag(x, y), tag) @});
+  put("make-from-mag-ang", ["complex"], @{ _tag: "MakeComplexMagAng", fn: (r: number, a: number) => mapGen(makeFromMagAng(r, a), tag) @});
+@};
+@end example
 
 @noindent
 Programs outside the complex-number package can construct complex numbers
@@ -240,12 +214,12 @@ the underlying procedures, originally defined in the rectangular and polar
 packages, are exported to the complex package, and exported from there to the
 outside world.
 
-@lisp
-(define (make-complex-from-real-imag x y)
-  ((get 'make-from-real-imag 'complex) x y))
-(define (make-complex-from-mag-ang r a)
-  ((get 'make-from-mag-ang 'complex) r a))
-@end lisp
+@example typescript
+export const makeComplexFromRealImag = (x: number, y: number): ComplexNumber =>
+  invokeConstructor("make-from-real-imag", "complex", x, y);
+export const makeComplexFromMagAng = (r: number, a: number): ComplexNumber =>
+  invokeConstructor("make-from-mag-ang", "complex", r, a);
+@end example
 
 @noindent
 What we have here is a two-level tag system.  A typical complex number, such as
@@ -288,7 +262,7 @@ package is stripped off (by applying @code{contents}) and the next level of tag
 @end float
 
 @noindent
-In the above packages, we used @code{add-rat}, @code{add-complex}, and the
+In the above packages, we used @code{addRat}, @code{addComplex}, and the
 other arithmetic procedures exactly as originally written.  Once these
 definitions are internal to different installation procedures, however, they no
 longer need names that are distinct from each other: we could simply name them
@@ -298,24 +272,24 @@ longer need names that are distinct from each other: we could simply name them
 @strong{@anchor{Exercise 2.77}Exercise 2.77:} Louis Reasoner tries to evaluate
 the expression @code{(magnitude z)} where @code{z} is the object shown in
 @ref{Figure 2.24}.  To his surprise, instead of the answer 5 he gets an error
-message from @code{apply-generic}, saying there is no method for the operation
-@code{magnitude} on the types @code{(complex)}.  He shows this interaction to
+message from @code{applyGeneric}, saying there is no method for the operation
+@code{magnitude} on the types @code{["complex"]}.  He shows this interaction to
 Alyssa P. Hacker, who says ``The problem is that the complex-number selectors
 were never defined for @code{complex} numbers, just for @code{polar} and
 @code{rectangular} numbers.  All you have to do to make this work is add the
 following to the @code{complex} package:''
 
-@lisp
-(put 'real-part '(complex) real-part)
-(put 'imag-part '(complex) imag-part)
-(put 'magnitude '(complex) magnitude)
-(put 'angle '(complex) angle)
-@end lisp
+@example typescript
+put("real-part", ["complex"], @{ _tag: "Selector", fn: repSelector("real-part") @});
+put("imag-part", ["complex"], @{ _tag: "Selector", fn: repSelector("imag-part") @});
+put("magnitude", ["complex"], @{ _tag: "Selector", fn: repSelector("magnitude") @});
+put("angle", ["complex"], @{ _tag: "Selector", fn: repSelector("angle") @});
+@end example
 
 Describe in detail why this works.  As an example, trace through all the
 procedures called in evaluating the expression @code{(magnitude z)} where
 @code{z} is the object shown in @ref{Figure 2.24}.  In particular, how many
-times is @code{apply-generic} invoked?  What procedure is dispatched to in each
+times is @code{applyGeneric} invoked?  What procedure is dispatched to in each
 case?
 @end quotation
 
@@ -326,10 +300,10 @@ primitive procedures @code{+}, @code{-}, etc.  It was not possible to use the
 primitives of the language directly because our type-tag system requires that
 each data object have a type attached to it.  In fact, however, all Lisp
 implementations do have a type system, which they use internally.  Primitive
-predicates such as @code{symbol?} and @code{number?}  determine whether data
-objects have particular types.  Modify the definitions of @code{type-tag},
-@code{contents}, and @code{attach-tag} from @ref{2.4.2} so that our
-generic system takes advantage of Scheme's internal type system.  That is to
+predicates such as @code{typeof x === "number"} determine whether data
+objects have particular types.  Modify the definitions of @code{typeTagOf},
+@code{contentsOf}, and @code{attachTag} from @ref{2.4.2} so that our
+generic system takes advantage of the language's own type system.  That is to
 say, the system should work as before except that ordinary numbers should be
 represented simply as Scheme numbers rather than as pairs whose @code{car} is
 the symbol @code{scheme-number}.
@@ -369,20 +343,26 @@ One way to handle cross-type operations is to design a different procedure for
 each possible combination of types for which the operation is valid.  For
 example, we could extend the complex-number package so that it provides a
 procedure for adding complex numbers to ordinary numbers and installs this in
-the table using the tag @code{(complex scheme-number)}:@footnote{We also have
+the table using the tag @code{["complex", "scheme-number"]}:@footnote{We also have
 to supply an almost identical procedure to handle the types
-@code{(scheme-number complex)}.}
+@code{["scheme-number", "complex"]}.}
 
-@lisp
-(define (add-complex-to-schemenum z x)
-  (make-from-real-imag (+ (real-part z) x)
-                       (imag-part z)))
+@example typescript
+export const addComplexToSchemenum = (z: ComplexNumber, x: bigint): Result<ComplexNumber, GenError> => @{
+  const re = realPart(z);
+  if (re._tag === "Error") @{
+    return re;
+  @}
+  const im = imagPart(z);
+  if (im._tag === "Error") @{
+    return im;
+  @}
+  return ok(makeComplexFromRealImag(re.value + Number(x), im.value));
+@};
 
-(put 'add 
-     '(complex scheme-number)
-     (lambda (z x) 
-       (tag (add-complex-to-schemenum z x))))
-@end lisp
+put("add", ["complex", "scheme-number"], complexOp("add", (z, x) =>
+  addComplexToSchemenum(attachTag("complex", z), BigInt(x))));
+@end example
 
 @noindent
 This technique works, but it is cumbersome.  With such a system, the cost of
@@ -421,32 +401,32 @@ transform an object of one type into an equivalent object of another type.
 Here is a typical coercion procedure, which transforms a given ordinary number
 to a complex number with that real part and zero imaginary part:
 
-@lisp
-(define (scheme-number->complex n)
-  (make-complex-from-real-imag 
-   (contents n) 0))
-@end lisp
+@example typescript
+export const schemeNumberToComplex = (n: ArithDatum): Result<ArithDatum, GenError> =>
+  typeof n === "bigint"
+    ? ok(makeComplexFromRealImag(Number(n), 0))
+    : err(@{ _tag: "NoMethod", op: "coerce", tags: ["scheme-number"] @});
+@end example
 
 @noindent
 We install these coercion procedures in a special coercion table, indexed under
 the names of the two types:
 
-@lisp
-(put-coercion 'scheme-number 'complex 
-              scheme-number->complex)
-@end lisp
+@example typescript
+putCoercion("scheme-number", "complex", schemeNumberToComplex);
+@end example
 
 @noindent
-(We assume that there are @code{put-coercion} and @code{get-coercion}
+(We assume that there are @code{putCoercion} and @code{getCoercion}
 procedures available for manipulating this table.)  Generally some of the slots
 in the table will be empty, because it is not generally possible to coerce an
 arbitrary data object of each type into all other types.  For example, there is
 no way to coerce an arbitrary complex number to an ordinary number, so there
-will be no general @code{complex->scheme-number} procedure included in the
+will be no general @code{complexToSchemeNumber} procedure included in the
 table.
 
 Once the coercion table has been set up, we can handle coercion in a uniform
-manner by modifying the @code{apply-generic} procedure of @ref{2.4.3}.
+manner by modifying the @code{applyGeneric} procedure of @ref{2.4.3}.
 When asked to apply an operation, we first check whether the operation is
 defined for the arguments' types, just as before.  If so, we dispatch to the
 procedure found in the operation-and-type table.  Otherwise, we try coercion.
@@ -460,40 +440,31 @@ second argument to the type of the first argument.  Finally, if there is no
 known way to coerce either type to the other type, we give up.  Here is the
 procedure:
 
-@lisp
-(define (apply-generic op . args)
-  (let ((type-tags (map type-tag args)))
-    (let ((proc (get op type-tags)))
-      (if proc
-          (apply proc (map contents args))
-          (if (= (length args) 2)
-              (let ((type1 (car type-tags))
-                    (type2 (cadr type-tags))
-                    (a1 (car args))
-                    (a2 (cadr args)))
-                (let ((t1->t2 
-                       (get-coercion type1
-                                     type2))
-                      (t2->t1 
-                       (get-coercion type2 
-                                     type1)))
-                  (cond (t1->t2
-                         (apply-generic 
-                          op (t1->t2 a1) a2))
-                        (t2->t1
-                         (apply-generic 
-                          op a1 (t2->t1 a2)))
-                        (else
-                         (error 
-                          "No method for 
-                           these types"
-                          (list 
-                           op 
-                           type-tags))))))
-              (error 
-               "No method for these types"
-               (list op type-tags)))))))
-@end lisp
+@example typescript
+export const applyGeneric = (
+  opName: string,
+  ...args: ReadonlyArray<ArithDatum>,
+): Result<ArithDatum, GenError> => @{
+  const typeTags = args.map(typeTagOf);
+  const proc = getOp(opName, typeTags);
+  if (proc._tag === "Some") @{
+    return proc.value(args.map(contentsOf));
+  @}
+  if (args.length === 2) @{
+    const [a1, a2] = args;
+    const [type1, type2] = typeTags;
+    const t1toT2 = type1 !== undefined && type2 !== undefined ? getCoercion(type1, type2) : none;
+    if (t1toT2._tag === "Some" && a1 !== undefined) @{
+      return bindGen(t1toT2.value(a1), (coerced) => applyGeneric(opName, coerced, a2));
+    @}
+    const t2toT1 = type1 !== undefined && type2 !== undefined ? getCoercion(type2, type1) : none;
+    if (t2toT1._tag === "Some" && a2 !== undefined) @{
+      return bindGen(t2toT1.value(a2), (coerced) => applyGeneric(opName, a1, coerced));
+    @}
+  @}
+  return err(@{ _tag: "NoMethod", op: opName, tags: typeTags @});
+@};
+@end example
 
 @noindent
 This coercion scheme has many advantages over the method of defining explicit
@@ -581,7 +552,7 @@ number, and how a real number is transformed into a complex number.  We then
 allow the system to transform the integer into a complex number through these
 steps and then add the two complex numbers.
 
-We can redesign our @code{apply-generic} procedure in the following way: For
+We can redesign our @code{applyGeneric} procedure in the following way: For
 each type, we need to supply a @code{raise} procedure, which ``raises'' objects
 of that type one level in the tower.  Then when the system is required to
 operate on objects of different types it can successively raise the lower types
@@ -591,10 +562,10 @@ and @ref{Exercise 2.84} concern the details of implementing such a strategy.)
 Another advantage of a tower is that we can easily implement the notion that
 every type ``inherits'' all operations defined on a supertype.  For instance,
 if we do not supply a special procedure for finding the real part of an
-integer, we should nevertheless expect that @code{real-part} will be defined
+integer, we should nevertheless expect that @code{realPart} will be defined
 for integers by virtue of the fact that integers are a subtype of complex
 numbers.  In a tower, we can arrange for this to happen in a uniform way by
-modifying @code{apply-generic}.  If the required operation is not directly
+modifying @code{applyGeneric}.  If the required operation is not directly
 defined for the type of the object given, we raise the object to its supertype
 and try again.  We thus crawl up the tower, transforming our argument as we go,
 until we either find a level at which the desired operation can be performed or
@@ -623,7 +594,7 @@ triangle.  This multiple-supertypes issue is particularly thorny, since it
 means that there is no unique way to ``raise'' a type in the hierarchy.
 Finding the ``correct'' supertype in which to apply an operation to an object
 may involve considerable searching through the entire type network on the part
-of a procedure such as @code{apply-generic}.  Since there generally are
+of a procedure such as @code{applyGeneric}.  Since there generally are
 multiple subtypes for a type, there is a similar problem in coercing a value
 ``down'' the type hierarchy.  Dealing with large numbers of interrelated types
 while still preserving modularity in the design of large systems is very
@@ -685,59 +656,54 @@ triangle      right          |       \    |
 
 @quotation
 @strong{@anchor{Exercise 2.81}Exercise 2.81:} Louis Reasoner has noticed that
-@code{apply-generic} may try to coerce the arguments to each other's type even
+@code{applyGeneric} may try to coerce the arguments to each other's type even
 if they already have the same type.  Therefore, he reasons, we need to put
 procedures in the coercion table to @newterm{coerce} arguments of each type to
 their own type.  For example, in addition to the
-@code{scheme-number->complex} coercion shown above, he would do:
+@code{schemeNumberToComplex} coercion shown above, he would do:
 
-@lisp
-(define (scheme-number->scheme-number n) n)
-(define (complex->complex z) z)
+@example typescript
+const schemeNumberToSchemeNumber = (n: ArithDatum): Result<ArithDatum, GenError> => ok(n);
+const complexToComplex = (z: ArithDatum): Result<ArithDatum, GenError> => ok(z);
 
-(put-coercion 'scheme-number 'scheme-number
-              scheme-number->scheme-number)
+putCoercion("scheme-number", "scheme-number", schemeNumberToSchemeNumber);
 
-(put-coercion 'complex 'complex 
-              complex->complex)
-@end lisp
+putCoercion("complex", "complex", complexToComplex);
+@end example
 
 @enumerate a
 
 @item
 With Louis's coercion procedures installed, what happens if
-@code{apply-generic} is called with two arguments of type @code{scheme-number}
+@code{applyGeneric} is called with two arguments of type @code{scheme-number}
 or two arguments of type @code{complex} for an operation that is not found in
 the table for those types?  For example, assume that we've defined a generic
 exponentiation operation:
 
-@lisp
-(define (exp x y) 
-  (apply-generic 'exp x y))
-@end lisp
+@example typescript
+export const exp = (x: ArithDatum, y: ArithDatum): Result<ArithDatum, GenError> =>
+  applyGeneric("exp", x, y);
+@end example
 
 @noindent
 and have put a procedure for exponentiation in the Scheme-number
 package but not in any other package:
 
-@lisp
-@r{;; following added to Scheme-number package}
-(put 'exp 
-     '(scheme-number scheme-number)
-     (lambda (x y) 
-       (tag (expt x y)))) 
-       @r{; using primitive @code{expt}}
-@end lisp
+@example typescript
+// the following added to the scheme-number package
+put("exp", ["scheme-number", "scheme-number"], bigintOp("exp", (x, y) => x ** y));
+// the language's ** on exact integers
+@end example
 
 @noindent
 What happens if we call @code{exp} with two complex numbers as arguments?
 
 @item
 Is Louis correct that something had to be done about coercion with arguments of
-the same type, or does @code{apply-generic} work correctly as is?
+the same type, or does @code{applyGeneric} work correctly as is?
 
 @item
-Modify @code{apply-generic} so that it doesn't try coercion if the two
+Modify @code{applyGeneric} so that it doesn't try coercion if the two
 arguments have the same type.
 
 @end enumerate
@@ -745,7 +711,7 @@ arguments have the same type.
 
 @quotation
 @strong{@anchor{Exercise 2.82}Exercise 2.82:} Show how to generalize
-@code{apply-generic} to handle coercion in the general case of multiple
+@code{applyGeneric} to handle coercion in the general case of multiple
 arguments.  One strategy is to attempt to coerce all the arguments to the type
 of the first argument, then to the type of the second argument, and so on.
 Give an example of a situation where this strategy (and likewise the
@@ -765,7 +731,7 @@ each type (except complex).
 
 @quotation
 @strong{@anchor{Exercise 2.84}Exercise 2.84:} Using the @code{raise} operation
-of @ref{Exercise 2.83}, modify the @code{apply-generic} procedure so that it
+of @ref{Exercise 2.83}, modify the @code{applyGeneric} procedure so that it
 coerces its arguments to have the same type by the method of successive
 raising, as discussed in this section.  You will need to devise a way to test
 which of two types is higher in the tower.  Do this in a manner that is
@@ -793,7 +759,7 @@ operations@footnote{A real number can be projected to an integer using the
 @code{round} primitive, which returns the closest integer to its argument.} and
 install @code{project} as a generic operation in the system.  You will also
 need to make use of a generic equality predicate, such as described in
-@ref{Exercise 2.79}.  Finally, use @code{drop} to rewrite @code{apply-generic}
+@ref{Exercise 2.79}.  Finally, use @code{drop} to rewrite @code{applyGeneric}
 from @ref{Exercise 2.84} so that it ``simplifies'' its answers.
 @end quotation
 
@@ -911,36 +877,24 @@ indeterminate.
 We will approach the design of our system by following the familiar discipline
 of data abstraction.  We will represent polynomials using a data structure
 called a @newterm{poly}, which consists of a variable and a collection of
-terms.  We assume that we have selectors @code{variable} and @code{term-list}
-that extract those parts from a poly and a constructor @code{make-poly} that
+terms.  We assume that we have selectors @code{variableOf} and @code{termListOf}
+that extract those parts from a poly and a constructor @code{makePoly} that
 assembles a poly from a given variable and a term list.  A variable will be
-just a symbol, so we can use the @code{same-variable?}  procedure of 
+just a string, so we can use the @code{sameVariableQ}  procedure of 
 @ref{2.3.2} to compare variables.  The following procedures define addition and
 multiplication of polys:
 
-@lisp
-(define (add-poly p1 p2)
-  (if (same-variable? (variable p1) 
-                      (variable p2))
-      (make-poly 
-       (variable p1)
-       (add-terms (term-list p1)
-                  (term-list p2)))
-      (error "Polys not in same var: 
-              ADD-POLY"
-             (list p1 p2))))
+@example typescript
+export const addPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> =>
+  sameVariableQ(variableOf(p1), variableOf(p2))
+    ? mapGen(addTerms(termListOf(p1), termListOf(p2)), (terms) => makePoly(variableOf(p1), terms))
+    : err(@{ _tag: "NotSameVar", proc: "ADD-POLY", left: showPoly(p1), right: showPoly(p2) @});
 
-(define (mul-poly p1 p2)
-  (if (same-variable? (variable p1) 
-                      (variable p2))
-      (make-poly 
-       (variable p1)
-       (mul-terms (term-list p1)
-                  (term-list p2)))
-      (error "Polys not in same var: 
-              MUL-POLY"
-             (list p1 p2))))
-@end lisp
+export const mulPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> =>
+  sameVariableQ(variableOf(p1), variableOf(p2))
+    ? mapGen(mulTerms(termListOf(p1), termListOf(p2)), (terms) => makePoly(variableOf(p1), terms))
+    : err(@{ _tag: "NotSameVar", proc: "MUL-POLY", left: showPoly(p1), right: showPoly(p2) @});
+@end example
 
 @noindent
 To incorporate polynomials into our generic arithmetic system, we need to
@@ -949,39 +903,32 @@ appropriate operations on tagged polynomials in the operation table.  We'll
 embed all our code in an installation procedure for the polynomial package,
 similar to the ones in @ref{2.5.1}:
 
-@lisp
-(define (install-polynomial-package)
-  @r{;; internal procedures}
-  @r{;; representation of poly}
-  (define (make-poly variable term-list)
-    (cons variable term-list))
-  (define (variable p) (car p))
-  (define (term-list p) (cdr p))
-  ⟨@emph{procedures @code{same-variable?} 
-   and @code{variable?} from section 2.3.2}⟩
+@example typescript
+export const installPolynomialPackage = (): void => @{
+  // internal procedures
+  // representation of poly
+  const makePoly = (variable: string, termList: TermList): Poly => (@{ variable, termList @});
+  const variableOf = (p: Poly): string => p.variable;
+  const termListOf = (p: Poly): TermList => p.termList;
+  ⟨@emph{procedures @code{sameVariableQ}
+   and @code{variableOf} from section 2.3.2}⟩
 
-  @r{;; representation of terms and term lists}
-  ⟨@emph{procedures @code{adjoin-term} @r{…} @code{coeff} 
+  // representation of terms and term lists
+  ⟨@emph{procedures @code{adjoinTerm} @r{…} @code{coeffOf}
   from text below}⟩
 
-  (define (add-poly p1 p2) @r{…})
-  ⟨@emph{procedures used by @code{add-poly}}⟩
-  (define (mul-poly p1 p2) @r{…})
-  ⟨@emph{procedures used by @code{mul-poly}}⟩
+  const addPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> => /* @r{…} */;
+  ⟨@emph{procedures used by @code{addPoly}}⟩
+  const mulPoly = (p1: Poly, p2: Poly): Result<Poly, GenError> => /* @r{…} */;
+  ⟨@emph{procedures used by @code{mulPoly}}⟩
 
-  @r{;; interface to rest of the system}
-  (define (tag p) (attach-tag 'polynomial p))
-  (put 'add '(polynomial polynomial)
-       (lambda (p1 p2) 
-         (tag (add-poly p1 p2))))
-  (put 'mul '(polynomial polynomial)
-       (lambda (p1 p2) 
-         (tag (mul-poly p1 p2))))
-  (put 'make 'polynomial
-       (lambda (var terms) 
-         (tag (make-poly var terms))))
-  'done)
-@end lisp
+  // interface to rest of the system
+  const tag = (p: Poly): Polynomial => attachTag("polynomial", p);
+  put("add", ["polynomial", "polynomial"], poly2("add", (p1, p2) => mapGen(addPoly(p1, p2), tag)));
+  put("mul", ["polynomial", "polynomial"], poly2("mul", (p1, p2) => mapGen(mulPoly(p1, p2), tag)));
+  put("make", ["polynomial"], @{ _tag: "MakePoly", fn: (variable: string, terms: TermList) => tag(makePoly(variable, terms)) @});
+@};
+@end example
 
 @noindent
 Polynomial addition is performed termwise.  Terms of the same order (i.e., with
@@ -992,14 +939,14 @@ order in the other addend are simply accumulated into the sum polynomial being
 constructed.
 
 In order to manipulate term lists, we will assume that we have a constructor
-@code{the-empty-termlist} that returns an empty term list and a constructor
-@code{adjoin-term} that adjoins a new term to a term list.  We will also assume
-that we have a predicate @code{empty-termlist?} that tells if a given term list
-is empty, a selector @code{first-term} that extracts the highest-order term
-from a term list, and a selector @code{rest-terms} that returns all but the
+@code{theEmptyTermList} that returns an empty term list and a constructor
+@code{adjoinTerm} that adjoins a new term to a term list.  We will also assume
+that we have a predicate @code{isEmptyTermListQ} that tells if a given term list
+is empty, a selector @code{firstTerm} that extracts the highest-order term
+from a term list, and a selector @code{restTerms} that returns all but the
 highest-order term.  To manipulate terms, we will suppose that we have a
-constructor @code{make-term} that constructs a term with given order and
-coefficient, and selectors @code{order} and @code{coeff} that return,
+constructor @code{makeTerm} that constructs a term with given order and
+coefficient, and selectors @code{orderOf} and @code{coeffOf} that return,
 respectively, the order and the coefficient of the term.  These operations
 allow us to consider both terms and term lists as data abstractions, whose
 concrete representations we can worry about separately.
@@ -1011,34 +958,27 @@ fact, if we think of the terms of the polynomial as a set ordered according to
 the power of the indeterminate, then the program that produces the term list
 for a sum is almost identical to @code{union-set}.}
 
-@lisp
-(define (add-terms L1 L2)
-  (cond ((empty-termlist? L1) L2)
-        ((empty-termlist? L2) L1)
-        (else
-         (let ((t1 (first-term L1)) 
-               (t2 (first-term L2)))
-           (cond ((> (order t1) (order t2))
-                  (adjoin-term
-                   t1 
-                   (add-terms (rest-terms L1) 
-                              L2)))
-                 ((< (order t1) (order t2))
-                  (adjoin-term
-                   t2 
-                   (add-terms 
-                    L1 
-                    (rest-terms L2))))
-                 (else
-                  (adjoin-term
-                   (make-term 
-                    (order t1)
-                    (add (coeff t1) 
-                         (coeff t2)))
-                   (add-terms 
-                    (rest-terms L1)
-                    (rest-terms L2)))))))))
-@end lisp
+@example typescript
+const addTerms = (L1: TermList, L2: TermList): Result<TermList, GenError> => @{
+  if (isEmptyTermListQ(L1)) @{
+    return ok(L2);
+  @}
+  if (isEmptyTermListQ(L2)) @{
+    return ok(L1);
+  @}
+  const t1 = firstTerm(L1);
+  const t2 = firstTerm(L2);
+  if (orderOf(t1) > orderOf(t2)) @{
+    return mapGen(addTerms(restTerms(L1), L2), (rest) => adjoinTerm(t1, rest));
+  @}
+  if (orderOf(t1) < orderOf(t2)) @{
+    return mapGen(addTerms(L1, restTerms(L2)), (rest) => adjoinTerm(t2, rest));
+  @}
+  return bindGen(add(coeffOf(t1), coeffOf(t2)), (c) =>
+    mapGen(addTerms(restTerms(L1), restTerms(L2)), (rest) => adjoinTerm(makeTerm(orderOf(t1), c), rest)),
+  );
+@};
+@end example
 
 @noindent
 The most important point to note here is that we used the generic addition
@@ -1046,34 +986,35 @@ procedure @code{add} to add together the coefficients of the terms being
 combined.  This has powerful consequences, as we will see below.
 
 In order to multiply two term lists, we multiply each term of the first list by
-all the terms of the other list, repeatedly using @code{mul-term-by-all-terms},
+all the terms of the other list, repeatedly using @code{mulTermByAllTerms},
 which multiplies a given term by all terms in a given term list.  The resulting
 term lists (one for each term of the first list) are accumulated into a sum.
 Multiplying two terms forms a term whose order is the sum of the orders of the
 factors and whose coefficient is the product of the coefficients of the
 factors:
 
-@lisp
-(define (mul-terms L1 L2)
-  (if (empty-termlist? L1)
-      (the-empty-termlist)
-      (add-terms 
-       (mul-term-by-all-terms 
-        (first-term L1) L2)
-       (mul-terms (rest-terms L1) L2))))
+@example typescript
+const mulTerms = (L1: TermList, L2: TermList): Result<TermList, GenError> => @{
+  if (isEmptyTermListQ(L1)) @{
+    return ok(theEmptyTermList());
+  @}
+  return bindGen(mulTermByAllTerms(firstTerm(L1), L2), (product) =>
+    bindGen(mulTerms(restTerms(L1), L2), (rest) => addTerms(product, rest)),
+  );
+@};
 
-(define (mul-term-by-all-terms t1 L)
-  (if (empty-termlist? L)
-      (the-empty-termlist)
-      (let ((t2 (first-term L)))
-        (adjoin-term
-         (make-term 
-          (+ (order t1) (order t2))
-          (mul (coeff t1) (coeff t2)))
-         (mul-term-by-all-terms 
-          t1 
-          (rest-terms L))))))
-@end lisp
+const mulTermByAllTerms = (t1: Term, L: TermList): Result<TermList, GenError> => @{
+  if (isEmptyTermListQ(L)) @{
+    return ok(theEmptyTermList());
+  @}
+  const t2 = firstTerm(L);
+  return bindGen(mul(coeffOf(t1), coeffOf(t2)), (c) =>
+    mapGen(mulTermByAllTerms(t1, restTerms(L)), (rest) =>
+      adjoinTerm(makeTerm(orderOf(t1) + orderOf(t2), c), rest),
+    ),
+  );
+@};
+@end example
 
 @noindent
 This is really all there is to polynomial addition and multiplication.  Notice
@@ -1096,7 +1037,7 @@ polynomials of different coefficient types, such as
 
 @end ifinfo
 Because we installed the polynomial addition and multiplication procedures
-@code{add-poly} and @code{mul-poly} in the generic arithmetic system as the
+@code{addPoly} and @code{mulPoly} in the generic arithmetic system as the
 @code{add} and @code{mul} operations for type @code{polynomial}, our system is
 also automatically able to handle polynomial operations such as
 @displaymath
@@ -1111,10 +1052,10 @@ also automatically able to handle polynomial operations such as
 @end ifinfo
 The reason is that when the system tries to combine coefficients, it will
 dispatch through @code{add} and @code{mul}.  Since the coefficients are
-themselves polynomials (in @math{y}), these will be combined using @code{add-poly}
-and @code{mul-poly}.  The result is a kind of ``data-directed recursion'' in
-which, for example, a call to @code{mul-poly} will result in recursive calls to
-@code{mul-poly} in order to multiply the coefficients.  If the coefficients of
+themselves polynomials (in @math{y}), these will be combined using @code{addPoly}
+and @code{mulPoly}.  The result is a kind of ``data-directed recursion'' in
+which, for example, a call to @code{mulPoly} will result in recursive calls to
+@code{mulPoly} in order to multiply the coefficients.  If the coefficients of
 the coefficients were themselves polynomials (as might be used to represent
 polynomials in three variables), the data direction would ensure that the
 system would follow through another level of recursive calls, and so on through
@@ -1142,7 +1083,7 @@ Finally, we must confront the job of implementing a good representation for
 term lists.  A term list is, in effect, a set of coefficients keyed by the
 order of the term.  Hence, any of the methods for representing sets, as
 discussed in @ref{2.3.3}, can be applied to this task.  On the other
-hand, our procedures @code{add-terms} and @code{mul-terms} always access term
+hand, our procedures @code{addTerms} and @code{mulTerms} always access term
 lists sequentially from highest to lowest order.  Thus, we will use some kind
 of ordered list representation.
 
@@ -1196,29 +1137,27 @@ are represented as lists of terms, arranged from highest-order to lowest-order
 term.  Once we have made this decision, implementing the selectors and
 constructors for terms and term lists is straightforward:@footnote{Although we
 are assuming that term lists are ordered, we have implemented
-@code{adjoin-term} to simply @code{cons} the new term onto the existing term
+@code{adjoinTerm} to simply @code{cons} the new term onto the existing term
 list.  We can get away with this so long as we guarantee that the procedures
-(such as @code{add-terms}) that use @code{adjoin-term} always call it with a
+(such as @code{addTerms}) that use @code{adjoinTerm} always call it with a
 higher-order term than appears in the list.  If we did not want to make such a
-guarantee, we could have implemented @code{adjoin-term} to be similar to the
+guarantee, we could have implemented @code{adjoinTerm} to be similar to the
 @code{adjoin-set} constructor for the ordered-list representation of sets
 (@ref{Exercise 2.61}).}
 
-@lisp
-(define (adjoin-term term term-list)
-  (if (=zero? (coeff term))
-      term-list
-      (cons term term-list)))
-(define (the-empty-termlist) '())
-(define (first-term term-list) (car term-list))
-(define (rest-terms term-list) (cdr term-list))
-(define (empty-termlist? term-list) 
-  (null? term-list))
-(define (make-term order coeff) 
-  (list order coeff))
-(define (order term) (car term))
-(define (coeff term) (cadr term))
-@end lisp
+@example typescript
+export const adjoinTerm = (term: Term, termList: TermList): TermList => @{
+  const z = isZeroQ(coeffOf(term));
+  return z._tag === "Ok" && z.value ? termList : [term, ...termList];
+@};
+export const theEmptyTermList = (): TermList => [];
+export const firstTerm = (termList: TermList): Term => termList[0] as Term;
+export const restTerms = (termList: TermList): TermList => termList.slice(1);
+export const isEmptyTermListQ = (termList: TermList): boolean => termList.length === 0;
+export const makeTerm = (order: bigint, coeff: ArithDatum): Term => [order, coeff];
+export const orderOf = (term: Term): bigint => term[0];
+export const coeffOf = (term: Term): ArithDatum => term[1];
+@end example
 
 @noindent
 where @code{=zero?} is as defined in @ref{Exercise 2.80}.  (See also
@@ -1227,15 +1166,20 @@ where @code{=zero?} is as defined in @ref{Exercise 2.80}.  (See also
 Users of the polynomial package will create (tagged) polynomials by means of
 the procedure:
 
-@lisp
-(define (make-polynomial var terms)
-  ((get 'make 'polynomial) var terms))
-@end lisp
+@example typescript
+export const makePolynomial = (variable: string, terms: TermList): Polynomial => @{
+  const e = get("make", ["polynomial"]);
+  if (e._tag === "Some" && e.value._tag === "MakePoly") @{
+    return e.value.fn(variable, terms);
+  @}
+  throw new Error("make: no constructor for polynomial");
+@};
+@end example
 
 @quotation
 @strong{@anchor{Exercise 2.87}Exercise 2.87:} Install @code{=zero?} for
 polynomials in the generic arithmetic package.  This will allow
-@code{adjoin-term} to work for polynomials with coefficients that are
+@code{adjoinTerm} to work for polynomials with coefficients that are
 themselves polynomials.
 @end quotation
 
@@ -1287,38 +1231,39 @@ divisor exceeds the order of the dividend and declare the dividend to be the
 remainder.  Also, if the dividend ever becomes zero, return zero as both
 quotient and remainder.
 
-We can design a @code{div-poly} procedure on the model of @code{add-poly} and
-@code{mul-poly}. The procedure checks to see if the two polys have the same
-variable.  If so, @code{div-poly} strips off the variable and passes the
-problem to @code{div-terms}, which performs the division operation on term
-lists. @code{Div-poly} finally reattaches the variable to the result supplied
-by @code{div-terms}.  It is convenient to design @code{div-terms} to compute
-both the quotient and the remainder of a division.  @code{Div-terms} can take
+We can design a @code{divPoly} procedure on the model of @code{addPoly} and
+@code{mulPoly}. The procedure checks to see if the two polys have the same
+variable.  If so, @code{divPoly} strips off the variable and passes the
+problem to @code{divTerms}, which performs the division operation on term
+lists. @code{DivPoly} finally reattaches the variable to the result supplied
+by @code{divTerms}.  It is convenient to design @code{divTerms} to compute
+both the quotient and the remainder of a division.  @code{DivTerms} can take
 two term lists as arguments and return a list of the quotient term list and the
 remainder term list.
 
-Complete the following definition of @code{div-terms} by filling in the missing
-expressions.  Use this to implement @code{div-poly}, which takes two polys as
+Complete the following definition of @code{divTerms} by filling in the missing
+expressions.  Use this to implement @code{divPoly}, which takes two polys as
 arguments and returns a list of the quotient and remainder polys.
 
-@lisp
-(define (div-terms L1 L2)
-  (if (empty-termlist? L1)
-      (list (the-empty-termlist) 
-            (the-empty-termlist))
-      (let ((t1 (first-term L1))
-            (t2 (first-term L2)))
-        (if (> (order t2) (order t1))
-            (list (the-empty-termlist) L1)
-            (let ((new-c (div (coeff t1) 
-                              (coeff t2)))
-                  (new-o (- (order t1) 
-                            (order t2))))
-              (let ((rest-of-result
-                     ⟨@var{compute rest of result 
-                     recursively}⟩ ))
-                ⟨@var{form complete result}⟩ ))))))
-@end lisp
+@example typescript
+export const divTerms = (
+  L1: TermList,
+  L2: TermList,
+): Result<readonly [TermList, TermList], GenError> => @{
+  if (isEmptyTermListQ(L1)) @{
+    return ok([theEmptyTermList(), theEmptyTermList()]);
+  @}
+  const t1 = firstTerm(L1);
+  const t2 = firstTerm(L2);
+  if (orderOf(t2) > orderOf(t1)) @{
+    return ok([theEmptyTermList(), L1]);
+  @}
+  const newC = div(coeffOf(t1), coeffOf(t2));
+  const newO = orderOf(t1) - orderOf(t2);
+  const restOfResult = ⟨@var{compute rest of result recursively}⟩;
+  return ⟨@var{form complete result}⟩;
+@};
+@end example
 @end quotation
 
 @subsubheading Hierarchies of types in symbolic algebra
@@ -1408,15 +1353,15 @@ fractions to lowest terms.
 
 @quotation
 @strong{@anchor{Exercise 2.93}Exercise 2.93:} Modify the rational-arithmetic
-package to use generic operations, but change @code{make-rat} so that it does
+package to use generic operations, but change @code{makeRatFn} so that it does
 not attempt to reduce fractions to lowest terms.  Test your system by calling
-@code{make-rational} on two polynomials to produce a rational function:
+@code{makeRatFn} on two polynomials to produce a rational function:
 
-@lisp
-(define p1 (make-polynomial 'x '((2 1) (0 1))))
-(define p2 (make-polynomial 'x '((3 1) (0 1))))
-(define rf (make-rational p2 p1))
-@end lisp
+@example typescript
+const p1 = makePolynomial("x", [[2n, 1n], [0n, 1n]]);
+const p2 = makePolynomial("x", [[3n, 1n], [0n, 1n]]);
+const rf = makeRatFn(p2, p1);
+@end example
 
 Now add @code{rf} to itself, using @code{add}. You will observe that this
 addition procedure does not reduce fractions to lowest terms.
@@ -1424,7 +1369,7 @@ addition procedure does not reduce fractions to lowest terms.
 
 @noindent
 We can reduce polynomial fractions to lowest terms using the same idea we used
-with integers: modifying @code{make-rat} to divide both the numerator and the
+with integers: modifying @code{makeRat} to divide both the numerator and the
 denominator by their greatest common divisor.  The notion of ``greatest common
 divisor'' makes sense for polynomials.  In fact, we can compute the
 @abbr{GCD} of two polynomials using essentially the same Euclid's Algorithm
@@ -1442,53 +1387,54 @@ integers, the measure @math{m} of an integer is the absolute value of the intege
 itself.  For the domain of polynomials, the measure of a polynomial is its
 degree.}  The integer version is
 
-@lisp
-(define (gcd a b)
-  (if (= b 0)
-      a
-      (gcd b (remainder a b))))
-@end lisp
+@example typescript
+const gcdInteger = (a: bigint, b: bigint): bigint => @{
+  const x = a < 0n ? -a : a;
+  const y = b < 0n ? -b : b;
+  return y === 0n ? x : gcdInteger(y, x % y);
+@};
+@end example
 
 @noindent
 Using this, we could make the obvious modification to define a @abbr{GCD}
 operation that works on term lists:
 
-@lisp
-(define (gcd-terms a b)
-  (if (empty-termlist? b)
-      a
-      (gcd-terms b (remainder-terms a b))))
-@end lisp
+@example typescript
+const gcdTerms = (a: TermList, b: TermList): Result<TermList, GenError> =>
+  isEmptyTermListQ(b) ? ok(a) : bindGen(remainderTerms(a, b), (r) => gcdTerms(b, r));
+@end example
 
 @noindent
-where @code{remainder-terms} picks out the remainder component of the list
-returned by the term-list division operation @code{div-terms} that was
+where @code{remainderTerms} picks out the remainder component of the list
+returned by the term-list division operation @code{divTerms} that was
 implemented in @ref{Exercise 2.91}.
 
 @quotation
-@strong{@anchor{Exercise 2.94}Exercise 2.94:} Using @code{div-terms}, implement
-the procedure @code{remainder-terms} and use this to define @code{gcd-terms} as
-above.  Now write a procedure @code{gcd-poly} that computes the polynomial
+@strong{@anchor{Exercise 2.94}Exercise 2.94:} Using @code{divTerms}, implement
+the procedure @code{remainderTerms} and use this to define @code{gcdTerms} as
+above.  Now write a procedure @code{gcdPoly} that computes the polynomial
 @abbr{GCD} of two polys.  (The procedure should signal an error if the two
 polys are not in the same variable.)  Install in the system a generic operation
-@code{greatest-common-divisor} that reduces to @code{gcd-poly} for polynomials
+@code{greatestCommonDivisor} that reduces to @code{gcdPoly} for polynomials
 and to ordinary @code{gcd} for ordinary numbers.  As a test, try
 
-@lisp
-(define p1 
-  (make-polynomial 
-   'x '((4 1) (3 -1) (2 -2) (1 2))))
+@example typescript
+const p1 = makePolynomial("x", [[4n, 1n], [3n, -1n], [2n, -2n], [1n, 2n]]);
 
-(define p2 
-  (make-polynomial 
-   'x '((3 1) (1 -1))))
+const p2 = makePolynomial("x", [[3n, 1n], [1n, -1n]]);
 
-(greatest-common-divisor p1 p2)
-@end lisp
+greatestCommonDivisor(p1, p2)
+// => (polynomial x (2 -1) (1 1))
+@end example
 
 @noindent
 and check your result by hand.
 @end quotation
+
+@noindent
+Euclid's algorithm determines the @abbr{GCD} only up to a constant factor, and
+this run's factor is negative; checking the result by hand means confirming
+that it divides both @code{p1} and @code{p2} exactly.
 
 @quotation
 @strong{@anchor{Exercise 2.95}Exercise 2.95:} Define @math{P_1}, @math{P_2}, and
@@ -1512,16 +1458,18 @@ P_3 : 13x + 5
 
 @end ifinfo
 Now define @math{Q_1} to be the product of @math{P_1} and @math{P_2}, and @math{Q_2} to be
-the product of @math{P_1} and @math{P_3}, and use @code{greatest-common-divisor}
+the product of @math{P_1} and @math{P_3}, and use @code{greatestCommonDivisor}
 (@ref{Exercise 2.94}) to compute the @abbr{GCD} of @math{Q_1} and @math{Q_2}.
 Note that the answer is not the same as @math{P_1}.  This example introduces
 noninteger operations into the computation, causing difficulties with the
-@abbr{GCD} algorithm.@footnote{In an implementation like @abbr{MIT}
-Scheme, this produces a polynomial that is indeed a divisor of @math{Q_1} and
-@math{Q_2}, but with rational coefficients.  In many other Scheme systems, in
-which division of integers can produce limited-precision decimal numbers, we
-may fail to get a valid divisor.}  To understand what is happening, try tracing
-@code{gcd-terms} while computing the @abbr{GCD} or try performing the
+@abbr{GCD} algorithm.@footnote{In an implementation with exact rational
+arithmetic, this produces a polynomial that is indeed a divisor of @math{Q_1}
+and @math{Q_2}, but with rational coefficients.  In an implementation whose
+division of integers truncates toward zero --- as this edition's @code{div}
+does --- the very first leading-coefficient division of the run can answer
+zero, the step subtracts nothing, and we may fail to get a valid divisor at
+all.}  To understand what is happening, try tracing
+@code{gcdTerms} while computing the @abbr{GCD} or try performing the
 division by hand.
 @end quotation
 
@@ -1542,7 +1490,7 @@ More precisely, if @math{P} and @math{Q} are polynomials, let @math{O_1} be the 
 order of @math{Q}.  Let @math{c} be the leading coefficient of @math{Q}.  Then it can be
 shown that, if we multiply @math{P} by the @newterm{@w{integerizing} @w{factor}}
 @math{c^{1 + O_1 - O_2}}, the resulting polynomial can be divided by @math{Q} by
-using the @code{div-terms} algorithm without introducing any fractions.  The
+using the @code{divTerms} algorithm without introducing any fractions.  The
 operation of multiplying the dividend by this constant and then dividing is
 sometimes called the @newterm{pseudodivision} of @math{P} by @math{Q}.  The remainder
 of the division is called the @newterm{pseudoremainder}.
@@ -1552,16 +1500,16 @@ of the division is called the @newterm{pseudoremainder}.
 @enumerate a
 
 @item
-Implement the procedure @code{pseudoremainder-terms}, which is just like
-@code{remainder-terms} except that it multiplies the dividend by the
-integerizing factor described above before calling @code{div-terms}.  Modify
-@code{gcd-terms} to use @code{pseudoremainder-terms}, and verify that
-@code{greatest-common-divisor} now produces an answer with integer coefficients
+Implement the procedure @code{pseudoremainderTerms}, which is just like
+@code{remainderTerms} except that it multiplies the dividend by the
+integerizing factor described above before calling @code{divTerms}.  Modify
+@code{gcdTerms} to use @code{pseudoremainderTerms}, and verify that
+@code{greatestCommonDivisor} now produces an answer with integer coefficients
 on the example in @ref{Exercise 2.95}.
 
 @item
 The @abbr{GCD} now has integer coefficients, but they are larger than those
-of @math{P_1}.  Modify @code{gcd-terms} so that it removes common factors from the
+of @math{P_1}.  Modify @code{gcdTerms} so that it removes common factors from the
 coefficients of the answer by dividing all the coefficients by their (integer)
 greatest common divisor.
 
@@ -1575,7 +1523,7 @@ Thus, here is how to reduce a rational function to lowest terms:
 
 @item
 Compute the @abbr{GCD} of the numerator and denominator, using the version
-of @code{gcd-terms} from @ref{Exercise 2.96}.
+of @code{gcdTerms} from @ref{Exercise 2.96}.
 
 @item
 When you obtain the @abbr{GCD}, multiply both numerator and denominator by
@@ -1601,51 +1549,64 @@ the numerator and the denominator and dividing through by this factor.
 @enumerate a
 
 @item
-Implement this algorithm as a procedure @code{reduce-terms} that takes two term
+Implement this algorithm as a procedure @code{reduceTerms} that takes two term
 lists @code{n} and @code{d} as arguments and returns a list @code{nn},
 @code{dd}, which are @code{n} and @code{d} reduced to lowest terms via the
-algorithm given above.  Also write a procedure @code{reduce-poly}, analogous to
-@code{add-poly}, that checks to see if the two polys have the same variable.
-If so, @code{reduce-poly} strips off the variable and passes the problem to
-@code{reduce-terms}, then reattaches the variable to the two term lists
-supplied by @code{reduce-terms}.
+algorithm given above.  Also write a procedure @code{reducePoly}, analogous to
+@code{addPoly}, that checks to see if the two polys have the same variable.
+If so, @code{reducePoly} strips off the variable and passes the problem to
+@code{reduceTerms}, then reattaches the variable to the two term lists
+supplied by @code{reduceTerms}.
 
 @item
-Define a procedure analogous to @code{reduce-terms} that does what the original
-@code{make-rat} did for integers:
+Define a procedure analogous to @code{reduceTerms} that does what the original
+@code{makeRat} did for integers:
 
-@lisp
-(define (reduce-integers n d)
-  (let ((g (gcd n d)))
-    (list (/ n g) (/ d g))))
-@end lisp
+@example typescript
+const reduceIntegers = (n: bigint, d: bigint): readonly [bigint, bigint] => @{
+  const g = gcdInteger(n, d);
+  return [n / g, d / g];
+@};
+@end example
 
-and define @code{reduce} as a generic operation that calls @code{apply-generic}
-to dispatch to either @code{reduce-poly} (for @code{polynomial} arguments) or
-@code{reduce-integers} (for @code{scheme-number} arguments).  You can now
+and define @code{reduce} as a generic operation that calls @code{applyGeneric}
+to dispatch to either @code{reducePoly} (for @code{polynomial} arguments) or
+@code{reduceIntegers} (for @code{scheme-number} arguments).  You can now
 easily make the rational-arithmetic package reduce fractions to lowest terms by
-having @code{make-rat} call @code{reduce} before combining the given numerator
+having @code{makeRatFn} call @code{reduce} before combining the given numerator
 and denominator to form a rational number.  The system now handles rational
 expressions in either integers or polynomials.  To test your program, try the
 example at the beginning of this extended exercise:
 
-@lisp
-(define p1 
-  (make-polynomial 'x '((1 1) (0 1))))
-(define p2 
-  (make-polynomial 'x '((3 1) (0 -1))))
-(define p3 
-  (make-polynomial 'x '((1 1))))
-(define p4 
-  (make-polynomial 'x '((2 1) (0 -1))))
-(define rf1 (make-rational p1 p2))
-(define rf2 (make-rational p3 p4))
-(add rf1 rf2)
-@end lisp
+@example typescript
+const p1 = makePolynomial("x", [[1n, 1n], [0n, 1n]]);
+const p2 = makePolynomial("x", [[3n, 1n], [0n, -1n]]);
+const p3 = makePolynomial("x", [[1n, 1n]]);
+const p4 = makePolynomial("x", [[2n, 1n], [0n, -1n]]);
+const rf1 = makeRatFn(p1, p2);
+const rf2 = makeRatFn(p3, p4);
+add(rf1, rf2)
+// => (rational (polynomial x (3 1) (2 2) (1 3) (0 1))
+//              (polynomial x (4 1) (3 1) (1 -1) (0 -1)))
+@end example
 
 See if you get the correct answer, correctly reduced to lowest terms.
 @end enumerate
 @end quotation
+
+@quotation
+@emph{Exercise 2.97a is added by this edition and extends exercise 2.97; SICP
+numbers stop at 2.97.} @strong{@anchor{Exercise 2.97a}Exercise 2.97a:} A
+reduction is complete only when nothing is left to drop.  Run @code{gcdTerms}
+on the reduced numerator and denominator of the book's example and require the
+answer to be a unit, a degree-zero constant: any further common factor would
+contradict the reduction.  Pin the round-trip property as well:
+@code{reduceTerms} of an already reduced pair answers that same pair.  Finally,
+reduce the exercise 2.95 products @math{Q_1} over @math{Q_2} and show that the
+answer is exactly @math{P_2} over @math{P_3}, the shared @math{P_1} dropped
+whole.
+@end quotation
+
 
 @noindent
 The @abbr{GCD} computation is at the heart of any system that does

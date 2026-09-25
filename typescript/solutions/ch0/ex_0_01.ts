@@ -6,9 +6,9 @@
  * TypeScript.
  *
  * Each session evaluates in order and contributes its numeric responses to
- * one list; the `(= a b)` response is `false` and is asserted in the test,
- * not carried in the numeric list. Section 0.8's worked example shows the
- * first two sessions as transcripts.
+ * one list, which the test asserts. The `(= a b)` response is `false`;
+ * section 0.8's worked example shows it in the transcript rather than in
+ * this numeric list.
  */
 export function ex_0_01(): readonly number[] {
   const a: number = 3;

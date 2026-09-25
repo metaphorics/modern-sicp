@@ -6,7 +6,7 @@
  * TypeScript, producing the matching transcript lines.
  *
  * The scaffold returns the numeric results of the three sessions in order;
- * the `(a === b)` line is checked in the demo transcript, not in the list.
+ * the `(a === b)` line appears in section 0.8's worked transcript instead.
  * The statement lives in the section 0.2 chapter text.
  */
 export class PendingSolution extends Error {

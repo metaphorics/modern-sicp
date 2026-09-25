@@ -32,6 +32,16 @@ particular, if we wish to model state variables by ordinary symbolic names in
 the programming language, then the language must provide an @newterm{assignment operator} 
 to enable us to change the value associated with a name.
 
+This is the section where Effect enters this edition, under its own name and
+with no adapter layer, and it stays for the rest of the chapter.  A local state
+variable is a @code{Ref}, the cell Effect provides for exactly this purpose.
+Assignment is running a @code{Ref} operation such as @code{Ref.set} or
+@code{Ref.update}, and a procedure that changes state answers an
+@code{Effect}, a description of the work whose value the interactions below
+observe with @code{Effect.runSync}.  Where the book's procedures answer the
+string message @emph{Insufficient funds}, this edition fails with a typed
+error, so the type of a withdrawal says what can go wrong with it.
+
 @menu
 * 3.1.1::            Local State Variables
 * 3.1.2::            The Benefits of Introducing Assignment
@@ -46,27 +56,27 @@ state, let us model the situation of withdrawing money from a bank account.  We
 will do this using a procedure @code{withdraw}, which takes as argument an
 @code{amount} to be withdrawn.  If there is enough money in the account to
 accommodate the withdrawal, then @code{withdraw} should return the balance
-remaining after the withdrawal.  Otherwise, @code{withdraw} should return the
-message @emph{Insufficient funds}. For example, if we begin with $100 in the
+remaining after the withdrawal.  Otherwise, @code{withdraw} should fail with
+the @emph{Insufficient funds} error. For example, if we begin with $100 in the
 account, we should obtain the following sequence of responses using
 @code{withdraw}:
 
-@lisp
-(withdraw 25)
-@i{75}
+@example typescript
+Effect.runSync(withdraw(25))
+// => 75
 
-(withdraw 25)
-@i{50}
+Effect.runSync(withdraw(25))
+// => 50
 
-(withdraw 60)
-@i{"Insufficient funds"}
+Effect.runSync(withdraw(60))
+// => Error: InsufficientFunds
 
-(withdraw 15)
-@i{35}
-@end lisp
+Effect.runSync(withdraw(15))
+// => 35
+@end example
 
 @noindent
-Observe that the expression @code{(withdraw 25)}, evaluated twice, yields
+Observe that the expression @code{withdraw(25)}, evaluated twice, yields
 different values.  This is a new kind of behavior for a procedure.  Until now,
 all our procedures could be viewed as specifications for computing mathematical
 functions.  A call to a procedure computed the value of the function applied to
@@ -84,66 +94,75 @@ the balance of money in the account and define @code{withdraw} as a procedure
 that accesses @code{balance}.  The @code{withdraw} procedure checks to see if
 @code{balance} is at least as large as the requested @code{amount}.  If so,
 @code{withdraw} decrements @code{balance} by @code{amount} and returns the new
-value of @code{balance}.  Otherwise, @code{withdraw} returns the
-@emph{Insufficient funds} message.  Here are the definitions of @code{balance}
+value of @code{balance}.  Otherwise, @code{withdraw} fails with the
+@emph{Insufficient funds} error.  Here are the definitions of @code{balance}
 and @code{withdraw}:
 
-@lisp
-(define balance 100)
+@example typescript
+export const balance = Ref.makeUnsafe(100);
 
-(define (withdraw amount)
-  (if (>= balance amount)
-      (begin (set! balance (- balance amount))
-             balance)
-      "Insufficient funds"))
-@end lisp
-
-@noindent
-Decrementing @code{balance} is accomplished by the expression
-
-@lisp
-(set! balance (- balance amount))
-@end lisp
+export const withdraw = (amount: number): Withdrawal =>
+  Effect.gen(function* () @{
+    const current = yield* Ref.get(balance);
+    if (current < amount) @{
+      return yield* new InsufficientFunds();
+    @}
+    return yield* Ref.setAndGet(balance, current - amount);
+  @});
+@end example
 
 @noindent
-This uses the @code{set!} special form, whose syntax is
+Decrementing @code{balance} is accomplished inside the generator body by the
+statement
 
-@lisp
-(set! ⟨@var{name}⟩ ⟨@var{new-value}⟩)
-@end lisp
-
-@noindent
-Here @code{⟨}@var{name}@code{⟩} is a symbol and @code{⟨}@var{new-value}@code{⟩} is any expression.
-@code{Set!} changes @code{⟨}@var{name}@code{⟩} so that its value is the result obtained by
-evaluating @code{⟨}@var{new-value}@code{⟩}.  In the case at hand, we are changing
-@code{balance} so that its new value will be the result of subtracting
-@code{amount} from the previous value of @code{balance}.@footnote{The value of
-a @code{set!} expression is implementation-dependent.  @code{Set!} should be
-used only for its effect, not for its value.
-
-The name @code{set!} reflects a naming convention used in Scheme: Operations
-that change the values of variables (or that change data structures, as we will
-see in @ref{3.3}) are given names that end with an exclamation point.
-This is similar to the convention of designating predicates by names that end
-with a question mark.}
-
-@code{Withdraw} also uses the @code{begin} special form to cause two
-expressions to be evaluated in the case where the @code{if} test is true: first
-decrementing @code{balance} and then returning the value of @code{balance}.  In
-general, evaluating the expression
-
-@lisp
-(begin ⟨@var{exp₁}⟩ ⟨@var{exp₂}⟩ @r{…} ⟨@var{expₖ}⟩)
-@end lisp
+@example typescript
+return yield* Ref.setAndGet(balance, current - amount);
+@end example
 
 @noindent
-causes the expressions @math{{⟨exp_1⟩}} through @math{{⟨exp_k⟩}} to be evaluated
-in sequence and the value of the final expression @math{{⟨exp_k⟩}} to be
-returned as the value of the entire @code{begin} form.@footnote{We have already
-used @code{begin} implicitly in our programs, because in Scheme the body of a
-procedure can be a sequence of expressions.  Also, the @code{⟨}@var{consequent}@code{⟩} part
-of each clause in a @code{cond} expression can be a sequence of expressions
-rather than a single expression.}
+which reads the cell, computes the new balance, stores it back, and answers
+the value stored.  The @code{Ref} operations are this edition's assignment
+operator, and their shared shape is
+
+@example typescript
+yield* Ref.set(name, newValue);
+@end example
+
+@noindent
+Here @code{⟨}@var{name}@code{⟩} is a @code{Ref} cell that the enclosing
+procedure owns and @code{⟨}@var{new-value}@code{⟩} is any expression.
+Running @code{Ref.set} changes the cell so that its value is the result
+obtained by evaluating @code{⟨}@var{new-value}@code{⟩}.  In the case at
+hand, we are changing @code{balance} so that its new value will be the result
+of subtracting @code{amount} from the previous value of
+@code{balance}.@footnote{The @code{Ref} operations answer values: the plain
+@code{Ref.set} answers nothing and is run for its effect alone, while the
+composing forms such as @code{Ref.setAndGet} answer the value the cell now
+holds.  The Scheme convention behind the book's @code{set!} name survives in
+the vocabulary: an operation that changes a cell (or that changes data
+structures, as we will see in @ref{3.3}) says so in its name.  The
+same convention that designates predicates by names ending with a question
+mark.}
+
+@code{Withdraw} also needs two statements to run in sequence when the test is
+true: first decrementing @code{balance} and then returning the value of
+@code{balance}.  In general, the body of an @code{Effect.gen} evaluates the
+statements
+
+@example typescript
+yield* exp1;
+yield* exp2;
+// ... through expK
+return yield* expK;
+@end example
+
+@noindent
+in sequence, and the value of the final statement is the value of the entire
+body.@footnote{We have already used sequencing implicitly in our programs,
+because the body of a procedure in this edition is a sequence of statements
+rather than a single expression.  Also, each arm of a @code{switch} in the
+edition's dispatches can run a sequence of statements rather than a single
+one, which is what the arms of the book's @code{cond} clauses did.}
 
 Although @code{withdraw} works as desired, the variable @code{balance} presents
 a problem.  As specified above, @code{balance} is a name defined in the global
@@ -159,35 +178,37 @@ account.
 We can make @code{balance} internal to @code{withdraw} by rewriting the
 definition as follows:
 
-@lisp
-(define new-withdraw
-  (let ((balance 100))
-    (lambda (amount)
-      (if (>= balance amount)
-          (begin (set! balance 
-                       (- balance amount))
-                 balance)
-          "Insufficient funds"))))
-@end lisp
+@example typescript
+export const newWithdraw = (): WithdrawalProcessor => @{
+  const encapsulated = Ref.makeUnsafe(100);
+  return (amount) =>
+    Effect.gen(function* () @{
+      const current = yield* Ref.get(encapsulated);
+      if (current < amount) @{
+        return yield* new InsufficientFunds();
+      @}
+      return yield* Ref.setAndGet(encapsulated, current - amount);
+    @});
+@};
+@end example
 
 @noindent
-What we have done here is use @code{let} to establish an environment with a
-local variable @code{balance}, bound to the initial value 100.  Within this
-local environment, we use @code{lambda} to create a procedure that takes
-@code{amount} as an argument and behaves like our previous @code{withdraw}
-procedure.  This procedure---returned as the result of evaluating the
-@code{let} expression---is @code{new-withdraw}, which behaves in precisely the
-same way as @code{withdraw} but whose variable @code{balance} is not accessible
+What we have done here is use a factory to establish a local cell
+@code{encapsulated}, bound to the initial value 100.  Within this factory, we
+build a procedure that takes @code{amount} as an argument and behaves like our
+previous @code{withdraw} procedure.  This procedure---returned as the result of
+evaluating the factory---is @code{newWithdraw} applied once, which behaves in
+precisely the same way as @code{withdraw} but whose cell is not accessible
 by any other procedure.@footnote{In programming-language jargon, the variable
 @code{balance} is said to be @newterm{encapsulated} within the
-@code{new-withdraw} procedure.  Encapsulation reflects the general
+@code{newWithdraw} procedure.  Encapsulation reflects the general
 system-design principle known as the @newterm{hiding principle}: One can make a
 system more modular and robust by protecting parts of the system from each
 other; that is, by providing information access only to those parts of the
 system that have a ``need to know.''}
 
-Combining @code{set!} with local variables is the general programming technique
-we will use for constructing computational objects with local state.
+Combining @code{Ref} cells with local procedures is the general programming
+technique we will use for constructing computational objects with local state.
 Unfortunately, using this technique raises a serious problem: When we first
 introduced procedures, we also introduced the substitution model of evaluation
 (@ref{1.1.5}) to provide an interpretation of what procedure
@@ -196,51 +217,56 @@ evaluating the body of the procedure with the formal parameters replaced by
 their values.  The trouble is that, as soon as we introduce assignment into our
 language, substitution is no longer an adequate model of procedure application.
 (We will see why this is so in @ref{3.1.3}.)  As a consequence, we
-technically have at this point no way to understand why the @code{new-withdraw}
-procedure behaves as claimed above.  In order to really understand a procedure
-such as @code{new-withdraw}, we will need to develop a new model of procedure
+technically have at this point no way to understand why the
+@code{newWithdraw} procedure behaves as claimed above.  In order to really understand a procedure
+such as @code{newWithdraw}, we will need to develop a new model of procedure
 application.  In @ref{3.2} we will introduce such a model, together
-with an explanation of @code{set!} and local variables.  First, however, we
-examine some variations on the theme established by @code{new-withdraw}.
+with an explanation of assignment and local variables.  First, however, we
+examine some variations on the theme established by @code{newWithdraw}.
 
-The following procedure, @code{make-withdraw}, creates ``withdrawal
-processors.''  The formal parameter @code{balance} in @code{make-withdraw}
+The following procedure, @code{makeWithdraw}, creates ``withdrawal
+processors.''  The formal parameter @code{initialBalance} in
+@code{makeWithdraw}
 specifies the initial amount of money in the account.@footnote{In contrast with
-@code{new-withdraw} above, we do not have to use @code{let} to make
-@code{balance} a local variable, since formal parameters are already local.
+@code{newWithdraw} above, we do not have to build the cell from a
+@code{let}-like local binding, since formal parameters are already local.
 This will be clearer after the discussion of the environment model of
 evaluation in @ref{3.2}.  (See also @ref{Exercise 3.10}.)}
 
-@lisp
-(define (make-withdraw balance)
-  (lambda (amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds")))
-@end lisp
+@example typescript
+export const makeWithdraw = (initialBalance: number): WithdrawalProcessor => @{
+  const encapsulated = Ref.makeUnsafe(initialBalance);
+  return (amount) =>
+    Effect.gen(function* () @{
+      const current = yield* Ref.get(encapsulated);
+      if (current < amount) @{
+        return yield* new InsufficientFunds();
+      @}
+      return yield* Ref.setAndGet(encapsulated, current - amount);
+    @});
+@};
+@end example
 
 @noindent
-@code{Make-withdraw} can be used as follows to create two objects @code{W1} and
+@code{MakeWithdraw} can be used as follows to create two objects @code{W1} and
 @code{W2}:
 
-@lisp
-(define W1 (make-withdraw 100))
-(define W2 (make-withdraw 100))
+@example typescript
+const W1 = makeWithdraw(100);
+const W2 = makeWithdraw(100);
 
-(W1 50)
-@i{50}
+Effect.runSync(W1(50))
+// => 50
 
-(W2 70)
-@i{30}
+Effect.runSync(W2(70))
+// => 30
 
-(W2 40)
-@i{"Insufficient funds"}
+Effect.runSync(W2(40))
+// => Error: InsufficientFunds
 
-(W1 40)
-@i{10}
-@end lisp
+Effect.runSync(W1(40))
+// => 10
+@end example
 
 @noindent
 Observe that @code{W1} and @code{W2} are completely independent objects, each
@@ -251,63 +277,69 @@ We can also create objects that handle deposits as well as withdrawals, and
 thus we can represent simple bank accounts.  Here is a procedure that returns a
 ``bank-account object'' with a specified initial balance:
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (define (dispatch m)
-    (cond ((eq? m 'withdraw) withdraw)
-          ((eq? m 'deposit) deposit)
-          (else (error "Unknown request: 
-                 MAKE-ACCOUNT" m))))
-  dispatch)
-@end lisp
+@example typescript
+export type AccountRequest =
+  | @{ readonly _tag: "Withdraw"; readonly amount: number @}
+  | @{ readonly _tag: "Deposit"; readonly amount: number @};
+
+export const makeAccount = (initialBalance: number): Account => @{
+  const encapsulated = Ref.makeUnsafe(initialBalance);
+  return (request) =>
+    Effect.gen(function* () @{
+      if (request._tag === "Withdraw") @{
+        const current = yield* Ref.get(encapsulated);
+        if (current < request.amount) @{
+          return yield* new InsufficientFunds();
+        @}
+        return yield* Ref.setAndGet(encapsulated, current - request.amount);
+      @}
+      return yield* Ref.updateAndGet(encapsulated, (b) => b + request.amount);
+    @});
+@};
+@end example
 
 @noindent
-Each call to @code{make-account} sets up an environment with a local state
-variable @code{balance}.  Within this environment, @code{make-account} defines
-procedures @code{deposit} and @code{withdraw} that access @code{balance} and an
-additional procedure @code{dispatch} that takes a ``message'' as input and
-returns one of the two local procedures.  The @code{dispatch} procedure itself
-is returned as the value that represents the bank-account object.  This is
-precisely the @newterm{message-passing} style of programming that we saw in
-@ref{2.4.3}, although here we are using it in conjunction with the
-ability to modify local variables.
+Each call to @code{makeAccount} sets up an environment with a local state
+variable @code{balance}.  Within this environment, @code{makeAccount} defines
+the @code{withdraw} and @code{deposit} arms that access the cell, and the
+dispatch that reads the request's tag and runs the matching arm.  The
+dispatch itself is returned as the value that represents the bank-account
+object.  This is precisely the @newterm{message-passing} style of programming
+that we saw in @ref{2.4.3}, although here we are using it in conjunction with
+the ability to modify local variables.  The book's dispatch answers the local
+procedure named by the message and leaves applying it to the caller; the
+edition's dispatch applies the arm itself and answers the resulting effect,
+and the book's ``Unknown request: MAKE-ACCOUNT'' arm is unrepresentable,
+because the compiler holds every request to the two members of the
+@code{AccountRequest} union.
 
-@code{Make-account} can be used as follows:
+@code{MakeAccount} can be used as follows:
 
-@lisp
-(define acc (make-account 100))
+@example typescript
+const acc = makeAccount(100);
 
-((acc 'withdraw) 50)
-@i{50}
+Effect.runSync(acc(@{ _tag: "Withdraw", amount: 50 @}))
+// => 50
 
-((acc 'withdraw) 60)
-@i{"Insufficient funds"}
+Effect.runSync(acc(@{ _tag: "Withdraw", amount: 60 @}))
+// => Error: InsufficientFunds
 
-((acc 'deposit) 40)
-@i{90}
+Effect.runSync(acc(@{ _tag: "Deposit", amount: 40 @}))
+// => 90
 
-((acc 'withdraw) 60)
-@i{30}
-@end lisp
+Effect.runSync(acc(@{ _tag: "Withdraw", amount: 60 @}))
+// => 30
+@end example
 
 @noindent
-Each call to @code{acc} returns the locally defined @code{deposit} or
-@code{withdraw} procedure, which is then applied to the specified
-@code{amount}.  As was the case with @code{make-withdraw}, another call to
-@code{make-account}
+Each request to @code{acc} runs the locally defined @code{withdraw} or
+@code{deposit} arm on the specified @code{amount}.  As was the case with
+@code{makeWithdraw}, another call to
+@code{makeAccount}
 
-@lisp
-(define acc2 (make-account 100))
-@end lisp
+@example typescript
+const acc2 = makeAccount(100);
+@end example
 
 @noindent
 will produce a completely separate account object, which maintains its own
@@ -317,75 +349,94 @@ local @code{balance}.
 @strong{@anchor{Exercise 3.1}Exercise 3.1:} An @newterm{accumulator} is a
 procedure that is called repeatedly with a single numeric argument and
 accumulates its arguments into a sum.  Each time it is called, it returns the
-currently accumulated sum.  Write a procedure @code{make-accumulator} that
+currently accumulated sum.  Write a procedure @code{makeAccumulator} that
 generates accumulators, each maintaining an independent sum.  The input to
-@code{make-accumulator} should specify the initial value of the sum; for
+@code{makeAccumulator} should specify the initial value of the sum; for
 example
 
-@lisp
-(define A (make-accumulator 5))
+@example typescript
+const A = makeAccumulator(5);
 
-(A 10)
-@i{15}
+Effect.runSync(A(10))
+// => 15
 
-(A 10)
-@i{25}
-@end lisp
+Effect.runSync(A(10))
+// => 25
+@end example
+@end quotation
+
+@quotation
+@emph{Exercise 3.1a is added by this edition and extends exercise 3.1; SICP
+numbers stop at 3.8.} @strong{@anchor{Exercise 3.1a}Exercise 3.1a:} An
+accumulator answers the sum; make it answer the history as well.  Write
+@code{makeAccumulatorWithHistory} so that it keeps the running sum and each
+call returns the history of transactions that produced it: the amounts added
+so far, in order, together with the current sum; for example
+
+@example typescript
+const A = makeAccumulatorWithHistory(5);
+
+Effect.runSync(A(10))
+// => @{ sum: 15, transactions: [10] @}
+
+Effect.runSync(A(10))
+// => @{ sum: 25, transactions: [10, 10] @}
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.2}Exercise 3.2:} In software-testing applications,
 it is useful to be able to count the number of times a given procedure is
 called during the course of a computation.  Write a procedure
-@code{make-monitored} that takes as input a procedure, @code{f}, that itself
-takes one input.  The result returned by @code{make-monitored} is a third
+@code{makeMonitored} that takes as input a procedure, @code{f}, that itself
+takes one input.  The result returned by @code{makeMonitored} is a third
 procedure, say @code{mf}, that keeps track of the number of times it has been
-called by maintaining an internal counter.  If the input to @code{mf} is the
-special symbol @code{how-many-calls?}, then @code{mf} returns the value of the
-counter.  If the input is the special symbol @code{reset-count}, then @code{mf}
-resets the counter to zero.  For any other input, @code{mf} returns the result
-of calling @code{f} on that input and increments the counter.  For instance, we
-could make a monitored version of the @code{sqrt} procedure:
+called by maintaining an internal counter.  If the request to @code{mf} is the
+@code{HowManyCalls} member, then @code{mf} returns the value of the
+counter.  If the request is the @code{ResetCount} member, then @code{mf}
+resets the counter to zero.  Any other request is the @code{Call} member
+carrying an argument: @code{mf} returns the result of calling @code{f} on that
+argument and increments the counter.  For instance, we could make a monitored
+version of the @code{sqrt} procedure:
 
-@lisp
-(define s (make-monitored sqrt))
+@example typescript
+const s = makeMonitored(Math.sqrt);
 
-(s 100)
-@i{10}
+Effect.runSync(s(@{ _tag: "Call", arg: 100 @}))
+// => 10
 
-(s 'how-many-calls?)
-@i{1}
-@end lisp
+Effect.runSync(s(@{ _tag: "HowManyCalls" @}))
+// => 1
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.3}Exercise 3.3:} Modify the @code{make-account}
+@strong{@anchor{Exercise 3.3}Exercise 3.3:} Modify the @code{makeAccount}
 procedure so that it creates password-protected accounts.  That is,
-@code{make-account} should take a symbol as an additional argument, as in
+@code{makeAccount} should take a password as an additional argument, as in
 
-@lisp
-(define acc 
-  (make-account 100 'secret-password))
-@end lisp
+@example typescript
+const acc = makeAccount(100, "secret-password");
+@end example
 
 The resulting account object should process a request only if it is accompanied
-by the password with which the account was created, and should otherwise return
-a complaint:
+by the password with which the account was created, and should otherwise fail
+with the @emph{Incorrect password} error:
 
-@lisp
-((acc 'secret-password 'withdraw) 40)
-@i{60}
+@example typescript
+Effect.runSync(acc("secret-password", @{ _tag: "Withdraw", amount: 40 @}))
+// => 60
 
-((acc 'some-other-password 'deposit) 50)
-@i{"Incorrect password"}
-@end lisp
+Effect.runSync(acc("some-other-password", @{ _tag: "Deposit", amount: 50 @}))
+// => Error: IncorrectPassword
+@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.4}Exercise 3.4:} Modify the @code{make-account}
+@strong{@anchor{Exercise 3.4}Exercise 3.4:} Modify the @code{makeAccount}
 procedure of @ref{Exercise 3.3} by adding another local state variable so that,
 if an account is accessed more than seven consecutive times with an incorrect
-password, it invokes the procedure @code{call-the-cops}.
+password, it invokes the procedure @code{callTheCops}.
 @end quotation
 
 @node	3.1.2, 3.1.3, 3.1.1, 3.1
@@ -402,24 +453,31 @@ It is not at all clear what is meant by ``chosen at random.''  What we
 presumably want is for successive calls to @code{rand} to produce a sequence of
 numbers that has statistical properties of uniform distribution.  We will not
 discuss methods for generating suitable sequences here.  Rather, let us assume
-that we have a procedure @code{rand-update} that has the property that if we
+that we have a procedure @code{randUpdate} that has the property that if we
 start with a given number @math{x_1} and form
 
-@lisp
-@var{x₂} = (rand-update @var{x₁})
-@var{x₃} = (rand-update @var{x₂})
-@end lisp
+@example typescript
+x2 = randUpdate(x1)
+x3 = randUpdate(x2)
+@end example
 
 @noindent
 then the sequence of values @math{x_1}, @math{x_2}, @math{x_3}, @dots{} will have the
 desired statistical properties.@footnote{One common way to implement
-@code{rand-update} is to use the rule that @math{x} is updated to @math{{ax + b}} 
+@code{randUpdate} is the rule that @math{x} is updated to @math{ax + b}
 modulo @math{m}, where @math{a}, @math{b}, and @math{m} are appropriately chosen
-integers.  Chapter 3 of @ref{Knuth 1981} includes an extensive discussion of
+integers.  That family has a defect the section's experiment exposes: any
+odd-multiplier generator modulo a power of two alternates the parity of its
+low bit, so @emph{successive} states are never both even and the Cesaro
+fraction below comes out visibly above @math{6/\pi^2}.  This edition
+therefore uses xorshift instead: a pure function of the state that updates
+the 32-bit @math{x} by shuffling it with a copy of itself shifted 13 bits
+left, then 17 bits right, then 5 bits left, with no such bias.  Chapter 3 of @ref{Knuth 1981} includes an extensive discussion of
 techniques for generating sequences of random numbers and establishing their
-statistical properties.  Notice that the @code{rand-update} procedure computes
+statistical properties.  Notice that the @code{randUpdate} procedure computes
 a mathematical function: Given the same input twice, it produces the same
-output.  Therefore, the number sequence produced by @code{rand-update}
+output.  Therefore, the number sequence produced by
+@code{randUpdate}
 certainly is not ``random,'' if by ``random'' we insist that each number in the
 sequence is unrelated to the preceding number.  The relation between ``real
 randomness'' and so-called @newterm{pseudo-random} sequences, which are
@@ -429,23 +487,36 @@ philosophy.  Kolmogorov, Solomonoff, and Chaitin have made great progress in
 clarifying these issues; a discussion can be found in @ref{Chaitin 1975}.}
 
 We can implement @code{rand} as a procedure with a local state variable
-@code{x} that is initialized to some fixed value @code{random-init}.  Each call
-to @code{rand} computes @code{rand-update} of the current value of @code{x},
+@code{x} that is initialized to some fixed value @code{randomInit}.  Each call
+to @code{rand} computes @code{randUpdate} of the current value of @code{x},
 returns this as the random number, and also stores this as the new value of
 @code{x}.
 
-@lisp
-(define rand
-  (let ((x random-init))
-    (lambda () (set! x (rand-update x)) x)))
-@end lisp
+@example typescript
+const makeRand = (seed: number): Effect.Effect<number> => @{
+  const x = Ref.makeUnsafe(seed);
+  return Ref.modify(x, (current) => @{
+    const next = randUpdate(current);
+    return [next, next];
+  @});
+@};
+
+const rand = makeRand(randomInit);
+@end example
 
 @noindent
+The section's running system goes one step further: the generator is provided
+as a @code{Random} service by a layer seeded once, and every procedure that
+needs randomness takes the service in its type instead of reading a global
+cell.  The dependency the book hides behind a top-level definition becomes a
+line in the type; the hidden cell itself is still a @code{Ref}, and the
+sequence it produces is exactly the one above.
+
 Of course, we could generate the same sequence of random numbers without using
-assignment by simply calling @code{rand-update} directly.  How@-ever, this would
+assignment by simply calling @code{randUpdate} directly.  How@-ever, this would
 mean that any part of our program that used random numbers would have to
 explicitly remember the current value of @code{x} to be passed as an argument
-to @code{rand-update}.  To realize what an annoyance this would be, consider
+to @code{randUpdate}.  To realize what an annoyance this would be, consider
 using random numbers to implement a technique called @newterm{Monte Carlo simulation}.
 
 The Monte Carlo method consists of choosing sample experiments at random from a
@@ -461,75 +532,80 @@ if their @abbr{GCD} is 1.  The fraction of times that the test is passed
 gives us our estimate of @math{{6/\pi^2}}, and from this we obtain our
 approximation to @math{\pi}.
 
-The heart of our program is a procedure @code{monte-carlo}, which takes as
+The heart of our program is a procedure @code{monteCarlo}, which takes as
 arguments the number of times to try an experiment, together with the
-experiment, represented as a no-argument procedure that will return either true
-or false each time it is run.  @code{Monte-carlo} runs the experiment for the
+experiment, represented as an effect that will return either true
+or false each time it is run.  @code{MonteCarlo} runs the experiment for the
 designated number of trials and returns a number telling the fraction of the
 trials in which the experiment was found to be true.
 
-@lisp
-(define (estimate-pi trials)
-  (sqrt (/ 6 (monte-carlo trials 
-                          cesaro-test))))
-(define (cesaro-test)
-   (= (gcd (rand) (rand)) 1))
+@example typescript
+export const estimatePi = (
+  trials: number,
+): Effect.Effect<number, never, Random> =>
+  Effect.map(monteCarlo(trials, cesaroTest), (fraction) =>
+    Math.sqrt(6 / fraction));
 
-(define (monte-carlo trials experiment)
-  (define (iter trials-remaining trials-passed)
-    (cond ((= trials-remaining 0)
-           (/ trials-passed trials))
-          ((experiment)
-           (iter (- trials-remaining 1) 
-                 (+ trials-passed 1)))
-          (else
-           (iter (- trials-remaining 1) 
-                 trials-passed))))
-  (iter trials 0))
-@end lisp
+export const cesaroTest: Effect.Effect<boolean, never, Random> =
+  Effect.gen(function* () @{
+    const random = yield* Random;
+    const a = yield* random.next;
+    const b = yield* random.next;
+    return gcd(a, b) === 1;
+  @});
+
+export const monteCarlo = <E, R>(
+  trials: number,
+  experiment: Effect.Effect<boolean, E, R>,
+): Effect.Effect<number, E, R> => @{
+  const iter = (remaining: number, passed: number): Effect.Effect<number, E, R> =>
+    remaining === 0
+      ? Effect.succeed(passed / trials)
+      : Effect.flatMap(experiment, (hit) =>
+          iter(remaining - 1, hit ? passed + 1 : passed));
+  return iter(trials, 0);
+@};
+@end example
 
 @noindent
-Now let us try the same computation using @code{rand-update} directly rather
+Now let us try the same computation using @code{randUpdate} directly rather
 than @code{rand}, the way we would be forced to proceed if we did not use
 assignment to model local state:
 
-@lisp
-(define (estimate-pi trials)
-  (sqrt (/ 6 (random-gcd-test trials 
-                              random-init))))
+@example typescript
+export const estimatePiWithoutState = (trials: number): number =>
+  Math.sqrt(6 / randomGcdTest(trials, randomInit));
 
-(define (random-gcd-test trials initial-x)
-  (define (iter trials-remaining 
-                trials-passed 
-                x)
-    (let ((x1 (rand-update x)))
-      (let ((x2 (rand-update x1)))
-        (cond ((= trials-remaining 0)
-               (/ trials-passed trials))
-              ((= (gcd x1 x2) 1)
-               (iter (- trials-remaining 1)
-                     (+ trials-passed 1)
-                     x2))
-              (else
-               (iter (- trials-remaining 1)
-                     trials-passed
-                     x2))))))
-  (iter trials 0 initial-x))
-@end lisp
+export const randomGcdTest = (trials: number, initialX: number): number => @{
+  let remaining = trials;
+  let passed = 0;
+  let x = initialX;
+  while (remaining !== 0) @{
+    const x1 = randUpdate(x);
+    const x2 = randUpdate(x1);
+    if (gcd(x1, x2) === 1) @{
+      passed += 1;
+    @}
+    remaining -= 1;
+    x = x2;
+  @}
+  return passed / trials;
+@};
+@end example
 
 @noindent
 While the program is still simple, it betrays some painful breaches of
 modularity.  In our first version of the program, using @code{rand}, we can
-express the Monte Carlo method directly as a general @code{monte-carlo}
-procedure that takes as an argument an arbitrary @code{experiment} procedure.
+express the Monte Carlo method directly as a general @code{monteCarlo}
+procedure that takes as an argument an arbitrary @code{experiment} effect.
 In our second version of the program, with no local state for the random-number
-generator, @code{random-gcd-test} must explicitly manipulate the random numbers
+generator, @code{randomGcdTest} must explicitly manipulate the random numbers
 @code{x1} and @code{x2} and recycle @code{x2} through the iterative loop as the
-new input to @code{rand-update}.  This explicit handling of the random numbers
+new input to @code{randUpdate}.  This explicit handling of the random numbers
 intertwines the structure of accumulating test results with the fact that our
 particular experiment uses two random numbers, whereas other Monte Carlo
 experiments might use one random number or three.  Even the top-level procedure
-@code{estimate-pi} has to be concerned with supplying an initial random number.
+@code{estimatePiWithoutState} has to be concerned with supplying an initial random number.
 The fact that the random-number generator's insides are leaking out into other
 parts of the program makes it difficult for us to isolate the Monte Carlo idea
 so that it can be applied to other tasks.  In the first version of the program,
@@ -571,37 +647,41 @@ estimate of the proportion of the rectangle that lies in the region.  Hence,
 multiplying this fraction by the area of the entire rectangle should produce an
 estimate of the integral.
 
-Implement Monte Carlo integration as a procedure @code{estimate-integral} that
-takes as arguments a predicate @code{P}, upper and lower bounds @code{x1},
+Implement Monte Carlo integration as a procedure @code{estimateIntegral} that
+takes as arguments a predicate @code{predicate}, upper and lower bounds @code{x1},
 @code{x2}, @code{y1}, and @code{y2} for the rectangle, and the number of trials
 to perform in order to produce the estimate.  Your procedure should use the
-same @code{monte-carlo} procedure that was used above to estimate @math{\pi}.
-Use your @code{estimate-integral} to produce an estimate of @math{\pi} by
+same @code{monteCarlo} procedure that was used above to estimate @math{\pi}.
+Use your @code{estimateIntegral} to produce an estimate of @math{\pi} by
 measuring the area of a unit circle.
 
 You will find it useful to have a procedure that returns a number chosen at
-random from a given range.  The following @code{random-in-range} procedure
-implements this in terms of the @code{random} procedure used in 
-@ref{1.2.6}, which returns a nonnegative number less than its
-input.@footnote{@abbr{MIT} Scheme provides such a procedure.  If
-@code{random} is given an exact integer (as in @ref{1.2.6}) it returns
-an exact integer, but if it is given a decimal value (as in this exercise) it
-returns a decimal value.}
+random from a given range.  The following @code{randomInRange} procedure
+implements this in terms of the section's generator, which, like the
+@code{random} procedure used in @ref{1.2.6}, returns a nonnegative number
+less than its bound.@footnote{Scheme's
+@code{random} answers an exact integer when given one and a decimal when given
+a decimal, as in @ref{1.2.6}; this edition's generator always answers
+32-bit integers, and @code{randomInRange} scales them, so the exercise works
+with decimals either way.}
 
-@lisp
-(define (random-in-range low high)
-  (let ((range (- high low)))
-    (+ low (random range))))
-@end lisp
+@example typescript
+const randomInRange = (
+  low: number,
+  high: number,
+  rand: Effect.Effect<number>,
+): Effect.Effect<number> =>
+  Effect.map(rand, (r) => low + (high - low) * (r / 4294967296));
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.6}Exercise 3.6:} It is useful to be able to reset a
 random-number generator to produce a sequence starting from a given value.
-Design a new @code{rand} procedure that is called with an argument that is
-either the symbol @code{generate} or the symbol @code{reset} and behaves as
-follows: @code{(rand 'generate)} produces a new random number; @code{((rand
-'reset) ⟨@var{new-value}⟩)} resets the internal state variable to the
+Design a new @code{rand} procedure that is called with a request that is either
+the @code{Generate} member or the @code{Reset} member and behaves as
+follows: @code{rand(@{ _tag: "Generate" @})} produces a new random number;
+@code{rand(@{ _tag: "Reset", newValue @})} resets the internal state variable to the
 designated @code{⟨}@var{new-value}@code{⟩}.  Thus, by resetting the state, one can generate
 repeatable sequences.  These are very handy to have when testing and debugging
 programs that use random numbers.
@@ -610,7 +690,7 @@ programs that use random numbers.
 @node	3.1.3, 3.2, Chapter 3, 3.1
 @subsection The Costs of Introducing Assignment
 
-As we have seen, the @code{set!} operation enables us to model objects that
+As we have seen, the @code{Ref} operations enable us to model objects that
 have local state.  However, this advantage comes at a price.  Our programming
 language can no longer be interpreted in terms of the substitution model of
 procedure application that we introduced in @ref{1.1.5}.  Moreover, no
@@ -624,122 +704,129 @@ assignments, as we did throughout the first two chapters of this book, is
 accordingly known as @newterm{functional programming}.
 
 To understand how assignment complicates matters, consider a simplified version
-of the @code{make-withdraw} procedure of @ref{3.1.1} that does not
+of the @code{makeWithdraw} procedure of @ref{3.1.1} that does not
 bother to check for an insufficient amount:
 
-@lisp
-(define (make-simplified-withdraw balance)
-  (lambda (amount)
-    (set! balance (- balance amount))
-    balance))
+@example typescript
+export const makeSimplifiedWithdraw = (initialBalance: number) => @{
+  const encapsulated = Ref.makeUnsafe(initialBalance);
+  return (amount: number): Effect.Effect<number> =>
+    Ref.updateAndGet(encapsulated, (b) => b - amount);
+@};
+@end example
 
-(define W (make-simplified-withdraw 25))
+@example typescript
+const W = makeSimplifiedWithdraw(25);
 
-(W 20)
-@i{5}
+Effect.runSync(W(20))
+// => 5
 
-(W 10)
-@i{-5}
-@end lisp
-
-@noindent
-Compare this procedure with the following @code{make-decrementer} procedure,
-which does not use @code{set!}:
-
-@lisp
-(define (make-decrementer balance)
-  (lambda (amount)
-    (- balance amount)))
-@end lisp
+Effect.runSync(W(10))
+// => -5
+@end example
 
 @noindent
-@code{Make-decrementer} returns a procedure that subtracts its input from a
+Compare this procedure with the following @code{makeDecrementer} procedure,
+which does not use assignment:
+
+@example typescript
+export const makeDecrementer = (balance: number) => @{
+  return (amount: number): Effect.Effect<number> =>
+    Effect.succeed(balance - amount);
+@};
+@end example
+
+@noindent
+@code{MakeDecrementer} returns a procedure that subtracts its input from a
 designated amount @code{balance}, but there is no accumulated effect over
-successive calls, as with @code{make-simplified-withdraw}:
+successive calls, as with @code{makeSimplifiedWithdraw}:
 
-@lisp
-(define D (make-decrementer 25))
+@example typescript
+const D = makeDecrementer(25);
 
-(D 20)
-@i{5}
+Effect.runSync(D(20))
+// => 5
 
-(D 10)
-@i{15}
-@end lisp
+Effect.runSync(D(10))
+// => 15
+@end example
 
 @noindent
-We can use the substitution model to explain how @code{make-decrementer} works.
+We can use the substitution model to explain how @code{makeDecrementer} works.
 For instance, let us analyze the evaluation of the expression
 
-@lisp
-((make-decrementer 25) 20)
-@end lisp
+@example typescript
+makeDecrementer(25)(20)
+@end example
 
 @noindent
-We first simplify the operator of the combination by substituting 25 for
-@code{balance} in the body of @code{make-decrementer}.  This reduces the
+We first simplify the operator of the call by substituting 25 for
+@code{balance} in the body of @code{makeDecrementer}.  This reduces the
 expression to
 
-@lisp
-((lambda (amount) (- 25 amount)) 20)
-@end lisp
+@example typescript
+(amount) => Effect.succeed(25 - amount)
+@end example
 
 @noindent
 Now we apply the operator by substituting 20 for @code{amount} in the body of
-the @code{lambda} expression:
+the returned procedure:
 
-@lisp
-(- 25 20)
-@end lisp
+@example typescript
+Effect.succeed(25 - 20)
+@end example
 
 @noindent
 The final answer is 5.
 
 Observe, however, what happens if we attempt a similar substitution analysis
-with @code{make-simplified-withdraw}:
+with @code{makeSimplifiedWithdraw}:
 
-@lisp
-((make-simplified-withdraw 25) 20)
-@end lisp
+@example typescript
+makeSimplifiedWithdraw(25)(20)
+@end example
 
 @noindent
-We first simplify the operator by substituting 25 for @code{balance} in the
-body of @code{make-simplified-withdraw}.  This reduces the expression
-to@footnote{We don't substitute for the occurrence of @code{balance} in the
-@code{set!} expression because the @code{⟨}@var{name}@code{⟩} in a @code{set!} is not
-evaluated.  If we did substitute for it, we would get @code{(set! 25 (- 25
-amount))}, which makes no sense.}
+We first simplify the operator by substituting 25 for @code{initialBalance}
+in the body of @code{makeSimplifiedWithdraw}.  This reduces the expression
+to@footnote{We don't substitute for the occurrence of the cell inside the
+returned procedure because the @code{Ref} is a @emph{place}, not an expression
+whose value is wanted.  If we did substitute for it, we would get
+@code{Ref.updateAndGet(25, (b) => b - amount)}, which makes no sense: there is
+no cell 25 to update.}
 
-@lisp
-((lambda (amount) 
-   (set! balance (- 25 amount)) 25)
- 20)
-@end lisp
+@example typescript
+(amount) => @{
+  return Ref.updateAndGet(Ref.makeUnsafe(25), (b) => b - amount);
+@}
+@end example
 
 @noindent
 Now we apply the operator by substituting 20 for @code{amount} in the body of
-the @code{lambda} expression:
+the returned procedure:
 
-@lisp
-(set! balance (- 25 20)) 25
-@end lisp
+@example typescript
+Ref.updateAndGet(Ref.makeUnsafe(25), (b) => b - 20)
+@end example
 
 @noindent
-If we adhered to the substitution model, we would have to say that the meaning
-of the procedure application is to first set @code{balance} to 5 and then
-return 25 as the value of the expression.  This gets the wrong answer.  In
-order to get the correct answer, we would have to somehow distinguish the first
-occurrence of @code{balance} (before the effect of the @code{set!})  from the
-second occurrence of @code{balance} (after the effect of the @code{set!}), and
-the substitution model cannot do this.
+If we adhered to the substitution model, each evaluation of the procedure body
+would build a brand-new cell holding 25 and update that fresh cell, so that
+@code{W(20)} would answer 5, and so would @code{W(10)}, and every call after
+them.  This gets the wrong answer.  In order to get the correct answer, we
+would have to somehow distinguish the cell that @code{makeSimplifiedWithdraw}
+built when the factory ran from the cell the returned procedure updates on
+each call, and the substitution model cannot do this, because its symbols are
+names for values, not names for places.
 
 The trouble here is that substitution is based ultimately on the notion that
 the symbols in our language are essentially names for values.  But as soon as
-we introduce @code{set!} and the idea that the value of a variable can change,
+we introduce assignment and the idea that the value of a variable can change,
 a variable can no longer be simply a name.  Now a variable somehow refers to a
 place where a value can be stored, and the value stored at this place can
 change.  In @ref{3.2} we will see how environments play this role of
-``place'' in our computational model.
+``place'' in our computational model; in this edition the @code{Ref} makes
+the place explicit in the program text.
 
 @subsubheading Sameness and change
 
@@ -748,13 +835,13 @@ particular model of computation.  As soon as we introduce change into our
 computational models, many notions that were previously straightforward become
 problematical.  Consider the concept of two things being ``the same.''
 
-Suppose we call @code{make-decrementer} twice with the same argument to create
+Suppose we call @code{makeDecrementer} twice with the same argument to create
 two procedures:
 
-@lisp
-(define D1 (make-decrementer 25))
-(define D2 (make-decrementer 25))
-@end lisp
+@example typescript
+const D1 = makeDecrementer(25);
+const D2 = makeDecrementer(25);
+@end example
 
 @noindent
 Are @code{D1} and @code{D2} the same?  An acceptable answer is yes, because
@@ -762,39 +849,40 @@ Are @code{D1} and @code{D2} the same?  An acceptable answer is yes, because
 procedure that subtracts its input from 25.  In fact, @code{D1} could be
 substituted for @code{D2} in any computation without changing the result.
 
-Contrast this with making two calls to @code{make-simplified-withdraw}:
+Contrast this with making two calls to @code{makeSimplifiedWithdraw}:
 
-@lisp
-(define W1 (make-simplified-withdraw 25))
-(define W2 (make-simplified-withdraw 25))
-@end lisp
+@example typescript
+const W1 = makeSimplifiedWithdraw(25);
+const W2 = makeSimplifiedWithdraw(25);
+@end example
 
 @noindent
 Are @code{W1} and @code{W2} the same?  Surely not, because calls to @code{W1}
 and @code{W2} have distinct effects, as shown by the following sequence of
 interactions:
 
-@lisp
-(W1 20)
-@i{5}
+@example typescript
+Effect.runSync(W1(20))
+// => 5
 
-(W1 20)
-@i{-15}
+Effect.runSync(W1(20))
+// => -15
 
-(W2 20)
-@i{5}
-@end lisp
+Effect.runSync(W2(20))
+// => 5
+@end example
 
 @noindent
 Even though @code{W1} and @code{W2} are ``equal'' in the sense that they are
-both created by evaluating the same expression, @code{(make-simplified-withdraw
-25)}, it is not true that @code{W1} could be substituted for @code{W2} in any
+both created by evaluating the same expression,
+@code{makeSimplifiedWithdraw(25)}, it is not true that @code{W1} could be
+substituted for @code{W2} in any
 expression without changing the result of evaluating the expression.
 
 A language that supports the concept that ``equals can be substituted for
 equals'' in an expression without changing the value of the expression is said
 to be @newterm{referentially transparent}.  Referential transparency is
-violated when we include @code{set!} in our computer language.  This makes it
+violated when we include assignment in our computer language.  This makes it
 tricky to determine when we can simplify expressions by substituting equivalent
 expressions.  Consequently, reasoning about programs that use assignment
 becomes drastically more difficult.
@@ -815,32 +903,32 @@ As an example of how this issue arises in programming, consider the situation
 where Peter and Paul have a bank account with $100 in it.  There is a
 substantial difference between modeling this as
 
-@lisp
-(define peter-acc (make-account 100))
-(define paul-acc (make-account 100))
-@end lisp
+@example typescript
+const peterAcc = makeAccount(100);
+const paulAcc = makeAccount(100);
+@end example
 
 @noindent
 and modeling it as
 
-@lisp
-(define peter-acc (make-account 100))
-(define paul-acc peter-acc)
-@end lisp
+@example typescript
+const peterAcc = makeAccount(100);
+const paulAcc = peterAcc;
+@end example
 
 @noindent
 In the first situation, the two bank accounts are distinct.  Transactions made
 by Peter will not affect Paul's account, and vice versa.  In the second
-situation, however, we have defined @code{paul-acc} to be @emph{the same thing}
-as @code{peter-acc}.  In effect, Peter and Paul now have a joint bank account,
-and if Peter makes a withdrawal from @code{peter-acc} Paul will observe less
-money in @code{paul-acc}.  These two similar but distinct situations can cause
+situation, however, we have defined @code{paulAcc} to be @emph{the same thing}
+as @code{peterAcc}.  In effect, Peter and Paul now have a joint bank account,
+and if Peter makes a withdrawal from @code{peterAcc} Paul will observe less
+money in @code{paulAcc}.  These two similar but distinct situations can cause
 confusion in building computational models.  With the shared account, in
 particular, it can be especially confusing that there is one object (the bank
-account) that has two different names (@code{peter-acc} and @code{paul-acc});
-if we are searching for all the places in our program where @code{paul-acc} can
+account) that has two different names (@code{peterAcc} and @code{paulAcc});
+if we are searching for all the places in our program where @code{paulAcc} can
 be changed, we must remember to look also at things that change
-@code{peter-acc}.@footnote{The phenomenon of a single computational object
+@code{peterAcc}.@footnote{The phenomenon of a single computational object
 being accessed by more than one name is known as @newterm{aliasing}.  The joint
 bank account situation illustrates a very simple example of an alias.  In
 @ref{3.3} we will see much more complex examples, such as ``distinct''
@@ -879,34 +967,37 @@ imperative style are susceptible to bugs that cannot occur in functional
 programs.  For example, recall the iterative factorial program from 
 @ref{1.2.1}:
 
-@lisp
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
-@end lisp
+@example typescript
+const factorial = (n: number): number => @{
+  const iter = (product: number, counter: number): number =>
+    counter > n ? product : iter(counter * product, counter + 1);
+  return iter(1, 1);
+@};
+@end example
 
 @noindent
 Instead of passing arguments in the internal iterative loop, we could adopt a
 more imperative style by using explicit assignment to update the values of the
 variables @code{product} and @code{counter}:
 
-@lisp
-(define (factorial n)
-  (let ((product 1)
-        (counter 1))
-    (define (iter)
-      (if (> counter n)
-          product
-          (begin (set! product (* counter 
-                                  product))
-                 (set! counter (+ counter 1))
-                 (iter))))
-    (iter)))
-@end lisp
+@example typescript
+const factorialImperative = (n: number): Effect.Effect<number> =>
+  Effect.gen(function* () @{
+    const product = yield* Ref.make(1);
+    const counter = yield* Ref.make(1);
+    const iter = (): Effect.Effect<number> =>
+      Effect.gen(function* () @{
+        const c = yield* Ref.get(counter);
+        if (c > n) @{
+          return yield* Ref.get(product);
+        @}
+        yield* Ref.update(product, (p) => c * p);
+        yield* Ref.update(counter, (c) => c + 1);
+        return yield* iter();
+      @});
+    return yield* iter();
+  @});
+@end example
 
 @noindent
 This does not change the results produced by the program, but it does introduce
@@ -914,16 +1005,19 @@ a subtle trap.  How do we decide the order of the assignments?  As it happens,
 the program is correct as written.  But writing the assignments in the opposite
 order
 
-@lisp
-(set! counter (+ counter 1))
-(set! product (* counter product))
-@end lisp
+@example typescript
+yield* Ref.update(counter, (c) => c + 1);
+yield* Ref.update(product, (p) => c * p);
+@end example
 
 @noindent
-would have produced a different, incorrect result.  In general, programming
+would have produced a different, incorrect result, because the product would
+now be multiplied by the @emph{new} counter.  In general, programming
 with assignment forces us to carefully consider the relative orders of the
 assignments to make sure that each statement is using the correct version of
-the variables that have been changed.  This issue simply does not arise in
+the variables that have been changed.  The @code{Effect.gen} body at least
+puts the order on the page, line under line; nothing in the type system
+enforces it.  This issue simply does not arise in
 functional programs.@footnote{In view of this, it is ironic that introductory
 programming is most often taught in a highly imperative style.  This may be a
 vestige of a belief, common throughout the 1960s and 1970s, that programs that
@@ -942,27 +1036,26 @@ explore the uses of objects with local state in designing simulations.
 
 @quotation
 @strong{@anchor{Exercise 3.7}Exercise 3.7:} Consider the bank account objects
-created by @code{make-account}, with the password modification described in
+created by @code{makeAccount}, with the password modification described in
 @ref{Exercise 3.3}.  Suppose that our banking system requires the ability to
-make joint accounts.  Define a procedure @code{make-joint} that accomplishes
-this.  @code{Make-joint} should take three arguments.  The first is a
-password-protected account.  The second argument must match the password with
-which the account was defined in order for the @code{make-joint} operation to
-proceed.  The third argument is a new password.  @code{Make-joint} is to create
+make joint accounts.  Define a procedure @code{makeJoint} that accomplishes
+this.  @code{MakeJoint} should take three arguments.  The first is a
+password-protected account.  The second argument must match the password
+with which the account was defined in order for the @code{makeJoint} operation to
+proceed.  The third argument is a new password.  @code{MakeJoint} is to create
 an additional access to the original account using the new password.  For
-example, if @code{peter-acc} is a bank account with password
+example, if @code{peterAcc} is a bank account with password
 @code{open-sesame}, then
 
-@lisp
-(define paul-acc
-  (make-joint peter-acc 
-              'open-sesame 
-              'rosebud))
-@end lisp
+@example typescript
+const paulAcc = Effect.runSync(
+  makeJoint(peterAcc, "open-sesame", "rosebud"),
+);
+@end example
 
 @noindent
-will allow one to make transactions on @code{peter-acc} using the name
-@code{paul-acc} and the password @code{rosebud}.  You may wish to modify your
+will allow one to make transactions on @code{peterAcc} using the name
+@code{paulAcc} and the password @code{rosebud}.  You may wish to modify your
 solution to @ref{Exercise 3.3} to accommodate this new feature.
 @end quotation
 
@@ -975,13 +1068,14 @@ to left).  When we introduce assignment, the order in which the arguments to a
 procedure are evaluated can make a difference to the result.  Define a simple
 procedure @code{f} such that evaluating 
 
-@lisp
-(+ (f 0) (f 1))
-@end lisp
+@example typescript
+f(0) + f(1)
+@end example
 
 @noindent
 will return 0 if
 the arguments to @code{+} are evaluated from left to right but will return 1 if
-the arguments are evaluated from right to left.
+the arguments are evaluated from right to left.  JavaScript settles the
+question: its operands evaluate left to right.  Build the probe, run it, and
+verify that the defined order is the one the exercise asks about.
 @end quotation
-

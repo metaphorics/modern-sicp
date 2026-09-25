@@ -637,6 +637,12 @@ pub use crate::sec_4_3::{
     setup_amb_environment_in,
 };
 
+// ---------------------------------------------------------------------------
+// Section 4.4: the shared query-system surface.
+// ---------------------------------------------------------------------------
+
+pub use crate::sec_4_4;
+
 /// The session seed every 4.3 solution and example threads through its
 /// driver, so `ramb` searches replay identically across runs.
 pub const AMB_SEED: u64 = 20_260_925;

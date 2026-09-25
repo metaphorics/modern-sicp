@@ -513,3 +513,227 @@ path = "../../exercises/ch04/sec_4_54.rs"
 [[test]]
 name = "solution_sec_4_54"
 path = "../../solutions/ch04/sec_4_54.rs"
+
+[[test]]
+name = "scaffold_sec_4_55"
+path = "../../exercises/ch04/sec_4_55.rs"
+
+[[test]]
+name = "solution_sec_4_55"
+path = "../../solutions/ch04/sec_4_55.rs"
+
+[[test]]
+name = "scaffold_sec_4_56"
+path = "../../exercises/ch04/sec_4_56.rs"
+
+[[test]]
+name = "solution_sec_4_56"
+path = "../../solutions/ch04/sec_4_56.rs"
+
+[[test]]
+name = "scaffold_sec_4_57"
+path = "../../exercises/ch04/sec_4_57.rs"
+
+[[test]]
+name = "solution_sec_4_57"
+path = "../../solutions/ch04/sec_4_57.rs"
+
+[[test]]
+name = "scaffold_sec_4_58"
+path = "../../exercises/ch04/sec_4_58.rs"
+
+[[test]]
+name = "solution_sec_4_58"
+path = "../../solutions/ch04/sec_4_58.rs"
+
+[[test]]
+name = "scaffold_sec_4_59"
+path = "../../exercises/ch04/sec_4_59.rs"
+
+[[test]]
+name = "solution_sec_4_59"
+path = "../../solutions/ch04/sec_4_59.rs"
+
+[[test]]
+name = "scaffold_sec_4_60"
+path = "../../exercises/ch04/sec_4_60.rs"
+
+[[test]]
+name = "solution_sec_4_60"
+path = "../../solutions/ch04/sec_4_60.rs"
+
+[[test]]
+name = "scaffold_sec_4_61"
+path = "../../exercises/ch04/sec_4_61.rs"
+
+[[test]]
+name = "solution_sec_4_61"
+path = "../../solutions/ch04/sec_4_61.rs"
+
+[[test]]
+name = "scaffold_sec_4_62"
+path = "../../exercises/ch04/sec_4_62.rs"
+
+[[test]]
+name = "solution_sec_4_62"
+path = "../../solutions/ch04/sec_4_62.rs"
+
+[[test]]
+name = "scaffold_sec_4_63"
+path = "../../exercises/ch04/sec_4_63.rs"
+
+[[test]]
+name = "solution_sec_4_63"
+path = "../../solutions/ch04/sec_4_63.rs"
+
+[[test]]
+name = "scaffold_sec_4_64"
+path = "../../exercises/ch04/sec_4_64.rs"
+
+[[test]]
+name = "solution_sec_4_64"
+path = "../../solutions/ch04/sec_4_64.rs"
+
+[[test]]
+name = "scaffold_sec_4_65"
+path = "../../exercises/ch04/sec_4_65.rs"
+
+[[test]]
+name = "solution_sec_4_65"
+path = "../../solutions/ch04/sec_4_65.rs"
+
+[[test]]
+name = "scaffold_sec_4_66"
+path = "../../exercises/ch04/sec_4_66.rs"
+
+[[test]]
+name = "solution_sec_4_66"
+path = "../../solutions/ch04/sec_4_66.rs"
+
+[[test]]
+name = "scaffold_sec_4_67"
+path = "../../exercises/ch04/sec_4_67.rs"
+
+[[test]]
+name = "solution_sec_4_67"
+path = "../../solutions/ch04/sec_4_67.rs"
+
+[[test]]
+name = "scaffold_sec_4_68"
+path = "../../exercises/ch04/sec_4_68.rs"
+
+[[test]]
+name = "solution_sec_4_68"
+path = "../../solutions/ch04/sec_4_68.rs"
+
+[[test]]
+name = "scaffold_sec_4_69"
+path = "../../exercises/ch04/sec_4_69.rs"
+
+[[test]]
+name = "solution_sec_4_69"
+path = "../../solutions/ch04/sec_4_69.rs"
+
+[[test]]
+name = "scaffold_sec_4_70"
+path = "../../exercises/ch04/sec_4_70.rs"
+
+[[test]]
+name = "solution_sec_4_70"
+path = "../../solutions/ch04/sec_4_70.rs"
+
+[[test]]
+name = "scaffold_sec_4_71"
+path = "../../exercises/ch04/sec_4_71.rs"
+
+[[test]]
+name = "solution_sec_4_71"
+path = "../../solutions/ch04/sec_4_71.rs"
+
+[[test]]
+name = "scaffold_sec_4_72"
+path = "../../exercises/ch04/sec_4_72.rs"
+
+[[test]]
+name = "solution_sec_4_72"
+path = "../../solutions/ch04/sec_4_72.rs"
+
+[[test]]
+name = "scaffold_sec_4_73"
+path = "../../exercises/ch04/sec_4_73.rs"
+
+[[test]]
+name = "solution_sec_4_73"
+path = "../../solutions/ch04/sec_4_73.rs"
+
+[[test]]
+name = "scaffold_sec_4_74"
+path = "../../exercises/ch04/sec_4_74.rs"
+
+[[test]]
+name = "solution_sec_4_74"
+path = "../../solutions/ch04/sec_4_74.rs"
+
+[[test]]
+name = "scaffold_sec_4_75"
+path = "../../exercises/ch04/sec_4_75.rs"
+
+[[test]]
+name = "solution_sec_4_75"
+path = "../../solutions/ch04/sec_4_75.rs"
+
+[[test]]
+name = "scaffold_sec_4_76"
+path = "../../exercises/ch04/sec_4_76.rs"
+
+[[test]]
+name = "solution_sec_4_76"
+path = "../../solutions/ch04/sec_4_76.rs"
+
+[[test]]
+name = "scaffold_sec_4_77"
+path = "../../exercises/ch04/sec_4_77.rs"
+
+[[test]]
+name = "solution_sec_4_77"
+path = "../../solutions/ch04/sec_4_77.rs"
+
+[[test]]
+name = "scaffold_sec_4_78"
+path = "../../exercises/ch04/sec_4_78.rs"
+
+[[test]]
+name = "solution_sec_4_78"
+path = "../../solutions/ch04/sec_4_78.rs"
+
+[[test]]
+name = "scaffold_sec_4_79"
+path = "../../exercises/ch04/sec_4_79.rs"
+
+[[test]]
+name = "solution_sec_4_79"
+path = "../../solutions/ch04/sec_4_79.rs"
+
+[[example]]
+name = "sec_4_4_1_deductive"
+path = "examples/sec_4_4_1_deductive.rs"
+
+[[example]]
+name = "sec_4_4_4_driver"
+path = "examples/sec_4_4_4_driver.rs"
+
+[[example]]
+name = "sec_4_4_4_evaluator"
+path = "examples/sec_4_4_4_evaluator.rs"
+
+[[example]]
+name = "sec_4_4_4_matcher"
+path = "examples/sec_4_4_4_matcher.rs"
+
+[[example]]
+name = "sec_4_4_4_database_streams"
+path = "examples/sec_4_4_4_database_streams.rs"
+
+[[example]]
+name = "sec_4_4_4_syntax_frames"
+path = "examples/sec_4_4_4_syntax_frames.rs"

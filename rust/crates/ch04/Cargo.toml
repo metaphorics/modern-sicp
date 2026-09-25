@@ -239,6 +239,98 @@ path = "../../exercises/ch04/sec_4_24.rs"
 name = "solution_sec_4_24"
 path = "../../solutions/ch04/sec_4_24.rs"
 
+[[test]]
+name = "scaffold_sec_4_25"
+path = "../../exercises/ch04/sec_4_25.rs"
+
+[[test]]
+name = "solution_sec_4_25"
+path = "../../solutions/ch04/sec_4_25.rs"
+
+[[test]]
+name = "scaffold_sec_4_26"
+path = "../../exercises/ch04/sec_4_26.rs"
+
+[[test]]
+name = "solution_sec_4_26"
+path = "../../solutions/ch04/sec_4_26.rs"
+
+[[test]]
+name = "scaffold_sec_4_27"
+path = "../../exercises/ch04/sec_4_27.rs"
+
+[[test]]
+name = "solution_sec_4_27"
+path = "../../solutions/ch04/sec_4_27.rs"
+
+[[test]]
+name = "scaffold_sec_4_28"
+path = "../../exercises/ch04/sec_4_28.rs"
+
+[[test]]
+name = "solution_sec_4_28"
+path = "../../solutions/ch04/sec_4_28.rs"
+
+[[test]]
+name = "scaffold_sec_4_29"
+path = "../../exercises/ch04/sec_4_29.rs"
+
+[[test]]
+name = "solution_sec_4_29"
+path = "../../solutions/ch04/sec_4_29.rs"
+
+[[test]]
+name = "scaffold_sec_4_30"
+path = "../../exercises/ch04/sec_4_30.rs"
+
+[[test]]
+name = "solution_sec_4_30"
+path = "../../solutions/ch04/sec_4_30.rs"
+
+[[test]]
+name = "scaffold_sec_4_31"
+path = "../../exercises/ch04/sec_4_31.rs"
+
+[[test]]
+name = "solution_sec_4_31"
+path = "../../solutions/ch04/sec_4_31.rs"
+
+[[test]]
+name = "scaffold_sec_4_32"
+path = "../../exercises/ch04/sec_4_32.rs"
+
+[[test]]
+name = "solution_sec_4_32"
+path = "../../solutions/ch04/sec_4_32.rs"
+
+[[test]]
+name = "scaffold_sec_4_33"
+path = "../../exercises/ch04/sec_4_33.rs"
+
+[[test]]
+name = "solution_sec_4_33"
+path = "../../solutions/ch04/sec_4_33.rs"
+
+[[test]]
+name = "scaffold_sec_4_34"
+path = "../../exercises/ch04/sec_4_34.rs"
+
+[[test]]
+name = "solution_sec_4_34"
+path = "../../solutions/ch04/sec_4_34.rs"
+
+[[example]]
+name = "sec_4_2_1_lazy_apply"
+path = "examples/sec_4_2_1_lazy_apply.rs"
+
+[[example]]
+name = "sec_4_2_2_driver"
+path = "examples/sec_4_2_2_driver.rs"
+
+[[example]]
+name = "sec_4_2_3_thunks"
+path = "examples/sec_4_2_3_thunks.rs"
+
 [dependencies]
 sicp-runtime = { workspace = true }
 

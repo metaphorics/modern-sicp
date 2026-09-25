@@ -37,7 +37,7 @@ the arguments to Scheme procedures are evaluated when the procedure is applied.
 In contrast, @newterm{normal-order} languages delay evaluation of procedure
 arguments until the actual argument values are needed.  Delaying evaluation of
 procedure arguments until the last possible moment (e.g., until they are
-required by a primitive operation) is called @newterm{lazy evaluation}.@footnote{The difference 
+required by a primitive operation) is called @newterm{lazy evaluation}.@footnote{The difference
 between the ``lazy'' terminology and the
 ``normal-order'' terminology is somewhat fuzzy.  Generally, ``lazy'' refers to
 the mechanisms of particular evaluators, while ``normal-order'' refers to the
@@ -45,38 +45,45 @@ semantics of languages, independent of any particular evaluation strategy.  But
 this is not a hard-and-fast distinction, and the two terminologies are often
 used interchangeably.}  Consider the procedure
 
-@lisp
-(define (try a b)
-  (if (= a 0) 1 b))
-@end lisp
+@example rust
+let (values, _) = run_lazy(
+    &Lazy,
+    "(define (try a b) (if (= a 0) 1 b))\n(try 0 (/ 1 0))",
+)
+.expect("runs");
+for value in &values @{
+    println!("@{@}", print_value(value));
+@}
+// => ok
+// => 1
+assert_eq!(printed(&values), vec!["ok", "1"]);
+@end example
 
 @noindent
-Evaluating @code{(try 0 (/ 1 0))} generates an error in Scheme.  With lazy
+The session defines @code{try} at the driver and then demands its value, and
+the armed operand never runs.  Evaluating @code{(try 0 (/ 1 0))} generates an
+error in Scheme.  With lazy
 evaluation, there would be no error.  Evaluating the expression would return 1,
 because the argument @code{(/ 1 0)} would never be evaluated.
 
 An example that exploits lazy evaluation is the definition of a procedure
-@code{unless}
+@code{unless}, which the driver session defines and then uses in an expression
+whose exceptional arm prints and answers while the usual arm would raise:
 
-@lisp
-(define (unless condition 
-                usual-value 
-                exceptional-value)
-  (if condition 
-      exceptional-value 
-      usual-value))
-@end lisp
-
-@noindent
-that can be used in expressions such as
-
-@lisp
-(unless (= b 0)
-        (/ a b)
-        (begin 
-          (display "exception: returning 0")
-          0))
-@end lisp
+@example rust
+let (values, displayed) = run_lazy(
+    &Lazy,
+    "(define (unless condition usual-value exceptional-value) \
+     (if condition exceptional-value usual-value))\n\
+     (unless (= 0 0) (/ 1 0) (begin (display \"exception: returning 0\") 0))",
+)
+.expect("runs");
+println!("@{displayed@}");
+// => exception: returning 0
+// => 0
+assert_eq!(displayed, "exception: returning 0");
+assert_eq!(printed(&values).last(), Some(&"0".to_owned()));
+@end example
 
 @noindent
 This won't work in an applicative-order language because both the usual value
@@ -115,12 +122,12 @@ will exploit this idea in @ref{4.2.3} to implement the streams of
 applicative-order Scheme) we define @code{unless} as shown above and then
 define @code{factorial} in terms of @code{unless} as
 
-@lisp
+@example
 (define (factorial n)
   (unless (= n 1)
           (* n (factorial (- n 1)))
           1))
-@end lisp
+@end example
 
 What happens if we attempt to evaluate @code{(factorial 5)}?  Will our
 definitions work in a normal-order language?
@@ -183,159 +190,182 @@ argument passing, in contrast to @newterm{call-by-name} argument passing.
 evaluation.)  As language designers, we can build our evaluator to memoize, not
 to memoize, or leave this an option for programmers (@ref{Exercise 4.31}).  As
 you might expect from @ref{Chapter 3}, these choices raise issues that become
-both subtle and confusing in the presence of assignments.  (See @ref{Exercise 4.27} 
+both subtle and confusing in the presence of assignments.  (See @ref{Exercise 4.27}
 and @ref{Exercise 4.29}.)  An excellent article by @ref{Clinger (1982)}
 attempts to clarify the multiple dimensions of confusion that arise here.}
 
 @subsubheading Modifying the evaluator
 
 The main difference between the lazy evaluator and the one in @ref{4.1}
-is in the handling of procedure applications in @code{eval} and @code{apply}.
+is in the handling of procedure applications in @code{eval} and
+@code{apply_procedure}.
 
-The @code{application?} clause of @code{eval} becomes
+The application clause of the section's @code{step} hook becomes
 
-@lisp
-((application? exp)
- (apply (actual-value (operator exp) env)
-        (operands exp)
-        env))
-@end lisp
+@example rust
+fn lazy_application(ev: &impl LazyEval, exp: &Value, env: &Rc<Env>) -> StepResult @{
+    let operator = first_of(exp)?;
+    let operands = operand_items(exp)?;
+    let proc = ev.actual_value(&operator, env)?;
+    match &proc @{
+        Value::Closure(closure) => apply_delayed(ev, closure, &operands, env),
+        other => @{
+            let args = list_of_arg_values(ev, &operands, env)?;
+            ev.apply_procedure(other, &args).map(Step::Done)
+        @}
+    @}
+@}
+@end example
 
 @noindent
-This is almost the same as the @code{application?} clause of @code{eval} in
-@ref{4.1.1}.  For lazy evaluation, however, we call @code{apply} with
+This is almost the same as the application clause of @code{eval} in
+@ref{4.1.1}.  For lazy evaluation, however, we call @code{apply_procedure} with
 the operand expressions, rather than the arguments produced by evaluating them.
 Since we will need the environment to construct thunks if the arguments are to
 be delayed, we must pass this as well.  We still evaluate the operator, because
-@code{apply} needs the actual procedure to be applied in order to dispatch on
-its type (primitive versus compound) and apply it.
+@code{apply_procedure} needs the actual procedure to be applied in order to
+dispatch on its type (primitive versus compound) and apply it.
 
 Whenever we need the actual value of an expression, we use
 
-@lisp
-(define (actual-value exp env)
-  (force-it (eval exp env)))
-@end lisp
+@example rust
+fn actual_value(&self, exp: &Value, env: &Rc<Env>) -> EvalResult @{
+    let value = self.eval(exp, env)?;
+    self.force_value(value)
+@}
+@end example
 
 @noindent
 instead of just @code{eval}, so that if the expression's value is a thunk, it
 will be forced.
 
-Our new version of @code{apply} is also almost the same as the version in
-@ref{4.1.1}.  The difference is that @code{eval} has passed in
-unevaluated operand expressions: For primitive procedures (which are strict),
-we evaluate all the arguments before applying the primitive; for compound
-procedures (which are non-strict) we delay all the arguments before applying
-the procedure.
+Our new version of @code{apply_procedure} is also almost the same as the
+version in @ref{4.1.1}.  The difference is that @code{eval} has passed in
+unevaluated operand expressions: the dispatch in @code{lazy_application} sends
+primitive procedures (which are strict) through @code{list_of_arg_values},
+which evaluates all the arguments before applying the primitive, and compound
+procedures (which are non-strict) to @code{apply_delayed}, which delays all
+the arguments before the procedure's body runs.
 
-@lisp
-(define (apply procedure arguments env)
-  (cond ((primitive-procedure? procedure)
-         (apply-primitive-procedure
-          procedure
-          (list-of-arg-values 
-           arguments 
-           env)))  @r{; changed}
-        ((compound-procedure? procedure)
-         (eval-sequence
-          (procedure-body procedure)
-          (extend-environment
-           (procedure-parameters procedure)
-           (list-of-delayed-args 
-            arguments 
-            env)   @r{; changed}
-           (procedure-environment procedure))))
-        (else (error "Unknown procedure 
-                      type: APPLY" 
-                     procedure))))
-@end lisp
+@example rust
+fn apply_delayed(
+    ev: &impl LazyEval,
+    closure: &Rc<Closure>,
+    operands: &[Value],
+    env: &Rc<Env>,
+) -> StepResult @{
+    let mut args = Vec::with_capacity(operands.len());
+    for (position, operand) in operands.iter().enumerate() @{
+        args.push(match ev.delay_operand(closure, position) @{
+            Some(true) => delay_it(operand.clone(), env),
+            Some(false) => delay_recomputing(operand.clone(), env),
+            None => ev.actual_value(operand, env)?,
+        @});
+    @}
+    let frame = extend_environment(
+        closure_name(closure),
+        &closure.params,
+        closure.rest.as_ref(),
+        &args,
+        &closure.env,
+    )?;
+    ev.step_sequence(&closure.body, &frame)
+@}
+@end example
 
 @noindent
-The procedures that process the arguments are just like @code{list-of-values}
-from @ref{4.1.1}, except that @code{list-of-delayed-args} delays the
-arguments instead of evaluating them, and @code{list-of-arg-values} uses
-@code{actual-value} instead of @code{eval}:
+The procedure that processes the arguments of a strict primitive is just like
+@code{list_of_values} from @ref{4.1.1}, except that it uses
+@code{actual_value} instead of @code{eval}; the delayed arguments of a
+compound procedure are packaged by @code{delay_it}, one @code{delay_operand}
+answer at a time:
 
-@lisp
-(define (list-of-arg-values exps env)
-  (if (no-operands? exps)
-      '()
-      (cons (actual-value 
-             (first-operand exps) 
-             env)
-            (list-of-arg-values 
-             (rest-operands exps)
-             env))))
-
-(define (list-of-delayed-args exps env)
-  (if (no-operands? exps)
-      '()
-      (cons (delay-it 
-             (first-operand exps) 
-             env)
-            (list-of-delayed-args 
-             (rest-operands exps)
-             env))))
-@end lisp
+@example rust
+pub fn list_of_arg_values(
+    ev: &impl LazyEval,
+    exps: &[Value],
+    env: &Rc<Env>,
+) -> Result<Vec<Value>, SchemeError> @{
+    let mut values = Vec::with_capacity(exps.len());
+    for exp in exps @{
+        values.push(ev.actual_value(exp, env)?);
+    @}
+    Ok(values)
+@}
+@end example
 
 @noindent
 The other place we must change the evaluator is in the handling of @code{if},
-where we must use @code{actual-value} instead of @code{eval} to get the value
+where we must use @code{actual_value} instead of @code{eval} to get the value
 of the predicate expression before testing whether it is true or false:
 
-@lisp
-(define (eval-if exp env)
-  (if (true? (actual-value (if-predicate exp) 
-                           env))
-      (eval (if-consequent exp) env)
-      (eval (if-alternative exp) env)))
-@end lisp
+@example rust
+fn forced_if(ev: &impl LazyEval, exp: &Value, env: &Rc<Env>) -> StepResult @{
+    let (predicate, consequent, alternative) = if_parts(exp)?;
+    let tested = ev.actual_value(&predicate, env)?;
+    let branch = if is_true(&tested) @{ consequent @} else @{ alternative @};
+    Ok(Step::Tail(branch, Rc::clone(env)))
+@}
+@end example
 
 @noindent
-Finally, we must change the @code{driver-loop} procedure (@ref{4.1.4})
-to use @code{actual-value} instead of @code{eval}, so that if a delayed value
+Finally, we must change the driver of @ref{4.1.4}
+to use @code{actual_value} instead of @code{eval}, so that if a delayed value
 is propagated back to the read-eval-print loop, it will be forced before being
 printed.  We also change the prompts to indicate that this is the lazy
 evaluator:
 
-@lisp
-(define input-prompt  ";;; L-Eval input:")
-(define output-prompt ";;; L-Eval value:")
+@example rust
+pub const INPUT_PROMPT: &str = ";;; L-Eval input: ";
+pub const OUTPUT_PROMPT: &str = ";;; L-Eval value: ";
 
-(define (driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((input (read)))
-    (let ((output (actual-value 
-                   input 
-                   the-global-environment)))
-      (announce-output output-prompt)
-      (user-print output)))
-  (driver-loop))
-@end lisp
+fn evaluate_line(
+    ev: &impl LazyEval,
+    line: &str,
+    env: &Rc<Env>,
+    render: Render,
+) -> Result<String, SchemeError> @{
+    let form = sicp_runtime::read(line)?;
+    let value = ev.actual_value(&form, env)?;
+    render.value(ev, &value)
+@}
+@end example
+
+@noindent
+The session loop announces each input line, evaluates it, and announces the
+rendered value; one fresh lazy global environment carries the whole session,
+and an error ends it with one @code{Error:} line:
+
+@example rust
+fn lazy_session(ev: &impl LazyEval, lines: &[&str], render: Render) -> String @{
+    let (sink, cell) = OutputSink::buffer();
+    let env = setup_lazy_environment_in(&sink);
+    for line in lines @{
+        announce_input(&cell, line);
+        match evaluate_line(ev, line, &env, render) @{
+            Ok(text) => announce_output(&cell, &text),
+            Err(error) => return push_lazy_error(&cell, &error),
+        @}
+    @}
+    cell.borrow().clone()
+@}
+@end example
 
 @noindent
 With these changes made, we can start the evaluator and test it.  The
-successful evaluation of the @code{try} expression discussed in 
+successful evaluation of the @code{try} expression discussed in
 @ref{4.2.1} indicates that the interpreter is performing lazy evaluation:
 
-@lisp
-(define the-global-environment 
-  (setup-environment))
-
-(driver-loop)
-
-@i{;;; L-Eval input:}
-(define (try a b) (if (= a 0) 1 b))
-
-@i{;;; L-Eval value:}
-@i{ok}
-
-@i{;;; L-Eval input:}
-(try 0 (/ 1 0))
-
-@i{;;; L-Eval value:}
-@i{1}
-@end lisp
+@example rust
+// The section's first interaction: the armed operand never runs.
+let transcript = with_eval_stack(move || lazy_driver_transcript(&Lazy, TRY_SESSION));
+println!("@{transcript@}");
+// => ;;; L-Eval input: (define (try a b) (if (= a 0) 1 b))
+// => ;;; L-Eval value: ok
+// => ;;; L-Eval input: (try 0 (/ 1 0))
+// => ;;; L-Eval value: 1
+assert!(transcript.ends_with(";;; L-Eval value: 1\n"));
+@end example
 
 @subsubheading Representing thunks
 
@@ -344,30 +374,32 @@ arguments and to force these thunks later.  A thunk must package an expression
 together with the environment, so that the argument can be produced later.  To
 force the thunk, we simply extract the expression and environment from the
 thunk and evaluate the expression in the environment.  We use
-@code{actual-value} rather than @code{eval} so that in case the value of the
+@code{actual_value} rather than @code{eval} so that in case the value of the
 expression is itself a thunk, we will force that, and so on, until we reach
 something that is not a thunk:
 
-@lisp
-(define (force-it obj)
-  (if (thunk? obj)
-      (actual-value (thunk-exp obj) 
-                    (thunk-env obj))
-      obj))
-@end lisp
+@example rust
+pub fn recompute_cell(ev: &impl Evaluator, cell: &Rc<RefCell<ThunkState>>) -> EvalResult @{
+    let pending = match &*cell.borrow() @{
+        ThunkState::Forced(value) => return Ok(value.clone()),
+        ThunkState::Delayed @{ expr, env @} => (expr.clone(), Rc::clone(env)),
+    @};
+    ev.eval(&pending.0, &pending.1)
+@}
+@end example
 
 @noindent
-One easy way to package an expression with an environment is to make a list
-containing the expression and the environment.  Thus, we create a thunk as
-follows:
+One easy way to package an expression with an environment in this edition is
+the @code{Value::Thunk} cell: an @code{Rc}-shared cell whose @code{Delayed}
+state holds the expression and its environment, so the book's three-element
+@code{thunk} list and its accessors collapse into one constructor and one
+pattern.  We create a thunk as follows:
 
-@lisp
-(define (delay-it exp env)
-  (list 'thunk exp env))
-(define (thunk? obj) (tagged-list? obj 'thunk))
-(define (thunk-exp thunk) (cadr thunk))
-(define (thunk-env thunk) (caddr thunk))
-@end lisp
+@example rust
+pub fn delay_it(expr: Value, env: &Rc<Env>) -> Value @{
+    ThunkState::delay(expr, env)
+@}
+@end example
 
 @noindent
 Actually, what we want for our interpreter is not quite this, but rather thunks
@@ -379,7 +411,9 @@ once the expression's value has been computed.  This makes no difference in the
 values returned by the interpreter.  It does help save space, however, because
 removing the reference from the thunk to the @code{env} once it is no longer
 needed allows this structure to be @newterm{garbage-collected} and its space
-recycled, as we will discuss in @ref{5.3}.
+recycled, as we will discuss in @ref{5.3}.  The edition's cell does the same
+rewrite: the @code{Forced} state replaces the whole cell, so the stored
+expression and environment drop out of it at the first forcing.
 
 Similarly, we could have allowed unneeded environments in the memoized delayed
 objects of @ref{3.5.1} to be garbage-collected, by having
@@ -387,49 +421,43 @@ objects of @ref{3.5.1} to be garbage-collected, by having
 procedure @code{proc} (which includes the environment in which the @code{delay}
 was evaluated) after storing its value.}
 
-@lisp
-(define (evaluated-thunk? obj)
-  (tagged-list? obj 'evaluated-thunk))
-
-(define (thunk-value evaluated-thunk) 
-  (cadr evaluated-thunk))
-
-(define (force-it obj)
-  (cond ((thunk? obj)
-         (let ((result
-                (actual-value 
-                 (thunk-exp obj)
-                 (thunk-env obj))))
-           (set-car! obj 'evaluated-thunk)
-           ;; @r{replace @code{exp} with its value:}
-           (set-car! (cdr obj) result) 
-           ;; @r{forget unneeded @code{env}:}
-           (set-cdr! (cdr obj) '()) 
-           result))
-        ((evaluated-thunk? obj)
-         (thunk-value obj))
-        (else obj)))
-@end lisp
+@example rust
+pub fn force_memo(ev: &impl Evaluator, value: Value) -> EvalResult @{
+    let mut current = value;
+    while let Value::Thunk(_) = current @{
+        current = ThunkState::force(&current, |expr, env| ev.eval(expr, env))?;
+    @}
+    Ok(current)
+@}
+@end example
 
 @noindent
-Notice that the same @code{delay-it} procedure works both with and without
-memoization.
+Notice that the same @code{delay_it} machinery works both with and without
+memoization: the no-memo probes of exercises 4.29 and 4.31 wrap the delayed
+cell in a tag the recomputing force recognizes, and the cell itself stays
+@code{Delayed}, so every forcing evaluates the expression again.
+
+@example rust
+pub fn delay_recomputing(expr: Value, env: &Rc<Env>) -> Value @{
+    Value::tagged("lazy-thunk", ThunkState::delay(expr, env))
+@}
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.27}Exercise 4.27:} Suppose we type in the following
 definitions to the lazy evaluator:
 
-@lisp
+@example
 (define count 0)
 (define (id x) (set! count (+ count 1)) x)
-@end lisp
+@end example
 
 Give the missing values in the following sequence of interactions, and explain
 your answers.@footnote{This exercise demonstrates that the interaction between
 lazy evaluation and side effects can be very confusing.  This is just what you
 might expect from the discussion in @ref{Chapter 3}.}
 
-@lisp
+@example
 (define w (id (id 10)))
 
 @i{;;; L-Eval input:}
@@ -449,14 +477,14 @@ count
 
 @i{;;; L-Eval value:}
 ⟨@var{response}⟩
-@end lisp
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.28}Exercise 4.28:} @code{Eval} uses
-@code{actual-value} rather than @code{eval} to evaluate the operator before
-passing it to @code{apply}, in order to force the value of the operator.  Give
-an example that demonstrates the need for this forcing.
+@code{actual_value} rather than @code{eval} to evaluate the operator before
+passing it to @code{apply_procedure}, in order to force the value of the
+operator.  Give an example that demonstrates the need for this forcing.
 
 @noindent
 @strong{@anchor{Exercise 4.29}Exercise 4.29:} Exhibit a program that you would
@@ -464,7 +492,7 @@ expect to run much more slowly without memoization than with memoization.
 Also, consider the following interaction, where the @code{id} procedure is
 defined as in @ref{Exercise 4.27} and @code{count} starts at 0:
 
-@lisp
+@example
 (define (square x) (* x x))
 
 @i{;;; L-Eval input:}
@@ -478,7 +506,7 @@ count
 
 @i{;;; L-Eval value:}
 ⟨@var{response}⟩
-@end lisp
+@end example
 
 Give the responses both when the evaluator memoizes and when it does not.
 @end quotation
@@ -492,10 +520,10 @@ is there only for its effect, such as assigning to a variable or printing),
 there can be no subsequent use of this value (e.g., as an argument to a
 primitive procedure) that will cause it to be forced.  Cy thus thinks that when
 evaluating sequences, we must force all expressions in the sequence except the
-final one.  He proposes to modify @code{eval-sequence} from @ref{4.1.1}
-to use @code{actual-value} rather than @code{eval}:
+final one.  He proposes to modify @code{step_sequence} from @ref{4.1.1}
+to use @code{actual_value} rather than @code{eval}:
 
-@lisp
+@example
 (define (eval-sequence exps env)
   (cond ((last-exp? exps) 
          (eval (first-exp exps) env))
@@ -504,7 +532,7 @@ to use @code{actual-value} rather than @code{eval}:
                        env)
          (eval-sequence (rest-exps exps) 
                         env))))
-@end lisp
+@end example
 
 @enumerate a
 
@@ -513,19 +541,19 @@ Ben Bitdiddle thinks Cy is wrong.  He shows Cy the @code{for-each} procedure
 described in @ref{Exercise 2.23}, which gives an important example of a
 sequence with side effects:
 
-@lisp
+@example
 (define (for-each proc items)
   (if (null? items)
       'done
       (begin (proc (car items))
              (for-each proc 
                        (cdr items)))))
-@end lisp
+@end example
 
 He claims that the evaluator in the text (with the original
-@code{eval-sequence}) handles this correctly:
+@code{step_sequence}) handles this correctly:
 
-@lisp
+@example
 @i{;;; L-Eval input:}
 (for-each
  (lambda (x) (newline) (display x))
@@ -536,31 +564,31 @@ He claims that the evaluator in the text (with the original
 
 @i{;;; L-Eval value:}
 @i{done}
-@end lisp
+@end example
 
 Explain why Ben is right about the behavior of @code{for-each}.
 
 @item
 Cy agrees that Ben is right about the @code{for-each} example, but says that
 that's not the kind of program he was thinking about when he proposed his
-change to @code{eval-sequence}.  He defines the following two procedures in the
+change to @code{step_sequence}.  He defines the following two procedures in the
 lazy evaluator:
 
-@lisp
+@example
 (define (p1 x)
   (set! x (cons x '(2))) x)
 
 (define (p2 x)
   (define (p e) e x)
   (p (set! x (cons x '(2)))))
-@end lisp
+@end example
 
 What are the values of @code{(p1 1)} and @code{(p2 1)} with the original
-@code{eval-sequence}?  What would the values be with Cy's proposed change to
-@code{eval-sequence}?
+@code{step_sequence}?  What would the values be with Cy's proposed change to
+@code{step_sequence}?
 
 @item
-Cy also points out that changing @code{eval-sequence} as he proposes does not
+Cy also points out that changing @code{step_sequence} as he proposes does not
 affect the behavior of the example in part a.  Explain why this is true.
 
 @item
@@ -580,10 +608,10 @@ procedure declarations to let the user control whether or not arguments are to
 be delayed.  While we're at it, we may as well also give the user the choice
 between delaying with and without memoization.  For example, the definition
 
-@lisp
+@example
 (define (f a (b lazy) c (d lazy-memo))
   @r{…})
-@end lisp
+@end example
 
 @noindent
 would define @code{f} to be a procedure of four arguments, where the first and
@@ -595,12 +623,12 @@ every compound procedure will produce the behavior of the lazy evaluator
 defined in this section. Design and implement the changes required to produce
 such an extension to Scheme.  You will have to implement new syntax procedures
 to handle the new syntax for @code{define}.  You must also arrange for
-@code{eval} or @code{apply} to determine when arguments are to be delayed, and
-to force or delay arguments accordingly, and you must arrange for forcing to
-memoize or not, as appropriate.
+@code{eval} or @code{apply_procedure} to determine when arguments are to
+be delayed, and to force or delay arguments accordingly, and you must
+arrange for forcing to memoize or not, as appropriate.
 @end quotation
 
-@node	4.2.3, 4.3, 4.1, 4.2
+@node	4.2.3, 4.3, 4.2.2, 4.2
 @subsection Streams as Lazy Lists
 
 In @ref{3.5.1}, we showed how to implement streams as delayed lists.
@@ -631,11 +659,22 @@ loop.  If we had originally included @code{cons}, @code{car}, and @code{cdr} as
 primitives in the global environment, they will be redefined.  (Also see
 @ref{Exercise 4.33} and @ref{Exercise 4.34}.)}
 
-@lisp
-(define (cons x y) (lambda (m) (m x y)))
-(define (car z) (z (lambda (p q) p)))
-(define (cdr z) (z (lambda (p q) q)))
-@end lisp
+@example rust
+lazy_driver_transcript(
+    &Lazy,
+    &[
+        "(define (cons x y) (lambda (m) (m x y)))",
+        "(define (car z) (z (lambda (p q) p)))",
+        "(define (cdr z) (z (lambda (p q) q)))",
+    ],
+)
+// => ;;; L-Eval input: (define (cons x y) (lambda (m) (m x y)))
+// => ;;; L-Eval value: ok
+// => ;;; L-Eval input: (define (car z) (z (lambda (p q) p)))
+// => ;;; L-Eval value: ok
+// => ;;; L-Eval input: (define (cdr z) (z (lambda (p q) q)))
+// => ;;; L-Eval value: ok
+@end example
 
 @noindent
 In terms of these basic operations, the standard definitions of the list
@@ -643,42 +682,22 @@ operations will work with infinite lists (streams) as well as finite ones, and
 the stream operations can be implemented as list operations.  Here are some
 examples:
 
-@lisp
-(define (list-ref items n)
-  (if (= n 0)
-      (car items)
-      (list-ref (cdr items) (- n 1))))
-
-(define (map proc items)
-  (if (null? items)
-      '()
-      (cons (proc (car items))
-            (map proc (cdr items)))))
-
-(define (scale-list items factor)
-  (map (lambda (x) (* x factor))
-       items))
-
-(define (add-lists list1 list2)
-  (cond ((null? list1) list2)
-        ((null? list2) list1)
-        (else (cons (+ (car list1) 
-                       (car list2))
-                    (add-lists
-                     (cdr list1) 
-                     (cdr list2))))))
-
-(define ones (cons 1 ones))
-
-(define integers 
-  (cons 1 (add-lists ones integers)))
-
-@i{;;; L-Eval input:}
-(list-ref integers 17)
-
-@i{;;; L-Eval value:}
-@i{18}
-@end lisp
+@example rust
+lazy_driver_transcript(
+    &Lazy,
+    &[
+        "(define (list-ref items n) (if (= n 0) (car items) (list-ref (cdr items) (- n 1))))",
+        "(define (map proc items) (if (null? items) '() (cons (proc (car items)) (map proc (cdr items)))))",
+        "(define (scale-list items factor) (map (lambda (x) (* x factor)) items))",
+        "(define (add-lists list1 list2) (cond ((null? list1) list2) ((null? list2) list1) \
+(else (cons (+ (car list1) (car list2)) (add-lists (cdr list1) (cdr list2))))))",
+        "(define ones (cons 1 ones))",
+        "(define integers (cons 1 (add-lists ones integers)))",
+        "(list-ref integers 17)",
+    ],
+)
+// => ;;; L-Eval value: 18
+@end example
 
 @noindent
 Note that these lazy lists are even lazier than the streams of @ref{Chapter 3}:
@@ -690,7 +709,7 @@ applications of ``lazy trees.''}  In fact, even accessing the @code{car} or
 value will be forced only when it is really needed---e.g., for use as the
 argument of a primitive, or to be printed as an answer.
 
-Lazy pairs also help with the problem that arose with streams in 
+Lazy pairs also help with the problem that arose with streams in
 @ref{3.5.4}, where we found that formulating stream models of systems with
 loops may require us to sprinkle our programs with explicit @code{delay}
 operations, beyond the ones supplied by @code{cons-stream}.  With lazy
@@ -698,25 +717,38 @@ evaluation, all arguments to procedures are delayed uniformly.  For instance,
 we can implement procedures to integrate lists and solve differential equations
 as we originally intended in @ref{3.5.4}:
 
-@lisp
-(define (integral integrand initial-value dt)
-  (define int
-    (cons initial-value
-          (add-lists (scale-list integrand dt) 
-                     int)))
-  int)
+@example rust
+with_eval_stack(move || @{
+    lazy_driver_transcript(
+        &Lazy,
+        &[
+            "(define (integral integrand initial-value dt) \
+(define int (cons initial-value (add-lists (scale-list integrand dt) int))) int)",
+            "(define (solve f y0 dt) (define y (integral dy y0 dt)) (define dy (map f y)) y)",
+            "(list-ref (solve (lambda (x) x) 1 0.001) 1000)",
+        ],
+    )
+@})
+// => ;;; L-Eval value: 2.716923932235896
+@end example
 
-(define (solve f y0 dt)
-  (define y (integral dy y0 dt))
-  (define dy (map f y))
-  y)
+@noindent
+The edition prints the host's full floating-point precision, where the book's
+@code{2.716924} is the rounded form.
 
-@i{;;; L-Eval input:}
-(list-ref (solve (lambda (x) x) 1 0.001) 1000)
-
-@i{;;; L-Eval value:}
-@i{2.716924}
-@end lisp
+@quotation
+@strong{In this language: the lazy application clause, the memoized thunk cell, and the printable lazy pairs.}
+The lazy layer does not fork the evaluator: it implements the one @code{step}
+hook of @ref{4.1}, reroutes the two clauses the section changes, the
+application and the @code{if} predicate, and falls back to @code{base_step}
+for the clause chain the section leaves alone.  The book's @code{thunk} and
+@code{evaluated-thunk} pair collapses into the two states of one
+@code{Rc}-shared cell: @code{Delayed} holds the expression and its
+environment, @code{Forced} holds the memoized value, and the forcing loop
+answers chains level by level.  Deep forcing is host non-tail recursion, so
+the sessions of this section run on the same 256 MiB worker stack
+(@code{with_eval_stack}) that carries the 4.1 corpus.
+@end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.32}Exercise 4.32:} Give some examples that
@@ -726,12 +758,22 @@ this extra laziness?
 @end quotation
 
 @quotation
+@emph{Exercise 4.32a is added by this edition and extends exercise
+4.32; SICP numbers stop at 4.32.} @strong{@anchor{Exercise 4.32a}Exercise 4.32a:} Build
+a lazy tree in which each node is a pair whose two slots are delayed---delayed
+subtrees and delayed counting bodies---so that building the tree computes
+nothing.  Force one path from the root to a leaf, then force one other branch,
+and use a counter at the tree's leaves to show that exactly the subtrees on the
+visited paths have computed; every unvisited leaf must still be a thunk.
+@end quotation
+
+@quotation
 @strong{@anchor{Exercise 4.33}Exercise 4.33:} Ben Bitdiddle tests the lazy list
 implementation given above by evaluating the expression
 
-@lisp
+@example
 (car '(a b c))
-@end lisp
+@end example
 
 To his surprise, this produces an error.  After some thought, he realizes that
 the ``lists'' obtained by reading in quoted expressions are different from the
@@ -747,4 +789,3 @@ evaluator so that lazy pairs and lists will print in some reasonable way.
 the representation of lazy pairs so that the evaluator can identify them in
 order to print them.
 @end quotation
-

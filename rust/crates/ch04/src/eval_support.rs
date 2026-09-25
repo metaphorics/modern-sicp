@@ -1,15 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! Shared helpers for the section 4.1 solution tests: the runners that
+//! Shared helpers for the chapter 4 solution tests: the runners that
 //! answer values plus displayed text, the print helper, and the pieces
-//! several exercises share (the scan-out evaluators of 4.16 to 4.19 and
-//! the counting analyzers of 4.23 and 4.23a). Re-exports the substrate
-//! surface and the few std handles the exercises name so each solution
-//! file stays one import away from everything it needs.
+//! several exercises share (the scan-out evaluators of 4.16 to 4.19,
+//! the counting analyzers of 4.23 and 4.23a, and the printable lazy
+//! evaluator of 4.32a and 4.34). Re-exports the substrate surface and
+//! the few std handles the exercises name so each solution file stays
+//! one import away from everything it needs.
 
 pub use crate::sec_4_1;
 pub use crate::sec_4_1::*;
+pub use crate::sec_4_2;
+pub use crate::sec_4_2::{
+    LAZY_PRINT_BUDGET, Lazy, LazyEval, delay_it, delay_recomputing, force_memo, force_recomputing,
+    is_recomputing_thunk, is_special_form, lazy_driver_transcript, lazy_pair, lazy_pair_slots,
+    lazy_step, print_forced, printable_driver_transcript, recompute_cell,
+    setup_lazy_environment_in, wrapper_payload,
+};
 pub use sicp_runtime::{
     Closure, Env, Key, OpTable, SchemeError, Symbol, Value, cons_cell, print_value, read,
     read_program,
@@ -58,6 +66,39 @@ pub fn run_analyzed(
         values.push(ev.eval_exp(form, &env)?);
     }
     Ok((values, cell.borrow().clone()))
+}
+
+/// Evaluates every form of `program` with a lazy `ev` in a fresh lazy
+/// global environment, forcing each form's value with `actual-value`
+/// the way the driver prints, answering the values and the displayed
+/// text. The lazy evaluator's `eval` alone answers thunks for forms
+/// whose value nobody demanded.
+///
+/// # Errors
+/// The reader's parse errors and the first evaluation or forcing error.
+pub fn run_lazy(ev: &impl LazyEval, program: &str) -> Result<(Vec<Value>, String), SchemeError> {
+    let (sink, cell) = OutputSink::buffer();
+    let env = setup_lazy_environment_in(&sink);
+    let forms = read_program(program)?;
+    let mut values = Vec::with_capacity(forms.len());
+    for form in &forms {
+        values.push(ev.actual_value(form, &env)?);
+    }
+    Ok((values, cell.borrow().clone()))
+}
+
+/// The driver's printed form of each value under a lazy evaluator:
+/// forced, the printed shape included, so a list the sentinel `map`
+/// built from delayed answers prints its elements.
+///
+/// # Panics
+/// Panics when a printed element raises, which a solution bug causes.
+#[must_use]
+pub fn printed_forced(ev: &impl LazyEval, values: &[Value]) -> Vec<String> {
+    values
+        .iter()
+        .map(|value| print_forced(ev, value).expect("the printed shape forces"))
+        .collect()
 }
 
 /// The printed form of each value, the answer the book shows.
@@ -486,4 +527,103 @@ impl Analyzer for Counting {
             last(env)
         }))
     }
+}
+
+// ---------------------------------------------------------------------------
+// 4.32a / 4.34: the printable lazy evaluator.
+// ---------------------------------------------------------------------------
+
+/// The printable lazy evaluator of exercises 4.32a and 4.34: the
+/// section's lazy semantics with `cons` as the one non-strict
+/// primitive, so lazy pairs carry their delayed slots in a tagged value
+/// the driver's budgeted printer and the lazy `car`/`cdr` can identify.
+/// The book's footnote names the route: extend the lazy evaluator with
+/// non-strict primitives and implement `cons` as one of them.
+#[derive(Debug, Default)]
+pub struct LazyPrintable;
+
+impl LazyEval for LazyPrintable {
+    fn force_value(&self, value: Value) -> Result<Value, SchemeError> {
+        sec_4_2::force_memo(self, value)
+    }
+
+    fn delay_operand(&self, _proc: &Rc<Closure>, _position: usize) -> Option<bool> {
+        Some(true)
+    }
+}
+
+impl Evaluator for LazyPrintable {
+    fn step(&self, exp: &Value, env: &Rc<Env>) -> StepResult {
+        // The syntactic guard runs before any evaluation, so a
+        // non-`cons` application is never evaluated twice.
+        if sec_4_1::is_application(exp) && sec_4_2::is_lazy_cons_call(exp, env) {
+            return sec_4_2::lazy_cons_call(exp, env).map(Step::Done);
+        }
+        sec_4_2::lazy_step(self, exp, env)
+    }
+
+    /// `car` and `cdr` force the addressed slot of a tagged lazy pair
+    /// and answer it; every other application routes exactly as the
+    /// base does, including `car` and `cdr` of ordinary data. The
+    /// dispatch mirrors the base `apply_procedure` because an override
+    /// cannot call the default body it replaces.
+    fn apply_procedure(&self, proc: &Value, args: &[Value]) -> Result<Value, SchemeError> {
+        match proc {
+            Value::Primitive { name, .. } if &**name == "apply" => {
+                let [target, list, ..] = args else {
+                    return Err(apply_arity("apply", args.len()));
+                };
+                let items = list.list_items()?;
+                self.apply_procedure(target, &items)
+            }
+            Value::Primitive { name, .. } if &**name == "map" => {
+                let [f, lists @ ..] = args else {
+                    return Err(apply_arity("map", args.len()));
+                };
+                self.map_over(f, lists)
+            }
+            Value::Primitive { name, .. } if &**name == "car" || &**name == "cdr" => {
+                let [one] = args else {
+                    return Err(apply_arity(name, args.len()));
+                };
+                if let Some(cell) = sec_4_2::lazy_pair_slots(one) {
+                    let slot = if &**name == "car" {
+                        cell.car.borrow().clone()
+                    } else {
+                        cell.cdr.borrow().clone()
+                    };
+                    return self.force_value(slot);
+                }
+                proc.call(args)
+            }
+            Value::Primitive { f, .. } => f(args),
+            Value::Closure(c) => {
+                let frame = extend_environment(
+                    closure_display_name(c),
+                    &c.params,
+                    c.rest.as_ref(),
+                    args,
+                    &c.env,
+                )?;
+                self.eval_sequence(&c.body, &frame)
+            }
+            other => Err(SchemeError::NotProcedure(other.clone())),
+        }
+    }
+}
+
+fn apply_arity(name: &str, got: usize) -> SchemeError {
+    SchemeError::WrongArity {
+        procedure: name.to_owned(),
+        expected: if name == "apply" || name == "map" {
+            "2".to_owned()
+        } else {
+            "1".to_owned()
+        },
+        got,
+    }
+}
+
+fn closure_display_name(closure: &Closure) -> &str {
+    closure.name.as_deref().unwrap_or("#[compound-procedure]")
 }

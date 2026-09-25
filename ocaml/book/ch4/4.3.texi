@@ -501,8 +501,7 @@ each other.  Write a nondeterministic program to solve this puzzle.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.44a}Exercise 4.44a is added by this edition and
-extends exercise 4.44; SICP numbers stop at 4.44.}  The edition's evaluator
+@emph{Exercise 4.44a is added by this edition and extends exercise 4.44; SICP numbers stop at 4.44.} @strong{@anchor{Exercise 4.44a}Exercise 4.44a:} The edition's evaluator
 counts backtracks: one for every delivery of the @code{Fail} effect to a
 choice-point handler, that is, every time the search re-enters a made choice
 to try its next alternative.  Instrument the search engine with this counter,

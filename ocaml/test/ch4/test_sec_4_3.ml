@@ -106,15 +106,12 @@ let () =
       , [ test_case "4.38" `Quick (fun () ->
             check_strings
               "4.38"
-              [ "((baker 1) (cooper 2) (fletcher 3) (miller 4) (smith 5))"
-              ; "((baker 1) (cooper 3) (fletcher 2) (miller 4) (smith 5))"
-              ; "((baker 1) (cooper 3) (fletcher 2) (miller 5) (smith 4))"
-              ; "((baker 1) (cooper 3) (fletcher 4) (miller 5) (smith 2))"
-              ; "((baker 2) (cooper 3) (fletcher 4) (miller 5) (smith 1))"
-              ; "((baker 2) (cooper 4) (fletcher 3) (miller 5) (smith 1))"
+              [ "((baker 1) (cooper 2) (fletcher 4) (miller 3) (smith 5))"
+              ; "((baker 1) (cooper 2) (fletcher 4) (miller 5) (smith 3))"
+              ; "((baker 1) (cooper 4) (fletcher 2) (miller 5) (smith 3))"
               ; "((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))"
-              ; "((baker 4) (cooper 2) (fletcher 3) (miller 5) (smith 1))"
-              ; "solutions=8"
+              ; "((baker 3) (cooper 4) (fletcher 2) (miller 5) (smith 1))"
+              ; "solutions=5"
               ]
               (Sicp_ch4_solutions.Sec_4_38.ex_4_38 ()))
         ] )

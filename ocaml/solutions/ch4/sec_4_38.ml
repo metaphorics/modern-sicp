@@ -4,7 +4,7 @@
 (** Exercise 4.38: the multiple-dwelling puzzle without the
     Smith-Fletcher clause. The modified puzzle has several solutions;
     the demonstration enumerates them with [try_again] and reports the
-    count, which the independent enumeration puts at eight. *)
+    count, which the independent enumeration puts at five. *)
 
 module Eval = Sicp_ch4.Sec_4_3
 module Eval_error = Sicp_common.Eval_error
@@ -30,7 +30,7 @@ let program =
     (require (not (= fletcher 5)))
     (require (not (= fletcher 1)))
     (require (> miller cooper))
-    (require (not (= (abs (- smith fletcher)) 1)))
+    (require (not (= (abs (- fletcher cooper)) 1)))
     (list (list 'baker baker) (list 'cooper cooper)
           (list 'fletcher fletcher) (list 'miller miller)
           (list 'smith smith))))|}

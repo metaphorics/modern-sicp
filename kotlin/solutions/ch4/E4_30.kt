@@ -52,7 +52,7 @@ public class CySequenceLazy(
 
 /** Ben's example under the text's rule: `display` and `newline` are strict
  * primitives, so their operands force at application and the three
- * elements print, `done` last. => "\n57\n321\n88\ndone\n" */
+ * elements print, `done` last. => "\n57\n321\n88done\n" */
 public fun forEachTextRuleTranscript(): String =
     lazyTranscriptOn(
         ::LazyEvaluator,
@@ -61,7 +61,7 @@ public fun forEachTextRuleTranscript(): String =
 
 /** The same session under Cy's rule: forcing the non-final expressions
  * changes nothing, because each one is an application whose own demand
- * sites force. => "\n57\n321\n88\ndone\n" */
+ * sites force. => "\n57\n321\n88done\n" */
 public fun forEachCyRuleTranscript(): String =
     lazyTranscriptOn(
         ::CySequenceLazy,

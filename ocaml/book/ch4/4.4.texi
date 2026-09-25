@@ -71,12 +71,13 @@ takes two lists as arguments and combines their elements to form a single list.
 In a procedural language such as Lisp, we could define @code{append} in terms
 of the basic list constructor @code{cons}, as we did in @ref{2.2.1}:
 
-@lisp
-(define (append x y)
-  (if (null? x) 
-      y 
-      (cons (car x) (append (cdr x) y))))
-@end lisp
+@example ocaml
+let rec append x y =
+  match x with
+  | [] -> y
+  | first :: rest -> first :: append rest y
+;;
+@end example
 
 @noindent
 This procedure can be regarded as a translation into Lisp of the following two
@@ -199,12 +200,14 @@ The personnel data base for Microshaft contains @newterm{assertions} about
 company personnel.  Here is the information about Ben Bitdiddle, the resident
 computer wizard:
 
-@lisp
-(address (Bitdiddle Ben) 
-         (Slumerville (Ridge Road) 10))
-(job (Bitdiddle Ben) (computer wizard))
-(salary (Bitdiddle Ben) 60000)
-@end lisp
+@example ocaml
+let env = Eval.the_query_system () in
+Eval.run env "(assert! (address (Bitdiddle Ben) (Slumerville (Ridge Road) 10)))"
+Eval.run env "(assert! (job (Bitdiddle Ben) (computer wizard)))"
+Eval.run env "(assert! (salary (Bitdiddle Ben) 60000))"
+(* each answers Asserted: the driver prints "Assertion added to data
+   base." *)
+@end example
 
 @noindent
 Each assertion is a list (in this case a triple) whose elements can themselves
@@ -214,38 +217,30 @@ As resident wizard, Ben is in charge of the company's computer division, and he
 supervises two programmers and one technician.  Here is the information about
 them:
 
-@lisp
-(address (Hacker Alyssa P) 
-         (Cambridge (Mass Ave) 78))
-(job (Hacker Alyssa P) (computer programmer))
-(salary (Hacker Alyssa P) 40000)
-(supervisor (Hacker Alyssa P) (Bitdiddle Ben))
-
-(address (Fect Cy D) 
-         (Cambridge (Ames Street) 3))
-(job (Fect Cy D) (computer programmer))
-(salary (Fect Cy D) 35000)
-(supervisor (Fect Cy D) (Bitdiddle Ben))
-
-(address (Tweakit Lem E) 
-         (Boston (Bay State Road) 22))
-(job (Tweakit Lem E) (computer technician))
-(salary (Tweakit Lem E) 25000)
-(supervisor (Tweakit Lem E) (Bitdiddle Ben))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (address (Hacker Alyssa P) (Cambridge (Mass Ave) 78)))"
+Eval.run env "(assert! (job (Hacker Alyssa P) (computer programmer)))"
+Eval.run env "(assert! (salary (Hacker Alyssa P) 40000))"
+Eval.run env "(assert! (supervisor (Hacker Alyssa P) (Bitdiddle Ben)))"
+Eval.run env "(assert! (address (Fect Cy D) (Cambridge (Ames Street) 3)))"
+Eval.run env "(assert! (job (Fect Cy D) (computer programmer)))"
+Eval.run env "(assert! (salary (Fect Cy D) 35000))"
+Eval.run env "(assert! (supervisor (Fect Cy D) (Bitdiddle Ben)))"
+Eval.run env "(assert! (address (Tweakit Lem E) (Boston (Bay State Road) 22)))"
+Eval.run env "(assert! (job (Tweakit Lem E) (computer technician)))"
+Eval.run env "(assert! (salary (Tweakit Lem E) 25000))"
+Eval.run env "(assert! (supervisor (Tweakit Lem E) (Bitdiddle Ben)))"
+@end example
 
 @noindent
 There is also a programmer trainee, who is supervised by Alyssa:
 
-@lisp
-(address (Reasoner Louis) 
-         (Slumerville (Pine Tree Road) 80))
-(job (Reasoner Louis) 
-     (computer programmer trainee))
-(salary (Reasoner Louis) 30000)
-(supervisor (Reasoner Louis) 
-            (Hacker Alyssa P))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (address (Reasoner Louis) (Slumerville (Pine Tree Road) 80)))"
+Eval.run env "(assert! (job (Reasoner Louis) (computer programmer trainee)))"
+Eval.run env "(assert! (salary (Reasoner Louis) 30000))"
+Eval.run env "(assert! (supervisor (Reasoner Louis) (Hacker Alyssa P)))"
+@end example
 
 @noindent
 All of these people are in the computer division, as indicated by the word
@@ -254,73 +249,61 @@ All of these people are in the computer division, as indicated by the word
 Ben is a high-level employee.  His supervisor is the company's big wheel
 himself:
 
-@lisp
-(supervisor (Bitdiddle Ben) (Warbucks Oliver))
-(address (Warbucks Oliver) 
-         (Swellesley (Top Heap Road)))
-(job (Warbucks Oliver) 
-     (administration big wheel))
-(salary (Warbucks Oliver) 150000)
-@end lisp
+@example ocaml
+Eval.run env "(assert! (supervisor (Bitdiddle Ben) (Warbucks Oliver)))"
+Eval.run env "(assert! (address (Warbucks Oliver) (Swellesley (Top Heap Road))))"
+Eval.run env "(assert! (job (Warbucks Oliver) (administration big wheel)))"
+Eval.run env "(assert! (salary (Warbucks Oliver) 150000))"
+@end example
 
 @noindent
 Besides the computer division supervised by Ben, the company has an accounting
 division, consisting of a chief accountant and his assistant:
 
-@lisp
-(address (Scrooge Eben) 
-         (Weston (Shady Lane) 10))
-(job (Scrooge Eben) 
-     (accounting chief accountant))
-(salary (Scrooge Eben) 75000)
-(supervisor (Scrooge Eben) (Warbucks Oliver))
-
-(address (Cratchet Robert) 
-         (Allston (N Harvard Street) 16))
-(job (Cratchet Robert) (accounting scrivener))
-(salary (Cratchet Robert) 18000)
-(supervisor (Cratchet Robert) (Scrooge Eben))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (address (Scrooge Eben) (Weston (Shady Lane) 10)))"
+Eval.run env "(assert! (job (Scrooge Eben) (accounting chief accountant)))"
+Eval.run env "(assert! (salary (Scrooge Eben) 75000))"
+Eval.run env "(assert! (supervisor (Scrooge Eben) (Warbucks Oliver)))"
+Eval.run env "(assert! (address (Cratchet Robert) (Allston (N Harvard Street) 16)))"
+Eval.run env "(assert! (job (Cratchet Robert) (accounting scrivener)))"
+Eval.run env "(assert! (salary (Cratchet Robert) 18000))"
+Eval.run env "(assert! (supervisor (Cratchet Robert) (Scrooge Eben)))"
+@end example
 
 @noindent
 There is also a secretary for the big wheel:
 
-@lisp
-(address (Aull DeWitt) 
-         (Slumerville (Onion Square) 5))
-(job (Aull DeWitt) (administration secretary))
-(salary (Aull DeWitt) 25000)
-(supervisor (Aull DeWitt) (Warbucks Oliver))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (address (Aull DeWitt) (Slumerville (Onion Square) 5)))"
+Eval.run env "(assert! (job (Aull DeWitt) (administration secretary)))"
+Eval.run env "(assert! (salary (Aull DeWitt) 25000))"
+Eval.run env "(assert! (supervisor (Aull DeWitt) (Warbucks Oliver)))"
+@end example
 
 @noindent
 The data base also contains assertions about which kinds of jobs can be done by
 people holding other kinds of jobs.  For instance, a computer wizard can do the
 jobs of both a computer programmer and a computer technician:
 
-@lisp
-(can-do-job (computer wizard) 
-            (computer programmer))
-
-(can-do-job (computer wizard) 
-            (computer technician))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (can-do-job (computer wizard) (computer programmer)))"
+Eval.run env "(assert! (can-do-job (computer wizard) (computer technician)))"
+@end example
 
 @noindent
 A computer programmer could fill in for a trainee:
 
-@lisp
-(can-do-job (computer programmer)
-            (computer programmer trainee))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (can-do-job (computer programmer) (computer programmer trainee)))"
+@end example
 
 @noindent
 Also, as is well known,
 
-@lisp
-(can-do-job (administration secretary)
-            (administration big wheel))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (can-do-job (administration secretary) (administration big wheel)))"
+@end example
 
 @subsubheading Simple queries
 
@@ -328,19 +311,19 @@ The query language allows users to retrieve information from the data base by
 posing queries in response to the system's prompt.  For example, to find all
 computer programmers one can say
 
-@lisp
-@i{;;; Query input:}
-(job ?x (computer programmer))
-@end lisp
+@example ocaml
+(* ;;; Query input: *)
+Eval.run env "(job ?x (computer programmer))"
+@end example
 
 @noindent
 The system will respond with the following items:
 
-@lisp
-@i{;;; Query results:}
-(job (Hacker Alyssa P) (computer programmer))
-(job (Fect Cy D) (computer programmer))
-@end lisp
+@example ocaml
+(* ;;; Query results: *)
+(* (job (Hacker Alyssa P) (computer programmer)) *)
+(* (job (Fect Cy D) (computer programmer)) *)
+@end example
 
 @noindent
 The input query specifies that we are looking for entries in the data base that
@@ -357,9 +340,9 @@ showing all entries in the data base that match the specified pattern.
 
 A pattern can have more than one variable.  For example, the query
 
-@lisp
-(address ?x ?y)
-@end lisp
+@example ocaml
+Eval.run env "(address ?x ?y)"
+@end example
 
 @noindent
 will list all the employees' addresses.
@@ -372,9 +355,9 @@ The same pattern variable can appear more than once in a query, specifying that
 the same ``anything'' must appear in each position.  This is why variables have
 names.  For example,
 
-@lisp
-(supervisor ?x ?x)
-@end lisp
+@example ocaml
+Eval.run env "(supervisor ?x ?x)"
+@end example
 
 @noindent
 finds all people who supervise themselves (though there are no such assertions
@@ -382,28 +365,29 @@ in our sample data base).
 
 The query
 
-@lisp
-(job ?x (computer ?type))
-@end lisp
+@example ocaml
+Eval.run env "(job ?x (computer ?type))"
+@end example
 
 @noindent
 matches all job entries whose third item is a two-element list whose first item
 is @code{computer}:
 
-@lisp
-(job (Bitdiddle Ben) (computer wizard))
-(job (Hacker Alyssa P) (computer programmer))
-(job (Fect Cy D) (computer programmer))
-(job (Tweakit Lem E) (computer technician))
-@end lisp
+@example ocaml
+(* ;;; Query results: *)
+(* (job (Bitdiddle Ben) (computer wizard)) *)
+(* (job (Hacker Alyssa P) (computer programmer)) *)
+(* (job (Fect Cy D) (computer programmer)) *)
+(* (job (Tweakit Lem E) (computer technician)) *)
+@end example
 
 @noindent
 This same pattern does @emph{not} match
 
-@lisp
-(job (Reasoner Louis) 
-     (computer programmer trainee))
-@end lisp
+@example ocaml
+(* the entry it does not match: *)
+(* (job (Reasoner Louis) (computer programmer trainee)) *)
+@end example
 
 @noindent
 because the third item in the entry is a list of three elements, and the
@@ -412,38 +396,40 @@ to change the pattern so that the third item could be any list beginning with
 @code{computer}, we could specify@footnote{This uses the dotted-tail notation
 introduced in @ref{Exercise 2.20}.}
 
-@lisp
-(job ?x (computer . ?type))
-@end lisp
+@example ocaml
+Eval.run env "(job ?x (computer . ?type))"
+@end example
 
 @noindent
 For example,
 
-@lisp
-(computer . ?type)
-@end lisp
+@example ocaml
+(* the pattern (computer . ?type) pairs the symbol computer with the
+   value the ?type variable takes on: the rest of the data list *)
+@end example
 
 @noindent
 matches the data
 
-@lisp
-(computer programmer trainee)
-@end lisp
+@example ocaml
+(* matches (computer programmer trainee), binding ?type to
+   (programmer trainee) *)
+@end example
 
 @noindent
 with @code{?type} as the list @code{(programmer trainee)}.  It also
 matches the data
 
-@lisp
-(computer programmer)
-@end lisp
+@example ocaml
+(* and (computer programmer), with ?type as (programmer) *)
+@end example
 
 @noindent
 with @code{?type} as the list @code{(programmer)}, and matches the data
 
-@lisp
-(computer)
-@end lisp
+@example ocaml
+(* and (computer), with ?type as the empty list *)
+@end example
 
 @noindent
 with @code{?type} as the empty list @code{()}.
@@ -501,31 +487,25 @@ built into the query language.)
 We can use @code{and} as follows to find the addresses of all the computer
 programmers:
 
-@lisp
-(and (job ?person (computer programmer))
-     (address ?person ?where))
-@end lisp
+@example ocaml
+Eval.run env "(and (job ?person (computer programmer)) (address ?person ?where))"
+@end example
 
 @noindent
 The resulting output is
 
-@lisp
-(and (job (Hacker Alyssa P) 
-          (computer programmer))
-     (address (Hacker Alyssa P) 
-              (Cambridge (Mass Ave) 78)))
-
-(and (job (Fect Cy D) (computer programmer))
-     (address (Fect Cy D) 
-              (Cambridge (Ames Street) 3)))
-@end lisp
+@example ocaml
+(* ;;; Query results: *)
+(* (and (job (Hacker Alyssa P) (computer programmer)) (address (Hacker Alyssa P) (Cambridge (Mass Ave) 78))) *)
+(* (and (job (Fect Cy D) (computer programmer)) (address (Fect Cy D) (Cambridge (Ames Street) 3))) *)
+@end example
 
 @noindent
 In general,
 
-@lisp
+@example
 (and ⟨@var{query₁}⟩ ⟨@var{query₂}⟩ @r{…} ⟨@var{queryₙ}⟩)
-@end lisp
+@end example
 
 @noindent
 is satisfied by all sets of values for the pattern variables that
@@ -538,42 +518,28 @@ instantiations of the query with those values.
 Another means of constructing compound queries is through @code{or}.  For
 example,
 
-@lisp
-(or (supervisor ?x (Bitdiddle Ben))
-    (supervisor ?x (Hacker Alyssa P)))
-@end lisp
+@example ocaml
+Eval.run env "(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))"
+@end example
 
 @noindent
 will find all employees supervised by Ben Bitdiddle or Alyssa P.  Hacker:
 
-@lisp
-(or (supervisor (Hacker Alyssa P) 
-                (Bitdiddle Ben))
-    (supervisor (Hacker Alyssa P) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Fect Cy D) 
-                (Bitdiddle Ben))
-    (supervisor (Fect Cy D) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Tweakit Lem E) 
-                (Bitdiddle Ben))
-    (supervisor (Tweakit Lem E) 
-                (Hacker Alyssa P)))
-
-(or (supervisor (Reasoner Louis) 
-                (Bitdiddle Ben))
-    (supervisor (Reasoner Louis) 
-                (Hacker Alyssa P)))
-@end lisp
+@example ocaml
+(* ;;; Query results: -- the disjunct streams interleave, so Reasoner
+   lands in the second slot, not last *)
+(* (or (supervisor (Hacker Alyssa P) (Bitdiddle Ben)) (supervisor (Hacker Alyssa P) (Hacker Alyssa P))) *)
+(* (or (supervisor (Reasoner Louis) (Bitdiddle Ben)) (supervisor (Reasoner Louis) (Hacker Alyssa P))) *)
+(* (or (supervisor (Fect Cy D) (Bitdiddle Ben)) (supervisor (Fect Cy D) (Hacker Alyssa P))) *)
+(* (or (supervisor (Tweakit Lem E) (Bitdiddle Ben)) (supervisor (Tweakit Lem E) (Hacker Alyssa P))) *)
+@end example
 
 @noindent
 In general,
 
-@lisp
+@example
 (or ⟨@var{query₁}⟩ ⟨@var{query₂}⟩ @r{…} ⟨@var{queryₙ}⟩)
-@end lisp
+@end example
 
 @noindent
 is satisfied by all sets of values for the pattern variables that satisfy at
@@ -581,18 +547,17 @@ least one of @math{{⟨\kern0.1em query_1⟩}} @r{…} @math{{⟨\kern0.1em quer
 
 Compound queries can also be formed with @code{not}. For example,
 
-@lisp
-(and (supervisor ?x (Bitdiddle Ben))
-     (not (job ?x (computer programmer))))
-@end lisp
+@example ocaml
+Eval.run env "(and (supervisor ?x (Bitdiddle Ben)) (not (job ?x (computer programmer))))"
+@end example
 
 @noindent
 finds all people supervised by Ben Bitdiddle who are not computer programmers.
 In general,
 
-@lisp
+@example
 (not ⟨@var{query₁}⟩)
-@end lisp
+@end example
 
 @noindent
 is satisfied by all assignments to the pattern variables that do not satisfy
@@ -606,9 +571,9 @@ is the first element of a pattern, it specifies that the next element is a Lisp
 predicate to be applied to the rest of the (instantiated) elements as
 arguments.  In general,
 
-@lisp
+@example
 (lisp-value ⟨@var{predicate}⟩ ⟨@var{arg₁}⟩ @r{…} ⟨@var{argₙ}⟩)
-@end lisp
+@end example
 
 @noindent
 will be satisfied by assignments to the pattern variables for which the
@@ -620,10 +585,9 @@ particular, it should not be used to test equality (since that is what the
 matching in the query language is designed to do) or inequality (since that can
 be done with the @code{same} rule shown below).}
 
-@lisp
-(and (salary ?person ?amount)
-     (lisp-value > ?amount 30000))
-@end lisp
+@example ocaml
+Eval.run env "(and (salary ?person ?amount) (lisp-value > ?amount 30000))"
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.56}Exercise 4.56:} Formulate compound queries that
@@ -652,14 +616,9 @@ In addition to primitive queries and compound queries, the query language
 provides means for abstracting queries.  These are given by @newterm{rules}.
 The rule
 
-@lisp
-(rule (lives-near ?person-1 ?person-2)
-      (and (address ?person-1 
-                    (?town . ?rest-1))
-           (address ?person-2 
-                    (?town . ?rest-2))
-           (not (same ?person-1 ?person-2))))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (rule (lives-near ?person-1 ?person-2) (and (address ?person-1 (?town . ?rest-1)) (address ?person-2 (?town . ?rest-2)) (not (same ?person-1 ?person-2)))))"
+@end example
 
 @noindent
 specifies that two people live near each other if they live in the same town.
@@ -676,27 +635,24 @@ of a query forces the same value to appear in both places, using different
 pattern variables does not force different values to appear.  (The values
 assigned to different pattern variables may be the same or different.)}
 
-@lisp
-(rule (same ?x ?x))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (rule (same ?x ?x)))"
+@end example
 
 @noindent
 The following rule declares that a person is a ``wheel'' in an organization if
 he supervises someone who is in turn a supervisor:
 
-@lisp
-(rule (wheel ?person)
-      (and (supervisor ?middle-manager 
-                       ?person)
-           (supervisor ?x ?middle-manager)))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (rule (wheel ?person) (and (supervisor ?middle-manager ?person) (supervisor ?x ?middle-manager))))"
+@end example
 
 @noindent
 The general form of a rule is
 
-@lisp
+@example
 (rule ⟨@var{conclusion}⟩ ⟨@var{body}⟩)
-@end lisp
+@end example
 
 @noindent
 where @code{⟨}@var{conclusion}@code{⟩} is a pattern and @code{⟨}@var{body}@code{⟩} is any
@@ -710,39 +666,34 @@ satisfies a pattern if the instantiated pattern is in the data base.  But the
 pattern needn't be explicitly in the data base as an assertion.  It can be an
 implicit assertion implied by a rule.  For example, the query
 
-@lisp
-(lives-near ?x (Bitdiddle Ben))
-@end lisp
+@example ocaml
+Eval.run env "(lives-near ?x (Bitdiddle Ben))"
+@end example
 
 @noindent
 results in
 
-@lisp
-(lives-near (Reasoner Louis) (Bitdiddle Ben))
-(lives-near (Aull DeWitt) (Bitdiddle Ben))
-@end lisp
+@example ocaml
+(* ;;; Query results: *)
+(* (lives-near (Reasoner Louis) (Bitdiddle Ben)) *)
+(* (lives-near (Aull DeWitt) (Bitdiddle Ben)) *)
+@end example
 
 @noindent
 To find all computer programmers who live near Ben Bitdiddle, we can ask
 
-@lisp
-(and (job ?x (computer programmer))
-     (lives-near ?x (Bitdiddle Ben)))
-@end lisp
+@example ocaml
+Eval.run env "(and (job ?x (computer programmer)) (lives-near ?x (Bitdiddle Ben)))"
+@end example
 
 @noindent
 As in the case of compound procedures, rules can be used as parts of other
 rules (as we saw with the @code{lives-near} rule above) or even be defined
 recursively.  For instance, the rule
 
-@lisp
-(rule (outranked-by ?staff-person ?boss)
-      (or (supervisor ?staff-person ?boss)
-          (and (supervisor ?staff-person 
-                           ?middle-manager)
-               (outranked-by ?middle-manager 
-                             ?boss))))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (rule (outranked-by ?staff-person ?boss) (or (supervisor ?staff-person ?boss) (and (supervisor ?staff-person ?middle-manager) (outranked-by ?middle-manager ?boss)))))"
+@end example
 
 @noindent
 says that a staff person is outranked by a boss in the organization if the boss
@@ -780,20 +731,20 @@ meeting too many.  Fearing that his habit of forgetting meetings could cost him
 his job, Ben decides to do something about it.  He adds all the weekly meetings
 of the firm to the Microshaft data base by asserting the following:
 
-@lisp
+@example
 (meeting accounting (Monday 9am))
 (meeting administration (Monday 10am))
 (meeting computer (Wednesday 3pm))
 (meeting administration (Friday 1pm))
-@end lisp
+@end example
 
 Each of the above assertions is for a meeting of an entire division.  Ben also
 adds an entry for the company-wide meeting that spans all the divisions.  All
 of the company's employees attend this meeting.
 
-@lisp
+@example
 (meeting whole-company (Wednesday 4pm))
-@end lisp
+@end example
 
 @enumerate a
 
@@ -808,10 +759,10 @@ that says that a person's meetings include all @code{whole-company} meetings
 plus all meetings of that person's division.  Fill in the body of Alyssa's
 rule.
 
-@lisp
+@example
 (rule (meeting-time ?person ?day-and-time)
       ⟨@var{rule-body}⟩)
-@end lisp
+@end example
 
 @item
 Alyssa arrives at work on Wednesday morning and wonders what meetings she has
@@ -824,26 +775,26 @@ to find this out?
 @quotation
 @strong{@anchor{Exercise 4.60}Exercise 4.60:} By giving the query
 
-@lisp
+@example
 (lives-near ?person (Hacker Alyssa P))
-@end lisp
+@end example
 
 Alyssa P. Hacker is able to find people who live near her, with whom she can
 ride to work.  On the other hand, when she tries to find all pairs of people
 who live near each other by querying
 
-@lisp
+@example
 (lives-near ?person-1 ?person-2)
-@end lisp
+@end example
 
 @noindent
 she notices that each pair of people who live near each other is listed twice;
 for example,
 
-@lisp
+@example
 (lives-near (Hacker Alyssa P) (Fect Cy D))
 (lives-near (Fect Cy D) (Hacker Alyssa P))
-@end lisp
+@end example
 
 Why does this happen?  Is there a way to find a list of people who live near
 each other, in which each pair appears only once?  Explain.
@@ -875,19 +826,12 @@ For any @code{u}, @code{v}, @code{y}, and @code{z}, @code{(cons u v)} and
 @noindent
 To express this in our query language, we define two rules for a relation
 
-@lisp
-(append-to-form x y z)
-@end lisp
-
-@noindent
-which we can interpret to mean ``@code{x} and @code{y} @code{append} to form
-@code{z}'':
-
-@lisp
-(rule (append-to-form () ?y ?y))
-(rule (append-to-form (?u . ?v) ?y (?u . ?z))
-      (append-to-form ?v ?y ?z))
-@end lisp
+@example ocaml
+(* the two rules implement a relation (append-to-form x y z), which we
+   interpret to mean: x and y append to form z *)
+Eval.run env "(assert! (rule (append-to-form () ?y ?y)))"
+Eval.run env "(assert! (rule (append-to-form (?u . ?v) ?y (?u . ?z)) (append-to-form ?v ?y ?z)))"
+@end example
 
 @noindent
 The first rule has no body, which means that the conclusion holds for any value
@@ -897,42 +841,36 @@ name the @code{car} and @code{cdr} of a list.
 Given these two rules, we can formulate queries that compute the @code{append}
 of two lists:
 
-@lisp
-@i{;;; Query input:}
-(append-to-form (a b) (c d) ?z)
-
-@i{;;; Query results:}
-(append-to-form (a b) (c d) (a b c d))
-@end lisp
+@example ocaml
+Eval.run env "(append-to-form (a b) (c d) ?z)"
+(* ;;; Query results: *)
+(* (append-to-form (a b) (c d) (a b c d)) *)
+@end example
 
 @noindent
 What is more striking, we can use the same rules to ask the question ``Which
 list, when @code{append}ed to @code{(a b)}, yields @code{(a b c d)}?''  This is
 done as follows:
 
-@lisp
-@i{;;; Query input:}
-(append-to-form (a b) ?y (a b c d))
-
-@i{;;; Query results:}
-(append-to-form (a b) (c d) (a b c d))
-@end lisp
+@example ocaml
+Eval.run env "(append-to-form (a b) ?y (a b c d))"
+(* ;;; Query results: *)
+(* (append-to-form (a b) (c d) (a b c d)) *)
+@end example
 
 @noindent
 We can also ask for all pairs of lists that @code{append} to form @code{(a b c
 d)}:
 
-@lisp
-@i{;;; Query input:}
-(append-to-form ?x ?y (a b c d))
-
-@i{;;; Query results:}
-(append-to-form () (a b c d) (a b c d))
-(append-to-form (a) (b c d) (a b c d))
-(append-to-form (a b) (c d) (a b c d))
-(append-to-form (a b c) (d) (a b c d))
-(append-to-form (a b c d) () (a b c d))
-@end lisp
+@example ocaml
+Eval.run env "(append-to-form ?x ?y (a b c d))"
+(* ;;; Query results: *)
+(* (append-to-form () (a b c d) (a b c d)) *)
+(* (append-to-form (a) (b c d) (a b c d)) *)
+(* (append-to-form (a b) (c d) (a b c d)) *)
+(* (append-to-form (a b c) (d) (a b c d)) *)
+(* (append-to-form (a b c d) () (a b c d)) *)
+@end example
 
 @noindent
 The query system may seem to exhibit quite a bit of intelligence in using the
@@ -946,18 +884,18 @@ cases, as we will see in @ref{4.4.3}.
 @strong{@anchor{Exercise 4.61}Exercise 4.61:} The following rules implement a
 @code{next-to} relation that finds adjacent elements of a list:
 
-@lisp
+@example
 (rule (?x next-to ?y in (?x ?y . ?u)))
 (rule (?x next-to ?y in (?v . ?z))
       (?x next-to ?y in ?z))
-@end lisp
+@end example
 
 What will the response be to the following queries?
 
-@lisp
+@example
 (?x next-to ?y in (1 (2 3) 4))
 (?x next-to 1 in (2 1 3 1))
-@end lisp
+@end example
 @end quotation
 
 @quotation
@@ -974,14 +912,14 @@ such as @code{(last-pair (3) ?x)}, @code{(last-pair (1 2 3) ?x)} and
 Genesis 4) traces the genealogy of the descendants of Ada back to Adam, by way
 of Cain:
 
-@lisp
+@example
 (son Adam Cain) (son Cain Enoch)
 (son Enoch Irad) (son Irad Mehujael)
 (son Mehujael Methushael)
 (son Methushael Lamech)
 (wife Lamech Ada) (son Ada Jabal)
 (son Ada Jubal)
-@end lisp
+@end example
 
 Formulate rules such as ``If @math{S} is the son of @math{f}, and @math{f} is the son of
 @math{G}, then @math{S} is the grandson of @math{G}'' and ``If @math{W} is the wife of
@@ -1050,9 +988,9 @@ will return the given frame augmented by a binding of @code{?x} to @code{a}.
 The pattern matcher is all the mechanism that is needed to process simple
 queries that don't involve rules.  For instance, to process the query
 
-@lisp
-(job ?x (computer programmer))
-@end lisp
+@example ocaml
+Eval.run env "(job ?x (computer programmer))"
+@end example
 
 @noindent
 we scan through all assertions in the data base and select those that match the
@@ -1131,28 +1069,25 @@ deal with compound queries.  The processing of compound queries makes use of
 the ability of our matcher to demand that a match be consistent with a
 specified frame.  For example, to handle the @code{and} of two queries, such as
 
-@lisp
-(and (can-do-job 
-      ?x 
-      (computer programmer trainee))
-     (job ?person ?x))
-@end lisp
+@example ocaml
+Eval.run env "(and (can-do-job ?x (computer programmer trainee)) (job ?person ?x))"
+@end example
 
 @noindent
 (informally, ``Find all people who can do the job of a computer programmer
 trainee''), we first find all entries that match the pattern
 
-@lisp
-(can-do-job ?x (computer programmer trainee))
-@end lisp
+@example ocaml
+Eval.run env "(can-do-job ?x (computer programmer trainee))"
+@end example
 
 @noindent
 This produces a stream of frames, each of which contains a binding for
 @code{?x}.  Then for each frame in the stream we find all entries that match
 
-@lisp
-(job ?person ?x)
-@end lisp
+@example ocaml
+Eval.run env "(job ?person ?x)"
+@end example
 
 @noindent
 in a way that is consistent with the given binding for @code{?x}.  Each such
@@ -1254,9 +1189,9 @@ From the stream-of-frames viewpoint, the @code{not} of some query acts as a
 filter that removes all frames for which the query can be satisfied.  For
 instance, given the pattern
 
-@lisp
-(not (job ?x (computer programmer)))
-@end lisp
+@example ocaml
+(* the filter (not (job ?x (computer programmer))) *)
+@end example
 
 @noindent
 we attempt, for each frame in the input stream, to produce extension frames
@@ -1266,10 +1201,9 @@ consisting of only those frames in which the binding for @code{?x} does not
 satisfy @code{(job ?x (computer programmer))}.  For example, in processing the
 query
 
-@lisp
-(and (supervisor ?x ?y)
-     (not (job ?x (computer programmer))))
-@end lisp
+@example ocaml
+Eval.run env "(and (supervisor ?x ?y) (not (job ?x (computer programmer))))"
+@end example
 
 @noindent
 the first clause will generate frames with bindings for @code{?x} and
@@ -1318,31 +1252,31 @@ the unknown (the pattern variable).} For example, unifying @code{(?x ?x)} and
 @code{((a ?y c) (a b ?z))} may be thought of as specifying the simultaneous
 equations
 
-@lisp
+@example
 ?x = (a ?y c)
 ?x = (a b ?z)
-@end lisp
+@end example
 
 @noindent
 These equations imply that
 
-@lisp
+@example
 (a ?y c) = (a b ?z)
-@end lisp
+@end example
 
 @noindent
 which in turn implies that
 
-@lisp
+@example
 a = a, ?y = b, c = ?z,
-@end lisp
+@end example
 
 @noindent
 and hence that
 
-@lisp
+@example
 ?x = (a b c)
-@end lisp
+@end example
 
 @noindent
 In a successful pattern match, all pattern variables become bound, and the
@@ -1377,26 +1311,21 @@ Unification is the key to the component of the query system that makes
 inferences from rules. To see how this is accomplished, consider processing a
 query that involves applying a rule, such as
 
-@lisp
-(lives-near ?x (Hacker Alyssa P))
-@end lisp
+@example ocaml
+Eval.run env "(lives-near ?x (Hacker Alyssa P))"
+@end example
 
 @noindent
-To process this query, we first use the ordinary pattern-match procedure
+To process this query, we first use the ordinary pattern_match procedure
 described above to see if there are any assertions in the data base that match
 this pattern.  (There will not be any in this case, since our data base
 includes no direct assertions about who lives near whom.)  The next step is to
 attempt to unify the query pattern with the conclusion of each rule.  We find
 that the pattern unifies with the conclusion of the rule
 
-@lisp
-(rule (lives-near ?person-1 ?person-2)
-      (and (address ?person-1 
-                    (?town . ?rest-1))
-           (address ?person-2 
-                    (?town . ?rest-2))
-           (not (same ?person-1 ?person-2))))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (rule (lives-near ?person-1 ?person-2) (and (address ?person-1 (?town . ?rest-1)) (address ?person-2 (?town . ?rest-2)) (not (same ?person-1 ?person-2)))))"
+@end example
 
 @noindent
 resulting in a frame specifying that @code{?person-2} is bound to @code{(Hacker
@@ -1483,7 +1412,7 @@ Despite the complexity of the underlying matching operations, the system is
 organized much like an evaluator for any language.  The procedure that
 coordinates the matching operations is called @code{qeval}, and it plays a role
 analogous to that of the @code{eval} procedure for Lisp.  @code{Qeval} takes as
-inputs a query and a stream of frames.  Its output is a stream of frames,
+inputs the session environment, a query, and a stream of frames.  Its output is a stream of frames,
 corresponding to successful matches to the query pattern, that extend some
 frame in the input stream, as indicated in @ref{Figure 4.4}.  Like @code{eval},
 @code{qeval} classifies the different types of expressions (queries) and
@@ -1491,7 +1420,7 @@ dispatches to an appropriate procedure for each.  There is a procedure for each
 special form (@code{and}, @code{or}, @code{not}, and @code{lisp-value}) and one
 for simple queries.
 
-The driver loop, which is analogous to the @code{driver-loop} procedure for the
+The driver loop, which is analogous to the @code{driver_loop} procedure for the
 other evaluators in this chapter, reads queries from the terminal.  For each
 query, it calls @code{qeval} with the query and a stream that consists of a
 single empty frame.  This will produce the stream of all possible matches (all
@@ -1508,18 +1437,10 @@ The driver also checks for the special command @code{assert!}, which signals
 that the input is not a query but rather an assertion or rule to be added to
 the data base.  For instance,
 
-@lisp
-(assert!
- (job (Bitdiddle Ben)
-      (computer wizard)))
-
-(assert!
- (rule (wheel ?person)
-       (and (supervisor 
-             ?middle-manager ?person)
-            (supervisor
-             ?x ?middle-manager))))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (job (Bitdiddle Ben) (computer wizard)))"
+Eval.run env "(assert! (rule (wheel ?person) (and (supervisor ?middle-manager ?person) (supervisor ?x ?middle-manager))))"
+@end example
 
 @node	4.4.3, 4.4.4, 4.4.2, 4.4
 @subsection Is Logic Programming Mathematical Logic?
@@ -1540,18 +1461,16 @@ take advantage of this control structure.  For example, to find all of the
 supervisors of programmers we could formulate a query in either of two
 logically equivalent forms:
 
-@lisp
-(and (job ?x (computer programmer))
-     (supervisor ?x ?y))
-@end lisp
+@example ocaml
+Eval.run env "(and (job ?x (computer programmer)) (supervisor ?x ?y))"
+@end example
 
 @noindent
 or
 
-@lisp
-(and (supervisor ?x ?y)
-     (job ?x (computer programmer)))
-@end lisp
+@example ocaml
+Eval.run env "(and (supervisor ?x ?y) (job ?x (computer programmer)))"
+@end example
 
 @noindent
 If a company has many more supervisors than programmers (the usual case), it is
@@ -1607,32 +1526,32 @@ problems.  An extreme case of inefficiency occurs when the system falls into
 infinite loops in making deductions.  As a simple example, suppose we are
 setting up a data base of famous marriages, including
 
-@lisp
-(assert! (married Minnie Mickey))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (married Minnie Mickey))"
+@end example
 
 @noindent
 If we now ask
 
-@lisp
-(married Mickey ?who)
-@end lisp
+@example ocaml
+Eval.run env "(married Mickey ?who)"
+(* no answers: the data base holds no such fact *)
+@end example
 
 @noindent
 we will get no response, because the system doesn't know that if @math{A} is
 married to @math{B}, then @math{B} is married to @math{A}.  So we assert the rule
 
-@lisp
-(assert! (rule (married ?x ?y)
-               (married ?y ?x)))
-@end lisp
+@example ocaml
+Eval.run env "(assert! (rule (married ?x ?y) (married ?y ?x)))"
+@end example
 
 @noindent
 and again query
 
-@lisp
-(married Mickey ?who)
-@end lisp
+@example ocaml
+Eval.run env "(married Mickey ?who)"
+@end example
 
 Unfortunately, this will drive the system into an infinite loop, as follows:
 
@@ -1685,13 +1604,10 @@ suitably chosen function @math{f}.}
 Another quirk in the query system concerns @code{not}.  Given the data base of
 @ref{4.4.1}, consider the following two queries:
 
-@lisp
-(and (supervisor ?x ?y)
-     (not (job ?x (computer programmer))))
-
-(and (not (job ?x (computer programmer)))
-     (supervisor ?x ?y))
-@end lisp
+@example ocaml
+Eval.run env "(and (supervisor ?x ?y) (not (job ?x (computer programmer))))"
+Eval.run env "(and (not (job ?x (computer programmer))) (supervisor ?x ?y))"
+@end example
 
 @noindent
 These two queries do not produce the same result.  The first query begins by
@@ -1738,21 +1654,21 @@ the @code{outranked-by} rule (@ref{4.4.1}) from the data base.  When he
 realizes this, he quickly reinstalls it.  Unfortunately, he makes a slight
 change in the rule, and types it in as
 
-@lisp
+@example
 (rule (outranked-by ?staff-person ?boss)
   (or (supervisor ?staff-person ?boss)
       (and (outranked-by ?middle-manager
                          ?boss)
            (supervisor ?staff-person 
                        ?middle-manager))))
-@end lisp
+@end example
 
 Just after Louis types this information into the system, DeWitt Aull comes by
 to find out who outranks Ben Bitdiddle. He issues the query
 
-@lisp
+@example
 (outranked-by (Bitdiddle Ben) ?who)
-@end lisp
+@end example
 
 After answering, the system goes into an infinite loop.  Explain why.
 @end quotation
@@ -1762,20 +1678,20 @@ After answering, the system goes into an infinite loop.  Explain why.
 the day when he will rise in the organization, gives a query to find all the
 wheels (using the @code{wheel} rule of @ref{4.4.1}):
 
-@lisp
+@example
 (wheel ?who)
-@end lisp
+@end example
 
 To his surprise, the system responds
 
-@lisp
+@example
 @i{;;; Query results:}
 (wheel (Warbucks Oliver))
 (wheel (Bitdiddle Ben))
 (wheel (Warbucks Oliver))
 (wheel (Warbucks Oliver))
 (wheel (Warbucks Oliver))
-@end lisp
+@end example
 
 Why is Oliver Warbucks listed four times?
 @end quotation
@@ -1785,18 +1701,18 @@ Why is Oliver Warbucks listed four times?
 query system to provide statistics about the company.  For example, to find the
 total salaries of all the computer programmers one will be able to say
 
-@lisp
+@example
 (sum ?amount
      (and (job ?x (computer programmer))
           (salary ?x ?amount)))
-@end lisp
+@end example
 
 In general, Ben's new system allows expressions of the form
 
-@lisp
+@example
 (accumulation-function ⟨@var{variable}⟩
                        ⟨@var{query pattern}⟩)
-@end lisp
+@end example
 
 @noindent
 where @code{accumulation-function} can be things like @code{sum},
@@ -1879,49 +1795,55 @@ of copies of the original query in which the variables are instantiated with
 values supplied by the stream of frames, and this final stream is printed at
 the terminal:
 
-@lisp
-(define input-prompt  ";;; Query input:")
-(define output-prompt ";;; Query results:")
-
-(define (query-driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((q (query-syntax-process (read))))
-    (cond ((assertion-to-be-added? q)
-           (add-rule-or-assertion! 
-            (add-assertion-body q))
-           (newline)
-           (display 
-            "Assertion added to data base.")
-           (query-driver-loop))
-          (else
-           (newline)
-           (display output-prompt)
-           (display-stream
-            (stream-map
-             (lambda (frame)
-               (instantiate
-                q
-                frame
-                (lambda (v f)
-                  (contract-question-mark v))))
-             (qeval q (singleton-stream '()))))
-           (query-driver-loop)))))
-@end lisp
+@example ocaml
+(* The driver's prompts are ";;; Query input:" and ";;; Query
+   results:".  [run] reads one input: an [assert!] is added to the data
+   base, and a query answers with the lazy stream of its instantiations
+   -- printed one by one as they are forced, the book's
+   display-stream. *)
+let run env text =
+  match read_query text with
+  | Error message -> Error (Eval_error.Invalid_form message)
+  | Ok raw ->
+    let q = query_syntax_process raw in
+    let is_assert =
+      match Value.view q with
+      | Value.Pair (car, _) -> Value.structural_equal car (Value.symbol "assert!")
+      | _ -> false
+    in
+    if is_assert
+    then
+      (match Value.view q with
+       | Value.Pair (_, body_cell) ->
+         (match Value.view body_cell with
+          | Value.Pair (body, _) ->
+            let (_ : Value.t) = add_rule_or_assertion body in
+            Ok Asserted
+          | _ -> Error (Eval_error.Invalid_form "assert! needs a body"))
+       | _ -> Error (Eval_error.Invalid_form "assert! needs a body"))
+    else
+      Ok
+        (Answers
+           (Streams.stream_map
+              (instantiate_query q)
+              (qeval env q (singleton_stream the_empty_frame))))
+;;
+@end example
 
 @noindent
 Here, as in the other evaluators in this chapter, we use an abstract syntax for
 the expressions of the query language.  The implementation of the expression
-syntax, including the predicate @code{assertion-to-be-added?} and the selector
-@code{add-assertion-body}, is given in @ref{4.4.4.7}.
-@code{Add-rule-or-assertion!} is defined in @ref{4.4.4.5}.
+syntax, including the check for an @code{assert!} input and the selection of its
+body, is given in @ref{4.4.4.7}.
+@code{add_rule_or_assertion} is defined in @ref{4.4.4.5}.
 
 Before doing any processing on an input expression, the driver loop transforms
 it syntactically into a form that makes the processing more efficient.  This
 involves changing the representation of pattern variables.  When the query is
 instantiated, any variables that remain unbound are transformed back to the
 input representation before being printed.  These transformations are performed
-by the two procedures @code{query-syntax-process} and
-@code{contract-question-mark} (@ref{4.4.4.7}).
+by the two procedures @code{query_syntax_process} and
+@code{contract_question_mark} (@ref{4.4.4.7}).
 
 To instantiate an expression, we copy it, replacing any variables in the
 expression by their values in a given frame.  The values are themselves
@@ -1930,25 +1852,22 @@ instantiated, since they could contain variables (for example, if @code{?x} in
 in turn bound to 5).  The action to take if a variable cannot be instantiated
 is given by a procedural argument to @code{instantiate}.
 
-@lisp
-(define (instantiate 
-         exp frame unbound-var-handler)
-  (define (copy exp)
-    (cond ((var? exp)
-           (let ((binding 
-                  (binding-in-frame 
-                   exp frame)))
-             (if binding
-                 (copy 
-                  (binding-value binding))
-                 (unbound-var-handler 
-                  exp frame))))
-          ((pair? exp)
-           (cons (copy (car exp)) 
-                 (copy (cdr exp))))
-          (else exp)))
-  (copy exp))
-@end lisp
+@example ocaml
+let rec instantiate exp frame unbound_var_handler =
+  if is_var exp
+  then (
+    match binding_in_frame exp frame with
+    | Some (_, value) -> instantiate value frame unbound_var_handler
+    | None -> unbound_var_handler exp frame)
+  else (
+    match Value.view exp with
+    | Value.Pair (car, cdr) ->
+      Value.pair
+        (instantiate car frame unbound_var_handler)
+        (instantiate cdr frame unbound_var_handler)
+    | _ -> exp)
+;;
+@end example
 
 @noindent
 The procedures that manipulate bindings are defined in @ref{4.4.4.8}.
@@ -1956,55 +1875,62 @@ The procedures that manipulate bindings are defined in @ref{4.4.4.8}.
 @node 4.4.4.2, 4.4.4.3, 4.4.4.1, 4.4.4
 @subsubsection The Evaluator
 
-The @code{qeval} procedure, called by the @code{query-driver-loop}, is the
-basic evaluator of the query system.  It takes as inputs a query and a stream
-of frames, and it returns a stream of extended frames.  It identifies special
+The @code{qeval} procedure, called by @code{run}, is the basic evaluator of
+the query system.  It takes as inputs the session environment, a query, and a
+stream of frames, and it returns a stream of extended frames.  It identifies special
 forms by a data-directed dispatch using @code{get} and @code{put}, just as we
 did in implementing generic operations in @ref{Chapter 2}.  Any query that is
 not identified as a special form is assumed to be a simple query, to be
-processed by @code{simple-query}.
+processed by @code{simple_query}.
 
-@lisp
-(define (qeval query frame-stream)
-  (let ((qproc (get (type query) 'qeval)))
-    (if qproc
-        (qproc (contents query) frame-stream)
-        (simple-query query frame-stream))))
-@end lisp
+@example ocaml
+let rec qeval env query frames =
+  match get (type_of query) "qeval" with
+  | Some qproc ->
+    (match
+       value_list
+         (match Value.view query with
+          | Value.Pair (_, cdr) -> cdr
+          | _ -> Value.nil)
+     with
+     | Ok contents -> qproc env contents frames
+     | Error e -> raise_error e)
+  | None -> simple_query env query frames
+;;
+@end example
 
 @noindent
-@code{Type} and @code{contents}, defined in @ref{4.4.4.7}, implement
+@code{type_of} and @code{value_list}, defined in @ref{4.4.4.7}, implement
 the abstract syntax of the special forms.
 
 @subsubheading Simple queries
 
-The @code{simple-query} procedure handles simple queries.  It takes as
+The @code{simple_query} procedure handles simple queries.  It takes as
 arguments a simple query (a pattern) together with a stream of frames, and it
 returns the stream formed by extending each frame by all data-base matches of
 the query.
 
-@lisp
-(define (simple-query query-pattern 
-                      frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (stream-append-delayed
-      (find-assertions query-pattern frame)
-      (delay 
-        (apply-rules query-pattern frame))))
-   frame-stream))
-@end lisp
+@example ocaml
+let simple_query env query_pattern frames =
+  stream_flatmap
+    (fun frame ->
+       stream_append_delayed
+         (find_assertions query_pattern frame)
+         (fun () -> apply_rules env query_pattern frame))
+    frames
+;;
+@end example
 
 @noindent
-For each frame in the input stream, we use @code{find-assertions} 
+For each frame in the input stream, we use @code{find_assertions} 
 (@ref{4.4.4.3}) to match the pattern against all assertions in the data base,
-producing a stream of extended frames, and we use @code{apply-rules} 
+producing a stream of extended frames, and we use @code{apply_rules} 
 (@ref{4.4.4.4}) to apply all possible rules, producing another stream of
 extended frames.  These two streams are combined (using
-@code{stream-append-delayed}, @ref{4.4.4.6}) to make a stream of all
+@code{stream_append_delayed}, @ref{4.4.4.6}) to make a stream of all
 the ways that the given pattern can be satisfied consistent with the original
 frame (see @ref{Exercise 4.71}).  The streams for the individual input frames
-are combined using @code{stream-flatmap} (@ref{4.4.4.6}) to form one
+are combined using @code{stream_flatmap} (@ref{4.4.4.6}) to form one
 large stream of all the ways that any of the frames in the original input
 stream can be extended to produce a match with the given pattern.
 
@@ -2018,22 +1944,20 @@ extensions that satisfy the first query in the conjunction.  Then, using this
 as the new frame stream, it recursively applies @code{conjoin} to the rest of
 the queries.
 
-@lisp
-(define (conjoin conjuncts frame-stream)
-  (if (empty-conjunction? conjuncts)
-      frame-stream
-      (conjoin (rest-conjuncts conjuncts)
-               (qeval 
-                (first-conjunct conjuncts)
-                frame-stream))))
-@end lisp
+@example ocaml
+let rec conjoin env conjuncts frames =
+  match conjuncts with
+  | [] -> frames
+  | first :: rest -> conjoin env rest (qeval env first frames)
+;;
+@end example
 
 @noindent
 The expression
 
-@lisp
-(put 'and 'qeval conjoin)
-@end lisp
+@example ocaml
+let () = put "and" "qeval" conjoin
+@end example
 
 @noindent
 sets up @code{qeval} to dispatch to @code{conjoin} when an @code{and} form is
@@ -2041,21 +1965,19 @@ encountered.
 
 @code{Or} queries are handled similarly, as shown in @ref{Figure 4.6}.  The
 output streams for the various disjuncts of the @code{or} are computed
-separately and merged using the @code{interleave-delayed} procedure from
+separately and merged using the @code{interleave_delayed} procedure from
 @ref{4.4.4.6}.  (See @ref{Exercise 4.71} and @ref{Exercise 4.72}.)
 
-@lisp
-(define (disjoin disjuncts frame-stream)
-  (if (empty-disjunction? disjuncts)
-      the-empty-stream
-      (interleave-delayed
-       (qeval (first-disjunct disjuncts) 
-              frame-stream)
-       (delay (disjoin 
-               (rest-disjuncts disjuncts)
-               frame-stream)))))
-(put 'or 'qeval disjoin)
-@end lisp
+@example ocaml
+let rec disjoin env disjuncts frames =
+  match disjuncts with
+  | [] -> Streams.the_empty_stream
+  | first :: rest ->
+    interleave_delayed (qeval env first frames) (fun () -> disjoin env rest frames)
+;;
+
+let () = put "or" "qeval" disjoin
+@end example
 
 @noindent
 The predicates and selectors for the syntax of conjuncts and disjuncts are
@@ -2068,71 +1990,94 @@ attempt to extend each frame in the input stream to satisfy the query being
 negated, and we include a given frame in the output stream only if it cannot be
 extended.
 
-@lisp
-(define (negate operands frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (if (stream-null? 
-          (qeval (negated-query operands)
-                 (singleton-stream frame)))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
-(put 'not 'qeval negate)
-@end lisp
+@example ocaml
+let negate env operands frames =
+  stream_flatmap
+    (fun frame ->
+       if Streams.stream_null
+            (qeval env (first_operand operands) (singleton_stream frame))
+       then singleton_stream frame
+       else Streams.the_empty_stream)
+    frames
+;;
+
+let () = put "not" "qeval" negate
+@end example
 
 @noindent
-@code{Lisp-value} is a filter similar to @code{not}.  Each frame in the stream
+@code{lisp_value} is a filter similar to @code{negate}.  Each frame in the stream
 is used to instantiate the variables in the pattern, the indicated predicate is
 applied, and the frames for which the predicate returns false are filtered out
 of the input stream.  An error results if there are unbound pattern variables.
 
-@lisp
-(define (lisp-value call frame-stream)
-  (stream-flatmap
-   (lambda (frame)
-     (if (execute
-          (instantiate
-           call
-           frame
-           (lambda (v f)
-             (error 
-              "Unknown pat var: LISP-VALUE" 
-              v))))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
-(put 'lisp-value 'qeval lisp-value)
-@end lisp
+@example ocaml
+let lisp_value env operands frames =
+  let call = List.fold_right Value.pair operands Value.nil in
+  stream_flatmap
+    (fun frame ->
+       let instantiated =
+         instantiate call frame (fun v _ ->
+             raise_error
+               (Eval_error.User_error
+                  ("Unknown pat var LISP-VALUE: " ^ Value.to_string v)))
+       in
+       match execute env instantiated with
+       | Ok true -> singleton_stream frame
+       | Ok false -> Streams.the_empty_stream
+       | Error e -> raise_error e)
+    frames
+;;
+
+let () = put "lisp-value" "qeval" lisp_value
+@end example
 
 @noindent
-@code{Execute}, which applies the predicate to the arguments, must @code{eval}
-the predicate expression to get the procedure to apply.  However, it must not
-evaluate the arguments, since they are already the actual arguments, not
-expressions whose evaluation (in Lisp) will produce the arguments.  Note that
-@code{execute} is implemented using @code{eval} and @code{apply} from the
-underlying Lisp system.
+@code{Execute}, which applies the predicate to the arguments, looks the
+predicate up in the session environment -- the global environment of
+@ref{4.1} -- to get the procedure to apply.  However, it does not evaluate
+the arguments, since they are already the actual argument values.
 
-@lisp
-(define (execute exp)
-  (apply (eval (predicate exp) 
-               user-initial-environment)
-         (args exp)))
-@end lisp
+@example ocaml
+let execute env call =
+  match Value.view call with
+  | Value.Pair (predicate, args) ->
+    let args = value_list args in
+    (match Env.find_binding env (Value.to_string predicate), args with
+     | Some procedure, Ok args ->
+       (match Value.view procedure with
+        | Value.Primitive_procedure _ ->
+          let name = Value.to_string predicate in
+          let f =
+            snd (List.find (fun (n, _) -> String.equal n name) SE.primitive_table)
+          in
+          f args >>= fun v -> Ok (SE.true_ v)
+        | _ ->
+          Error
+            (Eval_error.Type_error
+               ("lisp-value: not a procedure: " ^ Value.to_string predicate)))
+     | _, Error e -> Error e
+     | None, _ -> Error (Eval_error.Unbound_variable (Value.to_string predicate)))
+  | _ -> Error (Eval_error.Invalid_form "a lisp-value call needs a predicate")
+;;
+@end example
 
 @noindent
 The @code{always-true} special form provides for a query that is always
 satisfied.  It ignores its contents (normally empty) and simply passes through
 all the frames in the input stream.  @code{Always-true} is used by the
-@code{rule-body} selector (@ref{4.4.4.7}) to provide bodies for rules
+@code{rule_body} selector (@ref{4.4.4.7}) to provide bodies for rules
 that were defined without bodies (that is, rules whose conclusions are always
 satisfied).
 
-@lisp
-(define (always-true ignore frame-stream) 
-  frame-stream)
-(put 'always-true 'qeval always-true)
-@end lisp
+@example ocaml
+let always_true env contents frames =
+  ignore env;
+  ignore contents;
+  frames
+;;
+
+let () = put "always-true" "qeval" always_true
+@end example
 
 @noindent
 The selectors that define the syntax of @code{not} and @code{lisp-value} are
@@ -2141,41 +2086,38 @@ given in @ref{4.4.4.7}.
 @node 4.4.4.3, 4.4.4.4, 4.4.4.2, 4.4.4
 @subsubsection Finding Assertions by Pattern Matching
 
-@code{Find-assertions}, called by @code{simple-query} (@ref{4.4.4.2}),
+@code{find_assertions}, called by @code{simple_query} (@ref{4.4.4.2}),
 takes as input a pattern and a frame.  It returns a stream of frames, each
 extending the given one by a data-base match of the given pattern.  It uses
-@code{fetch-assertions} (@ref{4.4.4.5}) to get a stream of all the
+@code{fetch_assertions} (@ref{4.4.4.5}) to get a stream of all the
 assertions in the data base that should be checked for a match against the
-pattern and the frame.  The reason for @code{fetch-assertions} here is that we
+pattern and the frame.  The reason for @code{fetch_assertions} here is that we
 can often apply simple tests that will eliminate many of the entries in the
 data base from the pool of candidates for a successful match.  The system would
-still work if we eliminated @code{fetch-assertions} and simply checked a stream
+still work if we eliminated @code{fetch_assertions} and simply checked a stream
 of all assertions in the data base, but the computation would be less efficient
 because we would need to make many more calls to the matcher.
 
-@lisp
-(define (find-assertions pattern frame)
-  (stream-flatmap 
-    (lambda (datum) 
-      (check-an-assertion datum pattern frame))
-    (fetch-assertions pattern frame)))
-@end lisp
+@example ocaml
+let find_assertions pattern frame =
+  stream_flatmap
+    (fun assertion -> check_an_assertion assertion pattern frame)
+    (fetch_assertions pattern frame)
+;;
+@end example
 
 @noindent
-@code{Check-an-assertion} takes as arguments a pattern, a data object
+@code{check_an_assertion} takes as arguments a pattern, a data object
 (assertion), and a frame and returns either a one-element stream containing the
-extended frame or @code{the-empty-stream} if the match fails.
+extended frame or @code{Streams.the_empty_stream} if the match fails.
 
-@lisp
-(define (check-an-assertion 
-         assertion query-pat query-frame)
-  (let ((match-result
-         (pattern-match 
-          query-pat assertion query-frame)))
-    (if (eq? match-result 'failed)
-        the-empty-stream
-        (singleton-stream match-result))))
-@end lisp
+@example ocaml
+let check_an_assertion assertion query_pattern query_frame =
+  match pattern_match query_pattern assertion query_frame with
+  | None -> Streams.the_empty_stream
+  | Some frame -> singleton_stream frame
+;;
+@end example
 
 @noindent
 The basic pattern matcher returns either the symbol @code{failed} or an
@@ -2191,41 +2133,40 @@ frame; in this frame we then match the @code{cdr} of the pattern against the
 @code{cdr} of the data.  If none of these cases are applicable, the match fails
 and we return the symbol @code{failed}.
 
-@lisp
-(define (pattern-match pat dat frame)
-  (cond ((eq? frame 'failed) 'failed)
-        ((equal? pat dat) frame)
-        ((var? pat) 
-         (extend-if-consistent 
-          pat dat frame))
-        ((and (pair? pat) (pair? dat))
-         (pattern-match 
-          (cdr pat) 
-          (cdr dat)
-          (pattern-match
-           (car pat) (car dat) frame)))
-        (else 'failed)))
-@end lisp
+@example ocaml
+let rec pattern_match pat dat frame =
+  if Value.structural_equal pat dat
+  then Some frame
+  else if is_var pat
+  then extend_if_consistent pat dat frame
+  else (
+    match Value.view pat, Value.view dat with
+    | Value.Pair (pcar, pcdr), Value.Pair (dcar, dcdr) ->
+      (match pattern_match pcar dcar frame with
+       | None -> None
+       | Some frame -> pattern_match pcdr dcdr frame)
+    | _ -> None)
+;;
+@end example
 
 @noindent
 Here is the procedure that extends a frame by adding a new binding, if this is
 consistent with the bindings already in the frame:
 
-@lisp
-(define (extend-if-consistent var dat frame)
-  (let ((binding (binding-in-frame var frame)))
-    (if binding
-        (pattern-match 
-         (binding-value binding) dat frame)
-        (extend var dat frame))))
-@end lisp
+@example ocaml
+and extend_if_consistent var dat frame =
+  match binding_in_frame var frame with
+  | Some (_, value) -> pattern_match value dat frame
+  | None -> Some (extend var dat frame)
+;;
+@end example
 
 @noindent
 If there is no binding for the variable in the frame, we simply add the binding
 of the variable to the data.  Otherwise we match, in the frame, the data
 against the value of the variable in the frame.  If the stored value contains
 only constants, as it must if it was stored during pattern matching by
-@code{extend-if-consistent}, then the match simply tests whether the stored and
+@code{extend_if_consistent}, then the match simply tests whether the stored and
 new values are the same.  If so, it returns the unmodified frame; if not, it
 returns a failure indication.  The stored value may, however, contain pattern
 variables if it was stored during unification (see @ref{4.4.4.4}).  The
@@ -2240,7 +2181,7 @@ frame.  Eventually this match extends the frame by adding a binding of
 modify a stored binding and we never store more than one binding for a given
 variable.
 
-The procedures used by @code{extend-if-consistent} to manipulate bindings are
+The procedures used by @code{extend_if_consistent} to manipulate bindings are
 defined in @ref{4.4.4.8}.
 
 @subsubheading Patterns with dotted tails
@@ -2249,20 +2190,16 @@ If a pattern contains a dot followed by a pattern variable, the pattern
 variable matches the rest of the data list (rather than the next element of the
 data list), just as one would expect with the dotted-tail notation described in
 @ref{Exercise 2.20}.  Although the pattern matcher we have just implemented
-doesn't look for dots, it does behave as we want.  This is because the Lisp
-@code{read} primitive, which is used by @code{query-driver-loop} to read the
-query and represent it as a list structure, treats dots in a special way.
+doesn't look for dots, it does behave as we want.  This is because the query reader that @code{run} uses reads a dot directly
+into the pair: what follows the dot becomes the @code{cdr} of the pair, not
+the next element of a list.
 
-When @code{read} sees a dot, instead of making the next item be the next
-element of a list (the @code{car} of a @code{cons} whose @code{cdr} will be the
-rest of the list) it makes the next item be the @code{cdr} of the list
-structure.  For example, the list structure produced by @code{read} for the
-pattern @code{(computer ?type)} could be constructed by evaluating the
-expression @code{(cons 'computer (cons '?type '()))}, and that for
-@code{(computer . ?type)} could be constructed by evaluating the expression
-@code{(cons 'computer '?type)}.
+For example, the value the reader builds for the pattern
+@code{(computer ?type)} is the one @code{(cons 'computer (cons '?type '()))}
+would build, and that for @code{(computer . ?type)} is the one
+@code{(cons 'computer '?type)} would build.
 
-Thus, as @code{pattern-match} recursively compares @code{car}s and @code{cdr}s
+Thus, as @code{pattern_match} recursively compares @code{car}s and @code{cdr}s
 of a data list and a pattern that had a dot, it eventually matches the variable
 after the dot (which is a @code{cdr} of the pattern) against a sublist of the
 data list, binding the variable to that list.  For example, matching the
@@ -2272,23 +2209,23 @@ will match @code{?type} against the list @code{(programmer trainee)}.
 @node 4.4.4.4, 4.4.4.5, 4.4.4.3, 4.4.4
 @subsubsection Rules and Unification
 
-@code{Apply-rules} is the rule analog of @code{find-assertions} 
+@code{apply_rules} is the rule analog of @code{find_assertions} 
 (@ref{4.4.4.3}).  It takes as input a pattern and a frame, and it forms a stream
 of extension frames by applying rules from the data base.
-@code{Stream-flatmap} maps @code{apply-a-rule} down the stream of possibly
-applicable rules (selected by @code{fetch-rules}, @ref{4.4.4.5}) and
+@code{stream_flatmap} maps @code{apply_a_rule} down the stream of possibly
+applicable rules (selected by @code{fetch_rules}, @ref{4.4.4.5}) and
 combines the resulting streams of frames.
 
-@lisp
-(define (apply-rules pattern frame)
-  (stream-flatmap 
-   (lambda (rule)
-     (apply-a-rule rule pattern frame))
-   (fetch-rules pattern frame)))
-@end lisp
+@example ocaml
+let apply_rules env pattern frame =
+  stream_flatmap
+    (fun rule -> apply_a_rule env rule pattern frame)
+    (fetch_rules pattern frame)
+;;
+@end example
 
 @noindent
-@code{Apply-a-rule} applies rules using the method outlined in 
+@code{apply_a_rule} applies rules using the method outlined in 
 @ref{4.4.2}.  It first augments its argument frame by unifying the rule
 conclusion with the pattern in the given frame.  If this succeeds, it evaluates
 the rule body in this new frame.
@@ -2303,90 +2240,76 @@ fooled into thinking that the two bindings must be consistent.  Rather than
 rename variables, we could devise a more clever environment structure; however,
 the renaming approach we have chosen here is the most straightforward, even if
 not the most efficient.  (See @ref{Exercise 4.79}.)  Here is the
-@code{apply-a-rule} procedure:
+@code{apply_a_rule} procedure:
 
-@lisp
-(define (apply-a-rule rule
-                      query-pattern
-                      query-frame)
-  (let ((clean-rule 
-         (rename-variables-in rule)))
-    (let ((unify-result
-           (unify-match query-pattern
-                        (conclusion clean-rule)
-                        query-frame)))
-      (if (eq? unify-result 'failed)
-          the-empty-stream
-          (qeval (rule-body clean-rule)
-                 (singleton-stream 
-                  unify-result))))))
-@end lisp
+@example ocaml
+let apply_a_rule env rule query_pattern query_frame =
+  let clean_rule = rename_variables_in rule in
+  match unify_match query_pattern (rule_conclusion clean_rule) query_frame with
+  | None -> Streams.the_empty_stream
+  | Some frame -> qeval env (rule_body clean_rule) (singleton_stream frame)
+;;
+@end example
 
 @noindent
-The selectors @code{rule-body} and @code{conclusion} that extract parts of a
-rule are defined in @ref{4.4.4.7}.
+The selectors @code{rule_body} and @code{rule_conclusion} that extract parts of
+a rule are defined in @ref{4.4.4.7}.
 
 We generate unique variable names by associating a unique identifier (such as a
 number) with each rule application and combining this identifier with the
 original variable names.  For example, if the rule-application identifier is 7,
 we might change each @code{?x} in the rule to @code{?x-7} and each @code{?y} in
-the rule to @code{?y-7}.  (@code{Make-new-variable} and
-@code{new-rule-application-id} are included with the syntax procedures in
+the rule to @code{?y-7}.  (@code{make_new_variable} and
+@code{new_rule_application_id} are included with the syntax procedures in
 @ref{4.4.4.7}.)
 
-@lisp
-(define (rename-variables-in rule)
-  (let ((rule-application-id 
-         (new-rule-application-id)))
-    (define (tree-walk exp)
-      (cond ((var? exp)
-             (make-new-variable 
-              exp 
-              rule-application-id))
-            ((pair? exp)
-             (cons (tree-walk (car exp))
-                   (tree-walk (cdr exp))))
-            (else exp)))
-    (tree-walk rule)))
-@end lisp
+@example ocaml
+let rename_variables_in rule =
+  let id = new_rule_application_id () in
+  let rec tree_walk exp =
+    if is_var exp
+    then make_new_variable exp id
+    else (
+      match Value.view exp with
+      | Value.Pair (car, cdr) -> Value.pair (tree_walk car) (tree_walk cdr)
+      | _ -> exp)
+  in
+  tree_walk rule
+;;
+@end example
 
 @noindent
 The unification algorithm is implemented as a procedure that takes as inputs
 two patterns and a frame and returns either the extended frame or the symbol
 @code{failed}.  The unifier is like the pattern matcher except that it is
 symmetrical---variables are allowed on both sides of the match.
-@code{Unify-match} is basically the same as @code{pattern-match}, except that
+@code{unify_match} is basically the same as @code{pattern_match}, except that
 there is extra code (marked ``@code{***}'' below) to handle the case where the
 object on the right side of the match is a variable.
 
-@lisp
-(define (unify-match p1 p2 frame)
-  (cond ((eq? frame 'failed) 'failed)
-        ((equal? p1 p2) frame)
-        ((var? p1)
-         (extend-if-possible p1 p2 frame))
-        ((var? p2)
-         (extend-if-possible 
-          p2 
-          p1 
-          frame))        ; @r{***}
-        ((and (pair? p1) 
-              (pair? p2))
-         (unify-match 
-          (cdr p1) 
-          (cdr p2)
-          (unify-match 
-           (car p1)
-           (car p2)
-           frame)))
-        (else 'failed)))
-@end lisp
+@example ocaml
+let rec unify_match p1 p2 frame =
+  if Value.structural_equal p1 p2
+  then Some frame
+  else if is_var p1
+  then extend_if_possible p1 p2 frame
+  else if is_var p2
+  then extend_if_possible p2 p1 frame (* *** *)
+  else (
+    match Value.view p1, Value.view p2 with
+    | Value.Pair (a1, d1), Value.Pair (a2, d2) ->
+      (match unify_match a1 a2 frame with
+       | None -> None
+       | Some frame -> unify_match d1 d2 frame)
+    | _ -> None)
+;;
+@end example
 
 @noindent
 In unification, as in one-sided pattern matching, we want to accept a proposed
 extension of the frame only if it is consistent with existing bindings.  The
-procedure @code{extend-if-possible} used in unification is the same as the
-@code{extend-if-consistent} used in pattern matching except for two special
+procedure @code{extend_if_possible} used in unification is the same as the
+@code{extend_if_consistent} used in pattern matching except for two special
 checks, marked ``@code{***}'' in the program below.  In the first case, if the
 variable we are trying to match is not bound, but the value we are trying to
 match it with is itself a (different) variable, it is necessary to check to see
@@ -2406,7 +2329,7 @@ of values for the pattern variables that make the patterns the same, then these
 patterns imply instructions to find a @code{?y} such that @code{?y} is equal to
 the expression involving @code{?y}.  There is no general method for solving
 such equations, so we reject such bindings; these cases are recognized by the
-predicate @code{depends-on?}.@footnote{In general, unifying @code{?y} with an
+predicate @code{depends_on}.@footnote{In general, unifying @code{?y} with an
 expression involving @code{?y} would require our being able to find a fixed
 point of the equation @code{?y} = @code{⟨}@var{expression involving @code{?y}}@code{⟩}.  It
 is sometimes possible to syntactically form an expression that appears to be
@@ -2475,58 +2398,48 @@ other hand, we do not want to reject attempts to bind a variable to itself.
 For example, consider unifying @code{(?x ?x)} and @code{(?y ?y)}.  The second
 attempt to bind @code{?x} to @code{?y} matches @code{?y} (the stored value of
 @code{?x}) against @code{?y} (the new value of @code{?x}).  This is taken care
-of by the @code{equal?}  clause of @code{unify-match}.
+of by the @code{structural_equal} clause of @code{unify_match}.
 
-@lisp
-(define (extend-if-possible var val frame)
-  (let ((binding (binding-in-frame var frame)))
-    (cond (binding
-           (unify-match
-            (binding-value binding) val frame))
-          ((var? val)                   @r{; ***}
-           (let ((binding 
-                  (binding-in-frame 
-                   val
-                   frame)))
-             (if binding
-                 (unify-match
-                  var 
-                  (binding-value binding) 
-                  frame)
-                 (extend var val frame))))
-          ((depends-on? val var frame)  @r{; ***}
-           'failed)
-          (else (extend var val frame)))))
-@end lisp
+@example ocaml
+and extend_if_possible var value frame =
+  match binding_in_frame var frame with
+  | Some (_, stored) -> unify_match stored value frame
+  | None ->
+    if is_var value
+    then (                                  (* *** *)
+      match binding_in_frame value frame with
+      | Some (_, stored) -> unify_match var stored frame
+      | None -> Some (extend var value frame))
+    else if depends_on value var frame      (* *** *)
+    then None
+    else Some (extend var value frame)
+;;
+@end example
 
 @noindent
-@code{Depends-on?} is a predicate that tests whether an expression proposed to
+@code{depends_on} is a predicate that tests whether an expression proposed to
 be the value of a pattern variable depends on the variable.  This must be done
 relative to the current frame because the expression may contain occurrences of
 a variable that already has a value that depends on our test variable.  The
-structure of @code{depends-on?} is a simple recursive tree walk in which we
+structure of @code{depends_on} is a simple recursive tree walk in which we
 substitute for the values of variables whenever necessary.
 
-@lisp
-(define (depends-on? exp var frame)
-  (define (tree-walk e)
-    (cond ((var? e)
-           (if (equal? var e)
-               true
-               (let
-                 ((b (binding-in-frame 
-                      e 
-                      frame)))
-                  (if b
-                      (tree-walk 
-                       (binding-value b))
-                      false))))
-          ((pair? e)
-           (or (tree-walk (car e))
-               (tree-walk (cdr e))))
-          (else false)))
-  (tree-walk exp))
-@end lisp
+@example ocaml
+let rec depends_on exp var frame =
+  if is_var exp
+  then
+    if Value.structural_equal var exp
+    then true
+    else (
+      match binding_in_frame exp frame with
+      | Some (_, value) -> depends_on value var frame
+      | None -> false)
+  else (
+    match Value.view exp with
+    | Value.Pair (car, cdr) -> depends_on car var frame || depends_on cdr var frame
+    | _ -> false)
+;;
+@end example
 
 @node 4.4.4.5, 4.4.4.6, 4.4.4.4, 4.4.4
 @subsubsection Maintaining the Data Base
@@ -2546,30 +2459,31 @@ not a constant symbol.  We avoid building our criteria for indexing (using the
 @code{car}, handling only the case of constant symbols) into the program;
 instead we call on predicates and selectors that embody our criteria.
 
-@lisp
-(define THE-ASSERTIONS the-empty-stream)
+@example ocaml
+let the_assertions : Value.t list ref = ref []
 
-(define (fetch-assertions pattern frame)
-  (if (use-index? pattern)
-      (get-indexed-assertions pattern)
-      (get-all-assertions)))
+let fetch_assertions pattern frame =
+  ignore frame;
+  if use_index pattern then get_indexed_assertions pattern else get_all_assertions ()
+;;
 
-(define (get-all-assertions) THE-ASSERTIONS)
+let get_all_assertions () = list_to_stream !the_assertions
 
-(define (get-indexed-assertions pattern)
-  (get-stream (index-key-of pattern)
-              'assertion-stream))
-@end lisp
+let get_indexed_assertions pattern = get_stream (index_key_of pattern) "assertion-stream"
+;;
+@end example
 
 @noindent
-@code{Get-stream} looks up a stream in the table and returns an empty stream if
+@code{get_stream} looks up a stream in the table and returns an empty stream if
 nothing is stored there.
 
-@lisp
-(define (get-stream key1 key2)
-  (let ((s (get key1 key2)))
-    (if s s the-empty-stream)))
-@end lisp
+@example ocaml
+let get_stream key1 key2 =
+  match Hashtbl.find_opt the_index (key1, key2) with
+  | Some cell -> list_to_stream !cell
+  | None -> Streams.the_empty_stream
+;;
+@end example
 
 @noindent
 Rules are stored similarly, using the @code{car} of the rule conclusion.  Rule
@@ -2583,110 +2497,107 @@ the same @code{car} as the pattern.  For this purpose we store all rules whose
 conclusions start with a variable in a separate stream in our table, indexed by
 the symbol @code{?}.
 
-@lisp
-(define THE-RULES the-empty-stream)
+@example ocaml
+let the_rules : Value.t list ref = ref []
 
-(define (fetch-rules pattern frame)
-  (if (use-index? pattern)
-      (get-indexed-rules pattern)
-      (get-all-rules)))
+let fetch_rules pattern frame =
+  ignore frame;
+  if use_index pattern then get_indexed_rules pattern else get_all_rules ()
+;;
 
-(define (get-all-rules) THE-RULES)
+let get_all_rules () = list_to_stream !the_rules
 
-(define (get-indexed-rules pattern)
-  (stream-append
-   (get-stream (index-key-of pattern)
-               'rule-stream)
-   (get-stream '? 'rule-stream)))
-@end lisp
+let get_indexed_rules pattern =
+  stream_append
+    (get_stream (index_key_of pattern) "rule-stream")
+    (get_stream "?" "rule-stream")
+;;
+@end example
 
 @noindent
-@code{Add-rule-or-assertion!} is used by @code{query-driver-loop} to add
+@code{add_rule_or_assertion} is used by @code{run} to add
 assertions and rules to the data base.  Each item is stored in the index, if
 appropriate, and in a stream of all assertions or rules in the data base.
 
-@lisp
-(define (add-rule-or-assertion! assertion)
-  (if (rule? assertion)
-      (add-rule! assertion)
-      (add-assertion! assertion)))
+@example ocaml
+let add_rule_or_assertion statement =
+  if is_rule statement then add_rule statement else add_assertion statement
+;;
 
-(define (add-assertion! assertion)
-  (store-assertion-in-index assertion)
-  (let ((old-assertions THE-ASSERTIONS))
-    (set! THE-ASSERTIONS
-          (cons-stream assertion 
-                       old-assertions))
-    'ok))
+let add_assertion assertion =
+  store_assertion_in_index assertion;
+  let old_assertions = !the_assertions in
+  the_assertions := old_assertions @ [ assertion ];
+  Value.symbol "ok"
+;;
 
-(define (add-rule! rule)
-  (store-rule-in-index rule)
-  (let ((old-rules THE-RULES))
-    (set! THE-RULES
-          (cons-stream rule old-rules))
-    'ok))
-@end lisp
+let add_rule rule =
+  store_rule_in_index rule;
+  let old_rules = !the_rules in
+  the_rules := old_rules @ [ rule ];
+  Value.symbol "ok"
+;;
+@end example
 
 @noindent
 To actually store an assertion or a rule, we check to see if it can be indexed.
 If so, we store it in the appropriate stream.
 
-@lisp
-(define (store-assertion-in-index assertion)
-  (if (indexable? assertion)
-      (let ((key (index-key-of assertion)))
-        (let ((current-assertion-stream
-               (get-stream 
-                key 'assertion-stream)))
-          (put key
-               'assertion-stream
-               (cons-stream 
-                assertion
-                current-assertion-stream))))))
+@example ocaml
+let store_assertion_in_index assertion =
+  if indexable assertion
+  then put_index (index_key_of assertion) "assertion-stream" assertion
+;;
 
-(define (store-rule-in-index rule)
-  (let ((pattern (conclusion rule)))
-    (if (indexable? pattern)
-        (let ((key (index-key-of pattern)))
-          (let ((current-rule-stream
-                 (get-stream 
-                  key 'rule-stream)))
-            (put key
-                 'rule-stream
-                 (cons-stream 
-                  rule
-                  current-rule-stream)))))))
-@end lisp
+let store_rule_in_index rule =
+  match Value.view rule with
+  | Value.Pair (_, cell) ->
+    (match Value.view cell with
+     | Value.Pair (conclusion, _) ->
+       if indexable conclusion
+       then put_index (index_key_of conclusion) "rule-stream" rule
+     | _ -> raise_error (Eval_error.Invalid_form "a rule must be a list"))
+  | _ -> raise_error (Eval_error.Invalid_form "a rule must be a list")
+;;
+@end example
 
 @noindent
 The following procedures define how the data-base index is used.  A pattern (an
 assertion or a rule conclusion) will be stored in the table if it starts with a
 variable or a constant symbol.
 
-@lisp
-(define (indexable? pat)
-  (or (constant-symbol? (car pat))
-      (var? (car pat))))
-@end lisp
+@example ocaml
+let indexable pattern =
+  match Value.view pattern with
+  | Value.Pair (car, _) -> is_var car || is_constant_symbol car
+  | _ -> false
+;;
+@end example
 
 @noindent
 The key under which a pattern is stored in the table is either @code{?} (if it
 starts with a variable) or the constant symbol with which it starts.
 
-@lisp
-(define (index-key-of pat)
-  (let ((key (car pat)))
-    (if (var? key) '? key)))
-@end lisp
+@example ocaml
+let index_key_of pattern =
+  match Value.view pattern with
+  | Value.Pair (car, _) when is_var car -> "?"
+  | Value.Pair (car, _) -> Value.to_string car
+  | _ -> query_read_error "a pattern must be a list"
+;;
+@end example
 
 @noindent
 The index will be used to retrieve items that might match a pattern if the
 pattern starts with a constant symbol.
 
-@lisp
-(define (use-index? pat)
-  (constant-symbol? (car pat)))
-@end lisp
+@example ocaml
+let use_index pattern =
+  match Value.view pattern with
+  | Value.Pair (car, _) -> is_constant_symbol car
+  | _ -> false
+;;
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.70}Exercise 4.70:} What is the purpose of the
@@ -2695,14 +2606,14 @@ pattern starts with a constant symbol.
 @code{add-assertion!}?  Hint: Recall the definition of the infinite stream of
 ones in @ref{3.5.2}: @code{(define ones (cons-stream 1 ones))}.
 
-@lisp
+@example
 (define (add-assertion! assertion)
   (store-assertion-in-index assertion)
   (set! THE-ASSERTIONS
         (cons-stream assertion 
                      THE-ASSERTIONS))
   'ok)
-@end lisp
+@end example
 @end quotation
 
 @node 4.4.4.6, 4.4.4.7, 4.4.4.5, 4.4.4
@@ -2711,129 +2622,159 @@ ones in @ref{3.5.2}: @code{(define ones (cons-stream 1 ones))}.
 The query system uses a few stream operations that were not presented in
 @ref{Chapter 3}.
 
-@code{Stream-append-delayed} and @code{interleave-delayed} are just like
+@code{stream_append_delayed} and @code{interleave_delayed} are just like
 @code{stream-append} and @code{interleave} (@ref{3.5.3}), except that
 they take a delayed argument (like the @code{integral} procedure in 
 @ref{3.5.4}).  This postpones looping in some cases (see @ref{Exercise 4.71}).
 
-@lisp
-(define (stream-append-delayed s1 delayed-s2)
-  (if (stream-null? s1)
-      (force delayed-s2)
-      (cons-stream
-       (stream-car s1)
-       (stream-append-delayed (stream-cdr s1)
-                              delayed-s2))))
+@example ocaml
+let rec stream_append_delayed s1 delayed_s2 =
+  if Streams.stream_null s1
+  then delayed_s2 ()
+  else
+    Streams.cons_stream (Streams.stream_car s1) (fun () ->
+      stream_append_delayed (Streams.stream_cdr s1) delayed_s2)
+;;
 
-(define (interleave-delayed s1 delayed-s2)
-  (if (stream-null? s1)
-      (force delayed-s2)
-      (cons-stream
-       (stream-car s1)
-       (interleave-delayed 
-        (force delayed-s2)
-        (delay (stream-cdr s1))))))
-@end lisp
+let rec interleave_delayed s1 delayed_s2 =
+  if Streams.stream_null s1
+  then delayed_s2 ()
+  else
+    Streams.cons_stream (Streams.stream_car s1) (fun () ->
+      interleave_delayed (delayed_s2 ()) (fun () -> Streams.stream_cdr s1))
+;;
+@end example
 
 @noindent
-@code{Stream-flatmap}, which is used throughout the query evaluator to map a
+@code{stream_flatmap}, which is used throughout the query evaluator to map a
 procedure over a stream of frames and combine the resulting streams of frames,
 is the stream analog of the @code{flatmap} procedure introduced for ordinary
 lists in @ref{2.2.3}.  Unlike ordinary @code{flatmap}, however, we
 accumulate the streams with an interleaving process, rather than simply
 appending them (see @ref{Exercise 4.72} and @ref{Exercise 4.73}).
 
-@lisp
-(define (stream-flatmap proc s)
-  (flatten-stream (stream-map proc s)))
+@example ocaml
+let rec flatten_stream stream =
+  if Streams.stream_null stream
+  then Streams.the_empty_stream
+  else
+    interleave_delayed (Streams.stream_car stream) (fun () ->
+      flatten_stream (Streams.stream_cdr stream))
+;;
 
-(define (flatten-stream stream)
-  (if (stream-null? stream)
-      the-empty-stream
-      (interleave-delayed
-       (stream-car stream)
-       (delay (flatten-stream
-               (stream-cdr stream))))))
-@end lisp
+let stream_flatmap proc s = flatten_stream (Streams.stream_map proc s)
+;;
+@end example
 
 @noindent
 The evaluator also uses the following simple procedure to generate a stream
 consisting of a single element:
 
-@lisp
-(define (singleton-stream x)
-  (cons-stream x the-empty-stream))
-@end lisp
+@example ocaml
+let singleton_stream x = Streams.cons_stream x (fun () -> Streams.the_empty_stream)
+@end example
 
 @node 4.4.4.7, 4.4.4.8, 4.4.4.6, 4.4.4
 @subsubsection Query Syntax Procedures
 
-@code{Type} and @code{contents}, used by @code{qeval} (@ref{4.4.4.2}),
+@code{type_of} and @code{value_list}, used by @code{qeval} (@ref{4.4.4.2}),
 specify that a special form is identified by the symbol in its @code{car}.
-They are the same as the @code{type-tag} and @code{contents} procedures in
-@ref{2.4.2}, except for the error message.
+They play the role of the @code{type-tag} and @code{contents} procedures in
+@ref{2.4.2}, except that a malformed form answers the typed error.
 
-@lisp
-(define (type exp)
-  (if (pair? exp)
-      (car exp)
-      (error "Unknown expression TYPE"
-             exp)))
+@example ocaml
+let type_of exp =
+  match Value.view exp with
+  | Value.Pair (car, _) -> Value.to_string car
+  | _ ->
+    raise_error
+      (Eval_error.Invalid_form ("unknown expression type: " ^ Value.to_string exp))
+;;
 
-(define (contents exp)
-  (if (pair? exp)
-      (cdr exp)
-      (error "Unknown expression CONTENTS"
-             exp)))
-@end lisp
+let value_list v =
+  let rec go acc v =
+    match Value.view v with
+    | Value.Nil -> Ok (List.rev acc)
+    | Value.Pair (car, cdr) -> go (car :: acc) cdr
+    | _ -> Error (Eval_error.Invalid_form ("not a list: " ^ Value.to_string v))
+  in
+  go [] v
+;;
+@end example
 
 @noindent
-The following procedures, used by @code{query-driver-loop} (in 
+The following procedures, used by @code{run} (in 
 @ref{4.4.4.1}), specify that rules and assertions are added to the data base by
 expressions of the form @code{(assert! ⟨@var{rule-or-assertion}⟩)}:
 
-@lisp
-(define (assertion-to-be-added? exp)
-  (eq? (type exp) 'assert!))
-
-(define (add-assertion-body exp)
-  (car (contents exp)))
-@end lisp
+@example ocaml
+(* in [run]: the book's [assertion-to-be-added?] spots an input whose
+   car is the symbol [assert!], and the body under the tag goes to
+   [add_rule_or_assertion] -- the book's [add-assertion-body]. *)
+let is_assert =
+  match Value.view q with
+  | Value.Pair (car, _) -> Value.structural_equal car (Value.symbol "assert!")
+  | _ -> false
+in
+if is_assert
+then
+  (match Value.view q with
+   | Value.Pair (_, Value.Pair (body, _)) -> Ok (add_rule_or_assertion body)
+   | _ -> Error (Eval_error.Invalid_form "assert! needs a body"))
+;;
+@end example
 
 @noindent
 Here are the syntax definitions for the @code{and}, @code{or}, @code{not}, and
 @code{lisp-value} special forms (@ref{4.4.4.2}):
 
-@lisp
-(define (empty-conjunction? exps) (null? exps))
-(define (first-conjunct exps) (car exps))
-(define (rest-conjuncts exps) (cdr exps))
-(define (empty-disjunction? exps) (null? exps))
-(define (first-disjunct exps) (car exps))
-(define (rest-disjuncts exps) (cdr exps))
-(define (negated-query exps) (car exps))
-(define (predicate exps) (car exps))
-(define (args exps) (cdr exps))
-@end lisp
+@example ocaml
+(* The conjunction, disjunction, negation, and call selectors are list
+   patterns over the contents list: [first :: rest] matches
+   [first-conjunct] and [rest-conjuncts] in one case, and the car of a
+   contents list is [first_operand], shared by [negate] and
+   [lisp_value]. *)
+let first_operand items = List.hd items
+;;
+@end example
 
 @noindent
 The following three procedures define the syntax of rules:
 
-@lisp
-(define (rule? statement)
-  (tagged-list? statement 'rule))
+@example ocaml
+let is_rule statement =
+  match Value.view statement with
+  | Value.Pair (car, _) -> Value.structural_equal car (Value.symbol "rule")
+  | _ -> false
+;;
 
-(define (conclusion rule) (cadr rule))
+let rule_conclusion rule =
+  match Value.view rule with
+  | Value.Pair (_, cell) ->
+    (match Value.view cell with
+     | Value.Pair (conclusion, _) -> conclusion
+     | _ -> raise_error (Eval_error.Invalid_form "a rule needs a conclusion"))
+  | _ -> raise_error (Eval_error.Invalid_form "a rule needs a conclusion")
+;;
 
-(define (rule-body rule)
-  (if (null? (cddr rule))
-      '(always-true)
-      (caddr rule)))
-@end lisp
+let rule_body rule =
+  match Value.view rule with
+  | Value.Pair (_, cell) ->
+    (match Value.view cell with
+     | Value.Pair (_, tail) when Value.structural_equal tail Value.nil ->
+       Value.pair (Value.symbol "always-true") Value.nil
+     | Value.Pair (_, body_cell) ->
+       (match Value.view body_cell with
+        | Value.Pair (body, _) -> body
+        | _ -> raise_error (Eval_error.Invalid_form "a rule needs a conclusion"))
+     | _ -> raise_error (Eval_error.Invalid_form "a rule needs a conclusion"))
+  | _ -> raise_error (Eval_error.Invalid_form "a rule needs a conclusion")
+;;
+@end example
 
 @noindent
-@code{Query-driver-loop} (@ref{4.4.4.1}) calls
-@code{query-syntax-process} to transform pattern variables in the expression,
+@code{run} (@ref{4.4.4.1}) calls
+@code{query_syntax_process} to transform pattern variables in the expression,
 which have the form @code{?symbol}, into the internal format @code{(? symbol)}.
 That is to say, a pattern such as @code{(job ?x ?y)} is actually represented
 internally by the system as @code{(job (? x) (? y))}.  This increases the
@@ -2850,42 +2791,42 @@ this way: The reader automatically translates @code{'expression} into
 way; however, for the sake of clarity we have included the transformation
 procedure here explicitly.
 
-@code{Expand-question-mark} and @code{contract-question-mark} use several
-procedures with @code{string} in their names.  These are Scheme primitives.}
+@code{query_syntax_process} and @code{contract_question_mark} are plain walks
+over values in this edition, with no string machinery of their own.}
 
-@lisp
-(define (query-syntax-process exp)
-  (map-over-symbols expand-question-mark exp))
-
-(define (map-over-symbols proc exp)
-  (cond ((pair? exp)
-         (cons (map-over-symbols 
-                proc (car exp))
-               (map-over-symbols 
-                proc (cdr exp))))
-        ((symbol? exp) (proc exp))
-        (else exp)))
-
-(define (expand-question-mark symbol)
-  (let ((chars (symbol->string symbol)))
-    (if (string=? (substring chars 0 1) "?")
-        (list '? (string->symbol
-                  (substring
-                   chars 
-                   1 
-                   (string-length chars))))
-        symbol)))
-@end lisp
+@example ocaml
+(* the book's [map-over-symbols] and [expand-question-mark], folded
+   into one walk over the value: *)
+let rec query_syntax_process exp =
+  match Value.view exp with
+  | Value.Pair (car, cdr) ->
+    Value.pair (query_syntax_process car) (query_syntax_process cdr)
+  | Value.Symbol name when String.length name > 0 && name.[0] = '?' ->
+    Value.pair
+      (Value.symbol "?")
+      (Value.pair (Value.symbol (String.sub name 1 (String.length name - 1))) Value.nil)
+  | _ -> exp
+;;
+@end example
 
 @noindent
 Once the variables are transformed in this way, the variables in a pattern are
 lists starting with @code{?}, and the constant symbols (which need to be
 recognized for data-base indexing, @ref{4.4.4.5}) are just the symbols.
 
-@lisp
-(define (var? exp) (tagged-list? exp '?))
-(define (constant-symbol? exp) (symbol? exp))
-@end lisp
+@example ocaml
+let is_var exp =
+  match Value.view exp with
+  | Value.Pair (car, _) -> Value.structural_equal car (Value.symbol "?")
+  | _ -> false
+;;
+
+let is_constant_symbol exp =
+  match Value.view exp with
+  | Value.Symbol _ -> true
+  | _ -> false
+;;
+@end example
 
 @noindent
 Unique variables are constructed during rule application (in 
@@ -2893,57 +2834,65 @@ Unique variables are constructed during rule application (in
 a rule application is a number, which is incremented each time a rule is
 applied.
 
-@lisp
-(define rule-counter 0)
+@example ocaml
+let rule_counter = ref 0
 
-(define (new-rule-application-id)
-  (set! rule-counter (+ 1 rule-counter))
-  rule-counter)
+(* the unique identifier of one rule application *)
+let new_rule_application_id () =
+  incr rule_counter;
+  !rule_counter
+;;
 
-(define (make-new-variable 
-         var rule-application-id)
-  (cons '? (cons rule-application-id
-                 (cdr var))))
-@end lisp
+let make_new_variable variable id =
+  match Value.view variable with
+  | Value.Pair (q, name) -> Value.pair q (Value.pair (Value.int id) name)
+  | _ -> variable
+;;
+@end example
 
 @noindent
-When @code{query-driver-loop} instantiates the query to print the answer, it
+When @code{run} instantiates the query to print the answer, it
 converts any unbound pattern variables back to the right form for printing,
 using
 
-@lisp
-(define (contract-question-mark variable)
-  (string->symbol
-   (string-append "?"
-     (if (number? (cadr variable))
-         (string-append
-          (symbol->string (caddr variable))
-          "-"
-          (number->string (cadr variable)))
-         (symbol->string (cadr variable))))))
-@end lisp
+@example ocaml
+let contract_question_mark variable =
+  match Value.view variable with
+  | Value.Pair (_, second_cell) ->
+    (match Value.view second_cell with
+     | Value.Pair (second, rest) ->
+       (match Value.view second, Value.view rest with
+        | Value.Int n, Value.Pair (name, tail) when Value.structural_equal tail Value.nil
+          ->
+          (* the renamed form [(? id name)] reads as [?name-id] *)
+          Value.symbol ("?" ^ Value.to_string name ^ "-" ^ string_of_int n)
+        | _ -> Value.symbol ("?" ^ Value.to_string second))
+     | _ -> variable)
+  | _ -> variable
+;;
+@end example
 
 @node 4.4.4.8, Chapter 5, 4.3, 4.4.4
 @subsubsection Frames and Bindings
 
-Frames are represented as lists of bindings, which are variable-value pairs:
+A frame is an association list of bindings, each a (variable, value) pair;
+the book's @code{make-binding}, @code{binding-variable}, and
+@code{binding-value} are the pair constructor and pattern matches:
 
-@lisp
-(define (make-binding variable value)
-  (cons variable value))
+@example ocaml
+type frame = (Value.t * Value.t) list
 
-(define (binding-variable binding)
-  (car binding))
+let the_empty_frame : frame = []
 
-(define (binding-value binding)
-  (cdr binding))
+let binding_in_frame variable frame =
+  List.find_opt (fun (v, _) -> Value.structural_equal v variable) frame
+;;
 
-(define (binding-in-frame variable frame)
-  (assoc variable frame))
+let frame_bindings frame = frame
 
-(define (extend variable value frame)
-  (cons (make-binding variable value) frame))
-@end lisp
+let extend variable value frame = (variable, value) :: frame
+;;
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.71}Exercise 4.71:} Louis Reasoner wonders why the
@@ -2951,7 +2900,7 @@ Frames are represented as lists of bindings, which are variable-value pairs:
 implemented using explicit @code{delay} operations, rather than being defined
 as follows:
 
-@lisp
+@example
 (define (simple-query 
          query-pattern frame-stream)
   (stream-flatmap
@@ -2969,7 +2918,7 @@ as follows:
               frame-stream)
        (disjoin (rest-disjuncts disjuncts)
                 frame-stream))))
-@end lisp
+@end example
 
 Can you give examples of queries where these simpler definitions would lead to
 undesirable behavior?
@@ -2986,14 +2935,14 @@ use @code{interleave} in @ref{3.5.3}?)
 @strong{@anchor{Exercise 4.73}Exercise 4.73:} Why does @code{flatten-stream}
 use @code{delay} explicitly?  What would be wrong with defining it as follows:
 
-@lisp
+@example
 (define (flatten-stream stream)
   (if (stream-null? stream)
       the-empty-stream
       (interleave (stream-car stream)
                   (flatten-stream 
                    (stream-cdr stream)))))
-@end lisp
+@end example
 @end quotation
 
 @quotation
@@ -3008,7 +2957,7 @@ a singleton stream, so no interleaving is needed when combining these streams.
 @item
 Fill in the missing expressions in Alyssa's program.
 
-@lisp
+@example
 (define (simple-stream-flatmap proc s)
   (simple-flatten (stream-map proc s)))
 
@@ -3016,7 +2965,7 @@ Fill in the missing expressions in Alyssa's program.
   (stream-map ⟨??⟩
               (stream-filter ⟨??⟩ 
                              stream)))
-@end lisp
+@end example
 
 @item
 Does the query system's behavior change if we change it in this way?
@@ -3025,38 +2974,50 @@ Does the query system's behavior change if we change it in this way?
 @end quotation
 
 @quotation
+@emph{Exercise 4.74a is added by this edition and extends exercise 4.74; SICP numbers stop at 4.74.}
+
+@strong{@anchor{Exercise 4.74a}Exercise 4.74a:} Alyssa's claim is
+measurable.  Instrument both flatmap paths --- the book's
+@code{stream_flatmap} and your @code{simple_stream_flatmap} of exercise
+4.74 --- with a frame counter that counts each frame emitted into the
+flatmap's output stream, run one shared query through the two variant
+evaluators, and compare the answers and the counts.  Does Alyssa's
+simplification change the number of frames produced?
+@end quotation
+
+@quotation
 @strong{@anchor{Exercise 4.75}Exercise 4.75:} Implement for the query language
 a new special form called @code{unique}.  @code{Unique} should succeed if there
 is precisely one item in the data base satisfying a specified query.  For
 example,
 
-@lisp
+@example
 (unique (job ?x (computer wizard)))
-@end lisp
+@end example
 
 @noindent
 should print the one-item stream
 
-@lisp
+@example
 (unique (job (Bitdiddle Ben)
              (computer wizard)))
-@end lisp
+@end example
 
 @noindent
 since Ben is the only computer wizard, and
 
-@lisp
+@example
 (unique (job ?x (computer programmer)))
-@end lisp
+@end example
 
 @noindent
 should print the empty stream, since there is more than one computer
 programmer.  Moreover,
 
-@lisp
+@example
 (and (job ?x ?j) 
      (unique (job ?anyone ?j)))
-@end lisp
+@end example
 
 @noindent
 should list all the jobs that are filled by only one person, and the people who
@@ -3068,9 +3029,9 @@ procedure that handles this special form, and the second is to make
 @code{qeval} does its dispatching in a data-directed way.  If your procedure is
 called @code{uniquely-asserted}, all you need to do is
 
-@lisp
+@example
 (put 'unique 'qeval uniquely-asserted)
-@end lisp
+@end example
 
 @noindent
 and @code{qeval} will dispatch to this procedure for every query whose
@@ -3140,7 +3101,7 @@ evaluator in @ref{4.1}, we saw how to use local environments to avoid
 name conflicts between the parameters of procedures.  For example, in
 evaluating
 
-@lisp
+@example
 (define (square x) 
   (* x x))
 
@@ -3148,7 +3109,7 @@ evaluating
   (+ (square x) (square y)))
 
 (sum-of-squares 3 4)
-@end lisp
+@end example
 
 @noindent
 there is no confusion between the @code{x} in @code{square} and the @code{x} in

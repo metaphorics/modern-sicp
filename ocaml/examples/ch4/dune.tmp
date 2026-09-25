@@ -1,0 +1,4 @@
+(executable
+ (name dbg)
+ (modules dbg)
+ (libraries sicp_ch4 sicp_ch3))

@@ -15,13 +15,13 @@ same value.  In contrast, recall the example of modeling withdrawals from a
 bank account and returning the resulting balance, introduced at the beginning
 of @ref{3.1.1}:
 
-@lisp
-(withdraw 25)
-@i{75}
+@example typescript
+Effect.runSync(withdraw(25))
+// => 75
 
-(withdraw 25)
-@i{50}
-@end lisp
+Effect.runSync(withdraw(25))
+// => 50
+@end example
 
 @noindent
 Here successive evaluations of the same expression yield different values.
@@ -35,8 +35,7 @@ essential concept in programming.
 
 We can go further in structuring computational models to match our perception
 of the physical world.  Objects in the world do not change one at a time in
-sequence.  Rather we perceive them as acting @newterm{concurrently}---all at
-once.  So it is often natural to model systems as collections of computational
+sequence.  Rather we perceive them as acting @newterm{concurrently}, all at once.  So it is often natural to model systems as collections of computational
 processes that execute concurrently.  Just as we can make our programs modular
 by organizing models in terms of objects with separate local state, it is often
 appropriate to divide computational models into parts that evolve separately
@@ -82,7 +81,8 @@ $65 in the account.  Depending on the order of the two withdrawals, the
 sequence of balances in the account is either $100 @math{\to} $90 @math{\to} $65 or $100 @math{\to} $75
 @math{\to} $65.  In a computer implementation of the banking system, this changing
 sequence of balances could be modeled by successive assignments to a variable
-@code{balance}.
+@code{balance}, which this edition spells as the shared @code{Ref} cell of
+@ref{3.1.1}.
 
 In complex situations, however, such a view can be problematic.  Suppose that
 Peter and Paul, and other people besides, are accessing the same bank account
@@ -97,15 +97,16 @@ by Peter and Paul are implemented as two separate processes sharing a common
 variable @code{balance}, each process specified by the procedure given in
 @ref{3.1.1}:
 
-@lisp
-(define (withdraw amount)
-  (if (>= balance amount)
-      (begin 
-        (set! balance 
-              (- balance amount))
-        balance)
-      "Insufficient funds"))
-@end lisp
+@example typescript
+export const withdraw = (amount: number): Withdrawal =>
+  Effect.gen(function* () @{
+    const current = yield* Ref.get(balance);
+    if (current < amount) @{
+      return yield* new InsufficientFunds();
+    @}
+    return yield* Ref.setAndGet(balance, current - amount);
+  @});
+@end example
 
 @noindent
 If the two processes operate independently, then Peter might test the
@@ -116,14 +117,16 @@ Peter's test.
 
 Things can be worse still.  Consider the expression
 
-@lisp
-(set! balance (- balance amount))
-@end lisp
+@example typescript
+const accessed = yield* Ref.get(balance);
+const updated = accessed - amount;
+yield* Ref.set(balance, updated);
+@end example
 
 @noindent
-executed as part of each withdrawal process.  This consists of three steps: (1)
-accessing the value of the @code{balance} variable; (2) computing the new
-balance; (3) setting @code{balance} to this new value.  If Peter and Paul's
+executed as part of each withdrawal process.  The block above consists of
+three steps: (1) accessing the value of the @code{balance} cell; (2)
+computing the new balance; (3) setting @code{balance} to this new value.  If Peter and Paul's
 withdrawals execute this statement concurrently, then the two withdrawals might
 interleave the order in which they access @code{balance} and set it to the new
 value.
@@ -139,7 +142,7 @@ That assumption, however, became invalid when Peter changed @code{balance} to
 amount of money in the system is not conserved.  Before the transactions, the
 total amount of money was $100.  Afterwards, Peter has $10, Paul has $25, and
 the bank has $75.@footnote{An even worse failure for this system could occur if
-the two @code{set!} operations attempt to change the balance simultaneously, in
+the two @code{Ref.set} operations attempt to change the balance simultaneously, in
 which case the actual data appearing in memory might end up being a random
 combination of the information being written by the two processes.  Most
 computers have interlocks on the primitive memory-write operations, which
@@ -209,7 +212,7 @@ just before the moment of change, the balance is still what he thought it was.
 The above example typifies the subtle bugs that can creep into concurrent
 programs.  The root of this complexity lies in the assignments to variables
 that are shared among the different processes.  We already know that we must be
-careful in writing programs that use @code{set!}, because the results of a
+careful in writing programs that assign, because the results of a
 computation depend on the order in which the assignments occur.@footnote{The
 factorial program in @ref{3.1.3} illustrates this for a single
 sequential process.}  With concurrent processes we must be especially careful
@@ -314,11 +317,10 @@ Mary share a joint bank account that initially contains $100.  Concurrently,
 Peter deposits $10, Paul withdraws $20, and Mary withdraws half the money in
 the account, by executing the following commands:
 
-@example
-Peter: (set! balance (+ balance 10))
-Paul:  (set! balance (- balance 20))
-Mary:  (set! balance (- balance 
-                        (/ balance 2)))
+@example typescript
+Peter: balance = balance + 10
+Paul:  balance = balance - 20
+Mary:  balance = balance - balance / 2
 @end example
 
 @enumerate a
@@ -362,7 +364,9 @@ orderings for the two processes:
 As programmers designing this system, we would have to consider the effects of
 each of these 20 orderings and check that each behavior is acceptable.  Such an
 approach rapidly becomes unwieldy as the numbers of processes and events
-increase.
+increase.  This edition makes those orderings executable: the section module
+runs processes as step sequences under an explicit scheduler, so every
+outcome this section quotes is produced by really running a schedule.
 
 A more practical approach to the design of concurrent systems is to devise
 general mechanisms that allow us to constrain the interleaving of concurrent
@@ -389,39 +393,48 @@ concurrently with this procedure by serializing all of these procedures with
 the same serializer.  This guarantees that the value of the variable cannot be
 changed between an access and the corresponding assignment.
 
-@subsubheading Serializers in Scheme
+@subsubheading Serializers in this edition
 
-To make the above mechanism more concrete, suppose that we have extended Scheme
-to include a procedure called @code{parallel-execute}:
+To make the above mechanism more concrete, suppose that we have a procedure
+called @code{parallelExecute}, built on the runtime's fibers:
 
-@lisp
-(parallel-execute ⟨@var{p₁}⟩ 
-                  ⟨@var{p₂}⟩ 
-                  @r{…} 
-                  ⟨@var{pₖ}⟩)
-@end lisp
+@example typescript
+parallelExecute(⟨@var@{p₁@}⟩, ⟨@var@{p₂@}⟩, @r{…}, ⟨@var@{pₖ@}⟩)
+@end example
 
 @noindent
-Each @code{⟨}@var{p}@code{⟩} must be a procedure of no arguments.  @code{Parallel-execute}
-creates a separate process for each @code{⟨}@var{p}@code{⟩}, which applies 
-@code{⟨}@var{p}@code{⟩} (to no arguments).  These processes all run
-concurrently.@footnote{@code{Parallel-execute} is not part of standard Scheme,
-but it can be implemented in @abbr{MIT} Scheme.  In our implementation, the
-new concurrent processes also run concurrently with the original Scheme
-process.  Also, in our implementation, the value returned by
-@code{parallel-execute} is a special control object that can be used to halt
-the newly created processes.}
+Each @code{⟨}@var{p}@code{⟩} must be a computation of no arguments.
+@code{parallelExecute} creates a separate fiber for each @code{⟨}@var{p}@code{⟩},
+so these computations all run concurrently.@footnote{The fibers are the
+runtime's own concurrency, and the @code{Effect.yieldNow} calls in the
+examples mark the points where the fiber scheduler may run one process in
+the middle of another: they are the interleave windows the timing diagrams
+below draw.  The fibers returned by @code{parallelExecute} carry their own
+interrupters, so no separate control object is needed.}
 
 As an example of how this is used, consider
 
-@lisp
-(define x 10)
-(parallel-execute (lambda () (set! x (* x x)))
-                  (lambda () (set! x (+ x 1))))
-@end lisp
+@example typescript
+const x = Ref.makeUnsafe(10);
+
+parallelExecute(
+  Effect.gen(function* () @{ // P1: x becomes x * x
+    const a = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    const b = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    yield* Ref.set(x, a * b);
+  @}),
+  Effect.gen(function* () @{ // P2: x becomes x + 1
+    const c = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    yield* Ref.set(x, c + 1);
+  @}),
+);
+@end example
 
 @noindent
-This creates two concurrent processes---@math{P_1}, which sets @code{x} to
+This creates two concurrent processes: @math{P_1}, which sets @code{x} to
 @code{x} times @code{x}, and @math{P_2}, which increments @code{x}.  After
 execution is complete, @code{x} will be left with one of five possible values,
 depending on the interleaving of the events of @math{P_1} and @math{P_2}:
@@ -441,55 +454,73 @@ depending on the interleaving of the events of @math{P_1} and @math{P_2}:
 @end example
 
 @noindent
-We can constrain the concurrency by using serialized procedures, which are
+We can constrain the concurrency by using serialized computations, which are
 created by @newterm{serializers}. Serializers are constructed by
-@code{make-serializer}, whose implementation is given below.  A serializer
-takes a procedure as argument and returns a serialized procedure that behaves
-like the original procedure.  All calls to a given serializer return serialized
-procedures in the same set.
+@code{makeSerializer}, whose implementation is given below.  A serializer
+takes a computation as argument and answers the same computation guarded by
+the serializer's mutex.  All the computations a given serializer wraps are in
+the same set.
 
 Thus, in contrast to the example above, executing
 
-@lisp
-(define x 10)
-(define s (make-serializer))
-(parallel-execute 
- (s (lambda () (set! x (* x x))))
- (s (lambda () (set! x (+ x 1)))))
-@end lisp
+@example typescript
+const x = Ref.makeUnsafe(10);
+const s = makeSerializer();
+
+parallelExecute(
+  s(Effect.gen(function* () @{ // P1: x becomes x * x
+    const a = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    const b = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    yield* Ref.set(x, a * b);
+  @})),
+  s(Effect.gen(function* () @{ // P2: x becomes x + 1
+    const c = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    yield* Ref.set(x, c + 1);
+  @})),
+);
+@end example
 
 @noindent
 can produce only two possible values for @code{x}, 101 or 121.  The other
 possibilities are eliminated, because the execution of @math{P_1} and @math{P_2}
 cannot be interleaved.
 
-Here is a version of the @code{make-account} procedure from 
-@ref{3.1.1}, where the deposits and withdrawals have been serialized:
+Here is a version of the @code{makeAccount} object from @ref{3.1.1}, where
+the deposits and withdrawals have been serialized:
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((protected (make-serializer)))
-    (define (dispatch m)
-      (cond ((eq? m 'withdraw) 
-             (protected withdraw))
-            ((eq? m 'deposit) 
-             (protected deposit))
-            ((eq? m 'balance) 
-             balance)
-            (else (error "Unknown request: 
-                          MAKE-ACCOUNT"
-                         m))))
-    dispatch))
-@end lisp
+@example typescript
+export const makeAccount = (initialBalance: number): Account => @{
+  const balance = Ref.makeUnsafe(initialBalance);
+  const protectedOperation = makeSerializer();
+  const withdraw = (amount: number) =>
+    protectedOperation(
+      Effect.gen(function* () @{
+        const current = yield* Ref.get(balance);
+        yield* Effect.yieldNow;
+        if (current < amount) @{
+          return yield* new InsufficientFunds();
+        @}
+        return yield* Ref.setAndGet(balance, current - amount);
+      @}),
+    );
+  const deposit = (amount: number) =>
+    protectedOperation(
+      Effect.gen(function* () @{
+        const current = yield* Ref.get(balance);
+        yield* Effect.yieldNow;
+        return yield* Ref.setAndGet(balance, current + amount);
+      @}),
+    );
+  return @{
+    withdraw,
+    deposit,
+    balance: () => Ref.get(balance),
+  @};
+@};
+@end example
 
 @noindent
 With this implementation, two processes cannot be withdrawing from or
@@ -505,36 +536,82 @@ accounts can proceed concurrently.
 in the parallel execution shown above remain if we instead serialize execution
 as follows:
 
-@lisp
-(define x 10)
-(define s (make-serializer))
-(parallel-execute 
-  (lambda () 
-    (set! x ((s (lambda () (* x x))))))
-  (s (lambda () (set! x (+ x 1)))))
-@end lisp
+@example typescript
+const x = Ref.makeUnsafe(10);
+const s = makeSerializer();
+
+parallelExecute(
+  Effect.gen(function* () @{
+    yield* Ref.set(
+      x,
+      yield* s(
+        Effect.gen(function* () @{
+          const a = yield* Ref.get(x);
+          yield* Effect.yieldNow;
+          const b = yield* Ref.get(x);
+          return a * b;
+        @}),
+      ),
+    );
+  @}),
+  s(
+    Effect.gen(function* () @{
+      const c = yield* Ref.get(x);
+      yield* Effect.yieldNow;
+      yield* Ref.set(x, c + 1);
+    @}),
+  ),
+);
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 3.40}Exercise 3.40:} Give all possible values of
 @code{x} that can result from executing
 
-@lisp
-(define x 10)
-(parallel-execute 
- (lambda () (set! x (* x x)))
- (lambda () (set! x (* x x x))))
-@end lisp
+@example typescript
+const x = Ref.makeUnsafe(10);
+
+parallelExecute(
+  Effect.gen(function* () @{ // P1: x becomes x * x
+    const a = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    const b = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    yield* Ref.set(x, a * b);
+  @}),
+  Effect.gen(function* () @{ // P2: x becomes x * x * x
+    const c = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    const d = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    const e = yield* Ref.get(x);
+    yield* Effect.yieldNow;
+    yield* Ref.set(x, c * d * e);
+  @}),
+);
+@end example
 
 Which of these possibilities remain if we instead use serialized procedures:
 
-@lisp
-(define x 10)
-(define s (make-serializer))
-(parallel-execute 
- (s (lambda () (set! x (* x x))))
- (s (lambda () (set! x (* x x x)))))
-@end lisp
+@example typescript
+const x = Ref.makeUnsafe(10);
+const s = makeSerializer();
+
+parallelExecute(
+  s(Effect.gen(function* () @{
+    const a = yield* Ref.get(x);
+    const b = yield* Ref.get(x);
+    yield* Ref.set(x, a * b);
+  @})),
+  s(Effect.gen(function* () @{
+    const c = yield* Ref.get(x);
+    const d = yield* Ref.get(x);
+    const e = yield* Ref.get(x);
+    yield* Ref.set(x, c * d * e);
+  @})),
+);
+@end example
 @end quotation
 
 @quotation
@@ -542,35 +619,36 @@ Which of these possibilities remain if we instead use serialized procedures:
 would be better to implement the bank account as follows (where the commented
 line has been changed):
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin 
-          (set! balance 
-                (- balance amount))
-          balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((protected (make-serializer)))
-    (define (dispatch m)
-      (cond ((eq? m 'withdraw) 
-             (protected withdraw))
-            ((eq? m 'deposit) 
-             (protected deposit))
-            ((eq? m 'balance)
-             ((protected 
-                (lambda () 
-                  balance)))) @r{; serialized}
-            (else 
-             (error 
-              "Unknown request: 
-               MAKE-ACCOUNT"
-              m))))
-    dispatch))
-@end lisp
+@example typescript
+export const makeAccount = (initialBalance: number): Account => @{
+  const balance = Ref.makeUnsafe(initialBalance);
+  const protectedOperation = makeSerializer();
+  const withdraw = (amount: number) =>
+    protectedOperation(
+      Effect.gen(function* () @{
+        const current = yield* Ref.get(balance);
+        yield* Effect.yieldNow;
+        if (current < amount) @{
+          return yield* new InsufficientFunds();
+        @}
+        return yield* Ref.setAndGet(balance, current - amount);
+      @}),
+    );
+  const deposit = (amount: number) =>
+    protectedOperation(
+      Effect.gen(function* () @{
+        const current = yield* Ref.get(balance);
+        yield* Effect.yieldNow;
+        return yield* Ref.setAndGet(balance, current + amount);
+      @}),
+    );
+  return @{
+    withdraw,
+    deposit,
+    balance: () => protectedOperation(Ref.get(balance)), // serialized
+  @};
+@};
+@end example
 
 @noindent
 because allowing unserialized access to the bank balance can result in
@@ -581,44 +659,45 @@ Ben's concern?
 @quotation
 @strong{@anchor{Exercise 3.42}Exercise 3.42:} Ben Bitdiddle suggests that it's
 a waste of time to create a new serialized procedure in response to every
-@code{withdraw} and @code{deposit} message.  He says that @code{make-account}
-could be changed so that the calls to @code{protected} are done outside the
-@code{dispatch} procedure.  That is, an account would return the same
-serialized procedure (which was created at the same time as the account) each
-time it is asked for a withdrawal procedure.
+@code{withdraw} and @code{deposit} message.  He says that @code{makeAccount}
+could be changed so that the calls to the serializer happen once, when the
+account object is built, rather than on each request.  That is, an account
+would answer the same serialized procedure (which was created at the same
+time as the account) each time it is asked for a withdrawal.
 
-@lisp
-(define (make-account balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((protected (make-serializer)))
-    (let ((protected-withdraw 
-           (protected withdraw))
-          (protected-deposit 
-           (protected deposit)))
-      (define (dispatch m)
-        (cond ((eq? m 'withdraw) 
-               protected-withdraw)
-              ((eq? m 'deposit) 
-               protected-deposit)
-              ((eq? m 'balance) 
-               balance)
-              (else 
-               (error "Unknown request: 
-                       MAKE-ACCOUNT"
-                      m))))
-      dispatch)))
-@end lisp
+@example typescript
+export const makeAccount = (initialBalance: number): Account => @{
+  const balance = Ref.makeUnsafe(initialBalance);
+  const protectedOperation = makeSerializer();
+  const protectedWithdraw = (amount: number) =>
+    protectedOperation(
+      Effect.gen(function* () @{
+        const current = yield* Ref.get(balance);
+        yield* Effect.yieldNow;
+        if (current < amount) @{
+          return yield* new InsufficientFunds();
+        @}
+        return yield* Ref.setAndGet(balance, current - amount);
+      @}),
+    );
+  const protectedDeposit = (amount: number) =>
+    protectedOperation(
+      Effect.gen(function* () @{
+        const current = yield* Ref.get(balance);
+        yield* Effect.yieldNow;
+        return yield* Ref.setAndGet(balance, current + amount);
+      @}),
+    );
+  return @{
+    withdraw: protectedWithdraw,
+    deposit: protectedDeposit,
+    balance: () => Ref.get(balance),
+  @};
+@};
+@end example
 
 Is this a safe change to make?  In particular, is there any difference in what
-concurrency is allowed by these two versions of @code{make-account}?
+concurrency is allowed by these two versions of @code{makeAccount}?
 @end quotation
 
 @subsubheading Complexity of using multiple shared resources
@@ -635,23 +714,28 @@ the balances in two bank accounts.  We access each account to find the balance,
 compute the difference between the balances, withdraw this difference from one
 account, and deposit it in the other account.  We could implement this as
 follows:@footnote{We have simplified @code{exchange} by exploiting the fact
-that our @code{deposit} message accepts negative amounts.  (This is a serious
-bug in our banking system!)}
+that the @code{deposit} operation accepts negative amounts.  (This is a
+serious bug in our banking system!)}
 
-@lisp
-(define (exchange account1 account2)
-  (let ((difference (- (account1 'balance)
-                       (account2 'balance))))
-    ((account1 'withdraw) difference)
-    ((account2 'deposit) difference)))
-@end lisp
+@example typescript
+export const exchange = (
+  account1: Account,
+  account2: Account,
+): Effect.Effect<void, InsufficientFunds> =>
+  Effect.gen(function* () @{
+    const difference =
+      (yield* account1.balance()) - (yield* account2.balance());
+    yield* account1.withdraw(difference);
+    yield* account2.deposit(difference);
+  @});
+@end example
 
 @noindent
 This procedure works well when only a single process is trying to do the
 exchange.  Suppose, however, that Peter and Paul both have access to accounts
 @math{{a1}}, @math{{a2}}, and @math{{a3}}, and that Peter exchanges @math{{a1}} and @math{{a2}} while
 Paul concurrently exchanges @math{{a1}} and @math{{a3}}.  Even with account deposits and
-withdrawals serialized for individual accounts (as in the @code{make-account}
+withdrawals serialized for individual accounts (as in the @code{makeAccount}
 procedure shown above in this section), @code{exchange} can still produce
 incorrect results.  For example, Peter might compute the difference in the
 balances for @math{{a1}} and @math{{a2}}, but then Paul might change the balance in
@@ -664,65 +748,74 @@ this.  See @ref{Exercise 3.43}.}  For correct behavior, we must arrange for the
 accounts during the entire time of the exchange.
 
 One way we can accomplish this is by using both accounts' serializers to
-serialize the entire @code{exchange} procedure.  To do this, we will arrange
+serialize the entire @code{exchange} computation.  To do this, we will arrange
 for access to an account's serializer.  Note that we are deliberately breaking
 the modularity of the bank-account object by exposing the serializer.  The
-following version of @code{make-account} is identical to the original version
+following version of @code{makeAccount} is identical to the original version
 given in @ref{3.1.1}, except that a serializer is provided to protect
 the balance variable, and the serializer is exported via message passing:
 
-@lisp
-(define (make-account-and-serializer balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin 
-          (set! balance (- balance amount))
-          balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((balance-serializer 
-         (make-serializer)))
-    (define (dispatch m)
-      (cond ((eq? m 'withdraw) withdraw)
-            ((eq? m 'deposit) deposit)
-            ((eq? m 'balance) balance)
-            ((eq? m 'serializer) 
-             balance-serializer)
-            (else (error "Unknown request: 
-                          MAKE-ACCOUNT"
-                         m))))
-    dispatch))
-@end lisp
+@example typescript
+export interface AccountWithSerializer extends Account @{
+  readonly serializer: Serializer;
+@}
+
+export const makeAccountAndSerializer = (initialBalance: number): AccountWithSerializer => @{
+  const balance = Ref.makeUnsafe(initialBalance);
+  const balanceSerializer = makeSerializer();
+  const withdraw = (amount: number) =>
+    Effect.gen(function* () @{
+      const current = yield* Ref.get(balance);
+      yield* Effect.yieldNow;
+      if (current < amount) @{
+        return yield* new InsufficientFunds();
+      @}
+      return yield* Ref.setAndGet(balance, current - amount);
+    @});
+  const deposit = (amount: number) =>
+    Effect.gen(function* () @{
+      const current = yield* Ref.get(balance);
+      yield* Effect.yieldNow;
+      return yield* Ref.setAndGet(balance, current + amount);
+    @});
+  return @{
+    withdraw,
+    deposit,
+    balance: () => Ref.get(balance),
+    serializer: balanceSerializer,
+  @};
+@};
+@end example
 
 @noindent
-We can use this to do serialized deposits and withdrawals.  However, unlike our
-earlier serialized account, it is now the responsibility of each user of
+We can use this to run serialized deposits and withdrawals.  However, unlike
+our earlier serialized account, it is now the responsibility of each user of
 bank-account objects to explicitly manage the serialization, for example as
 follows:@footnote{@ref{Exercise 3.45} investigates why deposits and withdrawals
 are no longer automatically serialized by the account.}
 
-@lisp
-(define (deposit account amount)
-  (let ((s (account 'serializer))
-        (d (account 'deposit)))
-    ((s d) amount)))
-@end lisp
+@example typescript
+export const deposit = (
+  account: AccountWithSerializer,
+  amount: number,
+): Effect.Effect<number, InsufficientFunds> =>
+  account.serializer(account.deposit(amount));
+@end example
 
 @noindent
 Exporting the serializer in this way gives us enough flexibility to implement a
 serialized exchange program.  We simply serialize the original @code{exchange}
-procedure with the serializers for both accounts:
+computation with the serializers for both accounts:
 
-@lisp
-(define (serialized-exchange account1 account2)
-  (let ((serializer1 (account1 'serializer))
-        (serializer2 (account2 'serializer)))
-    ((serializer1 (serializer2 exchange))
-     account1
-     account2)))
-@end lisp
+@example typescript
+export const serializedExchange = (
+  account1: AccountWithSerializer,
+  account2: AccountWithSerializer,
+): Effect.Effect<void, InsufficientFunds> =>
+  Effect.gen(function* () @{
+    yield* account1.serializer(account2.serializer(exchange(account1, account2)));
+  @});
+@end example
 
 @quotation
 @strong{@anchor{Exercise 3.43}Exercise 3.43:} Suppose that the balances in
@@ -744,14 +837,19 @@ transferring an amount from one account to another.  Ben Bitdiddle claims that
 this can be accomplished with the following procedure, even if there are
 multiple people concurrently transferring money among multiple accounts, using
 any account mechanism that serializes deposit and withdrawal transactions, for
-example, the version of @code{make-account} in the text above.
+example, the version of @code{makeAccount} in the text above.
 
-@lisp
-(define 
-  (transfer from-account to-account amount)
-  ((from-account 'withdraw) amount)
-  ((to-account 'deposit) amount))
-@end lisp
+@example typescript
+export const transfer = (
+  fromAccount: Account,
+  toAccount: Account,
+  amount: number,
+): Effect.Effect<void, InsufficientFunds> =>
+  Effect.gen(function* () @{
+    yield* fromAccount.withdraw(amount);
+    yield* toAccount.deposit(amount);
+  @});
+@end example
 
 Louis Reasoner claims that there is a problem here, and that we need to use a
 more sophisticated method, such as the one required for dealing with the
@@ -764,56 +862,65 @@ the balance in @code{from-account} is at least @code{amount}.)
 @strong{@anchor{Exercise 3.45}Exercise 3.45:} Louis Reasoner thinks our
 bank-account system is unnecessarily complex and error-prone now that deposits
 and withdrawals aren't automatically serialized.  He suggests that
-@code{make-account-and-serializer} should have exported the serializer (for use
-by such procedures as @code{serialized-exchange}) in addition to (rather than
-instead of) using it to serialize accounts and deposits as @code{make-account}
+@code{makeAccountAndSerializer} should have exported the serializer (for use
+by such procedures as @code{serializedExchange}) in addition to (rather than
+instead of) using it to serialize accounts and deposits as @code{makeAccount}
 did.  He proposes to redefine accounts as follows:
 
-@lisp
-(define 
-  (make-account-and-serializer balance)
-  (define (withdraw amount)
-    (if (>= balance amount)
-        (begin (set! balance 
-                     (- balance amount))
-               balance)
-        "Insufficient funds"))
-  (define (deposit amount)
-    (set! balance (+ balance amount))
-    balance)
-  (let ((balance-serializer 
-         (make-serializer)))
-    (define (dispatch m)
-      (cond ((eq? m 'withdraw) 
-             (balance-serializer withdraw))
-            ((eq? m 'deposit) 
-             (balance-serializer deposit))
-            ((eq? m 'balance) 
-             balance)
-            ((eq? m 'serializer) 
-             balance-serializer)
-            (else (error "Unknown request: 
-                          MAKE-ACCOUNT"
-                         m))))
-    dispatch))
-@end lisp
+@example typescript
+export interface AccountWithSerializer extends Account @{
+  readonly serializer: Serializer;
+@}
 
-Then deposits are handled as with the original @code{make-account}:
+export const makeAccountAndSerializer = (initialBalance: number): AccountWithSerializer => @{
+  const balance = Ref.makeUnsafe(initialBalance);
+  const balanceSerializer = makeSerializer();
+  const withdraw = (amount: number) =>
+    balanceSerializer(
+      Effect.gen(function* () @{
+        const current = yield* Ref.get(balance);
+        yield* Effect.yieldNow;
+        if (current < amount) @{
+          return yield* new InsufficientFunds();
+        @}
+        return yield* Ref.setAndGet(balance, current - amount);
+      @}),
+    );
+  const deposit = (amount: number) =>
+    balanceSerializer(
+      Effect.gen(function* () @{
+        const current = yield* Ref.get(balance);
+        yield* Effect.yieldNow;
+        return yield* Ref.setAndGet(balance, current + amount);
+      @}),
+    );
+  return @{
+    withdraw,
+    deposit,
+    balance: () => Ref.get(balance),
+    serializer: balanceSerializer,
+  @};
+@};
+@end example
 
-@lisp
-(define (deposit account amount)
-  ((account 'deposit) amount))
-@end lisp
+Then deposits are handled as with the original @code{makeAccount}:
+
+@example typescript
+export const deposit = (
+  account: AccountWithSerializer,
+  amount: number,
+): Effect.Effect<number, InsufficientFunds> => account.deposit(amount);
+@end example
 
 Explain what is wrong with Louis's reasoning.  In particular, consider what
-happens when @code{serialized-exchange} is called.
+happens when @code{serializedExchange} is called.
 @end quotation
 
 @subsubheading Implementing serializers
 
 We implement serializers in terms of a more primitive synchronization mechanism
 called a @newterm{mutex}.  A mutex is an object that supports two
-operations---the mutex can be @newterm{acquired}, and the mutex can be
+operations: the mutex can be @newterm{acquired}, and the mutex can be
 @newterm{released}.  Once a mutex has been acquired, no other acquire
 operations on that mutex may proceed until the mutex is released.@footnote{The
 term ``mutex'' is an abbreviation for @newterm{mutual exclusion}.  The general
@@ -828,102 +935,130 @@ called P and V, from the Dutch words @emph{passeren} (to pass) and
 systems.  Dijkstra's classic exposition (@ref{1968b}) was one of the first to clearly
 present the issues of concurrency control, and showed how to use semaphores to
 handle a variety of concurrency problems.} In our implementation, each
-serializer has an associated mutex.  Given a procedure @code{p}, the serializer
-returns a procedure that acquires the mutex, runs @code{p}, and then releases
-the mutex.  This ensures that only one of the procedures produced by the
+serializer has an associated mutex.  Given a computation @code{p}, the
+serializer answers a computation that acquires the mutex, runs @code{p}, and
+then releases the mutex.  This ensures that only one of the procedures produced by the
 serializer can be running at once, which is precisely the serialization
 property that we need to guarantee.
 
-@lisp
-(define (make-serializer)
-  (let ((mutex (make-mutex)))
-    (lambda (p)
-      (define (serialized-p . args)
-        (mutex 'acquire)
-        (let ((val (apply p args)))
-          (mutex 'release)
-          val))
-      serialized-p)))
-@end lisp
+@example typescript
+export const makeSerializer = (): Serializer => @{
+  const mutex = makeMutex();
+  return <A, E, R>(p: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.gen(function* () @{
+      yield* mutex.acquire;
+      return yield* Effect.ensuring(p, mutex.release);
+    @});
+@};
+@end example
 
 @noindent
-The mutex is a mutable object (here we'll use a one-element list, which we'll
-refer to as a @newterm{cell}) that can hold the value true or false.  When the
+The mutex is a mutable object (here a record with one mutable
+@code{contents} field, which we'll refer to as a @newterm{cell}) that can hold
+the value true or false.  When the
 value is false, the mutex is available to be acquired.  When the value is true,
 the mutex is unavailable, and any process that attempts to acquire the mutex
 must wait.
 
-Our mutex constructor @code{make-mutex} begins by initializing the cell
+Our mutex constructor @code{makeMutex} begins by initializing the cell
 contents to false.  To acquire the mutex, we test the cell.  If the mutex is
-available, we set the cell contents to true and proceed.  Otherwise, we wait in
-a loop, attempting to acquire over and over again, until we find that the mutex
-is available.@footnote{In most time-shared operating systems, processes that
-are blocked by a mutex do not waste time ``busy-waiting'' as above.  Instead,
-the system schedules another process to run while the first is waiting, and the
-blocked process is awakened when the mutex becomes available.}  To release the
-mutex, we set the cell contents to false.
+available, we set the cell contents to true and proceed.  Otherwise, we
+register a deferred wakeup on a waiter list and suspend; the release wakes the
+registered waiters, and a woken process retries the test-and-set.  This is the
+operating-system behavior of the footnote rather than the book's burning
+retry loop, and in this runtime the effect is the same guarantee at none of
+the cost.@footnote{In most time-shared operating systems, processes that are
+blocked by a mutex do not waste time ``busy-waiting'' in a retry loop like
+the book's.  Instead, the system schedules another process to run while the
+first is waiting, and the blocked process is awakened when the mutex becomes
+available.  The edition takes that behavior as the primary one: the waiter
+registers before it suspends, so a release that races a registration cannot
+lose the wakeup.}  To release the mutex, we set the cell contents to false
+and wake every registered waiter.
 
-@lisp
-(define (make-mutex)
-  (let ((cell (list false)))
-    (define (the-mutex m)
-      (cond ((eq? m 'acquire)
-             (if (test-and-set! cell)
-                 (the-mutex 'acquire))) @r{; retry}
-            ((eq? m 'release) (clear! cell))))
-    the-mutex))
-(define (clear! cell) (set-car! cell false))
-@end lisp
+@example typescript
+export const makeMutex = (): Mutex => @{
+  const cell = makeCell(false);
+  const waiters = new Array<Deferred.Deferred<void>>();
+  const acquire: Effect.Effect<void> = Effect.gen(function* () @{
+    for (;;) @{
+      if (!testAndSet(cell)) @{
+        return;
+      @}
+      const waiter = yield* Deferred.make<void>();
+      waiters.push(waiter);
+      yield* Deferred.await(waiter); // retry when woken
+    @}
+  @});
+  const release: Effect.Effect<void> = Effect.gen(function* () @{
+    clearCell(cell);
+    for (const waiter of waiters.splice(0)) @{
+      yield* Deferred.succeed(waiter, undefined);
+    @}
+  @});
+  return @{ acquire, release @};
+@};
+
+export const clearCell = (cell: Cell): void => @{
+  cell.contents = false;
+@};
+@end example
 
 @noindent
-@code{Test-and-set!} tests the cell and returns the result of the test.  In
-addition, if the test was false, @code{test-and-set!} sets the cell contents to
-true before returning false.  We can express this behavior as the following
+@code{testAndSet} tests the cell and answers the result of the test.  In
+addition, if the test was false, @code{testAndSet} sets the cell contents to
+true before answering false.  We can express this behavior as the following
 procedure:
 
-@lisp
-(define (test-and-set! cell)
-  (if (car cell)
-      true
-      (begin (set-car! cell true)
-             false)))
-@end lisp
+@example typescript
+export const testAndSet = (cell: Cell): boolean => @{
+  if (cell.contents) @{
+    return true;
+  @}
+  cell.contents = true;
+  return false;
+@};
+@end example
 
 @noindent
-However, this implementation of @code{test-and-set!} does not suffice as it
+However, this implementation of @code{testAndSet} does not suffice as it
 stands.  There is a crucial subtlety here, which is the essential place where
-concurrency control enters the system: The @code{test-and-set!} operation must
+concurrency control enters the system: The @code{testAndSet} operation must
 be performed @newterm{atomically}.  That is, we must guarantee that, once a
 process has tested the cell and found it to be false, the cell contents will
 actually be set to true before any other process can test the cell.  If we do
 not make this guarantee, then the mutex can fail in a way similar to the
-bank-account failure in @ref{Figure 3.29}.  (See @ref{Exercise 3.46}.)
+bank-account failure in @ref{Figure 3.29}.  (See @ref{Exercise 3.46}.)  In
+this runtime the synchronous procedure is already atomic, because no fiber can
+run between its read and its write; the exercise makes the window an explicit
+suspension to demonstrate what it would mean to lose.
 
-The actual implementation of @code{test-and-set!} depends on the details of how
+The actual implementation of @code{testAndSet} depends on the details of how
 our system runs concurrent processes.  For example, we might be executing
 concurrent processes on a sequential processor using a time-slicing mechanism
 that cycles through the processes, permitting each process to run for a short
 time before interrupting it and moving on to the next process.  In that case,
-@code{test-and-set!}  can work by disabling time slicing during the testing and
-setting.@footnote{In @abbr{MIT} Scheme for a single processor, which uses a
-time-slicing model, @code{test-and-set!} can be implemented as follows:
+@code{testAndSet}  can work by disabling time slicing during the testing and
+setting.@footnote{On a single-processor runtime that uses a
+time-slicing model, @code{testAndSet} can be implemented as follows:
 
-@lisp
-(define (test-and-set! cell)
-  (without-interrupts
-   (lambda ()
-     (if (car cell)
-         true
-         (begin (set-car! cell true)
-                false)))))
-@end lisp
+@example typescript
+export const testAndSetWithoutInterrupts = (cell: Cell): boolean =>
+  withoutInterrupts(() => @{
+    if (cell.contents) @{
+      return true;
+    @}
+    cell.contents = true;
+    return false;
+  @});
+@end example
 
-@code{Without-interrupts} disables time-slicing interrupts while its procedure
-ar@-gu@-ment is being executed.}  Alternatively, multiprocessing computers provide
+@code{withoutInterrupts} suspends the fiber scheduler while its thunk is
+being executed.}  Alternatively, multiprocessing computers provide
 instructions that support atomic operations directly in
-hardware.@footnote{There are many variants of such instructions---including
+hardware.@footnote{There are many variants of such instructions, including
 test-and-set, test-and-clear, swap, compare-and-exchange, load-reserve, and
-store-conditional---whose design must be carefully matched to the machine's
+store-conditional, whose design must be carefully matched to the machine's
 processor-memory interface.  One issue that arises here is to determine what
 happens if two processes attempt to acquire the same resource at exactly the
 same time by using such an instruction.  This requires some mechanism for
@@ -940,7 +1075,7 @@ deciding which to go to first.}
 
 @quotation
 @strong{@anchor{Exercise 3.46}Exercise 3.46:} Suppose that we implement
-@code{test-and-set!}  using an ordinary procedure as shown in the text, without
+@code{testAndSet} using an ordinary procedure as shown in the text, without
 attempting to make the operation atomic.  Draw a timing diagram like the one in
 @ref{Figure 3.29} to demonstrate how the mutex implementation can fail by
 allowing two processes to acquire the mutex at the same time.
@@ -959,7 +1094,7 @@ semaphore must wait for release operations.  Give implementations of semaphores
 in terms of mutexes
 
 @item
-in terms of atomic @code{test-and-set!} operations.
+in terms of atomic @code{testAndSet} operations.
 
 @end enumerate
 @end quotation
@@ -967,7 +1102,7 @@ in terms of atomic @code{test-and-set!} operations.
 @subsubheading Deadlock
 
 Now that we have seen how to implement serializers, we can see that account
-exchanging still has a problem, even with the @code{serialized-exchange}
+exchanging still has a problem, even with the @code{serializedExchange}
 procedure above.  Imagine that Peter attempts to exchange @math{{a1}} with @math{{a2}}
 while Paul concurrently attempts to exchange @math{{a2}} with @math{{a1}}.  Suppose that
 Peter's process reaches the point where it has entered a serialized procedure
@@ -981,7 +1116,7 @@ Deadlock is always a danger in systems that provide concurrent access to
 multiple shared resources.
 
 One way to avoid the deadlock in this situation is to give each account a
-unique identification number and rewrite @code{serialized-exchange} so that a
+unique identification number and rewrite @code{serializedExchange} so that a
 process will always attempt to enter a procedure protecting the lowest-numbered
 account first.  Although this method works well for the exchange problem, there
 are other situations that require more sophisticated deadlock-avoidance
@@ -998,10 +1133,10 @@ used in database management systems, a topic that is treated in detail in
 @strong{@anchor{Exercise 3.48}Exercise 3.48:} Explain in detail why the
 deadlock-avoidance method described above, (i.e., the accounts are numbered,
 and each process attempts to acquire the smaller-numbered account first) avoids
-deadlock in the exchange problem.  Rewrite @code{serialized-exchange} to
-incorporate this idea.  (You will also need to modify @code{make-account} so
-that each account is created with a number, which can be accessed by sending an
-appropriate message.)
+deadlock in the exchange problem.  Rewrite @code{serializedExchange} to
+incorporate this idea.  (You will also need to modify @code{makeAccount} so
+that each account is created with a number, which can be read from the
+account object.)
 @end quotation
 
 @quotation
@@ -1021,7 +1156,7 @@ achieve this control through judicious use of serializers.  But the problems of
 concurrency lie deeper than this, because, from a fundamental point of view,
 it's not always clear what is meant by ``shared state.''
 
-Mechanisms such as @code{test-and-set!} require processes to examine a global
+Mechanisms such as @code{testAndSet} require processes to examine a global
 shared flag at arbitrary times.  This is problematic and inefficient to
 implement in modern high-speed processors, where due to optimization techniques
 such as pipelining and cached memory, the contents of memory may not be in a
@@ -1043,7 +1178,7 @@ branch banks maintain local values for bank balances and periodically compare
 these with values maintained by other branches.  In such a system the value of
 ``the account balance'' would be undetermined, except right after
 synchronization.  If Peter deposits money in an account he holds jointly with
-Paul, when should we say that the account balance has changed---when the
+Paul, when should we say that the account balance has changed: when the
 balance in the local branch changes, or not until after the synchronization?
 And if Paul accesses the account from a different branch, what are the
 reasonable constraints to place on the banking system such that the behavior is

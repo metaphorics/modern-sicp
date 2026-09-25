@@ -346,7 +346,7 @@ All three are environment-diagram exercises about Scheme frames, so all four edi
 | 3.14 | mystery reverses pointers in place | A: in-place pair mutation via RefCell | A: mutable records replace set-car! | T | T |  |
 | 3.15 | set-to-wow diagrams show sharing | A: aliasing through Rc RefCell cells | A: aliasing through mutable records | T | T |  |
 | 3.16 | count-pairs double counts shared pairs | T | T | T | T |  |
-| 3.17 | count distinct pairs with history | T | A: identity set needs physical-equality scan | T | A: no identity set in stdlib | count distinct nodes in DAG |
+| 3.17 | count distinct pairs with history | T | A: identity set needs physical-equality scan | T | A: no identity set in stdlib | count distinct nodes in DAG (chosen: typescript) |
 | 3.18 | detect cycle in list | T | A: identity set needs physical-equality scan | T | A: no identity set in stdlib |  |
 | 3.19 | tortoise-hare constant-space detection | T | T | T | T | shared suffix detection; chosen: rust |
 | 3.20 | environment diagram of pair mutators | R: trace aliasing through closure dispatch | R: trace aliasing through closure dispatch | R: trace object aliasing via closures | R: trace shared state via closures |  |

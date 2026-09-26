@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Adapted-from-SICP: section 4.1
+// Adapted-from-SICP: sections 4.1 and 4.2
 
 /**
  * The evaluator's core data: values, environments, and the shape of
@@ -8,7 +8,9 @@
  * leaf. There is no separately parsed form; the syntax predicates of the
  * metacircular evaluator look at the data with the same car/cdr surgery
  * the book uses. The cons pairs come from `list.ts`, the mutable frame
- * chain from `env.ts`, and the checked failures from `errors.ts`.
+ * chain from `env.ts`, and the checked failures from `errors.ts`. The
+ * delayed arguments of section 4.2 are values too: the `ThunkValue` car
+ * of the union is that section's machinery, added by `02-lazy.ts`.
  */
 import type { Effect, HashMap, Option, Ref } from "effect";
 
@@ -77,6 +79,28 @@ export interface ExecutionValue {
   readonly run: (env: Env) => Effect.Effect<Value, EvaluationError>;
 }
 
+/**
+ * A delayed argument (section 4.2): the operand expression packaged with
+ * the environment of the application that delayed it, the book's
+ * `(thunk exp env)` list. Forcing evaluates the expression there. A
+ * memoized thunk is the book's thunk-to-evaluated-thunk mutation: at the
+ * first forcing the value replaces the expression in `exp`, and
+ * `evaluated` records that the stored value answers every later forcing.
+ * The thunks exercise 4.31 declares `lazy` never flip the flag, so they
+ * re-evaluate at every demand.
+ */
+export interface ThunkValue {
+  readonly _tag: "Thunk";
+  /** The delayed expression; a memoized thunk stores its value here. */
+  exp: Value;
+  /** The environment of the application that delayed the operand. */
+  readonly env: Env;
+  /** Whether the value has been computed and stored in `exp`. */
+  evaluated: boolean;
+  /** Whether forcing stores the computed value; the section's thunks do. */
+  readonly memoized: boolean;
+}
+
 /** Everything the evaluator reads or produces. */
 export type Value =
   | NumberValue
@@ -88,7 +112,8 @@ export type Value =
   | Pair
   | PrimitiveValue
   | CompoundProc
-  | ExecutionValue;
+  | ExecutionValue
+  | ThunkValue;
 
 /** A primitive: applied to the evaluated argument list, it yields one value. */
 export type Primitive = (args: List<Value>) => Effect.Effect<Value, EvaluationError>;

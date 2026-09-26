@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Adapted-from-SICP: section 4.1
+// Adapted-from-SICP: sections 4.1 and 4.2
 
 /**
  * Surface syntax for the evaluated language: the edition's stand-in for the
@@ -221,5 +221,7 @@ export const format = (value: Value): string => {
       return "#[compound-procedure]";
     case "Execution":
       return "#[execution-procedure]";
+    case "Thunk":
+      return "#[thunk]";
   }
 };

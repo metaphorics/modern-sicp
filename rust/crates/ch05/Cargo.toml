@@ -163,6 +163,30 @@ path = "../../exercises/ch05/sec_5_19.rs"
 name = "solution_sec_5_19"
 path = "../../solutions/ch05/sec_5_19.rs"
 
+[[test]]
+name = "scaffold_sec_5_20"
+path = "../../exercises/ch05/sec_5_20.rs"
+
+[[test]]
+name = "solution_sec_5_20"
+path = "../../solutions/ch05/sec_5_20.rs"
+
+[[test]]
+name = "scaffold_sec_5_21"
+path = "../../exercises/ch05/sec_5_21.rs"
+
+[[test]]
+name = "solution_sec_5_21"
+path = "../../solutions/ch05/sec_5_21.rs"
+
+[[test]]
+name = "scaffold_sec_5_22"
+path = "../../exercises/ch05/sec_5_22.rs"
+
+[[test]]
+name = "solution_sec_5_22"
+path = "../../solutions/ch05/sec_5_22.rs"
+
 [dependencies]
 sicp-runtime = { workspace = true }
 

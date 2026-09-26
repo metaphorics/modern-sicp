@@ -207,46 +207,54 @@ vector, or adding two numbers) use only the index portion of the typed pointer.
 
 For example, we can make a register machine support the instructions
 
-@lisp
-(assign ⟨@var{reg₁}⟩ (op car) (reg ⟨@var{reg₂}⟩))
-(assign ⟨@var{reg₁}⟩ (op cdr) (reg ⟨@var{reg₂}⟩))
-@end lisp
+@example rust
+// The machine's car and cdr operations, run over
+// the shared list-structure memory.
+let word = memory.borrow().car(&pair_word)?;
+let word = memory.borrow().cdr(&pair_word)?;
+@end example
 
 @noindent
 if we implement these, respectively, as
 
-@lisp
-(assign ⟨@var{reg₁}⟩ 
-        (op vector-ref)
-        (reg the-cars)
-        (reg ⟨@var{reg₂}⟩))
-(assign ⟨@var{reg₁}⟩
-        (op vector-ref)
-        (reg the-cdrs)
-        (reg ⟨@var{reg₂}⟩))
-@end lisp
+@example rust
+// Inside Memory: the car reads the the-cars
+// vector at the pair's index, the cdr the the-cdrs
+// vector.
+fn read_car(&self, index: usize) -> Result<Word, MemoryFault> {
+    self.spaces[self.working]
+        .cars
+        .get(index)
+        .cloned()
+        .ok_or(MemoryFault::IndexOutOfRange { op: "car" })
+}
+@end example
 
 @noindent
 The instructions
 
-@lisp
-(perform (op set-car!) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩))
-(perform (op set-cdr!) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩))
-@end lisp
+@example rust
+// (perform (op set-car!) ...) and its
+// cdr twin, over the shared memory.
+memory.borrow_mut().set_car(&pair_word, value)?;
+memory.borrow_mut().set_cdr(&pair_word, value)?;
+@end example
 
 @noindent
 are implemented as
 
-@lisp
-(perform (op vector-set!)
-         (reg the-cars)
-         (reg ⟨@var{reg₁}⟩)
-         (reg ⟨@var{reg₂}⟩))
-(perform (op vector-set!)
-         (reg the-cdrs)
-         (reg ⟨@var{reg₁}⟩)
-         (reg ⟨@var{reg₂}⟩))
-@end lisp
+@example rust
+// The store behind set-car!: one half of the
+// pair's cell, overwritten in place.
+fn write_car(&mut self, index: usize, value: Word) -> Result<(), MemoryFault> {
+    let slot = self.spaces[self.working]
+        .cars
+        .get_mut(index)
+        .ok_or(MemoryFault::IndexOutOfRange { op: "set-car!" })?;
+    *slot = value;
+    Ok(())
+}
+@end example
 
 @noindent
 @code{Cons} is performed by allocating an unused index and storing the
@@ -260,12 +268,10 @@ free locations are consecutive (and hence can be accessed by incrementing a
 pointer) because we are using a compacting garbage collector, as we will see in
 @ref{5.3.2}.}  For example, the instruction
 
-@lisp
-(assign ⟨@var{reg₁}⟩
-        (op cons)
-        (reg ⟨@var{reg₂}⟩)
-        (reg ⟨@var{reg₃}⟩))
-@end lisp
+@example rust
+// (assign reg1 (op cons) (reg reg2) (reg reg3)):
+let pair = memory.borrow_mut().cons(car_word, cdr_word)?;
+@end example
 
 @noindent
 is implemented as the following sequence of vector operations:@footnote{This is
@@ -274,25 +280,29 @@ essentially the implementation of @code{cons} in terms of @code{set-car!} and
 @code{get-new-pair} used in that implementation is realized here by the
 @code{free} pointer.}
 
-@lisp
-(perform (op vector-set!)
-         (reg the-cars)
-         (reg free)
-         (reg ⟨@var{reg₂}⟩))
-(perform (op vector-set!)
-         (reg the-cdrs)
-         (reg free)
-         (reg ⟨@var{reg₃}⟩))
-(assign ⟨@var{reg₁}⟩ (reg free))
-(assign free (op +) (reg free) (const 1))
-@end lisp
+@example rust
+/// The allocation path of cons: store the two
+/// halves at the free pointer, then bump it.
+pub fn cons(&mut self, car_word: Word, cdr_word: Word) -> Result<Word, MemoryFault> {
+    if self.free >= self.data_limit() {
+        return Err(MemoryFault::Exhausted);
+    }
+    let index = self.free;
+    self.spaces[self.working].cars[index] = car_word;
+    self.spaces[self.working].cdrs[index] = cdr_word;
+    self.free += 1;
+    Ok(Word::Pair(index))
+}
+@end example
 
 @noindent
 The @code{eq?} operation
 
-@lisp
-(op eq?) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩)
-@end lisp
+@example rust
+// (op eq?): true when the two registers
+// carry the same word, equal numbers included.
+Ok(Value::Bool(left == right))
+@end example
 
 @noindent
 simply tests the equality of all fields in the registers, and predicates such
@@ -306,27 +316,31 @@ since stacks can be modeled in terms of lists.  The stack can be a list of the
 saved values, pointed to by a special register @code{the-stack}.  Thus, 
 @code{(save ⟨@var{reg}⟩)} can be implemented as
 
-@lisp
-(assign the-stack 
-        (op cons)
-        (reg ⟨@var{reg}⟩)
-        (reg the-stack))
-@end lisp
+@example rust
+// This edition's simulator keeps the stack as its own
+// vector, so (save reg) is a stack push. Over
+// list-structure memory the same instruction is the
+// book's cons onto the-stack:
+let the_stack = memory.borrow_mut().cons(reg_word, the_stack)?;
+@end example
 
 @noindent
 Similarly, @code{(restore ⟨@var{reg}⟩)} can be implemented as
 
-@lisp
-(assign ⟨@var{reg}⟩ (op car) (reg the-stack))
-(assign the-stack (op cdr) (reg the-stack))
-@end lisp
+@example rust
+// (restore reg): the head comes back and the
+// stack tails into the rest.
+let reg_word = memory.borrow().car(&the_stack)?;
+let the_stack = memory.borrow().cdr(&the_stack)?;
+@end example
 
 @noindent
 and @code{(perform (op initialize-stack))} can be implemented as
 
-@lisp
-(assign the-stack (const ()))
-@end lisp
+@example rust
+// (perform (op initialize-stack)):
+let the_stack = Word::Empty;
+@end example
 
 @noindent
 These operations can be further expanded in terms of the vector operations
@@ -340,10 +354,14 @@ into that vector.
 representation and the memory-vector representation (as in @ref{Figure 5.14})
 of the list structure produced by
 
-@lisp
-(define x (cons 1 2))
-(define y (list x x))
-@end lisp
+@example rust
+let mut memory = Memory::new(8, 4, 1);
+let x = memory.cons(Word::Num(1), Word::Num(2))?;
+// (list x x) is (cons x (cons x '())): the inner cons
+// allocates before the outer cell can name it.
+let inner = memory.cons(x.clone(), Word::Empty)?;
+let y = memory.cons(x.clone(), inner)?;
+@end example
 
 @noindent
 with the @code{free} pointer initially @code{p1}.  What is the final value of
@@ -360,30 +378,81 @@ available as machine primitives.
 @item
 Recursive @code{count-leaves}:
 
-@lisp
-(define (count-leaves tree)
-  (cond ((null? tree) 0)
-        ((not (pair? tree)) 1)
-        (else 
-         (+ (count-leaves (car tree))
-            (count-leaves (cdr tree))))))
-@end lisp
+@example rust
+machine(
+    memory,
+    &["tree", "n", "temp", "continue"],
+    "
+begin-count-leaves
+  (assign continue (label count-leaves-done))
+count-loop
+  (test (op null?) (reg tree))
+  (branch (label null-tree))
+  (test (op pair?) (reg tree))
+  (branch (label pair-tree))
+  (assign n (const 1))
+  (goto (reg continue))
+null-tree
+  (assign n (const 0))
+  (goto (reg continue))
+pair-tree
+  (save continue)
+  (save tree)
+  (assign tree (op car) (reg tree))
+  (assign continue (label after-car))
+  (goto (label count-loop))
+after-car
+  (restore tree)
+  (save n)
+  (assign tree (op cdr) (reg tree))
+  (assign continue (label after-cdr))
+  (goto (label count-loop))
+after-cdr
+  (restore temp)
+  (assign n (op +) (reg n) (reg temp))
+  (restore continue)
+  (goto (reg continue))
+count-leaves-done",
+)
+@end example
 
 @item
 Recursive @code{count-leaves} with explicit counter:
 
-@lisp
-(define (count-leaves tree)
-  (define (count-iter tree n)
-    (cond ((null? tree) n)
-          ((not (pair? tree)) (+ n 1))
-          (else 
-           (count-iter 
-            (cdr tree)
-            (count-iter (car tree) 
-                        n)))))
-  (count-iter tree 0))
-@end lisp
+@example rust
+machine(
+    memory,
+    &["tree", "n", "continue"],
+    "
+begin-count-leaves
+  (assign n (const 0))
+  (assign continue (label count-leaves-done))
+count-loop
+  (test (op null?) (reg tree))
+  (branch (label null-tree))
+  (test (op pair?) (reg tree))
+  (branch (label pair-tree))
+  (assign n (op +) (reg n) (const 1))
+  (goto (reg continue))
+null-tree
+  (goto (reg continue))
+pair-tree
+  (save continue)
+  (save tree)
+  (assign tree (op car) (reg tree))
+  (assign continue (label after-car))
+  (goto (label count-loop))
+after-car
+  (restore tree)
+  (assign tree (op cdr) (reg tree))
+  (assign continue (label after-cdr))
+  (goto (label count-loop))
+after-cdr
+  (restore continue)
+  (goto (reg continue))
+count-leaves-done",
+)
+@end example
 @end enumerate
 @end quotation
 
@@ -415,12 +484,34 @@ most of the pairs generated in a typical computation are used only to hold
 intermediate results.  After these results are accessed, the pairs are no
 longer needed---they are @newterm{garbage}.  For instance, the computation
 
-@lisp
-(accumulate 
- + 
- 0
- (filter odd? (enumerate-interval 0 n)))
-@end lisp
+@example rust
+// (accumulate + 0 (filter odd? (enumerate-interval 0 n))):
+// the enumeration and the filtered list are built in the
+// memory, and both are garbage once the sum is known.
+let mut interval = Word::Empty;
+for item in (0..=n).rev() {
+    interval = memory.borrow_mut().cons(Word::Num(item), interval)?;
+}
+let mut odds = Word::Empty;
+let mut cursor = interval;
+while let Word::Pair(_) = cursor {
+    let car_word = memory.borrow().car(&cursor)?;
+    if let Word::Num(value) = car_word {
+        if value % 2 == 1 {
+            odds = memory.borrow_mut().cons(car_word, odds)?;
+        }
+    }
+    cursor = memory.borrow().cdr(&cursor)?;
+}
+let mut sum = 0;
+let mut cursor = odds;
+while let Word::Pair(_) = cursor {
+    if let Word::Num(value) = memory.borrow().car(&cursor)? {
+        sum += value;
+    }
+    cursor = memory.borrow().cdr(&cursor)?;
+}
+@end example
 
 @noindent
 constructs two lists: the enumeration and the result of filtering the
@@ -610,18 +701,25 @@ and @code{scan}.  When the relocation of @code{root} has been accomplished, we
 install the new pointer as the new @code{root} and enter the main loop of the
 garbage collector.
 
-@lisp
-begin-garbage-collection
-  (assign free (const 0))
-  (assign scan (const 0))
-  (assign old (reg root))
-  (assign relocate-continue 
-          (label reassign-root))
-  (goto (label relocate-old-result-in-new))
-reassign-root
-  (assign root (reg new))
-  (goto (label gc-loop))
-@end lisp
+@example rust
+pub fn collect(memory: &SharedMemory, roots: &[Word]) -> Result<Vec<Word>, Fault> {
+    let root = plant_root_list(memory, roots)?;
+    let mut machine = make_machine_from_datums(
+        &["root", "the-cars", "the-cdrs", "new-cars", "new-cdrs",
+          "free", "scan", "old", "oldcr", "new",
+          "relocate-continue", "temp"],
+        &collector_operations(memory),
+        &collector_datums()?,
+    )?;
+    // The four vector-base registers take the names of the working
+    // and the free semispaces, the book's (const 0) opens both
+    // pointers at the first cell of the new memory, and the root's
+    // relocation is the opening move.
+    machine.set_register("root", Value::from(root))?;
+    machine.start()?;
+    finish_collection(memory, &machine, roots.len())
+}
+@end example
 
 @noindent
 In the main loop of the garbage collector we must determine whether there are
@@ -634,18 +732,20 @@ subroutine to relocate the @code{car} of the next pair (by placing the
 @code{car} pointer in @code{old}).  The @code{relocate-continue} register is
 set up so that the subroutine will return to update the @code{car} pointer.
 
-@lisp
+@example rust
+// Inside collector_datums, the controller as data:
+"
 gc-loop
   (test (op =) (reg scan) (reg free))
   (branch (label gc-flip))
-  (assign old 
+  (assign old
           (op vector-ref)
           (reg new-cars)
           (reg scan))
-  (assign relocate-continue 
+  (assign relocate-continue
           (label update-car))
   (goto (label relocate-old-result-in-new))
-@end lisp
+@end example
 
 @noindent
 At @code{update-car}, we modify the @code{car} pointer of the pair being
@@ -654,13 +754,14 @@ scanned, then proceed to relocate the @code{cdr} of the pair.  We return to
 and updating the @code{cdr}, we are finished scanning that pair, so we continue
 with the main loop.
 
-@lisp
+@example rust
+"
 update-car
   (perform (op vector-set!)
            (reg new-cars)
            (reg scan)
            (reg new))
-  (assign  old 
+  (assign  old
            (op vector-ref)
            (reg new-cdrs)
            (reg scan))
@@ -674,7 +775,7 @@ update-cdr
            (reg new))
   (assign  scan (op +) (reg scan) (const 1))
   (goto (label gc-loop))
-@end lisp
+@end example
 
 @noindent
 The subroutine @code{relocate-old-result-in-new} relocates objects as follows:
@@ -701,28 +802,29 @@ as a special kind of ``pair'' that doesn't satisfy the @code{pair?} predicate.
 For simulation purposes, @code{pointer-to-pair?} can be implemented as
 @code{pair?}.}
 
-@lisp
+@example rust
+"
 relocate-old-result-in-new
   (test (op pointer-to-pair?) (reg old))
   (branch (label pair))
   (assign new (reg old))
   (goto (reg relocate-continue))
 pair
-  (assign  oldcr 
+  (assign  oldcr
            (op vector-ref)
            (reg the-cars)
            (reg old))
   (test (op broken-heart?) (reg oldcr))
   (branch  (label already-moved))
-  (assign  new (reg free)) @r{; new location for pair}
-  @r{;; Update @code{free} pointer.}
+  (assign  new (reg free)) ; new location for pair
+  ;; Update the free pointer.
   (assign free (op +) (reg free) (const 1))
-  @r{;; Copy the @code{car} and @code{cdr} to new memory.}
+  ;; Copy the car and the cdr to new memory.
   (perform (op vector-set!)
            (reg new-cars)
            (reg new)
            (reg oldcr))
-  (assign  oldcr 
+  (assign  oldcr
            (op vector-ref)
            (reg the-cdrs)
            (reg old))
@@ -730,7 +832,7 @@ pair
            (reg new-cdrs)
            (reg new)
            (reg oldcr))
-  @r{;; Construct the broken heart.}
+  ;; Construct the broken heart.
   (perform (op vector-set!)
            (reg the-cars)
            (reg old)
@@ -746,7 +848,7 @@ already-moved
            (reg the-cdrs)
            (reg old))
   (goto (reg relocate-continue))
-@end lisp
+@end example
 
 @noindent
 At the very end of the garbage-collection process, we interchange the role of
@@ -754,7 +856,8 @@ old and new memories by interchanging pointers: interchanging @code{the-cars}
 with @code{new-cars}, and @code{the-cdrs} with @code{new-cdrs}.  We will then
 be ready to perform another garbage collection the next time memory runs out.
 
-@lisp
+@example rust
+"
 gc-flip
   (assign temp (reg the-cdrs))
   (assign the-cdrs (reg new-cdrs))
@@ -762,5 +865,5 @@ gc-flip
   (assign temp (reg the-cars))
   (assign the-cars (reg new-cars))
   (assign new-cars (reg temp))
-@end lisp
+@end example
 

@@ -728,10 +728,10 @@ ocaml/
 10. New Chapter 0 primer (about 30 pages, exercises 0.1-0.5) with `ocaml/ch0/` support directories.
 11. Re-cuts recorded for 3.2, 3.4, 4.3; numbering divergence list is empty.
 
-### Critical Files for Implementation
+### Anchor files
 
-- `modern-sicp/sicp-pocket.texi` — Source authority for all section, listing, and exercise mappings.
-- `modern-sicp/ocaml/dune-project` — Toolchain pin (OCaml 5.5.1, Dune 3.24), dependency families, formatting, workspace aliases.
-- `modern-sicp/ocaml/common/ast.mli` — Shared Scheme-subset contract for chapters 4 and 5.
-- `modern-sicp/ocaml/ch4/lib/eval.mli` — Evaluator, environment, value, error, lazy, and nondeterministic boundaries.
-- `modern-sicp/ocaml/ch5/lib/instruction.mli` — Shared register-machine IR for simulator, explicit-control evaluator, and compiler.
+- `modern-sicp/sicp-pocket.texi`: source authority for all section, listing, and exercise mappings.
+- `modern-sicp/ocaml/dune-project`: toolchain pin (OCaml 5.5.1, Dune 3.24), dependency families, formatting, workspace aliases.
+- `modern-sicp/ocaml/common/ast.mli`: shared Scheme-subset contract for chapters 4 and 5.
+- `modern-sicp/ocaml/ch4/lib/eval.mli`: evaluator, environment, value, error, lazy, and nondeterministic boundaries.
+- `modern-sicp/ocaml/ch5/lib/instruction.mli`: shared register-machine IR for simulator, explicit-control evaluator, and compiler.

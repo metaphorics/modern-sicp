@@ -8,7 +8,7 @@ Two gaps stop the plan's tracking and Kotlin gates, and neither can be
 filed as a remote ticket: GitHub issues are disabled on
 `metaphorics/modern-sicp`, and the Kotlin Gradle wrapper is absent from
 the tree. Where do they go so no turn loses them?
-1. Issues disabled — CLEARED 2026-09-23. The user authorized the tracker
+1. Issues disabled: CLEARED 2026-09-23. The user authorized the tracker
    decision; issues were enabled (`gh repo edit --enable-issues`) and A6 ran:
    five labels, map issue #1, prototype #2, Chapter 0 tickets #3 to #6 with
    `Blocked by` wired to #2. V5 label counts verified (map 1, task 4,

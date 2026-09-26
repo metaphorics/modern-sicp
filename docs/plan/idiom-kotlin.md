@@ -434,7 +434,7 @@ class Memory(val n: Int) {
 | Book object | Kotlin type | Notes |
 |---|---|---|
 | Integers (default) | `Long` | Covers every value the main text prints. JVM `Long` arithmetic wraps silently on overflow, so the standing rule applies: any listing that can plausibly overflow uses `Math.addExact`/`Math.subtractExact`/`Math.multiplyExact` so overflow throws instead of yielding a wrong answer. |
-| Exercises that exceed `Long` | `java.math.BigInteger` | The concrete sites: factorial beyond `20!`, `fib` past 92, exploratory `(expt 2 100)`; tailored 1.19a is the chapter 1 showcase. |
+| Exercises that exceed `Long` | `java.math.BigInteger` | The concrete sites: factorial beyond `20!`, `fib` past 92, exploratory `(expt 2 100)`; tailored 1.19a is the chapter 1 example. |
 | Indices, counters, ch5 pointers | `Int` | Register indices, memory addresses, vector subscripts. |
 | Reals | `Double` | `sqrt`, `pi-sum`, fixed points, streams of reals. |
 | 2.5 numeric tower | sealed `Num` | Integer level raises `ArithmeticException` as an `Overflow` error through the tower's `Raise`, promoting to a `BigZ` package; exact rationals carry `BigInteger` numerators and denominators because `Long` components overflow during multiplication before reduction. |
@@ -691,14 +691,10 @@ Exercise numbers stay 1:1 throughout; no renumbering is forced. Additions use th
 15. Chapter 5: machine descriptions are a Kotlin DSL building the same `Stmt` data the simulator, explicit-control evaluator, and compiler consume; code-as-data preserved.
 16. Tooling: detekt dropped for the ktlint gate; conventions text reflects this.
 
-## 7. Delivery note
+## 7. Anchor files
 
-Requested file path `/home/alpha/.omp/agent/sessions/-book/2026-09-22T12-02-38-706Z_01a0c8ff-21f2-761c-806c-00eee78e3433/local/idiom-kotlin.md` was not created because this subagent has no write tool. This message is the complete deliverable, ready to be written to that path verbatim; the same markdown is in the yield data.
-
-### Critical Files for Implementation
-
-- `sicp-pocket.texi` — source of truth for all 22 sections and every exercise anchor cited above
-- `kotlin/gradle/libs.versions.toml` — version catalog to create; carries the verified pins of section 0
-- `kotlin/settings.gradle.kts` — declares the runtime module and the five chapter subprojects
-- `kotlin/chapterNN/build.gradle.kts` — template for the five source sets, toolchain 25, and the `-Psolutions` XOR classpath rule
-- `kotlin/runtime/src/main/kotlin/sicp/runtime/` — shared `Value`, `LStream`, `OpTable`, `Env`, `Machine`, and query engine all chapters import
+- `sicp-pocket.texi`: source of truth for all 22 sections and every exercise anchor in this map
+- `kotlin/gradle/libs.versions.toml`: version catalog to create; carries the verified pins of section 0
+- `kotlin/settings.gradle.kts`: declares the runtime module and the five chapter subprojects
+- `kotlin/chapterNN/build.gradle.kts`: template for the five source sets, toolchain 25, and the `-Psolutions` XOR classpath rule
+- `kotlin/runtime/src/main/kotlin/sicp/runtime/`: shared `Value`, `LStream`, `OpTable`, `Env`, `Machine`, and query engine all chapters import

@@ -1155,7 +1155,9 @@ fn assign_source(
     ops: &HashMap<String, OpHandler>,
     registers: &HashSet<String>,
 ) -> Result<Source, Fault> {
-    if let [single] = value_exp {
+    if let [single] = value_exp
+        && !is_operation_form(single)
+    {
         return simple_source(single, labels, registers);
     }
     let (name, inputs) = operation_parts(value_exp, registers)?;
@@ -1165,6 +1167,16 @@ fn assign_source(
         handler,
         inputs,
     }))
+}
+
+/// Whether the source is the head of an operation application,
+/// `(op ...)`: the operation path handles it whatever its input
+/// count, including the zero-input `(assign exp (op read))` of the
+/// section 5.4 driver.
+fn is_operation_form(single: &Value) -> bool {
+    single
+        .list_items()
+        .is_ok_and(|items| matches!(items.first(), Some(Value::Sym(tag)) if tag.as_ref() == "op"))
 }
 
 /// Analyzes a one-element assign source: `(reg r)`, `(const v)`, or

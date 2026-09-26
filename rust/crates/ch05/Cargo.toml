@@ -187,6 +187,70 @@ path = "../../exercises/ch05/sec_5_22.rs"
 name = "solution_sec_5_22"
 path = "../../solutions/ch05/sec_5_22.rs"
 
+[[test]]
+name = "scaffold_sec_5_23"
+path = "../../exercises/ch05/sec_5_23.rs"
+
+[[test]]
+name = "solution_sec_5_23"
+path = "../../solutions/ch05/sec_5_23.rs"
+
+[[test]]
+name = "scaffold_sec_5_24"
+path = "../../exercises/ch05/sec_5_24.rs"
+
+[[test]]
+name = "solution_sec_5_24"
+path = "../../solutions/ch05/sec_5_24.rs"
+
+[[test]]
+name = "scaffold_sec_5_25"
+path = "../../exercises/ch05/sec_5_25.rs"
+
+[[test]]
+name = "solution_sec_5_25"
+path = "../../solutions/ch05/sec_5_25.rs"
+
+[[test]]
+name = "scaffold_sec_5_26"
+path = "../../exercises/ch05/sec_5_26.rs"
+
+[[test]]
+name = "solution_sec_5_26"
+path = "../../solutions/ch05/sec_5_26.rs"
+
+[[test]]
+name = "scaffold_sec_5_27"
+path = "../../exercises/ch05/sec_5_27.rs"
+
+[[test]]
+name = "solution_sec_5_27"
+path = "../../solutions/ch05/sec_5_27.rs"
+
+[[test]]
+name = "scaffold_sec_5_28"
+path = "../../exercises/ch05/sec_5_28.rs"
+
+[[test]]
+name = "solution_sec_5_28"
+path = "../../solutions/ch05/sec_5_28.rs"
+
+[[test]]
+name = "scaffold_sec_5_29"
+path = "../../exercises/ch05/sec_5_29.rs"
+
+[[test]]
+name = "solution_sec_5_29"
+path = "../../solutions/ch05/sec_5_29.rs"
+
+[[test]]
+name = "scaffold_sec_5_30"
+path = "../../exercises/ch05/sec_5_30.rs"
+
+[[test]]
+name = "solution_sec_5_30"
+path = "../../solutions/ch05/sec_5_30.rs"
+
 [dependencies]
 sicp-runtime = { workspace = true }
 

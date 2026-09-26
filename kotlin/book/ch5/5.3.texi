@@ -29,6 +29,12 @@ needed, the memory allocated to it is automatically recycled and used to
 construct new data objects.  There are various techniques for providing such
 automatic storage allocation.  The method we shall discuss in this section is
 called @newterm{garbage collection}.
+In this edition the list-structured memory of @ref{5.3.1} is the class
+@code{Memory} in the chapter's source set beside the 5.2 simulator: the two
+vectors @code{the-cars} and @code{the-cdrs}, the free pointer, and the
+allocation path, with the list-structure operations installed as machine
+operations over the simulator, the book's own assumption for this section.
+
 @menu
 * 5.3.1::            Memory as Vectors
 * 5.3.2::            Maintaining the Illusion of Infinite Memory
@@ -79,7 +85,9 @@ fixed divisions of the computer memory.}  For computer memory, this access can
 be implemented through the use of address arithmetic to combine a @newterm{base address} 
 that specifies the beginning location of a vector in memory with an
 @newterm{index} that specifies the offset of a particular element of the
-vector.
+vector. In this edition the memory vectors are the arrays @code{theCars} and
+@code{theCdrs} of the class @code{Memory}, and @code{vector-ref} and
+@code{vector-set!} are bounds-checked array reads and writes.
 
 @subsubheading Representing Lisp data
 
@@ -113,7 +121,11 @@ the following: How many type bits are required?  How large must the vector
 indices be?  How efficiently can the primitive machine instructions be used to
 manipulate the type fields of pointers?  Machines that include special hardware
 for the efficient handling of type fields are said to have @newterm{tagged architectures}.} 
-@ref{Figure 5.14} illustrates the use of this method to
+In this edition the typed pointers are tagged words: the pointer to the
+pair with index 5 is @code{VTagged("p", VInt(5))}, drawn @code{p5} in the
+table; the number 4 is the exact word @code{VInt(4)}, drawn @code{n4}; the
+empty list is the pointer @code{e0}; and a symbol is the runtime's symbol
+word, drawn as its name.  @ref{Figure 5.14} illustrates the use of this method to
 represent the list @code{((1 2) 3 4)}, whose box-and-pointer diagram is also
 shown.  We use letter prefixes to denote the data-type information.  Thus, a
 pointer to the pair with index 5 is denoted @code{p5}, the empty list is
@@ -207,46 +219,56 @@ vector, or adding two numbers) use only the index portion of the typed pointer.
 
 For example, we can make a register machine support the instructions
 
-@lisp
+@example
 (assign ⟨@var{reg₁}⟩ (op car) (reg ⟨@var{reg₂}⟩))
 (assign ⟨@var{reg₁}⟩ (op cdr) (reg ⟨@var{reg₂}⟩))
-@end lisp
+@end example
 
 @noindent
 if we implement these, respectively, as
 
-@lisp
-(assign ⟨@var{reg₁}⟩ 
-        (op vector-ref)
-        (reg the-cars)
-        (reg ⟨@var{reg₂}⟩))
-(assign ⟨@var{reg₁}⟩
-        (op vector-ref)
-        (reg the-cdrs)
-        (reg ⟨@var{reg₂}⟩))
-@end lisp
+@example kotlin
+context(r: Raise<MachineError>)
+public fun Memory.car(word: Value): Value =
+    pairIndexOf(word)?.let { readTheCars(it) } ?: r.raise(NotAPair("car", word))
+
+context(r: Raise<MachineError>)
+public fun Memory.cdr(word: Value): Value =
+    pairIndexOf(word)?.let { readTheCdrs(it) } ?: r.raise(NotAPair("cdr", word))
+@end example
 
 @noindent
 The instructions
 
-@lisp
+@example
 (perform (op set-car!) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩))
 (perform (op set-cdr!) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩))
-@end lisp
+@end example
 
 @noindent
 are implemented as
 
-@lisp
-(perform (op vector-set!)
-         (reg the-cars)
-         (reg ⟨@var{reg₁}⟩)
-         (reg ⟨@var{reg₂}⟩))
-(perform (op vector-set!)
-         (reg the-cdrs)
-         (reg ⟨@var{reg₁}⟩)
-         (reg ⟨@var{reg₂}⟩))
-@end lisp
+@example kotlin
+context(r: Raise<MachineError>)
+public fun Memory.setCar(
+    word: Value,
+    value: Value,
+): Value {
+    val index = pairIndexOf(word) ?: r.raise(NotAPair("set-car!", word))
+    storeTheCars(index, value)
+    return VNil
+}
+
+context(r: Raise<MachineError>)
+public fun Memory.setCdr(
+    word: Value,
+    value: Value,
+): Value {
+    val index = pairIndexOf(word) ?: r.raise(NotAPair("set-cdr!", word))
+    storeTheCdrs(index, value)
+    return VNil
+}
+@end example
 
 @noindent
 @code{Cons} is performed by allocating an unused index and storing the
@@ -260,12 +282,12 @@ free locations are consecutive (and hence can be accessed by incrementing a
 pointer) because we are using a compacting garbage collector, as we will see in
 @ref{5.3.2}.}  For example, the instruction
 
-@lisp
+@example
 (assign ⟨@var{reg₁}⟩
         (op cons)
         (reg ⟨@var{reg₂}⟩)
         (reg ⟨@var{reg₃}⟩))
-@end lisp
+@end example
 
 @noindent
 is implemented as the following sequence of vector operations:@footnote{This is
@@ -274,30 +296,49 @@ essentially the implementation of @code{cons} in terms of @code{set-car!} and
 @code{get-new-pair} used in that implementation is realized here by the
 @code{free} pointer.}
 
-@lisp
-(perform (op vector-set!)
-         (reg the-cars)
-         (reg free)
-         (reg ⟨@var{reg₂}⟩))
-(perform (op vector-set!)
-         (reg the-cdrs)
-         (reg free)
-         (reg ⟨@var{reg₃}⟩))
-(assign ⟨@var{reg₁}⟩ (reg free))
-(assign free (op +) (reg free) (const 1))
-@end lisp
+@example kotlin
+context(r: Raise<MachineError>)
+public fun Memory.cons(
+    carValue: Value,
+    cdrValue: Value,
+): Value {
+    if (free >= size) r.raise(MemoryExhausted(free, size))
+    val index = free
+    theCars[index] = carValue
+    theCdrs[index] = cdrValue
+    free = index + 1
+    return pairPointer(index)
+}
+// on a fresh memory, cons(memory, VInt(1), VInt(2)) answers p0, the
+// cell holds (n1 n2), and the free pointer moves on to p1
+@end example
 
 @noindent
 The @code{eq?} operation
 
-@lisp
+@example
 (op eq?) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩)
-@end lisp
+@end example
 
 @noindent
 simply tests the equality of all fields in the registers, and predicates such
 as @code{pair?}, @code{null?}, @code{symbol?}, and @code{number?} need only
 check the type field.
+
+@example kotlin
+public fun eqWords(
+    a: Value,
+    b: Value,
+): Boolean = a == b
+
+public fun isPair(word: Value): Boolean = word is VTagged && word.tag == "p"
+
+public fun isNull(word: Value): Boolean = word is VNil
+
+public fun isSymbol(word: Value): Boolean = word is VSym
+
+public fun isNumber(word: Value): Boolean = word is VInt || word is VReal
+@end example
 
 @subsubheading Implementing stacks
 
@@ -306,44 +347,47 @@ since stacks can be modeled in terms of lists.  The stack can be a list of the
 saved values, pointed to by a special register @code{the-stack}.  Thus, 
 @code{(save ⟨@var{reg}⟩)} can be implemented as
 
-@lisp
+@example
 (assign the-stack 
         (op cons)
         (reg ⟨@var{reg}⟩)
         (reg the-stack))
-@end lisp
+@end example
 
 @noindent
 Similarly, @code{(restore ⟨@var{reg}⟩)} can be implemented as
 
-@lisp
+@example
 (assign ⟨@var{reg}⟩ (op car) (reg the-stack))
 (assign the-stack (op cdr) (reg the-stack))
-@end lisp
+@end example
 
 @noindent
 and @code{(perform (op initialize-stack))} can be implemented as
 
-@lisp
+@example
 (assign the-stack (const ()))
-@end lisp
+@end example
 
 @noindent
 These operations can be further expanded in terms of the vector operations
 given above.  In conventional computer architectures, however, it is usually
 advantageous to allocate the stack as a separate vector.  Then pushing and
 popping the stack can be accomplished by incrementing or decrementing an index
-into that vector.
+into that vector. In this edition the machines of the exercises run on the 5.2 simulator,
+whose save and restore already push and pop its monitored stack; the stack
+is not list structure here, and the three expansions above stay the book's
+register-machine text.
 
 @quotation
 @strong{@anchor{Exercise 5.20}Exercise 5.20:} Draw the box-and-pointer
 representation and the memory-vector representation (as in @ref{Figure 5.14})
 of the list structure produced by
 
-@lisp
+@example
 (define x (cons 1 2))
 (define y (list x x))
-@end lisp
+@end example
 
 @noindent
 with the @code{free} pointer initially @code{p1}.  What is the final value of
@@ -360,19 +404,19 @@ available as machine primitives.
 @item
 Recursive @code{count-leaves}:
 
-@lisp
+@example
 (define (count-leaves tree)
   (cond ((null? tree) 0)
         ((not (pair? tree)) 1)
         (else 
          (+ (count-leaves (car tree))
             (count-leaves (cdr tree))))))
-@end lisp
+@end example
 
 @item
 Recursive @code{count-leaves} with explicit counter:
 
-@lisp
+@example
 (define (count-leaves tree)
   (define (count-iter tree n)
     (cond ((null? tree) n)
@@ -383,7 +427,7 @@ Recursive @code{count-leaves} with explicit counter:
             (count-iter (car tree) 
                         n)))))
   (count-iter tree 0))
-@end lisp
+@end example
 @end enumerate
 @end quotation
 
@@ -415,12 +459,12 @@ most of the pairs generated in a typical computation are used only to hold
 intermediate results.  After these results are accessed, the pairs are no
 longer needed---they are @newterm{garbage}.  For instance, the computation
 
-@lisp
+@example
 (accumulate 
  + 
  0
  (filter odd? (enumerate-interval 0 n)))
-@end lisp
+@end example
 
 @noindent
 constructs two lists: the enumeration and the result of filtering the
@@ -610,7 +654,7 @@ and @code{scan}.  When the relocation of @code{root} has been accomplished, we
 install the new pointer as the new @code{root} and enter the main loop of the
 garbage collector.
 
-@lisp
+@example
 begin-garbage-collection
   (assign free (const 0))
   (assign scan (const 0))
@@ -621,7 +665,7 @@ begin-garbage-collection
 reassign-root
   (assign root (reg new))
   (goto (label gc-loop))
-@end lisp
+@end example
 
 @noindent
 In the main loop of the garbage collector we must determine whether there are
@@ -634,7 +678,7 @@ subroutine to relocate the @code{car} of the next pair (by placing the
 @code{car} pointer in @code{old}).  The @code{relocate-continue} register is
 set up so that the subroutine will return to update the @code{car} pointer.
 
-@lisp
+@example
 gc-loop
   (test (op =) (reg scan) (reg free))
   (branch (label gc-flip))
@@ -645,7 +689,7 @@ gc-loop
   (assign relocate-continue 
           (label update-car))
   (goto (label relocate-old-result-in-new))
-@end lisp
+@end example
 
 @noindent
 At @code{update-car}, we modify the @code{car} pointer of the pair being
@@ -654,7 +698,7 @@ scanned, then proceed to relocate the @code{cdr} of the pair.  We return to
 and updating the @code{cdr}, we are finished scanning that pair, so we continue
 with the main loop.
 
-@lisp
+@example
 update-car
   (perform (op vector-set!)
            (reg new-cars)
@@ -674,7 +718,7 @@ update-cdr
            (reg new))
   (assign  scan (op +) (reg scan) (const 1))
   (goto (label gc-loop))
-@end lisp
+@end example
 
 @noindent
 The subroutine @code{relocate-old-result-in-new} relocates objects as follows:
@@ -701,7 +745,7 @@ as a special kind of ``pair'' that doesn't satisfy the @code{pair?} predicate.
 For simulation purposes, @code{pointer-to-pair?} can be implemented as
 @code{pair?}.}
 
-@lisp
+@example
 relocate-old-result-in-new
   (test (op pointer-to-pair?) (reg old))
   (branch (label pair))
@@ -746,7 +790,7 @@ already-moved
            (reg the-cdrs)
            (reg old))
   (goto (reg relocate-continue))
-@end lisp
+@end example
 
 @noindent
 At the very end of the garbage-collection process, we interchange the role of
@@ -754,7 +798,7 @@ old and new memories by interchanging pointers: interchanging @code{the-cars}
 with @code{new-cars}, and @code{the-cdrs} with @code{new-cdrs}.  We will then
 be ready to perform another garbage collection the next time memory runs out.
 
-@lisp
+@example
 gc-flip
   (assign temp (reg the-cdrs))
   (assign the-cdrs (reg new-cdrs))
@@ -762,5 +806,11 @@ gc-flip
   (assign temp (reg the-cars))
   (assign the-cars (reg new-cars))
   (assign new-cars (reg temp))
-@end lisp
+@end example
 
+@noindent
+In this edition the five listings above remain the book's controller text:
+the section's Kotlin module is the memory of @ref{5.3.1} (the two vectors,
+the free pointer, the allocation path) with the list-structure operations
+installed over the 5.2 simulator, and the stop-and-copy collector that
+would drive this controller is not part of the unit.

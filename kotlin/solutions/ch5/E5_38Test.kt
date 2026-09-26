@@ -17,5 +17,8 @@ public class E5_38Test :
             result[2].endsWith("120") shouldBe true
             result[3] shouldBe "(+ 1 2 3 4): 10"
             result[4] shouldBe "(< 1 2): #t"
+            result[5] shouldBe "(+ (* 2 3) (+ 4 5)): 15"
+            result[6] shouldBe "(define (f) 40) (+ 1 2 (f)): 43"
+            result[7] shouldBe "(+ (+ 1 2 3) 4): 10"
         }
     })

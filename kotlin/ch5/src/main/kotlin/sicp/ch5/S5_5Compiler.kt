@@ -966,6 +966,19 @@ private fun compileProcAppl(
 // Open-coded primitives (5.38, 5.44)
 // ---------------------------------------------------------------------------
 
+/** Wraps [seq] in a `save`/`restore` of [reg]: the sequence's tail
+ *  reads the register's entry value after writing the register itself
+ *  as scratch, so the value the caller left there survives. */
+private fun shieldRegister(
+    reg: String,
+    seq: InstructionSequence,
+): InstructionSequence =
+    InstructionSequence(
+        listUnion(listOf(reg), seq.needs),
+        seq.modifies,
+        listOf(sicp.runtime.Save(reg)) + seq.stmts + sicp.runtime.Restore(reg),
+    )
+
 context(r: Raise<MachineError>)
 private fun spreadArguments(
     cfg: CompilerConfig,
@@ -979,7 +992,17 @@ private fun spreadArguments(
     val code = compile(cfg, state, cenv, operands[0], target, Linkage.Next)
     val rest = operands.drop(1)
     if (rest.isEmpty()) return code
-    return preserving(cfg, targets.drop(1) + listOf("env"), code, spreadArguments(cfg, state, cenv, rest, targets.drop(1)))
+    val restCode = spreadArguments(cfg, state, cenv, rest, targets.drop(1))
+    // A later operand may itself be open-coded and write this operand's
+    // register as scratch, so the result just computed is shielded
+    // across the remaining operand code.
+    val shieldedRest =
+        if (target in restCode.modifies) {
+            shieldRegister(target, restCode)
+        } else {
+            restCode
+        }
+    return preserving(cfg, targets.drop(1) + listOf("env"), code, shieldedRest)
 }
 
 context(r: Raise<MachineError>)
@@ -995,7 +1018,7 @@ private fun compileOpenCode(
     val name = (items[0] as VSym).name
     val operands = items.drop(1)
     if (operands.size > 2 && (name == "+" || name == "*")) {
-        return compileOpenCodeNary(cfg, state, cenv, name, operands, linkage)
+        return compileOpenCodeNary(cfg, state, cenv, name, operands, target, linkage)
     }
     if (operands.size != 2) r.raise(EvaluatorFault("open coding needs two operands for $name"))
     val spread = spreadArguments(cfg, state, cenv, operands, listOf("arg1", "arg2"))
@@ -1014,10 +1037,13 @@ private fun compileOpenCode(
 }
 
 /** 5.38(d): more than two operands fold through one register; each
- *  operand is evaluated into `arg1` and folded into `val`. The
- *  environment is preserved around an evaluation whose tail reads it;
- *  `arg1` itself is never preserved around its own evaluation, it is
- *  the evaluation's output. */
+ *  operand is evaluated into `arg1` and folded into `val`, which then
+ *  moves to the requested [target]. The accumulated sum in `val` is
+ *  shielded across every remaining operand evaluation, since an
+ *  operand that calls a procedure writes `val`; the environment is
+ *  preserved around an evaluation whose tail reads it; `arg1` and
+ *  `arg2` are never preserved around their own evaluations, they are
+ *  the evaluations' outputs. */
 context(r: Raise<MachineError>)
 private fun compileOpenCodeNary(
     cfg: CompilerConfig,
@@ -1025,6 +1051,7 @@ private fun compileOpenCodeNary(
     cenv: CompileTimeEnv,
     name: String,
     operands: List<Value>,
+    target: String,
     linkage: Linkage,
 ): InstructionSequence {
     val first = operands.getOrNull(0) ?: r.raise(EvaluatorFault("open coding needs operands"))
@@ -1036,12 +1063,7 @@ private fun compileOpenCodeNary(
     // open-coded operand), so the first operand's result is shielded
     // across it.
     if ("arg1" in c2.modifies) {
-        c2 =
-            InstructionSequence(
-                listOf("arg1") + c2.needs,
-                c2.modifies,
-                listOf(sicp.runtime.Save("arg1")) + c2.stmts + sicp.runtime.Restore("arg1"),
-            )
+        c2 = shieldRegister("arg1", c2)
     }
     val openStep =
         makeInstructionSequence(
@@ -1051,7 +1073,12 @@ private fun compileOpenCodeNary(
         )
     var tail = emptyInstructionSequence()
     for (operand in rest.reversed()) {
-        val code = compile(cfg, state, cenv, operand, "arg1", Linkage.Next)
+        var code = compile(cfg, state, cenv, operand, "arg1", Linkage.Next)
+        // An operand that calls a procedure writes val, the fold's
+        // accumulator, so the accumulator is shielded across it.
+        if ("val" in code.modifies) {
+            code = shieldRegister("val", code)
+        }
         tail = preserving(cfg, listOf("env"), code, append2Sequences(openStep, tail))
     }
     val firstTwo =
@@ -1066,7 +1093,21 @@ private fun compileOpenCodeNary(
                 ),
             ),
         )
-    return endWithLinkage(cfg, linkage, append2Sequences(firstTwo, tail))
+    val fold = append2Sequences(firstTwo, tail)
+    val result =
+        if (target == "val") {
+            fold
+        } else {
+            append2Sequences(
+                fold,
+                makeInstructionSequence(
+                    listOf("val"),
+                    listOf(target),
+                    listOf(Assign(target, Source.RegSrc("val"))),
+                ),
+            )
+        }
+    return endWithLinkage(cfg, linkage, result)
 }
 
 // ---------------------------------------------------------------------------

@@ -15,11 +15,17 @@ public fun openCodedRuns(): List<String> {
     val factorial = valuesOf(runCompiled(open, factorial38, "(factorial 5)"))
     val sum = valuesOf(runCompiled(open, "(+ 1 2 3 4)", ""))
     val less = valuesOf(runCompiled(open, "(< 1 2)", ""))
+    val nested = valuesOf(runCompiled(open, "(+ (* 2 3) (+ 4 5))", ""))
+    val call = valuesOf(runCompiled(open, "(define (f) 40) (+ 1 2 (f))", ""))
+    val asOperand = valuesOf(runCompiled(open, "(+ (+ 1 2 3) 4)", ""))
     return listOf(
         "plain compilation: $plainCount statements",
         "open-coded compilation: $openCount statements",
         "factorial 5: ${factorial.joinToString(" ")}",
         "(+ 1 2 3 4): ${sum.joinToString(" ")}",
         "(< 1 2): ${less.joinToString(" ")}",
+        "(+ (* 2 3) (+ 4 5)): ${nested.joinToString(" ")}",
+        "(define (f) 40) (+ 1 2 (f)): ${call.joinToString(" ")}",
+        "(+ (+ 1 2 3) 4): ${asOperand.joinToString(" ")}",
     )
 }

@@ -916,7 +916,11 @@ private fun compileProcAppl(
     target: String,
     linkage: Linkage,
 ): InstructionSequence {
-    val allRegs = listOf("env", "proc", "val", "argl", "continue")
+    // The registers a compiled procedure call may disturb. The callee's
+    // body may itself open-code into arg1 and arg2, so a call claims
+    // them too; without the claim the operand shields never fire and a
+    // compound-call operand destroys the caller's live argument values.
+    val allRegs = listOf("env", "proc", "val", "argl", "continue", "arg1", "arg2")
     if (target == "val") {
         val statements =
             when (linkage) {

@@ -20,5 +20,8 @@ public class E5_38Test :
             result[5] shouldBe "(+ (* 2 3) (+ 4 5)): 15"
             result[6] shouldBe "(define (f) 40) (+ 1 2 (f)): 43"
             result[7] shouldBe "(+ (+ 1 2 3) 4): 10"
+            result[8] shouldBe "(define (f y) (* y 10)) (define x 4) (+ x (f 1)): 14"
+            result[9] shouldBe "(define (f y) (* y 10)) (define x 4) (+ x (f 1) 3): 17"
+            result[10] shouldBe "(define (f y) (* y 10)) (define (g y) (+ y 100)) (+ (+ (f 1) (+ 2 3)) (+ (* 2 2) (g 1))): 120"
         }
     })

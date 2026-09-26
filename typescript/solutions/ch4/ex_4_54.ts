@@ -7,9 +7,10 @@
  * language, exactly as the book presents it; this solution shows the
  * special-form alternative the statement sketches, completing the two
  * holes of analyze-require: the first blank is the truth test on the
- * predicate's value, the second is the succeed that answers ok with the
- * intercepted failure continuation, so the predicate's own alternatives
- * are tried before the failure propagates.
+ * predicate's value, the second is the (fail2) rejection, so a false
+ * predicate backtracks into the predicate's own alternatives before
+ * the failure propagates; the skeleton already supplies the
+ * (succeed 'ok fail2) answer for the true case.
  */
 import { Effect } from "effect";
 

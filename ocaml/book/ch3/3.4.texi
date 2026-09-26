@@ -5,7 +5,7 @@ We've seen the power of computational objects with local state as tools for
 modeling.  Yet, as @ref{3.1.3} warned, this power extracts a price: the
 loss of referential transparency, giving rise to a thicket of questions about
 sameness and change, and the need to abandon the substitution model of
-evaluation in favor of the more intricate environment model.
+evaluation in favor of the more detailed environment model.
 
 The central issue lurking beneath the complexity of state, sameness, and change
 is that by introducing assignment we are forced to admit @newterm{time} into
@@ -146,7 +146,7 @@ protect against such simultaneous access.  Even this seemingly simple kind of
 protection, however, raises implementation challenges in the design of
 multiprocessing computers, where elaborate @newterm{cache-coherence} protocols
 are required to ensure that the various processors will maintain a consistent
-view of memory contents, despite the fact that data may be replicated
+view of memory contents, even though data may be replicated
 (``cached'') among the different processors to increase the speed of memory
 access.}
 
@@ -896,8 +896,7 @@ let test_and_set cell = if !cell then true else (cell := true; false)
 
 @noindent
 However, this implementation of @code{test_and_set} does not suffice as it
-stands.  There is a crucial subtlety here, which is the essential place where
-concurrency control enters the system: The @code{test_and_set} operation must
+stands.  The subtlety here is the essential place where concurrency control enters the system: The @code{test_and_set} operation must
 be performed @newterm{atomically}.  That is, we must guarantee that, once a
 process has tested the cell and found it to be false, the cell contents will
 actually be set to true before any other process can test the cell.  If we do

@@ -442,7 +442,7 @@ let multiplicand =
 
 @noindent
 Thus, we need only combine these with the algorithm as embodied by
-@code{deriv} in order to have a working symbolic-differentiation program.
+@code{deriv} to have a working symbolic-differentiation program.
 Let us look at some examples of its behavior:
 
 @example ocaml
@@ -596,7 +596,7 @@ algebraic expressions on which the differentiator is to operate.
 @enumerate a
 
 @item
-Show how to do this in order to differentiate algebraic expressions presented
+Show how to do this to differentiate algebraic expressions presented
 in infix form, such as @code{x + (3 * (x + (y + 2)))}, represented as a new
 variant @code{infix} with constructors @code{Num}, @code{Var}, @code{Plus},
 and @code{Times}.  To simplify the task, assume that @code{+} and @code{*}

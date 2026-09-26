@@ -602,7 +602,7 @@ estimate of the integral.
 Implement Monte Carlo integration as a procedure @code{estimate_integral} that
 takes as arguments a predicate @code{p}, upper and lower bounds @code{x1},
 @code{x2}, @code{y1}, and @code{y2} for the rectangle, and the number of trials
-to perform in order to produce the estimate.  Your procedure should use the
+to perform to produce the estimate.  Your procedure should use the
 same @code{monte_carlo} procedure that was used above to estimate @math{\pi}.
 Use your @code{estimate_integral} to produce an estimate of @math{\pi} by
 measuring the area of a unit circle.
@@ -972,7 +972,7 @@ created by @code{make_account}, with the password modification described in
 make joint accounts.  Define a procedure @code{make_joint} that accomplishes
 this.  @code{Make_joint} should take three arguments.  The first is a
 password-protected account.  The second argument must match the password with
-which the account was defined in order for the @code{make_joint} operation to
+which the account was defined for the @code{make_joint} operation to
 proceed.  The third argument is a new password.  @code{Make_joint} is to create
 an additional access to the original account using the new password.  For
 example, if @code{peter_acc} is a bank account with password

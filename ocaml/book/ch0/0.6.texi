@@ -60,9 +60,7 @@ val counter : counter = @{count = 0@}
 @noindent
 @code{bump}'s return type is @code{unit}: it is called only for the field
 assignment it performs, not for any value it produces. This is this book's
-smallest example of a stateful object in the sense chapter 3 develops at
-length — a value with an identity that persists across mutations, as opposed
-to a value that is simply itself.
+smallest example of a stateful object in the sense chapter 3 develops at length: a value with an identity that persists across mutations, as opposed to a plain value.
 
 @subsubheading @code{ref}: a mutable cell holding one value
 

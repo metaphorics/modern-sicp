@@ -116,8 +116,7 @@ analysis on the syntactic type of the expression to be evaluated.@footnote{In
 our controller, the dispatch is written as a sequence of @code{test} and
 @code{branch} instructions.  Alternatively, it could have been written in a
 data-directed style (and in a real system it probably would have been) to avoid
-the need to perform sequential tests and to facilitate the definition of new
-expression types.  A machine designed to run Lisp would probably include a
+the need to perform sequential tests and to simplify the definition of new expression types.  A machine designed to run Lisp would probably include a
 @code{dispatch-on-type} instruction that would efficiently execute such
 data-directed dispatches.}
 
@@ -545,7 +544,7 @@ explicit-control evaluator, however, we can trace through the evaluation
 process to see when procedure calls cause a net accumulation of information on
 the stack.
 
-Our evaluator is tail-recursive, because in order to evaluate the final
+Our evaluator is tail-recursive, because to evaluate the final
 expression of a sequence we transfer directly to @code{eval-dispatch} without
 saving any information on the stack.  Hence, evaluating the final expression in
 a sequence---even if it is a procedure call (as in @code{sqrt-iter}, where the
@@ -596,7 +595,7 @@ sequence: The only difference is that we go through the save-restore cycle for
 the last expression in a sequence as well as for the others.  The interpreter
 will still give the same value for any expression.  But this change is fatal to
 the tail-recursive implementation, because we must now return after evaluating
-the final expression in a sequence in order to undo the (useless) register
+the final expression in a sequence to undo the (useless) register
 saves.  These extra saves will accumulate during a nest of procedure calls.
 Consequently, processes such as @code{sqrt-iter} will require space
 proportional to the number of iterations rather than requiring constant space.
@@ -625,7 +624,7 @@ evaluate the consequent or the alternative.
 
 Before evaluating the predicate, we save the @code{if} expression itself so
 that we can later extract the consequent or alternative.  We also save the
-environment, which we will need later in order to evaluate the consequent or
+environment, which we will need later to evaluate the consequent or
 the alternative, and we save @code{continue}, which we will need later in order
 to return to the evaluation of the expression that is waiting for the value of
 the @code{if}.

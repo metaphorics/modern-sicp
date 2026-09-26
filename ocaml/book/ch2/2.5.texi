@@ -1280,7 +1280,7 @@ dispatch through @code{add} and @code{mul}.  Since the coefficients are
 themselves polynomials (in @math{y}), these will be combined using @code{add_poly}
 and @code{mul_poly}.  The result is a kind of ``data-directed recursion'' in
 which, for example, a call to @code{mul_poly} will result in recursive calls to
-@code{mul_poly} in order to multiply the coefficients.  If the coefficients of
+@code{mul_poly} to multiply the coefficients.  If the coefficients of
 the coefficients were themselves polynomials (as might be used to represent
 polynomials in three variables), the data direction would ensure that the
 system would follow through another level of recursive calls, and so on through

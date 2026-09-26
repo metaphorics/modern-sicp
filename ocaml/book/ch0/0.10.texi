@@ -4,9 +4,7 @@
 @noindent
 A test in this book is not prose about correctness; it is a program that
 computes an actual result and compares it against an expected one, failing
-loudly the moment they diverge. This section introduces the two forms this
-edition uses — Alcotest for pinned examples, QCheck for properties that hold
-across generated input — using nothing beyond what the last nine sections
+loudly the moment they diverge. This section introduces the two forms this edition uses (Alcotest for pinned examples, QCheck for properties that hold across generated input), using nothing beyond what the last nine sections
 already covered: functions, pattern matching, records, and @code{result}.
 
 @subsubheading The smallest function a test can pin
@@ -40,10 +38,7 @@ let () =
 with the local-open shorthand from section 0.3; @code{Alcotest.int} is a
 small value (a @newterm{testable}) that tells @code{check} how to compare
 two @code{int}s and how to print one if the comparison fails. A testable
-exists for most of this book's own types — @code{Alcotest.string},
-@code{Alcotest.bool}, @code{Alcotest.list}, @code{Alcotest.option},
-@code{Alcotest.result}, @code{Alcotest.float @var{epsilon}} for approximate
-float comparison — and one can always be built by hand for a type of the
+exists for most of this book's own types (@code{Alcotest.string}, @code{Alcotest.bool}, @code{Alcotest.list}, @code{Alcotest.option}, @code{Alcotest.result}, @code{Alcotest.float @var{epsilon}} for approximate float comparison), and one can always be built by hand for a type of the
 book's own, by pairing an equality function with a printer. Running
 @code{Alcotest.run} prints one line per test case, @code{[OK]} or
 @code{[FAIL]}, and exits nonzero if anything failed; this is exactly the
@@ -53,9 +48,7 @@ executable form @code{dune runtest} runs.
 of this edition's own source, are larger examples of the same shape: the
 first asserts, section by section, the same results this chapter's
 listings show; the second asserts the reference solutions' stated
-contracts, exercise by exercise. Their tests are not new material — every
-value they check has already appeared, verified, in the section that
-introduced it — they exist so that a change to this chapter's code fails
+contracts, exercise by exercise. Their tests are not new material: every value they check has already appeared, verified, in the section that introduced it. They exist so that a change to this chapter's code fails
 @code{dune runtest} immediately, rather than only being noticed the next
 time someone happens to reread the book.
 
@@ -77,15 +70,13 @@ let () = QCheck_base_runner.run_tests_main [ commutative ]
 @end example
 
 @noindent
-@code{QCheck.(pair int_small int_small)} describes the space QCheck draws
-from — pairs of small integers — and the function is the property itself,
+@code{QCheck.(pair int_small int_small)} describes the space QCheck draws from (pairs of small integers), and the function is the property itself,
 returning @code{bool}. QCheck runs the property against a hundred generated
 pairs by default, and on failure reports a @emph{shrunk} counterexample: the
 smallest failing input QCheck could reduce the original failure to, which is
 usually far more informative than whichever large random pair happened to
 trigger it first. A property earns its place in this book only when a
-plausible bug would actually violate it — @code{add}'s commutativity is
-deliberately too simple a property to be worth writing a real test for; this
+plausible bug would actually violate it; @code{add}'s commutativity is deliberately too simple a property to be worth writing a real test for; this
 book's later chapters reach for QCheck where an Alcotest-style list of fixed
 examples could never be exhaustive: rational-number normalization, a
 Huffman-coding round trip, stream-prefix equivalence, and, in chapters 4 and
@@ -93,8 +84,7 @@ Huffman-coding round trip, stream-prefix equivalence, and, in chapters 4 and
 
 @noindent
 That listing is illustrative only: @code{dune runtest} does not run it,
-because — as the paragraph just said — @code{add}'s commutativity is too
-weak a property to defend anything; the point of the listing is the shape of
+because @code{add}'s commutativity is too weak a property to defend anything; the point of the listing is the shape of
 a QCheck test, not this particular property. The property this edition
 actually runs is @file{ch0/test/prop_folds.ml}, wired into the
 @code{runtest} alias like every other executable in this chapter: it states
@@ -120,10 +110,8 @@ replays its listings, and every one of those executables is wired into the
 @code{dune runtest} runs the @code{runtest} alias for the whole project:
 every rule like the one above, across every chapter, in one pass, and fails
 the moment any one of them exits nonzero. Nothing about this rule is
-specific to Alcotest or to this chapter's replay executables — @code{(run
-./@var{whatever}.exe)} succeeds when its argument exits @code{0} and fails
-otherwise, so any program that computes an answer and calls
-@code{exit 1} on a wrong one can serve as a test, which is exactly what
+specific to Alcotest or to this chapter's replay executables: @code{(run ./@var{whatever}.exe)} succeeds when its argument exits @code{0} and fails
+otherwise, so any program that computes an answer and calls @code{exit 1} on a wrong one can be a test, which is exactly what
 @code{Sicp_ch0.Replay.expect} (used throughout this chapter's own listings)
 and @code{Alcotest.run} both already do.
 
@@ -132,7 +120,7 @@ and @code{Alcotest.run} both already do.
 @code{dune fmt} reformats every source file in the project to one
 consistent style, driven by the @file{.ocamlformat} file at the project
 root (this edition uses the JaneStreet profile at 90 columns). It changes
-whitespace and layout only — never behavior — and is safe to run at any
+whitespace and layout only, never behavior, and is safe to run at any
 point in development; every listing in this book is itself the output of
 @code{dune fmt}, so a reader's own code, formatted the same way, will look
 like the book's.

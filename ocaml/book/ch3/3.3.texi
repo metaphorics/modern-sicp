@@ -2,7 +2,7 @@
 @section Modeling with Mutable Data
 
 @ref{Chapter 2} dealt with compound data as a means for constructing computational
-objects that have several parts, in order to model real-world objects that have
+objects that have several parts, to model real-world objects that have
 several aspects.  In that chapter we introduced the discipline of data
 abstraction, according to which data structures are specified in terms of
 constructors, which create data objects, and selectors, which access the parts
@@ -27,7 +27,7 @@ Data objects for which mutators are defined are known as @newterm{mutable data o
 Chapter 2 introduced pairs as a general-purpose ``glue'' for synthesizing
 compound data.  We begin this section by defining basic mutators for pairs, so
 that pairs can serve as building blocks for constructing mutable data objects.
-These mutators greatly enhance the representational power of pairs, enabling us
+These mutators extend the representational power of pairs, enabling us
 to build data structures other than the sequences and trees that we worked with
 in @ref{2.2}.  We also present some examples of simulations in which
 complex systems are modeled as collections of objects with local state.
@@ -787,8 +787,7 @@ Because a queue is a sequence of items, we could certainly represent it as an
 ordinary list; the front of the queue would be the @code{car} of the list,
 inserting an item in the queue would amount to appending a new element at the
 end of the list, and deleting an item from the queue would just be taking the
-rest of the list.  However, this representation is inefficient, because
-in order to insert an item we must scan the list until we reach the end.  Since
+rest of the list.  However, this representation is inefficient, because inserting an item requires scanning the list until we reach the end.  Since
 the only method we have for scanning a list is by successive @code{cdr} field
 reads, this scanning requires @math{{\Theta(n)}} steps for a list of @math{n}
 items.  A simple modification to the list representation overcomes this
@@ -1152,7 +1151,7 @@ form a new record by pairing the key with the value, and insert this at
 the head of the table's list of records, after the dummy record.  If there
 already is a record with this key, we set the @code{cdr} of this record to the
 designated new value.  The header of the table provides us with a fixed
-location to modify in order to insert the new record.@footnote{Thus, the first
+location to modify to insert the new record.@footnote{Thus, the first
 backbone pair is the object that represents the table ``itself''; that is, a
 pointer to the table is a pointer to this pair.  This same backbone pair always
 starts the table.  If we did not arrange things in this way, @code{insert}
@@ -2158,7 +2157,7 @@ quantities @math{a}, @math{b}, and @math{c} must be related by the equation
 @math{{a + b = c}}, @code{multiplier x y z} expresses the constraint
 @math{{xy = z}}, and @code{constant 32 y} says that the value of @math{y} must be 32.
 
-Our language provides a means of combining primitive constraints in order to
+Our language provides a means of combining primitive constraints to
 express more complex relations.  We combine constraints by constructing
 @newterm{constraint networks}, in which constraints are joined by
 @newterm{connectors}.  A connector is an object that ``holds'' a value that may

@@ -19,8 +19,7 @@ nested pairs terminated by @code{'()}:
 (@code{@@} is list append; two lists in, one list out, in time proportional
 to the length of the first.) A list's type names its element type, so
 @code{int list} and @code{string list} are different types, and a list
-mixing @code{int} and @code{string} elements does not type-check — this is
-why a variant, not a mixed list, is this book's way to represent data of
+mixing @code{int} and @code{string} elements does not type-check; this is why a variant, not a mixed list, is this book's way to represent data of
 several possible shapes.
 
 @subsubheading Library higher-order functions
@@ -68,8 +67,7 @@ val my_filter : ('a -> bool) -> 'a list -> 'a list = <fun>
 Both are teaching forms, not the versions this book calls elsewhere:
 @code{my_map} and @code{my_filter} recurse on the @code{::} pattern
 directly, and neither is tail recursive, so both grow one pending
-@code{::} per element on the call stack — fine for the short lists this
-chapter uses, a real limit on a list
+@code{::} per element on the call stack: fine for the short lists this chapter uses, a real limit on a list
 long enough to matter.
 
 @subsubheading Folding, and why the library version is the everyday choice
@@ -119,8 +117,7 @@ they run, rather than inside-out:
 @end example
 
 @noindent
-This is purely a matter of reading order — @code{|>} is defined as
-@code{let (|>) x f = f x}, nothing more — but a pipeline of several steps
+This is purely a matter of reading order (@code{|>} is defined as @code{let (|>) x f = f x}, nothing more), but a pipeline of several steps
 reads far more like a description of a process (``take these, square them,
 keep the odd ones'') than the equivalent nested calls would, and this book
 uses the pipeline form wherever a value passes through more than one
@@ -130,8 +127,7 @@ transformation in sequence.
 
 @quotation
 @strong{@anchor{Exercise 0.2}Exercise 0.2:} @code{sum_cubes a b} is the sum
-of the cubes of the integers from @code{a} through @code{b} inclusive —
-@code{(sum-cubes 1 10)} is @code{3025} in the book. Implement it twice: once
+of the cubes of the integers from @code{a} through @code{b} inclusive: @code{(sum-cubes 1 10)} is @code{3025} in the book. Implement it twice: once
 by plain recursion, and once by building the range with @code{List.init} and
 folding over it with @code{List.fold_left}, so the adding logic is one
 function of two arguments. Then state in one sentence when the fold version

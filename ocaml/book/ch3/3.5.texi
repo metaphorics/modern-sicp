@@ -17,7 +17,7 @@ objects in the computer with assignments to the local variables of the model
 objects.
 
 Is there another approach?  Can we avoid identifying time in the computer with
-time in the modeled world?  Must we make the model change with time in order to
+time in the modeled world?  Must we make the model change with time to
 model phenomena in a changing world?  Think about the issue in terms of
 mathematical functions.  We can describe the time-varying behavior of a
 quantity @math{x} as a function of time @math{{x(t)}}.  If we concentrate on @math{x}
@@ -172,7 +172,7 @@ stream analogs of the list operations from @ref{Chapter 2}, such as
 @code{stream_ref}, @code{stream_map}, and @code{stream_for_each}:@footnote{This should bother
 you.  The fact that we are defining such similar procedures for streams and
 lists indicates that we are missing some underlying abstraction.
-Unfortunately, in order to exploit this abstraction, we will need to exert
+Unfortunately, to exploit this abstraction, we will need to exert
 finer control over the process of evaluation than we can at present.  We will
 discuss this point further at the end of @ref{3.5.4}.  In 
 @ref{4.2}, we'll develop a framework that unifies lists and streams.}
@@ -1952,7 +1952,7 @@ The ability to deal with such an implicit definition depends on
 the promise that is incorporated into @code{cons_stream}.  Without that
 promise, OCaml could not construct @code{int} before evaluating
 the tail thunk, which would require that @code{int}
-already be defined.  In general, delayed evaluation is crucial for using streams to
+already be defined.  In general, delayed evaluation is essential for using streams to
 model signal-processing systems that contain loops.  Without it, our
 models would have to be formulated so that the inputs to any signal-processing
 component would be fully evaluated before the output could be produced.  This
@@ -2684,9 +2684,9 @@ language for describing processes and for constructing computational data
 objects and processes to model complex phenomena in the real world.  However,
 as we confront increasingly complex problems, we will find that Lisp, or indeed
 any fixed programming language, is not sufficient for our needs.  We must
-constantly turn to new languages in order to express our ideas more
+constantly turn to new languages to express our ideas more
 effectively.  Establishing new languages is a powerful strategy for controlling
-complexity in engineering design; we can often enhance our ability to deal with
+complexity in engineering design; we can often extend our ability to deal with
 a complex problem by adopting a new language that enables us to describe (and
 hence to think about) the problem in a different way, using primitives, means
 of combination, and means of abstraction that are particularly well suited to

@@ -92,8 +92,7 @@ val safe_divide : int -> int -> int option = <fun>
 @noindent
 @code{head}'s type, @code{'a list -> 'a option}, is @newterm{polymorphic}:
 the @code{'a} is a type variable, meaning @code{head} works on a list of any
-one element type and returns an option of that same type — the function
-never inspects what kind of value it holds, only whether the list is empty.
+one element type and returns an option of that same type: the function never inspects what kind of value it holds, only whether the list is empty.
 A caller of @code{safe_divide} cannot forget to check for division by zero
 the way a caller ignoring a Scheme error condition can; the result is an
 @code{int option}, not an @code{int}, and getting an @code{int} back out
@@ -102,8 +101,7 @@ that has a case for @code{None}.
 
 @subsubheading Building this book's own data with variants
 
-The rest of this book represents its own recursive data — lists, trees,
-symbolic expressions — with variants built from the same two pieces just
+The rest of this book represents its own recursive data (lists, trees, symbolic expressions) with variants built from the same two pieces just
 shown: a constructor per shape, and recursion in the type itself where a
 shape contains more of the same type. A minimal integer list, reimplemented
 by hand as a warm-up for the library list type the next section introduces:

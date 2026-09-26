@@ -1172,7 +1172,7 @@ another powerful design principle for working with data structures---the use of
 In @ref{1.3} we saw how program abstractions, implemented as
 higher-order procedures, can capture common patterns in programs that deal with
 numerical data.  Our ability to formulate analogous operations for working with
-compound data depends crucially on the style in which we manipulate our data
+compound data depends on the style in which we manipulate our data
 structures.  Consider, for example, the following procedure, analogous to the
 @code{count_leaves} procedure of @ref{2.2.2}, which takes a tree as
 argument and computes the sum of the squares of the leaves that are odd:
@@ -1207,7 +1207,7 @@ let even_fibs_slow n =
 @end example
 
 @noindent
-Despite the fact that these two procedures are structurally very different, a
+Although these two procedures are structurally very different, a
 more abstract description of the two computations reveals a great deal of
 similarity.  The first program
 
@@ -2272,7 +2272,7 @@ painters are closed under the language's means of combination.  The
 @code{beside} or @code{below} of two painters is itself a painter; therefore,
 we can use it as an element in making more complex painters.  As with building
 up list structure using @code{::}, the closure of our data under the means of
-combination is crucial to the ability to create complex structures while using
+combination is essential to the ability to create complex structures while using
 only a few operations.
 
 Once we can combine painters, we would like to be able to abstract typical
@@ -2422,9 +2422,7 @@ A note on order: the listings above name @code{beside}, @code{below},
 anything that defines them.  A Scheme file tolerates that forward reference,
 because nothing runs until every @code{define} above it has been read.  OCaml
 resolves every name where it is written, so the runnable module of this section
-walks the language bottom-up---vectors, frames, painters, then the
-transformations and combiners, and only then these compound definitions---and
-the subsections below follow that order.  Every value shown above is asserted
+walks the language bottom-up (vectors, frames, painters, then the transformations and combiners, and only then these compound definitions), and the subsections below follow that order.  Every value shown above is asserted
 by the section's runner, which assembles the layers exactly in the order the
 next three subsubsections present them.
 
@@ -2683,8 +2681,7 @@ characteristics of the graphics system and the type of image to be drawn.  This
 edition renders SVG, so the lowest level of the language is a tiny module that
 formats one segment as an SVG @code{<line>} element and wraps a list of them in
 a document.  The document's @code{viewBox} names the rectangle of the plane the
-canvas shows; computing it from the drawn segments---the smallest box that
-contains them, grown by five percent on every side---lets the renderer frame
+canvas shows; computing it from the drawn segments (the smallest box that contains them, grown by five percent on every side) lets the renderer frame
 any painter, in any frame, without clipping it:
 
 @example ocaml
@@ -2805,8 +2802,7 @@ The @code{wave} painter.
 
 An operation on painters (such as @code{flip_vert} or @code{beside}) works by
 creating a painter that invokes the original painters with respect to frames
-derived from the argument frame.  Thus, for example, @code{flip_vert} doesn't
-have to know how a painter works in order to flip it---it just has to know how
+derived from the argument frame.  Thus, for example, @code{flip_vert} doesn't have to know how a painter works to flip it; it just has to know how
 to turn a frame upside down: The flipped painter just uses the original
 painter, but in the inverted frame.
 
@@ -2954,7 +2950,7 @@ means of combination satisfy the closure property, which permits us to easily
 build up complex designs.  Finally, all the tools for abstracting functions
 are available to us for abstracting means of combination for painters.
 
-We have also obtained a glimpse of another crucial idea about languages and
+We have also obtained a glimpse of another essential idea about languages and
 program design.  This is the approach of @newterm{stratified design}, the
 notion that a complex system should be structured as a sequence of levels that
 are described using a sequence of languages.  Each level is constructed by
@@ -2998,7 +2994,7 @@ characteristics of the system, and a different kind of ability to change it.
 Because painters return their segments instead of drawing them, each level
 leaves a concrete artifact: the segment list, the painter, and the SVG document
 the renderer emits from it.  The section's runner writes one document per
-design into @file{book/figures/generated/ch2/}---@file{wave.svg},
+design into @file{book/figures/generated/ch2/}: @file{wave.svg},
 @file{wave4.svg}, @file{flipped_pairs.svg}, @file{right_split.svg},
 @file{corner_split.svg}, @file{squash_inwards.svg},
 @file{corner_split_rogers.svg}, and the representative program itself, the

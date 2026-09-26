@@ -7,7 +7,7 @@ Indeed, programming languages require that the programmer express knowledge in
 a form that indicates the step-by-step methods for solving particular problems.
 On the other hand, high-level languages provide, as part of the language
 implementation, a substantial amount of methodological knowledge that frees the
-user from concern with numerous details of how a specified computation will
+user from concern with many details of how a specified computation will
 progress.
 
 Most programming languages, including Lisp, are organized around computing the
@@ -192,7 +192,7 @@ In order to illustrate what the query system does, we will show how it can be
 used to manage the data base of personnel records for Microshaft, a thriving
 high-technology company in the Boston area.  The language provides
 pattern-directed access to personnel information and can also take advantage of
-general rules in order to make logical deductions.
+general rules to make logical deductions.
 
 @subsubheading A sample data base
 
@@ -624,8 +624,7 @@ Eval.run env "(assert! (rule (lives-near ?person-1 ?person-2) (and (address ?per
 specifies that two people live near each other if they live in the same town.
 The final @code{not} clause prevents the rule from saying that all people live
 near themselves.  The @code{same} relation is defined by a very simple
-rule:@footnote{Notice that we do not need @code{same} in order to make two
-things be the same: We just use the same pattern variable for each---in effect,
+rule:@footnote{Notice that we do not need @code{same} to make two things be the same: We just use the same pattern variable for each---in effect,
 we have one thing instead of two things in the first place.  For example, see
 @code{?town} in the @code{lives-near} rule and @code{?middle-manager} in the
 @code{wheel} rule below.  @code{Same} is useful when we want to force two
@@ -942,7 +941,7 @@ some of the subtle ways in which the query language's logical operations differ
 from the operations of mathematical logic.
 
 It should be apparent that the query evaluator must perform some kind of search
-in order to match queries against facts and rules in the data base.  One way to
+to match queries against facts and rules in the data base.  One way to
 do this would be to implement the query system as a nondeterministic program,
 using the @code{amb} evaluator of @ref{4.3} (see @ref{Exercise 4.78}).
 Another possibility is to manage the search with the aid of streams.  Our
@@ -1429,7 +1428,7 @@ stream, it instantiates the original query using the values of the variables
 found in the frame.  This stream of instantiated queries is then
 printed.@footnote{The reason we use streams (rather than lists) of frames is
 that the recursive application of rules can generate infinite numbers of values
-that satisfy a query.  The delayed evaluation embodied in streams is crucial
+that satisfy a query.  The delayed evaluation embodied in streams is essential
 here: The system will print responses one by one as they are generated,
 regardless of whether there are a finite or infinite number of responses.}
 
@@ -2981,9 +2980,7 @@ Does the query system's behavior change if we change it in this way?
 @emph{Exercise 4.74a is added by this edition and extends exercise 4.74; SICP numbers stop at 4.74.}
 
 @strong{@anchor{Exercise 4.74a}Exercise 4.74a:} Alyssa's claim is
-measurable.  Instrument both flatmap paths --- the book's
-@code{stream_flatmap} and your @code{simple_stream_flatmap} of exercise
-4.74 --- with a frame counter that counts each frame emitted into the
+measurable.  Instrument both flatmap paths (the book's @code{stream_flatmap} and your @code{simple_stream_flatmap} of exercise 4.74) with a frame counter that counts each frame emitted into the
 flatmap's output stream, run one shared query through the two variant
 evaluators, and compare the answers and the counts.  Does Alyssa's
 simplification change the number of frames produced?

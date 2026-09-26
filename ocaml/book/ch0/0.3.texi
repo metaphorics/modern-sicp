@@ -80,8 +80,7 @@ val factorial : int -> int = <fun>
 @subsubheading Partial application
 
 Every OCaml function takes its arguments one at a time. Supplying fewer than
-all of them returns a new function waiting for the rest — no special syntax,
-just an application that stops early:
+all of them returns a new function waiting for the rest. No special syntax, just an application that stops early:
 
 @example
 # let inc = ( + ) 1;;

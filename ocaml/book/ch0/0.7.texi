@@ -20,8 +20,7 @@ val add_five : int -> int = <fun>
 @code{make_adder 5} returns a function that still remembers @code{n = 5}
 long after @code{make_adder} itself has returned; @code{add_five} is that
 function, and every call to it sees the same captured @code{5}. Nothing
-about @code{n} is passed to @code{add_five} at call time — it is baked into
-the function value itself, the way a Scheme closure over @code{n} would be.
+about @code{n} is passed to @code{add_five} at call time: it is baked into the function value itself, the way a Scheme closure over @code{n} would be.
 
 @subsubheading Functions as values
 
@@ -51,7 +50,7 @@ Two closures built from the same source expression are never
 @code{==}-identical if each captured its own fresh state, because each call
 to the outer function that builds them allocates a fresh cell for whatever
 it captures. There is, in fact, no way to compare two functions for equality
-at all in OCaml — @code{=} on a function type is a runtime error, not a
+at all in OCaml: @code{=} on a function type is a runtime error, not a
 sound implementation of ``do these functions compute the same thing''
 (@code{Stdlib} raises @code{Invalid_argument} rather than approximate an
 answer no general algorithm can give). What a closure @emph{does} have,
@@ -81,8 +80,7 @@ This is this book's translation of the original @code{make-withdraw}: each
 call to @code{make_withdraw} allocates its own private @code{balance} cell,
 and the returned function is a closure over that one cell. The first
 withdrawal of @code{60} succeeds, leaving @code{40}; the second, from the
-same @code{w}, fails, because @code{40 < 60}, and the failed attempt leaves
-the cell untouched — @code{None} carries no balance, by design, so a failed
+same @code{w}, fails, because @code{40 < 60}, and the failed attempt leaves the cell untouched: @code{None} carries no balance, by design, so a failed
 withdrawal cannot be mistaken for a successful one that happened to return
 zero.
 
@@ -111,9 +109,7 @@ val w2 : int -> int option = <fun>
 @code{w2} never touches @code{w1}'s balance: @code{w1}'s final withdrawal of
 @code{80} finds the balance still at @code{80}, unaffected by @code{w2}'s
 withdrawal of @code{30} in between. This is the object-oriented idea chapter
-3 develops formally — an object as a bundle of private mutable state plus
-the operations that touch it — built here from nothing but closures and
-@code{ref}. A record whose fields are themselves closures over one shared
+3 develops formally: an object as a bundle of private mutable state plus the operations that touch it. It is built here from nothing but closures and @code{ref}. A record whose fields are themselves closures over one shared
 cell is the next step, combining this section with section 0.6's records:
 exercise 0.4's @code{make_account} bundles @code{deposit}, @code{withdraw},
 and @code{balance} into one such record, so a single account value offers

@@ -224,8 +224,7 @@ This is almost the same as the application clause of @code{eval} in
 the operand expressions, rather than the arguments produced by evaluating them.
 Since we will need the environment to construct thunks if the arguments are to
 be delayed, we must pass this as well.  We still evaluate the operator, because
-@code{apply_procedure} needs the actual procedure to be applied in order to
-dispatch on its type (primitive versus compound) and apply it.
+@code{apply_procedure} needs the actual procedure to dispatch on its type (primitive versus compound) and apply it.
 
 Whenever we need the actual value of an expression, we use
 
@@ -479,7 +478,7 @@ count
 @quotation
 @strong{@anchor{Exercise 4.28}Exercise 4.28:} @code{eval} uses
 @code{actual_value} rather than @code{eval} to evaluate the operator before
-passing it to @code{apply_procedure}, in order to force the value of the
+passing it to @code{apply_procedure} to force the value of the
 operator.  Give an example that demonstrates the need for this forcing.
 
 @noindent

@@ -367,7 +367,7 @@ results of other operations.
 In spite of these disadvantages, we will use this register-machine language
 throughout this chapter, because we will be more concerned with understanding
 controllers than with understanding the elements and connections in data paths.
-We should keep in mind, however, that data-path design is crucial in designing
+We should keep in mind, however, that data-path design is essential in designing
 real machines.
 
 @quotation
@@ -1013,7 +1013,7 @@ each subroutine call, we save and restore @code{continue} just as we do the
 @code{n} register, since each ``level'' of the factorial computation will use
 the same @code{continue} register.  That is, the factorial subroutine must put
 a new value in @code{continue} when it calls itself for a subproblem, but it
-will need the old value in order to return to the place that called it to solve
+will need the old value to return to the place that called it to solve
 a subproblem.
 
 @noindent

@@ -464,7 +464,7 @@ memory that keeps track of the name-object pairs.  This memory is called the
 @newterm{environment} (more precisely the @newterm{global environment}, since
 we will see later that a computation may involve a number of different
 environments).@footnote{@ref{Chapter 3} will show that this notion of
-environment is crucial, both for understanding how the interpreter works and
+environment is essential, both for understanding how the interpreter works and
 for implementing interpreters.}
 
 @node	1.1.3, 1.1.4, 1.1.2, 1.1
@@ -491,8 +491,7 @@ the values of the operands.
 
 @noindent
 Even this simple rule illustrates some important points about processes in
-general.  First, observe that the first step dictates that in order to
-accomplish the evaluation process for a combination we must first perform the
+general.  First, observe that the first step dictates that, to accomplish the evaluation process for a combination, we must first perform the
 evaluation process on each element of the combination.  Thus, the evaluation
 rule is @newterm{recursive} in nature; that is, it includes, as one of its
 steps, the need to invoke the rule itself.@footnote{It may seem strange that
@@ -941,7 +940,7 @@ OCaml, like Lisp, uses applicative-order evaluation, partly because of the
 additional efficiency obtained from avoiding multiple evaluations of
 expressions such as those illustrated with @code{5 + 1} and @code{5 * 2} above
 and, more significantly, because normal-order evaluation becomes much more
-complicated to deal with when we leave the realm of procedures that can be
+complicated to deal with when we move beyond procedures that can be
 modeled by substitution.  On the other hand, normal-order evaluation can be an
 extremely valuable tool, and we will investigate some of its implications in
 @ref{Chapter 3} and @ref{Chapter 4}.@footnote{In @ref{Chapter 3} we will
@@ -1579,8 +1578,7 @@ problem into subproblems.
 The importance of this decomposition strategy is not simply that one is
 dividing the program into parts.  After all, we could take any large program
 and divide it into parts---the first ten lines, the next ten lines, the next
-ten lines, and so on.  Rather, it is crucial that each procedure accomplishes
-an identifiable task that can be used as a module in defining other procedures.
+ten lines, and so on.  Rather, each procedure must accomplish an identifiable task that can be used as a module in defining other procedures.
 For example, when we define the @code{good_enough} procedure in terms of
 @code{square}, we are able to regard the @code{square} procedure as a ``black
 box.''  We are not at that moment concerned with @emph{how} the procedure
@@ -1621,8 +1619,7 @@ precision, not a promise of bit equality.
 
 So a procedure definition should be able to suppress detail.  The users of the
 procedure may not have written the procedure themselves, but may have obtained
-it from another programmer as a black box.  A user should not need to know how
-the procedure is implemented in order to use it.
+it from another programmer as a black box.  A user should be able to use the procedure without knowing how it is implemented.
 
 @subsubheading Local names
 
@@ -1753,8 +1750,7 @@ let sqrt x =
 @end example
 
 @noindent
-Such nesting of definitions, called @newterm{block structure}, is basically the
-right solution to the simplest name-packaging problem.  But there is a better
+Such nesting of definitions, called @newterm{block structure}, is the right solution to the simplest name-packaging problem.  But there is a better
 idea lurking here.  In addition to internalizing the definitions of the
 auxiliary procedures, we can simplify them.  Since @code{x} is bound in the
 definition of @code{sqrt}, the procedures @code{good_enough}, @code{improve},

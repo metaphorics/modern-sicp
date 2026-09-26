@@ -1609,7 +1609,7 @@ descriptor is arbitrary.
 (targeted to @code{val}), followed by code to install the definition, followed
 by code to put the value of the @code{define} (which is the symbol @code{ok})
 into the target register, followed finally by the linkage code.  @code{Env} is
-preserved around the computation of the value, because it is needed in order to
+preserved around the computation of the value, because it is needed to
 install the definition.  Because the linkage is @code{next}, there is no
 linkage code in this case.  The skeleton of the compiled code is thus
 
@@ -2274,10 +2274,10 @@ compile-time environment.  When a @code{lambda} body is compiled,
 containing the procedure's parameters, so that the sequence making up the body
 is compiled with that extended environment.  At each point in the compilation,
 @code{compile-variable} and @code{compile-assignment} use the compile-time
-environment in order to generate the appropriate lexical addresses.
+environment to generate the appropriate lexical addresses.
 
 @ref{Exercise 5.39} through @ref{Exercise 5.43} describe how to complete this
-sketch of the lexical-addressing strategy in order to incorporate lexical
+sketch of the lexical-addressing strategy to incorporate lexical
 lookup into the compiler.  @ref{Exercise 5.44} describes another use for the
 compile-time environment.
 
@@ -2290,7 +2290,7 @@ return the value of the variable stored at the specified lexical address.
 variable is the symbol @code{*unassigned*}.@footnote{This is the modification
 to variable lookup required if we implement the scanning method to eliminate
 internal definitions (@ref{Exercise 5.43}).  We will need to eliminate these
-definitions in order for lexical addressing to work.} Also write a procedure
+definitions for lexical addressing to work.} Also write a procedure
 @code{lexical-address-set!} that implements the operation that changes the
 value of the variable at a specified lexical address.
 @end quotation
@@ -2380,7 +2380,7 @@ which computes a linear combination of @code{x} and @code{y}.  We might call it
 with arguments @code{+matrix}, @code{*matrix}, and four matrices, but the
 open-coding compiler would still open-code the @code{+} and the @code{*} in
 @code{(+ (* a x) (* b y))} as primitive @code{+} and @code{*}.  Modify the
-open-coding compiler to consult the compile-time environment in order to
+open-coding compiler to consult the compile-time environment to
 compile the correct code for expressions involving the names of primitive
 procedures.  (The code will work correctly as long as the program does not
 @code{define} or @code{set!} these names.)

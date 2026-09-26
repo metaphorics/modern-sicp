@@ -832,7 +832,7 @@ let install_rectangular_package () =
 @noindent
 Notice that the internal procedures here are the same procedures from 
 @ref{2.4.1} that Ben wrote when he was working in isolation.  No changes are
-necessary in order to interface them to the rest of the system.  Moreover,
+necessary to interface them to the rest of the system.  Moreover,
 since these procedure definitions are internal to the installation procedure,
 Ben needn't worry about name conflicts with other procedures outside the
 rectangular package.  To interface these to the rest of the system, Ben
@@ -1076,7 +1076,7 @@ must be supplied?
 @item
 Implement for headquarters a @code{get_salary} procedure that returns the
 salary information from a given employee's record from any division's personnel
-file.  How should the record be structured in order to make this operation
+file.  How should the record be structured to make this operation
 work?
 
 @item
@@ -1086,8 +1086,7 @@ return the record.  Assume that this procedure takes as arguments an employee's
 name and a list of all the divisions' files.
 
 @item
-When Insatiable takes over a new company, what changes must be made in order to
-incorporate the new personnel information into the central system?
+When Insatiable takes over a new company, what changes must be made to incorporate the new personnel information into the central system?
 
 @end enumerate
 @end quotation
@@ -1200,7 +1199,7 @@ analogous to the @code{make_from_real_imag} procedure given above.
 operations evolves, new types of data objects or new operations may be needed.
 For each of the three strategies---generic operations with explicit dispatch,
 data-directed style, and message-passing-style---describe the changes that
-must be made to a system in order to add new types or new operations.  Which
+must be made to a system to add new types or new operations.  Which
 organization would be most appropriate for a system in which new types must
 often be added?  Which would be most appropriate for a system in which new
 operations must often be added?

@@ -4,8 +4,7 @@
 @noindent
 Section 0.3 introduced modules as a namespace, reached with a dot. A module
 can also satisfy a stated contract, be built generically from another
-module, and even be passed around as an ordinary value — three ideas this
-section introduces in turn, because chapter 2's typed-arithmetic appendix and
+module, and even be passed around as an ordinary value: three ideas this section introduces in turn, because chapter 2's typed-arithmetic appendix and
 chapter 5's register-machine simulator both lean on them.
 
 @subsubheading A signature is a contract
@@ -31,7 +30,7 @@ module type NUMBER =
 @end example
 
 @noindent
-@code{NUMBER} says nothing about what @code{t} actually is — only that
+@code{NUMBER} says nothing about what @code{t} is, only that
 @emph{some} type @code{t} exists, with a zero, an addition, and a way to
 render it. Two unrelated representations can both satisfy it:
 
@@ -53,10 +52,9 @@ module Int_number :
 
 @noindent
 @code{NUMBER with type t = int} ascribes the module against @code{NUMBER}
-while additionally stating that @code{t} is @code{int}, not merely some
+while also stating that @code{t} is @code{int}, not merely some
 unnamed type satisfying the signature. Without the @code{with type t = int}
-clause, @code{Int_number.t} would be @newterm{abstract} outside this
-module — provably equal to @code{int} inside the @code{struct}, but opaque
+clause, @code{Int_number.t} would be @newterm{abstract} outside this module: provably equal to @code{int} inside the @code{struct}, but opaque
 to any code that only sees the ascribed signature. This edition adds the
 clause here specifically so that later code can call, for instance,
 @code{Int_number.add} directly on ordinary @code{int}s; leaving @code{t}
@@ -66,9 +64,7 @@ deliberately.
 
 @subsubheading A functor: a module parameterized by another module
 
-A @newterm{functor} is a function from modules to modules — written like an
-ordinary function definition, but over module-level arguments instead of
-value-level ones:
+A @newterm{functor} is a function from modules to modules, written like an ordinary function definition but over module-level arguments instead of value-level ones:
 
 @example
 # module Summer (M : NUMBER) = struct
@@ -103,23 +99,20 @@ module Float_summer : sig val sum : Float_number.t list -> Float_number.t end
 satisfying @code{NUMBER}; @code{Int_summer} and @code{Float_summer} are the
 same code, instantiated twice. This is functors' whole purpose: one
 algorithm, many representations, checked once against the abstract
-signature rather than once per concrete instantiation. Note that the raw
+signature rather than once per concrete instantiation. The raw
 toplevel above reports @code{Int_summer.sum}'s result at type
-@code{Int_number.t}, not bare @code{int} — @code{Int_number.t = int} is
-known here, but the type checker still prefers to print the more specific
+@code{Int_number.t}, not bare @code{int}; @code{Int_number.t = int} is known here, but the type checker still prefers to print the more specific
 name it has in scope. This edition's own @file{ch0/lib/sec_0_9.mli} seals
 @code{Int_summer} behind a stated signature, @code{sig val sum : int list
 -> int end}, so a reader of that library sees plain @code{int}
-throughout, never @code{Int_number.t} — a small, concrete demonstration of
+throughout, never @code{Int_number.t}: a small, concrete demonstration of
 what ascribing a module against an interface actually buys.
 
 @subsubheading A module packed as a value
 
 @code{(module @var{M} : @var{S})} packs a module satisfying signature
 @code{S} into an ordinary value of type @code{(module @var{S})}, which can
-be stored in a record field, put in a list, or passed to a function like any
-other value — the same idea, at the module level, that closures gave
-functions in section 0.7:
+be stored in a record field, put in a list, or passed to a function like any other value: the same idea that closures gave functions in section 0.7, now at the module level:
 
 @example
 # type number_package = (module NUMBER);;
@@ -132,7 +125,7 @@ val float_package : number_package = <module>
 
 @noindent
 Once packed, a @code{number_package} value has forgotten which concrete
-module it came from — @code{int_package} and @code{float_package} are both
+module it came from: @code{int_package} and @code{float_package} are both
 just @code{number_package}, and nothing about their type alone reveals
 whether either hides @code{int} or @code{float}. Reading the package back
 out uses the matching pattern @code{(module @var{M} : @var{S})}, which
@@ -151,8 +144,7 @@ val describe_zero : (module NUMBER) -> string = <fun>
 @code{describe_zero} works on either package with no knowledge of which one
 it is handed, because its result, a @code{string}, does not depend on the
 hidden @code{M.t}. A function whose result type genuinely needs to be tied
-to which module was supplied — @code{sum_with} below folds a list of
-@code{M.t} and renders the total — must instead take its module as a
+to which module was supplied (@code{sum_with} below folds a list of @code{M.t} and renders the total) must instead take its module as a
 @emph{literal} module expression at each call site, not as a value read out
 of a variable, since only a literal @code{(module @dots{})} at the call site
 lets the type checker resolve @code{M.t} for that one call:

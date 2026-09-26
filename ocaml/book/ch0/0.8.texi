@@ -4,12 +4,10 @@
 @noindent
 This book distinguishes two kinds of failure, and gives each its own
 mechanism. A condition that is impossible if every earlier part of the
-program is correct — a broken internal invariant, a case a caller was told
-never to reach — is an @newterm{exception}: it stops the program (or a
+program is correct (a broken internal invariant, a case a caller was told never to reach) is an @newterm{exception}: it stops the program (or a
 handler further up the call chain) rather than trying to compute a sensible
 result from nonsense. A condition that is a normal, expected possibility of
-the operation itself — a string that might not parse as a number, a
-division that might be by zero — is a value the caller must handle, using
+the operation itself (a string that might not parse as a number, a division that might be by zero) is a value the caller must handle, using
 @code{option} or @code{result}. Which of the two applies is a design
 decision, not a matter of taste, and this edition applies it consistently
 throughout.
@@ -37,8 +35,7 @@ Exception: Empty_queue.
 calling; dequeuing an empty queue is a bug at the call site, not a
 circumstance to route around, so it raises rather than returning some
 placeholder. @code{assert} is the same idea applied to a condition stated
-inline rather than as a separate @code{match} arm — it raises
-@code{Assert_failure}, naming the exact source location, if the asserted
+inline rather than as a separate @code{match} arm; it raises @code{Assert_failure}, naming the exact source location, if the asserted
 condition is false:
 
 @example
@@ -54,8 +51,7 @@ Exception: Assert_failure ("//toplevel//", 2, 2).
 @end example
 
 @noindent
-@code{(2, 2)} names the line and column of the @code{assert} inside the
-phrase just typed — a real program's assertion failure names a file and
+@code{(2, 2)} names the line and column of the @code{assert} inside the phrase just typed; a real program's assertion failure names a file and
 line the same way, pointing straight at the violated invariant. This
 edition never writes a bare @code{try @dots{} with _ ->}: catching every
 exception indiscriminately, including ones the catching code has no way to
@@ -88,7 +84,7 @@ val halve_even : int -> (int, step_error) result = <fun>
 
 Three steps that each might fail compose with @code{Result.bind}, which
 runs the next step only if the previous one succeeded, and short-circuits
-to the first @code{Error} otherwise — this is this edition's whole answer
+to the first @code{Error} otherwise: this is this edition's whole answer
 to the question a long @code{cond} chain of error checks would otherwise
 answer by hand:
 
@@ -118,8 +114,7 @@ succeeded) label. @code{Result.map_error} runs only on the @code{Error} side,
 turning whichever @code{step_error} stopped the chain into one printable
 line; a caller of @code{half_report} sees exactly one of a success string or
 a failure string, never a raised exception, because nothing about a bad
-input to this function is an invariant violation — it is the input a string
-of unknown provenance is entirely expected to sometimes be.
+input to this function is an invariant violation: it is the input a string of unknown provenance is expected to sometimes be.
 
 Exercise 0.5 is the same chain with every error already collapsed to plain
 @code{string}, and chapter 4's evaluator leans on this same

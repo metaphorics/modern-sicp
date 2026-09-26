@@ -21,7 +21,17 @@ configure<KotlinJvmProjectExtension> {
     }
 }
 
+// Section 5.2's simulator library (the machine model, the assembler, and the
+// execution procedures of 5.2.1 to 5.2.3) lives in this project's `main`
+// source set under sicp.ch5, the chapter-crate equivalent of the sibling
+// editions. The three root-level source sets compile against it.
+val libraryOutput = sourceSets.getByName("main").output
+
 dependencies {
+    "implementation"(project(":runtime"))
+    "examplesImplementation"(libraryOutput)
+    "exercisesImplementation"(libraryOutput)
+    "solutionsImplementation"(libraryOutput)
     "examplesImplementation"(project(":runtime"))
     "examplesImplementation"(libs.immutable)
     "examplesImplementation"(libs.kotest.runner.junit5)

@@ -399,7 +399,7 @@ To make the above mechanism more concrete, suppose that we have a procedure
 called @code{parallelExecute}, built on the runtime's fibers:
 
 @example typescript
-parallelExecute(⟨@var@{p₁@}⟩, ⟨@var@{p₂@}⟩, @r{…}, ⟨@var@{pₖ@}⟩)
+parallelExecute(⟨@var{p₁}⟩, ⟨@var{p₂}⟩, @r{…}, ⟨@var{pₖ}⟩)
 @end example
 
 @noindent

@@ -17,7 +17,7 @@ banking system requires us to change account balances.  Thus, a data structure
 for representing bank accounts might admit an operation
 
 @example typescript
-setBalance(⟨@var@{account@}⟩, ⟨@var@{new-value@}⟩)
+setBalance(⟨@var{account}⟩, ⟨@var{new-value}⟩)
 @end example
 
 @noindent
@@ -332,7 +332,7 @@ showMList(z)
 // => "(a b c d)"
 
 showMList(x.tail)
-// ⟨@var@{response@}⟩
+// ⟨@var{response}⟩
 
 const w = appendBang(x, y);
 
@@ -340,7 +340,7 @@ showMList(w)
 // => "(a b c d)"
 
 showMList(x.tail)
-// ⟨@var@{response@}⟩
+// ⟨@var{response}⟩
 @end example
 
 What are the missing @code{⟨}@var{response}@code{⟩}s?  Draw box-and-pointer diagrams to
@@ -2923,7 +2923,7 @@ a message to every attached constraint but the setter.  Using
 @code{tracedMultiplier}, and @code{tracedConstant}, produce the trace of the
 @code{inform} and @code{setValue} messages among the objects of the Celsius
 network when @code{c.setValue(25, "user")} is evaluated: one @code{TraceEvent}
-@{{ from, to, what @}@} per line, in the order they happen, and say which
+@{ from, to, what @} per line, in the order they happen, and say which
 closure keeps each message's state alive.
 @end quotation
 

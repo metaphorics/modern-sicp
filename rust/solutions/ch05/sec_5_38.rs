@@ -22,6 +22,32 @@ mod ex_5_38 {
             .len())
     }
 
+    /// Compiles every form of `source` onto the machine and runs them:
+    /// the answers the compiled block prints, in order.
+    fn compiled_answers(cfg: &Config, source: &str) -> Result<Vec<String>, Fault> {
+        let mut evaluator = compile_and_go(cfg, &new_state(), source, "")?;
+        evaluator.run()?;
+        Ok(evaluator.transcript())
+    }
+
+    /// The compiled open-coded callers whose later operand is itself a
+    /// compound call, with the answer each must print: the callee's
+    /// open-coded body trashes the caller's `arg1` and `val` scratch,
+    /// so the operand shields keyed on the call's claimed registers
+    /// must fire. Before the call claimed `arg1` and `arg2` (the
+    /// defect the TypeScript 5.5 review caught), this path answered
+    /// 11, 14, and 103; the fourth shape shields the folded
+    /// accumulator in `val`.
+    const SHIELDED_CASES: [(&str, &str); 4] = [
+        ("(define (f y) (* y 10))\n(define x 4)\n(+ x (f 1))", "14"),
+        ("(define (f y) (* y 10))\n(define x 4)\n(+ x (f 1) 3)", "17"),
+        (
+            "(define (f y) (* y 10))\n(define (g y) (+ y 100))\n(+ (+ (f 1) (+ 2 3)) (+ (* 2 2) (g 1)))",
+            "120",
+        ),
+        ("(define (f y) (* y 10))\n(+ 2 3 (f 1))", "15"),
+    ];
+
     pub fn ex_5_38() -> Result<Vec<String>, Fault> {
         let open = Config {
             open_code: true,
@@ -77,12 +103,20 @@ mod ex_5_38 {
         let compound_sessions = [nary_transcript, two_transcript]
             .map(|t| t.join(" "))
             .join(" | ");
+        let mut shielded_answers = Vec::new();
+        for (source, wanted) in SHIELDED_CASES {
+            let transcript = compiled_answers(&open, source)?;
+            let wanted = wanted.to_owned();
+            assert!(transcript.contains(&wanted), "{source} -> {transcript:?}");
+            shielded_answers.push(wanted);
+        }
         Ok(vec![
             format!("plain factorial: {plain_count} statements"),
             format!("open-coded factorial: {open_count} statements"),
             format!("open-coded answers: {}", transcript.join(" ")),
             "n-ary + folds left through val; spread preserves both the remaining argument registers and env".to_owned(),
             format!("open-coded compound calls: {compound_sessions}"),
+            format!("shielded call operands: {}", shielded_answers.join(" ")),
         ])
     }
 
@@ -93,6 +127,7 @@ mod ex_5_38 {
         assert!(lines[2].contains("120"));
         assert!(lines[4].contains("45"), "{lines:?}");
         assert!(lines[4].contains("44"), "{lines:?}");
+        assert_eq!(lines[5], "shielded call operands: 14 17 120 15");
         Ok(())
     }
 }

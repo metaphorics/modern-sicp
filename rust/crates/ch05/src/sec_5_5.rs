@@ -202,6 +202,28 @@ pub fn preserving_instruction_sequences(
     append_2_sequences(&current, seq2)
 }
 
+/// Wraps a sequence in a save and restore of one register: the code
+/// writes the register as scratch and reads its entry value after, so
+/// the value the caller left there survives. The open-coded operand
+/// paths use this shield where [`preserving_instruction_sequences`]
+/// cannot, because the protected value is an output of the surrounding
+/// code, not an input to it.
+fn shield_register(name: &str, seq: Seq) -> Seq {
+    let Seq {
+        needs,
+        modifies,
+        stmts,
+    } = seq;
+    let mut wrapped = vec![format!("(save {name})")];
+    wrapped.extend(stmts);
+    wrapped.push(format!("(restore {name})"));
+    Seq {
+        needs: list_union(&[name.to_owned()], &needs),
+        modifies,
+        stmts: wrapped,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The compiler state
 // ---------------------------------------------------------------------------
@@ -484,8 +506,12 @@ pub fn let_to_combination(exp: &Value) -> Result<Value, Fault> {
 // The code generators
 // ---------------------------------------------------------------------------
 
-/// The registers a compiled procedure call may disturb.
-const ALL_REGS: [&str; 5] = ["env", "proc", "val", "argl", "continue"];
+/// The registers a compiled procedure call may disturb. The callee's
+/// body may itself open-code into `arg1` and `arg2`, so a call claims
+/// them too; without the claim the operand shields below never fire
+/// and a compound-call operand destroys the caller's live argument
+/// values.
+const ALL_REGS: [&str; 7] = ["env", "proc", "val", "argl", "continue", "arg1", "arg2"];
 
 /// The book's `compile-linkage`.
 #[must_use]
@@ -1269,6 +1295,14 @@ fn spread_arguments(
         return Ok(code);
     }
     let rest_code = spread_arguments(cfg, state, cenv, rest, rest_targets)?;
+    // A later operand may itself be open-coded and write this
+    // operand's register as scratch, so the result just computed is
+    // shielded across the remaining operand code.
+    let rest_code = if rest_code.modifies.iter().any(|reg| reg.as_str() == *target) {
+        shield_register(target, rest_code)
+    } else {
+        rest_code
+    };
     let mut preserve: Vec<&str> = rest_targets.to_vec();
     preserve.push("env");
     Ok(preserving_instruction_sequences(
@@ -1314,11 +1348,13 @@ fn compile_open_code(
 }
 
 /// 5.38(d): more than two operands fold through one register: each
-/// operand is evaluated into `arg1` and folded into `val`. The
-/// environment is preserved around an evaluation whose tail reads it
-/// (a later operand may be a call that rebinds `env`); `arg1` itself
-/// is never preserved around its own evaluation, it is the
-/// evaluation's output.
+/// operand is evaluated into `arg1` and folded into `val`, and the
+/// accumulator folded so far is shielded across every remaining
+/// operand evaluation, since a call operand's code writes `val` as
+/// scratch. The environment is preserved around an evaluation whose
+/// tail reads it (a later operand may be a call that rebinds `env`);
+/// `arg1` itself is never preserved around its own evaluation, it is
+/// the evaluation's output.
 fn compile_open_code_nary(
     cfg: &Config,
     state: &State,
@@ -1336,17 +1372,11 @@ fn compile_open_code_nary(
     let c1 = compile(cfg, state, cenv, first, "arg1", &Linkage::Next)?;
     let c2 = compile(cfg, state, cenv, second, "arg2", &Linkage::Next)?;
     // The second operand's evaluation may clobber `arg1` internally
-    // (an open-coded operand), so the first operand's result is
-    // shielded across it.
+    // (an open-coded operand, or a compound call whose body
+    // open-codes), so the first operand's result is shielded across
+    // it.
     let c2_shielded = if c2.modifies.iter().any(|reg| reg == "arg1") {
-        let mut stmts = vec!["(save arg1)".to_owned()];
-        stmts.extend(c2.stmts.iter().cloned());
-        stmts.push("(restore arg1)".to_owned());
-        Seq {
-            needs: list_union(&["arg1".to_owned()], &c2.needs),
-            modifies: c2.modifies.clone(),
-            stmts,
-        }
+        shield_register("arg1", c2)
     } else {
         c2
     };
@@ -1363,6 +1393,14 @@ fn compile_open_code_nary(
     let mut rest_code = empty_instruction_sequence();
     for operand in operands[2..].iter().rev() {
         let code = compile(cfg, state, cenv, operand, "arg1", &Linkage::Next)?;
+        // The accumulator folded so far lives in `val`, and a call
+        // operand's code may write `val` as scratch, so the
+        // accumulator is shielded across it.
+        let code = if code.modifies.iter().any(|reg| reg == "val") {
+            shield_register("val", code)
+        } else {
+            code
+        };
         rest_code = preserving_instruction_sequences(
             cfg,
             &["env"],

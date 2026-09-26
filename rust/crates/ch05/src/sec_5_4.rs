@@ -269,6 +269,15 @@ pub fn environment_of(word: &Value, what: &str) -> Result<Rc<Env>, Fault> {
     lookup_environment(word, what)
 }
 
+/// Enters an environment in the evaluator's table and answers its
+/// word: the public shape the section 5.5 machine's runtime
+/// environment primitives use, so their words are readable by every
+/// base operation.
+#[must_use]
+pub fn intern_env(environment: Rc<Env>) -> Value {
+    intern_environment(environment)
+}
+
 /// Builds one operation over words for an exercise's table: the
 /// public shape the solutions' extra operations use.
 pub fn operation(
@@ -438,6 +447,14 @@ fn arith(name: &str, args: &[Value]) -> Result<Value, Fault> {
 fn comparison(name: &str, args: &[Value], pick: fn(i128, i128) -> bool) -> Result<Value, Fault> {
     let (a, b) = int_pair(name, args)?;
     Ok(Value::boolean(pick(a, b)))
+}
+
+/// The names of the object primitives the evaluator's global
+/// environment binds: the public shape the section 5.5 machine's
+/// runtime table extends.
+#[must_use]
+pub fn object_primitive_names() -> &'static [&'static str] {
+    OBJECT_PRIMITIVES
 }
 
 /// Applies the object-language primitive `name` to the values `args`:

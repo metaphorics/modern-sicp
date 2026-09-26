@@ -673,8 +673,9 @@ impl Machine {
     }
 
     /// The book's stack `initialize`: empties the stack and its
-    /// counters.
-    fn initialize_stack(&mut self) {
+    /// counters, the monitored driver's per-interaction reset and the
+    /// section 5.5 machine's external entry.
+    pub fn initialize_stack(&mut self) {
         self.stack.clear();
         self.per_register.clear();
         self.depth = 0;

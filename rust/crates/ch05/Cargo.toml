@@ -251,6 +251,182 @@ path = "../../exercises/ch05/sec_5_30.rs"
 name = "solution_sec_5_30"
 path = "../../solutions/ch05/sec_5_30.rs"
 
+[[test]]
+name = "scaffold_sec_5_31"
+path = "../../exercises/ch05/sec_5_31.rs"
+
+[[test]]
+name = "solution_sec_5_31"
+path = "../../solutions/ch05/sec_5_31.rs"
+
+[[test]]
+name = "scaffold_sec_5_32"
+path = "../../exercises/ch05/sec_5_32.rs"
+
+[[test]]
+name = "solution_sec_5_32"
+path = "../../solutions/ch05/sec_5_32.rs"
+
+[[test]]
+name = "scaffold_sec_5_33"
+path = "../../exercises/ch05/sec_5_33.rs"
+
+[[test]]
+name = "solution_sec_5_33"
+path = "../../solutions/ch05/sec_5_33.rs"
+
+[[test]]
+name = "scaffold_sec_5_34"
+path = "../../exercises/ch05/sec_5_34.rs"
+
+[[test]]
+name = "solution_sec_5_34"
+path = "../../solutions/ch05/sec_5_34.rs"
+
+[[test]]
+name = "scaffold_sec_5_35"
+path = "../../exercises/ch05/sec_5_35.rs"
+
+[[test]]
+name = "solution_sec_5_35"
+path = "../../solutions/ch05/sec_5_35.rs"
+
+[[test]]
+name = "scaffold_sec_5_36"
+path = "../../exercises/ch05/sec_5_36.rs"
+
+[[test]]
+name = "solution_sec_5_36"
+path = "../../solutions/ch05/sec_5_36.rs"
+
+[[test]]
+name = "scaffold_sec_5_37"
+path = "../../exercises/ch05/sec_5_37.rs"
+
+[[test]]
+name = "solution_sec_5_37"
+path = "../../solutions/ch05/sec_5_37.rs"
+
+[[test]]
+name = "scaffold_sec_5_38"
+path = "../../exercises/ch05/sec_5_38.rs"
+
+[[test]]
+name = "solution_sec_5_38"
+path = "../../solutions/ch05/sec_5_38.rs"
+
+[[test]]
+name = "scaffold_sec_5_39"
+path = "../../exercises/ch05/sec_5_39.rs"
+
+[[test]]
+name = "solution_sec_5_39"
+path = "../../solutions/ch05/sec_5_39.rs"
+
+[[test]]
+name = "scaffold_sec_5_40"
+path = "../../exercises/ch05/sec_5_40.rs"
+
+[[test]]
+name = "solution_sec_5_40"
+path = "../../solutions/ch05/sec_5_40.rs"
+
+[[test]]
+name = "scaffold_sec_5_41"
+path = "../../exercises/ch05/sec_5_41.rs"
+
+[[test]]
+name = "solution_sec_5_41"
+path = "../../solutions/ch05/sec_5_41.rs"
+
+[[test]]
+name = "scaffold_sec_5_42"
+path = "../../exercises/ch05/sec_5_42.rs"
+
+[[test]]
+name = "solution_sec_5_42"
+path = "../../solutions/ch05/sec_5_42.rs"
+
+[[test]]
+name = "scaffold_sec_5_43"
+path = "../../exercises/ch05/sec_5_43.rs"
+
+[[test]]
+name = "solution_sec_5_43"
+path = "../../solutions/ch05/sec_5_43.rs"
+
+[[test]]
+name = "scaffold_sec_5_44"
+path = "../../exercises/ch05/sec_5_44.rs"
+
+[[test]]
+name = "solution_sec_5_44"
+path = "../../solutions/ch05/sec_5_44.rs"
+
+[[test]]
+name = "scaffold_sec_5_45"
+path = "../../exercises/ch05/sec_5_45.rs"
+
+[[test]]
+name = "solution_sec_5_45"
+path = "../../solutions/ch05/sec_5_45.rs"
+
+[[test]]
+name = "scaffold_sec_5_46"
+path = "../../exercises/ch05/sec_5_46.rs"
+
+[[test]]
+name = "solution_sec_5_46"
+path = "../../solutions/ch05/sec_5_46.rs"
+
+[[test]]
+name = "scaffold_sec_5_47"
+path = "../../exercises/ch05/sec_5_47.rs"
+
+[[test]]
+name = "solution_sec_5_47"
+path = "../../solutions/ch05/sec_5_47.rs"
+
+[[test]]
+name = "scaffold_sec_5_48"
+path = "../../exercises/ch05/sec_5_48.rs"
+
+[[test]]
+name = "solution_sec_5_48"
+path = "../../solutions/ch05/sec_5_48.rs"
+
+[[test]]
+name = "scaffold_sec_5_49"
+path = "../../exercises/ch05/sec_5_49.rs"
+
+[[test]]
+name = "solution_sec_5_49"
+path = "../../solutions/ch05/sec_5_49.rs"
+
+[[test]]
+name = "scaffold_sec_5_50"
+path = "../../exercises/ch05/sec_5_50.rs"
+
+[[test]]
+name = "solution_sec_5_50"
+path = "../../solutions/ch05/sec_5_50.rs"
+
+[[test]]
+name = "scaffold_sec_5_51"
+path = "../../exercises/ch05/sec_5_51.rs"
+
+[[test]]
+name = "solution_sec_5_51"
+path = "../../solutions/ch05/sec_5_51.rs"
+
+[[test]]
+name = "scaffold_sec_5_52"
+path = "../../exercises/ch05/sec_5_52.rs"
+
+[[test]]
+name = "solution_sec_5_52"
+path = "../../solutions/ch05/sec_5_52.rs"
+
 [dependencies]
 sicp-runtime = { workspace = true }
 

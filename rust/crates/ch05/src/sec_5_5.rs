@@ -1325,7 +1325,7 @@ fn compile_open_code(
         .ok_or_else(|| op_fail("open coding needs a primitive name"))?;
     let operands = items.get(1..).unwrap_or(&[]);
     if operands.len() > 2 && (name == "+" || name == "*") {
-        return compile_open_code_nary(cfg, state, cenv, &name, operands, linkage);
+        return compile_open_code_nary(cfg, state, cenv, &name, operands, target, linkage);
     }
     if operands.len() != 2 {
         return Err(op_fail(format!(
@@ -1348,19 +1348,21 @@ fn compile_open_code(
 }
 
 /// 5.38(d): more than two operands fold through one register: each
-/// operand is evaluated into `arg1` and folded into `val`, and the
-/// accumulator folded so far is shielded across every remaining
-/// operand evaluation, since a call operand's code writes `val` as
-/// scratch. The environment is preserved around an evaluation whose
-/// tail reads it (a later operand may be a call that rebinds `env`);
-/// `arg1` itself is never preserved around its own evaluation, it is
-/// the evaluation's output.
+/// operand is evaluated into `arg1` and folded into `val`, which then
+/// moves to the requested `target`; the accumulator folded so far is
+/// shielded across every remaining operand evaluation, since a call
+/// operand's code writes `val` as scratch. The environment is
+/// preserved around an evaluation whose tail reads it (a later
+/// operand may be a call that rebinds `env`); `arg1` itself is never
+/// preserved around its own evaluation, it is the evaluation's
+/// output.
 fn compile_open_code_nary(
     cfg: &Config,
     state: &State,
     cenv: &Cenv,
     name: &str,
     operands: &[Value],
+    target: &str,
     linkage: &Linkage,
 ) -> Result<Seq, Fault> {
     let Some(first) = operands.first() else {
@@ -1418,7 +1420,17 @@ fn compile_open_code_nary(
         &append_2_sequences(&fold_first, &rest_code),
     );
     let first_two = preserving_instruction_sequences(cfg, &["env"], &c1, &after_second);
-    Ok(end_with_linkage(cfg, linkage, &first_two))
+    let move_to_target = make_instruction_sequence(
+        &["val"],
+        &[target],
+        vec![format!("(assign {target} (reg val))")],
+    );
+    let result = if target == "val" {
+        first_two
+    } else {
+        append_2_sequences(&first_two, &move_to_target)
+    };
+    Ok(end_with_linkage(cfg, linkage, &result))
 }
 
 // ---------------------------------------------------------------------------

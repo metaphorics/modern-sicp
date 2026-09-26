@@ -48,6 +48,20 @@ mod ex_5_38 {
         ("(define (f y) (* y 10))\n(+ 2 3 (f 1))", "15"),
     ];
 
+    /// The nested n-ary shapes of the Rereview 2 finding: an inner
+    /// three-plus-operand `+`/`*` in a non-`val` operand position.
+    /// The fold answers in `val`, so the generator must copy it into
+    /// the operand's requested target; before `target` was threaded
+    /// the outer spread read the stale `arg1` (for example
+    /// `(+ (+ 1 2 3) 4)` answered 7 and `(* (+ 1 2 3) (+ 4 5))`
+    /// answered 27).
+    const NARY_TARGET_CASES: [(&str, &str); 4] = [
+        ("(+ (+ 1 2 3) 4)", "10"),
+        ("(+ 1 (+ 2 3 4))", "10"),
+        ("(* (+ 1 2 3) (+ 4 5))", "54"),
+        ("(+ (+ 1 2 3) (+ 4 5) 7)", "22"),
+    ];
+
     pub fn ex_5_38() -> Result<Vec<String>, Fault> {
         let open = Config {
             open_code: true,
@@ -110,6 +124,13 @@ mod ex_5_38 {
             assert!(transcript.contains(&wanted), "{source} -> {transcript:?}");
             shielded_answers.push(wanted);
         }
+        let mut nary_answers = Vec::new();
+        for (source, wanted) in NARY_TARGET_CASES {
+            let transcript = compiled_answers(&open, source)?;
+            let wanted = wanted.to_owned();
+            assert!(transcript.contains(&wanted), "{source} -> {transcript:?}");
+            nary_answers.push(wanted);
+        }
         Ok(vec![
             format!("plain factorial: {plain_count} statements"),
             format!("open-coded factorial: {open_count} statements"),
@@ -117,6 +138,7 @@ mod ex_5_38 {
             "n-ary + folds left through val; spread preserves both the remaining argument registers and env".to_owned(),
             format!("open-coded compound calls: {compound_sessions}"),
             format!("shielded call operands: {}", shielded_answers.join(" ")),
+            format!("n-ary operand targets: {}", nary_answers.join(" ")),
         ])
     }
 
@@ -128,6 +150,7 @@ mod ex_5_38 {
         assert!(lines[4].contains("45"), "{lines:?}");
         assert!(lines[4].contains("44"), "{lines:?}");
         assert_eq!(lines[5], "shielded call operands: 14 17 120 15");
+        assert_eq!(lines[6], "n-ary operand targets: 10 10 54 22");
         Ok(())
     }
 }

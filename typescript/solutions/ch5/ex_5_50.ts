@@ -44,11 +44,13 @@ const level1Pushes = (n: number): number => {
 };
 
 /** Exercise 5.50: the metacircular evaluator compiled and run on the
- * 5.5.7 machine answers ok, 120, and (tick tick tick); the driver
- * then runs an interpreted factorial through the compiled
- * interpreter. The three measurements price each interpretation
- * level: compiled machine steps, interpreted stack pushes, and the
- * compiled metacircular's machine steps for the same computation. */
+ * 5.5.7 machine prints the values (tick tick tick) then 120: the
+ * external entry answers the compiled source's last form, the tick
+ * session, and the driver form (m-eval '(factorial 5) ...) then runs
+ * an interpreted factorial through the compiled interpreter. The
+ * three measurements price each interpretation level: compiled
+ * machine steps, interpreted stack pushes, and the compiled
+ * metacircular's machine steps for the same computation. */
 export const ex_5_50 = (): readonly string[] => {
   const { transcript, steps } = metacircularSession();
   if (!transcript.includes("120")) throw new Error("the compiled metacircular lost 120");

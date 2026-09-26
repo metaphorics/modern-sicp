@@ -40,11 +40,49 @@ mod ex_5_38 {
             open_count < plain_count,
             "open={open_count}, plain={plain_count}"
         );
+        // An open-coded call whose operands mix a compound call with
+        // variable references: the call operand rebinds `env` and
+        // answers in `val`, so the later operands must read the
+        // caller's frame and the compound result must reach the call
+        // target register.
+        let mixed = Config {
+            open_code: true,
+            compound_calls: true,
+            ..ch05::sec_5_5::default_config()
+        };
+        let mut nary_evaluator = compile_and_go(
+            &mixed,
+            &new_state(),
+            "(define (f x) (+ (h x) x 1))",
+            "(define (h y) (* y 10))\n(f 4)",
+        )?;
+        nary_evaluator.run()?;
+        let nary_transcript = nary_evaluator.transcript();
+        assert!(
+            nary_transcript.contains(&"45".to_owned()),
+            "{nary_transcript:?}"
+        );
+        let mut two_evaluator = compile_and_go(
+            &mixed,
+            &new_state(),
+            "(define (f x) (+ (h x) x))",
+            "(define (h y) (* y 10))\n(f 4)",
+        )?;
+        two_evaluator.run()?;
+        let two_transcript = two_evaluator.transcript();
+        assert!(
+            two_transcript.contains(&"44".to_owned()),
+            "{two_transcript:?}"
+        );
+        let compound_sessions = [nary_transcript, two_transcript]
+            .map(|t| t.join(" "))
+            .join(" | ");
         Ok(vec![
             format!("plain factorial: {plain_count} statements"),
             format!("open-coded factorial: {open_count} statements"),
             format!("open-coded answers: {}", transcript.join(" ")),
             "n-ary + folds left through val; spread preserves both the remaining argument registers and env".to_owned(),
+            format!("open-coded compound calls: {compound_sessions}"),
         ])
     }
 
@@ -53,6 +91,8 @@ mod ex_5_38 {
         let lines = ex_5_38()?;
         assert!(lines[0].contains("79"), "{lines:?}");
         assert!(lines[2].contains("120"));
+        assert!(lines[4].contains("45"), "{lines:?}");
+        assert!(lines[4].contains("44"), "{lines:?}");
         Ok(())
     }
 }

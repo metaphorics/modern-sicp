@@ -1056,6 +1056,15 @@ fn compile_procedure_call(
         linkage.clone()
     };
     let appl_code = compile_proc_appl(state, target, &compiled_linkage)?;
+    // compound-apply answers in `val`; a call compiled into another
+    // register needs the copy the compiled branch's proc-return
+    // performs, so the interpreted branch lands on compound-return
+    // first.
+    let compound_return = if compound_branch.is_some() && target != "val" {
+        Some(make_label(state, "compound-return"))
+    } else {
+        None
+    };
     let primitive_tail = if compound_branch.is_some() && *linkage == Linkage::Next {
         vec![format!("(goto (label {after_call}))")]
     } else {
@@ -1070,41 +1079,16 @@ fn compile_procedure_call(
         linkage,
         &make_instruction_sequence(&["proc", "argl"], &[target], primitive_stmts),
     );
-    // 5.47: a third branch hands interpreted procedures to the
-    // evaluator's compound-apply through the `unev` register, whose
-    // value is dead at a call site (the machine's register set is the
-    // 5.4 machine's, so the book's `compapp` register has no name
-    // here). The branch saves `continue` on the stack before jumping:
-    // the interpreted compound-apply reaches its body through
-    // ev-sequence, whose last-expression path restores `continue` from
-    // the stack, the interpreted calling convention.
-    let compound_test =
-        compound_branch
-            .as_ref()
-            .map_or_else(empty_instruction_sequence, |branch| {
-                make_instruction_sequence(
-                    &["proc"],
-                    &[],
-                    vec![
-                        "(test (op compound-procedure?) (reg proc))".to_owned(),
-                        format!("(branch (label {branch}))"),
-                    ],
-                )
-            });
-    let compound_label = compound_branch.map_or_else(empty_instruction_sequence, |branch| {
-        let mut cont_setup = vec![branch];
-        cont_setup.extend(match linkage {
-            Linkage::Return => Vec::new(),
-            Linkage::Next => vec![format!("(assign continue (label {after_call}))")],
-            Linkage::Lab(label) => vec![format!("(assign continue (label {label}))")],
-        });
-        cont_setup.extend([
-            "(save continue)".to_owned(),
-            "(assign unev (label compound-apply))".to_owned(),
-            "(goto (reg unev))".to_owned(),
-        ]);
-        make_instruction_sequence(&["proc"], &["unev", "continue"], cont_setup)
-    });
+    let (compound_test, compound_label, compound_return_block) = match compound_branch {
+        Some(branch) => {
+            compile_compound_branch(branch, target, linkage, &after_call, compound_return)
+        }
+        None => (
+            empty_instruction_sequence(),
+            empty_instruction_sequence(),
+            empty_instruction_sequence(),
+        ),
+    };
     let dispatched = parallel_instruction_sequences(
         &append_2_sequences(
             &make_instruction_sequence(&[], &[], vec![compiled_branch]),
@@ -1129,8 +1113,91 @@ fn compile_procedure_call(
         compound_test,
         dispatched,
         compound_label,
+        compound_return_block,
         after,
     ]))
+}
+
+/// 5.47: the third branch of a procedure call. It tests `proc` and,
+/// for an interpreted procedure, hands the call to the evaluator's
+/// compound-apply through the `unev` register, whose value is dead at
+/// a call site (the machine's register set is the 5.4 machine's, so
+/// the book's `compapp` register has no name here). The branch saves
+/// `continue` on the stack before jumping: the interpreted
+/// compound-apply reaches its body through ev-sequence, whose
+/// last-expression path restores `continue` from the stack, the
+/// interpreted calling convention. compound-apply answers in `val`
+/// and jumps through `continue`; a call compiled into a non-`val`
+/// target first lands on its compound-return label, where `val` is
+/// copied into the target exactly as the compiled branch's
+/// proc-return does. Returns the test, the branch body, and the
+/// copy block, in emission order.
+fn compile_compound_branch(
+    branch: String,
+    target: &str,
+    linkage: &Linkage,
+    after_call: &str,
+    compound_return: Option<String>,
+) -> (Seq, Seq, Seq) {
+    let compound_test = make_instruction_sequence(
+        &["proc"],
+        &[],
+        vec![
+            "(test (op compound-procedure?) (reg proc))".to_owned(),
+            format!("(branch (label {branch}))"),
+        ],
+    );
+    let cont_label = compound_return.as_deref();
+    let mut cont_setup = vec![branch];
+    cont_setup.extend(match linkage {
+        Linkage::Return => Vec::new(),
+        Linkage::Next => vec![format!(
+            "(assign continue (label {}))",
+            cont_label.unwrap_or(after_call)
+        )],
+        Linkage::Lab(label) => vec![format!(
+            "(assign continue (label {}))",
+            cont_label.unwrap_or(label)
+        )],
+    });
+    cont_setup.extend([
+        "(save continue)".to_owned(),
+        "(assign unev (label compound-apply))".to_owned(),
+        "(goto (reg unev))".to_owned(),
+    ]);
+    let compound_label = make_instruction_sequence(&["proc"], &["unev", "continue"], cont_setup);
+    let compound_return_block = match compound_return {
+        Some(label) => compile_compound_return(target, linkage, after_call, label),
+        None => empty_instruction_sequence(),
+    };
+    (compound_test, compound_label, compound_return_block)
+}
+
+/// The block a compound call returns to when the call was compiled
+/// into a non-`val` target: `val` is copied into the target exactly
+/// as the compiled branch's proc-return does, then control goes to
+/// the join point. Return linkage never reaches a non-val target
+/// (compile-proc-appl faults first), so the fallthrough here is
+/// after-call, the Next linkage's join point.
+fn compile_compound_return(
+    target: &str,
+    linkage: &Linkage,
+    after_call: &str,
+    label: String,
+) -> Seq {
+    let exit = match linkage {
+        Linkage::Lab(destination) => destination.clone(),
+        _ => after_call.to_owned(),
+    };
+    make_instruction_sequence(
+        &["val"],
+        &[target],
+        vec![
+            label,
+            format!("(assign {target} (reg val))"),
+            format!("(goto (label {exit}))"),
+        ],
+    )
 }
 
 fn compile_proc_appl(state: &State, target: &str, linkage: &Linkage) -> Result<Seq, Fault> {
@@ -1283,16 +1350,10 @@ fn compile_open_code_nary(
     } else {
         c2
     };
-    let first_two = append_2_sequences(
-        &c1,
-        &append_2_sequences(
-            &c2_shielded,
-            &make_instruction_sequence(
-                &["arg1", "arg2"],
-                &["val"],
-                vec![format!("(assign val (op {name}) (reg arg1) (reg arg2))")],
-            ),
-        ),
+    let fold_first = make_instruction_sequence(
+        &["arg1", "arg2"],
+        &["val"],
+        vec![format!("(assign val (op {name}) (reg arg1) (reg arg2))")],
     );
     let open_step = make_instruction_sequence(
         &["arg1", "val"],
@@ -1309,11 +1370,17 @@ fn compile_open_code_nary(
             &append_2_sequences(&open_step, &rest_code),
         );
     }
-    Ok(end_with_linkage(
+    // The first two operands preserve `env` the way the fold loop
+    // does: an earlier operand that is a call rebinds `env`, and any
+    // later operand reading a variable must see the caller's frame.
+    let after_second = preserving_instruction_sequences(
         cfg,
-        linkage,
-        &append_2_sequences(&first_two, &rest_code),
-    ))
+        &["env"],
+        &c2_shielded,
+        &append_2_sequences(&fold_first, &rest_code),
+    );
+    let first_two = preserving_instruction_sequences(cfg, &["env"], &c1, &after_second);
+    Ok(end_with_linkage(cfg, linkage, &first_two))
 }
 
 // ---------------------------------------------------------------------------

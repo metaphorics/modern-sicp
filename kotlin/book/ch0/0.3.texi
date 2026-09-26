@@ -156,5 +156,5 @@ taking a @code{force: () -> Unit} callback that the pipeline calls once per
 element computation. Then write a probe that builds one of each, walks each
 one twice with @code{take(5)}, and reports the two force counts. The
 sequence should charge the second walk in full; the stream should charge it
-nothing. Note that the runtime's @code{take(n)} forces one tail beyond the
+nothing. The runtime's @code{take(n)} forces one tail beyond the
 @code{n}-th head, and make your expected stream count state that.

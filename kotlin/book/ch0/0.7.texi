@@ -55,7 +55,7 @@ test("boundary cases stay explicit") {
 
 @noindent
 Kotest test bodies may suspend, so the concurrent code of @ref{3.4} tests
-directly; chapter 3 additionally pins @file{kotlinx-coroutines-test} for
+directly; chapter 3 also pins @file{kotlinx-coroutines-test} for
 the cases that need virtual time. Where the book needs randomness, it does
 not reach for the host generator: the runtime ships a seeded
 @code{Random}, so the stochastic exercises of @ref{1.2} and @ref{3.1} give

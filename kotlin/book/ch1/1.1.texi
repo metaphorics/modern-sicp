@@ -1544,8 +1544,8 @@ problem into subproblems.
 The importance of this decomposition strategy is not simply that one is
 dividing the program into parts.  After all, we could take any large program
 and divide it into parts---the first ten lines, the next ten lines, the next
-ten lines, and so on.  Rather, it is crucial that each procedure accomplishes
-an identifiable task that can be used as a module in defining other procedures.
+and so on. Rather, each procedure must accomplish an identifiable task that
+can be used as a module in defining other procedures.
 For example, when we define the @code{goodEnough} procedure in terms of
 @code{square}, we are able to regard the @code{square} procedure as a ``black
 box.''  We are not at that moment concerned with @emph{how} the procedure
@@ -1723,7 +1723,7 @@ public fun sqrt(x: Double): Double @{
 @end example
 
 @noindent
-Such nesting of definitions, called @newterm{block structure}, is basically the
+Such nesting of definitions, called @newterm{block structure}, is the
 right solution to the simplest name-packaging problem.  But there is a better
 idea lurking here.  In addition to internalizing the definitions of the
 auxiliary procedures, we can simplify them.  Since @code{x} is bound in the

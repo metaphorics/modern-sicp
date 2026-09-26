@@ -26,7 +26,7 @@ them:
 @noindent
 Two compiler settings are house rules, not suggestions. @code{allWarningsAsErrors}
 turns every compiler warning into a build failure, and the lint gate is
-@command{ktlint} 1.8.0 over every source set. The runtime module additionally
+@command{ktlint} 1.8.0 over every source set. The runtime module also
 opts into @code{explicitApi()}, so its public declarations state their
 visibility and return types in full.
 

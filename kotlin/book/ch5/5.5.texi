@@ -2976,7 +2976,7 @@ machine's label table, over an environment word's table entry.
 In this edition the compound-call branch of @ref{Exercise 5.47} routes the
 apply through the @code{unev} register, dead at every call site, instead of
 declaring the book's @code{compapp} register, because the machine's register
-set is the @ref{5.4} substrate's.
+set is the @ref{5.4} evaluator's.
 
 In this edition the const code of self-evaluating and quoted expressions
 needs no registers, so the @ref{Exercise 5.31} session pins the book's

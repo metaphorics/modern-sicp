@@ -272,8 +272,8 @@ grow the call stack for @code{factIter} exactly as it does for
 rather than closing it outright, which is the marking that section 1.1.7's
 footnote on @code{tailrec} promised to take up here.  A function marked
 @code{tailrec} asks the compiler to verify that its only self-call sits in
-tail position — the last thing the function does, with nothing left
-pending once the call returns — and, once verified, compiles that self-call
+tail position (the last thing the function does, with nothing left
+pending once the call returns) and, once verified, compiles that self-call
 into an ordinary loop, so the process it describes runs in constant space no
 matter how deep the recursion goes.  @code{factIter} earns this marking, since
 its self-call is the entire value of the @code{else} branch;

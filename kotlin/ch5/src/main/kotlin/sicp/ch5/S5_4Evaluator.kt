@@ -525,7 +525,10 @@ internal class EvaluatorState internal constructor() {
     }
 }
 
-private fun environmentOperations(state: EvaluatorState): Map<String, Op> =
+/** The environment-table operations the controller names, bound per
+ *  evaluator state: shared with the 5.5 compiled evaluator, which runs
+ *  compiled and interpreted code on the same table. */
+internal fun environmentOperations(state: EvaluatorState): Map<String, Op> =
     mapOf(
         "get-global-environment" to { _ -> envWord(0) },
         "extend-environment" to

@@ -62,6 +62,18 @@ public class EnvTest :
             }.isRight() shouldBe true
         }
 
+        test("extend keeps parameter order in frame iteration for lexical slots") {
+            val global = Env.global()
+            either {
+                val names = listOf("p9", "p3", "p7", "p1", "p8", "p2", "p6", "p0", "p5", "p4")
+                val env = Env.extend(names, names.map { VInt(1) }, global)
+                env.frame.keys.toList() shouldBe names
+                env.frame.entries
+                    .elementAtOrNull(3)
+                    ?.key shouldBe "p1"
+            }.isRight() shouldBe true
+        }
+
         test("extend rejects a short argument list") {
             val global = Env.global()
             either { Env.extend(listOf("a", "b"), listOf(VInt(1)), global) }.isLeft() shouldBe true

@@ -13,5 +13,9 @@ describe("exercise 5.38", () => {
     expect(answers[2]).toContain("10");
     expect(answers[3]).toContain("45");
     expect(answers[3]).toContain("44");
+    expect(answers[4]).toContain("14");
+    expect(answers[4]).toContain("17");
+    expect(answers[5]).toContain("120");
+    expect(answers[6]).toContain("22");
   });
 });

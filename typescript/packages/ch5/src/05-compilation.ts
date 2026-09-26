@@ -422,8 +422,11 @@ const definitionParts = (exp: Word): { name: string; value: Word } => {
 // The code generators
 // ---------------------------------------------------------------------------
 
-/** The registers a compiled procedure call may disturb. */
-const ALL_REGS: readonly string[] = ["env", "proc", "val", "argl", "continue"];
+/** The registers a compiled procedure call may disturb. The callee's
+ * body may itself open-code into arg1 and arg2, so a call claims them
+ * too; without the claim the operand shields below never fire and a
+ * compound-call operand destroys the caller's live argument values. */
+const ALL_REGS: readonly string[] = ["env", "proc", "val", "argl", "continue", "arg1", "arg2"];
 
 export const compileLinkage = (linkage: Linkage): Seq => {
   switch (linkage.kind) {

@@ -5,14 +5,15 @@ import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
 import type { Primitive, Value } from "./core.js";
+import { list, nil, toArray } from "./list.js";
 import { OpTable } from "./primitives.js";
 
 const add: Primitive = (args) =>
   Effect.sync(() => {
     let total = 0;
-    for (const arg of args) {
+    for (const arg of toArray(args)) {
       if (arg._tag === "Number") {
-        total += Number(arg.n);
+        total += arg.n;
       }
     }
     return { _tag: "Number", n: total } satisfies Value;
@@ -32,10 +33,7 @@ describe("OpTable", () => {
     if (Option.isSome(installed)) {
       expect(
         Effect.runSync(
-          installed.value([
-            { _tag: "Number", n: 2 },
-            { _tag: "Number", n: 3 },
-          ]),
+          installed.value(list<Value>({ _tag: "Number", n: 2 }, { _tag: "Number", n: 3 })),
         ),
       ).toStrictEqual({
         _tag: "Number",
@@ -52,7 +50,7 @@ describe("OpTable", () => {
     table.put("+", replacement);
     const installed = table.get("+");
     if (Option.isSome(installed)) {
-      expect(Effect.runSync(installed.value([]))).toStrictEqual({ _tag: "Boolean", b: false });
+      expect(Effect.runSync(installed.value(nil))).toStrictEqual({ _tag: "Boolean", b: false });
     } else {
       expect.unreachable("put must install the handler");
     }

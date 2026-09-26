@@ -2,200 +2,110 @@
 // Adapted-from-SICP: section 4.1
 
 /**
- * The evaluator's core data: expressions, values, environments, and the shape
- * of `evaluate`. The metacircular evaluator itself is section 4.1's lesson;
- * the spine fixes the types every chapter 4 and 5 module shares. The `Thunk`
- * value and its memoizing constructor serve section 4.2's lazy evaluation.
+ * The evaluator's core data: values, environments, and the shape of
+ * `evaluate`. The book's evaluator works on list-structured expressions,
+ * so an expression is itself just a `Value`: a symbol, a cons pair, or a
+ * leaf. There is no separately parsed form; the syntax predicates of the
+ * metacircular evaluator look at the data with the same car/cdr surgery
+ * the book uses. The cons pairs come from `list.ts`, the mutable frame
+ * chain from `env.ts`, and the checked failures from `errors.ts`.
  */
-import { Effect, type HashMap, Option, Ref } from "effect";
+import type { Effect, HashMap, Option, Ref } from "effect";
 
 import type { EvaluationError } from "./errors.js";
-import type { List } from "./list.js";
+import type { Cons, List, Nil } from "./list.js";
 
-export interface SelfEvaluating {
-  readonly _tag: "SelfEvaluating";
-  readonly value: number | bigint | string | boolean;
-}
-
-export interface SymbolExpr {
-  readonly _tag: "Symbol";
-  readonly name: string;
-}
-
-export interface QuoteExpr {
-  readonly _tag: "Quote";
-  readonly datum: Value;
-}
-
-export interface IfExpr {
-  readonly _tag: "If";
-  readonly predicate: Expr;
-  readonly consequent: Expr;
-  readonly alternative: Expr;
-}
-
-export interface LambdaExpr {
-  readonly _tag: "Lambda";
-  readonly params: List<string>;
-  readonly body: ReadonlyArray<Expr>;
-}
-
-export interface BeginExpr {
-  readonly _tag: "Begin";
-  readonly actions: ReadonlyArray<Expr>;
-}
-
-/** A `cond` clause; the book's `else` is its own variant. */
-export type CondClause =
-  | { readonly _tag: "Clause"; readonly test: Expr; readonly body: ReadonlyArray<Expr> }
-  | { readonly _tag: "Else"; readonly body: ReadonlyArray<Expr> };
-
-export interface CondExpr {
-  readonly _tag: "Cond";
-  readonly clauses: ReadonlyArray<CondClause>;
-}
-
-export interface LetBinding {
-  readonly name: string;
-  readonly value: Expr;
-}
-
-export interface LetExpr {
-  readonly _tag: "Let";
-  readonly bindings: ReadonlyArray<LetBinding>;
-  readonly body: ReadonlyArray<Expr>;
-}
-
-export interface DefineExpr {
-  readonly _tag: "Define";
-  readonly name: string;
-  readonly value: Expr;
-}
-
-export interface SetExpr {
-  readonly _tag: "Set";
-  readonly name: string;
-  readonly value: Expr;
-}
-
-export interface ApplicationExpr {
-  readonly _tag: "Application";
-  readonly operator: Expr;
-  readonly operands: ReadonlyArray<Expr>;
-}
-
-/** The Scheme subset of the book's chapter 4, exhaustive over `_tag`. */
-export type Expr =
-  | SelfEvaluating
-  | SymbolExpr
-  | QuoteExpr
-  | IfExpr
-  | LambdaExpr
-  | BeginExpr
-  | CondExpr
-  | LetExpr
-  | DefineExpr
-  | SetExpr
-  | ApplicationExpr;
-
-/** A primitive: applied to evaluated argument values, it yields one value. */
-export type Primitive = (args: ReadonlyArray<Value>) => Effect.Effect<Value, EvaluationError>;
-
+/** A number leaf of the object language. */
 export interface NumberValue {
   readonly _tag: "Number";
-  readonly n: number | bigint;
+  readonly n: number;
 }
 
+/** A boolean leaf; the book's true and false objects. */
 export interface BooleanValue {
   readonly _tag: "Boolean";
   readonly b: boolean;
 }
 
+/** A string leaf, the book's `"text"` datum. */
 export interface StringValue {
   readonly _tag: "String";
   readonly s: string;
 }
 
+/** A symbol: variable names, special-form tags, and quoted names share it. */
 export interface SymbolValue {
   readonly _tag: "Symbol";
   readonly name: string;
 }
 
-export interface ListValue {
-  readonly _tag: "List";
-  readonly items: List<Value>;
+/** The value of `display` and `newline`: nothing worth printing. */
+export interface UnspecifiedValue {
+  readonly _tag: "Unspecified";
 }
 
+/** The book's empty list, `nil`. */
+export type EmptyList = Nil;
+
+/** A cons pair whose two halves are evaluator values. */
+export type Pair = Cons<Value>;
+
+/** A primitive procedure: a name plus a host function over evaluated arguments. */
 export interface PrimitiveValue {
   readonly _tag: "Primitive";
+  readonly name: string;
   readonly fn: Primitive;
 }
 
-/** A compound procedure: parameters, body, and the defining environment. */
+/** A compound procedure: parameter symbols, a body of expressions, and the
+ * defining environment (section 4.1.3). */
 export interface CompoundProc {
   readonly _tag: "Compound";
-  readonly params: List<string>;
-  readonly body: ReadonlyArray<Expr>;
+  readonly params: List<Value>;
+  readonly body: List<Value>;
   readonly env: Env;
 }
 
-/** A delayed computation (section 4.2) whose `force` memoizes into `cell`. */
-export interface ThunkValue {
-  readonly _tag: "Thunk";
-  readonly cell: Ref.Ref<Option.Option<Value>>;
-  readonly force: () => Effect.Effect<Value, EvaluationError>;
+/**
+ * An execution procedure (section 4.1.7) held in the body slot of a
+ * compound procedure. The analyzed evaluator stores host closures where
+ * the direct evaluator stores expression lists; this wrapper gives the
+ * closure a place in the `Value` union without a second procedure record.
+ */
+export interface ExecutionValue {
+  readonly _tag: "Execution";
+  readonly run: (env: Env) => Effect.Effect<Value, EvaluationError>;
 }
 
-/** Everything the evaluator can produce. */
+/** Everything the evaluator reads or produces. */
 export type Value =
   | NumberValue
   | BooleanValue
   | StringValue
   | SymbolValue
-  | ListValue
+  | UnspecifiedValue
+  | EmptyList
+  | Pair
   | PrimitiveValue
   | CompoundProc
-  | ThunkValue;
+  | ExecutionValue;
+
+/** A primitive: applied to the evaluated argument list, it yields one value. */
+export type Primitive = (args: List<Value>) => Effect.Effect<Value, EvaluationError>;
 
 /**
  * The environment: one `Ref`-held `HashMap` frame plus the enclosing
- * environment; the global environment is the frame with no parent
- * (section 3.2 re-cut). The `Ref` is what makes `set!` real: every node
- * sharing the frame observes the write.
+ * environment; the global environment is the frame with no parent. The
+ * `Ref` is what makes `set!` real: every environment value sharing the
+ * frame observes the write, as section 4.1.3 requires.
  */
 export interface Env {
   readonly vars: Ref.Ref<HashMap.HashMap<string, Value>>;
   readonly parent: Option.Option<Env>;
 }
 
-/** `(expr, env) => Effect<Value, EvaluationError>` — the book's `eval`. */
-export type Evaluate = (expr: Expr, env: Env) => Effect.Effect<Value, EvaluationError>;
+/** `(exp, env) => Effect<Value, EvaluationError>` — the book's `eval`. */
+export type Evaluate = (exp: Value, env: Env) => Effect.Effect<Value, EvaluationError>;
 
-/** Section 4.1.7's `analyze`: compile once, apply to many environments. */
-export type Analyze = (expr: Expr) => (env: Env) => Effect.Effect<Value, EvaluationError>;
-
-/**
- * Builds a memoized thunk, the edition's `delay` + `memo-proc`: the first
- * `force` runs `work` and stores the value in `cell`; every later `force`
- * reads the cell and never re-runs `work`.
- */
-export const makeThunk = (
-  work: () => Effect.Effect<Value, EvaluationError>,
-): Effect.Effect<ThunkValue> =>
-  Effect.gen(function* () {
-    const cell: Ref.Ref<Option.Option<Value>> = yield* Ref.make(Option.none<Value>());
-    return {
-      _tag: "Thunk",
-      cell,
-      force: () =>
-        Effect.gen(function* () {
-          const cached = yield* Ref.get(cell);
-          if (Option.isSome(cached)) {
-            return cached.value;
-          }
-          const value = yield* work();
-          yield* Ref.set(cell, Option.some(value));
-          return value;
-        }),
-    };
-  });
+/** Section 4.1.7's `analyze`: compile once, then apply to many environments. */
+export type Analyze = (exp: Value) => (env: Env) => Effect.Effect<Value, EvaluationError>;

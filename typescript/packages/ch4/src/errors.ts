@@ -30,5 +30,18 @@ export class ArityMismatch extends Schema.TaggedError<ArityMismatch>()("ArityMis
   given: Schema.Number,
 }) {}
 
+/** A failure signaled inside the evaluated program: the object-language
+ * `error` primitive, a primitive applied to a bad argument, or the host
+ * reader meeting text it cannot parse. */
+export class RuntimeError extends Schema.TaggedError<RuntimeError>()("RuntimeError", {
+  message: Schema.String,
+  detail: Schema.String,
+}) {}
+
 /** Every way `evaluate` can fail. */
-export type EvaluationError = UnboundVariable | NotAProcedure | UnknownSyntax | ArityMismatch;
+export type EvaluationError =
+  | UnboundVariable
+  | NotAProcedure
+  | UnknownSyntax
+  | ArityMismatch
+  | RuntimeError;

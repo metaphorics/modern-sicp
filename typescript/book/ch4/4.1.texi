@@ -1,20 +1,27 @@
 @node	4.1, 4.2, Chapter 4, Chapter 4
 @section The Metacircular Evaluator
 
-Our evaluator for Lisp will be implemented as a Lisp program.  It may seem
-circular to think about evaluating Lisp programs using an evaluator that is
-itself implemented in Lisp.  However, evaluation is a process, so it is
-appropriate to describe the evaluation process using Lisp, which, after all, is
-our tool for describing processes.@footnote{Even so, there will remain
+Our evaluator for Lisp will be implemented as a TypeScript program.  The
+language it evaluates is still Lisp: an expression is a cons-list value, in
+just the shape the book's list-structure notation assumes, and the reader of
+@code{read.ts} produces such values in place of the book's @code{read}.  The
+circularity the book worries about, evaluating Lisp programs with an evaluator
+that is itself implemented in Lisp, does not arise here, because the evaluator
+and its language are no longer the same language.  But evaluation is a
+process, so it is still appropriate to describe the evaluation process with
+our tool for describing processes, which in this edition is TypeScript.@footnote{Even so, there will remain
 important aspects of the evaluation process that are not elucidated by our
 evaluator.  The most important of these are the detailed mechanisms by which
 procedures call other procedures and return values to their callers.  We will
 address these issues in @ref{Chapter 5}, where we take a closer look at the
 evaluation process by implementing the evaluator as a simple register machine.}
 An evaluator that is written in the same language that it evaluates is said to
-be @newterm{metacircular}.
+be @newterm{metacircular}.  The book's evaluator is metacircular in this
+strict sense.  Ours evaluates Lisp but is written in TypeScript, so the name
+here belongs to the design rather than to the host; the design is the
+book's.
 
-The metacircular evaluator is essentially a Scheme formulation of the
+The metacircular evaluator is essentially a TypeScript formulation of the
 environment model of evaluation described in @ref{3.2}.  Recall that
 the model has two basic parts:
 
@@ -43,8 +50,8 @@ values are looked up in the environment, and to primitive procedures, which are
 applied directly (see @ref{Figure 4.1}).@footnote{If we grant ourselves the
 ability to apply primitives, then what remains for us to implement in the
 evaluator?  The job of the evaluator is not to specify the primitives of the
-language, but rather to provide the connective tissue---the means of
-combination and the means of abstraction---that binds a collection of
+language, but rather to provide the connective tissue, the means of
+combination and the means of abstraction, that binds a collection of
 primitives to form a language. Specifically:
 
 @itemize @bullet
@@ -78,8 +85,9 @@ from procedure calls.
 @end itemize
 } 
 This evaluation cycle will be embodied by the interplay between the two
-critical procedures in the evaluator, @code{eval} and @code{apply}, which are
-described in @ref{4.1.1} (see @ref{Figure 4.1}).
+critical procedures in the evaluator, @code{evaluate} and
+@code{applyProcedure}, which are described in @ref{4.1.1} (see @ref{Figure
+4.1}).
 
 @float
 @anchor{Figure 4.1}
@@ -125,15 +133,27 @@ The implementation of the evaluator will depend upon procedures that define the
 abstraction to make the evaluator independent of the representation of the
 language.  For example, rather than committing to a choice that an assignment
 is to be represented by a list beginning with the symbol @code{set!} we use an
-abstract predicate @code{assignment?} to test for an assignment, and we use
-abstract selectors @code{assignment-variable} and @code{assignment-value} to
+abstract predicate @code{isAssignment} to test for an assignment, and we use
+abstract selectors @code{assignmentVariable} and @code{assignmentValue} to
 access the parts of an assignment.  Implementation of expressions will be
 described in detail in @ref{4.1.2}.  There are also operations,
 described in @ref{4.1.3}, that specify the representation of procedures
-and environments.  For example, @code{make-procedure} constructs compound
-procedures, @code{lookup-variable-value} accesses the values of variables, and
-@code{apply-primitive-procedure} applies a primitive procedure to a given list
+and environments.  For example, @code{makeProcedure} constructs compound
+procedures, @code{lookupVariableValue} accesses the values of variables, and
+@code{applyPrimitiveProcedure} applies a primitive procedure to a given list
 of arguments.
+
+This is the section where the evaluator meets the host, and the host enters
+under its own name, with no adapter layer.  An expression is an ordinary
+value: the reader of @code{read.ts} turns input text into cons-list values in
+just the shape the book's list structure assumes, so @code{read.ts} stands in
+for the book's @code{read}.  Every value carries a @code{_tag}, and predicates
+such as @code{isAssignment} and selectors such as @code{assignmentValue} are
+plain functions on that data.  What can fail answers an @code{Effect}:
+@code{evaluate} answers an @code{Effect.Effect<Value, EvaluationError>}, and
+@code{Effect.flatMap} threads the error channel from a failed variable lookup
+out to the driver loop that runs the session, so the type of an evaluation
+says what can go wrong with it.
 
 @menu
 * 4.1.1::            The Core of the Evaluator
@@ -149,12 +169,13 @@ of arguments.
 @subsection The Core of the Evaluator
 
 The evaluation process can be described as the interplay between two
-procedures: @code{eval} and @code{apply}.
+procedures: @code{evaluate} and @code{applyProcedure}.
 
 @subsubheading Eval
 
-@code{Eval} takes as arguments an expression and an environment.  It classifies
-the expression and directs its evaluation.  @code{Eval} is structured as a case
+@code{Evaluate} takes as arguments an expression and an environment.  It
+classifies the expression and directs its evaluation.  @code{Evaluate} is
+structured as a case
 analysis of the syntactic type of the expression to be evaluated.  In order to
 keep the procedure general, we express the determination of the type of an
 expression abstractly, making no commitment to any particular representation
@@ -170,11 +191,11 @@ syntax procedures.
 @itemize @bullet
 
 @item
-For self-evaluating expressions, such as numbers, @code{eval} returns the
+For self-evaluating expressions, such as numbers, @code{evaluate} returns the
 expression itself.
 
 @item
-@code{Eval} must look up variables in the environment to find their values.
+@code{Evaluate} must look up variables in the environment to find their values.
 
 @end itemize
 
@@ -184,11 +205,11 @@ expression itself.
 @itemize @bullet
 
 @item
-For quoted expressions, @code{eval} returns the expression that was quoted.
+For quoted expressions, @code{evaluate} returns the expression that was quoted.
 
 @item
 An assignment to (or a definition of) a variable must recursively call
-@code{eval} to compute the new value to be associated with the variable.  The
+@code{evaluate} to compute the new value to be associated with the variable.  The
 environment must be modified to change (or create) the binding of the variable.
 
 @item
@@ -217,177 +238,187 @@ expressions and then evaluated.
 @itemize @bullet
 
 @item
-For a procedure application, @code{eval} must recursively evaluate the operator
-part and the operands of the combination.  The resulting procedure and
-arguments are passed to @code{apply}, which handles the actual procedure
-application.
+For a procedure application, @code{evaluate} must recursively evaluate the
+operator part and the operands of the combination.  The resulting procedure
+and arguments are passed to @code{applyProcedure}, which handles the actual
+procedure application.
 
 @end itemize
 
 @noindent
-Here is the definition of @code{eval}:
+Here is the definition of @code{evaluate}:
 
-@lisp
-(define (eval exp env)
-  (cond ((self-evaluating? exp) 
-         exp)
-        ((variable? exp) 
-         (lookup-variable-value exp env))
-        ((quoted? exp) 
-         (text-of-quotation exp))
-        ((assignment? exp) 
-         (eval-assignment exp env))
-        ((definition? exp) 
-         (eval-definition exp env))
-        ((if? exp) 
-         (eval-if exp env))
-        ((lambda? exp)
-         (make-procedure 
-          (lambda-parameters exp)
-          (lambda-body exp)
-          env))
-        ((begin? exp)
-         (eval-sequence 
-          (begin-actions exp) 
-          env))
-        ((cond? exp) 
-         (eval (cond->if exp) env))
-        ((application? exp)
-         (apply (eval (operator exp) env)
-                (list-of-values 
-                 (operands exp) 
-                 env)))
-        (else
-         (error "Unknown expression 
-                 type: EVAL" exp))))
-@end lisp
+@example typescript
+export const evaluate: Evaluate = (exp, env) => @{
+  if (isSelfEvaluating(exp)) @{
+    return Effect.succeed(exp);
+  @}
+  if (isVariable(exp)) @{
+    return lookupVariableValue(exp, env);
+  @}
+  if (isQuoted(exp)) @{
+    return Effect.succeed(textOfQuotation(exp));
+  @}
+  if (isAssignment(exp)) @{
+    return evalAssignment(exp, env);
+  @}
+  if (isDefinition(exp)) @{
+    return evalDefinition(exp, env);
+  @}
+  if (isIf(exp)) @{
+    return evalIf(exp, env);
+  @}
+  if (isLambda(exp)) @{
+    return Effect.succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env));
+  @}
+  if (isBegin(exp)) @{
+    return evalSequence(beginActions(exp), env);
+  @}
+  if (isCond(exp)) @{
+    return evaluate(condToIf(exp), env);
+  @}
+  if (isApplication(exp)) @{
+    return Effect.flatMap(evaluate(operator(exp), env), (procedure) =>
+      Effect.flatMap(listOfValues(operands(exp), env), (args) => applyProcedure(procedure, args)),
+    );
+  @}
+  return Effect.fail(new UnknownSyntax(@{ expr: format(exp) @}));
+@};
+@end example
 
 @noindent
-For clarity, @code{eval} has been implemented as a case analysis using
-@code{cond}.  The disadvantage of this is that our procedure handles only a few
-distinguishable types of expressions, and no new ones can be defined without
-editing the definition of @code{eval}.  In most Lisp implementations,
-dispatching on the type of an expression is done in a data-directed style.
-This allows a user to add new types of expressions that @code{eval} can
-distinguish, without modifying the definition of @code{eval} itself.  (See
-@ref{Exercise 4.3}.)
+For clarity, @code{evaluate} has been implemented as a case analysis, a chain
+of guarded branches standing in for the book's @code{cond}.  The disadvantage
+of this is that our procedure handles only a few distinguishable types of
+expressions, and no new ones can be defined without editing the definition of
+@code{evaluate}.  In most Lisp implementations, dispatching on the type of an
+expression is done in a data-directed style.  This allows a user to add new
+types of expressions that @code{evaluate} can distinguish, without modifying
+the definition of @code{evaluate} itself.  (See @ref{Exercise 4.3}.)
 
 @subsubheading Apply
 
-@code{Apply} takes two arguments, a procedure and a list of arguments to which
-the procedure should be applied.  @code{Apply} classifies procedures into two
-kinds: It calls @code{apply-primitive-procedure} to apply primitives; it
-applies compound procedures by sequentially evaluating the expressions that
-make up the body of the procedure.  The environment for the evaluation of the
+The procedure @code{applyProcedure} takes two arguments, a procedure and a
+list of arguments to which the procedure should be applied.  It classifies
+procedures into two kinds: it calls @code{applyPrimitiveProcedure} to apply
+primitives; it applies compound procedures by sequentially evaluating the
+expressions that make up the body of the procedure.  The environment for the evaluation of the
 body of a compound procedure is constructed by extending the base environment
 carried by the procedure to include a frame that binds the parameters of the
 procedure to the arguments to which the procedure is to be applied.  Here is
-the definition of @code{apply}:
+the definition of @code{applyProcedure}:
 
-@lisp
-(define (apply procedure arguments)
-  (cond ((primitive-procedure? procedure)
-         (apply-primitive-procedure 
-          procedure 
-          arguments))
-        ((compound-procedure? procedure)
-         (eval-sequence
-           (procedure-body procedure)
-           (extend-environment
-             (procedure-parameters 
-              procedure)
-             arguments
-             (procedure-environment 
-              procedure))))
-        (else
-         (error "Unknown procedure 
-                 type: APPLY" 
-                procedure))))
-@end lisp
+@example typescript
+export const applyProcedure = (
+  procedure: Value,
+  args: List<Value>,
+): Effect.Effect<Value, EvaluationError> => @{
+  if (procedure._tag === "Primitive") @{
+    return applyPrimitiveProcedure(procedure, args);
+  @}
+  if (procedure._tag === "Compound") @{
+    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
+      evalSequence(procedure.body, newEnv),
+    );
+  @}
+  return Effect.fail(new NotAProcedure(@{ value: format(procedure) @}));
+@};
+@end example
 
 @subsubheading Procedure arguments
 
-When @code{eval} processes a procedure application, it uses
-@code{list-of-values} to produce the list of arguments to which the procedure
-is to be applied. @code{List-of-values} takes as an argument the operands of
-the combination.  It evaluates each operand and returns a list of the
-corresponding values:@footnote{We could have simplified the @code{application?}
-clause in @code{eval} by using @code{map} (and stipulating that @code{operands}
-returns a list) rather than writing an explicit @code{list-of-values}
-procedure.  We chose not to use @code{map} here to emphasize the fact that the
-evaluator can be implemented without any use of higher-order procedures (and
-thus could be written in a language that doesn't have higher-order procedures),
-even though the language that it supports will include higher-order
-procedures.}
+When @code{evaluate} processes a procedure application, it uses
+@code{listOfValues} to produce the list of arguments to which the procedure
+is to be applied.  The procedure @code{listOfValues} takes as an argument the
+operands of the combination.  It evaluates each operand and returns a list of
+the corresponding values:@footnote{We could have simplified the @code{isApplication}
+clause in @code{evaluate} by using @code{map} over the operands rather than
+writing an explicit @code{listOfValues} procedure.  We chose not to use
+@code{map} here to emphasize the fact that the evaluator's own recursion is
+written out by hand, even though the language that it supports and the
+language that implements it both include higher-order procedures.}
 
-@lisp
-(define (list-of-values exps env)
-  (if (no-operands? exps)
-      '()
-      (cons (eval (first-operand exps) env)
-            (list-of-values 
-             (rest-operands exps) 
-             env))))
-@end lisp
+@example typescript
+export const listOfValues = (
+  exps: List<Value>,
+  env: Env,
+): Effect.Effect<List<Value>, EvaluationError> => @{
+  if (noOperands(exps)) @{
+    return Effect.succeed(nil);
+  @}
+  return Effect.flatMap(evaluate(firstOperand(exps), env), (first) =>
+    Effect.map(listOfValues(restOperands(exps), env), (rest) => cons(first, rest)),
+  );
+@};
+@end example
 
 @subsubheading Conditionals
 
-@code{Eval-if} evaluates the predicate part of an @code{if} expression in the
-given environment.  If the result is true, @code{eval-if} evaluates the
-consequent, otherwise it evaluates the alternative:
+The procedure @code{evalIf} evaluates the predicate part of an @code{if}
+expression in the given environment.  If the result is true, @code{evalIf}
+evaluates the consequent, otherwise it evaluates the alternative:
 
-@lisp
-(define (eval-if exp env)
-  (if (true? (eval (if-predicate exp) env))
-      (eval (if-consequent exp) env)
-      (eval (if-alternative exp) env)))
-@end lisp
+@example typescript
+export const evalIf = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
+  Effect.flatMap(evaluate(ifPredicate(exp), env), (predicate) =>
+    isTrue(predicate) ? evaluate(ifConsequent(exp), env) : evaluate(ifAlternative(exp), env),
+  );
+@end example
 
 @noindent
-The use of @code{true?} in @code{eval-if} highlights the issue of the
+The use of @code{isTrue} in @code{evalIf} highlights the issue of the
 connection between an implemented language and an implementation language.  The
-@code{if-predicate} is evaluated in the language being implemented and thus
-yields a value in that language.  The interpreter predicate @code{true?}
+@code{ifPredicate} is evaluated in the language being implemented and thus
+yields a value in that language.  The interpreter predicate @code{isTrue}
 translates that value into a value that can be tested by the @code{if} in the
 implementation language: The metacircular representation of truth might not be
-the same as that of the underlying Scheme.@footnote{In this case, the language
-being implemented and the implementation language are the same.  Contemplation
-of the meaning of @code{true?} here yields expansion of consciousness without
-the abuse of substance.}
+the same as that of the implementation language.@footnote{In the book, the
+language being implemented and the implementation language are the same, which
+is what makes the question vertiginous.  Here they are not: the evaluated
+truth values are the Lisp objects @code{true} and @code{false}, and
+@code{isTrue} answers the host boolean that the conditional needs.
+Contemplation of the meaning of @code{isTrue} here yields expansion of
+consciousness without the abuse of substance.}
 
 @subsubheading Sequences
 
-@code{Eval-sequence} is used by @code{apply} to evaluate the sequence of
-expressions in a procedure body and by @code{eval} to evaluate the sequence of
-expressions in a @code{begin} expression.  It takes as arguments a sequence of
-expressions and an environment, and evaluates the expressions in the order in
-which they occur.  The value returned is the value of the final expression.
+The procedure @code{evalSequence} is used by @code{applyProcedure} to evaluate
+the sequence of expressions in a procedure body and by @code{evaluate} to
+evaluate the sequence of expressions in a @code{begin} expression.  It takes
+as arguments a sequence of expressions and an environment, and evaluates the
+expressions in the order in which they occur.  The value returned is the value
+of the final expression.@footnote{An empty sequence has no final expression.
+The book's @code{eval-sequence} would chase @code{rest-exps} forever; the
+edition's @code{evalSequence} fails with a @code{RuntimeError} instead.}
 
-@lisp
-(define (eval-sequence exps env)
-  (cond ((last-exp? exps) 
-         (eval (first-exp exps) env))
-        (else 
-         (eval (first-exp exps) env)
-         (eval-sequence (rest-exps exps) 
-                        env))))
-@end lisp
+@example typescript
+export const evalSequence = (
+  exps: List<Value>,
+  env: Env,
+): Effect.Effect<Value, EvaluationError> => @{
+  if (exps._tag === "Nil") @{
+    return Effect.fail(new RuntimeError(@{ message: "Empty sequence: EVAL", detail: "" @}));
+  @}
+  if (isLastExp(exps)) @{
+    return evaluate(firstExp(exps), env);
+  @}
+  return Effect.flatMap(evaluate(firstExp(exps), env), () => evalSequence(restExps(exps), env));
+@};
+@end example
 
 @subsubheading Assignments and definitions
 
-The following procedure handles assignments to variables.  It calls @code{eval}
-to find the value to be assigned and transmits the variable and the resulting
-value to @code{set-variable-value!} to be installed in the designated
-environment.
+The following procedure handles assignments to variables.  It calls
+@code{evaluate} to find the value to be assigned and transmits the variable
+and the resulting value to @code{setVariableValue} to be installed in the
+designated environment.
 
-@lisp
-(define (eval-assignment exp env)
-  (set-variable-value! 
-   (assignment-variable exp)
-   (eval (assignment-value exp) env)
-   env)
-  'ok)
-@end lisp
+@example typescript
+export const evalAssignment = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
+  Effect.flatMap(evaluate(assignmentValue(exp), env), (value) =>
+    Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
+  );
+@end example
 
 @noindent
 Definitions of variables are handled in a similar manner.@footnote{This
@@ -395,35 +426,33 @@ implementation of @code{define} ignores a subtle issue in the handling of
 internal definitions, although it works correctly in most cases.  We will see
 what the problem is and how to solve it in @ref{4.1.6}.}
 
-@lisp
-(define (eval-definition exp env)
-  (define-variable! 
-    (definition-variable exp)
-    (eval (definition-value exp) env)
-    env)
-  'ok)
-@end lisp
+@example typescript
+export const evalDefinition = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
+  Effect.flatMap(evaluate(definitionValue(exp), env), (value) =>
+    Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
+  );
+@end example
 
 @noindent
 We have chosen here to return the symbol @code{ok} as the value of an
 assignment or a definition.@footnote{As we said when we introduced
 @code{define} and @code{set!}, these values are implementation-dependent in
-Scheme---that is, the implementor can choose what value to return.}
+Scheme, that is, the implementor can choose what value to return.}
 
 @quotation
 @strong{@anchor{Exercise 4.1}Exercise 4.1:} Notice that we cannot tell whether
 the metacircular evaluator evaluates operands from left to right or from right
-to left.  Its evaluation order is inherited from the underlying Lisp: If the
-arguments to @code{cons} in @code{list-of-values} are evaluated from left to
-right, then @code{list-of-values} will evaluate operands from left to right;
-and if the arguments to @code{cons} are evaluated from right to left, then
-@code{list-of-values} will evaluate operands from right to left.
+to left.  Its evaluation order is inherited from the underlying implementation
+language: If the arguments to @code{cons} in @code{listOfValues} are evaluated
+from left to right, then @code{listOfValues} will evaluate operands from left
+to right; and if the arguments to @code{cons} are evaluated from right to
+left, then @code{listOfValues} will evaluate operands from right to left.
 
-Write a version of @code{list-of-values} that evaluates operands from left to
-right regardless of the order of evaluation in the underlying Lisp.  Also write
-a version of @code{list-of-values} that evaluates operands from right to left.
+Write a version of @code{listOfValues} that evaluates operands from left to
+right regardless of the order of evaluation in the underlying implementation
+language.  Also write a version of @code{listOfValues} that evaluates operands
+from right to left.
 @end quotation
-
 @node	4.1.2, 4.1.3, 4.1.1, 4.1
 @subsection Representing Expressions
 
@@ -445,21 +474,19 @@ Here is the specification of the syntax of our language:
 @itemize
 
 @item
-The only self-evaluating items are numbers and strings:
+The only self-evaluating items are numbers, strings, and booleans:
 
-@lisp
-(define (self-evaluating? exp)
-  (cond ((number? exp) true)
-        ((string? exp) true)
-        (else false)))
-@end lisp
+@example typescript
+export const isSelfEvaluating = (exp: Value): boolean =>
+  exp._tag === "Number" || exp._tag === "String" || exp._tag === "Boolean";
+@end example
 
 @item
 Variables are represented by symbols:
 
-@lisp
-(define (variable? exp) (symbol? exp))
-@end lisp
+@example typescript
+export const isVariable = (exp: Value): exp is SymbolValue => isSymbol(exp);
+@end example
 
 @item
 Quotations have the form @code{(quote ⟨@var{text-of-quotation}⟩)}:@footnote{As
@@ -468,96 +495,107 @@ list beginning with @code{quote}, even if the expression is typed with the
 quotation mark.  For example, the expression @code{'a} would be seen by the
 evaluator as @code{(quote a)}.  See @ref{Exercise 2.55}.}
 
-@lisp
-(define (quoted? exp)
-  (tagged-list? exp 'quote))
+@example typescript
+export const isQuoted = (exp: Value): exp is Cons<Value> => taggedList("quote", exp);
 
-(define (text-of-quotation exp)
-  (cadr exp))
-@end lisp
+export const textOfQuotation = (exp: Cons<Value>): Value => cadr(exp);
+@end example
 
 @code{Quoted?} is defined in terms of the procedure @code{tagged-list?}, which
 identifies lists beginning with a designated symbol:
 
-@lisp
-(define (tagged-list? exp tag)
-  (if (pair? exp)
-      (eq? (car exp) tag)
-      false))
-@end lisp
+@example typescript
+export const taggedList = (tag: string, exp: Value): exp is Cons<Value> =>
+  isPair(exp) && isSymbol(exp.head) && exp.head.name === tag;
+@end example
 
 @item
 Assignments have the form @code{(set! ⟨@var{var}⟩ ⟨@var{value}⟩)}:
 
-@lisp
-(define (assignment? exp)
-  (tagged-list? exp 'set!))
+@example typescript
+export const isAssignment = (exp: Value): exp is Cons<Value> => taggedList("set!", exp);
 
-(define (assignment-variable exp) 
-  (cadr exp))
+export const assignmentVariable = (exp: Cons<Value>): SymbolValue => @{
+  const target = cadr(exp);
+  return isSymbol(target) ? target : symbol("<malformed>");
+@};
 
-(define (assignment-value exp) (caddr exp))
-@end lisp
+export const assignmentValue = (exp: Cons<Value>): Value => caddr(exp);
+@end example
 
 @item
 Definitions have the form
 
-@lisp
-(define ⟨@var{var}⟩ ⟨@var{value}⟩)
-@end lisp
+@example typescript
+read(`
+  (define ⟨@var{var}⟩ ⟨@var{value}⟩)
+`)
+@end example
 
 @noindent
 or the form
 
-@lisp
-(define (⟨@var{var}⟩ ⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
-  ⟨@var{body}⟩)
-@end lisp
+@example typescript
+read(`
+  (define (⟨@var{var}⟩ ⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
+    ⟨@var{body}⟩)
+`)
+@end example
 
 The latter form (standard procedure definition) is syntactic sugar for
 
-@lisp
-(define ⟨@var{var}⟩
-  (lambda (⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
-    ⟨@var{body}⟩))
-@end lisp
+@example typescript
+read(`
+  (define ⟨@var{var}⟩
+    (lambda (⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
+      ⟨@var{body}⟩))
+`)
+@end example
 
 The corresponding syntax procedures are the following:
 
-@lisp
-(define (definition? exp)
-  (tagged-list? exp 'define))
+@example typescript
+export const isDefinition = (exp: Value): exp is Cons<Value> => taggedList("define", exp);
 
-(define (definition-variable exp)
-  (if (symbol? (cadr exp))
-      (cadr exp)
-      (caadr exp)))
+export const definitionVariable = (exp: Cons<Value>): SymbolValue => @{
+  const target = cadr(exp);
+  return isSymbol(target)
+    ? target
+    : isPair(target) && isSymbol(target.head)
+      ? target.head
+      : symbol("<malformed>");
+@};
 
-(define (definition-value exp)
-  (if (symbol? (cadr exp))
-      (caddr exp)
-      (make-lambda 
-       (cdadr exp)   @r{; formal parameters}
-       (cddr exp)))) @r{; body}
-@end lisp
+export const definitionValue = (exp: Cons<Value>): Value => @{
+  const target = cadr(exp);
+  if (isSymbol(target)) @{
+    return caddr(exp);
+  @}
+  if (isPair(target)) @{
+    return makeLambda(target.tail, cddr(exp));
+  @}
+  return symbol("<malformed>");
+@};
+@end example
 
 @item
 @code{Lambda} expressions are lists that begin with the symbol @code{lambda}:
 
-@lisp
-(define (lambda? exp) 
-  (tagged-list? exp 'lambda))
-(define (lambda-parameters exp) (cadr exp))
-(define (lambda-body exp) (cddr exp))
-@end lisp
+@example typescript
+export const isLambda = (exp: Value): exp is Cons<Value> => taggedList("lambda", exp);
+
+export const lambdaParameters = (exp: Cons<Value>): List<Value> => cadrOfList(cadr(exp));
+
+export const lambdaBody = (exp: Cons<Value>): List<Value> => cddr(exp);
+@end example
 
 We also provide a constructor for @code{lambda} expressions, which is used by
 @code{definition-value}, above:
 
-@lisp
-(define (make-lambda parameters body)
-  (cons 'lambda (cons parameters body)))
-@end lisp
+@example typescript
+export const makeLambda = (parameters: List<Value>, body: List<Value>): Value =>
+  cons(symbol("lambda"), cons(parameters, body));
+@end example
 
 @item
 Conditionals begin with @code{if} and have a predicate, a consequent, and an
@@ -568,76 +606,89 @@ Scheme; we have chosen here to make it false.  We will support the use of the
 variables @code{true} and @code{false} in expressions to be evaluated by
 binding them in the global environment.  See @ref{4.1.4}.}
 
-@lisp
-(define (if? exp) (tagged-list? exp 'if))
-(define (if-predicate exp) (cadr exp))
-(define (if-consequent exp) (caddr exp))
-(define (if-alternative exp)
-  (if (not (null? (cdddr exp)))
-      (cadddr exp)
-      'false))
-@end lisp
+@example typescript
+export const isIf = (exp: Value): exp is Cons<Value> => taggedList("if", exp);
+
+export const ifPredicate = (exp: Cons<Value>): Value => cadr(exp);
+
+export const ifConsequent = (exp: Cons<Value>): Value => caddr(exp);
+
+export const ifAlternative = (exp: Cons<Value>): Value => @{
+  const rest = cddr(exp);
+  const tail = rest._tag === "Cons" ? rest.tail : nil;
+  return tail._tag === "Cons" ? tail.head : falseValue;
+@};
+@end example
 
 We also provide a constructor for @code{if} expressions, to be used by
 @code{cond->if} to transform @code{cond} expressions into @code{if}
 expressions:
 
-@lisp
-(define (make-if predicate 
-                 consequent 
-                 alternative)
-  (list 'if 
-        predicate 
-        consequent 
-        alternative))
-@end lisp
+@example typescript
+export const makeIf = (predicate: Value, consequent: Value, alternative: Value): Value =>
+  cons(symbol("if"), cons(predicate, cons(consequent, cons(alternative, nil))));
+@end example
 
 @item
 @code{Begin} packages a sequence of expressions into a single expression.  We
 include syntax operations on @code{begin} expressions to extract the actual
 sequence from the @code{begin} expression, as well as selectors that return the
 first expression and the rest of the expressions in the
-sequence.@footnote{These selectors for a list of expressions---and the
-corresponding ones for a list of operands---are not intended as a data
+sequence.@footnote{These selectors for a list of expressions, and the
+corresponding ones for a list of operands, are not intended as a data
 abstraction.  They are introduced as mnemonic names for the basic list
 operations in order to make it easier to understand the explicit-control
 evaluator in @ref{5.4}.}
 
-@lisp
-(define (begin? exp) 
-  (tagged-list? exp 'begin))
-(define (begin-actions exp) (cdr exp))
-(define (last-exp? seq) (null? (cdr seq)))
-(define (first-exp seq) (car seq))
-(define (rest-exps seq) (cdr seq))
-@end lisp
+@example typescript
+export const isBegin = (exp: Value): exp is Cons<Value> => taggedList("begin", exp);
+
+export const beginActions = (exp: Cons<Value>): List<Value> => cdr(exp);
+
+export const isLastExp = (seq: List<Value>): boolean => @{
+  const tail = seq._tag === "Cons" ? seq.tail : seq;
+  return tail._tag === "Nil";
+@};
+
+export const firstExp = (seq: List<Value>): Value =>
+  seq._tag === "Cons" ? seq.head : symbol("<malformed>");
+
+export const restExps = (seq: List<Value>): List<Value> => (seq._tag === "Cons" ? seq.tail : nil);
+@end example
 
 We also include a constructor @code{sequence->exp} (for use by @code{cond->if})
 that transforms a sequence into a single expression, using @code{begin} if
 necessary:
 
-@lisp
-(define (sequence->exp seq)
-  (cond ((null? seq) seq)
-        ((last-exp? seq) (first-exp seq))
-        (else (make-begin seq))))
+@example typescript
+export const sequenceToExp = (seq: List<Value>): Value => @{
+  if (seq._tag === "Nil") @{
+    return seq;
+  @}
+  return isLastExp(seq) ? firstExp(seq) : makeBegin(seq);
+@};
 
-(define (make-begin seq) (cons 'begin seq))
-@end lisp
+export const makeBegin = (seq: List<Value>): Value => cons(symbol("begin"), seq);
+@end example
 
 @item
 A procedure application is any compound expression that is not one of the above
 expression types.  The @code{car} of the expression is the operator, and the
 @code{cdr} is the list of operands:
 
-@lisp
-(define (application? exp) (pair? exp))
-(define (operator exp) (car exp))
-(define (operands exp) (cdr exp))
-(define (no-operands? ops) (null? ops))
-(define (first-operand ops) (car ops))
-(define (rest-operands ops) (cdr ops))
-@end lisp
+@example typescript
+export const isApplication = (exp: Value): exp is Cons<Value> => isPair(exp);
+
+export const operator = (exp: Cons<Value>): Value => car(exp);
+
+export const operands = (exp: Cons<Value>): List<Value> => cdr(exp);
+
+export const noOperands = (ops: List<Value>): boolean => ops._tag === "Nil";
+
+export const firstOperand = (ops: List<Value>): Value => firstExp(ops);
+
+export const restOperands = (ops: List<Value>): List<Value> => restExps(ops);
+@end example
 
 @end itemize
 
@@ -649,23 +700,26 @@ example is @code{cond}, which can be implemented as a nest of @code{if}
 expressions.  For example, we can reduce the problem of evaluating the
 expression
 
-@lisp
-(cond ((> x 0) x)
-      ((= x 0) (display 'zero) 0)
-      (else (- x)))
-@end lisp
+@example typescript
+read(`
+  (cond ((> x 0) x)
+        ((= x 0) (display 'zero) 0)
+        (else (- x))))
+`)
+@end example
 
 @noindent
 to the problem of evaluating the following expression involving @code{if} and
 @code{begin} expressions:
 
-@lisp
-(if (> x 0)
-    x
-    (if (= x 0)
-        (begin (display 'zero) 0)
-        (- x)))
-@end lisp
+@example typescript
+condToIf(read(`
+  (cond ((> x 0) x)
+        ((= x 0) (display 'zero) 0)
+        (else (- x))))
+`))
+// => (if (> x 0) x (if (= x 0) (begin (display (quote zero)) 0) (- x)))
+@end example
 
 @noindent
 Implementing the evaluation of @code{cond} in this way simplifies the evaluator
@@ -679,50 +733,54 @@ expressions into @code{if} expressions.  A case analysis begins with
 @code{else} clause if its predicate is the symbol @code{else}.@footnote{The
 value of a @code{cond} expression when all the predicates are false and there
 is no @code{else} clause is unspecified in Scheme; we have chosen here to make
-it false.}
+it false.}  The book's @code{expand-clauses} signals an error when an
+@code{else} clause is not last; this edition's fold treats an @code{else}
+clause as the final alternative.
 
-@lisp
-(define (cond? exp) 
-  (tagged-list? exp 'cond))
-(define (cond-clauses exp) (cdr exp))
-(define (cond-else-clause? clause)
-  (eq? (cond-predicate clause) 'else))
-(define (cond-predicate clause) 
-  (car clause))
-(define (cond-actions clause) 
-  (cdr clause))
-(define (cond->if exp)
-  (expand-clauses (cond-clauses exp)))
-(define (expand-clauses clauses)
-  (if (null? clauses)
-      'false     @r{; no @code{else} clause}
-      (let ((first (car clauses))
-            (rest (cdr clauses)))
-        (if (cond-else-clause? first)
-            (if (null? rest)
-                (sequence->exp 
-                 (cond-actions first))
-                (error "ELSE clause isn't 
-                        last: COND->IF"
-                       clauses))
-            (make-if (cond-predicate first)
-                     (sequence->exp 
-                      (cond-actions first))
-                     (expand-clauses 
-                      rest))))))
-@end lisp
+@example typescript
+export const isCond = (exp: Value): exp is Cons<Value> => taggedList("cond", exp);
+
+export const condClauses = (exp: Cons<Value>): List<Value> => cdr(exp);
+
+export const isCondElseClause = (clause: Value): boolean =>
+  isPair(clause) && isSymbol(clause.head) && clause.head.name === "else";
+
+export const condPredicate = (clause: Cons<Value>): Value => car(clause);
+
+export const condActions = (clause: Cons<Value>): List<Value> => cdr(clause);
+
+export const condToIf = (exp: Cons<Value>): Value => expandClauses(condClauses(exp));
+
+const expandClauses = (clauses: List<Value>): Value => @{
+  if (clauses._tag === "Nil") @{
+    return falseValue; // no else clause
+  @}
+  const first = clauses.head;
+  if (!isPair(first)) @{
+    return falseValue;
+  @}
+  if (isCondElseClause(first)) @{
+    return sequenceToExp(condActions(first));
+  @}
+  return makeIf(
+    condPredicate(first),
+    sequenceToExp(condActions(first)),
+    expandClauses(clauses.tail),
+  );
+@};
+@end example
 
 @noindent
 Expressions (such as @code{cond}) that we choose to implement as syntactic
 transformations are called @newterm{derived expressions}.  @code{Let}
-expressions are also derived expressions (see 
-@ref{Exercise 4.6}).@footnote{Practical Lisp systems provide a mechanism that allows a user
+expressions are also derived expressions (see @ref{Exercise 4.6}).@footnote{Practical
+Lisp systems provide a mechanism that allows a user
 to add new derived expressions and specify their implementation as syntactic
 transformations without modifying the evaluator.  Such a user-defined
 transformation is called a @newterm{macro}.  Although it is easy to add an
 elementary mechanism for defining macros, the resulting language has subtle
 name-conflict problems.  There has been much research on mechanisms for macro
-definition that do not cause these difficulties.  See, for example, @ref{Kohlbecker 1986}, 
+definition that do not cause these difficulties.  See, for example, @ref{Kohlbecker 1986},
 @ref{Clinger and Rees 1991}, and @ref{Hanson 1991}.}
 
 @quotation
@@ -795,10 +853,12 @@ Its value must be a procedure of one argument; this procedure is then invoked
 on the value of the @code{⟨}@var{test}@code{⟩}, and the result is returned as the value of
 the @code{cond} expression.  For example
 
-@lisp
-(cond ((assoc 'b '((a 1) (b 2))) => cadr)
-      (else false))
-@end lisp
+@example typescript
+read(`
+  (cond ((assoc 'b '((a 1) (b 2))) => cadr)
+        (else false))
+`)
+@end example
 
 @noindent
 returns 2.  Modify the handling of @code{cond} so that it supports this
@@ -809,21 +869,25 @@ extended syntax.
 @strong{@anchor{Exercise 4.6}Exercise 4.6:} @code{Let} expressions are derived
 expressions, because
 
-@lisp
-(let ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
-  ⟨@var{body}⟩)
-@end lisp
+@example typescript
+read(`
+  (let ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
+    ⟨@var{body}⟩)
+`)
+@end example
 
 @noindent
 is equivalent to
 
-@lisp
-((lambda (⟨@var{var₁}⟩ @r{…} ⟨@var{varₙ}⟩)
-   ⟨@var{body}⟩)
- ⟨@var{exp₁}⟩
- @r{…}
- ⟨@var{expₙ}⟩)
-@end lisp
+@example typescript
+read(`
+  ((lambda (⟨@var{var₁}⟩ @r{…} ⟨@var{varₙ}⟩)
+     ⟨@var{body}⟩)
+   ⟨@var{exp₁}⟩
+   @r{…}
+   ⟨@var{expₙ}⟩)
+`)
+@end example
 
 Implement a syntactic transformation @code{let->combination} that reduces
 evaluating @code{let} expressions to evaluating combinations of the type shown
@@ -837,12 +901,14 @@ expressions.
 sequentially from left to right, and each binding is made in an environment in
 which all of the preceding bindings are visible.  For example
 
-@lisp
-(let* ((x 3)
-       (y (+ x 2))
-       (z (+ x y 5)))
-  (* x z))
-@end lisp
+@example typescript
+read(`
+  (let* ((x 3)
+         (y (+ x 2))
+         (z (+ x y 5)))
+    (* x z))
+`)
+@end example
 
 @noindent
 returns 39.  Explain how a @code{let*} expression can be rewritten as a set of
@@ -851,9 +917,9 @@ that performs this transformation.  If we have already implemented @code{let}
 (@ref{Exercise 4.6}) and we want to extend the evaluator to handle @code{let*},
 is it sufficient to add a clause to @code{eval} whose action is
 
-@lisp
-(eval (let*->nested-lets exp) env)
-@end lisp
+@example typescript
+evaluate(letStarToNestedLets(exp), env)
+@end example
 
 @noindent
 or must we explicitly expand @code{let*} in terms of non-derived expressions?
@@ -861,28 +927,32 @@ or must we explicitly expand @code{let*} in terms of non-derived expressions?
 
 @quotation
 @strong{@anchor{Exercise 4.8}Exercise 4.8:} ``Named @code{let}'' is a variant
-of @code{let} that has the form 
+of @code{let} that has the form
 
-@lisp
-(let ⟨@var{var}⟩ ⟨@var{bindings}⟩ ⟨@var{body}⟩)
-@end lisp
+@example typescript
+read(`
+  (let ⟨@var{var}⟩ ⟨@var{bindings}⟩ ⟨@var{body}⟩)
+`)
+@end example
 
 The @code{⟨}@var{bindings}@code{⟩} and @code{⟨}@var{body}@code{⟩} are just as in ordinary @code{let},
 except that @code{⟨}@var{var}@code{⟩} is bound within @code{⟨}@var{body}@code{⟩} to a procedure whose body
 is @code{⟨}@var{body}@code{⟩} and whose parameters are the variables in the @code{⟨}@var{bindings}@code{⟩}.
 Thus, one can repeatedly execute the @code{⟨}@var{body}@code{⟩} by invoking the procedure
-named @code{⟨}@var{var}@code{⟩}.  For example, the iterative Fibonacci procedure 
+named @code{⟨}@var{var}@code{⟩}.  For example, the iterative Fibonacci procedure
 (@ref{1.2.2}) can be rewritten using named @code{let} as follows:
 
-@lisp
-(define (fib n)
-  (let fib-iter ((a 1) (b 0) (count n))
-    (if (= count 0)
-        b
-        (fib-iter (+ a b) 
-                  a 
-                  (- count 1)))))
-@end lisp
+@example typescript
+read(`
+  (define (fib n)
+    (let fib-iter ((a 1) (b 0) (count n))
+      (if (= count 0)
+          b
+          (fib-iter (+ a b)
+                    a
+                    (- count 1)))))
+`)
+@end example
 
 Modify @code{let->combination} of @ref{Exercise 4.6} to also support named
 @code{let}.
@@ -905,7 +975,6 @@ particular syntax of the language to be evaluated.  To illustrate this, design
 and implement a new syntax for Scheme by modifying the procedures in this
 section, without changing @code{eval} or @code{apply}.
 @end quotation
-
 @node	4.1.3, 4.1.4, 4.1.2, 4.1
 @subsection Evaluator Data Structures
 
@@ -920,13 +989,14 @@ and false.
 For conditionals, we accept anything to be true that is not the explicit
 @code{false} object.
 
-@lisp
-(define (true? x)
-  (not (eq? x false)))
+@example typescript
+// The book's true?: only the explicit false object counts as false.
+export const isTrue = (x: Value): boolean => !(x._tag === "Boolean" && !x.b);
+@end example
 
-(define (false? x)
-  (eq? x false))
-@end lisp
+@noindent
+The book's @code{false?} is the same test negated; the edition writes
+@code{!isTrue(x)} inline wherever the book writes @code{(false? x)}.
 
 @subsubheading Representing procedures
 
@@ -936,54 +1006,70 @@ procedures:
 @itemize @bullet
 
 @item
-@code{(apply-primitive-procedure ⟨@var{proc}⟩ ⟨@var{args}⟩)}
+@code{applyPrimitiveProcedure(⟨@var{proc}⟩, ⟨@var{args}⟩)}
 
 @noindent
 applies the given primitive procedure to the argument values in the list
 @code{⟨}@var{args}@code{⟩} and returns the result of the application.
 
 @item
-@code{(primitive-procedure? ⟨@var{proc}⟩)}
+@code{⟨@var{proc}⟩._tag === "Primitive"}
 
 @noindent
-tests whether @code{⟨}@var{proc}@code{⟩} is a primitive procedure.
+tests whether @code{⟨}@var{proc}@code{⟩} is a primitive procedure: in this
+edition the predicate is the tag test itself, since a primitive is the
+@code{Primitive} member of the value union.
 
 @end itemize
 
 @noindent
-These mechanisms for handling primitives are further described in 
+These mechanisms for handling primitives are further described in
 @ref{4.1.4}.
 
 Compound procedures are constructed from parameters, procedure bodies, and
-environments using the constructor @code{make-procedure}:
+environments using the constructor @code{makeProcedure}:
 
-@lisp
-(define (make-procedure parameters body env)
-  (list 'procedure parameters body env))
-(define (compound-procedure? p)
-  (tagged-list? p 'procedure))
-(define (procedure-parameters p) (cadr p))
-(define (procedure-body p) (caddr p))
-(define (procedure-environment p) (cadddr p))
-@end lisp
+@example typescript
+export const makeProcedure = (
+  parameters: List<Value>,
+  body: List<Value>,
+  env: Env,
+): CompoundProc => (@{
+  _tag: "Compound",
+  params: parameters,
+  body,
+  env,
+@});
+@end example
+
+@noindent
+The book's remaining accessors are the record itself: the book's
+@code{compound-procedure?} is the tag test @code{p._tag === "Compound"}, and
+@code{procedure-parameters}, @code{procedure-body}, and
+@code{procedure-environment} are the fields @code{params}, @code{body}, and
+@code{env}.
 
 @subsubheading Operations on Environments
 
 The evaluator needs operations for manipulating environments.  As explained in
 @ref{3.2}, an environment is a sequence of frames, where each frame is
 a table of bindings that associate variables with their corresponding values.
-We use the following operations for manipulating environments:
+In this edition each frame is a @code{Ref} holding a persistent
+@code{HashMap} from names to values, so where the book scans an
+association-list frame, the listings below render the equivalent
+@code{HashMap} operations.  We use the following operations for manipulating
+environments:
 
 @itemize @bullet
 
 @item
-@code{(lookup-variable-value ⟨@var{var}⟩ ⟨@var{env}⟩)}
+@code{lookupVariableValue(⟨@var{var}⟩, ⟨@var{env}⟩)}
 
 returns the value that is bound to the symbol @code{⟨}@var{var}@code{⟩} in the environment
 @code{⟨}@var{env}@code{⟩}, or signals an error if the variable is unbound.
 
 @item
-@code{(extend-environment ⟨@var{variables}⟩ ⟨@var{values}⟩ ⟨@var{base-env}⟩)}
+@code{extendEnvironment(⟨@var{variables}⟩, ⟨@var{values}⟩, ⟨@var{base-env}⟩)}
 
 returns a new environment, consisting of a new frame in which the symbols in
 the list @code{⟨}@var{variables}@code{⟩} are bound to the corresponding elements in the list
@@ -991,13 +1077,13 @@ the list @code{⟨}@var{variables}@code{⟩} are bound to the corresponding elem
 @code{⟨}@var{base-env}@code{⟩}.
 
 @item
-@code{(define-variable! ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩)}
+@code{defineVariableValue(⟨@var{var}⟩, ⟨@var{value}⟩, ⟨@var{env}⟩)}
 
 adds to the first frame in the environment @code{⟨}@var{env}@code{⟩} a new binding that
 associates the variable @code{⟨}@var{var}@code{⟩} with the value @code{⟨}@var{value}@code{⟩}.
 
 @item
-@code{(set-variable-value! ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩)}
+@code{setVariableValue(⟨@var{var}⟩, ⟨@var{value}⟩, ⟨@var{env}⟩)}
 
 changes the binding of the variable @code{⟨}@var{var}@code{⟩} in the environment @code{⟨}@var{env}@code{⟩}
 so that the variable is now bound to the value @code{⟨}@var{value}@code{⟩}, or signals an
@@ -1006,123 +1092,160 @@ error if the variable is unbound.
 @end itemize
 
 @noindent
-To implement these operations we represent an environment as a list of frames.
-The enclosing environment of an environment is the @code{cdr} of the list.  The
-empty environment is simply the empty list.
+To implement these operations we represent an environment as a chain of
+frames: the @code{Env} record pairs one frame with the environment that
+encloses it.  The enclosing environment of an environment is its
+@code{parent} field.  The empty environment is the @code{Option.none()}
+parent at the end of the chain.
 
-@lisp
-(define (enclosing-environment env) (cdr env))
-(define (first-frame env) (car env))
-(define the-empty-environment '())
-@end lisp
+@example typescript
+// The book's enclosing-environment is env.parent, an Option.
+// The book's first-frame is the frame record itself: env.vars.
+// The book's the-empty-environment is Option.none(): the chain ends.
+@end example
 
 @noindent
-Each frame of an environment is represented as a pair of lists: a list of the
-variables bound in that frame and a list of the associated
-values.@footnote{Frames are not really a data abstraction in the following
-code: @code{Set-variable-value!} and @code{define-variable!} use
-@code{set-car!}  to directly modify the values in a frame.  The purpose of the
-frame procedures is to make the environment-manipulation procedures easy to
-read.}
+Each frame of an environment is the @code{Ref}-held @code{HashMap} described
+above, and the frame procedures that shape the book's listings reduce to
+writing that map.@footnote{Frames are not really a data abstraction in the
+following code: @code{setVariableValue} and @code{defineVariableValue} write
+through the frame's @code{Ref}, directly modifying the frame just as the
+book's @code{set-car!} does.  The purpose of the frame procedures is to make
+the environment-manipulation procedures easy to read.}
 
-@lisp
-(define (make-frame variables values)
-  (cons variables values))
-(define (frame-variables frame) (car frame))
-(define (frame-values frame) (cdr frame))
-(define (add-binding-to-frame! var val frame)
-  (set-car! frame (cons var (car frame)))
-  (set-cdr! frame (cons val (cdr frame))))
-@end lisp
+@example typescript
+// The book's make-frame is the empty map a fresh frame starts with,
+// Ref.make(HashMap.empty<string, Value>()) in makeGlobalEnv and in
+// extendEnv. The book's frame-variables and frame-values are the two
+// halves of its pair of lists; the HashMap holds both at once, keyed
+// by name.
+
+// The book's add-binding-to-frame!: one more binding in this frame.
+export const addBindingToFrame = (
+  variable: SymbolValue,
+  value: Value,
+  env: Env,
+): Effect.Effect<void> => defineInFrame(env, variable.name, value);
+@end example
 
 @noindent
 To extend an environment by a new frame that associates variables with values,
 we make a frame consisting of the list of variables and the list of values, and
 we adjoin this to the environment.  We signal an error if the number of
-variables does not match the number of values.
+variables does not match the number of values; the edition fails with a single
+typed @code{ArityMismatch} error where the book signals two distinct messages.
 
-@lisp
-(define (extend-environment vars vals base-env)
-  (if (= (length vars) (length vals))
-      (cons (make-frame vars vals) base-env)
-      (if (< (length vars) (length vals))
-          (error "Too many arguments supplied" 
-                 vars 
-                 vals)
-          (error "Too few arguments supplied" 
-                 vars 
-                 vals))))
-@end lisp
+@example typescript
+const fillFrame = (
+  env: Env,
+  vars: List<Value>,
+  vals: List<Value>,
+): Effect.Effect<Env, EvaluationError> => @{
+  if (vars._tag === "Cons" && vals._tag === "Cons") @{
+    return Effect.flatMap(defineInFrame(env, nameOf(vars.head), vals.head), () =>
+      fillFrame(env, vars.tail, vals.tail),
+    );
+  @}
+  if (vars._tag === "Nil" && vals._tag === "Nil") @{
+    return Effect.succeed(env);
+  @}
+  return Effect.fail(new ArityMismatch(@{ expected: countList(vars), given: countList(vals) @}));
+@};
 
-@noindent
-To look up a variable in an environment, we scan the list of variables in the
-first frame.  If we find the desired variable, we return the corresponding
-element in the list of values.  If we do not find the variable in the current
-frame, we search the enclosing environment, and so on.  If we reach the empty
-environment, we signal an ``unbound variable'' error.
-
-@lisp
-(define (lookup-variable-value var env)
-  (define (env-loop env)
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (env-loop 
-              (enclosing-environment env)))
-            ((eq? var (car vars))
-             (car vals))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (if (eq? env the-empty-environment)
-        (error "Unbound variable" var)
-        (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
-                (frame-values frame)))))
-  (env-loop env))
-@end lisp
+// The book's extend-environment: a fresh frame binding vars to vals.
+export const extendEnvironment = (
+  vars: List<Value>,
+  vals: List<Value>,
+  baseEnv: Env,
+): Effect.Effect<Env, EvaluationError> =>
+  Effect.flatMap(extendEnv(baseEnv), (env) => fillFrame(env, vars, vals));
+@end example
 
 @noindent
-To set a variable to a new value in a specified environment, we scan for the
-variable, just as in @code{lookup-variable-value}, and change the corresponding
-value when we find it.
+To look up a variable in an environment, we look the name up in the first
+frame's map.  If we find the desired variable, we return its value.  If we do
+not find the variable in the current frame, we search the enclosing
+environment, and so on.  If we reach the empty environment, we signal an
+``unbound variable'' error.
 
-@lisp
-(define (set-variable-value! var val env)
-  (define (env-loop env)
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (env-loop 
-              (enclosing-environment env)))
-            ((eq? var (car vars))
-             (set-car! vals val))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (if (eq? env the-empty-environment)
-        (error "Unbound variable: SET!" var)
-        (let ((frame (first-frame env)))
-          (scan (frame-variables frame)
-                (frame-values frame)))))
-  (env-loop env))
-@end lisp
+@example typescript
+// The book's scan over a frame's parallel lists becomes one HashMap
+// lookup, then a step to the parent frame on a miss.
+const findBinding = (env: Env, name: string): Effect.Effect<Option.Option<Value>> =>
+  Effect.gen(function* () @{
+    const vars = yield* Ref.get(env.vars);
+    const own = HashMap.get(vars, name);
+    if (Option.isSome(own)) @{
+      return own;
+    @}
+    if (Option.isNone(env.parent)) @{
+      return Option.none();
+    @}
+    return yield* findBinding(env.parent.value, name);
+  @});
+
+// env.ts's lookupVariable wraps findBinding and fails with
+// UnboundVariable when the whole chain misses.
+
+// The book's lookup-variable-value.
+export const lookupVariableValue = (
+  variable: SymbolValue,
+  env: Env,
+): Effect.Effect<Value, EvaluationError> => lookupVariable(env, variable.name);
+@end example
+
+@noindent
+To set a variable to a new value in a specified environment, we look for the
+variable just as in @code{lookup-variable-value}, and change the corresponding
+value when we find it, writing through the frame that defines it.
+
+@example typescript
+// The scan for set-variable-value!: descend until a frame binds the
+// name, then write through that frame's Ref. A miss on the whole chain
+// fails with UnboundVariable instead of defining the name.
+export const setVariable = (
+  env: Env,
+  name: string,
+  value: Value,
+): Effect.Effect<void, EvaluationError> =>
+  Effect.gen(function* () @{
+    const vars = yield* Ref.get(env.vars);
+    if (Option.isSome(HashMap.get(vars, name))) @{
+      yield* Ref.update(env.vars, (v) => HashMap.set(v, name, value));
+      return;
+    @}
+    if (Option.isNone(env.parent)) @{
+      return yield* Effect.fail(new UnboundVariable(@{ name @}));
+    @}
+    yield* setVariable(env.parent.value, name, value);
+  @});
+
+// The book's set-variable-value!.
+export const setVariableValue = (
+  variable: SymbolValue,
+  value: Value,
+  env: Env,
+): Effect.Effect<void, EvaluationError> => setVariable(env, variable.name, value);
+@end example
 
 @noindent
 To define a variable, we search the first frame for a binding for the variable,
 and change the binding if it exists (just as in @code{set-variable-value!}).
-If no such binding exists, we adjoin one to the first frame.
+If no such binding exists, we adjoin one to the first frame.  In this edition
+both cases are one @code{HashMap.set} into the frame's map, since a map write
+updates the entry when the key is present and inserts one when it is not.
 
-@lisp
-(define (define-variable! var val env)
-  (let ((frame (first-frame env)))
-    (define (scan vars vals)
-      (cond ((null? vars)
-             (add-binding-to-frame! 
-              var val frame))
-            ((eq? var (car vars))
-             (set-car! vals val))
-            (else (scan (cdr vars) 
-                        (cdr vals)))))
-    (scan (frame-variables frame)
-          (frame-values frame))))
-@end lisp
+@example typescript
+// The book's define-variable!: bind in this frame, shadowing outer ones.
+export const defineVariable = (env: Env, name: string, value: Value): Effect.Effect<void> =>
+  Ref.update(env.vars, (vars) => HashMap.set(vars, name, value));
+
+export const defineVariableValue = (
+  variable: SymbolValue,
+  value: Value,
+  env: Env,
+): Effect.Effect<void> => defineInFrame(env, variable.name, value);
+@end example
 
 @noindent
 The method described here is only one of many plausible ways to represent
@@ -1130,7 +1253,7 @@ environments.  Since we used data abstraction to isolate the rest of the
 evaluator from the detailed choice of representation, we could change the
 environment representation if we wanted to.  (See @ref{Exercise 4.11}.)  In a
 production-quality Lisp system, the speed of the evaluator's environment
-operations---especially that of variable lookup---has a major impact on the
+operations, especially that of variable lookup, has a major impact on the
 performance of the system.  The representation described here, although
 conceptually simple, is not efficient and would not ordinarily be used in a
 production system.@footnote{The drawback of this representation (as well as the
@@ -1170,188 +1293,179 @@ justify any choices you make.
 @node	4.1.4, 4.1.5, 4.1.3, 4.1
 @subsection Running the Evaluator as a Program
 
-Given the evaluator, we have in our hands a description (expressed in Lisp) of
-the process by which Lisp expressions are evaluated.  One advantage of
-expressing the evaluator as a program is that we can run the program.  This
-gives us, running within Lisp, a working model of how Lisp itself evaluates
-expressions.  This can serve as a framework for experimenting with evaluation
-rules, as we shall do later in this chapter.
+Given the evaluator, we have in our hands a description (expressed in
+TypeScript) of the process by which the evaluated language's expressions are
+evaluated.  One advantage of expressing the evaluator as a program is that we
+can run the program.  This gives us, running within TypeScript, a working
+model of how the language itself evaluates expressions.  This can serve as a
+framework for experimenting with evaluation rules, as we shall do later in
+this chapter.
 
 Our evaluator program reduces expressions ultimately to the application of
 primitive procedures.  Therefore, all that we need to run the evaluator is to
-create a mechanism that calls on the underlying Lisp system to model the
+create a mechanism that calls on the underlying TypeScript host to model the
 application of primitive procedures.
 
 There must be a binding for each primitive procedure name, so that when
-@code{eval} evaluates the operator of an application of a primitive, it will
-find an object to pass to @code{apply}.  We thus set up a global environment
-that associates unique objects with the names of the primitive procedures that
-can appear in the expressions we will be evaluating.  The global environment
-also includes bindings for the symbols @code{true} and @code{false}, so that
-they can be used as variables in expressions to be evaluated.
+@code{evaluate} evaluates the operator of an application of a primitive, it
+will find an object to pass to @code{applyProcedure}.  We thus set up a global
+environment that associates unique objects with the names of the primitive
+procedures that can appear in the expressions we will be evaluating.  The
+global environment also includes bindings for the symbols @code{true} and
+@code{false}, so that they can be used as variables in expressions to be
+evaluated.
 
-@lisp
-(define (setup-environment)
-  (let ((initial-env
-         (extend-environment 
-          (primitive-procedure-names)
-          (primitive-procedure-objects)
-          the-empty-environment)))
-    (define-variable! 'true true initial-env)
-    (define-variable! 'false false initial-env)
-    initial-env))
+@example typescript
+export const setupEnvironment = (sink: Sink = () => @{@}): Effect.Effect<Env, never> =>
+  Effect.gen(function* () @{
+    const env = yield* makeGlobalEnv();
+    for (const [name, fn] of makePrimitiveProcedures(sink)) @{
+      yield* defineInFrame(env, name, @{ _tag: "Primitive", name, fn @});
+    @}
+    yield* defineInFrame(env, "true", trueValue);
+    yield* defineInFrame(env, "false", falseValue);
+    return env;
+  @});
 
-(define the-global-environment 
-  (setup-environment))
-@end lisp
-
-@noindent
-It does not matter how we represent the primitive procedure objects, so long as
-@code{apply} can identify and apply them by using the procedures
-@code{primitive-procedure?} and @code{apply-primitive-procedure}.  We have
-chosen to represent a primitive procedure as a list beginning with the symbol
-@code{primitive} and containing a procedure in the underlying Lisp that
-implements that primitive.
-
-@lisp
-(define (primitive-procedure? proc)
-  (tagged-list? proc 'primitive))
-
-(define (primitive-implementation proc) 
-  (cadr proc))
-@end lisp
+const theGlobalEnvironment = Effect.runSync(setupEnvironment());
+@end example
 
 @noindent
-@code{Setup-environment} will get the primitive names and implementation
-procedures from a list:@footnote{Any procedure defined in the underlying Lisp
-can be used as a primitive for the metacircular evaluator.  The name of a
-primitive installed in the evaluator need not be the same as the name of its
-implementation in the underlying Lisp; the names are the same here because the
+It does not matter how we represent the primitive procedure objects, so long
+as @code{applyProcedure} can identify and apply them by reading the value's
+tag and by using @code{applyPrimitiveProcedure}.  We have chosen to represent
+a primitive procedure as the @code{Primitive} member of the value union: a
+record carrying the primitive's name and a function from the underlying
+TypeScript host that implements that primitive.
+
+@example typescript
+// The book's primitive-procedure? is the union tag test:
+// proc._tag === "Primitive"
+// The book's primitive-implementation is that record's fn field: the
+// host function behind the primitive.
+@end example
+
+@noindent
+@code{setupEnvironment} gets the primitive names and implementation functions
+from a table:@footnote{Any function defined in the underlying TypeScript can
+be used as a primitive for the metacircular evaluator.  The name of a
+primitive installed in the evaluator need not be the same as the name of the
+host function behind it; the names are the same here because the
 metacircular evaluator implements Scheme itself.  Thus, for example, we could
-put @code{(list 'first car)} or @code{(list 'square (lambda (x) (* x x)))} in
-the list of @code{primitive-procedures}.}
+put the pair @code{["first", car]} in the table, or bind the name
+@code{"square"} to a host function @code{(x) => x * x}.}  The book's
+@code{primitive-procedure-names} and @code{primitive-procedure-objects} are
+the two halves of each pair; this edition never builds the two lists
+separately, but binds each name to a @code{Primitive} record in the single
+pass shown above.
 
-@lisp
-(define primitive-procedures
-  (list (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
-        (list 'null? null?)
-        ⟨@var{more primitives}⟩ ))
+@example typescript
+const primitive = (name: string, fn: Primitive): [string, Primitive] => [name, fn];
 
-(define (primitive-procedure-names)
-  (map car primitive-procedures))
-
-(define (primitive-procedure-objects)
-  (map (lambda (proc) 
-         (list 'primitive (cadr proc)))
-       primitive-procedures))
-@end lisp
-
-@noindent
-To apply a primitive procedure, we simply apply the implementation procedure to
-the arguments, using the underlying Lisp
-system:@footnote{@code{Apply-in-underlying-scheme} is the @code{apply}
-procedure we have used in earlier chapters.  The metacircular evaluator's
-@code{apply} procedure (@ref{4.1.1}) models the working of this
-primitive.  Having two different things called @code{apply} leads to a
-technical problem in running the metacircular evaluator, because defining the
-metacircular evaluator's @code{apply} will mask the definition of the
-primitive.  One way around this is to rename the metacircular @code{apply} to
-avoid conflict with the name of the primitive procedure.  We have assumed
-instead that we have saved a reference to the underlying @code{apply} by doing
-
-@lisp
-(define apply-in-underlying-scheme apply)
-@end lisp
+export const makePrimitiveProcedures = (
+  sink: Sink,
+): ReadonlyArray<readonly [string, Primitive]> => [
+  primitive("car", (args) => @{
+    const first = toArray(args)[0];
+    return first !== undefined && isPair(first)
+      ? Effect.succeed(car(first))
+      : Effect.fail(new RuntimeError(@{ message: "car: expected a pair", detail: argsText(args) @}));
+  @}),
+  // ... cdr, cons, null?, and the rest of the table follow the same
+  // shape: a name plus a host function over the evaluated arguments.
+  // display and newline write to the given sink.
+];
+@end example
 
 @noindent
-before defining the metacircular @code{apply}.  This allows us to access the
-original version of @code{apply} under a different name.}
+To apply a primitive procedure, we simply call the host function stored in
+the record, handing it the evaluated argument
+list:@footnote{@code{Apply-in-underlying-scheme} is the @code{apply} procedure
+we have used in earlier chapters: the Lisp original saves the underlying
+@code{apply} under that name before the metacircular evaluator defines its
+own @code{apply}, which would otherwise mask it.  This edition has no such
+renaming to manage: the evaluator's apply is @code{applyProcedure}, and each
+primitive record already carries the host function behind it, so the problem
+dissolves.}
 
-@lisp
-(define (apply-primitive-procedure proc args)
-  (apply-in-underlying-scheme
-   (primitive-implementation proc) args))
-@end lisp
+@example typescript
+export const applyPrimitiveProcedure = (
+  procedure: Extract<Value, @{ _tag: "Primitive" @}>,
+  args: List<Value>,
+): Effect.Effect<Value, EvaluationError> => procedure.fn(args);
+@end example
 
 @noindent
 For convenience in running the metacircular evaluator, we provide a
 @newterm{driver loop} that models the read-eval-print loop of the underlying
-Lisp system.  It prints a @newterm{prompt}, reads an input expression,
-evaluates this expression in the global environment, and prints the result.  We
-precede each printed result by an @newterm{output prompt} so as to distinguish
-the value of the expression from other output that may be printed.@footnote{The
-primitive procedure @code{read} waits for input from the user, and returns the
-next complete expression that is typed.  For example, if the user types
-@code{(+ 23 x)}, @code{read} returns a three-element list containing the symbol
-@code{+}, the number 23, and the symbol @code{x}.  If the user types @code{'x},
-@code{read} returns a two-element list containing the symbol @code{quote} and
-the symbol @code{x}.}
+Lisp system.  This edition runs the loop over a finite session: it takes the
+global environment and the session's inputs as strings, and for each input it
+reports the @newterm{prompt} line, the input expression, the @newterm{output
+prompt}, and the printed result, so as to distinguish the value of the
+expression from other output that may be printed.@footnote{The host parser
+@code{read(text)} from @code{read.ts} stands in for the book's primitive
+@code{read}: it parses the next complete expression out of the string it is
+given.  For example, @code{read("(+ 23 x)")} returns a three-element list
+containing the symbol @code{+}, the number 23, and the symbol @code{x}.
+@code{read("'x")} returns a two-element list containing the symbol
+@code{quote} and the symbol @code{x}.}
 
-@lisp
-(define input-prompt  ";;; M-Eval input:")
-(define output-prompt ";;; M-Eval value:")
+@example typescript
+// The book's input-prompt and output-prompt are the literal lines the
+// transcript reports for every input.
 
-(define (driver-loop)
-  (prompt-for-input input-prompt)
-  (let ((input (read)))
-    (let ((output 
-           (eval input 
-                 the-global-environment)))
-      (announce-output output-prompt)
-      (user-print output)))
-  (driver-loop))
-
-(define (prompt-for-input string)
-  (newline) (newline) 
-  (display string) (newline))
-
-(define (announce-output string)
-  (newline) (display string) (newline))
-@end lisp
+export const driverLoop = (
+  env: Env,
+  inputs: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
+  Effect.forEach(inputs, (input) =>
+    Effect.flatMap(evalString(input, env), (value) =>
+      Effect.succeed([";;; M-Eval input:", input, ";;; M-Eval value:", format(value)]),
+    ),
+  ).pipe(Effect.map((lines) => lines.flat()));
+@end example
 
 @noindent
-We use a special printing procedure, @code{user-print}, to avoid printing the
-environment part of a compound procedure, which may be a very long list (or may
-even contain cycles).
+The book's @code{prompt-for-input} and @code{announce-output} are the two
+prompt lines in each transcript block, and the book's pair of @code{read} and
+@code{eval} is @code{evalString(text, env)}, which parses one form with
+@code{read} and evaluates it in the given environment; a text that does not
+parse lands on the error channel as a @code{RuntimeError}.
 
-@lisp
-(define (user-print object)
-  (if (compound-procedure? object)
-      (display 
-       (list 'compound-procedure
-             (procedure-parameters object)
-             (procedure-body object)
-             '<procedure-env>))
-      (display object)))
-@end lisp
+@noindent
+We use a special printing procedure to avoid printing the environment part of
+a compound procedure, which may be a very long list (or may even contain
+cycles).  This edition's printer is @code{format} from @code{read.ts}, and it
+renders any compound procedure as @code{#[compound-procedure]}, so no part of
+the closure, environment included, ever reaches the transcript.
+
+@example typescript
+// The book's user-print: format(value) answers "#[compound-procedure]"
+// for a Compound value, so the environment is never printed.
+@end example
 
 @noindent
 Now all we need to do to run the evaluator is to initialize the global
 environment and start the driver loop.  Here is a sample interaction:
 
-@lisp
-(define the-global-environment 
-  (setup-environment))
+@example typescript
+const theGlobalEnvironment = Effect.runSync(setupEnvironment());
 
-(driver-loop)
-
-@i{;;; M-Eval input:}
-(define (append x y)
-  (if (null? x)
-      y
-      (cons (car x) (append (cdr x) y))))
-
-@i{;;; M-Eval value:}
-@i{ok}
-
-@i{;;; M-Eval input:}
-(append '(a b c) '(d e f))
-
-@i{;;; M-Eval value:}
-@i{(a b c d e f)}
-@end lisp
+const transcript = Effect.runSync(
+  driverLoop(theGlobalEnvironment, [
+    "(define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))",
+    "(append '(a b c) '(d e f))",
+  ]),
+);
+// ;;; M-Eval input:
+// (define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))
+// ;;; M-Eval value:
+// ok
+// ;;; M-Eval input:
+// (append '(a b c) '(d e f))
+// ;;; M-Eval value:
+// (a b c d e f)
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.14}Exercise 4.14:} Eva Lu Ator and Louis Reasoner
@@ -1361,21 +1475,22 @@ fine.  Louis, in contrast, has installed the system version of @code{map} as a
 primitive for the metacircular evaluator.  When he tries it, things go terribly
 wrong.  Explain why Louis's @code{map} fails even though Eva's works.
 @end quotation
-
 @node	4.1.5, 4.1.6, 4.1.4, 4.1
 @subsection Data as Programs
 
-In thinking about a Lisp program that evaluates Lisp expressions, an analogy
+In thinking about a program that evaluates programs, an analogy
 might be helpful.  One operational view of the meaning of a program is that a
 program is a description of an abstract (perhaps infinitely large) machine.
 For example, consider the familiar program to compute factorials:
 
-@lisp
+@example typescript
+const factorialProgram = read(`
 (define (factorial n)
   (if (= n 1)
       1
       (* (factorial (- n 1)) n)))
-@end lisp
+`);
+@end example
 
 @noindent
 We may regard this program as the description of a machine containing parts
@@ -1464,20 +1579,21 @@ the evaluator will be able to compute factorials.
 @end float
 
 From this perspective, our evaluator is seen to be a @newterm{universal machine}.  
-It mimics other machines when these are described as Lisp
-programs.@footnote{The fact that the machines are described in Lisp is
-inessential.  If we give our evaluator a Lisp program that behaves as an
-evaluator for some other language, say C, the Lisp evaluator will emulate the C
+It mimics other machines when these are described as programs in the object
+language.@footnote{The fact that the machines are described in the object
+language is inessential.  If we give our evaluator a program that behaves as an
+evaluator for some other language, say C, our evaluator will emulate the C
 evaluator, which in turn can emulate any machine described as a C program.
-Similarly, writing a Lisp evaluator in C produces a C program that can execute
-any Lisp program.  The deep idea here is that any evaluator can emulate any
+Similarly, writing an evaluator for the object language in C produces a C
+program that can execute any program written in the object language.  The deep
+idea here is that any evaluator can emulate any
 other.  Thus, the notion of ``what can in principle be computed'' (ignoring
 practicalities of time and memory required) is independent of the language or
 the computer, and instead reflects an underlying notion of
 @newterm{computability}.  This was first demonstrated in a clear way by Alan
 M. Turing (1912-1954), whose 1936 paper laid the foundations for theoretical
 computer science.  In the paper, Turing presented a simple computational
-model---now known as a @newterm{Turing machine}---and argued that any
+model, now known as a @newterm{Turing machine}, and argued that any
 ``effective process'' can be formulated as a program for such a machine.  (This
 argument is known as the @newterm{Church-Turing thesis}.)  Turing then
 implemented a universal machine, i.e., a Turing machine that behaves as an
@@ -1505,47 +1621,55 @@ explores some of these ideas (@ref{Hofstadter 1979}).}
 Another striking aspect of the evaluator is that it acts as a bridge between
 the data objects that are manipulated by our programming language and the
 programming language itself.  Imagine that the evaluator program (implemented
-in Lisp) is running, and that a user is typing expressions to the evaluator and
-observing the results.  From the perspective of the user, an input expression
-such as @code{(* x x)} is an expression in the programming language, which the
-evaluator should execute.  From the perspective of the evaluator, however, the
-expression is simply a list (in this case, a list of three symbols: @code{*},
-@code{x}, and @code{x}) that is to be manipulated according to a well-defined
-set of rules.
+in TypeScript) is running, and that a user is typing expressions to the
+evaluator and observing the results.  From the perspective of the user, an input
+expression such as @code{(* x x)} is an expression in the programming language,
+which the evaluator should execute.  From the perspective of the evaluator,
+however, the expression is simply a list (in this case, a list of three
+symbols: @code{*}, @code{x}, and @code{x}) that is to be manipulated according
+to a well-defined set of rules.
 
 That the user's programs are the evaluator's data need not be a source of
 confusion.  In fact, it is sometimes convenient to ignore this distinction, and
-to give the user the ability to explicitly evaluate a data object as a Lisp
-expression, by making @code{eval} available for use in programs.  Many Lisp
-dialects provide a primitive @code{eval} procedure that takes as arguments an
-expression and an environment and evaluates the expression relative to the
-environment.@footnote{Warning: This @code{eval} primitive is not identical to
-the @code{eval} procedure we implemented in @ref{4.1.1}, because it
-uses @emph{actual} Scheme environments rather than the sample environment
-structures we built in @ref{4.1.3}.  These actual environments cannot
-be manipulated by the user as ordinary lists; they must be accessed via
-@code{eval} or other special operations.  Similarly, the @code{apply} primitive
-we saw earlier is not identical to the metacircular @code{apply}, because it
-uses actual Scheme procedures rather than the procedure objects we constructed
-in @ref{4.1.3} and @ref{4.1.4}.} Thus,
+to give the user the ability to explicitly evaluate a data object as an
+expression of the object language, by making @code{evalString} available for
+use in programs.  This edition's @code{evalString} takes as arguments a string
+of source text and an environment, reads the expression with @code{read}, and
+evaluates it relative to the environment.@footnote{This @code{evalString}
+primitive is not JavaScript's own @code{eval}: it evaluates expressions of the
+object language, not JavaScript source.  It is exactly the @code{evaluate}
+procedure we implemented in @ref{4.1.1}, prefixed by a call to @code{read}, and
+it runs over the sample environment structures we built in @ref{4.1.3}, which
+the user's programs can manipulate as ordinary lists.  Similarly,
+@code{applyProcedure} is the metacircular @code{apply}, operating on the
+procedure objects we constructed in @ref{4.1.3} and @ref{4.1.4}.} Thus,
 
-@lisp
-(eval '(* 5 5) user-initial-environment)
-@end lisp
+@example typescript
+const userInitialEnvironment = Effect.runSync(setupEnvironment());
+
+Effect.runSync(evalString("(* 5 5)", userInitialEnvironment))
+// => 25
+@end example
 
 @noindent
 and
 
-@lisp
-(eval (cons '* (list 5 5)) 
-      user-initial-environment)
-@end lisp
+@example typescript
+const expression = cons(
+  symbol("*"),
+  list(@{ _tag: "Number", n: 5 @}, @{ _tag: "Number", n: 5 @}),
+);
+
+Effect.runSync(evaluate(expression, userInitialEnvironment))
+// => 25
+@end example
 
 @noindent
 will both return 25.@footnote{The @abbr{MIT} implementation of Scheme
 includes @code{eval}, as well as a symbol @code{user-initial-environment} that
 is bound to the initial environment in which the user's input expressions are
-evaluated.}
+evaluated.  This edition's counterpart is @code{setupEnvironment}, which builds
+the global environment that @code{evalString} evaluates in.}
 
 @quotation
 @strong{@anchor{Exercise 4.15}Exercise 4.15:} Given a one-argument procedure
@@ -1557,7 +1681,8 @@ impossible to write a procedure @code{halts?} that correctly determines whether
 the following reasoning: If you had such a procedure @code{halts?}, you could
 implement the following program:
 
-@lisp
+@example typescript
+const [runForever, tryProgram] = readAll(`
 (define (run-forever)
   (run-forever))
 
@@ -1565,7 +1690,8 @@ implement the following program:
   (if (halts? p p)
       (run-forever)
       'halted))
-@end lisp
+`);
+@end example
 
 Now consider evaluating the expression @code{(try try)} and show that any
 possible outcome (either halting or running forever) violates the intended
@@ -1576,7 +1702,6 @@ This is Turing's celebrated @newterm{Halting Theorem}, which gave the first
 clear example of a @newterm{non-computable} problem, i.e., a well-posed task
 that cannot be carried out as a computational procedure.}
 @end quotation
-
 @node	4.1.6, 4.1.7, 4.1.5, 4.1
 @subsection Internal Definitions
 
@@ -1591,18 +1716,20 @@ not be the best way to define local variables.
 
 Consider a procedure with internal definitions, such as
 
-@lisp
-(define (f x)
-  (define (even? n)
-    (if (= n 0)
-        true
-        (odd? (- n 1))))
-  (define (odd? n)
-    (if (= n 0)
-        false
-        (even? (- n 1))))
-  ⟨@var{rest of body of @code{f}}⟩)
-@end lisp
+@example typescript
+read(`
+  (define (f x)
+    (define (even? n)
+      (if (= n 0)
+          true
+          (odd? (- n 1))))
+    (define (odd? n)
+      (if (= n 0)
+          false
+          (even? (- n 1))))
+    ⟨@var{rest of body of @code{f}}⟩)
+`)
+@end example
 
 @noindent
 Our intention here is that the name @code{odd?} in the body of the procedure
@@ -1610,8 +1737,8 @@ Our intention here is that the name @code{odd?} in the body of the procedure
 @code{even?}.  The scope of the name @code{odd?} is the entire body of
 @code{f}, not just the portion of the body of @code{f} starting at the point
 where the @code{define} for @code{odd?} occurs.  Indeed, when we consider that
-@code{odd?} is itself defined in terms of @code{even?}---so that @code{even?}
-and @code{odd?} are mutually recursive procedures---we see that the only
+@code{odd?} is itself defined in terms of @code{even?}, so that @code{even?}
+and @code{odd?} are mutually recursive procedures, we see that the only
 satisfactory interpretation of the two @code{define}s is to regard them as if
 the names @code{even?} and @code{odd?} were being added to the environment
 simultaneously.  More generally, in block structure, the scope of a local name
@@ -1640,7 +1767,7 @@ of simultaneous scoping for internal definitions avoids some nasty difficulties
 that would otherwise arise in implementing a compiler.}
 
 There is, however, a simple way to treat definitions so that internally defined
-names have truly simultaneous scope---just create all local variables that will
+names have truly simultaneous scope: just create all local variables that will
 be in the current environment before evaluating any of the value expressions.
 One way to do this is by a syntax transformation on @code{lambda} expressions.
 Before evaluating the body of a @code{lambda} expression, we ``scan out'' and
@@ -1648,24 +1775,28 @@ eliminate all the internal definitions in the body.  The internally defined
 variables will be created with a @code{let} and then set to their values by
 assignment.  For example, the procedure
 
-@lisp
-(lambda ⟨@var{vars}⟩
-  (define u ⟨@var{e1}⟩)
-  (define v ⟨@var{e2}⟩)
-  ⟨@var{e3}⟩)
-@end lisp
+@example typescript
+read(`
+  (lambda ⟨@var{vars}⟩
+    (define u ⟨@var{e1}⟩)
+    (define v ⟨@var{e2}⟩)
+    ⟨@var{e3}⟩)
+`)
+@end example
 
 @noindent
 would be transformed into
 
-@lisp
-(lambda ⟨@var{vars}⟩
-  (let ((u '*unassigned*)
-        (v '*unassigned*))
-    (set! u ⟨@var{e1}⟩)
-    (set! v ⟨@var{e2}⟩)
-    ⟨@var{e3}⟩))
-@end lisp
+@example typescript
+read(`
+  (lambda ⟨@var{vars}⟩
+    (let ((u '*unassigned*)
+          (v '*unassigned*))
+      (set! u ⟨@var{e1}⟩)
+      (set! v ⟨@var{e2}⟩)
+      ⟨@var{e3}⟩))
+`)
+@end example
 
 @noindent
 where @code{*unassigned*} is a special symbol that causes looking up a variable
@@ -1722,27 +1853,31 @@ the extra frame.
 @strong{@anchor{Exercise 4.18}Exercise 4.18:} Consider an alternative strategy
 for scanning out definitions that translates the example in the text to
 
-@lisp
-(lambda ⟨@var{vars}⟩
-  (let ((u '*unassigned*)
-        (v '*unassigned*))
-    (let ((a ⟨@var{e1}⟩)
-          (b ⟨@var{e2}⟩))
-      (set! u a)
-      (set! v b))
-    ⟨@var{e3}⟩))
-@end lisp
+@example typescript
+read(`
+  (lambda ⟨@var{vars}⟩
+    (let ((u '*unassigned*)
+          (v '*unassigned*))
+      (let ((a ⟨@var{e1}⟩)
+            (b ⟨@var{e2}⟩))
+        (set! u a)
+        (set! v b))
+      ⟨@var{e3}⟩))
+`)
+@end example
 
 Here @code{a} and @code{b} are meant to represent new variable names, created
 by the interpreter, that do not appear in the user's program.  Consider the
 @code{solve} procedure from @ref{3.5.4}:
 
-@lisp
-(define (solve f y0 dt)
-  (define y (integral (delay dy) y0 dt))
-  (define dy (stream-map f y))
-  y)
-@end lisp
+@example typescript
+read(`
+  (define (solve f y0 dt)
+    (define y (integral (delay dy) y0 dt))
+    (define dy (stream-map f y))
+    y)
+`)
+@end example
 
 Will this procedure work if internal definitions are scanned out as shown in
 this exercise?  What if they are scanned out as shown in the text?  Explain.
@@ -1753,14 +1888,16 @@ this exercise?  What if they are scanned out as shown in the text?  Explain.
 and Eva Lu Ator are arguing about the desired result of evaluating the
 expression
 
-@lisp
-(let ((a 1))
-  (define (f x)
-    (define b (+ a x))
-    (define a 5)
-    (+ a b))
-  (f 10))
-@end lisp
+@example typescript
+read(`
+  (let ((a 1))
+    (define (f x)
+      (define b (+ a x))
+      (define a 5)
+      (+ a b))
+    (f 10))
+`)
+@end example
 
 Ben asserts that the result should be obtained using the sequential rule for
 @code{define}: @code{b} is defined to be 11, then @code{a} is defined to be 5,
@@ -1777,7 +1914,7 @@ used in evaluating @code{b}.  Hence, in Eva's view @code{a} should be 5,
 viewpoints do you support?  Can you devise a way to implement internal
 definitions so that they behave as Eva prefers?@footnote{The @abbr{MIT}
 implementors of Scheme support Alyssa on the following grounds: Eva is in
-principle correct---the definitions should be regarded as simultaneous.  But
+principle correct: the definitions should be regarded as simultaneous.  But
 it seems difficult to implement a general, efficient mechanism that does what
 Eva requires.  In the absence of such a mechanism, it is better to generate an
 error in the difficult cases of simultaneous definitions (Alyssa's notion) than
@@ -1793,28 +1930,33 @@ simultaneously and have the same scope as each other.  The sample procedure
 @code{f} above can be written without internal definitions, but with exactly
 the same meaning, as
 
-@lisp
-(define (f x)
-  (letrec
-      ((even?
-        (lambda (n)
-          (if (= n 0)
-              true
-              (odd? (- n 1)))))
-       (odd?
-        (lambda (n)
-          (if (= n 0)
-              false
-              (even? (- n 1))))))
-    ⟨@var{rest of body of @code{f}}⟩))
-@end lisp
+@example typescript
+read(`
+  (define (f x)
+    (letrec
+        ((even?
+          (lambda (n)
+            (if (= n 0)
+                true
+                (odd? (- n 1)))))
+         (odd?
+          (lambda (n)
+            (if (= n 0)
+                false
+                (even? (- n 1))))))
+      ⟨@var{rest of body of @code{f}}⟩))
+`)
+@end example
 
 @code{Letrec} expressions, which have the form
 
-@lisp
-(letrec ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
-  ⟨@var{body}⟩)
-@end lisp
+@example typescript
+list(symbol("letrec"),
+     list(list(⟨@var{var₁}⟩, ⟨@var{exp₁}⟩),
+          @dots{},
+          list(⟨@var{varₙ}⟩, ⟨@var{expₙ}⟩)),
+     ⟨@var{body}⟩)
+@end example
 
 @noindent
 are a variation on @code{let} in which the expressions
@@ -1824,15 +1966,17 @@ that includes all the @code{letrec} bindings.  This permits recursion in the
 bindings, such as the mutual recursion of @code{even?} and @code{odd?} in the
 example above, or the evaluation of 10 factorial with
 
-@lisp
-(letrec
-    ((fact
-      (lambda (n)
-        (if (= n 1)
-            1
-            (* n (fact (- n 1)))))))
-  (fact 10))
-@end lisp
+@example typescript
+read(`
+  (letrec
+      ((fact
+        (lambda (n)
+          (if (= n 1)
+              1
+              (* n (fact (- n 1)))))))
+    (fact 10))
+`)
+@end example
 
 @enumerate a
 
@@ -1869,15 +2013,17 @@ trick of this sort is the @math{Y} @newterm{operator}, which can be used to give
 details on the λ-calculus, and @ref{Gabriel 1988} for an exposition of the
 @math{Y} operator in Scheme.)}
 
-@lisp
-((lambda (n)
-   ((lambda (fact) (fact fact n))
-    (lambda (ft k)
-      (if (= k 1)
-          1
-          (* k (ft ft (- k 1)))))))
- 10)
-@end lisp
+@example typescript
+read(`
+  ((lambda (n)
+     ((lambda (fact) (fact fact n))
+      (lambda (ft k)
+        (if (= k 1)
+            1
+            (* k (ft ft (- k 1)))))))
+   10)
+`)
+@end example
 
 @enumerate a
 
@@ -1889,38 +2035,41 @@ Devise an analogous expression for computing Fibonacci numbers.
 Consider the following procedure, which includes mutually recursive internal
 definitions:
 
-@lisp
-(define (f x)
-  (define (even? n)
-    (if (= n 0)
-        true
-        (odd? (- n 1))))
-  (define (odd? n)
-    (if (= n 0)
-        false
-        (even? (- n 1))))
-  (even? x))
-@end lisp
+@example typescript
+read(`
+  (define (f x)
+    (define (even? n)
+      (if (= n 0)
+          true
+          (odd? (- n 1))))
+    (define (odd? n)
+      (if (= n 0)
+          false
+          (even? (- n 1))))
+    (even? x))
+`)
+@end example
 
 Fill in the missing expressions to complete an alternative definition of
 @code{f}, which uses neither internal definitions nor @code{letrec}:
 
-@lisp
-(define (f x)
-  ((lambda (even? odd?)
-     (even? even? odd? x))
-   (lambda (ev? od? n)
-     (if (= n 0) 
-         true 
-         (od? ⟨??⟩ ⟨??⟩ ⟨??⟩)))
-   (lambda (ev? od? n)
-     (if (= n 0) 
-         false 
-         (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
-@end lisp
+@example typescript
+read(`
+  (define (f x)
+    ((lambda (even? odd?)
+       (even? even? odd? x))
+     (lambda (ev? od? n)
+       (if (= n 0)
+           true
+           (od? ⟨??⟩ ⟨??⟩ ⟨??⟩)))
+     (lambda (ev? od? n)
+       (if (= n 0)
+           false
+           (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
+`)
+@end example
 @end enumerate
 @end quotation
-
 @node	4.1.7, 4.2, Chapter 4, 4.1
 @subsection Separating Syntactic Analysis from Execution
 
@@ -1930,12 +2079,12 @@ Thus if a program is executed many times, its syntax is analyzed many times.
 Consider, for example, evaluating @code{(factorial 4)} using the following
 definition of @code{factorial}:
 
-@lisp
-(define (factorial n)
+@example typescript
+const defineFactorial = read(`(define (factorial n)
   (if (= n 1)
       1
-      (* (factorial (- n 1)) n)))
-@end lisp
+      (* (factorial (- n 1)) n)))`);
+@end example
 
 @noindent
 Each time @code{factorial} is called, the evaluator must determine that the
@@ -1943,7 +2092,7 @@ body is an @code{if} expression and extract the predicate.  Only then can it
 evaluate the predicate and dispatch on its value.  Each time it evaluates the
 expression @code{(* (factorial (- n 1)) n)}, or the subexpressions
 @code{(factorial (- n 1))} and @code{(- n 1)}, the evaluator must perform the
-case analysis in @code{eval} to determine that the expression is an
+case analysis in @code{evaluate} to determine that the expression is an
 application, and must extract its operator and operands.  This analysis is
 expensive.  Performing it repeatedly is wasteful.
 
@@ -1953,7 +2102,7 @@ technique is an integral part of the compilation process, which we shall
 discuss in @ref{Chapter 5}.  Jonathan Rees wrote a Scheme interpreter like this
 in about 1982 for the T project (@ref{Rees and Adams 1982}).  Marc @ref{Feeley (1986)} (see
 also @ref{Feeley and Lapalme 1987}) independently invented this technique in his
-master's thesis.} We split @code{eval}, which takes an expression and an
+master's thesis.} We split @code{evaluate}, which takes an expression and an
 environment, into two parts.  The procedure @code{analyze} takes only the
 expression.  It performs the syntactic analysis and returns a new procedure,
 the @newterm{execution procedure}, that encapsulates the work to be done in
@@ -1962,67 +2111,85 @@ environment as its argument and completes the evaluation.  This saves work
 because @code{analyze} will be called only once on an expression, while the
 execution procedure may be called many times.
 
-With the separation into analysis and execution, @code{eval} now becomes
+In this edition an execution procedure is a function of type
+@code{ExecutionProcedure}: it takes the environment and answers the
+@code{Effect} that carries out the analyzed expression's remaining work:
 
-@lisp
-(define (eval exp env) ((analyze exp) env))
-@end lisp
+@example typescript
+export type ExecutionProcedure = (env: Env) => Effect.Effect<Value, EvaluationError>;
+@end example
+
+With the separation into analysis and execution, @code{evalAnalyzed} now becomes
+
+@example typescript
+export const evalAnalyzed: Evaluate = (exp, env) => analyze(exp)(env);
+@end example
 
 @noindent
 The result of calling @code{analyze} is the execution procedure to be applied
 to the environment.  The @code{analyze} procedure is the same case analysis as
-performed by the original @code{eval} of @ref{4.1.1}, except that the
+performed by the original @code{evaluate} of @ref{4.1.1}, except that the
 procedures to which we dispatch perform only analysis, not full evaluation:
 
-@lisp
-(define (analyze exp)
-  (cond ((self-evaluating? exp)
-         (analyze-self-evaluating exp))
-        ((quoted? exp) 
-         (analyze-quoted exp))
-        ((variable? exp) 
-         (analyze-variable exp))
-        ((assignment? exp) 
-         (analyze-assignment exp))
-        ((definition? exp) 
-         (analyze-definition exp))
-        ((if? exp) 
-         (analyze-if exp))
-        ((lambda? exp) 
-         (analyze-lambda exp))
-        ((begin? exp) 
-         (analyze-sequence 
-          (begin-actions exp)))
-        ((cond? exp) 
-         (analyze (cond->if exp)))
-        ((application? exp) 
-         (analyze-application exp))
-        (else
-         (error "Unknown expression 
-                 type: ANALYZE" 
-                exp))))
-@end lisp
+@example typescript
+export const analyze = (exp: Value): ExecutionProcedure => @{
+  if (isSelfEvaluating(exp)) @{
+    return analyzeSelfEvaluating(exp);
+  @}
+  if (isQuoted(exp)) @{
+    return analyzeQuoted(exp);
+  @}
+  if (isVariable(exp)) @{
+    return analyzeVariable(exp);
+  @}
+  if (isAssignment(exp)) @{
+    return analyzeAssignment(exp);
+  @}
+  if (isDefinition(exp)) @{
+    return analyzeDefinition(exp);
+  @}
+  if (isIf(exp)) @{
+    return analyzeIf(exp);
+  @}
+  if (isLambda(exp)) @{
+    return analyzeLambda(exp);
+  @}
+  if (isBegin(exp)) @{
+    return analyzeSequence(beginActions(exp));
+  @}
+  if (isCond(exp)) @{
+    return analyze(condToIf(exp));
+  @}
+  if (isApplication(exp)) @{
+    return analyzeApplication(exp);
+  @}
+  return () => Effect.fail(new UnknownSyntax(@{ expr: format(exp) @}));
+@};
+@end example
 
 @noindent
 Here is the simplest syntactic analysis procedure, which handles
 self-evaluating expressions.  It returns an execution procedure that ignores
 its environment argument and just returns the expression:
 
-@lisp
-(define (analyze-self-evaluating exp)
-  (lambda (env) exp))
-@end lisp
+@example typescript
+export const analyzeSelfEvaluating =
+  (exp: Value): ExecutionProcedure =>
+  () =>
+    Effect.succeed(exp);
+@end example
 
 @noindent
 For a quoted expression, we can gain a little efficiency by extracting the text
 of the quotation only once, in the analysis phase, rather than in the execution
 phase.
 
-@lisp
-(define (analyze-quoted exp)
-  (let ((qval (text-of-quotation exp)))
-    (lambda (env) qval)))
-@end lisp
+@example typescript
+export const analyzeQuoted = (exp: Cons<Value>): ExecutionProcedure => @{
+  const qval = textOfQuotation(exp);
+  return () => Effect.succeed(qval);
+@};
+@end example
 
 @noindent
 Looking up a variable value must still be done in the execution phase, since
@@ -2033,67 +2200,68 @@ the position in the environment structure where the value of the variable will
 be found, thus obviating the need to scan the environment for the entry that
 matches the variable.}
 
-@lisp
-(define (analyze-variable exp)
-  (lambda (env) 
-    (lookup-variable-value exp env)))
-@end lisp
+@example typescript
+export const analyzeVariable =
+  (exp: SymbolValue): ExecutionProcedure =>
+  (env) =>
+    lookupVariableValue(exp, env);
+@end example
 
 @noindent
-@code{Analyze-assignment} also must defer actually setting the variable until
+@code{analyzeAssignment} also must defer actually setting the variable until
 the execution, when the environment has been supplied.  However, the fact that
-the @code{assignment-value} expression can be analyzed (recursively) during
-analysis is a major gain in efficiency, because the @code{assignment-value}
+the @code{assignmentValue} expression can be analyzed (recursively) during
+analysis is a major gain in efficiency, because the @code{assignmentValue}
 expression will now be analyzed only once.  The same holds true for
 definitions.
 
-@lisp
-(define (analyze-assignment exp)
-  (let ((var (assignment-variable exp))
-        (vproc (analyze 
-                (assignment-value exp))))
-    (lambda (env)
-      (set-variable-value! 
-       var (vproc env) env)
-      'ok)))
+@example typescript
+export const analyzeAssignment = (exp: Cons<Value>): ExecutionProcedure => @{
+  const variable = assignmentVariable(exp);
+  const vproc = analyze(assignmentValue(exp));
+  return (env) =>
+    Effect.flatMap(vproc(env), (value) =>
+      Effect.map(setVariableValue(variable, value, env), () => ok),
+    );
+@};
 
-(define (analyze-definition exp)
-  (let ((var (definition-variable exp))
-        (vproc (analyze 
-                (definition-value exp))))
-    (lambda (env)
-      (define-variable! var (vproc env) env)
-      'ok)))
-@end lisp
+export const analyzeDefinition = (exp: Cons<Value>): ExecutionProcedure => @{
+  const variable = definitionVariable(exp);
+  const vproc = analyze(definitionValue(exp));
+  return (env) =>
+    Effect.flatMap(vproc(env), (value) =>
+      Effect.map(defineVariableValue(variable, value, env), () => ok),
+    );
+@};
+@end example
 
 @noindent
 For @code{if} expressions, we extract and analyze the predicate, consequent,
 and alternative at analysis time.
 
-@lisp
-(define (analyze-if exp)
-  (let ((pproc (analyze (if-predicate exp)))
-        (cproc (analyze (if-consequent exp)))
-        (aproc (analyze (if-alternative exp))))
-    (lambda (env)
-      (if (true? (pproc env))
-          (cproc env)
-          (aproc env)))))
-@end lisp
+@example typescript
+export const analyzeIf = (exp: Cons<Value>): ExecutionProcedure => @{
+  const pproc = analyze(ifPredicate(exp));
+  const cproc = analyze(ifConsequent(exp));
+  const aproc = analyze(ifAlternative(exp));
+  return (env) =>
+    Effect.flatMap(pproc(env), (predicate) => (isTrue(predicate) ? cproc(env) : aproc(env)));
+@};
+@end example
 
 @noindent
 Analyzing a @code{lambda} expression also achieves a major gain in efficiency:
 We analyze the @code{lambda} body only once, even though procedures resulting
 from evaluation of the @code{lambda} may be applied many times.
 
-@lisp
-(define (analyze-lambda exp)
-  (let ((vars (lambda-parameters exp))
-        (bproc (analyze-sequence 
-                (lambda-body exp))))
-    (lambda (env) 
-      (make-procedure vars bproc env))))
-@end lisp
+@example typescript
+export const analyzeLambda = (exp: Cons<Value>): ExecutionProcedure => @{
+  const vars = lambdaParameters(exp);
+  const bproc = analyzeSequence(lambdaBody(exp));
+  return (env) =>
+    Effect.succeed(makeProcedure(vars, fromValues([@{ _tag: "Execution", run: bproc @}]), env));
+@};
+@end example
 
 @noindent
 Analysis of a sequence of expressions (as in a @code{begin} or the body of a
@@ -2104,56 +2272,80 @@ procedures are combined to produce an execution procedure that takes an
 environment as argument and sequentially calls each individual execution
 procedure with the environment as argument.
 
-@lisp
-(define (analyze-sequence exps)
-  (define (sequentially proc1 proc2)
-    (lambda (env) (proc1 env) (proc2 env)))
-  (define (loop first-proc rest-procs)
-    (if (null? rest-procs)
-        first-proc
-        (loop (sequentially first-proc 
-                            (car rest-procs))
-              (cdr rest-procs))))
-  (let ((procs (map analyze exps)))
-    (if (null? procs)
-        (error "Empty sequence: ANALYZE"))
-    (loop (car procs) (cdr procs))))
-@end lisp
+@example typescript
+const sequentially =
+  (proc1: ExecutionProcedure, proc2: ExecutionProcedure): ExecutionProcedure =>
+  (env) =>
+    Effect.flatMap(proc1(env), () => proc2(env));
+
+export const analyzeSequence = (exps: List<Value>): ExecutionProcedure => @{
+  if (exps._tag === "Nil") @{
+    return () => Effect.fail(new RuntimeError(@{ message: "Empty sequence: ANALYZE", detail: "" @}));
+  @}
+  const loop = (first: ExecutionProcedure, rest: List<Value>): ExecutionProcedure =>
+    rest._tag === "Nil" ? first : loop(sequentially(first, analyze(rest.head)), rest.tail);
+  return loop(analyze(exps.head), exps.tail);
+@};
+@end example
 
 @noindent
 To analyze an application, we analyze the operator and operands and construct
 an execution procedure that calls the operator execution procedure (to obtain
 the actual procedure to be applied) and the operand execution procedures (to
 obtain the actual arguments).  We then pass these to
-@code{execute-application}, which is the analog of @code{apply} in 
-@ref{4.1.1}.  @code{Execute-application} differs from @code{apply} in that the
+@code{executeApplication}, which is the analog of @code{applyProcedure} in
+@ref{4.1.1}.  @code{executeApplication} differs from @code{applyProcedure} in that the
 procedure body for a compound procedure has already been analyzed, so there is
 no need to do further analysis.  Instead, we just call the execution procedure
 for the body on the extended environment.
 
-@lisp
-(define (analyze-application exp)
-  (let ((fproc (analyze (operator exp)))
-        (aprocs (map analyze (operands exp))))
-    (lambda (env)
-      (execute-application 
-       (fproc env)
-       (map (lambda (aproc) (aproc env))
-            aprocs)))))
+@example typescript
+export const analyzeApplication = (exp: Cons<Value>): ExecutionProcedure => @{
+  const fproc = analyze(operator(exp));
+  const aprocs = toArray(operands(exp)).map(analyze);
+  return (env) =>
+    Effect.flatMap(fproc(env), (procedure) =>
+      Effect.flatMap(runOperands(aprocs, env), (args) => executeApplication(procedure, args)),
+    );
+@};
 
-(define (execute-application proc args)
-  (cond ((primitive-procedure? proc)
-         (apply-primitive-procedure proc args))
-        ((compound-procedure? proc)
-         ((procedure-body proc)
-          (extend-environment 
-           (procedure-parameters proc)
-           args
-           (procedure-environment proc))))
-        (else (error "Unknown procedure type: 
-                      EXECUTE-APPLICATION"
-                     proc))))
-@end lisp
+const runOperands = (
+  aprocs: ReadonlyArray<ExecutionProcedure>,
+  env: Env,
+): Effect.Effect<List<Value>, EvaluationError> => @{
+  const args: Value[] = [];
+  const runFrom = (i: number): Effect.Effect<List<Value>, EvaluationError> => @{
+    const aproc = aprocs[i];
+    if (aproc === undefined) @{
+      return Effect.succeed(nil);
+    @}
+    return Effect.flatMap(aproc(env), (value) => @{
+      args.push(value);
+      return runFrom(i + 1);
+    @});
+  @};
+  return Effect.map(runFrom(0), () => fromValues(args));
+@};
+
+export const executeApplication = (
+  procedure: Value,
+  args: List<Value>,
+): Effect.Effect<Value, EvaluationError> => @{
+  if (procedure._tag === "Primitive") @{
+    return applyPrimitiveProcedure(procedure, args);
+  @}
+  if (procedure._tag === "Compound") @{
+    const head = procedure.body._tag === "Cons" ? procedure.body.head : undefined;
+    if (head !== undefined && head._tag === "Execution") @{
+      return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), head.run);
+    @}
+    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
+      evalSequence(procedure.body, newEnv),
+    );
+  @}
+  return Effect.fail(new NotAProcedure(@{ value: format(procedure) @}));
+@};
+@end example
 
 @noindent
 Our new evaluator uses the same data structures, syntax procedures, and
@@ -2167,26 +2359,28 @@ section to support the special form @code{let}.  (See @ref{Exercise 4.6}.)
 
 @quotation
 @strong{@anchor{Exercise 4.23}Exercise 4.23:} Alyssa P. Hacker doesn't
-understand why @code{analyze-sequence} needs to be so complicated.  All the
+understand why @code{analyzeSequence} needs to be so complicated.  All the
 other analysis procedures are straightforward transformations of the
-corresponding evaluation procedures (or @code{eval} clauses) in 
-@ref{4.1.1}.  She expected @code{analyze-sequence} to look like this:
+corresponding evaluation procedures (or @code{evaluate} clauses) in
+@ref{4.1.1}.  She expected @code{analyzeSequence} to look like this:
 
-@lisp
-(define (analyze-sequence exps)
-  (define (execute-sequence procs env)
-    (cond ((null? (cdr procs)) 
-           ((car procs) env))
-          (else ((car procs) env)
-                (execute-sequence 
-                 (cdr procs) env))))
-  (let ((procs (map analyze exps)))
-    (if (null? procs)
-        (error "Empty sequence: 
-                ANALYZE"))
-    (lambda (env) 
-      (execute-sequence procs env))))
-@end lisp
+@example typescript
+const analyzeSequenceAlyssa = (exps: List<Value>): ExecutionProcedure => @{
+  const executeSequence = (
+    procs: ReadonlyArray<ExecutionProcedure>,
+    env: Env,
+  ): Effect.Effect<Value, EvaluationError> =>
+    procs.length === 1
+      ? procs[0](env)
+      : Effect.flatMap(procs[0](env), () => executeSequence(procs.slice(1), env));
+  const procs = toArray(exps).map(analyze);
+  if (procs.length === 0) @{
+    return () =>
+      Effect.fail(new RuntimeError(@{ message: "Empty sequence: ANALYZE", detail: "" @}));
+  @}
+  return (env) => executeSequence(procs, env);
+@};
+@end example
 
 Eva Lu Ator explains to Alyssa that the version in the text does more of the
 work of evaluating a sequence at analysis time.  Alyssa's sequence-execution
@@ -2195,7 +2389,7 @@ built in, loops through the procedures in order to call them: In effect,
 although the individual expressions in the sequence have been analyzed, the
 sequence itself has not been.
 
-Compare the two versions of @code{analyze-sequence}.  For example, consider the
+Compare the two versions of @code{analyzeSequence}.  For example, consider the
 common case (typical of procedure bodies) where the sequence has just one
 expression.  What work will the execution procedure produced by Alyssa's
 program do?  What about the execution procedure produced by the program in the
@@ -2209,4 +2403,3 @@ experiments to compare the speed of the original metacircular evaluator with
 the version in this section.  Use your results to estimate the fraction of time
 that is spent in analysis versus execution for various procedures.
 @end quotation
-

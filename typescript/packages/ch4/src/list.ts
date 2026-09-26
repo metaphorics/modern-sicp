@@ -40,3 +40,14 @@ export const car = <A>(l: List<A>): Option.Option<A> =>
 /** The rest of a pair, or nothing for the empty list. */
 export const cdr = <A>(l: List<A>): Option.Option<List<A>> =>
   l._tag === "Cons" ? Option.some(l.tail) : Option.none();
+
+/** The elements as a host array, left to right. */
+export const toArray = <A>(l: List<A>): ReadonlyArray<A> => {
+  const out: A[] = [];
+  let rest = l;
+  while (rest._tag === "Cons") {
+    out.push(rest.head);
+    rest = rest.tail;
+  }
+  return out;
+};

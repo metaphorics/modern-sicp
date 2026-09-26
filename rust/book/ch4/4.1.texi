@@ -77,7 +77,7 @@ from procedure calls.
 
 @end itemize
 }
-This evaluation cycle will be embodied by the interplay between the two
+This evaluation cycle will be embodied by the interaction between the two
 critical procedures in the evaluator, @code{eval} and @code{apply}, which are
 described in @ref{4.1.1} (see @ref{Figure 4.1}).
 
@@ -147,14 +147,14 @@ of arguments.
 @node	4.1.1, 4.1.2, 4.1, 4.1
 @subsection The Core of the Evaluator
 
-The evaluation process can be described as the interplay between two
+The evaluation process can be described as the interaction between two
 procedures: @code{eval} and @code{apply}.
 
 @subsubheading Eval
 
 @code{Eval} takes as arguments an expression and an environment.  It classifies
 the expression and directs its evaluation.  @code{Eval} is structured as a case
-analysis of the syntactic type of the expression to be evaluated.  In order to
+analysis of the syntactic type of the expression to be evaluated.  To
 keep the procedure general, we express the determination of the type of an
 expression abstractly, making no commitment to any particular representation
 for the various types of expressions.  Each type of expression has a predicate
@@ -433,7 +433,7 @@ this edition the order is not inherited from the host: Rust evaluates a
 procedure's arguments from left to right by its own fixed rule, but the
 object-language order is fixed by the @code{list_of_values} recursion this
 book writes out, and the exercise is to pin that order down by construction
-for the object language, where the host's rule reaches.  Write a version of
+for the object language, where the host's rule does not reach.  Write a version of
 @code{list_of_values} that evaluates operands from left to right by
 construction.  Also write a version of @code{list_of_values} that evaluates
 operands from right to left.
@@ -579,7 +579,7 @@ selectors return the first expression and the rest of the expressions in the
 sequence.@footnote{These selectors for a list of expressions---and the
 corresponding ones for a list of operands---are not intended as a data
 abstraction.  They are introduced as mnemonic names for the basic list
-operations in order to make it easier to understand the explicit-control
+operations to make it easier to understand the explicit-control
 evaluator in @ref{5.4}.}
 
 @example rust
@@ -1070,7 +1070,7 @@ performance of the system.  The representation described here, although
 conceptually simple, is not efficient and would not ordinarily be used in a
 production system.@footnote{The drawback of this representation (as well as the
 variant in @ref{Exercise 4.11}) is that the evaluator may have to search
-through many frames in order to find the binding for a given variable.  (Such
+through many frames to find the binding for a given variable.  (Such
 an approach is referred to as @newterm{deep binding}.)  One way to avoid this
 inefficiency is to make use of a strategy called @newterm{lexical addressing},
 which will be discussed in @ref{5.5.6}.}
@@ -2093,7 +2093,7 @@ corresponding evaluation procedures (or @code{eval} clauses) in
 Eva Lu Ator explains to Alyssa that the version in the text does more of the
 work of evaluating a sequence at analysis time.  Alyssa's sequence-execution
 procedure, rather than having the calls to the individual execution procedures
-built in, loops through the procedures in order to call them: In effect,
+built in, loops through the procedures to call them: In effect,
 although the individual expressions in the sequence have been analyzed, the
 sequence itself has not been.
 

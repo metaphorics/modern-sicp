@@ -890,7 +890,7 @@ ordinary metacircular evaluator of @ref{4.1.1}.  In this edition the
 @code{amb} evaluator is likewise plain code rather than continuation
 passing: a self-referential continuation closure is painful to build in
 Rust, while a typed failure signal unwinding to a stored choice frame is
-plain, testable, and semantically equivalent -- the book's fail
+plain, testable, and semantically equivalent: the book's fail
 continuation is the engine's saved frame.}  As in the analyzing
 evaluator, evaluation of an expression is accomplished by handing each
 subexpression's value to a continuation that runs the rest of the
@@ -959,7 +959,7 @@ Failures are initiated only when a dead end is encountered.  This occurs
 @itemize @bullet
 
 @item
-if the user program executes @code{(amb)} -- an expression that always fails,
+if the user program executes @code{(amb)} (an expression that always fails),
 the device @code{require} is built from (see @ref{4.3.1});
 
 @item
@@ -1007,8 +1007,8 @@ if is_tagged_list(exp, "if-fail") @{
 
 @noindent
 The top-level entry @code{eval_with} (similar to the version of @code{eval}
-given in @ref{4.1.7}) analyzes nothing at driver time -- the dispatch runs
-directly over the syntax -- but like the analyzed evaluator of @ref{4.1.7}
+given in @ref{4.1.7}) analyzes nothing at driver time (the dispatch runs
+directly over the syntax) but like the analyzed evaluator of @ref{4.1.7}
 it answers through an execution procedure: here, the continuation that
 receives the value and runs the rest of the computation.  In going through
 the clauses, compare each with the corresponding procedure for the ordinary
@@ -1146,7 +1146,7 @@ fn eval_definition(&self, exp: &Value, env: &Rc<Env>, k: &Cont) -> EvalResult @{
 @noindent
 Assignments are more interesting.  This is the first place where the undo
 trail earns its keep.  The assignment clause's continuation saves the old
-value of the variable, assigns, and -- for the undoable kind -- records the
+value of the variable, assigns, and, for the undoable kind, records the
 entry that backtracking restores.  A successful assignment therefore
 provides, as data, everything a subsequent failure needs to undo it before
 the search proceeds.@footnote{We didn't worry about undoing
@@ -1181,7 +1181,7 @@ fn eval_assignment(
 
 @noindent
 The trail rolls back in one place.  When a search unwinds to a choice
-frame -- a failed alternative replay, or the driver's @code{try_again} --
+frame (a failed alternative replay, or the driver's @code{try_again}),
 the engine restores every entry above the frame's push line:
 
 @example rust
@@ -1277,8 +1277,8 @@ pub fn apply_procedure(&self, proc: &Value, args: &[Value], k: &Cont) -> EvalRes
 The @code{amb} special form is the key element in the nondeterministic
 language.  Its clause pushes one frame of pending alternatives and drives
 it: the drive loop evaluates each front alternative against the frame's
-continuation, retries through the @code{Backtrack} signal, and unwinds --
-popping its own frame and rolling back its trail segment -- when the
+continuation, retries through the @code{Backtrack} signal, and unwinds
+(popping its own frame and rolling back its trail segment) when the
 alternatives run dry.  The unwind is what makes the @code{amb} site that
 pushed this frame try its next alternative.
 
@@ -1338,7 +1338,7 @@ discarding the unexplored alternatives of any earlier one, and
 @code{try_again} yields the next answer of the problem in flight.  The
 @code{try_again} loop is the book's @code{internal-loop}: it takes the
 deepest pending frame's next alternative, evaluates it against the frame's
-stored continuation -- the rest of the computation as data -- and so
+stored continuation (the rest of the computation as data) and so
 resumes without replaying the work earlier answers already did.
 
 @example rust
@@ -1348,7 +1348,7 @@ pub fn try_again(&self) -> EvalResult @{
             Job::Alternative @{ expr, env, k, trail_len @} => @{
                 // Rolling the trail back to the frame's push line
                 // discards the mutations of the path this resume
-                // leaves behind -- the answered path, or the failed
+                // leaves behind: the answered path, or the failed
                 // alternative before it.
                 self.undo_to(trail_len);
                 let result = self.eval_with(&expr, &env, k);
@@ -1389,7 +1389,7 @@ Alyssa's problem in @ref{Exercise 4.49}.
 edition's @code{ramb} draws from a seeded generator: the evaluator holds a
 seeded @code{xorshift64*} instance, created when the driver is constructed
 (@code{Amb::new(AMB_SEED)}), and shuffles each @code{ramb}'s alternatives
-with a Fisher--Yates pass over its draws -- no global generator anywhere.
+with a Fisher--Yates pass over its draws; the shuffle uses no global generator.
 Demonstrate the reproducibility this buys: two drivers from one seed must
 ramble identically, and a driver from a different seed must ramble
 differently.

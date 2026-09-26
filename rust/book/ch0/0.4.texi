@@ -52,8 +52,7 @@ println!("@{area:.2@}");
 
 Two sum types are so common the standard library predefines them rather than
 leaving every program to write its own. @code{Option<T>} is a value that
-might be absent: @code{Some(T)} or @code{None}, with no null pointer anywhere
-in the picture. @code{Result<T, E>} is a computation that might fail:
+might be absent: @code{Some(T)} or @code{None}, with no null pointer.
 @code{Ok(T)} or @code{Err(E)}, explicit in the type of every function that
 can fail. Section @ref{0.1} already used @code{Option} for a checked
 multiplication; @ref{0.8} gives @code{Result} its full treatment, including
@@ -79,8 +78,8 @@ The runnable listing above is @code{examples/sec_0_4_shapes.rs}.
 @subheading Recursive data and @code{Box}
 
 An enum variant that holds another value of the same enum type describes a
-type of unbounded size --- exactly the shape of the book's own lists and
-trees --- and Rust needs every type to have a size known at compile time.
+type of unbounded size (exactly the shape of the book's own lists and
+trees), and Rust needs every type to have a size known at compile time.
 @code{Box<T>} breaks the cycle: it is an owned pointer to a heap allocation,
 one pointer wide regardless of what it points to, so a self-referential
 variant can hold a @code{Box} of the enclosing type instead of the type
@@ -110,6 +109,6 @@ data, made explicit rather than implicit: chapter 2's binary trees
 (@ref{2.2.2}) and Huffman trees (@ref{2.3.4}) are both @code{Box}-linked
 enums built from exactly this section's two constructs, and chapter 3's
 mutable pairs (@ref{3.3}) reach for @code{Rc} (@ref{0.7}) instead of
-@code{Box} only because they additionally need more than one owner.
+@code{Box} only because they also need more than one owner.
 
 The runnable listing above is @code{examples/sec_0_4_boxed_list.rs}.

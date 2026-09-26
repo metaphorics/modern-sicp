@@ -79,7 +79,7 @@ frame II is said to @newterm{shadow} the binding of @code{x} to 3 in frame I.
 @end float
 
 @noindent
-The environment is crucial to the evaluation process, because it determines the
+The environment is essential to the evaluation process, because it determines the
 context in which an expression should be evaluated.  Indeed, one could say that
 expressions in a programming language do not, in themselves, have any meaning.
 Rather, an expression acquires a meaning only with respect to some environment
@@ -689,7 +689,7 @@ w1(50)
 
 @noindent
 We begin by constructing a frame in which @code{amount}, the formal parameter
-of @code{w1}, is bound to the argument 50.  The crucial point to observe is
+of @code{w1}, is bound to the argument 50.  The essential point to observe is
 that this frame has as its enclosing environment not the global environment,
 but rather the environment E1, because this is the environment that is
 specified by the @code{w1} procedure object; in Rust, the call's stack frame

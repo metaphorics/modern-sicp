@@ -7,8 +7,7 @@ involved in implementing the data objects that the program manipulates.  For
 example, we saw in @ref{2.1.1} how to separate the task of designing a
 program that uses rational numbers from the task of implementing rational
 numbers in terms of the host language's primitive mechanisms for
-constructing compound data.  The key idea was to erect an abstraction barrier
--- in this case, the selectors and constructors for rational numbers
+constructing compound data.  The key idea was to erect an abstraction barrier---in this case, the selectors and constructors for rational numbers
 (@code{make-rat}, @code{numer}, @code{denom})---that isolates the way rational
 numbers are used from their underlying representation in terms of list
 structure.  A similar abstraction barrier isolates the details of the
@@ -290,7 +289,7 @@ represent a complex number in ``rectangular form'' as a pair (real part,
 imaginary part) or in ``polar form'' as a pair (magnitude, angle).  Which shall
 we choose?
 
-In order to make the different choices concrete, imagine that there are two
+To make the different choices concrete, imagine that there are two
 programmers, Ben Bitdiddle and Alyssa P. Hacker, who are independently
 designing representations for the complex-number system.  Ben chooses to
 represent complex numbers in rectangular form.  With this choice, selecting the
@@ -798,7 +797,7 @@ pub fn install_rectangular_package(table: &OpTable) {
 @noindent
 Notice that the internal procedures here are the same procedures from
 @ref{2.4.1} that Ben wrote when he was working in isolation.  No changes are
-necessary in order to interface them to the rest of the system.  Moreover,
+necessary to interface them to the rest of the system. Moreover,
 since @code{rect_real_part} and friends are private free functions, Ben
 needn't worry about name conflicts with other procedures outside this module.
 To interface these to the rest of the system, Ben
@@ -947,7 +946,7 @@ table.get(&Key::sym("real-part"), &tag_list_key(&["polar"]));
 @end example
 
 The book's table still wins whenever packages are installed by code the
-compiler never saw together — plugins, or a second edition's crate loaded at
+compiler never saw together: plugins, or a second edition's crate loaded at
 run time.  When the type set is closed and known in advance, a plain
 @code{enum} with an exhaustive @code{match} is both faster and total, with
 the compiler proving every case handled; exercise 2.76 measures exactly that
@@ -1087,7 +1086,7 @@ must be supplied?
 @item
 Implement for headquarters a @code{get_salary} function that returns the
 salary information from a given employee's record from any division's personnel
-file.  How should the record be structured in order to make this operation
+file. How should the record be structured to make this operation
 work?
 
 @item
@@ -1097,8 +1096,7 @@ return the record.  Assume that this function takes as arguments an employee's
 name and a slice of all the divisions' files.
 
 @item
-When Insatiable takes over a new company, what changes must be made in order to
-incorporate the new personnel information into the central system?
+When Insatiable takes over a new company, what changes must be made to incorporate the new personnel information into the central system?
 
 @end enumerate
 @end quotation
@@ -1154,7 +1152,7 @@ pub fn apply_generic_message_passing(op: &str, arg: &MessageObject) -> Result<Va
 
 @noindent
 Note that the value returned by @code{make_from_real_imag_message_passing} is
-a closure — the returned @code{MessageObject} itself.  This is the closure
+a closure: the returned @code{MessageObject} itself.  This is the closure
 that is invoked when @code{apply_generic_message_passing} requests an
 operation to be performed.
 
@@ -1182,7 +1180,7 @@ above.
 operations evolves, new types of data objects or new operations may be needed.
 For each of the three strategies---generic operations with explicit dispatch,
 data-directed style, and message-passing-style---describe the changes that
-must be made to a system in order to add new types or new operations.  Which
+must be made to a system to add new types or new operations.  Which
 organization would be most appropriate for a system in which new types must
 often be added?  Which would be most appropriate for a system in which new
 operations must often be added?  In Rust terms, compare the trade against a

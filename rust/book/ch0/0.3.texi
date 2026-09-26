@@ -76,7 +76,7 @@ book relies on afterward; each is also a doctest on
 author's claim.
 
 @table @asis
-@item Case A --- a move, then a read of the moved-from binding
+@item Case A: a move, then a read of the moved-from binding
 @example rust
 let a = String::from("case a");
 let b = a;
@@ -84,7 +84,7 @@ println!("@{a@} @{b@}");
 @end example
 Rejected: @code{a} moved into @code{b} on the previous line.
 
-@item Case B --- a shared borrow, read, then a mutation
+@item Case B: a shared borrow, read, then a mutation
 @example rust
 let mut v = vec![1, 2, 3];
 let first = &v[0];
@@ -96,7 +96,7 @@ already ended by the time @code{push} needs @code{v} mutably. This is
 non-lexical borrow checking: a borrow's scope is where it is last used, not
 the enclosing block.
 
-@item Case C --- the same shared borrow, read after the mutation
+@item Case C: the same shared borrow, read after the mutation
 @example rust
 let mut v = vec![1, 2, 3];
 let first = &v[0];
@@ -106,7 +106,7 @@ println!("@{first@}");
 Rejected: now @code{first} has to stay valid across the @code{push}, which
 needs @code{v} mutably while @code{first} still borrows it immutably.
 
-@item Case D --- a reference into data the function is about to drop
+@item Case D: a reference into data the function is about to drop
 @example rust
 fn shout() -> &str @{
     let s = String::from("hi");
@@ -117,7 +117,7 @@ Rejected, and not because of a lifetime annotation you forgot to write:
 @code{s} is a local that this function drops on return, and no lifetime
 could make a reference to it outlive the function.
 
-@item Case E --- clone instead of move
+@item Case E: clone instead of move
 @example rust
 let a = String::from("case e");
 let b = a.clone();
@@ -133,7 +133,7 @@ appeasing the compiler.
 
 @quotation
 @strong{@anchor{Exercise 0.3}Exercise 0.3:} For each of the five cases above,
-write down your own prediction --- compiles, or rejected, and why --- before
+write down your own prediction (compiles, or rejected, and why) before
 reading the answer just given. Then encode your five verdicts as a
 @code{[bool; 5]}, in order A through E, and check them against
 @code{ch00::sec_0_3::verdicts}.

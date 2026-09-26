@@ -12,8 +12,7 @@ of usage in the domain.  We lack the knowledge of which moves are worth making
 (which procedures are worth defining).  We lack the experience to predict the
 consequences of making a move (executing a procedure).
 
-The ability to visualize the consequences of the actions under consideration is
-crucial to becoming an expert programmer, just as it is in any synthetic,
+The ability to visualize the consequences of the actions under consideration is essential to becoming an expert programmer, just as it is in any synthetic,
 creative activity.  In becoming an expert photographer, for example, one must
 learn how to look at a scene and know how dark each region will appear on a
 print for each possible choice of exposure and development conditions.  Only
@@ -1146,7 +1145,7 @@ The greatest common divisor (@abbr{GCD}) of two integers @math{a} and @math{b} i
 defined to be the largest integer that divides both @math{a} and @math{b} with no
 remainder.  For example, the @abbr{GCD} of 16 and 28 is 4.  In @ref{Chapter
 2}, when we investigate how to implement rational-number arithmetic, we will
-need to be able to compute @abbr{GCD}s in order to reduce rational numbers
+need to be able to compute @abbr{GCD}s to reduce rational numbers
 to lowest terms.  (To reduce a rational number to lowest terms, we must divide
 both the numerator and the denominator by their @abbr{GCD}.  For example,
 16/28 reduces to 4/7.)  One way to find the @abbr{GCD} of two integers is to
@@ -1476,7 +1475,7 @@ arbitrary 200-digit number, the primality of such a number can be checked in a
 few seconds with the Fermat test.  This fact forms the basis of a technique for
 constructing ``unbreakable codes'' suggested by @ref{Rivest et al. (1977)}.  The
 resulting @newterm{RSA algorithm} has become a widely used technique for
-enhancing the security of electronic communications.  Because of this and
+improving the security of electronic communications.  Because of this and
 related developments, the study of prime numbers, once considered to be the
 epitome of a topic in ``pure'' mathematics to be studied only for its own sake,
 now turns out to have important practical applications to cryptography,

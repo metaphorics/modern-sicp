@@ -110,7 +110,7 @@ indexes them is the symbol @code{scheme-number}.  In this edition the
 primitive numbers are the runtime's own @code{Value::Int} and
 @code{Value::Real} variants, and the tag functions of @ref{2.4.2} read the
 @code{scheme-number} tag straight off those variants rather than wrapping
-them in another tagged datum --- the accommodation exercise 2.78 asks for,
+them in another tagged datum: the accommodation exercise 2.78 asks for,
 adopted here from the start because the polynomial listings of
 @ref{2.5.3} assume it (see the footnote there).  The arithmetic operations
 in this package are the primitive arithmetic operations themselves (so
@@ -140,7 +140,7 @@ The @code{ordinary2} helper is the package's whole body: it runs two exact
 integers through the checked integer operation, and anything mixed or
 inexact through the corresponding operation on @code{f64}.  Exact integer
 division follows the book's arithmetic: an exact quotient stays an integer,
-and an inexact one becomes a real --- the ``limited-precision decimal
+and an inexact one becomes a real, one of the ``limited-precision decimal
 numbers'' that exercise 2.95 later blames for a broken divisor.  Users of
 the Scheme-number package will create (tagged) ordinary numbers by
 means of the procedure:
@@ -157,7 +157,7 @@ Now that the framework of the generic arithmetic system is in place, we can
 readily include new kinds of numbers.  Here is a package that performs rational
 arithmetic.  Notice that, as a benefit of additivity, we can use without
 modification the rational-number code from @ref{2.1.1} as the internal
-procedures in the package --- the same numerator-over-denominator arithmetic,
+procedures in the package: the same numerator-over-denominator arithmetic,
 written over the bare pair that the @code{rational} tag wraps:
 
 @example rust
@@ -582,7 +582,7 @@ themselves, not on the operation to be applied.
 On the other hand, there may be applications for which our coercion scheme is
 not general enough.  Even when neither of the objects to be combined can be
 converted to the type of the other it may still be possible to perform the
-operation by converting both objects to a third type.  In order to deal with
+operation by converting both objects to a third type.  To deal with
 such complexity and still preserve modularity in our programs, it is usually
 necessary to build systems that take advantage of still further structure in
 the relations among types, as we discuss next.
@@ -1066,7 +1066,7 @@ of the addends.  Terms in one addend for which there are no terms of the same
 order in the other addend are simply accumulated into the sum polynomial being
 constructed.
 
-In order to manipulate term lists, we will assume that we have a constructor
+To manipulate term lists, we will assume that we have a constructor
 @code{the_empty_termlist} that returns an empty term list and a constructor
 @code{adjoin_term} that adjoins a new term to a term list.  We will also assume
 that we have a predicate @code{is_empty_termlist} that tells if a given term list
@@ -1120,7 +1120,7 @@ The most important point to note here is that we used the generic addition
 procedure @code{add} to add together the coefficients of the terms being
 combined.  This has powerful consequences, as we will see below.
 
-In order to multiply two term lists, we multiply each term of the first list by
+To multiply two term lists, we multiply each term of the first list by
 all the terms of the other list, repeatedly using @code{mul_term_by_all_terms},
 which multiplies a given term by all terms in a given term list.  The resulting
 term lists (one for each term of the first list) are accumulated into a sum.
@@ -1190,7 +1190,7 @@ dispatch through @code{add} and @code{mul}.  Since the coefficients are
 themselves polynomials (in @math{y}), these will be combined using @code{add_poly}
 and @code{mul_poly}.  The result is a kind of ``data-directed recursion'' in
 which, for example, a call to @code{mul_poly} will result in recursive calls to
-@code{mul_poly} in order to multiply the coefficients.  If the coefficients of
+@code{mul_poly} to multiply the coefficients.  If the coefficients of
 the coefficients were themselves polynomials (as might be used to represent
 polynomials in three variables), the data direction would ensure that the
 system would follow through another level of recursive calls, and so on through
@@ -1660,8 +1660,8 @@ noninteger operations into the computation, causing difficulties with the
 @abbr{GCD} algorithm.@footnote{In an implementation with exact rational
 arithmetic, this produces a polynomial that is indeed a divisor of @math{Q_1}
 and @math{Q_2}, but with rational coefficients.  In systems whose division of
-integers produces limited-precision decimal numbers --- as this edition's
-@code{div} does when an exact quotient is impossible --- we may fail to get a
+integers produces limited-precision decimal numbers (as this edition's
+@code{div} does when an exact quotient is impossible), we may fail to get a
 valid divisor.}  To understand what is happening, try tracing
 @code{gcd_terms} while computing the @abbr{GCD} or try performing the
 division by hand.
@@ -1804,8 +1804,8 @@ compute polynomial @abbr{GCD}s.}
 @quotation
 @strong{In this language: one dynamic value, one table, and conversions between types.}
 
-The whole tower --- ordinary numbers, rationals, reals, complex numbers,
-polynomials over polynomials --- flows through a single @code{Value} enum and
+The whole tower (ordinary numbers, rationals, reals, complex numbers,
+polynomials over polynomials) flows through a single @code{Value} enum and
 one runtime @code{OpTable}: @code{put} installs an @code{Rc<dyn Fn>} handler
 under an operation name and a tag list, and @code{apply_generic} resolves the
 argument tags against it, falling back to the coercion table.
@@ -1820,7 +1820,7 @@ Where the book's mechanism still wins is exactly where the type set is open:
 coercions, tower levels, and polynomial coefficient domains are all added by
 later installs that no caller compiled against, and Rust's traits cannot grow
 that way.  Inside a closed package (a term list, a poly), plain typed
-structures --- @code{Vec<Term>} over a concrete @code{u32} order --- stay
+structures (@code{Vec<Term>} over a concrete @code{u32} order) stay
 simpler than wrapping everything in tags; the tag boundary earns its keep only
 at the dispatch points.
 @end quotation

@@ -106,7 +106,7 @@ very like the wiring diagram for a machine that could be constructed from
 electrical components.
 
 @noindent
-In order for the data paths to actually compute @abbr{GCD}s, the buttons
+For the data paths to actually compute @abbr{GCD}s, the buttons
 must be pushed in the correct sequence.  We will describe this sequence in
 terms of a controller diagram, as illustrated in @ref{Figure 5.2}.  The
 elements of the controller diagram indicate how the data-path components should
@@ -285,7 +285,7 @@ machine.
 
 @end quotation
 
-Unfortunately, it is difficult to read such a description.  In order to
+Unfortunately, it is difficult to read such a description.  To
 understand the controller instructions we must constantly refer back to the
 definitions of the button names and the operation names, and to understand what
 the buttons do we may have to refer to the definitions of the operation names.
@@ -347,7 +347,7 @@ results of other operations.
 In spite of these disadvantages, we will use this register-machine language
 throughout this chapter, because we will be more concerned with understanding
 controllers than with understanding the elements and connections in data paths.
-We should keep in mind, however, that data-path design is crucial in designing
+We should keep in mind, however, that data-path design is essential in designing
 real machines.
 
 @quotation
@@ -902,7 +902,7 @@ parts to work on the subproblem, then continue the suspended computation.
 
 In the subproblem, the contents of the registers will be different than they
 were in the main problem. (In this case the @code{n} register is decremented.)
-In order to be able to continue the suspended computation, the machine must
+To be able to continue the suspended computation, the machine must
 save the contents of any registers that will be needed after the subproblem is
 solved so that these can be restored to continue the suspended computation.  In
 the case of factorial, we will save the old value of @code{n}, to be restored
@@ -944,7 +944,7 @@ each subroutine call, we save and restore @code{continue} just as we do the
 @code{n} register, since each ``level'' of the factorial computation will use
 the same @code{continue} register.  That is, the factorial subroutine must put
 a new value in @code{continue} when it calls itself for a subproblem, but it
-will need the old value in order to return to the place that called it to solve
+will need the old value to return to the place that called it to solve
 a subproblem.
 
 @noindent

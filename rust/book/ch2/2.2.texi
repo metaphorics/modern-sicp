@@ -1187,7 +1187,7 @@ another powerful design principle for working with data structures---the use of
 In @ref{1.3} we saw how program abstractions, implemented as
 higher-order procedures, can capture common patterns in programs that deal with
 numerical data.  Our ability to formulate analogous operations for working with
-compound data depends crucially on the style in which we manipulate our data
+compound data depends on the style in which we manipulate our data
 structures.  Consider, for example, the following procedure, analogous to the
 @code{count-leaves} procedure of @ref{2.2.2}, which takes a tree as
 argument and computes the sum of the squares of the leaves that are odd:
@@ -1233,7 +1233,7 @@ fn even_fibs_walk(n: u32) -> List<i128> @{
 @end example
 
 @noindent
-Despite the fact that these two procedures are structurally very different, a
+Although these two procedures are structurally very different, a
 more abstract description of the two computations reveals a great deal of
 similarity.  The first program
 
@@ -1562,7 +1562,7 @@ data are represented as arrays, and there is a universal and convenient set of
 generic operators for all sorts of array operations.}
 
 Sequences, implemented here as lists and slices, serve as a conventional
-interface that permits us to combine processing modules.  Additionally, when we
+interface that permits us to combine processing modules.  Also, when we
 uniformly represent structures as sequences, we have localized the
 data-structure dependencies in our programs to a small number of sequence
 operations.  By changing these, we can experiment with alternative
@@ -2363,7 +2363,7 @@ painters are closed under the language's means of combination.  The
 @code{beside} or @code{below} of two painters is itself a painter; therefore, we
 can use it as an element in making more complex painters.  As with building up
 list structure using @code{cons}, the closure of our data under the means of
-combination is crucial to the ability to create complex structures while using
+combination is essential to the ability to create complex structures while using
 only a few operations.  Once we can combine painters, we would like to be able
 to abstract typical patterns of combining painters.  We will implement the
 painter operations as Rust procedures.  This means that we don't need any
@@ -2873,7 +2873,7 @@ The @code{wave} painter.
 An operation on painters (such as @code{flip-vert} or @code{beside}) works by
 creating a painter that invokes the original painters with respect to frames
 derived from the argument frame.  Thus, for example, @code{flip-vert} doesn't
-have to know how a painter works in order to flip it---it just has to know how
+have to know how a painter works to flip it; it just has to know how
 to turn a frame upside down: The flipped painter just uses the original
 painter, but in the inverted frame.
 
@@ -3045,7 +3045,7 @@ means of combination satisfy the closure property, which permits us to easily
 build up complex designs.  Finally, all the tools for abstracting procedures
 are available to us for abstracting means of combination for painters.
 
-We have also obtained a glimpse of another crucial idea about languages and
+We have also obtained a glimpse of another essential idea about languages and
 program design.  This is the approach of @newterm{stratified design}, the
 notion that a complex system should be structured as a sequence of levels that
 are described using a sequence of languages.  Each level is constructed by

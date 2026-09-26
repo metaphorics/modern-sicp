@@ -352,7 +352,7 @@ will ever install behind it.
 
 @subsubheading The differentiation program with abstract data
 
-In order to keep things simple, we will consider a very simple
+To keep things simple, we will consider a very simple
 symbolic-differentiation program that handles expressions that are built up
 using only the operations of addition and multiplication with two arguments.
 Differentiation of any such expression can be carried out by applying the
@@ -527,7 +527,7 @@ pub fn deriv_unsimplified(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError>
 
 @noindent
 Thus, we need only combine these with the algorithm as embodied by
-@code{deriv_via} in order to have a working symbolic-differentiation program.
+@code{deriv_via} to have a working symbolic-differentiation program.
 Let us look at some examples of its behavior:
 
 @example rust

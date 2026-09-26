@@ -7,7 +7,7 @@ Indeed, programming languages require that the programmer express knowledge in
 a form that indicates the step-by-step methods for solving particular problems.
 On the other hand, high-level languages provide, as part of the language
 implementation, a substantial amount of methodological knowledge that frees the
-user from concern with numerous details of how a specified computation will
+user from concern with many details of how a specified computation will
 progress.
 
 Most programming languages, including Lisp, are organized around computing the
@@ -187,11 +187,11 @@ Logic programming excels in providing interfaces to data bases for information
 retrieval.  The query language we shall implement in this chapter is designed
 to be used in this way.
 
-In order to illustrate what the query system does, we will show how it can be
+To illustrate what the query system does, we will show how it can be
 used to manage the data base of personnel records for Microshaft, a thriving
 high-technology company in the Boston area.  The language provides
 pattern-directed access to personnel information and can also take advantage of
-general rules in order to make logical deductions.
+general rules to make logical deductions.
 
 @subsubheading A sample data base
 
@@ -513,8 +513,8 @@ in a frame; and every combination flows through the chapter-3 memoized
 @code{Stream}, so a recursive rule's answers arrive one at a time. Frames are
 immutable association chains built only by @code{extend}: a pattern variable is
 the internal list @code{(? name)}, a renamed rule variable is @code{(? id name)},
-and neither can collide with a data symbol. The data base is chronological -- the
-book's own transcripts list answers in insertion order -- and indexed by the
+and neither can collide with a data symbol. The data base is chronological (the
+book's own transcripts list answers in insertion order) and indexed by the
 leading symbol. Reading queries needs no private scanner here: the shared
 reader already accepts @code{()}, dotted patterns, and atoms such as
 @code{9am}.
@@ -721,8 +721,7 @@ engine.load(&[
 specifies that two people live near each other if they live in the same town.
 The final @code{not} clause prevents the rule from saying that all people live
 near themselves.  The @code{same} relation is defined by a very simple
-rule:@footnote{Notice that we do not need @code{same} in order to make two
-things be the same: We just use the same pattern variable for each---in effect,
+rule:@footnote{Notice that we do not need @code{same} to make two things be the same: We just use the same pattern variable for each---in effect,
 we have one thing instead of two things in the first place.  For example, see
 @code{?town} in the @code{lives-near} rule and @code{?middle-manager} in the
 @code{wheel} rule below.  @code{Same} is useful when we want to force two
@@ -1068,7 +1067,7 @@ some of the subtle ways in which the query language's logical operations differ
 from the operations of mathematical logic.
 
 It should be apparent that the query evaluator must perform some kind of search
-in order to match queries against facts and rules in the data base.  One way to
+to match queries against facts and rules in the data base. One way to
 do this would be to implement the query system as a nondeterministic program,
 using the @code{amb} evaluator of @ref{4.3} (see @ref{Exercise 4.78}).
 Another possibility is to manage the search with the aid of streams.  Our
@@ -1353,7 +1352,7 @@ frames for which the predicate fails.
 
 @subsubheading Unification
 
-In order to handle rules in the query language, we must be able to find the
+To handle rules in the query language, we must be able to find the
 rules whose conclusions match a given query pattern.  Rule conclusions are like
 assertions except that they can contain variables, so we will need a
 generalization of pattern matching---called @newterm{unification}---in which
@@ -1570,7 +1569,7 @@ stream, it instantiates the original query using the values of the variables
 found in the frame.  This stream of instantiated queries is then
 printed.@footnote{The reason we use streams (rather than lists) of frames is
 that the recursive application of rules can generate infinite numbers of values
-that satisfy a query.  The delayed evaluation embodied in streams is crucial
+that satisfy a query. The delayed evaluation embodied in streams is essential
 here: The system will print responses one by one as they are generated,
 regardless of whether there are a finite or infinite number of responses.}
 
@@ -3063,8 +3062,8 @@ budget is gone.
 
 @example rust
 // This edition's measured result: the delayed engine streams the direct
-// supervisor, and the undelayed engine -- whose streams are already lazy
-// structures -- answers the same first answer under the same budget.
+// supervisor, and the undelayed engine (whose streams are already lazy
+// structures) answers the same first answer under the same budget.
 println!("{:?}", delayed.answers_upto(ben_query, 1));
 // => ["(outranked-by (Bitdiddle Ben) (Warbucks Oliver))"]
 println!("{:?}", undelayed.answers_upto(ben_query, 1));
@@ -3304,7 +3303,7 @@ nor does the evaluator explain how some recursive procedures generate iterative
 processes (that is, are evaluated using constant space) whereas other recursive
 procedures generate recursive processes.  These questions remain unanswered
 because the metacircular evaluator is itself a Lisp program and hence inherits
-the control structure of the underlying Lisp system.  In order to provide a
+the control structure of the underlying Lisp system.  To provide a
 more complete description of the control structure of the Lisp evaluator, we
 must work at a more primitive level than Lisp itself.
 
@@ -3329,7 +3328,7 @@ machines we design.
 Most of the primitive operations of our register machines are very simple.  For
 example, an operation might add the numbers fetched from two registers,
 producing a result to be stored into a third register.  Such an operation can
-be performed by easily described hardware.  In order to deal with list
+be performed by easily described hardware.  To deal with list
 structure, however, we will also use the memory operations @code{car},
 @code{cdr}, and @code{cons}, which require an elaborate storage-allocation
 mechanism.  In @ref{5.3} we study their implementation in terms of more

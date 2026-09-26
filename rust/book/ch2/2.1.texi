@@ -229,7 +229,7 @@ impl Rational @{
 @end example
 
 @noindent
-Also, in order to display the results of our computations, we print
+Also, to display the results of our computations, we print
 rational numbers by printing the numerator, a slash, and the
 denominator, through Rust's @code{Display} trait:@footnote{@code{Display} is
 this edition's mechanism for printing data, the counterpart of the Scheme
@@ -510,10 +510,10 @@ if @code{x} is @code{Rational::new(n, d)}, then
 
 @end ifinfo
 In fact, this is the only condition @code{new}, @code{numer}, and
-@code{denom} must fulfill in order to form a suitable basis for a
+@code{denom} must fulfill to form a suitable basis for a
 rational-number representation.  In general, we can think of data as defined by
 some collection of selectors and constructors, together with specified
-conditions that these functions must fulfill in order to be a valid
+conditions that these functions must fulfill to be a valid
 representation.@footnote{Surprisingly, this idea is very difficult to formulate
 rigorously. There are two approaches to giving such a formulation.  One,
 pioneered by C. A. R. @ref{Hoare (1972)}, is known as the method of @newterm{abstract models}.  
@@ -535,7 +535,7 @@ by @ref{Liskov and Zilles (1975)}.}
 
 This point of view can serve to define not only ``high-level'' data objects,
 such as rational numbers, but lower-level objects as well.  Consider the notion
-of a pair, which we used in order to define our rational numbers.  We never
+of a pair, which we used to define our rational numbers.  We never
 actually said what a pair was, only that this edition supplied the functions
 @code{cons}, @code{car}, and @code{cdr} for operating on pairs.  But the only
 thing we need to know about these three operations is that if we glue two

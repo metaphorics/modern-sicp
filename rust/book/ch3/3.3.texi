@@ -2,14 +2,14 @@
 @section Modeling with Mutable Data
 
 @ref{Chapter 2} dealt with compound data as a means for constructing computational
-objects that have several parts, in order to model real-world objects that have
+objects that have several parts, to model real-world objects that have
 several aspects.  In that chapter we introduced the discipline of data
 abstraction, according to which data structures are specified in terms of
 constructors, which create data objects, and selectors, which access the parts
 of compound data objects.  But we now know that there is another aspect of data
 that chapter 2 did not address.  The desire to model systems composed of
 objects that have changing state leads us to the need to modify compound data
-objects, as well as to construct and select from them.  In order to model
+objects, as well as to construct and select from them.  To model
 compound objects with changing state, we will design data abstractions to
 include, in addition to selectors and constructors, operations called
 @newterm{mutators}, which modify data objects.  For instance, modeling a
@@ -27,7 +27,7 @@ Data objects for which mutators are defined are known as @newterm{mutable data o
 Chapter 2 introduced pairs as a general-purpose ``glue'' for synthesizing
 compound data.  We begin this section by defining basic mutators for pairs, so
 that pairs can serve as building blocks for constructing mutable data objects.
-These mutators greatly enhance the representational power of pairs, enabling us
+These mutators extend the representational power of pairs, enabling us
 to build data structures other than the sequences and trees that we worked with
 in @ref{2.2}.  We also present some examples of simulations in which
 complex systems are modeled as collections of objects with local state.
@@ -872,7 +872,7 @@ ordinary list; the front of the queue would be the @code{car} of the list,
 inserting an item in the queue would amount to appending a new element at the
 end of the list, and deleting an item from the queue would just be taking the
 @code{cdr} of the list.  However, this representation is inefficient, because
-in order to insert an item we must scan the list until we reach the end.  Since
+inserting an item requires scanning the list until we reach the end.  Since
 the only method we have for scanning a list is by successively following the
 @code{cdr} field, this scanning requires @math{{\Theta(n)}} steps for a list of @math{n}
 items.  A simple modification to the list representation overcomes this
@@ -1190,7 +1190,7 @@ a single key.  We implement the table as a list of records, each of which is
 implemented as a pair consisting of a key and the associated value. The records
 are glued together to form a list by pairs whose @code{car}s point to
 successive records.  These gluing pairs are called the @newterm{backbone} of
-the table.  In order to have a place that we can change when we add a new
+the table.  To have a place that we can change when we add a new
 record to the table, we build the table as a @newterm{headed list}.  A headed
 list has a special backbone pair at the beginning, which holds a dummy
 ``record''---in this case the arbitrarily chosen symbol @code{*table*}.
@@ -1278,7 +1278,7 @@ form a new record by pairing the key with the value, and insert this at
 the head of the table's list of records, after the dummy record.  If there
 already is a record with this key, we set the @code{cdr} of this record to the
 designated new value.  The header of the table provides us with a fixed
-location to modify in order to insert the new record.@footnote{Thus, the first
+location to modify to insert the new record.@footnote{Thus, the first
 backbone pair is the object that represents the table ``itself''; that is, a
 clone of the table's header handle points at this same pair.  This same
 backbone pair always starts the table.  If we did not arrange things in this
@@ -2429,7 +2429,7 @@ quantities @math{a}, @math{b}, and @math{c} must be related by the equation
 @math{{xy = z}}, and @code{constant(network, 3.14, x)} says that the value of
 @math{x} must be 3.14.
 
-Our language provides a means of combining primitive constraints in order to
+Our language provides a means of combining primitive constraints to
 express more complex relations.  We combine constraints by constructing
 @newterm{constraint networks}, in which constraints are joined by
 @newterm{connectors}.  A connector is an object that ``holds'' a value that may
@@ -3124,8 +3124,8 @@ informs the new constraint of this fact.
 @strong{In this language: mutable data.}
 
 Rust makes mutation visible in the types and in the sharing.  A pair's halves
-live in RefCells inside one Rc cell, so every mutator is a borrow the compiler
-polices at run time, and two names share state exactly when they hold the same
+live in RefCells inside one Rc cell, so every mutator's borrow is checked at
+run time, and two names share state exactly when they hold the same
 Rc handle, which Rc::ptr_eq settles.  The section's queues, tables, wires, and
 connectors are objects of that kind, and the gates' actions and the connectors'
 constraints are held only weakly, so wiring cannot keep a gate's inputs alive;

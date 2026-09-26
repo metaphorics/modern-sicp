@@ -32,9 +32,8 @@ particular, if we wish to model state variables by ordinary names in the
 programming language, then the language must provide an @newterm{assignment
 operator} to enable us to change the value associated with a name.  Rust
 provides one, and it adds a rule the book's Lisp never needed: a name can be
-assigned again only if its binding is declared @code{mut}, and state that
-several procedures share lives behind a cell whose interior the type system
-guards, as we will see throughout this chapter.
+assigned again only if its binding is declared @code{mut}.  State shared by
+several procedures lives behind a cell whose interior the type system guards.
 
 @menu
 * 3.1.1::            Local State Variables
@@ -209,7 +208,7 @@ local state are no longer specifications for computing mathematical functions,
 so we cannot understand them by the substitution-style reasoning of
 @ref{1.1.5}.  As a consequence, we technically have at this point no way to
 understand why the closure returned by @code{new_withdraw} behaves as claimed
-above.  In order to really understand a procedure such as @code{new_withdraw},
+above.  To really understand a procedure such as @code{new_withdraw},
 we will need a new model of procedure application.  In @ref{3.2} we will
 develop such a model, together with an explanation of assignment and local
 variables in terms of what a closure captures and who owns it.  First, however,
@@ -620,7 +619,7 @@ estimate of the integral.
 Implement Monte Carlo integration as a function @code{estimate_integral} that
 takes as arguments a predicate @code{p}, upper and lower bounds @code{x1},
 @code{x2}, @code{y1}, and @code{y2} for the rectangle, the number of trials
-to perform in order to produce the estimate, and a generator @code{rand}.
+to perform to produce the estimate, and a generator @code{rand}.
 Your function should use the
 same @code{monte_carlo} function that was used above to estimate @math{\pi}.
 Use your @code{estimate_integral} to produce an estimate of @math{\pi} by
@@ -1032,8 +1031,7 @@ described in @ref{Exercise 3.3}.  Suppose that our banking system requires the
 ability to make joint accounts.  Define a function @code{make_joint} that
 accomplishes this.  @code{Make_joint} should take three arguments.  The first
 is a password-protected account.  The second argument must match the password
-with which the account was defined in order for the @code{make_joint}
-operation to proceed; if it does not, @code{make_joint} should return the
+with which the account was defined for the @code{make_joint} operation to proceed; if it does not, @code{make_joint} should return the
 account's complaint.  The third argument is a new password.  @code{Make_joint}
 is to create an additional access to the original account under the new
 password, sharing the original account's balance.  For example, if

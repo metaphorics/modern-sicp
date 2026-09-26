@@ -2,7 +2,7 @@
 @section Storage Allocation and Garbage Collection
 
 In section @ref{5.4}, we will show how to implement a Scheme evaluator as a
-register machine.  In order to simplify the discussion, we will assume that our
+register machine.  To simplify the discussion, we will assume that our
 register machines can be equipped with a @newterm{list-structured memory}, in
 which the basic operations for manipulating list-structured data are primitive.
 Postulating the existence of such a memory is a useful abstraction when one is
@@ -16,7 +16,7 @@ There are two considerations in implementing list structure.  The first is
 purely an issue of representation: how to represent the ``box-and-pointer''
 structure of Lisp pairs, using only the storage and addressing capabilities of
 typical computer memories.  The second issue concerns the management of memory
-as a computation proceeds.  The operation of a Lisp system depends crucially on
+as a computation proceeds. The operation of a Lisp system depends on
 the ability to continually create new data objects.  These include objects that
 are explicitly created by the Lisp procedures being interpreted as well as
 structures created by the interpreter itself, such as environments and argument
@@ -54,7 +54,7 @@ individual elements can be accessed by means of an integer index in an amount
 of time that is independent of the index.@footnote{We could represent memory as
 lists of items.  However, the access time would then not be independent of the
 index, since accessing the @math{n^{\hbox{th}}} element of a list requires @math{{n - 1}}
-@code{cdr} operations.} In order to describe memory operations, we use two
+@code{cdr} operations.} To describe memory operations, we use two
 primitive Scheme procedures for manipulating vectors:
 
 @itemize @bullet
@@ -521,7 +521,7 @@ collect all the garbage periodically, and if this turns out to recycle memory
 at about the same rate at which we construct new pairs, we will have preserved
 the illusion that there is an infinite amount of memory.
 
-In order to recycle pairs, we must have a way to determine which allocated
+To recycle pairs, we must have a way to determine which allocated
 pairs are not needed (in the sense that their contents can no longer influence
 the future of the computation).  The method we shall examine for accomplishing
 this is known as @newterm{garbage collection}.  Garbage collection is based on

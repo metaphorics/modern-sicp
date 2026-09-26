@@ -2,9 +2,9 @@
 @section Streams
 
 We've gained a good understanding of assignment as a tool in modeling, as well
-as an appreciation of the complex problems that assignment raises as a powerful
-tool.  It is time to ask whether we could have gone about things in a different
-way, so as to avoid some of these problems.  In this section, we explore an
+as an appreciation of the complex problems that assignment raises.  It is time
+to ask whether we could have gone about things in a different way, so as to avoid
+some of these problems.  In this section, we explore an
 alternative approach to modeling state, based on data structures called
 @newterm{streams}.  As we shall see, streams can mitigate some of the
 complexity of modeling state.
@@ -16,8 +16,7 @@ variables.  We identified time variation in the real world with time variation
 in the computer.  We implemented the time variation of the states of the model
 objects in the computer with assignments to the local variables of the model
 objects.  Is there another approach?  Can we avoid identifying time in the
-computer with time in the modeled world?  Must we make the model change with
-time in order to model phenomena in a changing world?  Think about the issue
+computer with time in the modeled world? Must we make the model change with time to model phenomena in a changing world?  Think about the issue
 in terms of mathematical functions.  We can describe the time-varying behavior
 of a quantity @math{x} as a function of time @math{x(t)}.  If we concentrate
 on @math{x} instant by instant, we think of it as a changing quantity.  Yet,
@@ -160,8 +159,7 @@ arranged in a sequence.  In particular, we can build stream analogs of the
 list operations from @ref{Chapter 2}, such as @code{stream_ref}, @code{stream_map}, and
 @code{stream_for_each}:@footnote{This should bother you.  The fact that we are
 defining such similar procedures for streams and lists indicates that we are
-missing some underlying abstraction.  Unfortunately, in order to exploit this
-abstraction, we will need to exert finer control over the process of
+missing some underlying abstraction.  Unfortunately, to exploit this abstraction, we will need to exert finer control over the process of
 evaluation than we can at present, which we will discuss further at the end of
 @ref{3.5.4}.  In @ref{4.2}, we'll develop a framework that unifies lists and
 streams.}
@@ -532,7 +530,7 @@ where
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.51}Exercise 3.51:} In order to take a closer look at
+@strong{@anchor{Exercise 3.51}Exercise 3.51:} To take a closer look at
 delayed evaluation, we will use the following procedure, which simply returns
 its argument after printing it (here @code{show} records the value in a log
 the demonstration can inspect, so the evidence is observable in library code
@@ -1607,7 +1605,7 @@ fn pairs(s: &Stream<i128>, t: &Stream<i128>) -> Stream<(i128, i128)> @{
 @end example
 
 @noindent
-In order to complete the procedure, we must choose some way to combine the two
+To complete the procedure, we must choose some way to combine the two
 inner streams.  One idea is to use the stream analog of the @code{append}
 procedure from @ref{2.2.1}:
 
@@ -2033,7 +2031,7 @@ The interpreter's ability to deal with such an implicit definition depends on
 the @code{delay} that is incorporated into @code{cons_stream}.  Without this
 @code{delay}, the interpreter could not construct @code{int} before evaluating
 both arguments to @code{cons_stream}, which would require that @code{int}
-already be defined.  In general, @code{delay} is crucial for using streams to
+already be defined.  In general, @code{delay} is essential for using streams to
 model signal-processing systems that contain loops.  Without @code{delay}, our
 models would have to be formulated so that the inputs to any signal-processing
 component would be fully evaluated before the output could be produced.  This
@@ -2592,7 +2590,7 @@ evaluation.  Indeed, because of the presence of @code{delay} there may be
 little relation between simulated time in the model and the order of events
 during the evaluation.
 
-In order to contrast these two approaches to modeling, let us reconsider the
+To contrast these two approaches to modeling, let us reconsider the
 implementation of a ``withdrawal processor'' that monitors the balance in a
 bank account.  In @ref{3.1.3} we implemented a simplified version of
 such a processor:
@@ -2785,9 +2783,9 @@ language for describing processes and for constructing computational data
 objects and processes to model complex phenomena in the real world.  However,
 as we confront increasingly complex problems, we will find that Lisp, or indeed
 any fixed programming language, is not sufficient for our needs.  We must
-constantly turn to new languages in order to express our ideas more
+constantly turn to new languages to express our ideas more
 effectively.  Establishing new languages is a powerful strategy for controlling
-complexity in engineering design; we can often enhance our ability to deal with
+complexity in engineering design; we can often extend our ability to deal with
 a complex problem by adopting a new language that enables us to describe (and
 hence to think about) the problem in a different way, using primitives, means
 of combination, and means of abstraction that are particularly well suited to

@@ -55,10 +55,10 @@ let special_controller =
  fib-loop
    (test (op <) (reg n) (const 2))
    (branch (label immediate-answer))
-   (save n)
    (save continue)
-   (assign n (op -) (reg n) (const 1))
    (assign continue (label afterfib-n-1))
+   (save n)
+   (assign n (op -) (reg n) (const 1))
    (goto (label fib-loop))
  afterfib-n-1
    (restore n)
@@ -93,17 +93,9 @@ let special_at n =
   >>= fun () ->
   Machine.start m
   >>= fun () ->
-  let stats =
-    List.filter
-      (fun l -> String.length l > 14 && String.sub l 0 14 = "(total-pushes")
-      (Machine.transcript m)
-  in
-  match stats with
-  | [ line ] ->
-    (match Sec_5_45.parse_stats line with
-     | Some p -> Ok p
-     | None -> Error (C.Op_failed "no statistics"))
-  | _ -> Error (C.Op_failed "no statistics")
+  match List.rev (List.filter_map Sec_5_45.parse_stats (Machine.transcript m)) with
+  | p :: _ -> Ok p
+  | [] -> Error (C.Op_failed "no statistics")
 ;;
 
 (** [compiled_at n] and [interpreted_at n] mirror 5.45's harness for
@@ -127,10 +119,9 @@ let compiled_at n =
    | Error e -> Error e)
   >>= fun () ->
   let stats = List.filter_map Sec_5_45.parse_stats (C.transcript m) in
-  Ok
-    (match stats with
-     | [ p ] -> p
-     | _ -> 0, 0)
+  match List.rev stats with
+  | p :: _ -> Ok p
+  | [] -> Error (C.Op_failed "no statistics")
 ;;
 
 let interpreted_at n =

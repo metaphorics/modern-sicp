@@ -19,10 +19,17 @@ module Sec_5_35 = Sicp_ch5_solutions.Sec_5_35
 module Sec_5_36 = Sicp_ch5_solutions.Sec_5_36
 module Sec_5_37 = Sicp_ch5_solutions.Sec_5_37
 module Sec_5_38 = Sicp_ch5_solutions.Sec_5_38
+module Sec_5_39 = Sicp_ch5_solutions.Sec_5_39
 module Sec_5_40 = Sicp_ch5_solutions.Sec_5_40
 module Sec_5_41 = Sicp_ch5_solutions.Sec_5_41
+module Sec_5_42 = Sicp_ch5_solutions.Sec_5_42
+module Sec_5_43 = Sicp_ch5_solutions.Sec_5_43
 module Sec_5_44 = Sicp_ch5_solutions.Sec_5_44
+module Sec_5_45 = Sicp_ch5_solutions.Sec_5_45
+module Sec_5_46 = Sicp_ch5_solutions.Sec_5_46
 module Sec_5_47 = Sicp_ch5_solutions.Sec_5_47
+module Sec_5_48 = Sicp_ch5_solutions.Sec_5_48
+module Sec_5_49 = Sicp_ch5_solutions.Sec_5_49
 module Sec_5_50 = Sicp_ch5_solutions.Sec_5_50
 module Sec_5_51 = Sicp_ch5_solutions.Sec_5_51
 module Sec_5_52 = Sicp_ch5_solutions.Sec_5_52
@@ -183,6 +190,15 @@ let ex_5_38 () =
     (Sec_5_38.ex_5_38 ())
 ;;
 
+(* 5.39: the lexical machine runs a program whose counter set!s
+   accumulate through the global fallback on the captured frame and
+   whose cell set!s ride lexical-address-set! on the captured parameter
+   frame; the one printed value is the last form's, and it answers only
+   if both addressing operations and the frame overrides worked. *)
+let ex_5_39 () =
+  strings_outcome "5.39" [ "lexical machine session: 110" ] (Sec_5_39.ex_5_39 ())
+;;
+
 (* 5.40: the lexical-address mapping for the book's three-run example. *)
 let ex_5_40 () =
   strings_outcome
@@ -201,6 +217,36 @@ let ex_5_41 () =
   strings_outcome "5.41" [ "c: (1 2)"; "x: (2 0)"; "w: not-found" ] (Sec_5_41.ex_5_41 ())
 ;;
 
+(* 5.42: compile-variable's lexical emission names the book's addresses
+   (z at (0 1), y at (0 0), x at (2 0)), and the applied example runs to
+   the book's 180 through those lexical lookups on the lexical
+   machine of 5.39. *)
+let ex_5_42 () =
+  strings_outcome
+    "5.42"
+    [ "(assign val (op lexical-address-lookup) (const 0) (const 1) (reg env))\n\
+       (assign val (op lexical-address-lookup) (const 0) (const 0) (reg env))\n\
+       (assign val (op lexical-address-lookup) (const 2) (const 0) (reg env))"
+    ; "lexical run: 180"
+    ]
+    (Sec_5_42.ex_5_42 ())
+;;
+
+(* 5.43: the plain body compiles define-variable!, the scanned body
+   binds the quoted *unassigned* marker and compiles no define, and the
+   scanned program runs to the book's 3 without ever executing a
+   define. *)
+let ex_5_43 () =
+  strings_outcome
+    "5.43"
+    [ "plain body: quoted *unassigned* marker = false, define-variable! = true"
+    ; "scanned body: quoted *unassigned* marker = true, define-variable! = false"
+    ; "scanned run: ;;; EC-Eval value: ok ;;; EC-Eval input: ;;; EC-Eval value: 3 ;;; \
+       EC-Eval input:"
+    ]
+    (Sec_5_43.ex_5_43 ())
+;;
+
 (* 5.44: the open-coding analysis of the compiled set!-procedure: no
    open-coded operation under either shadowing or free names. *)
 let ex_5_44 () =
@@ -210,6 +256,38 @@ let ex_5_44 () =
     ; "free names: 0 open-coded operations"
     ]
     (Sec_5_44.ex_5_44 ())
+;;
+
+(* 5.45: the three machines on the same monitored stack: the
+   interpreted factorial at n = 5 costs the book's 144 pushes and 28
+   depth, the compiled one the book's 5.5.7 session's 31 and 14, the
+   special-purpose one 2n - 2 = 8; the ratios put the compiled code
+   close to the interpreter and the special-purpose machine far ahead. *)
+let ex_5_45 () =
+  strings_outcome
+    "5.45"
+    [ "n = 5: interpreted 144/28, compiled 31/14, special 8/8;           ratios compiled \
+       0.215/0.500, special 0.056/0.286"
+    ; "n = 10: interpreted 304/53, compiled 61/29, special 18/18;           ratios \
+       compiled 0.201/0.547, special 0.059/0.340"
+    ]
+    (Sec_5_45.ex_5_45 ())
+;;
+
+(* 5.46: the fib ratios stay near-constant per n (the call tree
+   doubles, no convergence) and the special-purpose machine keeps its
+   constant-factor lead at every measured n. *)
+let ex_5_46 () =
+  strings_outcome
+    "5.46"
+    [ "n = 5: interpreted 408/28, compiled 77/14, special 28/8;           ratios \
+       compiled 0.189/0.500, special 0.069/0.286"
+    ; "n = 6: interpreted 688/33, compiled 127/17, special 48/10;           ratios \
+       compiled 0.185/0.515, special 0.070/0.303"
+    ; "n = 7: interpreted 1136/38, compiled 207/20, special 80/12;           ratios \
+       compiled 0.182/0.526, special 0.070/0.316"
+    ]
+    (Sec_5_46.ex_5_46 ())
 ;;
 
 (* 5.47: the compound-call branch rides through unev, and the book's
@@ -225,6 +303,33 @@ let ex_5_47 () =
        EC-Eval input: ;;; EC-Eval value: 12 ;;; EC-Eval input:"
     ]
     (Sec_5_47.ex_5_47 ())
+;;
+
+(* 5.48: the compile-and-run primitive answers ok, the compiled define
+   recorded by the primitive answers ok on the next assembled machine,
+   and the call answers the book's 120 through the compiled
+   apply-dispatch. *)
+let ex_5_48 () =
+  strings_outcome
+    "5.48"
+    [ "session: ;;; EC-Eval input: ;;; EC-Eval value: ok ;;; EC-Eval input: ;;; EC-Eval \
+       value: ok ;;; EC-Eval input: ;;; EC-Eval value: 120 ;;; EC-Eval input:"
+    ]
+    (Sec_5_48.ex_5_48 ())
+;;
+
+(* 5.49: the read-compile-execute-print loop compiles every form,
+   definitions persist in the one machine's global environment, and the
+   values print per form: ok, 144, ok, 882. *)
+let ex_5_49 () =
+  strings_outcome
+    "5.49"
+    [ ";;; EC-Eval input: ;;; EC-Eval value: ok"
+    ; ";;; EC-Eval input: ;;; EC-Eval value: 144"
+    ; ";;; EC-Eval input: ;;; EC-Eval value: ok"
+    ; ";;; EC-Eval input: ;;; EC-Eval value: 882"
+    ]
+    (Sec_5_49.ex_5_49 ())
 ;;
 
 (* 5.50: the compiled metacircular answers the tick session and 120,
@@ -275,10 +380,17 @@ let () =
         ; Alcotest.test_case "5.36" `Quick ex_5_36
         ; Alcotest.test_case "5.37" `Quick ex_5_37
         ; Alcotest.test_case "5.38" `Quick ex_5_38
+        ; Alcotest.test_case "5.39" `Quick ex_5_39
         ; Alcotest.test_case "5.40" `Quick ex_5_40
         ; Alcotest.test_case "5.41" `Quick ex_5_41
+        ; Alcotest.test_case "5.42" `Quick ex_5_42
+        ; Alcotest.test_case "5.43" `Quick ex_5_43
         ; Alcotest.test_case "5.44" `Quick ex_5_44
+        ; Alcotest.test_case "5.45" `Quick ex_5_45
+        ; Alcotest.test_case "5.46" `Quick ex_5_46
         ; Alcotest.test_case "5.47" `Quick ex_5_47
+        ; Alcotest.test_case "5.48" `Quick ex_5_48
+        ; Alcotest.test_case "5.49" `Quick ex_5_49
         ; Alcotest.test_case "5.50" `Quick ex_5_50
         ; Alcotest.test_case "5.51" `Quick ex_5_51
         ; Alcotest.test_case "5.52" `Quick ex_5_52

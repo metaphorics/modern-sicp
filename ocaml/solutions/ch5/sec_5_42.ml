@@ -34,14 +34,13 @@ let compiled_statements src =
 (** [lexical_accesses stmts] is the lexical-address instructions the
     compilation emitted. *)
 let lexical_accesses stmts =
-  List.filter
-    (fun s ->
-       let pat = "(op lexical-address-lookup)" in
-       String.length s >= String.length pat
-       &&
-       try String.sub s 8 (String.length pat) = pat with
-       | _ -> false)
-    stmts
+  let contains needle text =
+    let n = String.length needle
+    and len = String.length text in
+    let rec from i = i + n <= len && (String.sub text i n = needle || from (i + 1)) in
+    from 0
+  in
+  List.filter (contains "(op lexical-address-lookup)") stmts
 ;;
 
 (** [ex_5_42 ()] compiles the example lexically, shows the emitted
@@ -65,6 +64,6 @@ let ex_5_42 () =
   >>= fun transcript ->
   Ok
     [ String.concat "\n" (lexical_accesses stmts)
-    ; "lexical run: " ^ String.concat " " transcript
+    ; "lexical run: " ^ String.concat " " (Sec_5_39.values_of transcript)
     ]
 ;;

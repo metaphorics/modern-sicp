@@ -175,14 +175,20 @@ let preserving cfg regs seq1 seq2 =
 type state =
   { counter : int ref
   ; consts : (string, Value.t) Hashtbl.t
+  ; entries : int ref
   }
 
-let new_state () = { counter = ref 0; consts = Hashtbl.create 16 }
+let new_state () = { counter = ref 0; consts = Hashtbl.create 16; entries = ref 0 }
 
 (** [new_state_seeded n] starts the label counter at [n]: 5.35's
     reproduction of Figure 5.18 seeds 14, the labels the book's
     session had already generated. *)
-let new_state_seeded n = { counter = ref n; consts = Hashtbl.create 16 }
+let new_state_seeded n = { counter = ref n; consts = Hashtbl.create 16; entries = ref 0 }
+
+let bump_entry state =
+  incr state.entries;
+  !(state.entries)
+;;
 
 let make_label state name =
   incr state.counter;
@@ -381,6 +387,20 @@ and compile_assignment cfg state cenv exp target linkage =
   | Ast.Set (name, value) ->
     compile cfg state cenv value "val" Next
     >>= fun value_code ->
+    let assign_stmt =
+      if cfg.lexical
+      then (
+        match find_variable name cenv with
+        | Some (frame, displacement) ->
+          stmt
+            "(perform (op lexical-address-set!) (const %d) (const %d) (reg val) (reg \
+             env))"
+            frame
+            displacement
+        | None ->
+          stmt "(perform (op set-variable-value!) (const %s) (reg val) (reg env))" name)
+      else stmt "(perform (op set-variable-value!) (const %s) (reg val) (reg env))" name
+    in
     preserving
       cfg
       [ "env" ]
@@ -388,9 +408,7 @@ and compile_assignment cfg state cenv exp target linkage =
       (make_instruction_sequence
          [ "env"; "val" ]
          [ target ]
-         [ stmt "(perform (op set-variable-value!) (const %s) (reg val) (reg env))" name
-         ; stmt "(assign %s (const ok))" target
-         ])
+         [ assign_stmt; stmt "(assign %s (const ok))" target ])
     >>= fun seq -> end_with_linkage cfg linkage seq
   | _ -> Error (Op_failed "compile-assignment needs an assignment")
 
@@ -486,7 +504,9 @@ and scan_out_defines body =
     in
     let parts = List.map part defines in
     let names = List.map fst parts in
-    let unassigned = variable "*unassigned*" in
+    (* the book's scanned shape binds the quoted '*unassigned*', so the
+       binding value is the marker symbol itself, never a lookup of it *)
+    let unassigned = quote (DSymbol "*unassigned*") in
     let bindings = List.map (fun n -> n, unassigned) names in
     let sets = List.filter_map (fun (n, v) -> Option.map (set n) v) parts in
     (match let_ bindings (sets @ rest) with
@@ -960,11 +980,14 @@ let compiled_operations state table =
   ; ( "make-compiled-procedure"
     , Sec_5_4.Value_op
         (function
-          | [ V v; Sec_5_4.Env env ] ->
+          | [ V v; ((Sec_5_4.Env _ | Sec_5_4.V _) as env) ] ->
             const_name_word (V v)
             >>= fun entry ->
             let id = Hashtbl.length table in
-            Hashtbl.replace table id (entry, Sec_5_4.Env env);
+            (* the environment word rides opaquely: the plain machine
+               carries an [Env] word, a lexical machine (5.39) its own
+               chain value *)
+            Hashtbl.replace table id (entry, env);
             Ok (Sec_5_4.V (Value.pair (Value.symbol "compiled-procedure") (Value.int id)))
           | _ ->
             Error (Arity "make-compiled-procedure needs an entry name and an environment"))
@@ -1066,10 +1089,18 @@ let build_runtime_primitives () =
     | Value.Float f -> Ok (int_of_float f)
     | _ -> Error (type_error (what ^ " needs a number") v)
   in
+  (* the book's arithmetic is variadic: (+ a b c ...) folds left over
+     every argument, and the compiled code hands the primitive the whole
+     argument list at once *)
   let arith name f = function
-    | first :: second :: _ ->
+    | first :: rest ->
       number_of name first
-      >>= fun a -> number_of name second >>= fun b -> Ok (Value.int (f a b))
+      >>= fun a ->
+      let rec go acc = function
+        | [] -> Ok (Value.int acc)
+        | v :: more -> number_of name v >>= fun b -> go (f acc b) more
+      in
+      go a rest
     | args -> Error (arity 2 (List.length args))
   in
   let compare_with test =
@@ -1633,6 +1664,10 @@ let make_compiled_evaluator
   List.iter
     (fun r -> Hashtbl.replace m.regs r (ref (Sec_5_4.V (Value.symbol "*unassigned*"))))
     machine_registers;
+  (* the flag register starts false so the plain driver path runs: the
+     branch-on-flag test counts every word but [false] as true, and the
+     *unassigned* initial value would arm the external entry *)
+  Hashtbl.replace m.regs "flag" (ref (Sec_5_4.V (Value.bool false)));
   let install (n, o) = Hashtbl.replace m.operations n o in
   List.iter install Sec_5_4.base_operations;
   List.iter install (compiled_operations state table);
@@ -1759,7 +1794,10 @@ let compile_block ?(cfg = default_config) state forms =
   >>= fun exps ->
   compile_program ~cfg ~linkage:Return state exps
   >>= fun seq ->
-  let entry = "compiled-entry-" ^ string_of_int (Hashtbl.length state.consts) in
+  (* the entry label counts its own sequence: two [compile_block] calls
+     on one state (5.49's loop, 5.48's recorded blocks) must not
+     collide on the const count, which can repeat *)
+  let entry = "compiled-entry-" ^ string_of_int (bump_entry state) in
   (* the book compiles the whole expression with target [val] and
      linkage [return]: the last form's linkage preserves the caller's
      [continue] and returns to it *)

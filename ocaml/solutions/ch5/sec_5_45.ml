@@ -48,21 +48,36 @@ print-result
        C.eceval_fragments)
 ;;
 
+(** [int_after prefix line] is the integer the digits right after
+    [prefix] spell, searching anywhere in the line: both the 5.4
+    machine's [(total-pushes = P maximum-depth = D)] and the 5.2
+    machine's prefixed [total-pushes = P maximum-depth = D] carry the
+    two counters behind the same markers. *)
+let int_after prefix line =
+  let plen = String.length prefix in
+  let len = String.length line in
+  let rec from i =
+    if i + plen > len
+    then None
+    else if String.sub line i plen = prefix
+    then (
+      let rec digits j =
+        if j < len && line.[j] >= '0' && line.[j] <= '9' then digits (j + 1) else j
+      in
+      let stop = digits (i + plen) in
+      if stop = i + plen
+      then None
+      else int_of_string_opt (String.sub line (i + plen) (stop - i - plen)))
+    else from (i + 1)
+  in
+  from 0
+;;
+
 (** [parse_stats line] reads the counters of a
     [(total-pushes = P maximum-depth = D)] line. *)
 let parse_stats line =
-  match String.index_opt line 'p', String.index_opt line '=' with
-  | _, Some _ when String.length line > 37 ->
-    (try
-       let open_reg = String.rindex line '(' in
-       let rest = String.sub line (open_reg + 1) (String.length line - open_reg - 2) in
-       let parts = String.split_on_char '=' rest in
-       match parts with
-       | [ _; pushes; _; depth ] ->
-         Some (int_of_string (String.trim pushes), int_of_string (String.trim depth))
-       | _ -> None
-     with
-     | _ -> None)
+  match int_after "total-pushes = " line, int_after "maximum-depth = " line with
+  | Some p, Some d -> Some (p, d)
   | _ -> None
 ;;
 
@@ -87,10 +102,9 @@ let compiled_at n =
    | Error e -> Error e)
   >>= fun () ->
   let stats = List.filter_map parse_stats (C.transcript m) in
-  Ok
-    (match stats with
-     | [ p ] -> p
-     | _ -> 0, 0)
+  match List.rev stats with
+  | p :: _ -> Ok p
+  | [] -> Error (C.Op_failed "no statistics")
 ;;
 
 (** [interpreted_at n] runs the interpreted factorial at [n] on the
@@ -100,9 +114,9 @@ let interpreted_at n =
   Sec_5_26.run (Sec_5_27.recursive_source ^ "\n(factorial " ^ string_of_int n ^ ")")
   >>= fun transcript ->
   let stats = Sec_5_26.stats_of transcript in
-  match stats with
-  | [ s ] -> Ok (Sec_5_26.pushes_of s, Sec_5_26.depth_of s)
-  | _ -> Error (C.Op_failed "no statistics")
+  match List.rev stats with
+  | s :: _ -> Ok (Sec_5_26.pushes_of s, Sec_5_26.depth_of s)
+  | [] -> Error (C.Op_failed "no statistics")
 ;;
 
 (** [special_at n] runs the special-purpose machine of Figure 5.11 (as

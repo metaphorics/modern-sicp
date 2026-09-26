@@ -17,8 +17,7 @@ let source =
   {|(define (f)
   (define a 1)
   (define b 2)
-  (+ a b))
-(f)|}
+  (+ a b))|}
 ;;
 
 let scan_out = { C.default_config with scan_out = true }
@@ -33,14 +32,19 @@ let body_shape cfg =
   | Ok exp ->
     C.compile cfg state [] exp "val" C.Next
     >>= fun seq ->
-    let has prefix =
+    let has needle =
       List.exists
         (fun s ->
-           String.length s >= String.length prefix
-           && String.sub s 0 (String.length prefix) = prefix)
+           let len = String.length s
+           and n = String.length needle in
+           let rec from i = i + n <= len && (String.sub s i n = needle || from (i + 1)) in
+           from 0)
         seq.stmts
     in
-    Ok (has "(const *unassigned*)", has "(op define-variable!)")
+    (* the scanned shape binds the marker as a quoted constant (the
+       quotation rides the compile-time constant table, so the emitted
+       name is a constant reference behind [text-of-quotation]) *)
+    Ok (has "(op text-of-quotation)", has "(op define-variable!)")
 ;;
 
 (** [ex_5_43 ()] shows both shapes and runs the scanned program on the
@@ -52,10 +56,7 @@ let ex_5_43 () =
   body_shape scan_out
   >>= fun (unassigned_scanned, define_scanned) ->
   let state = C.new_state () in
-  C.compile_and_go ~cfg:scan_out ~state ~compiled:source ~source:"" ()
-  >>= fun _m ->
-  let state2 = C.new_state () in
-  C.compile_and_go ~cfg:scan_out ~state:state2 ~compiled:source ~source:"(f)" ()
+  C.compile_and_go ~cfg:scan_out ~state ~compiled:source ~source:"(f)" ()
   >>= fun m ->
   (match C.start m with
    | Ok () -> Ok ()
@@ -64,11 +65,11 @@ let ex_5_43 () =
   >>= fun () ->
   Ok
     [ Printf.sprintf
-        "plain body: *unassigned* = %b, define-variable! = %b"
+        "plain body: quoted *unassigned* marker = %b, define-variable! = %b"
         unassigned_plain
         define_plain
     ; Printf.sprintf
-        "scanned body: *unassigned* = %b, define-variable! = %b"
+        "scanned body: quoted *unassigned* marker = %b, define-variable! = %b"
         unassigned_scanned
         define_scanned
     ; "scanned run: " ^ String.concat " " (C.transcript m)

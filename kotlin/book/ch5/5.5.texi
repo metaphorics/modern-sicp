@@ -132,12 +132,12 @@ evaluation is accomplished by the machine operation
 that we implement in this section will take advantage of this fact and generate
 code that evaluates the operator using the instruction
 
-@lisp
+@example
 (assign proc 
         (op lookup-variable-value)
         (const f)
         (reg env))
-@end lisp
+@end example
 
 @noindent
 This code not only avoids the unnecessary saves and restores but also assigns
@@ -191,40 +191,53 @@ procedures in our register machine simulation.)}  @code{Compile} performs a
 case analysis on the syntactic type of the expression to be compiled.  For each
 type of expression, it dispatches to a specialized @newterm{code generator}:
 
-@lisp
-(define (compile exp target linkage)
-  (cond ((self-evaluating? exp)
-         (compile-self-evaluating 
-          exp target linkage))
-        ((quoted? exp) 
-         (compile-quoted exp target linkage))
-        ((variable? exp)
-         (compile-variable 
-          exp target linkage))
-        ((assignment? exp)
-         (compile-assignment
-          exp target linkage))
-        ((definition? exp)
-         (compile-definition
-          exp target linkage))
-        ((if? exp)
-         (compile-if exp target linkage))
-        ((lambda? exp)
-         (compile-lambda exp target linkage))
-        ((begin? exp)
-         (compile-sequence 
-          (begin-actions exp) target linkage))
-        ((cond? exp) 
-         (compile 
-          (cond->if exp) target linkage))
-        ((application? exp)
-         (compile-application 
-          exp target linkage))
-        (else
-         (error "Unknown expression type: 
-                 COMPILE" 
-                exp))))
-@end lisp
+@example kotlin
+context(r: Raise<MachineError>)
+fun compile(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    cenv: CompileTimeEnv,
+    exp: Value,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence =
+    when {
+        selfEvaluating(exp) -> compileSelfEvaluating(cfg, exp, target, linkage)
+        isHead(exp, "quote") -> compileQuoted(cfg, exp, target, linkage)
+        exp is VSym -> compileVariable(cfg, cenv, exp.name, target, linkage)
+        isHead(exp, "set!") -> compileAssignment(cfg, state, cenv, exp, target, linkage)
+        isHead(exp, "define") -> compileDefinition(cfg, state, cenv, exp, target, linkage)
+        isHead(exp, "if") -> compileIf(cfg, state, cenv, exp, target, linkage)
+        isHead(exp, "lambda") -> compileLambda(cfg, state, cenv, exp, target, linkage)
+        isHead(exp, "begin") ->
+            compileSequence(cfg, state, cenv, ((exp as VPair).cdr as VPair).toItems(), target, linkage)
+
+        isHead(exp, "cond") -> compile(cfg, state, cenv, condToIf(exp), target, linkage)
+        isHead(exp, "let") -> compile(cfg, state, cenv, letToCombination(exp), target, linkage)
+        isHead(exp, "and") || isHead(exp, "or") ->
+            r.raise(EvaluatorFault("Unknown expression type: COMPILE"))
+
+        exp is VPair && isOpenCoded(cfg, cenv, exp.car) ->
+            compileOpenCode(cfg, state, cenv, exp, target, linkage)
+
+        exp is VPair ->
+            compileApplication(cfg, state, cenv, exp.car, (exp.cdr as? VPair)?.toItems().orEmpty(), target, linkage)
+
+        else -> r.raise(EvaluatorFault("Unknown expression type: COMPILE"))
+    }
+@end example
+
+@noindent
+In this edition the dispatch is a @code{when} over the reader's list
+structure: @code{cfg} carries the exercise switches of this section (the
+open coding of @ref{Exercise 5.38} and the compound calls of
+@ref{Exercise 5.47} among them), @code{state} the label counter, and
+@code{cenv} the compile-time environment of @ref{5.5.6}, empty at top
+level.  The statements are typed data in the register-machine language of
+@ref{5.1.5}, the same instruction lists the @ref{5.2} simulator assembles
+and the @ref{5.4} machine runs, rendered to the book's controller lines by
+@code{renderStmt}.  A dispatch miss is the typed fault @code{Unknown
+expression type: COMPILE}.
 
 @subsubheading Targets and linkages
 
@@ -257,18 +270,18 @@ For example, compiling the expression @code{5} (which is self-evaluating) with
 a target of the @code{val} register and a linkage of @code{next} should produce
 the instruction
 
-@lisp
+@example
 (assign val (const 5))
-@end lisp
+@end example
 
 @noindent
 Compiling the same expression with a linkage of @code{return} should produce
 the instructions
 
-@lisp
+@example
 (assign val (const 5))
 (goto (reg continue))
-@end lisp
+@end example
 
 @noindent
 In the first case, execution will continue with the next instruction in the
@@ -291,17 +304,17 @@ returns the combined sequence.  That is, if @math{{⟨\kern0.1em seq_1⟩}}
 and @math{{⟨\kern0.1em seq_2⟩}} are sequences of instructions, then 
 evaluating
 
-@lisp
+@example
 (append-instruction-sequences ⟨@var{seq₁}⟩ ⟨@var{seq₂}⟩)
-@end lisp
+@end example
 
 @noindent
 produces the sequence
 
-@lisp
+@example
 ⟨@var{seq₁}⟩
 ⟨@var{seq₂}⟩
-@end lisp
+@end example
 
 @noindent
 Whenever registers might need to be saved, the compiler's code generators use
@@ -404,14 +417,22 @@ the actual instructions (also called @newterm{statements}) in the sequence.
 @end itemize
 
 @noindent
-We will represent an instruction sequence as a list of its three parts.  The
+In this edition an instruction sequence is a class of its three parts.  The
 constructor for instruction sequences is thus
 
-@lisp
-(define (make-instruction-sequence 
-         needs modifies statements)
-  (list needs modifies statements))
-@end lisp
+@example kotlin
+class InstructionSequence(
+    val needs: List<String>,
+    val modifies: List<String>,
+    val stmts: List<Stmt>,
+)
+
+fun makeInstructionSequence(
+    needs: List<String>,
+    modifies: List<String>,
+    stmts: List<Stmt>,
+): InstructionSequence = InstructionSequence(needs, modifies, stmts)
+@end example
 
 @noindent
 For example, the two-instruction sequence that looks up the value of the
@@ -420,24 +441,30 @@ and then returns, requires registers @code{env} and @code{continue} to have
 been initialized, and modifies register @code{val}.  This sequence would
 therefore be constructed as
 
-@lisp
-(make-instruction-sequence
- '(env continue)
- '(val)
- '((assign val
-           (op lookup-variable-value)
-           (const x)
-           (reg env))
-   (goto (reg continue))))
-@end lisp
+@example kotlin
+makeInstructionSequence(
+    listOf("env", "continue"),
+    listOf("val"),
+    listOf(
+        Assign(
+            "val",
+            Source.OpSrc(
+                "lookup-variable-value",
+                listOf(Source.ConstSrc(VSym("x")), Source.RegSrc("env")),
+            ),
+        ),
+        Goto(GotoTarget.ByReg("continue")),
+    ),
+)
+@end example
 
 @noindent
 We sometimes need to construct an instruction sequence with no statements:
 
-@lisp
-(define (empty-instruction-sequence)
-  (make-instruction-sequence '() '() '()))
-@end lisp
+@example kotlin
+fun emptyInstructionSequence(): InstructionSequence =
+    makeInstructionSequence(emptyList(), emptyList(), emptyList())
+@end example
 
 @noindent
 The procedures for combining instruction sequences are shown in 
@@ -454,12 +481,12 @@ of the following combinations, say which of these @code{save} and
 @code{restore} operations are superfluous and thus could be eliminated by the
 compiler's @code{preserving} mechanism:
 
-@lisp
+@example
 (f 'x 'y)
 ((f) 'x 'y)
 (f (g 'x) y)
 (f (g 'x) 'y)
-@end lisp
+@end example
 @end quotation
 
 @quotation
@@ -501,51 +528,44 @@ generate the instruction @code{(goto (reg continue))}.  This needs the
 @code{continue} register and does not modify any registers.  If the linkage is
 @code{next}, then we needn't include any additional instructions.  Otherwise,
 the linkage is a label, and we generate a @code{goto} to that label, an
-instruction that does not need or modify any registers.@footnote{This procedure
-uses a feature of Lisp called @newterm{backquote} (or @newterm{quasiquote})
-that is handy for constructing lists.  Preceding a list with a backquote symbol
-is much like quoting it, except that anything in the list that is flagged with
-a comma is evaluated.
+instruction that does not need or modify any registers.@footnote{In this
+edition the statements are typed data in the register-machine language of
+@ref{5.1.5}, and the compiler renders them to the book's controller lines
+with @code{renderStmt}.  For example, if @code{linkage} names the label
+@code{branch25}, then the statement
 
-For example, if the value of @code{linkage} is the symbol @code{branch25},
-then the expression 
+@example kotlin
+Goto(GotoTarget.Lbl(linkage))
+@end example
 
-@lisp
-`((goto (label ,linkage)))
-@end lisp
+@noindent
+renders to the controller line
 
-evaluates to the list 
-	
-@lisp
-((goto (label branch25))) 
-@end lisp
-
-Similarly, if the value of @code{x} is the list @code{(a b c)}, then 
-
-@lisp
-`(1 2 ,(car x)) 
-@end lisp
-
-evaluates to the list 
-
-@lisp
-(1 2 a)
-@end lisp
+@example
+(goto (label branch25))
+@end example
 }
 
-@lisp
-(define (compile-linkage linkage)
-  (cond ((eq? linkage 'return)
-         (make-instruction-sequence 
-          '(continue)
-          '()
-          '((goto (reg continue)))))
-        ((eq? linkage 'next)
-         (empty-instruction-sequence))
-        (else
-         (make-instruction-sequence '() '()
-          `((goto (label ,linkage)))))))
-@end lisp
+@example kotlin
+fun compileLinkage(linkage: Linkage): InstructionSequence =
+    when (linkage) {
+        is Linkage.Return ->
+            makeInstructionSequence(
+                listOf("continue"),
+                emptyList(),
+                listOf(Goto(GotoTarget.ByReg("continue"))),
+            )
+
+        is Linkage.Next -> emptyInstructionSequence()
+
+        is Linkage.Lab ->
+            makeInstructionSequence(
+                emptyList(),
+                emptyList(),
+                listOf(Goto(GotoTarget.Lbl(linkage.name))),
+            )
+    }
+@end example
 
 @noindent
 The linkage code is appended to an instruction sequence by @code{preserving}
@@ -554,13 +574,14 @@ the @code{continue} register, since a @code{return} linkage will require the
 @code{continue} and the linkage code needs it, @code{continue} will be saved
 and restored.
 
-@lisp
-(define (end-with-linkage 
-         linkage instruction-sequence)
-  (preserving '(continue)
-   instruction-sequence
-   (compile-linkage linkage)))
-@end lisp
+@example kotlin
+fun endWithLinkage(
+    cfg: CompilerConfig,
+    linkage: Linkage,
+    instructionSequence: InstructionSequence,
+): InstructionSequence =
+    preserving(cfg, listOf("continue"), instructionSequence, compileLinkage(linkage))
+@end example
 
 @subsubheading Compiling simple expressions
 
@@ -568,37 +589,67 @@ The code generators for self-evaluating expressions, quotations, and variables
 construct instruction sequences that assign the required value to the target
 register and then proceed as specified by the linkage descriptor.
 
-@lisp
-(define (compile-self-evaluating 
-         exp target linkage)
-  (end-with-linkage
-   linkage (make-instruction-sequence 
-            '()
-            (list target)
-            `((assign ,target (const ,exp))))))
+@example kotlin
+fun compileSelfEvaluating(
+    cfg: CompilerConfig,
+    exp: Value,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence =
+    endWithLinkage(
+        cfg,
+        linkage,
+        makeInstructionSequence(
+            emptyList(),
+            listOf(target),
+            listOf(Assign(target, Source.ConstSrc(exp))),
+        ),
+    )
 
-(define (compile-quoted exp target linkage)
-  (end-with-linkage
-   linkage
-   (make-instruction-sequence
-    '()
-    (list target)
-    `((assign 
-       ,target
-       (const ,(text-of-quotation exp)))))))
+fun compileQuoted(
+    cfg: CompilerConfig,
+    exp: Value,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence =
+    endWithLinkage(
+        cfg,
+        linkage,
+        makeInstructionSequence(
+            emptyList(),
+            listOf(target),
+            listOf(Assign(target, Source.ConstSrc(secondOf("text-of-quotation", exp)))),
+        ),
+    )
 
-(define (compile-variable
-         exp target linkage)
-  (end-with-linkage 
-   linkage
-   (make-instruction-sequence 
-    '(env)
-    (list target)
-    `((assign ,target
-              (op lookup-variable-value)
-              (const ,exp)
-              (reg env))))))
-@end lisp
+fun compileVariable(
+    cfg: CompilerConfig,
+    cenv: CompileTimeEnv,
+    name: String,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    // the exercises 5.40 to 5.42 hook in here: with cfg.lexical the
+    // access is a lexical-address lookup through findVariable
+    return endWithLinkage(
+        cfg,
+        linkage,
+        makeInstructionSequence(
+            listOf("env"),
+            listOf(target),
+            listOf(
+                Assign(
+                    target,
+                    Source.OpSrc(
+                        "lookup-variable-value",
+                        listOf(Source.ConstSrc(VSym(name)), Source.RegSrc("env")),
+                    ),
+                ),
+            ),
+        ),
+    )
+}
+@end example
 
 @noindent
 All these assignment instructions modify the target register, and the one that
@@ -616,49 +667,58 @@ defining the variable and the code for the variable value could be the
 compilation of a complex expression that might modify the registers in
 arbitrary ways.
 
-@lisp
-(define (compile-assignment 
-         exp target linkage)
-  (let ((var (assignment-variable exp))
-        (get-value-code
-         (compile (assignment-value exp) 
-                  'val
-                  'next)))
-    (end-with-linkage 
-     linkage
-     (preserving 
-      '(env)
-      get-value-code
-      (make-instruction-sequence
-       '(env val)
-       (list target)
-       `((perform (op set-variable-value!)
-                  (const ,var)
-                  (reg val)
-                  (reg env))
-         (assign ,target (const ok))))))))
+@example kotlin
+fun compileAssignment(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    cenv: CompileTimeEnv,
+    exp: Value,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    val name = nameOf("assignment-variable", exp)
+    val valueCode = compile(cfg, state, cenv, thirdOf("assignment-value", exp), "val", Linkage.Next)
+    val tail =
+        makeInstructionSequence(
+            listOf("env", "val"),
+            listOf(target),
+            listOf(
+                // the direct set-variable-value! perform, or the
+                // lexical-address-set! of exercise 5.42
+                performSet(cfg, name, cenv),
+                Assign(target, Source.ConstSrc(VSym("ok"))),
+            ),
+        )
+    return endWithLinkage(cfg, linkage, preserving(cfg, listOf("env"), valueCode, tail))
+}
 
-(define (compile-definition 
-         exp target linkage)
-  (let ((var (definition-variable exp))
-        (get-value-code
-         (compile (definition-value exp)
-                  'val
-                  'next)))
-    (end-with-linkage
-     linkage
-     (preserving 
-      '(env)
-      get-value-code
-      (make-instruction-sequence
-       '(env val)
-       (list target)
-       `((perform (op define-variable!)
-                  (const ,var)
-                  (reg val)
-                  (reg env))
-         (assign ,target (const ok))))))))
-@end lisp
+fun compileDefinition(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    cenv: CompileTimeEnv,
+    exp: Value,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    val name = nameOf("definition-variable", exp)
+    val valueCode = compile(cfg, state, cenv, definitionValue(exp), "val", Linkage.Next)
+    val tail =
+        makeInstructionSequence(
+            listOf("env"),
+            listOf(target),
+            listOf(
+                Perform(
+                    OpAct(
+                        "define-variable!",
+                        listOf(Source.ConstSrc(VSym(name)), Source.RegSrc("val"), Source.RegSrc("env")),
+                    ),
+                ),
+                Assign(target, Source.ConstSrc(VSym("ok"))),
+            ),
+        )
+    return endWithLinkage(cfg, linkage, preserving(cfg, listOf("env"), valueCode, tail))
+}
+@end example
 
 @noindent
 The appended two-instruction sequence requires @code{env} and @code{val} and
@@ -674,7 +734,7 @@ would cause the previous contents of @code{val} to be restored right after the
 The code for an @code{if} expression compiled with a given target and linkage
 has the form
 
-@lisp
+@example
 ⟨@emph{compilation of predicate, 
  target @code{val}, linkage @code{next}}⟩
  (test (op false?) (reg val))
@@ -686,7 +746,7 @@ false-branch
  ⟨@emph{compilation of alternative 
   with given target and linkage}⟩
 after-if
-@end lisp
+@end example
 
 @noindent
 To generate this code, we compile the predicate, consequent, and alternative,
@@ -695,25 +755,23 @@ and with newly generated labels to mark the true and false branches and the end
 of the conditional.@footnote{We can't just use the labels @code{true-branch},
 @code{false-branch}, and @code{after-if} as shown above, because there might be
 more than one @code{if} in the program.  The compiler uses the procedure
-@code{make-label} to generate labels.  @code{Make-label} takes a symbol as
-argument and returns a new symbol that begins with the given symbol.  For
-example, successive calls to @code{(make-label 'a)} would return @code{a1},
-@code{a2}, and so on.  @code{Make-label} can be implemented similarly to the
-generation of unique variable names in the query language, as follows:
+@code{make-label} to generate labels.  @code{Make-label} takes a base name as
+argument and returns a new label that begins with the given name.  For
+example, successive calls to @code{state.makeLabel("a")} would return
+@code{a1}, @code{a2}, and so on.  In this edition the counter rides in the
+compiler's state, beside the entry counter of @code{compileBlock}:
 
-@lisp
-(define label-counter 0)
+@example kotlin
+class CompilerState(seed: Int = 0) {
+    private var counter: Int = seed
+    private var entries: Int = 0
 
-(define (new-label-number)
-  (set! label-counter (+ 1 label-counter))
-  label-counter)
-
-(define (make-label name)
-  (string->symbol
-   (string-append 
-    (symbol->string name)
-    (number->string (new-label-number)))))
-@end lisp
+    fun makeLabel(name: String): String {
+        counter += 1
+        return "$name$counter"
+    }
+}
+@end example
 } In this arrangement of code, we must branch around the true branch if the
 test is false.  The only slight complication is in how the linkage for the true
 branch should be handled.  If the linkage for the conditional is @code{return}
@@ -721,43 +779,43 @@ or a label, then the true and false branches will both use this same linkage.
 If the linkage is @code{next}, the true branch ends with a jump around the code
 for the false branch to the label at the end of the conditional.
 
-@lisp
-(define (compile-if exp target linkage)
-  (let ((t-branch (make-label 'true-branch))
-        (f-branch (make-label 'false-branch))
-        (after-if (make-label 'after-if)))
-    (let ((consequent-linkage
-           (if (eq? linkage 'next) 
-               after-if
-               linkage)))
-      (let ((p-code 
-             (compile (if-predicate exp)
-                      'val
-                      'next))
-            (c-code
-             (compile (if-consequent exp) 
-                      target 
-                      consequent-linkage))
-            (a-code
-             (compile (if-alternative exp)
-                      target
-                      linkage)))
-        (preserving 
-         '(env continue)
-         p-code
-         (append-instruction-sequences
-          (make-instruction-sequence 
-           '(val) 
-           '()
-           `((test (op false?) (reg val))
-             (branch (label ,f-branch))))
-          (parallel-instruction-sequences
-           (append-instruction-sequences 
-            t-branch c-code)
-           (append-instruction-sequences
-            f-branch a-code))
-          after-if))))))
-@end lisp
+@example kotlin
+fun compileIf(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    cenv: CompileTimeEnv,
+    exp: Value,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    // the labels allocate after-if, false-branch, true-branch, and the
+    // branches compile alternative, consequent, predicate: the orders
+    // the book's own figures show
+    val afterIf = state.makeLabel("after-if")
+    val fBranch = state.makeLabel("false-branch")
+    val tBranch = state.makeLabel("true-branch")
+    val consequentLinkage = if (linkage == Linkage.Next) Linkage.Lab(afterIf) else linkage
+    val aCode = compile(cfg, state, cenv, ifAlternative(exp), target, linkage)
+    val cCode = compile(cfg, state, cenv, ifConsequent(exp), target, consequentLinkage)
+    val pCode = compile(cfg, state, cenv, ifPredicate(exp), "val", Linkage.Next)
+    val testCode =
+        makeInstructionSequence(
+            listOf("val"),
+            emptyList(),
+            listOf(
+                Test(OpCond("false?", listOf(Source.RegSrc("val")))),
+                Branch(fBranch),
+            ),
+        )
+    val branches =
+        parallelInstructionSequences(
+            append2Sequences(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(tBranch))), cCode),
+            append2Sequences(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(fBranch))), aCode),
+        )
+    val branchTail = InstructionSequence(branches.needs, branches.modifies, branches.stmts + Label(afterIf))
+    return preserving(cfg, listOf("env", "continue"), pCode, append2Sequences(testCode, branchTail))
+}
+@end example
 
 @noindent
 @code{Env} is preserved around the predicate code because it could be needed by
@@ -782,27 +840,34 @@ appended to form a single instruction sequence, such that @code{env} (needed
 for the rest of the sequence) and @code{continue} (possibly needed for the
 linkage at the end of the sequence) are preserved.
 
-@lisp
-(define (compile-sequence seq target linkage)
-  (if (last-exp? seq)
-      (compile (first-exp seq) target linkage)
-      (preserving '(env continue)
-       (compile (first-exp seq) target 'next)
-       (compile-sequence (rest-exps seq)
-                         target
-                         linkage))))
-@end lisp
+@example kotlin
+context(r: Raise<MachineError>)
+fun compileSequence(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    cenv: CompileTimeEnv,
+    body: List<Value>,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    if (body.isEmpty()) r.raise(EvaluatorFault("compile-sequence of an empty body"))
+    if (body.size == 1) return compile(cfg, state, cenv, body[0], target, linkage)
+    val firstCode = compile(cfg, state, cenv, body[0], target, Linkage.Next)
+    val restCode = compileSequence(cfg, state, cenv, body.drop(1), target, linkage)
+    return preserving(cfg, listOf("env", "continue"), firstCode, restCode)
+}
+@end example
 
 @subsubheading Compiling @code{lambda} expressions
 
 @code{Lambda} expressions construct procedures.  The object code for a
 @code{lambda} expression must have the form
 
-@lisp
+@example
 ⟨@emph{construct procedure object 
  and assign it to target register}⟩
 ⟨@var{linkage}⟩
-@end lisp
+@end example
 
 @noindent
 When we compile the @code{lambda} expression, we also generate the code for the
@@ -814,14 +879,14 @@ expression is a label or @code{return}, this is fine.  But if the linkage is
 using a linkage that jumps to a label that is inserted after the body.  The
 object code thus has the form
 
-@lisp
+@example
 ⟨@emph{construct procedure object 
  and assign it to target register}⟩
  ⟨@emph{code for given linkage}⟩ @emph{or} 
   @code{(goto (label after-lambda))}
  ⟨@emph{compilation of procedure body}⟩
 after-lambda
-@end lisp
+@end example
 
 @noindent
 @code{Compile-lambda} generates the code for constructing the procedure object
@@ -833,43 +898,73 @@ machine operations to implement a data structure for representing compiled
 procedures, analogous to the structure for compound procedures described in
 @ref{4.1.3}:
 
-@lisp
-(define (make-compiled-procedure entry env)
-  (list 'compiled-procedure entry env))
-(define (compiled-procedure? proc)
-  (tagged-list? proc 'compiled-procedure))
-(define (compiled-procedure-entry c-proc) 
-  (cadr c-proc))
-(define (compiled-procedure-env c-proc)
-  (caddr c-proc))
-@end lisp
+@example kotlin
+// the compiled procedure word is the runtime's VCompiledProc: the entry
+// label resolved against the assembled machine's label table, over an
+// environment word's table entry
+"make-compiled-procedure" to
+    compiledTwoArgs("make-compiled-procedure") { entry, env ->
+        val address =
+            when (entry) {
+                is VInt -> entry.n.toInt()
+                else -> raise(EvaluatorFault("make-compiled-procedure needs an entry label"))
+            }
+        val machine = requireNotNull(state.machine) { "make-compiled-procedure: the machine is not installed" }
+        val name =
+            machine.labels.entries.firstOrNull { it.value == address }?.key
+                ?: raise(EvaluatorFault("make-compiled-procedure: no label at address $address"))
+        VCompiledProc(name, noParams, state.envOf("make-compiled-procedure", env))
+    }
+
+"compiled-procedure?" to
+    compiledOneArg("compiled-procedure?") { w -> VBool(w is VCompiledProc) }
+
+"compiled-procedure-entry" to
+    compiledOneArg("compiled-procedure-entry") { w ->
+        val word = compiledWordOf("compiled-procedure-entry", w)
+        VInt(entryAddress(state, "compiled-procedure-entry", word.entry).toLong())
+    }
+
+"compiled-procedure-env" to
+    compiledOneArg("compiled-procedure-env") { w ->
+        val word = compiledWordOf("compiled-procedure-env", w)
+        state.envs.add(word.env)
+        envWord(state.envs.size - 1)
+    }
+@end example
 }
 
-@lisp
-(define (compile-lambda exp target linkage)
-  (let ((proc-entry 
-         (make-label 'entry))
-        (after-lambda 
-         (make-label 'after-lambda)))
-    (let ((lambda-linkage
-           (if (eq? linkage 'next)
-               after-lambda
-               linkage)))
-      (append-instruction-sequences
-       (tack-on-instruction-sequence
-        (end-with-linkage 
-         lambda-linkage
-         (make-instruction-sequence 
-          '(env)
-          (list target)
-          `((assign 
-             ,target
-             (op make-compiled-procedure)
-             (label ,proc-entry)
-             (reg env)))))
-        (compile-lambda-body exp proc-entry))
-       after-lambda))))
-@end lisp
+@example kotlin
+fun compileLambda(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    cenv: CompileTimeEnv,
+    exp: Value,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    val afterLambda = state.makeLabel("after-lambda")
+    val procEntry = state.makeLabel("entry")
+    val lambdaLinkage = if (linkage == Linkage.Next) Linkage.Lab(afterLambda) else linkage
+    val construct =
+        makeInstructionSequence(
+            listOf("env"),
+            listOf(target),
+            listOf(
+                Assign(
+                    target,
+                    Source.OpSrc(
+                        "make-compiled-procedure",
+                        listOf(Source.LabelSrc(procEntry), Source.RegSrc("env")),
+                    ),
+                ),
+            ),
+        )
+    val body = compileLambdaBody(cfg, state, cenv, exp, procEntry)
+    val tacked = tackOnInstructionSequence(endWithLinkage(cfg, lambdaLinkage, construct), body)
+    return append2Sequences(tacked, makeInstructionSequence(emptyList(), emptyList(), listOf(Label(afterLambda))))
+}
+@end example
 
 @noindent
 @code{Compile-lambda} uses the special combiner
@@ -891,26 +986,47 @@ body.  The sequence is compiled with linkage @code{return} and target
 @code{val} so that it will end by returning from the procedure with the
 procedure result in @code{val}.
 
-@lisp
-(define (compile-lambda-body exp proc-entry)
-  (let ((formals (lambda-parameters exp)))
-    (append-instruction-sequences
-     (make-instruction-sequence 
-      '(env proc argl)
-      '(env)
-      `(,proc-entry
-        (assign env 
-                (op compiled-procedure-env)
-                (reg proc))
-        (assign env
-                (op extend-environment)
-                (const ,formals)
-                (reg argl)
-                (reg env))))
-     (compile-sequence (lambda-body exp)
-                       'val
-                       'return))))
-@end lisp
+@example kotlin
+context(r: Raise<MachineError>)
+fun compileLambdaBody(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    cenv: CompileTimeEnv,
+    exp: Value,
+    procEntry: String,
+): InstructionSequence {
+    val paramsForm = secondOf("lambda-parameters", exp)
+    val params =
+        when (paramsForm) {
+            is VNil -> emptyList()
+            is VPair -> paramsForm.toItems().map { it.toString() }
+            else -> r.raise(EvaluatorFault("lambda-parameters needs a parameter list"))
+        }
+    // 5.43 scans the internal definitions out of the body first, on the
+    // cfg.scanOut switch
+    val bodyItems = (((exp as VPair).cdr as VPair).cdr as VPair).toItems()
+    val body = if (cfg.scanOut) scanOutDefines(bodyItems) else bodyItems
+    val entryCode =
+        makeInstructionSequence(
+            listOf("env", "proc", "argl"),
+            listOf("env"),
+            listOf(
+                Label(procEntry),
+                Assign("env", Source.OpSrc("compiled-procedure-env", listOf(Source.RegSrc("proc")))),
+                Assign(
+                    "env",
+                    Source.OpSrc(
+                        "extend-environment",
+                        listOf(Source.ConstSrc(paramsForm), Source.RegSrc("argl"), Source.RegSrc("env")),
+                    ),
+                ),
+            ),
+        )
+    val bodyCode =
+        compileSequence(cfg, state, extendCompileTimeEnv(params, cenv), body, "val", Linkage.Return)
+    return append2Sequences(entryCode, bodyCode)
+}
+@end example
 
 @node	5.5.3, 5.5.4, 5.5.2, 5.5
 @subsection Compiling Combinations
@@ -919,14 +1035,14 @@ The essence of the compilation process is the compilation of procedure
 applications.  The code for a combination compiled with a given target and
 linkage has the form
 
-@lisp
+@example
 ⟨@emph{compilation of operator, 
  target @code{proc}, linkage @code{next}}⟩
 ⟨@emph{evaluate operands and construct 
  argument list in @code{argl}}⟩
 ⟨@emph{compilation of procedure call 
  with given target and linkage}⟩
-@end lisp
+@end example
 
 @noindent
 The registers @code{env}, @code{proc}, and @code{argl} may have to be saved and
@@ -949,25 +1065,24 @@ modify @code{proc}, which will be needed for the actual procedure application).
 @code{Continue} must also be preserved throughout, since it is needed for the
 linkage in the procedure call.
 
-@lisp
-(define (compile-application 
-         exp target linkage)
-  (let ((proc-code 
-         (compile (operator exp) 'proc 'next))
-        (operand-codes
-         (map (lambda (operand)
-                (compile operand 'val 'next))
-              (operands exp))))
-    (preserving 
-     '(env continue)
-     proc-code
-     (preserving 
-      '(proc continue)
-      (construct-arglist operand-codes)
-      (compile-procedure-call 
-       target
-       linkage)))))
-@end lisp
+@example kotlin
+fun compileApplication(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    cenv: CompileTimeEnv,
+    operator: Value,
+    operands: List<Value>,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    val procCode = compile(cfg, state, cenv, operator, "proc", Linkage.Next)
+    val operandCodes = operands.map { compile(cfg, state, cenv, it, "val", Linkage.Next) }
+    val arglistCode = constructArglist(cfg, operandCodes)
+    val callCode = compileProcedureCall(cfg, state, target, linkage)
+    val callAndArgs = preserving(cfg, listOf("proc", "continue"), arglistCode, callCode)
+    return preserving(cfg, listOf("env", "continue"), procCode, callAndArgs)
+}
+@end example
 
 @noindent
 The code to construct the argument list will evaluate each operand into
@@ -980,7 +1095,7 @@ to the empty list to set up for this sequence of evaluations, we make the first
 code sequence construct the initial @code{argl}.  The general form of the
 argument-list construction is thus as follows:
 
-@lisp
+@example
 ⟨@emph{compilation of last operand, targeted to @code{val}}⟩
 (assign argl (op list) (reg val))
 ⟨@emph{compilation of next operand, targeted to @code{val}}⟩
@@ -988,7 +1103,7 @@ argument-list construction is thus as follows:
 @r{…}
 ⟨@emph{compilation of first operand, targeted to @code{val}}⟩
 (assign argl (op cons) (reg val) (reg argl))
-@end lisp
+@end example
 
 @noindent
 @code{Argl} must be preserved around each operand evaluation except the first
@@ -1002,9 +1117,9 @@ of the first operand to be evaluated and the need to preserve @code{argl} and
 as arguments the code that evaluates the individual operands.  If there are no
 operands at all, it simply emits the instruction
 
-@lisp
+@example
 (assign argl (const ()))
-@end lisp
+@end example
 
 @noindent
 Otherwise, @code{construct-arglist} creates code that initializes @code{argl}
@@ -1013,52 +1128,56 @@ arguments and adjoins them to @code{argl} in succession.  In order to process
 the arguments from last to first, we must reverse the list of operand code
 sequences from the order supplied by @code{compile-application}.
 
-@lisp
-(define (construct-arglist operand-codes)
-  (let ((operand-codes 
-         (reverse operand-codes)))
-    (if (null? operand-codes)
-        (make-instruction-sequence 
-         '() 
-         '(argl)
-         '((assign argl (const ()))))
-        (let ((code-to-get-last-arg
-               (append-instruction-sequences
-                (car operand-codes)
-                (make-instruction-sequence 
-                 '(val)
-                 '(argl)
-                 '((assign argl
-                           (op list)
-                           (reg val)))))))
-          (if (null? (cdr operand-codes))
-              code-to-get-last-arg
-              (preserving 
-               '(env)
-               code-to-get-last-arg
-               (code-to-get-rest-args
-                (cdr operand-codes))))))))
+@example kotlin
+fun constructArglist(
+    cfg: CompilerConfig,
+    operandCodes: List<InstructionSequence>,
+): InstructionSequence {
+    // 5.36 flips the order with the cfg.leftToRight switch; the default
+    // compiles the operands right to left, the book's reverse
+    val ordered = if (cfg.leftToRight) operandCodes else operandCodes.reversed()
+    if (ordered.isEmpty()) {
+        return makeInstructionSequence(
+            emptyList(),
+            listOf("argl"),
+            listOf(Assign("argl", Source.ConstSrc(VNil))),
+        )
+    }
+    val codeToGetLastArg =
+        append2Sequences(
+            ordered[0],
+            makeInstructionSequence(
+                listOf("val"),
+                listOf("argl"),
+                listOf(Assign("argl", Source.OpSrc("list", listOf(Source.RegSrc("val"))))),
+            ),
+        )
+    val restCodes = ordered.drop(1)
+    if (restCodes.isEmpty()) return codeToGetLastArg
+    return preserving(cfg, listOf("env"), codeToGetLastArg, codeToGetRestArgs(cfg, restCodes))
+}
 
-(define (code-to-get-rest-args operand-codes)
-  (let ((code-for-next-arg
-         (preserving 
-          '(argl)
-          (car operand-codes)
-          (make-instruction-sequence 
-           '(val argl)
-           '(argl)
-           '((assign argl
-                     (op cons)
-                     (reg val)
-                     (reg argl)))))))
-    (if (null? (cdr operand-codes))
-        code-for-next-arg
-        (preserving 
-         '(env)
-         code-for-next-arg
-         (code-to-get-rest-args 
-          (cdr operand-codes))))))
-@end lisp
+fun codeToGetRestArgs(
+    cfg: CompilerConfig,
+    operandCodes: List<InstructionSequence>,
+): InstructionSequence {
+    val consStep =
+        makeInstructionSequence(
+            listOf("val", "argl"),
+            listOf("argl"),
+            listOf(
+                Assign(
+                    "argl",
+                    Source.OpSrc("cons", listOf(Source.RegSrc("val"), Source.RegSrc("argl"))),
+                ),
+            ),
+        )
+    val codeForNextArg = preserving(cfg, listOf("argl"), operandCodes[0], consStep)
+    val rest = operandCodes.drop(1)
+    if (rest.isEmpty()) return codeForNextArg
+    return preserving(cfg, listOf("env"), codeForNextArg, codeToGetRestArgs(cfg, rest))
+}
+@end example
 
 @subsubheading Applying procedures
 
@@ -1072,7 +1191,7 @@ compiled procedure.  For a primitive procedure, it uses
 @code{apply-primitive-procedure}; we will see shortly how it handles compiled
 procedures.  The procedure-application code has the following form:
 
-@lisp
+@example
 (test (op primitive-procedure?) (reg proc))
  (branch (label primitive-branch))
 compiled-branch
@@ -1085,7 +1204,7 @@ primitive-branch
          (reg argl))
  ⟨@var{linkage}⟩
 after-call
-@end lisp
+@end example
 
 @noindent
 Observe that the compiled branch must skip around the primitive branch.
@@ -1094,48 +1213,100 @@ compound branch must use a linkage that jumps to a label that is inserted after
 the primitive branch.  (This is similar to the linkage used for the true branch
 in @code{compile-if}.)
 
-@lisp
-(define (compile-procedure-call
-         target linkage)
-  (let ((primitive-branch 
-         (make-label 'primitive-branch))
-        (compiled-branch 
-         (make-label 'compiled-branch))
-        (after-call
-         (make-label 'after-call)))
-    (let ((compiled-linkage
-           (if (eq? linkage 'next)
-               after-call
-               linkage)))
-      (append-instruction-sequences
-       (make-instruction-sequence 
-        '(proc)
-        '()
-        `((test 
-           (op primitive-procedure?)
-           (reg proc))
-          (branch 
-           (label ,primitive-branch))))
-       (parallel-instruction-sequences
-        (append-instruction-sequences
-         compiled-branch
-         (compile-proc-appl 
-          target
-          compiled-linkage))
-        (append-instruction-sequences
-         primitive-branch
-         (end-with-linkage
-          linkage
-          (make-instruction-sequence
-           '(proc argl)
-           (list target)
-           `((assign 
-              ,target
-              (op apply-primitive-procedure)
-              (reg proc)
-              (reg argl)))))))
-       after-call))))
-@end lisp
+@example kotlin
+fun compileProcedureCall(
+    cfg: CompilerConfig,
+    state: CompilerState,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    val afterCall = state.makeLabel("after-call")
+    val compiledBranch = state.makeLabel("compiled-branch")
+    val primitiveBranch = state.makeLabel("primitive-branch")
+    val compoundBranch = if (cfg.compoundCalls) state.makeLabel("compound-branch") else null
+    val compiledLinkage = if (linkage == Linkage.Next) Linkage.Lab(afterCall) else linkage
+    val applCode = compileProcAppl(state, target, compiledLinkage)
+    val primitiveTail =
+        if (compoundBranch != null && linkage == Linkage.Next) {
+            listOf(Goto(GotoTarget.Lbl(afterCall)))
+        } else {
+            emptyList()
+        }
+    val primitiveCode =
+        endWithLinkage(
+            cfg,
+            linkage,
+            makeInstructionSequence(
+                listOf("proc", "argl"),
+                listOf(target),
+                listOf(
+                    Assign(
+                        target,
+                        Source.OpSrc(
+                            "apply-primitive-procedure",
+                            listOf(Source.RegSrc("proc"), Source.RegSrc("argl")),
+                        ),
+                    ),
+                ) + primitiveTail,
+            ),
+        )
+    val blocks = ArrayList<InstructionSequence>()
+    blocks.add(
+        makeInstructionSequence(
+            listOf("proc"),
+            emptyList(),
+            listOf(
+                Test(OpCond("primitive-procedure?", listOf(Source.RegSrc("proc")))),
+                Branch(primitiveBranch),
+            ),
+        ),
+    )
+    if (compoundBranch != null) {
+        blocks.add(
+            makeInstructionSequence(
+                listOf("proc"),
+                emptyList(),
+                listOf(
+                    Test(OpCond("compound-procedure?", listOf(Source.RegSrc("proc")))),
+                    Branch(compoundBranch),
+                ),
+            ),
+        )
+    }
+    blocks.add(
+        parallelInstructionSequences(
+            append2Sequences(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(compiledBranch))), applCode),
+            append2Sequences(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(primitiveBranch))), primitiveCode),
+        ),
+    )
+    if (compoundBranch != null) {
+        // the compound calls of exercise 5.47 hand interpreted procedures
+        // to the evaluator's compound-apply through the unev register,
+        // dead at the call site
+        val contSetup =
+            when (linkage) {
+                is Linkage.Return -> emptyList()
+                is Linkage.Next -> listOf<Stmt>(Assign("continue", Source.LabelSrc(afterCall)))
+                is Linkage.Lab -> listOf<Stmt>(Assign("continue", Source.LabelSrc(linkage.name)))
+            }
+        blocks.add(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(compoundBranch))))
+        blocks.add(
+            makeInstructionSequence(
+                listOf("proc"),
+                listOf("unev", "continue"),
+                contSetup +
+                    listOf(
+                        Save("continue"),
+                        Assign("unev", Source.LabelSrc("compound-apply")),
+                        Goto(GotoTarget.ByReg("unev")),
+                    ),
+            ),
+        )
+    }
+    blocks.add(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(afterCall))))
+    return appendSequences(blocks)
+}
+@end example
 
 @noindent
 The primitive and compound branches, like the true and false branches in
@@ -1155,7 +1326,7 @@ might expect the code for a compiled-procedure application (to be generated by
 @code{compile-proc-appl}) with a given target and linkage to look like this if
 the linkage is a label
 
-@lisp
+@example
 (assign continue 
         (label proc-return))
  (assign val
@@ -1166,12 +1337,12 @@ proc-return
  (assign ⟨@var{target}⟩ 
          (reg val))   @r{; included if target is not @code{val}}
  (goto (label ⟨@var{linkage}⟩))   @r{; linkage code}
-@end lisp
+@end example
 
 @noindent
 or like this if the linkage is @code{return}.
 
-@lisp
+@example
 (save continue)
  (assign continue 
          (label proc-return))
@@ -1184,7 +1355,7 @@ proc-return
          (reg val))   @r{; included if target is not @code{val}}
  (restore continue)
  (goto (reg continue))   @r{; linkage code}
-@end lisp
+@end example
 
 @noindent
 This code sets up @code{continue} so that the procedure will return to a label
@@ -1207,13 +1378,13 @@ to a special location that copies it.  Instead, we simplify the code by setting
 up @code{continue} so that the procedure will ``return'' directly to the place
 specified by the caller's linkage:
 
-@lisp
+@example
 ⟨@emph{set up @code{continue} for linkage}⟩
 (assign val 
         (op compiled-procedure-entry)
         (reg proc))
 (goto (reg val))
-@end lisp
+@end example
 
 @noindent
 If the linkage is a label, we set up @code{continue} so that the procedure will
@@ -1221,14 +1392,14 @@ return to that label.  (That is, the @code{(goto (reg continue))} the procedure
 ends with becomes equivalent to the @code{(goto (label ⟨@var{linkage}⟩))} at
 @code{proc-return} above.)
 
-@lisp
+@example
 (assign continue 
         (label ⟨@var{linkage}⟩))
 (assign val
         (op compiled-procedure-entry)
         (reg proc))
 (goto (reg val))
-@end lisp
+@end example
 
 @noindent
 If the linkage is @code{return}, we don't need to set up @code{continue} at
@@ -1236,12 +1407,12 @@ all: It already holds the desired location.  (That is, the @code{(goto (reg
 continue))} the procedure ends with goes directly to the place where the
 @code{(goto (reg continue))} at @code{proc-return} would have gone.)
 
-@lisp
+@example
 (assign val
         (op compiled-procedure-entry)
         (reg proc))
 (goto (reg val))
-@end lisp
+@end example
 
 @noindent
 With this implementation of the @code{return} linkage, the compiler generates
@@ -1276,11 +1447,11 @@ considering four cases, depending on whether the target for the call is
 @code{val} and whether the linkage is @code{return}.  Observe that the
 instruction sequences are declared to modify all the registers, since executing
 the procedure body can change the registers in arbitrary ways.@footnote{The
-variable @code{all-regs} is bound to the list of names of all the registers:
+variable @code{allRegs} is bound to the list of names of all the registers:
 
-@lisp
-(define all-regs '(env proc val argl continue))
-@end lisp
+@example kotlin
+val allRegs = listOf("env", "proc", "val", "argl", "continue")
+@end example
 }
 Also note that the code sequence for the case with target @code{val} and
 linkage @code{return} is declared to need @code{continue}: Even though
@@ -1288,52 +1459,55 @@ linkage @code{return} is declared to need @code{continue}: Even though
 be sure that @code{continue} will have the correct value when we enter the
 compiled procedure.
 
-@lisp
-(define (compile-proc-appl target linkage)
-  (cond ((and (eq? target 'val)
-              (not (eq? linkage 'return)))
-         (make-instruction-sequence 
-          '(proc)
-          all-regs
-          `((assign continue (label ,linkage))
-            (assign 
-             val 
-             (op compiled-procedure-entry)
-             (reg proc))
-            (goto (reg val)))))
-        ((and (not (eq? target 'val))
-              (not (eq? linkage 'return)))
-         (let ((proc-return 
-                (make-label 'proc-return)))
-           (make-instruction-sequence 
-            '(proc)
-            all-regs
-            `((assign continue 
-                      (label ,proc-return))
-              (assign 
-               val 
-               (op compiled-procedure-entry)
-               (reg proc))
-              (goto (reg val))
-              ,proc-return
-              (assign ,target (reg val))
-              (goto (label ,linkage))))))
-        ((and (eq? target 'val)
-              (eq? linkage 'return))
-         (make-instruction-sequence 
-          '(proc continue) 
-          all-regs
-          '((assign 
-             val 
-             (op compiled-procedure-entry)
-             (reg proc))
-            (goto (reg val)))))
-        ((and (not (eq? target 'val))
-              (eq? linkage 'return))
-         (error "return linkage, 
-                 target not val: COMPILE"
-                target))))
-@end lisp
+@example kotlin
+context(r: Raise<MachineError>)
+fun compileProcAppl(
+    state: CompilerState,
+    target: String,
+    linkage: Linkage,
+): InstructionSequence {
+    val allRegs = listOf("env", "proc", "val", "argl", "continue")
+    if (target == "val") {
+        val statements =
+            when (linkage) {
+                is Linkage.Return ->
+                    listOf(
+                        Assign("val", Source.OpSrc("compiled-procedure-entry", listOf(Source.RegSrc("proc")))),
+                        Goto(GotoTarget.ByReg("val")),
+                    )
+
+                is Linkage.Lab ->
+                    listOf(
+                        Assign("continue", Source.LabelSrc(linkage.name)),
+                        Assign("val", Source.OpSrc("compiled-procedure-entry", listOf(Source.RegSrc("proc")))),
+                        Goto(GotoTarget.ByReg("val")),
+                    )
+
+                is Linkage.Next -> emptyList()
+            }
+        if (statements.isNotEmpty()) {
+            val needs = if (linkage == Linkage.Return) listOf("proc", "continue") else listOf("proc")
+            return makeInstructionSequence(needs, allRegs, statements)
+        }
+    } else if (linkage == Linkage.Return) {
+        r.raise(EvaluatorFault("return linkage, target not val: COMPILE"))
+    }
+    val procReturn = state.makeLabel("proc-return")
+    val gotoLabel = (linkage as? Linkage.Lab)?.name ?: procReturn
+    return makeInstructionSequence(
+        listOf("proc"),
+        allRegs,
+        listOf(
+            Assign("continue", Source.LabelSrc(procReturn)),
+            Assign("val", Source.OpSrc("compiled-procedure-entry", listOf(Source.RegSrc("proc")))),
+            Goto(GotoTarget.ByReg("val")),
+            Label(procReturn),
+            Assign(target, Source.RegSrc("val")),
+            Goto(GotoTarget.Lbl(gotoLabel)),
+        ),
+    )
+}
+@end example
 
 @node	5.5.4, 5.5.5, 5.5.3, 5.5
 @subsection Combining Instruction Sequences
@@ -1346,25 +1520,22 @@ case of an instruction sequence, which doesn't need or modify any registers.
 So to determine the registers needed and modified by instruction sequences we
 use the selectors
 
-@lisp
-(define (registers-needed s)
-  (if (symbol? s) '() (car s)))
-(define (registers-modified s)
-  (if (symbol? s) '() (cadr s)))
-(define (statements s)
-  (if (symbol? s) (list s) (caddr s)))
-@end lisp
+@example kotlin
+// the three parts are the fields of the instruction sequence: the
+// registers it needs, the registers it modifies, and its statements
+seq.needs
+seq.modifies
+seq.stmts
+@end example
 
 @noindent
 and to determine whether a given
 sequence needs or modifies a given register we use the predicates
 
-@lisp
-(define (needs-register? seq reg)
-  (memq reg (registers-needed seq)))
-(define (modifies-register? seq reg)
-  (memq reg (registers-modified seq)))
-@end lisp
+@example kotlin
+reg in seq.needs
+reg in seq.modifies
+@end example
 
 @noindent
 In terms of these predicates and selectors, we can implement the various
@@ -1393,52 +1564,37 @@ set of registers needed by @code{seq1} with the set difference of the registers
 needed by @code{seq2} and the registers modified by @code{seq1}.)  Thus,
 @code{append-instruction-sequences} is implemented as follows:
 
-@lisp
-(define (append-instruction-sequences . seqs)
-  (define (append-2-sequences seq1 seq2)
-    (make-instruction-sequence
-     (list-union 
-      (registers-needed seq1)
-      (list-difference 
-       (registers-needed seq2)
-       (registers-modified seq1)))
-     (list-union
-      (registers-modified seq1)
-      (registers-modified seq2))
-     (append (statements seq1)
-             (statements seq2))))
-  (define (append-seq-list seqs)
-    (if (null? seqs)
-        (empty-instruction-sequence)
-        (append-2-sequences 
-         (car seqs)
-         (append-seq-list (cdr seqs)))))
-  (append-seq-list seqs))
-@end lisp
+@example kotlin
+fun append2Sequences(
+    seq1: InstructionSequence,
+    seq2: InstructionSequence,
+): InstructionSequence =
+    InstructionSequence(
+        listUnion(seq1.needs, listDifference(seq2.needs, seq1.modifies)),
+        listUnion(seq1.modifies, seq2.modifies),
+        seq1.stmts + seq2.stmts,
+    )
+
+fun appendSequences(sequences: List<InstructionSequence>): InstructionSequence =
+    sequences.fold(emptyInstructionSequence(), ::append2Sequences)
+@end example
 
 @noindent
 This procedure uses some simple operations for manipulating sets represented as
 lists, similar to the (unordered) set representation described in 
 @ref{2.3.3}:
 
-@lisp
-(define (list-union s1 s2)
-  (cond ((null? s1) s2)
-        ((memq (car s1) s2)
-         (list-union (cdr s1) s2))
-        (else
-         (cons (car s1)
-               (list-union (cdr s1) s2)))))
+@example kotlin
+fun listUnion(
+    s1: List<String>,
+    s2: List<String>,
+): List<String> = s1 + s2.filterNot { it in s1 }
 
-(define (list-difference s1 s2)
-  (cond ((null? s1) '())
-        ((memq (car s1) s2)
-         (list-difference (cdr s1) s2))
-        (else 
-         (cons (car s1)
-               (list-difference (cdr s1)
-                                s2)))))
-@end lisp
+fun listDifference(
+    s1: List<String>,
+    s2: List<String>,
+): List<String> = s1.filterNot { it in s2 }
+@end example
 
 @noindent
 @code{Preserving}, the second major instruction sequence combiner, takes a list
@@ -1455,38 +1611,31 @@ addition to the registers needed by @code{seq1}, and modifies the registers
 modified by @code{seq1} except for the ones being saved and restored.  This
 augmented sequence and @code{seq2} are then appended in the usual way.  The
 following procedure implements this strategy recursively, walking down the list
-of registers to be preserved:@footnote{Note that @code{preserving} calls
-@code{append} with three arguments.  Though the definition of @code{append}
-shown in this book accepts only two arguments, Scheme standardly provides an
-@code{append} procedure that takes an arbitrary number of arguments.}
+of registers to be preserved:@footnote{In this edition the
+@code{preservingOn} switch is the comparison of @ref{Exercise 5.37}: off,
+every register in the set is saved unconditionally.}
 
-@lisp
-(define (preserving regs seq1 seq2)
-  (if (null? regs)
-      (append-instruction-sequences seq1 seq2)
-      (let ((first-reg (car regs)))
-        (if (and 
-             (needs-register? seq2 first-reg)
-             (modifies-register? seq1 
-                                 first-reg))
-            (preserving 
-             (cdr regs)
-             (make-instruction-sequence
-              (list-union 
-               (list first-reg)
-               (registers-needed seq1))
-              (list-difference
-               (registers-modified seq1)
-               (list first-reg))
-              (append `((save ,first-reg))
-                      (statements seq1)
-                      `((restore ,first-reg))))
-             seq2)
-            (preserving 
-             (cdr regs)
-             seq1
-             seq2)))))
-@end lisp
+@example kotlin
+fun preserving(
+    cfg: CompilerConfig,
+    regs: List<String>,
+    seq1: InstructionSequence,
+    seq2: InstructionSequence,
+): InstructionSequence {
+    var wrapped = seq1
+    for (firstReg in regs) {
+        val needed = firstReg in seq2.needs && firstReg in wrapped.modifies
+        if (cfg.preservingOn && !needed) continue
+        wrapped =
+            makeInstructionSequence(
+                listOf(firstReg) + wrapped.needs,
+                wrapped.modifies - firstReg,
+                listOf(Save(firstReg)) + wrapped.stmts + listOf(Restore(firstReg)),
+            )
+    }
+    return append2Sequences(wrapped, seq2)
+}
+@end example
 
 @noindent
 Another sequence combiner, @code{tack-on-instruction-sequence}, is used by
@@ -1496,15 +1645,12 @@ sequence, its register use has no impact on the register use of the sequence in
 which it is embedded.  We thus ignore the procedure body's sets of needed and
 modified registers when we tack it onto the other sequence.
 
-@lisp
-(define (tack-on-instruction-sequence 
-         seq body-seq)
-  (make-instruction-sequence
-   (registers-needed seq)
-   (registers-modified seq)
-   (append (statements seq)
-           (statements body-seq))))
-@end lisp
+@example kotlin
+fun tackOnInstructionSequence(
+    seq: InstructionSequence,
+    bodySeq: InstructionSequence,
+): InstructionSequence = makeInstructionSequence(seq.needs, seq.modifies, seq.stmts + bodySeq.stmts)
+@end example
 
 @noindent
 @code{Compile-if} and @code{compile-procedure-call} use a special combiner
@@ -1515,17 +1661,17 @@ other will be entered.  Because of this, the registers needed by the second
 branch are still needed by the combined sequence, even if these are modified by
 the first branch.
 
-@lisp
-(define (parallel-instruction-sequences 
-         seq1 seq2)
-  (make-instruction-sequence
-   (list-union (registers-needed seq1)
-               (registers-needed seq2))
-   (list-union (registers-modified seq1)
-               (registers-modified seq2))
-   (append (statements seq1)
-           (statements seq2))))
-@end lisp
+@example kotlin
+fun parallelInstructionSequences(
+    seq1: InstructionSequence,
+    seq2: InstructionSequence,
+): InstructionSequence =
+    makeInstructionSequence(
+        listUnion(seq1.needs, seq2.needs),
+        listUnion(seq1.modifies, seq2.modifies),
+        seq1.stmts + seq2.stmts,
+    )
+@end example
 
 @node	5.5.5, 5.5.6, 5.5.4, 5.5
 @subsection An Example of Compiled Code
@@ -1534,15 +1680,35 @@ Now that we have seen all the elements of the compiler, let us examine an
 example of compiled code to see how things fit together.  We will compile the
 definition of a recursive @code{factorial} procedure by calling @code{compile}:
 
-@lisp
-(compile
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n)))
- 'val
- 'next)
-@end lisp
+@example kotlin
+val factorialSource =
+    """
+    (define (factorial n)
+      (if (= n 1)
+          1
+          (* (factorial (- n 1)) n)))
+    """.trimIndent()
+
+val state = CompilerState()
+val (entry, block) =
+    compileBlock(
+        CompilerConfig(),
+        state,
+        either { readProgram(factorialSource) }.fold(
+            { e -> error("the source did not parse: $e") },
+            { it },
+        ),
+    )
+@end example
+
+@noindent
+In this edition @code{compileBlock} compiles the forms the @ref{4.1} reader
+answers with target @code{val} and linkage @code{return}, and answers the
+entry label and the assembled controller block.  The figure below is that
+block without the entry label and the return linkage's
+@code{(goto (reg continue))}: the compilation with linkage @code{next} that
+the book's call to @code{compile} shows, and the section replay pins it
+statement for statement.
 
 @noindent
 We have specified that the value of the @code{define} expression should be
@@ -1559,7 +1725,7 @@ preserved around the computation of the value, because it is needed in order to
 install the definition.  Because the linkage is @code{next}, there is no
 linkage code in this case.  The skeleton of the compiled code is thus
 
-@lisp
+@example
 ⟨@emph{save @code{env} if modified by code to compute value}⟩
   ⟨@emph{compilation of definition value, 
    target @code{val}, linkage @code{next}}⟩
@@ -1569,7 +1735,7 @@ linkage code in this case.  The skeleton of the compiled code is thus
            (reg val)
            (reg env))
   (assign val (const ok))
-@end lisp
+@end example
 
 @noindent
 The expression that is to be compiled to produce the value for the variable
@@ -1588,7 +1754,7 @@ generated.  (The procedure code at @code{entry2} isn't executed at this point,
 so its use of @code{env} is irrelevant.)  Therefore, the skeleton for the
 compiled code becomes
 
-@lisp
+@example
   (assign val (op make-compiled-procedure)
               (label entry2)
               (reg env))
@@ -1606,18 +1772,18 @@ after-lambda1
            (const factorial)
            (reg val) (reg env))
   (assign val (const ok))
-@end lisp
+@end example
 
 @noindent
 A procedure body is always compiled (by @code{compile-lambda-body}) as a
 sequence with target @code{val} and linkage @code{return}.  The sequence in
 this case consists of a single @code{if} expression:
 
-@lisp
+@example
 (if (= n 1)
     1
     (* (factorial (- n 1)) n))
-@end lisp
+@end example
 
 @noindent
 @code{Compile-if} generates code that first computes the predicate (targeted to
@@ -1631,7 +1797,7 @@ both compiled with target @code{val} and linkage @code{return}.  (That is, the
 value of the conditional, which is the value computed by either of its
 branches, is the value of the procedure.)
 
-@lisp
+@example
 ⟨@emph{save @code{continue}, @code{env} if modified by 
  predicate and needed by branches}⟩
   ⟨@emph{compilation of predicate, 
@@ -1646,7 +1812,7 @@ false-branch4
   ⟨@emph{compilation of false branch, 
    target @code{val}, linkage @code{return}}⟩
 after-if3
-@end lisp
+@end example
 
 @noindent
 The predicate @code{(= n 1)} is a procedure call.  This looks up the operator
@@ -1659,7 +1825,7 @@ registers around the evaluation of the operator and operands don't result in
 any saving of registers, because in this case those evaluations don't modify
 the registers in question.
 
-@lisp
+@example
   (assign proc (op lookup-variable-value)
                (const =) 
                (reg env))
@@ -1681,16 +1847,16 @@ primitive-branch17
               (reg proc)
               (reg argl))
 after-call15
-@end lisp
+@end example
 
 @noindent
 The true branch, which is the constant 1, compiles (with target @code{val} and
 linkage @code{return}) to
 
-@lisp
+@example
 (assign val (const 1))
 (goto (reg continue))
-@end lisp
+@end example
 
 @noindent
 The code for the false branch is another procedure call, where the procedure
@@ -1707,7 +1873,7 @@ procedure call in the predicate and needed for the procedure call and the
 @quotation
 @strong{@anchor{Figure 5.17}Figure 5.17:} @math{\downarrow} Compilation of the definition of the @code{factorial} procedure.
 
-@lisp
+@example
 @r{;; construct the procedure and skip over code}
 @r{;; for the procedure body}
   (assign val
@@ -1856,19 +2022,19 @@ after-lambda1
            (reg val) 
            (reg env))
   (assign val (const ok))
-@end lisp
+@end example
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.33}Exercise 5.33:} Consider the following definition
 of a factorial procedure, which is slightly different from the one given above:
 
-@lisp
+@example
 (define (factorial-alt n)
   (if (= n 1)
       1
       (* n (factorial-alt (- n 1)))))
-@end lisp
+@end example
 
 Compile this procedure and compare the resulting code with that produced for
 @code{factorial}.  Explain any differences you find.  Does either program
@@ -1879,7 +2045,7 @@ execute more efficiently than the other?
 @strong{@anchor{Exercise 5.34}Exercise 5.34:} Compile the iterative factorial
 procedure
 
-@lisp
+@example
 (define (factorial n)
   (define (iter product counter)
     (if (> counter n)
@@ -1887,7 +2053,7 @@ procedure
         (iter (* counter product)
               (+ counter 1))))
   (iter 1 1))
-@end lisp
+@end example
 
 Annotate the resulting code, showing the essential difference between the code
 for iterative and recursive versions of @code{factorial} that makes one process
@@ -1903,7 +2069,7 @@ produce the code shown in @ref{Figure 5.18}?
 @strong{@anchor{Figure 5.18}Figure 5.18:} @math{\downarrow} An example of compiler output.  See
 @ref{Exercise 5.35}.
 
-@lisp
+@example
 (assign val (op make-compiled-procedure) 
             (label entry16) 
             (reg env))
@@ -1998,7 +2164,7 @@ after-lambda15
            (reg val) 
            (reg env))
   (assign val (const ok))
-@end lisp
+@end example
 @end quotation
 
 @quotation
@@ -2043,14 +2209,14 @@ compiled into something as simple as@footnote{We have used the same symbol
 operation.  In general there will not be a one-to-one correspondence between
 primitives of the source language and primitives of the machine.}
 
-@lisp
+@example
 (assign val (op lookup-variable-value) 
             (const a) 
             (reg env))
 (assign val (op +)
             (reg val)
             (const 1))
-@end lisp
+@end example
 
 In this exercise we will extend our compiler to support open coding of selected
 primitives.  Special-purpose code will be generated for calls to these
@@ -2116,19 +2282,19 @@ if there are many variables.  For example, consider the problem of looking up
 the value of @code{x} while evaluating the expression @code{(* x y z)} in an
 application of the procedure that is returned by
 
-@lisp
+@example
 (let ((x 3) (y 4))
   (lambda (a b c d e)
     (let ((y (* a b x))
           (z (+ c d x)))
       (* x y z))))
-@end lisp
+@end example
 
 @noindent
 Since a @code{let} expression is just syntactic sugar for a @code{lambda}
 combination, this expression is equivalent to
 
-@lisp
+@example
 ((lambda (x y)
    (lambda (a b c d e)
      ((lambda (y z) (* x y z))
@@ -2136,7 +2302,7 @@ combination, this expression is equivalent to
       (+ c d x))))
  3
  4)
-@end lisp
+@end example
 
 @noindent
 Each time @code{lookup-variable-value} searches for @code{x}, it must determine
@@ -2175,7 +2341,7 @@ that point @code{y} is at address (0, 0) and @code{c} is at address (1, 2).  In
 expression @code{⟨}@var{e2}@code{⟩}, @code{x} is at (1, 0), @code{y} is at (1, 1), and @code{c}
 is at (0, 2).
 
-@lisp
+@example
 ((lambda (x y)
    (lambda (a b c d e)
      ((lambda (y z) ⟨@var{e1}⟩)
@@ -2183,7 +2349,7 @@ is at (0, 2).
       (+ c d x))))
  3
  4)
-@end lisp
+@end example
 
 @noindent
 One way for the compiler to produce code that uses lexical addressing is to
@@ -2236,7 +2402,7 @@ that environment.  For example, in the program fragment that is shown above,
 the compile-time environment during the compilation of expression @code{⟨}@var{e1}@code{⟩} is
 @code{((y z) (a b c d e) (x y))}.  @code{Find-variable} should produce
 
-@lisp
+@example
 (find-variable 
  'c '((y z) (a b c d e) (x y)))
 @i{(1 2)}
@@ -2248,7 +2414,7 @@ the compile-time environment during the compilation of expression @code{⟨}@var
 (find-variable 
  'w '((y z) (a b c d e) (x y)))
 @i{not-found}
-@end lisp
+@end example
 @end quotation
 
 @quotation
@@ -2296,10 +2462,10 @@ procedures as reserved words.  If a program were to rebind such a name, the
 mechanism described in @ref{Exercise 5.38} would still open-code it as a
 primitive, ignoring the new binding.  For example, consider the procedure
 
-@lisp
+@example
 (lambda (+ * a b x y)
   (+ (* a x) (* b y)))
-@end lisp
+@end example
 
 @noindent
 which computes a linear combination of @code{x} and @code{y}.  We might call it
@@ -2327,22 +2493,38 @@ expressions can call compiled procedures as well as interpreted ones.  We can
 then put a compiled procedure into the machine and use the evaluator to call
 it:
 
-@lisp
-(compile-and-go
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n))))
+@example kotlin
+val cfg = CompilerConfig()
+val state = CompilerState()
+val (entry, block) =
+    compileBlock(
+        cfg,
+        state,
+        either { readProgram(factorialSource) }.fold(
+            { e -> error("the source did not parse: $e") },
+            { it },
+        ),
+    )
+val evaluator = compileAndGo(entry, block, "(factorial 5)")
+evaluator.drive()
+@end example
 
-@i{;;; EC-Eval value:}
-@i{ok}
+@noindent
+Starting the machine runs the compiled definition and then the driver loop;
+the transcript is the machine's own output:
 
-@i{;;; EC-Eval input:}
+@example
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
 (factorial 5)
 
-@i{;;; EC-Eval value:}
-@i{120}
-@end lisp
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+@end example
 
 @noindent
 To allow the evaluator to handle compiled procedures (for example, to evaluate
@@ -2355,7 +2537,7 @@ compiled procedures as well as interpreted procedures are compound
 explicit-control evaluator, in this section we will use ``compound'' to mean
 interpreted (as opposed to compiled).}
 
-@lisp
+@example
 apply-dispatch
   (test (op primitive-procedure?) (reg proc))
   (branch (label primitive-apply))
@@ -2371,7 +2553,7 @@ compiled-apply
           (op compiled-procedure-entry)
           (reg proc))
   (goto (reg val))
-@end lisp
+@end example
 
 @noindent
 Note the restore of @code{continue} at @code{compiled-apply}.  Recall that the
@@ -2388,22 +2570,25 @@ must always initialize the @code{flag} register before starting the evaluator
 machine.  To start the machine at its ordinary read-eval-print loop, we could
 use
 
-@lisp
-(define (start-eceval)
-  (set! the-global-environment
-        (setup-environment))
-  (set-register-contents! eceval 'flag false)
-  (start eceval))
-@end lisp
+@example kotlin
+fun startEceval(eceval: CompiledEvaluator) {
+    eceval.machine.flag.store(VBool(false))
+    eceval.drive()
+}
+@end example
+
+@noindent
+In this edition the machine builds its global environment when it is
+constructed, so @code{startEceval} only clears the flag.
 }
 
-@lisp
+@example
 @r{;; branches if @code{flag} is set:}
 (branch (label external-entry)) 
 read-eval-print-loop
   (perform (op initialize-stack))
   @r{…}
-@end lisp
+@end example
 
 @noindent
 @code{External-entry} assumes that the machine is started with @code{val}
@@ -2413,84 +2598,95 @@ point jumps to the location designated by @code{val}, but first assigns
 @code{continue} so that execution will return to @code{print-result}, which
 prints the value in @code{val} and then goes to the beginning of the
 evaluator's read-eval-print loop.@footnote{Since a compiled procedure is an
-object that the system may try to print, we also modify the system print
-operation @code{user-print} (from @ref{4.1.4}) so that it will not
-attempt to print the components of a compiled procedure:
+object that the system may try to print, note what the machine's print
+operation @code{user-print} (from @ref{4.1.4}) says for one: in this edition
+no special case is needed, because the compiled procedure's word is a
+runtime value the print operation renders by name:
 
-@lisp
-(define (user-print object)
-  (cond ((compound-procedure? object)
-         (display 
-          (list 'compound-procedure
-                (procedure-parameters object)
-                (procedure-body object)
-                '<procedure-env>)))
-        ((compiled-procedure? object)
-         (display '<compiled-procedure>))
-        (else (display object))))
-@end lisp
+@example kotlin
+"user-print" to
+    oneArg("user-print") { w ->
+        state.machinePrompt(renderWord(w))
+        w
+    }
+@end example
+
+@noindent
+and a compiled procedure word renders as @code{#[compiled-procedure
+entry2]}, its entry label:
 }
 
-@lisp
+@example
 external-entry
   (perform (op initialize-stack))
   (assign env (op get-global-environment))
   (assign continue (label print-result))
   (goto (reg val))
-@end lisp
+@end example
 
 @noindent
 Now we can use the following procedure to compile a procedure definition,
 execute the compiled code, and run the read-eval-print loop so we can try the
 procedure.  Because we want the compiled code to return to the location in
 @code{continue} with its result in @code{val}, we compile the expression with a
-target of @code{val} and a linkage of @code{return}.  In order to transform the
-object code produced by the compiler into executable instructions for the
-evaluator register machine, we use the procedure @code{assemble} from the
-register-machine simulator (@ref{5.2.2}).  We then initialize the
-@code{val} register to point to the list of instructions, set the @code{flag}
-so that the evaluator will go to @code{external-entry}, and start the
-evaluator.
+target of @code{val} and a linkage of @code{return}.  In this edition the
+object code is controller data, so there is no separate assembly step:
+@code{compileAndGo} appends the block to the machine's controller, stores the
+address of the block's entry label in the @code{val} register, sets the
+@code{flag} so that the evaluator will go to @code{external-entry}, and
+leaves the machine ready to start.
 
-@lisp
-(define (compile-and-go expression)
-  (let ((instructions
-         (assemble 
-          (statements
-           (compile 
-            expression 'val 'return))
-          eceval)))
-    (set! the-global-environment
-          (setup-environment))
-    (set-register-contents! 
-     eceval 'val instructions)
-    (set-register-contents! 
-     eceval 'flag true)
-    (start eceval)))
-@end lisp
+@example kotlin
+context(r: Raise<MachineError>)
+fun compileAndGo(
+    entry: String,
+    block: List<Stmt>,
+    source: String,
+    controller: List<Stmt> = ecevalController,
+    extraPrimitives: Map<String, ObjectPrimitive> = emptyMap(),
+    runtimeSupport: Boolean = false,
+): CompiledEvaluator {
+    val evaluator = makeCompiledEvaluator(source, controller + block, runtimeSupport = runtimeSupport, extraPrimitives = extraPrimitives)
+    val address =
+        evaluator.machine.labels[entry]
+            ?: r.raise(EvaluatorFault("compile-and-go: the entry $entry is not in the assembled machine"))
+    evaluator.machine.registers.getValue("val").store(VInt(address.toLong()))
+    evaluator.machine.flag.store(VBool(true))
+    return evaluator
+}
+@end example
 
 @noindent
 If we have set up stack monitoring, as at the end of @ref{5.4.4}, we
-can examine the stack usage of compiled code:
+can examine the stack usage of compiled code.  In this edition the
+monitored machine is the controller with the @ref{5.4.4} monitored driver in
+place of the plain one:
 
-@lisp
-(compile-and-go
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n))))
-@i{(total-pushes = 0, maximum-depth = 0)}
+@example kotlin
+val monitored =
+    compileAndGo(entry, block, "(factorial 5)", monitoredEcevalController)
+monitored.drive()
+@end example
 
-@i{;;; EC-Eval value:}
-@i{ok}
+@noindent
+the session is the machine's own transcript:
 
-@i{;;; EC-Eval input:}
+@example
+(total-pushes = 0 maximum-depth = 0)
+
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
 (factorial 5)
-@i{(total-pushes = 31, maximum-depth = 14)}
 
-@i{;;; EC-Eval value:}
-@i{120}
-@end lisp
+(total-pushes = 31 maximum-depth = 14)
+
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+@end example
 
 @noindent
 Compare this example with the evaluation of @code{(factorial 5)} using the
@@ -2605,12 +2801,12 @@ that would come closer in performance to the hand-tailored version?
 one in @ref{Exercise 5.45} to determine the effectiveness of compiling the
 tree-recursive Fibonacci procedure
 
-@lisp
+@example
 (define (fib n)
   (if (< n 2)
       n
       (+ (fib (- n 1)) (fib (- n 2)))))
-@end lisp
+@end example
 
 @noindent
 compared to the effectiveness of using the special-purpose Fibonacci machine of
@@ -2636,12 +2832,12 @@ be defined there), so we will add a register called @code{compapp} to the
 evaluator machine to hold this entry point, and add an instruction to
 initialize it:
 
-@lisp
+@example
   (assign compapp (label compound-apply))
   @r{;; branches if @code{flag} is set:}
   (branch (label external-entry))
 read-eval-print-loop @r{…}
-@end lisp
+@end example
 
 To test your code, start by defining a procedure @code{f} that calls a
 procedure @code{g}.  Use @code{compile-and-go} to compile the definition of
@@ -2656,7 +2852,7 @@ called only once (when the evaluator machine is started).  Augment the
 compiler-interpreter interface by providing a @code{compile-and-run} primitive
 that can be called from within the explicit-control evaluator as follows:
 
-@lisp
+@example
 @i{;;; EC-Eval input:}
 (compile-and-run
  '(define (factorial n)
@@ -2672,7 +2868,7 @@ that can be called from within the explicit-control evaluator as follows:
 
 @i{;;; EC-Eval value:}
 @i{120}
-@end lisp
+@end example
 @end quotation
 
 @quotation
@@ -2694,6 +2890,59 @@ will run very slowly because of the multiple levels of interpretation, but
 getting all the details to work is an instructive exercise.
 @end quotation
 
+@noindent
+In this edition the exercise runs on the section library: the metacircular
+evaluator is the corpus program of @ref{4.1} adapted to this machine's
+environment primitives, compiled with the compiler of this section, and run
+on the 5.5.7 machine with the runtime support the object world's
+environment operations call:
+
+@example kotlin
+val state = CompilerState()
+val (entry, block) =
+    compileBlock(
+        CompilerConfig(),
+        state,
+        either { readProgram(metacircularEvaluatorSource) }.fold(
+            { e -> error("the source did not parse: $e") },
+            { it },
+        ),
+    )
+val evaluator =
+    compileAndGo(entry, block, metacircularDriver, runtimeSupport = true)
+evaluator.drive()
+@end example
+
+@noindent
+The compiled definitions answer @code{ok}, the object world's factorial
+answers @code{120} on each call, and the tick call answers the book's
+triple:
+
+@example
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(m-eval '(factorial 5) the-global-environment)
+
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+(m-eval '((lambda (x) (cons x (list x x))) 'tick) the-global-environment)
+
+;;; EC-Eval value:
+(tick tick tick)
+
+;;; EC-Eval input:
+(m-eval '(factorial 5) the-global-environment)
+
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+@end example
+
 @quotation
 @strong{@anchor{Exercise 5.51}Exercise 5.51:} Develop a rudimentary
 implementation of Scheme in C (or some other low-level language of your choice)
@@ -2708,4 +2957,39 @@ storage-allocation routines and other run-time support.
 into sequences of C instructions.  Compile the metacircular evaluator of
 @ref{4.1} to produce a Scheme interpreter written in C.
 @end quotation
+@strong{Edition notes.} In this edition the compiler of this section is
+implemented in Kotlin in @code{ch5/src/main/kotlin/sicp/ch5/S5_5Compiler.kt}
+and @code{S5_5Machine.kt}, and the following documented deviations from the
+book's listings apply.
+
+In this edition the compiled statements keep the book's own spellings: the
+procedure entry rides in a @code{(label entryN)} operation input (the base
+assembler of @ref{5.2} admits labels wherever a primitive expression may
+stand) and a lambda's formals ride in one @code{(const (p1 p2 ...))} list
+constant, so the compilation of the factorial definition is the book's
+@ref{Figure 5.17} line for line, replayed by the section's examples.
+
+In this edition a compiled procedure object is the runtime's tagged
+@code{VCompiledProc} word: the entry label resolved against the assembled
+machine's label table, over an environment word's table entry.
+
+In this edition the compound-call branch of @ref{Exercise 5.47} routes the
+apply through the @code{unev} register, dead at every call site, instead of
+declaring the book's @code{compapp} register, because the machine's register
+set is the @ref{5.4} substrate's.
+
+In this edition the const code of self-evaluating and quoted expressions
+needs no registers, so the @ref{Exercise 5.31} session pins the book's
+top-level answer, and the @ref{Exercise 5.33} comparison answers equal size
+with the preserved register swapped.  @ref{Exercise 5.42}'s lexical
+addresses ride one list constant per address.  @ref{Exercise 5.48} compiles
+between the compile and run phases rather than inside the
+@code{compile-and-run} primitive, observably identically.  @ref{Exercise
+5.51} realizes the evaluator in C built and run by the system @code{cc}, and
+@ref{Exercise 5.52}'s C backend emits constants inline instead of a constant
+table.
+
+In this edition the machine counts executed instructions (the seam
+exercises 5.15 to 5.19 establish), so the measuring exercises read steps and
+stack statistics from the same run.
 

@@ -25,24 +25,31 @@ configure<KotlinJvmProjectExtension> {
 // execution procedures of 5.2.1 to 5.2.3) lives in this project's `main`
 // source set under sicp.ch5, the chapter-crate equivalent of the sibling
 // editions. The three root-level source sets compile against it.
+// Section 5.4's explicit-control evaluator needs 5.2 and 4.1 (the plan's
+// dependency line): the chapter 4 reader reads the object-language source
+// the controller's `read` operation hands to `eval-dispatch`.
 val libraryOutput = sourceSets.getByName("main").output
 
 dependencies {
     "implementation"(project(":runtime"))
+    "implementation"(project(":ch4"))
     "examplesImplementation"(libraryOutput)
     "exercisesImplementation"(libraryOutput)
     "solutionsImplementation"(libraryOutput)
     "examplesImplementation"(project(":runtime"))
+    "examplesImplementation"(project(":ch4"))
     "examplesImplementation"(libs.immutable)
     "examplesImplementation"(libs.kotest.runner.junit5)
     "examplesImplementation"(libs.kotest.assertions.core)
     "examplesImplementation"(libs.kotest.property)
     "exercisesImplementation"(project(":runtime"))
+    "exercisesImplementation"(project(":ch4"))
     "exercisesImplementation"(libs.immutable)
     "exercisesImplementation"(libs.kotest.runner.junit5)
     "exercisesImplementation"(libs.kotest.assertions.core)
     "exercisesImplementation"(libs.kotest.property)
     "solutionsImplementation"(project(":runtime"))
+    "solutionsImplementation"(project(":ch4"))
     "solutionsImplementation"(libs.immutable)
     "solutionsImplementation"(libs.kotest.runner.junit5)
     "solutionsImplementation"(libs.kotest.assertions.core)

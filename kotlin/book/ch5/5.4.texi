@@ -43,6 +43,15 @@ on the chip and the method by which it was designed.}
 @caption{@strong{Figure 5.16:} A silicon-chip implementation of an evaluator for Scheme.}
 @end float
 
+In this edition the explicit-control evaluator is the section library in
+the chapter's source set beside the 5.2 simulator: the machine words that
+ride the registers, the controller in the book's notation below, and the
+operations table of 4.1 typed over the words.  Each controller fragment
+is Kotlin data in the register-machine language of @ref{5.1.5}, one
+constructor call per line of the book's listing, and the base controller
+is the fragments' concatenation, so these listings are the text the
+machine assembles and runs.
+
 @subsubheading Registers and operations
 
 In designing the explicit-control evaluator, we must specify the operations to
@@ -78,6 +87,14 @@ operations of the evaluator are connected, nor will we give the complete list
 of machine operations.  These are implicit in the evaluator's controller, which
 will be presented in detail.
 
+In this edition a machine word is what a register holds, the 5.3
+precedent: the word type is the shared @code{Value} of the runtime, and
+the evaluator's own data ride in registers as tagged words no
+object-language value can spell, because the object language has no
+tagged words: the environment word the @code{env} register carries, the
+procedure words, the thunk word of @ref{Exercise 5.25}, and the
+condition codes of @ref{Exercise 5.30}.
+
 @menu
 * 5.4.1::            The Core of the Explicit-Control Evaluator
 * 5.4.2::            Sequence Evaluation and Tail Recursion
@@ -105,7 +122,7 @@ expression types.  A machine designed to run Lisp would probably include a
 @code{dispatch-on-type} instruction that would efficiently execute such
 data-directed dispatches.}
 
-@lisp
+@example
 eval-dispatch
   (test (op self-evaluating?) (reg exp))
   (branch (label ev-self-eval))
@@ -126,7 +143,7 @@ eval-dispatch
   (test (op application?) (reg exp))
   (branch (label ev-application))
   (goto (label unknown-expression-type))
-@end lisp
+@end example
 
 @subsubheading Evaluating simple expressions
 
@@ -136,7 +153,7 @@ the evaluator simply places the correct value in the @code{val} register and
 continues execution at the entry point specified by @code{continue}.
 Evaluation of simple expressions is performed by the following controller code:
 
-@lisp
+@example
 ev-self-eval
   (assign val (reg exp))
   (goto (reg continue))
@@ -164,7 +181,7 @@ ev-lambda
           (reg exp)
           (reg env))
   (goto (reg continue))
-@end lisp
+@end example
 
 @noindent
 Observe how @code{ev-lambda} uses the @code{unev} and @code{exp} registers to
@@ -207,7 +224,7 @@ operands into @code{unev} and save this on the stack.  We set up
 however, we save the old value of @code{continue}, which tells the controller
 where to continue after the application.
 
-@lisp
+@example
 ev-application
   (save continue)
   (save env)
@@ -217,7 +234,7 @@ ev-application
   (assign
    continue (label ev-appl-did-operator))
   (goto (label eval-dispatch))
-@end lisp
+@end example
 
 @noindent
 Upon returning from evaluating the operator subexpression, we proceed to
@@ -231,22 +248,22 @@ the argument-evaluation loop:@footnote{We add to the evaluator data-structure
 procedures in @ref{4.1.3} the following two procedures for manipulating
 argument lists:
 
-@lisp
+@example
 (define (empty-arglist) '())
 (define (adjoin-arg arg arglist)
   (append arglist (list arg)))
-@end lisp
+@end example
 
 @noindent
 We also use an additional syntax procedure to test for the last operand in a
 combination:
 
-@lisp
+@example
 (define (last-operand? ops) (null? (cdr ops)))
-@end lisp
+@end example
 }
 
-@lisp
+@example
 ev-appl-did-operator
   (restore unev)             @r{; the operands}
   (restore env)
@@ -255,7 +272,7 @@ ev-appl-did-operator
   (test (op no-operands?) (reg unev))
   (branch (label apply-dispatch))
   (save proc)
-@end lisp
+@end example
 
 @noindent
 Each cycle of the argument-evaluation loop evaluates an operand from the list
@@ -268,7 +285,7 @@ remaining operands to be evaluated (held in @code{unev}).  A special case is
 made for the evaluation of the last operand, which is handled at
 @code{ev-appl-last-arg}.
 
-@lisp
+@example
 ev-appl-operand-loop
   (save argl)
   (assign exp
@@ -281,14 +298,14 @@ ev-appl-operand-loop
   (assign continue 
           (label ev-appl-accumulate-arg))
   (goto (label eval-dispatch))
-@end lisp
+@end example
 
 @noindent
 When an operand has been evaluated, the value is accumulated into the list held
 in @code{argl}.  The operand is then removed from the list of unevaluated
 operands in @code{unev}, and the argument-evaluation continues.
 
-@lisp
+@example
 ev-appl-accumulate-arg
   (restore unev)
   (restore env)
@@ -301,7 +318,7 @@ ev-appl-accumulate-arg
           (op rest-operands)
           (reg unev))
   (goto (label ev-appl-operand-loop))
-@end lisp
+@end example
 
 @noindent
 Evaluation of the last argument is handled differently.  There is no need to
@@ -319,7 +336,7 @@ avoid saving @code{argl} in this case.  The compiler in @ref{5.5}
 performs this optimization.  (Compare the @code{construct-arglist} procedure of
 @ref{5.5.3}.)}
 
-@lisp
+@example
 ev-appl-last-arg
   (assign continue 
           (label ev-appl-accum-last-arg))
@@ -332,7 +349,7 @@ ev-appl-accum-last-arg
           (reg argl))
   (restore proc)
   (goto (label apply-dispatch))
-@end lisp
+@end example
 
 @noindent
 The details of the argument-evaluation loop determine the order in which the
@@ -363,14 +380,14 @@ the controller transfers to the entry point specified by the saved
 metacircular @code{apply}, there are two cases to consider.  Either the
 procedure to be applied is a primitive or it is a compound procedure.
 
-@lisp
+@example
 apply-dispatch
   (test (op primitive-procedure?) (reg proc))
   (branch (label primitive-apply))
   (test (op compound-procedure?) (reg proc))
   (branch (label compound-apply))
   (goto (label unknown-procedure-type))
-@end lisp
+@end example
 
 @noindent
 We assume that each primitive is implemented so as to obtain its arguments from
@@ -388,14 +405,14 @@ to perform the application, just as we did for the metacircular evaluator in
 @ref{4.1.4}.  After computing the value of the primitive application,
 we restore @code{continue} and go to the designated entry point.
 
-@lisp
+@example
 primitive-apply
   (assign val (op apply-primitive-procedure)
               (reg proc)
               (reg argl))
   (restore continue)
   (goto (reg continue))
-@end lisp
+@end example
 
 @noindent
 To apply a compound procedure, we proceed just as with the metacircular
@@ -405,7 +422,7 @@ and evaluate in this extended environment the sequence of expressions that
 forms the body of the procedure.  @code{Ev-sequence}, described below in
 @ref{5.4.2}, handles the evaluation of the sequence.
 
-@lisp
+@example
 compound-apply
   (assign unev 
           (op procedure-parameters)
@@ -422,7 +439,7 @@ compound-apply
           (op procedure-body)
           (reg proc))
   (goto (label ev-sequence))
-@end lisp
+@end example
 
 @noindent
 @code{Compound-apply} is the only place in the interpreter where the @code{env}
@@ -443,14 +460,14 @@ Explicit @code{begin} expressions are evaluated by placing the sequence of
 expressions to be evaluated in @code{unev}, saving @code{continue} on the
 stack, and jumping to @code{ev-sequence}.
 
-@lisp
+@example
 ev-begin
   (assign unev
           (op begin-actions)
           (reg exp))
   (save continue)
   (goto (label ev-sequence))
-@end lisp
+@end example
 
 @noindent
 The implicit sequences in procedure bodies are handled by jumping to
@@ -480,7 +497,7 @@ entry point, we restore @code{continue} from the stack before going to
 @code{eval-dispatch}, so that @code{eval-dispatch} will continue at that entry
 point after evaluating the expression.
 
-@lisp
+@example
 ev-sequence
   (assign exp (op first-exp) (reg unev))
   (test (op last-exp?) (reg unev))
@@ -500,18 +517,18 @@ ev-sequence-continue
 ev-sequence-last-exp
   (restore continue)
   (goto (label eval-dispatch))
-@end lisp
+@end example
 
 @subsubheading Tail recursion
 
 In @ref{Chapter 1} we said that the process described by a procedure such as
 
-@lisp
+@example
 (define (sqrt-iter guess x)
   (if (good-enough? guess x)
       guess
       (sqrt-iter (improve guess x) x)))
-@end lisp
+@end example
 
 @noindent
 is an iterative process.  Even though the procedure is syntactically recursive
@@ -549,12 +566,12 @@ registers, evaluating the expression, returning to restore the registers, and
 repeating this until all the expressions have been evaluated:@footnote{We can
 define @code{no-more-exps?} as follows:
 
-@lisp
+@example
 (define (no-more-exps? seq) (null? seq))
-@end lisp
+@end example
 }
 
-@lisp
+@example
 ev-sequence
   (test (op no-more-exps?) (reg unev))
   (branch (label ev-sequence-end))
@@ -572,7 +589,7 @@ ev-sequence-continue
 ev-sequence-end
   (restore continue)
   (goto (reg continue))
-@end lisp
+@end example
 
 @noindent
 This may seem like a minor change to our previous code for evaluation of a
@@ -587,12 +604,12 @@ proportional to the number of iterations rather than requiring constant space.
 This difference can be significant.  For example, with tail recursion, an
 infinite loop can be expressed using only the procedure-call mechanism:
 
-@lisp
+@example
 (define (count n)
   (newline)
   (display n)
   (count (+ n 1)))
-@end lisp
+@end example
 
 @noindent
 Without tail recursion, such a procedure would eventually run out of stack
@@ -614,7 +631,7 @@ the alternative, and we save @code{continue}, which we will need later in order
 to return to the evaluation of the expression that is waiting for the value of
 the @code{if}.
 
-@lisp
+@example
 ev-if
   (save exp)   @r{; save expression for later}
   (save env)
@@ -623,7 +640,7 @@ ev-if
   (assign exp (op if-predicate) (reg exp))
   @r{; evaluate the predicate:}
   (goto (label eval-dispatch))  
-@end lisp
+@end example
 
 @noindent
 When we return from evaluating the predicate, we test whether it was true or
@@ -633,7 +650,7 @@ restoring @code{env} and @code{continue} here sets up @code{eval-dispatch} to
 have the correct environment and to continue at the right place to receive the
 value of the @code{if} expression.
 
-@lisp
+@example
 ev-if-decide
   (restore continue)
   (restore env)
@@ -646,7 +663,7 @@ ev-if-alternative
 ev-if-consequent
   (assign exp (op if-consequent) (reg exp))
   (goto (label eval-dispatch))
-@end lisp
+@end example
 
 @subsubheading Assignments and definitions
 
@@ -656,7 +673,7 @@ Assignments are handled by @code{ev-assignment}, which is reached from
 installs the new value in the environment.  @code{Set-variable-value!} is
 assumed to be available as a machine operation.
 
-@lisp
+@example
 ev-assignment
   (assign unev 
           (op assignment-variable)
@@ -682,12 +699,12 @@ ev-assignment-1
   (assign val
           (const ok))
   (goto (reg continue))
-@end lisp
+@end example
 
 @noindent
 Definitions are handled in a similar way:
 
-@lisp
+@example
 ev-definition
   (assign unev 
           (op definition-variable)
@@ -711,7 +728,7 @@ ev-definition-1
            (reg env))
   (assign val (const ok))
   (goto (reg continue))
-@end lisp
+@end example
 
 @quotation
 @strong{@anchor{Exercise 5.23}Exercise 5.23:} Extend the evaluator to handle
@@ -766,32 +783,26 @@ extremely complex operations.  In practice, they would be implemented using
 low-level input-output operations such as transferring single characters to and
 from a device.
 
-To support the @code{get-global-environment} operation we define
-
-@lisp
-(define the-global-environment
-  (setup-environment))
-
-(define (get-global-environment)
-  the-global-environment)
-@end lisp
+To support the @code{get-global-environment} operation
+@code{makeEvaluator} builds the global environment when the machine is
+made: @code{true}, @code{false}, and the object-language primitives of
+@ref{4.1} go into the first frame as primitive words, and the
+operation answers the environment word.
 }
 
-@lisp
+@example
 read-eval-print-loop
   (perform (op initialize-stack))
-  (perform (op prompt-for-input)
-           (const ";;; EC-Eval input:"))
+  (perform (op prompt-for-input))
   (assign exp (op read))
   (assign env (op get-global-environment))
   (assign continue (label print-result))
   (goto (label eval-dispatch))
 print-result
-  (perform (op announce-output)
-           (const ";;; EC-Eval value:"))
+  (perform (op announce-output))
   (perform (op user-print) (reg val))
   (goto (label read-eval-print-loop))
-@end lisp
+@end example
 
 @noindent
 When we encounter an error in a procedure (such as the ``unknown procedure type
@@ -799,7 +810,7 @@ error'' indicated at @code{apply-dispatch}), we print an error message and
 return to the driver loop.@footnote{There are other errors that we would like
 the interpreter to handle, but these are not so simple.  See @ref{Exercise 5.30}.}
 
-@lisp
+@example
 unknown-expression-type
   (assign 
    val
@@ -813,9 +824,14 @@ unknown-procedure-type
    (const unknown-procedure-type-error))
   (goto (label signal-error))
 signal-error
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))
-@end lisp
+  (perform (op signal-error) (reg val))
+@end example
+
+@noindent
+In this edition @code{signal-error} stops the machine with a typed
+failure whose message is the value it was handed, instead of returning
+to the driver loop; the exercise sessions pin the message each error
+leaves behind.
 
 @noindent
 For the purposes of the simulation, we initialize the stack each time through
@@ -826,17 +842,16 @@ convenient for monitoring the evaluator's performance, as described below.}
 
 If we combine all the code fragments presented in 
 @ref{5.4.1}--@ref{5.4.4}, we can create an evaluator machine model that we can
-run using the register-machine simulator of @ref{5.2}.
+run.  In this edition the fragments are the named controller fragments
+of the section library, Kotlin data in the register-machine language of
+@ref{5.1.5}; the base controller is their concatenation, and
+@code{makeEvaluator} assembles it over the book's seven registers.
 
-@lisp
-(define eceval
-  (make-machine
-   '(exp env val proc argl continue unev)
-   eceval-operations
-   '(read-eval-print-loop
-     ⟨@emph{entire machine controller} 
-      @emph{as given above}⟩)))
-@end lisp
+@example kotlin
+val eceval = makeEvaluator(program, baseEvaluatorController)
+// the registers are the book's seven; the controller is the
+// concatenation of the fragments above, assembled by the simulator
+@end example
 
 @noindent
 We must define Scheme procedures to simulate the operations used as primitives
@@ -844,45 +859,51 @@ by the evaluator.  These are the same procedures we used for the metacircular
 evaluator in @ref{4.1}, together with the few additional ones defined
 in footnotes throughout @ref{5.4}.
 
-@lisp
-(define eceval-operations
-  (list (list 'self-evaluating? 
-              self-evaluating)
-        ⟨@emph{complete list of operations} 
-         @emph{for eceval machine}⟩))
-@end lisp
+@example kotlin
+val evaluatorOperations: Map<String, Op> =
+    mapOf(
+        "self-evaluating?" to oneArg("self-evaluating?") { w -> VBool(selfEvaluating(w)) },
+        // ... the complete table of 4.1 operations typed over the words ...
+    )
+@end example
 
 @noindent
 Finally, we can initialize the global environment and run the evaluator:
 
-@lisp
-(define the-global-environment
-  (setup-environment))
+@example kotlin
+eceval.drive()
+@end example
 
-(start eceval)
+@noindent
+In this edition the driver runs the forms of the program the machine
+was built with, and the examples replay pins this session form by
+form:
 
-@i{;;; EC-Eval input:}
+@example
+;;; EC-Eval input:
 (define (append x y)
   (if (null? x)
       y
       (cons (car x) (append (cdr x) y))))
 
-@i{;;; EC-Eval value:}
-@i{ok}
+;;; EC-Eval value:
+ok
 
-@i{;;; EC-Eval input:}
+;;; EC-Eval input:
 (append '(a b c) '(d e f))
 
-@i{;;; EC-Eval value:}
-@i{(a b c d e f)}
-@end lisp
+;;; EC-Eval value:
+(a b c d e f)
+@end example
 
 @noindent
 Of course, evaluating expressions in this way will take much longer than if we
-had directly typed them into Scheme, because of the multiple levels of
+had directly typed them into the host language, because of the levels of
 simulation involved.  Our expressions are evaluated by the
-explicit-control-evaluator machine, which is being simulated by a Scheme
-program, which is itself being evaluated by the Scheme interpreter.
+explicit-control-evaluator machine, which the register-machine
+simulator of this edition runs.  In this edition the machine's words
+are tagged words over the shared values and its controller is Kotlin
+data, so the session above is the machine's own output.
 
 @subsubheading Monitoring the performance of the evaluator
 
@@ -896,34 +917,33 @@ the version of the simulator that collects statistics on stack use
 (@ref{5.2.4}), and adding an instruction at the evaluator's @code{print-result}
 entry point to print the statistics:
 
-@lisp
+@example
 print-result
   @r{; added instruction:}
   (perform (op print-stack-statistics))
-  (perform (op announce-output)
-           (const ";;; EC-Eval value:"))
+  (perform (op announce-output))
   @r{…} @r{; same as before}
-@end lisp
+@end example
 
 @noindent
 Interactions with the evaluator now look like this:
 
-@lisp
-@i{;;; EC-Eval input:}
+@example
+;;; EC-Eval input:
 (define (factorial n)
   (if (= n 1) 1 (* (factorial (- n 1)) n)))
-@i{(total-pushes = 3, maximum-depth = 3)}
+(total-pushes = 3 maximum-depth = 3)
 
-@i{;;; EC-Eval value:}
-@i{ok}
+;;; EC-Eval value:
+ok
 
-@i{;;; EC-Eval input:}
+;;; EC-Eval input:
 (factorial 5)
-@i{(total-pushes = 144, maximum-depth = 28)}
+(total-pushes = 144 maximum-depth = 28)
 
-@i{;;; EC-Eval value:}
-@i{120}
-@end lisp
+;;; EC-Eval value:
+120
+@end example
 
 @noindent
 Note that the driver loop of the evaluator reinitializes the stack at the start
@@ -936,7 +956,7 @@ explore the tail-recursive property of the evaluator (@ref{5.4.2}).
 Start the evaluator and define the iterative @code{factorial} procedure from
 @ref{1.2.1}:
 
-@lisp
+@example
 (define (factorial n)
   (define (iter product counter)
     (if (> counter n)
@@ -944,7 +964,7 @@ Start the evaluator and define the iterative @code{factorial} procedure from
         (iter (* counter product)
               (+ counter 1))))
   (iter 1 1))
-@end lisp
+@end example
 
 Run the procedure with some small values of @math{n}.  Record the maximum stack
 depth and the number of pushes required to compute @math{{n!}} for each of these
@@ -970,12 +990,12 @@ by two constants.
 explore the behavior of the following procedure for computing factorials
 recursively:
 
-@lisp
+@example
 (define (factorial n)
   (if (= n 1)
       1
       (* (factorial (- n 1)) n)))
-@end lisp
+@end example
 
 By running this procedure with the monitored stack, determine, as a function of
 @math{n}, the maximum depth of the stack and the total number of pushes used in
@@ -1025,12 +1045,12 @@ their input.
 @strong{@anchor{Exercise 5.29}Exercise 5.29:} Monitor the stack operations in
 the tree-recursive Fibonacci computation:
 
-@lisp
+@example
 (define (fib n)
   (if (< n 2)
       n
       (+ (fib (- n 1)) (fib (- n 2)))))
-@end lisp
+@end example
 
 @enumerate a
 

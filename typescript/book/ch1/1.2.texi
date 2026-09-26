@@ -13,7 +13,7 @@ of usage in the domain.  We lack the knowledge of which moves are worth making
 consequences of making a move (executing a procedure).
 
 The ability to visualize the consequences of the actions under consideration is
-crucial to becoming an expert programmer, just as it is in any synthetic,
+essential to becoming an expert programmer, just as it is in any synthetic,
 creative activity.  In becoming an expert photographer, for example, one must
 learn how to look at a scene and know how dark each region will appear on a
 print for each possible choice of exposure and development conditions.  Only
@@ -1423,7 +1423,7 @@ arbitrary 200-digit number, the primality of such a number can be checked in a
 few seconds with the Fermat test.  This fact forms the basis of a technique for
 constructing ``unbreakable codes'' suggested by @ref{Rivest et al. (1977)}.  
 The resulting @newterm{RSA algorithm} has become a widely used
-technique for enhancing the security of electronic communications.  Because of
+technique for improving the security of electronic communications.  Because of
 this and related developments, the study of prime numbers, once considered the
 epitome of a topic in ``pure'' mathematics to be studied only for its own sake,
 now turns out to have important practical applications to cryptography,

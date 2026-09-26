@@ -32,8 +32,8 @@ particular, if we wish to model state variables by ordinary symbolic names in
 the programming language, then the language must provide an @newterm{assignment operator} 
 to enable us to change the value associated with a name.
 
-This is the section where Effect enters this edition, under its own name and
-with no adapter layer, and it stays for the rest of the chapter.  A local state
+Effect enters this edition in this section, under its own name and with
+no adapter layer, and it stays for the rest of the chapter.  A local state
 variable is a @code{Ref}, the cell Effect provides for exactly this purpose.
 Assignment is running a @code{Ref} operation such as @code{Ref.set} or
 @code{Ref.update}, and a procedure that changes state answers an

@@ -78,7 +78,7 @@ frame II is said to @newterm{shadow} the binding of @code{x} to 3 in frame I.
 @caption{@strong{Figure 3.1:} A simple environment structure.}
 @end float
 @noindent
-The environment is crucial to the evaluation process, because it determines the
+The environment is essential to the evaluation process, because it determines the
 context in which an expression should be evaluated.  Indeed, one could say that
 expressions in a programming language do not, in themselves, have any meaning.
 Rather, an expression acquires a meaning only with respect to some environment
@@ -96,9 +96,9 @@ bindings, and the cells that captured bindings keep alive.  For example, the
 idea that @code{+} is the operator for addition needs no binding at all: the
 operator belongs to the language itself, outside every frame, and what an
 environment supplies is the meaning of each name that a procedure body merely
-uses.  Chapter 4's evaluator gives this model a concrete data structure -- a
+uses.  Chapter 4's evaluator gives this model a concrete data structure---a
 chain of frames, each a table of bindings plus a pointer to the frame it
-extends -- and every captured cell in this section is what that structure
+extends---and every captured cell in this section is what that structure
 realizes.
 
 @menu
@@ -228,7 +228,7 @@ frame is the environment specified by the procedure.  Now, within this new
 environment, evaluate the procedure body.  In TypeScript the new frame is the
 call frame, and its enclosing environment is whatever the procedure carries:
 a function value keeps the bindings its body names, so those captured
-bindings -- and nothing else -- are what the call frame reaches.
+bindings---and nothing else---are what the call frame reaches.
 
 To show how this rule is followed, @ref{Figure 3.3} illustrates the environment
 structure created by evaluating the expression @code{square(5)} in the global
@@ -672,7 +672,7 @@ Effect.runSync(w1(50))
 
 @noindent
 We begin by constructing a frame in which @code{amount}, the formal parameter
-of @code{w1}, is bound to the argument 50.  The crucial point to observe is
+of @code{w1}, is bound to the argument 50.  The essential point to observe is
 that this frame has as its enclosing environment not the global environment,
 but rather the environment E1, because this is the environment that is
 specified by the @code{w1} procedure object; in TypeScript, the call frame

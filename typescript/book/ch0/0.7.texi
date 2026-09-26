@@ -76,8 +76,7 @@ just scaffold   # pnpm vitest run --reporter=verbose, todo lines only
 @command{just scaffold} prints the pending list; it reports, it does not
 gate. The full gate is @command{just lint}: @command{biome check} over
 every file, formatting and lint in one pass, and @code{tsc --noEmit} in
-every chapter package, which is where the strict settings of @ref{0.1}
-bite. A @code{test.todo} keeps the suite's exit code green; a failing
+every chapter package, where the strict settings of @ref{0.1} bite. A @code{test.todo} keeps the suite's exit code green; a failing
 assertion does not.
 
 @cindex vitest

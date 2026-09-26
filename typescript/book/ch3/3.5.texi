@@ -1898,8 +1898,8 @@ The ability to write such an implicit definition depends on
 the delayed tail that is incorporated into @code{cons-stream}.  Without this
 delay, the closure's reference to @code{int} would run while @code{int} was
 still being initialized, which would require that @code{int}
-already be defined.  In general, @code{delay} is crucial for using streams to
-model signal-processing systems that contain loops.  Without @code{delay}, our
+already be defined.  In general, @code{delay} is essential for using
+streams to model signal-processing systems that contain loops.  Without @code{delay}, our
 models would have to be formulated so that the inputs to any signal-processing
 component would be fully evaluated before the output could be produced.  This
 would outlaw loops.
@@ -2627,7 +2627,7 @@ as we confront increasingly complex problems, we will find that Lisp, or indeed
 any fixed programming language, is not sufficient for our needs.  We must
 constantly turn to new languages in order to express our ideas more
 effectively.  Establishing new languages is a powerful strategy for controlling
-complexity in engineering design; we can often enhance our ability to deal with
+complexity in engineering design; we can often extend our ability to deal with
 a complex problem by adopting a new language that enables us to describe (and
 hence to think about) the problem in a different way, using primitives, means
 of combination, and means of abstraction that are particularly well suited to

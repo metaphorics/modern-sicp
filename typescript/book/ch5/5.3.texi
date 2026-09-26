@@ -16,7 +16,7 @@ There are two considerations in implementing list structure.  The first is
 purely an issue of representation: how to represent the ``box-and-pointer''
 structure of Lisp pairs, using only the storage and addressing capabilities of
 typical computer memories.  The second issue concerns the management of memory
-as a computation proceeds.  The operation of a Lisp system depends crucially on
+as a computation proceeds.  The operation of a Lisp system depends on
 the ability to continually create new data objects.  These include objects that
 are explicitly created by the Lisp procedures being interpreted as well as
 structures created by the interpreter itself, such as environments and argument

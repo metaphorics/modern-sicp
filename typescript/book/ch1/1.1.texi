@@ -409,7 +409,7 @@ environments).  In TypeScript the environment of a module is its set of
 scopes: each block and each function body is a scope in which names are bound,
 and the module's top-level names are the program's global
 ones.@footnote{@ref{Chapter 3} will show that this notion of environment is
-crucial, both for understanding how programs work and for implementing
+essential, both for understanding how programs work and for implementing
 interpreters.}
 
 @node	1.1.3, 1.1.4, 1.1.2, 1.1
@@ -858,7 +858,7 @@ TypeScript uses applicative-order evaluation, partly because of the additional
 efficiency obtained from avoiding multiple evaluations of expressions such as
 those illustrated with @code{5 + 1} and @code{5 * 2} above and, more
 significantly, because normal-order evaluation becomes much more complicated to
-deal with when we leave the realm of procedures that can be modeled by
+deal with when we move beyond procedures that can be modeled by
 substitution.  On the other hand, normal-order evaluation can be an extremely
 valuable tool, and we will investigate some of its implications in @ref{Chapter
 3} and @ref{Chapter 4}.@footnote{In @ref{Chapter 3} we will introduce
@@ -1478,8 +1478,8 @@ problem into subproblems.
 The importance of this decomposition strategy is not simply that one is
 dividing the program into parts.  After all, we could take any large program
 and divide it into parts---the first ten lines, the next ten lines, the next
-ten lines, and so on.  Rather, it is crucial that each procedure accomplishes
-an identifiable task that can be used as a module in defining other procedures.
+ten lines, and so on.  Rather, each procedure must accomplish an identifiable task that can be
+used as a module in defining other procedures.
 For example, when we define the @code{goodEnough} procedure in terms of
 @code{square}, we are able to regard the @code{square} procedure as a ``black
 box.''  We are not at that moment concerned with @emph{how} the procedure
@@ -1643,7 +1643,7 @@ const sqrtNested = (x: number): number => @{
 @end example
 
 @noindent
-Such nesting of definitions, called @newterm{block structure}, is basically the
+Such nesting of definitions, called @newterm{block structure}, is the
 right solution to the simplest name-packaging problem: the nested procedures
 exist only inside @code{sqrtNested}, cannot collide with anything outside, and
 are invisible to other code.  But there is a better idea lurking here.  In

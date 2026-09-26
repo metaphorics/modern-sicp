@@ -7,7 +7,7 @@ Indeed, programming languages require that the programmer express knowledge in
 a form that indicates the step-by-step methods for solving particular problems.
 On the other hand, high-level languages provide, as part of the language
 implementation, a substantial amount of methodological knowledge that frees the
-user from concern with numerous details of how a specified computation will
+user from concern with many details of how a specified computation will
 progress.
 
 Most programming languages, including Lisp, are organized around computing the
@@ -1632,7 +1632,7 @@ stream, it instantiates the original query using the values of the variables
 found in the frame.  This stream of instantiated queries is then
 printed.@footnote{The reason we use streams (rather than lists) of frames is
 that the recursive application of rules can generate infinite numbers of values
-that satisfy a query.  The delayed evaluation embodied in streams is crucial
+that satisfy a query.  The delayed evaluation embodied in streams is essential
 here: The system will print responses one by one as they are generated,
 regardless of whether there are a finite or infinite number of responses.}
 

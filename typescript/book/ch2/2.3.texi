@@ -380,7 +380,7 @@ algorithm.  Since it is expressed in terms of abstract data, it will work no
 matter how we choose to represent algebraic expressions, as long as we design a
 proper set of tag checks and constructors.  This is the issue we must address
 next.  The book's final @code{(else (error @dots{}))} clause is gone for a
-structural reason worth savoring: the union has no other shape, so the switch
+structural reason: the union has no other shape, so the switch
 is exhaustive, and the compiler flags any missing case instead of waiting for
 an unknown expression to show up at run time.
 

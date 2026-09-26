@@ -5,7 +5,7 @@ We've seen the power of computational objects with local state as tools for
 modeling.  Yet, as @ref{3.1.3} warned, this power extracts a price: the
 loss of referential transparency, giving rise to a thicket of questions about
 sameness and change, and the need to abandon the substitution model of
-evaluation in favor of the more intricate environment model.
+evaluation in favor of the more detailed environment model.
 
 The central issue lurking beneath the complexity of state, sameness, and change
 is that by introducing assignment we are forced to admit @newterm{time} into
@@ -1022,8 +1022,8 @@ export const testAndSet = (cell: Cell): boolean => @{
 
 @noindent
 However, this implementation of @code{testAndSet} does not suffice as it
-stands.  There is a crucial subtlety here, which is the essential place where
-concurrency control enters the system: The @code{testAndSet} operation must
+stands.  The subtlety here is the essential place where concurrency control enters
+the system: The @code{testAndSet} operation must
 be performed @newterm{atomically}.  That is, we must guarantee that, once a
 process has tested the cell and found it to be false, the cell contents will
 actually be set to true before any other process can test the cell.  If we do

@@ -428,8 +428,8 @@ controller text and the machine model as arguments and returns the assembled
 program to be stored in the model.  @code{Assemble} calls
 @code{extractLabels} to build the initial instruction list and label table
 from the supplied controller text, then pairs every instruction with the
-execution procedure @code{executionProcedure} generates for it -- the work of
-the book's @code{update-insts!} -- and, walking the instructions once, also
+execution procedure @code{executionProcedure} generates for it---the work of
+the book's @code{update-insts!}---and, walking the instructions once, also
 gathers the summary of exercise 5.12:
 
 @example typescript
@@ -494,8 +494,8 @@ result keeps the failure case honest: a controller that names a label twice
 never produces a program at all.}
 
 If a label names no instruction (say, the controller ends with it), the label
-names the stop address, one past the last instruction of the sequence, which
-is where a run ends.  An instruction that jumps to an undefined label fails at
+names the stop address, one past the last instruction of the sequence, where
+a run ends.  An instruction that jumps to an undefined label fails at
 assembly time, when the label is looked up with
 
 @example typescript

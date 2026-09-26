@@ -84,7 +84,7 @@ from procedure calls.
 
 @end itemize
 } 
-This evaluation cycle will be embodied by the interplay between the two
+This evaluation cycle will be embodied by the interaction between the two
 critical procedures in the evaluator, @code{evaluate} and
 @code{applyProcedure}, which are described in @ref{4.1.1} (see @ref{Figure
 4.1}).
@@ -143,8 +143,8 @@ procedures, @code{lookupVariableValue} accesses the values of variables, and
 @code{applyPrimitiveProcedure} applies a primitive procedure to a given list
 of arguments.
 
-This is the section where the evaluator meets the host, and the host enters
-under its own name, with no adapter layer.  An expression is an ordinary
+In this section the evaluator meets the host, and the host enters under
+its own name, with no adapter layer.  An expression is an ordinary
 value: the reader of @code{read.ts} turns input text into cons-list values in
 just the shape the book's list structure assumes, so @code{read.ts} stands in
 for the book's @code{read}.  Every value carries a @code{_tag}, and predicates
@@ -168,7 +168,7 @@ says what can go wrong with it.
 @node	4.1.1, 4.1.2, 4.1, 4.1
 @subsection The Core of the Evaluator
 
-The evaluation process can be described as the interplay between two
+The evaluation process can be described as the interaction between two
 procedures: @code{evaluate} and @code{applyProcedure}.
 
 @subsubheading Eval

@@ -98,13 +98,42 @@ export const renameVariablesIn = (v: Value, id: number): Value =>
   mapTree(v, (x) => makeNewVariable(x, id));
 
 /** An immutable frame: newest binding first. */
+interface ActiveRuleCall {
+  readonly ruleIndex: number;
+  readonly arguments: Value;
+}
+const sameRuleArguments = (left: Value, right: Value): boolean => {
+  let hasGroundTerm = false;
+  const compare = (a: Value, b: Value): boolean => {
+    if (isVar(a) || isVar(b)) return isVar(a) && isVar(b);
+    if (a._tag === "Nil" || b._tag === "Nil") return a._tag === "Nil" && b._tag === "Nil";
+    if (pair(a) || pair(b)) {
+      return pair(a) && pair(b) && compare(a.head, b.head) && compare(a.tail, b.tail);
+    }
+    if (isSymbol(a) && isSymbol(b) && a.name === DOTTED_TAIL && b.name === DOTTED_TAIL) {
+      return true;
+    }
+    if (!equal(a, b)) return false;
+    hasGroundTerm = true;
+    return true;
+  };
+  return compare(left, right) && hasGroundTerm;
+};
 export class Frame {
   readonly bindings: ReadonlyArray<readonly [Value, Value]>;
-  constructor(bindings: ReadonlyArray<readonly [Value, Value]> = []) {
+  readonly activeRuleCalls: ReadonlyArray<ActiveRuleCall>;
+  constructor(
+    bindings: ReadonlyArray<readonly [Value, Value]> = [],
+    activeRuleCalls: ReadonlyArray<ActiveRuleCall> = [],
+  ) {
     this.bindings = bindings;
+    this.activeRuleCalls = activeRuleCalls;
   }
   extend(variable: Value, value: Value): Frame {
-    return new Frame([[variable, value], ...this.bindings]);
+    return new Frame([[variable, value], ...this.bindings], this.activeRuleCalls);
+  }
+  withActiveRuleCalls(activeRuleCalls: ReadonlyArray<ActiveRuleCall>): Frame {
+    return new Frame(this.bindings, activeRuleCalls);
   }
   bindingInFrame(variable: Value): Value | undefined {
     return this.bindings.find(([v]) => equal(v, variable))?.[1];
@@ -371,7 +400,23 @@ export class QueryEngine {
   private applyRule(rule: Value, query: Value, frame: Frame): Stream<Frame> {
     const renamed = renameVariablesIn(rule, ++this.nextRuleId);
     const unified = unifyMatch(query, conclusion(renamed), frame);
-    return unified ? this.qeval(ruleBody(renamed), singletonStream(unified)) : Stream.empty();
+    if (!unified) return Stream.empty();
+    const call: ActiveRuleCall = {
+      ruleIndex: this.rules.indexOf(rule),
+      arguments: instantiate(pair(query) ? query.tail : query, unified, (variable) => variable),
+    };
+    const repeated = unified.activeRuleCalls.some(
+      (active) =>
+        active.ruleIndex === call.ruleIndex && sameRuleArguments(active.arguments, call.arguments),
+    );
+    if (repeated) {
+      return Stream.empty();
+    }
+    const activeFrame = unified.withActiveRuleCalls([...unified.activeRuleCalls, call]);
+    return streamMap(
+      (result) => result.withActiveRuleCalls(frame.activeRuleCalls),
+      this.qeval(ruleBody(renamed), singletonStream(activeFrame)),
+    );
   }
   private conjoin(clauses: List<Value>, frames: Stream<Frame>): Stream<Frame> {
     let out = frames;

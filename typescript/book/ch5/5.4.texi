@@ -822,14 +822,19 @@ unknown-procedure-type
    (const unknown-procedure-type-error))
   (goto (label signal-error))
 signal-error
-  (perform (op signal-error) (reg val))
+  (perform (op user-print) (reg val))
+  (goto (label read-eval-print-loop))
 @end example
 
 @noindent
-In this edition @code{signal-error} stops the machine with a typed
-failure whose message is the printed value, instead of returning to the
-driver loop; the section replay and the tests pin the message each
-error leaves behind.
+The module follows the book here: the two controller-raised errors
+print through @code{user-print} and return to the driver loop, and
+@code{unknown-procedure-type} restores @code{continue} to clean the
+stack. Faults raised inside machine operations, such as a division by
+zero or an unbound variable, still stop the machine with a typed
+failure in this base evaluator; exercise 5.30 builds the condition-code
+structure that catches them and routes them through the same
+@code{signal-error}.
 
 For the purposes of the simulation, we initialize the stack each time through
 the driver loop, since it might not be empty after an error (such as an

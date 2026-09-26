@@ -163,11 +163,11 @@ export const readProgram = (source: string): Word[] => {
   return out;
 };
 
-interface Frame {
+export interface Frame {
   readonly bindings: Map<string, Word>;
   readonly parent: number | null;
 }
-interface State {
+export interface State {
   readonly frames: Frame[];
   readonly input: Word[];
   readonly output: string[];
@@ -205,7 +205,7 @@ const nth = (v: Word, n: number): Word => {
 const _seqWord = (body: Word[]): Word =>
   body.length === 1 ? (body[0] ?? nil) : list([symbol("begin"), ...body]);
 
-const baseOperations = (state: State): Record<string, Operation> => {
+export const baseOperations = (state: State): Record<string, Operation> => {
   const one =
     (name: string, f: (a: Word) => Word): Operation =>
     (args) => {
@@ -370,9 +370,6 @@ const baseOperations = (state: State): Record<string, Operation> => {
     "user-print": one("user-print", (w) => {
       state.output.push(render(w));
       return w;
-    }),
-    "signal-error": one("signal-error", (w) => {
-      throw new EvaluatorFault(`signal-error: ${render(w)}`);
     }),
   };
   const applyPrimitive = (name: string, args: Word[]): Word => {
@@ -615,10 +612,11 @@ const controller: ControllerLine[] = [
   assign("val", c(symbol("unknown-expression-type-error"))),
   jump("signal-error"),
   mark("unknown-procedure-type"),
+  restore("continue"),
   assign("val", c(symbol("unknown-procedure-type-error"))),
   jump("signal-error"),
   mark("signal-error"),
-  perform("signal-error", reg("val")),
+  perform("user-print", reg("val")),
   jump("read-eval-print-loop"),
 ];
 export const evaluatorController = controller;
@@ -640,10 +638,14 @@ export interface Evaluator {
   readonly transcript: readonly string[];
   run: () => readonly string[];
 }
-export const makeEvaluator = (
+export type OperationsSpec =
+  | Readonly<Record<string, Operation>>
+  | ((state: State, base: Record<string, Operation>) => Readonly<Record<string, Operation>>);
+
+const buildEvaluator = (
   source: string,
-  customOperations: Readonly<Record<string, Operation>> = {},
-  _monitored = false,
+  lines: readonly ControllerLine[],
+  operations: OperationsSpec = {},
 ): Evaluator => {
   const state: State = {
     frames: [{ bindings: new Map(), parent: null }],
@@ -675,12 +677,14 @@ export const makeEvaluator = (
     global.bindings.set(n, primitiveWord(n));
   global.bindings.set("true", true);
   global.bindings.set("false", false);
+  const base = baseOperations(state);
+  const customOperations = typeof operations === "function" ? operations(state, base) : operations;
   const machine = makeNewMachine(evaluatorRegisters, {
-    ...baseOperations(state),
+    ...base,
     ...customOperations,
   });
   state.machine = machine;
-  const assembled = assemble(controller, machine);
+  const assembled = assemble(lines, machine);
   if (!assembled.ok) throw new EvaluatorFault(JSON.stringify(assembled.error));
   machine.install(assembled.value);
   let ran = false;
@@ -704,10 +708,119 @@ export const makeEvaluator = (
     run,
   };
 };
+export const makeEvaluator = (
+  source: string,
+  customOperations: Readonly<Record<string, Operation>> = {},
+  _monitored = false,
+): Evaluator => buildEvaluator(source, controller, customOperations);
 export const runEvaluator = (
   source: string,
   customOperations: Readonly<Record<string, Operation>> = {},
 ): readonly string[] => makeEvaluator(source, customOperations).run();
+
+/** An evaluator over a modified controller line list with operation
+ * overrides. A function spec receives the machine state and the base
+ * operation table, so a variant can guard or reuse base entries. */
+export const makeVariantEvaluator = (
+  source: string,
+  lines: readonly ControllerLine[],
+  operations: OperationsSpec = {},
+): Evaluator => buildEvaluator(source, lines, operations);
+
+// Word-level helpers for the exercise variants: the operations a variant
+// adds are functions over the same words the base operations read.
+export const makeSymbolWord = symbol;
+export const makePairWord = pair;
+export const makeListWord = list;
+export const wordItems = items;
+export const isPairWord = isPair;
+export const isNilWord = isNil;
+export const wordName = nameOf;
+export const isSpecialForm = taggedForm;
+export const wordAt = nth;
+
+/** One-argument machine operation over evaluator words. */
+export const wordOperation1 =
+  (name: string, f: (a: Word) => Word): Operation =>
+  (args) => {
+    if (args.length !== 1) throw new EvaluatorFault(`${name} needs one argument`);
+    return f(args[0] as Word) as Value;
+  };
+/** Two-argument machine operation over evaluator words. */
+export const wordOperation2 =
+  (name: string, f: (a: Word, b: Word) => Word): Operation =>
+  (args) => {
+    if (args.length !== 2) throw new EvaluatorFault(`${name} needs two arguments`);
+    return f(args[0] as Word, args[1] as Word) as Value;
+  };
+
+// Controller splices: the exercise variants copy the base controller and
+// rewrite segments between labels; the base array is never mutated.
+const labelPosition = (lines: readonly ControllerLine[], name: string): number => {
+  const index = lines.findIndex((line) => line.tag === "label" && line.name === name);
+  if (index < 0) throw new EvaluatorFault(`the controller lacks label ${name}`);
+  return index;
+};
+export const replaceSegment = (
+  lines: readonly ControllerLine[],
+  fromLabel: string,
+  toLabelExclusive: string,
+  replacement: readonly ControllerLine[],
+): ControllerLine[] => {
+  const from = labelPosition(lines, fromLabel);
+  const to = labelPosition(lines, toLabelExclusive);
+  return [...lines.slice(0, from + 1), ...replacement, ...lines.slice(to)];
+};
+export const insertBeforeInstruction = (
+  lines: readonly ControllerLine[],
+  matches: (line: ControllerLine) => boolean,
+  description: string,
+  insertions: readonly ControllerLine[],
+): ControllerLine[] => {
+  const index = lines.findIndex(matches);
+  if (index < 0) throw new EvaluatorFault(`the controller lacks ${description}`);
+  return [...lines.slice(0, index), ...insertions, ...lines.slice(index)];
+};
+export const appendLines = (
+  lines: readonly ControllerLine[],
+  additions: readonly ControllerLine[],
+): ControllerLine[] => [...lines, ...additions];
+
+/** One monitored run: the program's transcript plus the stack counters
+ * of its final interaction, captured the way the book's 5.4.4 monitored
+ * driver does, between @code{print-result} and the value announcement,
+ * where the counters still hold the interaction that produced the
+ * value. */
+export interface MeasuredRun {
+  readonly transcript: readonly string[];
+  readonly pushes: number;
+  readonly maximumDepth: number;
+}
+export const runMonitoredEvaluator = (
+  source: string,
+  lines: readonly ControllerLine[] = controller,
+): MeasuredRun => {
+  const monitoredController = insertBeforeInstruction(
+    lines,
+    (line) => line.tag === "perform" && line.op === "announce-output",
+    "the announce-output instruction",
+    [perform("capture-stack-statistics")],
+  );
+  let pushes = 0;
+  let maximumDepth = 0;
+  const evaluator = buildEvaluator(source, monitoredController, (state) => ({
+    "capture-stack-statistics": () => {
+      const stats = state.machine?.stack.statistics();
+      if (stats) {
+        pushes = stats.pushes;
+        maximumDepth = stats.maxDepth;
+      }
+      return 0;
+    },
+  }));
+  const transcript = evaluator.run();
+  return { transcript, pushes, maximumDepth };
+};
 export const formatWord = render;
 export const parse = readProgram;
 export const makeTaggedWord = tagged;

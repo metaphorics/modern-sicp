@@ -1191,7 +1191,7 @@ mod tests {
 
     #[test]
     fn collect_refuses_a_collection_that_does_not_fit() {
-        // Three live pairs plus a three-cell root list: eight cells
+        // Four live pairs plus a three-cell root list: seven cells
         // against a six-cell data area, the one overflow the root
         // list itself can produce.
         let memory = memory();

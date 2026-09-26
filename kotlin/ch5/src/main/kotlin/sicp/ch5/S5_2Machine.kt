@@ -257,9 +257,10 @@ public open class Machine(
     }
 
     /** Runs the machine from the beginning of the controller sequence and
-     *  stops when it reaches the end. */
+     *  stops when it reaches the end. Subclasses that keep per-run state
+     *  (exercise 5.19's breakpoints) override this to re-arm it. */
     context(r: Raise<MachineError>)
-    public fun start() {
+    public open fun start() {
         pc = 0
         execute()
     }

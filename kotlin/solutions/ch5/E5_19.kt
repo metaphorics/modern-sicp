@@ -29,6 +29,7 @@ public class BreakpointMachine(
         val every: Int,
     ) {
         var executions = 0
+        var stopped = false
     }
 
     private val byLabel = LinkedHashMap<String, Breakpoint>()
@@ -57,17 +58,21 @@ public class BreakpointMachine(
         byLabel.clear()
     }
 
-    /** Resumes a machine parked at a breakpoint: the stop it is waiting
-     *  at is consumed, so the pending execution runs and the machine
-     *  stops next at a later arrival. */
+    /** Resumes a machine parked at a breakpoint: the pending execution
+     *  runs (counting once, in [execute]) and the machine stops next at a
+     *  later n-th arrival, not at the same one forever. */
     context(r: Raise<MachineError>)
     public fun proceed() {
-        val resume = waitingAt
         waitingAt = null
-        if (resume != null) {
-            byLabel[resume]?.executions += 1
-        }
         execute()
+    }
+
+    /** A fresh run begins a fresh stop schedule: no stop carries over. */
+    context(r: Raise<MachineError>)
+    override fun start() {
+        waitingAt = null
+        byLabel.values.forEach { it.stopped = false }
+        super.start()
     }
 
     context(r: Raise<MachineError>)
@@ -75,11 +80,13 @@ public class BreakpointMachine(
         while (pc < insts.size) {
             val hit = byLabel.entries.firstOrNull { it.value.address == pc }
             val bp = hit?.value
-            if (bp != null && bp.executions % bp.every == bp.every - 1) {
+            if (bp != null && !bp.stopped && bp.executions % bp.every == bp.every - 1) {
                 waitingAt = hit.key
+                bp.stopped = true
                 return
             }
             if (bp != null) {
+                bp.stopped = false
                 bp.executions += 1
             }
             insts[pc].exec(r)
@@ -88,8 +95,9 @@ public class BreakpointMachine(
 }
 
 /** One breakpoint session on the gcd machine: stop before the second
- *  execution of `test-b`, read the registers mid-run, proceed to the
- *  answer, then cancel and restart straight through. */
+ *  and fourth execution of `test-b`, reading the registers at each
+ *  stop, proceed to the answer, then cancel and restart straight
+ *  through. */
 public fun breakpointSession(): List<String> =
     machineRun {
         val machine = BreakpointMachine(listOf("a", "b", "t"), arithOperations)
@@ -99,13 +107,13 @@ public fun breakpointSession(): List<String> =
         machine.setBreakpoint("test-b", 2)
         machine.start()
         val lines = mutableListOf<String>()
-        lines +=
-            "break at ${machine.waitingAt}: a = ${machine.getRegisterContents("a")}, " +
-            "b = ${machine.getRegisterContents("b")}"
         while (machine.waitingAt != null) {
+            lines +=
+                "break at ${machine.waitingAt}: a = ${machine.getRegisterContents("a")}, " +
+                "b = ${machine.getRegisterContents("b")}"
             machine.proceed()
         }
-        lines += "proceed: gcd(206, 40) = ${machine.getRegisterContents("a")}"
+        lines += "finished: gcd(206, 40) = ${machine.getRegisterContents("a")}"
         machine.cancelBreakpoint("test-b")
         machine.start()
         lines += "cancel and restart: gcd(206, 40) = ${machine.getRegisterContents("a")}"

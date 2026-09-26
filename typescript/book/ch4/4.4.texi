@@ -71,12 +71,14 @@ takes two lists as arguments and combines their elements to form a single list.
 In a procedural language such as Lisp, we could define @code{append} in terms
 of the basic list constructor @code{cons}, as we did in @ref{2.2.1}:
 
-@lisp
+@example typescript
+readAll(`
 (define (append x y)
   (if (null? x) 
       y 
       (cons (car x) (append (cdr x) y))))
-@end lisp
+`);
+@end example
 
 @noindent
 This procedure can be regarded as a translation into Lisp of the following two
@@ -199,12 +201,14 @@ The personnel data base for Microshaft contains @newterm{assertions} about
 company personnel.  Here is the information about Ben Bitdiddle, the resident
 computer wizard:
 
-@lisp
+@example typescript
+readAll(`
 (address (Bitdiddle Ben) 
          (Slumerville (Ridge Road) 10))
 (job (Bitdiddle Ben) (computer wizard))
 (salary (Bitdiddle Ben) 60000)
-@end lisp
+`);
+@end example
 
 @noindent
 Each assertion is a list (in this case a triple) whose elements can themselves
@@ -214,7 +218,8 @@ As resident wizard, Ben is in charge of the company's computer division, and he
 supervises two programmers and one technician.  Here is the information about
 them:
 
-@lisp
+@example typescript
+readAll(`
 (address (Hacker Alyssa P) 
          (Cambridge (Mass Ave) 78))
 (job (Hacker Alyssa P) (computer programmer))
@@ -232,12 +237,14 @@ them:
 (job (Tweakit Lem E) (computer technician))
 (salary (Tweakit Lem E) 25000)
 (supervisor (Tweakit Lem E) (Bitdiddle Ben))
-@end lisp
+`);
+@end example
 
 @noindent
 There is also a programmer trainee, who is supervised by Alyssa:
 
-@lisp
+@example typescript
+readAll(`
 (address (Reasoner Louis) 
          (Slumerville (Pine Tree Road) 80))
 (job (Reasoner Louis) 
@@ -245,7 +252,8 @@ There is also a programmer trainee, who is supervised by Alyssa:
 (salary (Reasoner Louis) 30000)
 (supervisor (Reasoner Louis) 
             (Hacker Alyssa P))
-@end lisp
+`);
+@end example
 
 @noindent
 All of these people are in the computer division, as indicated by the word
@@ -254,20 +262,23 @@ All of these people are in the computer division, as indicated by the word
 Ben is a high-level employee.  His supervisor is the company's big wheel
 himself:
 
-@lisp
+@example typescript
+readAll(`
 (supervisor (Bitdiddle Ben) (Warbucks Oliver))
 (address (Warbucks Oliver) 
          (Swellesley (Top Heap Road)))
 (job (Warbucks Oliver) 
      (administration big wheel))
 (salary (Warbucks Oliver) 150000)
-@end lisp
+`);
+@end example
 
 @noindent
 Besides the computer division supervised by Ben, the company has an accounting
 division, consisting of a chief accountant and his assistant:
 
-@lisp
+@example typescript
+readAll(`
 (address (Scrooge Eben) 
          (Weston (Shady Lane) 10))
 (job (Scrooge Eben) 
@@ -280,47 +291,56 @@ division, consisting of a chief accountant and his assistant:
 (job (Cratchet Robert) (accounting scrivener))
 (salary (Cratchet Robert) 18000)
 (supervisor (Cratchet Robert) (Scrooge Eben))
-@end lisp
+`);
+@end example
 
 @noindent
 There is also a secretary for the big wheel:
 
-@lisp
+@example typescript
+readAll(`
 (address (Aull DeWitt) 
          (Slumerville (Onion Square) 5))
 (job (Aull DeWitt) (administration secretary))
 (salary (Aull DeWitt) 25000)
 (supervisor (Aull DeWitt) (Warbucks Oliver))
-@end lisp
+`);
+@end example
 
 @noindent
 The data base also contains assertions about which kinds of jobs can be done by
 people holding other kinds of jobs.  For instance, a computer wizard can do the
 jobs of both a computer programmer and a computer technician:
 
-@lisp
+@example typescript
+readAll(`
 (can-do-job (computer wizard) 
             (computer programmer))
 
 (can-do-job (computer wizard) 
             (computer technician))
-@end lisp
+`);
+@end example
 
 @noindent
 A computer programmer could fill in for a trainee:
 
-@lisp
+@example typescript
+readAll(`
 (can-do-job (computer programmer)
             (computer programmer trainee))
-@end lisp
+`);
+@end example
 
 @noindent
 Also, as is well known,
 
-@lisp
+@example typescript
+readAll(`
 (can-do-job (administration secretary)
             (administration big wheel))
-@end lisp
+`);
+@end example
 
 @subsubheading Simple queries
 
@@ -328,19 +348,23 @@ The query language allows users to retrieve information from the data base by
 posing queries in response to the system's prompt.  For example, to find all
 computer programmers one can say
 
-@lisp
+@example typescript
+readAll(`
 @i{;;; Query input:}
 (job ?x (computer programmer))
-@end lisp
+`);
+@end example
 
 @noindent
 The system will respond with the following items:
 
-@lisp
+@example typescript
+readAll(`
 @i{;;; Query results:}
 (job (Hacker Alyssa P) (computer programmer))
 (job (Fect Cy D) (computer programmer))
-@end lisp
+`);
+@end example
 
 @noindent
 The input query specifies that we are looking for entries in the data base that
@@ -357,9 +381,11 @@ showing all entries in the data base that match the specified pattern.
 
 A pattern can have more than one variable.  For example, the query
 
-@lisp
+@example typescript
+readAll(`
 (address ?x ?y)
-@end lisp
+`);
+@end example
 
 @noindent
 will list all the employees' addresses.
@@ -372,9 +398,11 @@ The same pattern variable can appear more than once in a query, specifying that
 the same ``anything'' must appear in each position.  This is why variables have
 names.  For example,
 
-@lisp
+@example typescript
+readAll(`
 (supervisor ?x ?x)
-@end lisp
+`);
+@end example
 
 @noindent
 finds all people who supervise themselves (though there are no such assertions
@@ -382,28 +410,34 @@ in our sample data base).
 
 The query
 
-@lisp
+@example typescript
+readAll(`
 (job ?x (computer ?type))
-@end lisp
+`);
+@end example
 
 @noindent
 matches all job entries whose third item is a two-element list whose first item
 is @code{computer}:
 
-@lisp
+@example typescript
+readAll(`
 (job (Bitdiddle Ben) (computer wizard))
 (job (Hacker Alyssa P) (computer programmer))
 (job (Fect Cy D) (computer programmer))
 (job (Tweakit Lem E) (computer technician))
-@end lisp
+`);
+@end example
 
 @noindent
 This same pattern does @emph{not} match
 
-@lisp
+@example typescript
+readAll(`
 (job (Reasoner Louis) 
      (computer programmer trainee))
-@end lisp
+`);
+@end example
 
 @noindent
 because the third item in the entry is a list of three elements, and the
@@ -412,38 +446,48 @@ to change the pattern so that the third item could be any list beginning with
 @code{computer}, we could specify@footnote{This uses the dotted-tail notation
 introduced in @ref{Exercise 2.20}.}
 
-@lisp
+@example typescript
+readAll(`
 (job ?x (computer . ?type))
-@end lisp
+`);
+@end example
 
 @noindent
 For example,
 
-@lisp
+@example typescript
+readAll(`
 (computer . ?type)
-@end lisp
+`);
+@end example
 
 @noindent
 matches the data
 
-@lisp
+@example typescript
+readAll(`
 (computer programmer trainee)
-@end lisp
+`);
+@end example
 
 @noindent
 with @code{?type} as the list @code{(programmer trainee)}.  It also
 matches the data
 
-@lisp
+@example typescript
+readAll(`
 (computer programmer)
-@end lisp
+`);
+@end example
 
 @noindent
 with @code{?type} as the list @code{(programmer)}, and matches the data
 
-@lisp
+@example typescript
+readAll(`
 (computer)
-@end lisp
+`);
+@end example
 
 @noindent
 with @code{?type} as the empty list @code{()}.
@@ -501,15 +545,18 @@ built into the query language.)
 We can use @code{and} as follows to find the addresses of all the computer
 programmers:
 
-@lisp
+@example typescript
+readAll(`
 (and (job ?person (computer programmer))
      (address ?person ?where))
-@end lisp
+`);
+@end example
 
 @noindent
 The resulting output is
 
-@lisp
+@example typescript
+readAll(`
 (and (job (Hacker Alyssa P) 
           (computer programmer))
      (address (Hacker Alyssa P) 
@@ -518,14 +565,17 @@ The resulting output is
 (and (job (Fect Cy D) (computer programmer))
      (address (Fect Cy D) 
               (Cambridge (Ames Street) 3)))
-@end lisp
+`);
+@end example
 
 @noindent
 In general,
 
-@lisp
+@example typescript
+readAll(`
 (and ⟨@var{query₁}⟩ ⟨@var{query₂}⟩ @r{…} ⟨@var{queryₙ}⟩)
-@end lisp
+`);
+@end example
 
 @noindent
 is satisfied by all sets of values for the pattern variables that
@@ -538,15 +588,18 @@ instantiations of the query with those values.
 Another means of constructing compound queries is through @code{or}.  For
 example,
 
-@lisp
+@example typescript
+readAll(`
 (or (supervisor ?x (Bitdiddle Ben))
     (supervisor ?x (Hacker Alyssa P)))
-@end lisp
+`);
+@end example
 
 @noindent
 will find all employees supervised by Ben Bitdiddle or Alyssa P.  Hacker:
 
-@lisp
+@example typescript
+readAll(`
 (or (supervisor (Hacker Alyssa P) 
                 (Bitdiddle Ben))
     (supervisor (Hacker Alyssa P) 
@@ -566,14 +619,17 @@ will find all employees supervised by Ben Bitdiddle or Alyssa P.  Hacker:
                 (Bitdiddle Ben))
     (supervisor (Reasoner Louis) 
                 (Hacker Alyssa P)))
-@end lisp
+`);
+@end example
 
 @noindent
 In general,
 
-@lisp
+@example typescript
+readAll(`
 (or ⟨@var{query₁}⟩ ⟨@var{query₂}⟩ @r{…} ⟨@var{queryₙ}⟩)
-@end lisp
+`);
+@end example
 
 @noindent
 is satisfied by all sets of values for the pattern variables that satisfy at
@@ -581,18 +637,22 @@ least one of @math{{⟨\kern0.1em query_1⟩}} @r{…} @math{{⟨\kern0.1em quer
 
 Compound queries can also be formed with @code{not}. For example,
 
-@lisp
+@example typescript
+readAll(`
 (and (supervisor ?x (Bitdiddle Ben))
      (not (job ?x (computer programmer))))
-@end lisp
+`);
+@end example
 
 @noindent
 finds all people supervised by Ben Bitdiddle who are not computer programmers.
 In general,
 
-@lisp
+@example typescript
+readAll(`
 (not ⟨@var{query₁}⟩)
-@end lisp
+`);
+@end example
 
 @noindent
 is satisfied by all assignments to the pattern variables that do not satisfy
@@ -606,9 +666,11 @@ is the first element of a pattern, it specifies that the next element is a Lisp
 predicate to be applied to the rest of the (instantiated) elements as
 arguments.  In general,
 
-@lisp
+@example typescript
+readAll(`
 (lisp-value ⟨@var{predicate}⟩ ⟨@var{arg₁}⟩ @r{…} ⟨@var{argₙ}⟩)
-@end lisp
+`);
+@end example
 
 @noindent
 will be satisfied by assignments to the pattern variables for which the
@@ -620,10 +682,12 @@ particular, it should not be used to test equality (since that is what the
 matching in the query language is designed to do) or inequality (since that can
 be done with the @code{same} rule shown below).}
 
-@lisp
+@example typescript
+readAll(`
 (and (salary ?person ?amount)
      (lisp-value > ?amount 30000))
-@end lisp
+`);
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.56}Exercise 4.56:} Formulate compound queries that
@@ -652,14 +716,16 @@ In addition to primitive queries and compound queries, the query language
 provides means for abstracting queries.  These are given by @newterm{rules}.
 The rule
 
-@lisp
+@example typescript
+readAll(`
 (rule (lives-near ?person-1 ?person-2)
       (and (address ?person-1 
                     (?town . ?rest-1))
            (address ?person-2 
                     (?town . ?rest-2))
            (not (same ?person-1 ?person-2))))
-@end lisp
+`);
+@end example
 
 @noindent
 specifies that two people live near each other if they live in the same town.
@@ -676,27 +742,33 @@ of a query forces the same value to appear in both places, using different
 pattern variables does not force different values to appear.  (The values
 assigned to different pattern variables may be the same or different.)}
 
-@lisp
+@example typescript
+readAll(`
 (rule (same ?x ?x))
-@end lisp
+`);
+@end example
 
 @noindent
 The following rule declares that a person is a ``wheel'' in an organization if
 he supervises someone who is in turn a supervisor:
 
-@lisp
+@example typescript
+readAll(`
 (rule (wheel ?person)
       (and (supervisor ?middle-manager 
                        ?person)
            (supervisor ?x ?middle-manager)))
-@end lisp
+`);
+@end example
 
 @noindent
 The general form of a rule is
 
-@lisp
+@example typescript
+readAll(`
 (rule ⟨@var{conclusion}⟩ ⟨@var{body}⟩)
-@end lisp
+`);
+@end example
 
 @noindent
 where @code{⟨}@var{conclusion}@code{⟩} is a pattern and @code{⟨}@var{body}@code{⟩} is any
@@ -710,39 +782,47 @@ satisfies a pattern if the instantiated pattern is in the data base.  But the
 pattern needn't be explicitly in the data base as an assertion.  It can be an
 implicit assertion implied by a rule.  For example, the query
 
-@lisp
+@example typescript
+readAll(`
 (lives-near ?x (Bitdiddle Ben))
-@end lisp
+`);
+@end example
 
 @noindent
 results in
 
-@lisp
+@example typescript
+readAll(`
 (lives-near (Reasoner Louis) (Bitdiddle Ben))
 (lives-near (Aull DeWitt) (Bitdiddle Ben))
-@end lisp
+`);
+@end example
 
 @noindent
 To find all computer programmers who live near Ben Bitdiddle, we can ask
 
-@lisp
+@example typescript
+readAll(`
 (and (job ?x (computer programmer))
      (lives-near ?x (Bitdiddle Ben)))
-@end lisp
+`);
+@end example
 
 @noindent
 As in the case of compound procedures, rules can be used as parts of other
 rules (as we saw with the @code{lives-near} rule above) or even be defined
 recursively.  For instance, the rule
 
-@lisp
+@example typescript
+readAll(`
 (rule (outranked-by ?staff-person ?boss)
       (or (supervisor ?staff-person ?boss)
           (and (supervisor ?staff-person 
                            ?middle-manager)
                (outranked-by ?middle-manager 
                              ?boss))))
-@end lisp
+`);
+@end example
 
 @noindent
 says that a staff person is outranked by a boss in the organization if the boss
@@ -780,20 +860,24 @@ meeting too many.  Fearing that his habit of forgetting meetings could cost him
 his job, Ben decides to do something about it.  He adds all the weekly meetings
 of the firm to the Microshaft data base by asserting the following:
 
-@lisp
+@example typescript
+readAll(`
 (meeting accounting (Monday 9am))
 (meeting administration (Monday 10am))
 (meeting computer (Wednesday 3pm))
 (meeting administration (Friday 1pm))
-@end lisp
+`);
+@end example
 
 Each of the above assertions is for a meeting of an entire division.  Ben also
 adds an entry for the company-wide meeting that spans all the divisions.  All
 of the company's employees attend this meeting.
 
-@lisp
+@example typescript
+readAll(`
 (meeting whole-company (Wednesday 4pm))
-@end lisp
+`);
+@end example
 
 @enumerate a
 
@@ -808,10 +892,12 @@ that says that a person's meetings include all @code{whole-company} meetings
 plus all meetings of that person's division.  Fill in the body of Alyssa's
 rule.
 
-@lisp
+@example typescript
+readAll(`
 (rule (meeting-time ?person ?day-and-time)
       ⟨@var{rule-body}⟩)
-@end lisp
+`);
+@end example
 
 @item
 Alyssa arrives at work on Wednesday morning and wonders what meetings she has
@@ -824,26 +910,32 @@ to find this out?
 @quotation
 @strong{@anchor{Exercise 4.60}Exercise 4.60:} By giving the query
 
-@lisp
+@example typescript
+readAll(`
 (lives-near ?person (Hacker Alyssa P))
-@end lisp
+`);
+@end example
 
 Alyssa P. Hacker is able to find people who live near her, with whom she can
 ride to work.  On the other hand, when she tries to find all pairs of people
 who live near each other by querying
 
-@lisp
+@example typescript
+readAll(`
 (lives-near ?person-1 ?person-2)
-@end lisp
+`);
+@end example
 
 @noindent
 she notices that each pair of people who live near each other is listed twice;
 for example,
 
-@lisp
+@example typescript
+readAll(`
 (lives-near (Hacker Alyssa P) (Fect Cy D))
 (lives-near (Fect Cy D) (Hacker Alyssa P))
-@end lisp
+`);
+@end example
 
 Why does this happen?  Is there a way to find a list of people who live near
 each other, in which each pair appears only once?  Explain.
@@ -875,19 +967,23 @@ For any @code{u}, @code{v}, @code{y}, and @code{z}, @code{(cons u v)} and
 @noindent
 To express this in our query language, we define two rules for a relation
 
-@lisp
+@example typescript
+readAll(`
 (append-to-form x y z)
-@end lisp
+`);
+@end example
 
 @noindent
 which we can interpret to mean ``@code{x} and @code{y} @code{append} to form
 @code{z}'':
 
-@lisp
+@example typescript
+readAll(`
 (rule (append-to-form () ?y ?y))
 (rule (append-to-form (?u . ?v) ?y (?u . ?z))
       (append-to-form ?v ?y ?z))
-@end lisp
+`);
+@end example
 
 @noindent
 The first rule has no body, which means that the conclusion holds for any value
@@ -897,32 +993,37 @@ name the @code{car} and @code{cdr} of a list.
 Given these two rules, we can formulate queries that compute the @code{append}
 of two lists:
 
-@lisp
+@example typescript
+readAll(`
 @i{;;; Query input:}
 (append-to-form (a b) (c d) ?z)
 
 @i{;;; Query results:}
 (append-to-form (a b) (c d) (a b c d))
-@end lisp
+`);
+@end example
 
 @noindent
 What is more striking, we can use the same rules to ask the question ``Which
 list, when @code{append}ed to @code{(a b)}, yields @code{(a b c d)}?''  This is
 done as follows:
 
-@lisp
+@example typescript
+readAll(`
 @i{;;; Query input:}
 (append-to-form (a b) ?y (a b c d))
 
 @i{;;; Query results:}
 (append-to-form (a b) (c d) (a b c d))
-@end lisp
+`);
+@end example
 
 @noindent
 We can also ask for all pairs of lists that @code{append} to form @code{(a b c
 d)}:
 
-@lisp
+@example typescript
+readAll(`
 @i{;;; Query input:}
 (append-to-form ?x ?y (a b c d))
 
@@ -932,7 +1033,8 @@ d)}:
 (append-to-form (a b) (c d) (a b c d))
 (append-to-form (a b c) (d) (a b c d))
 (append-to-form (a b c d) () (a b c d))
-@end lisp
+`);
+@end example
 
 @noindent
 The query system may seem to exhibit quite a bit of intelligence in using the
@@ -946,18 +1048,22 @@ cases, as we will see in @ref{4.4.3}.
 @strong{@anchor{Exercise 4.61}Exercise 4.61:} The following rules implement a
 @code{next-to} relation that finds adjacent elements of a list:
 
-@lisp
+@example typescript
+readAll(`
 (rule (?x next-to ?y in (?x ?y . ?u)))
 (rule (?x next-to ?y in (?v . ?z))
       (?x next-to ?y in ?z))
-@end lisp
+`);
+@end example
 
 What will the response be to the following queries?
 
-@lisp
+@example typescript
+readAll(`
 (?x next-to ?y in (1 (2 3) 4))
 (?x next-to 1 in (2 1 3 1))
-@end lisp
+`);
+@end example
 @end quotation
 
 @quotation
@@ -974,14 +1080,16 @@ such as @code{(last-pair (3) ?x)}, @code{(last-pair (1 2 3) ?x)} and
 Genesis 4) traces the genealogy of the descendants of Ada back to Adam, by way
 of Cain:
 
-@lisp
+@example typescript
+readAll(`
 (son Adam Cain) (son Cain Enoch)
 (son Enoch Irad) (son Irad Mehujael)
 (son Mehujael Methushael)
 (son Methushael Lamech)
 (wife Lamech Ada) (son Ada Jabal)
 (son Ada Jubal)
-@end lisp
+`);
+@end example
 
 Formulate rules such as ``If @math{S} is the son of @math{f}, and @math{f} is the son of
 @math{G}, then @math{S} is the grandson of @math{G}'' and ``If @math{W} is the wife of
@@ -1050,9 +1158,11 @@ will return the given frame augmented by a binding of @code{?x} to @code{a}.
 The pattern matcher is all the mechanism that is needed to process simple
 queries that don't involve rules.  For instance, to process the query
 
-@lisp
+@example typescript
+readAll(`
 (job ?x (computer programmer))
-@end lisp
+`);
+@end example
 
 @noindent
 we scan through all assertions in the data base and select those that match the
@@ -1131,28 +1241,34 @@ deal with compound queries.  The processing of compound queries makes use of
 the ability of our matcher to demand that a match be consistent with a
 specified frame.  For example, to handle the @code{and} of two queries, such as
 
-@lisp
+@example typescript
+readAll(`
 (and (can-do-job 
       ?x 
       (computer programmer trainee))
      (job ?person ?x))
-@end lisp
+`);
+@end example
 
 @noindent
 (informally, ``Find all people who can do the job of a computer programmer
 trainee''), we first find all entries that match the pattern
 
-@lisp
+@example typescript
+readAll(`
 (can-do-job ?x (computer programmer trainee))
-@end lisp
+`);
+@end example
 
 @noindent
 This produces a stream of frames, each of which contains a binding for
 @code{?x}.  Then for each frame in the stream we find all entries that match
 
-@lisp
+@example typescript
+readAll(`
 (job ?person ?x)
-@end lisp
+`);
+@end example
 
 @noindent
 in a way that is consistent with the given binding for @code{?x}.  Each such
@@ -1254,9 +1370,11 @@ From the stream-of-frames viewpoint, the @code{not} of some query acts as a
 filter that removes all frames for which the query can be satisfied.  For
 instance, given the pattern
 
-@lisp
+@example typescript
+readAll(`
 (not (job ?x (computer programmer)))
-@end lisp
+`);
+@end example
 
 @noindent
 we attempt, for each frame in the input stream, to produce extension frames
@@ -1266,10 +1384,12 @@ consisting of only those frames in which the binding for @code{?x} does not
 satisfy @code{(job ?x (computer programmer))}.  For example, in processing the
 query
 
-@lisp
+@example typescript
+readAll(`
 (and (supervisor ?x ?y)
      (not (job ?x (computer programmer))))
-@end lisp
+`);
+@end example
 
 @noindent
 the first clause will generate frames with bindings for @code{?x} and
@@ -1318,31 +1438,39 @@ the unknown (the pattern variable).} For example, unifying @code{(?x ?x)} and
 @code{((a ?y c) (a b ?z))} may be thought of as specifying the simultaneous
 equations
 
-@lisp
+@example typescript
+readAll(`
 ?x = (a ?y c)
 ?x = (a b ?z)
-@end lisp
+`);
+@end example
 
 @noindent
 These equations imply that
 
-@lisp
+@example typescript
+readAll(`
 (a ?y c) = (a b ?z)
-@end lisp
+`);
+@end example
 
 @noindent
 which in turn implies that
 
-@lisp
+@example typescript
+readAll(`
 a = a, ?y = b, c = ?z,
-@end lisp
+`);
+@end example
 
 @noindent
 and hence that
 
-@lisp
+@example typescript
+readAll(`
 ?x = (a b c)
-@end lisp
+`);
+@end example
 
 @noindent
 In a successful pattern match, all pattern variables become bound, and the
@@ -1377,9 +1505,11 @@ Unification is the key to the component of the query system that makes
 inferences from rules. To see how this is accomplished, consider processing a
 query that involves applying a rule, such as
 
-@lisp
+@example typescript
+readAll(`
 (lives-near ?x (Hacker Alyssa P))
-@end lisp
+`);
+@end example
 
 @noindent
 To process this query, we first use the ordinary pattern-match procedure
@@ -1389,14 +1519,16 @@ includes no direct assertions about who lives near whom.)  The next step is to
 attempt to unify the query pattern with the conclusion of each rule.  We find
 that the pattern unifies with the conclusion of the rule
 
-@lisp
+@example typescript
+readAll(`
 (rule (lives-near ?person-1 ?person-2)
       (and (address ?person-1 
                     (?town . ?rest-1))
            (address ?person-2 
                     (?town . ?rest-2))
            (not (same ?person-1 ?person-2))))
-@end lisp
+`);
+@end example
 
 @noindent
 resulting in a frame specifying that @code{?person-2} is bound to @code{(Hacker
@@ -1508,7 +1640,8 @@ The driver also checks for the special command @code{assert!}, which signals
 that the input is not a query but rather an assertion or rule to be added to
 the data base.  For instance,
 
-@lisp
+@example typescript
+readAll(`
 (assert!
  (job (Bitdiddle Ben)
       (computer wizard)))
@@ -1519,7 +1652,8 @@ the data base.  For instance,
              ?middle-manager ?person)
             (supervisor
              ?x ?middle-manager))))
-@end lisp
+`);
+@end example
 
 @node	4.4.3, 4.4.4, 4.4.2, 4.4
 @subsection Is Logic Programming Mathematical Logic?
@@ -1540,18 +1674,22 @@ take advantage of this control structure.  For example, to find all of the
 supervisors of programmers we could formulate a query in either of two
 logically equivalent forms:
 
-@lisp
+@example typescript
+readAll(`
 (and (job ?x (computer programmer))
      (supervisor ?x ?y))
-@end lisp
+`);
+@end example
 
 @noindent
 or
 
-@lisp
+@example typescript
+readAll(`
 (and (supervisor ?x ?y)
      (job ?x (computer programmer)))
-@end lisp
+`);
+@end example
 
 @noindent
 If a company has many more supervisors than programmers (the usual case), it is
@@ -1607,32 +1745,40 @@ problems.  An extreme case of inefficiency occurs when the system falls into
 infinite loops in making deductions.  As a simple example, suppose we are
 setting up a data base of famous marriages, including
 
-@lisp
+@example typescript
+readAll(`
 (assert! (married Minnie Mickey))
-@end lisp
+`);
+@end example
 
 @noindent
 If we now ask
 
-@lisp
+@example typescript
+readAll(`
 (married Mickey ?who)
-@end lisp
+`);
+@end example
 
 @noindent
 we will get no response, because the system doesn't know that if @math{A} is
 married to @math{B}, then @math{B} is married to @math{A}.  So we assert the rule
 
-@lisp
+@example typescript
+readAll(`
 (assert! (rule (married ?x ?y)
                (married ?y ?x)))
-@end lisp
+`);
+@end example
 
 @noindent
 and again query
 
-@lisp
+@example typescript
+readAll(`
 (married Mickey ?who)
-@end lisp
+`);
+@end example
 
 Unfortunately, this will drive the system into an infinite loop, as follows:
 
@@ -1685,13 +1831,15 @@ suitably chosen function @math{f}.}
 Another quirk in the query system concerns @code{not}.  Given the data base of
 @ref{4.4.1}, consider the following two queries:
 
-@lisp
+@example typescript
+readAll(`
 (and (supervisor ?x ?y)
      (not (job ?x (computer programmer))))
 
 (and (not (job ?x (computer programmer)))
      (supervisor ?x ?y))
-@end lisp
+`);
+@end example
 
 @noindent
 These two queries do not produce the same result.  The first query begins by
@@ -1738,21 +1886,25 @@ the @code{outranked-by} rule (@ref{4.4.1}) from the data base.  When he
 realizes this, he quickly reinstalls it.  Unfortunately, he makes a slight
 change in the rule, and types it in as
 
-@lisp
+@example typescript
+readAll(`
 (rule (outranked-by ?staff-person ?boss)
   (or (supervisor ?staff-person ?boss)
       (and (outranked-by ?middle-manager
                          ?boss)
            (supervisor ?staff-person 
                        ?middle-manager))))
-@end lisp
+`);
+@end example
 
 Just after Louis types this information into the system, DeWitt Aull comes by
 to find out who outranks Ben Bitdiddle. He issues the query
 
-@lisp
+@example typescript
+readAll(`
 (outranked-by (Bitdiddle Ben) ?who)
-@end lisp
+`);
+@end example
 
 After answering, the system goes into an infinite loop.  Explain why.
 @end quotation
@@ -1762,20 +1914,24 @@ After answering, the system goes into an infinite loop.  Explain why.
 the day when he will rise in the organization, gives a query to find all the
 wheels (using the @code{wheel} rule of @ref{4.4.1}):
 
-@lisp
+@example typescript
+readAll(`
 (wheel ?who)
-@end lisp
+`);
+@end example
 
 To his surprise, the system responds
 
-@lisp
+@example typescript
+readAll(`
 @i{;;; Query results:}
 (wheel (Warbucks Oliver))
 (wheel (Bitdiddle Ben))
 (wheel (Warbucks Oliver))
 (wheel (Warbucks Oliver))
 (wheel (Warbucks Oliver))
-@end lisp
+`);
+@end example
 
 Why is Oliver Warbucks listed four times?
 @end quotation
@@ -1785,18 +1941,22 @@ Why is Oliver Warbucks listed four times?
 query system to provide statistics about the company.  For example, to find the
 total salaries of all the computer programmers one will be able to say
 
-@lisp
+@example typescript
+readAll(`
 (sum ?amount
      (and (job ?x (computer programmer))
           (salary ?x ?amount)))
-@end lisp
+`);
+@end example
 
 In general, Ben's new system allows expressions of the form
 
-@lisp
+@example typescript
+readAll(`
 (accumulation-function ⟨@var{variable}⟩
                        ⟨@var{query pattern}⟩)
-@end lisp
+`);
+@end example
 
 @noindent
 where @code{accumulation-function} can be things like @code{sum},
@@ -1879,7 +2039,8 @@ of copies of the original query in which the variables are instantiated with
 values supplied by the stream of frames, and this final stream is printed at
 the terminal:
 
-@lisp
+@example typescript
+readAll(`
 (define input-prompt  ";;; Query input:")
 (define output-prompt ";;; Query results:")
 
@@ -1906,7 +2067,8 @@ the terminal:
                   (contract-question-mark v))))
              (qeval q (singleton-stream '()))))
            (query-driver-loop)))))
-@end lisp
+`);
+@end example
 
 @noindent
 Here, as in the other evaluators in this chapter, we use an abstract syntax for
@@ -1930,7 +2092,8 @@ instantiated, since they could contain variables (for example, if @code{?x} in
 in turn bound to 5).  The action to take if a variable cannot be instantiated
 is given by a procedural argument to @code{instantiate}.
 
-@lisp
+@example typescript
+readAll(`
 (define (instantiate 
          exp frame unbound-var-handler)
   (define (copy exp)
@@ -1948,7 +2111,8 @@ is given by a procedural argument to @code{instantiate}.
                  (copy (cdr exp))))
           (else exp)))
   (copy exp))
-@end lisp
+`);
+@end example
 
 @noindent
 The procedures that manipulate bindings are defined in @ref{4.4.4.8}.
@@ -1964,13 +2128,15 @@ did in implementing generic operations in @ref{Chapter 2}.  Any query that is
 not identified as a special form is assumed to be a simple query, to be
 processed by @code{simple-query}.
 
-@lisp
+@example typescript
+readAll(`
 (define (qeval query frame-stream)
   (let ((qproc (get (type query) 'qeval)))
     (if qproc
         (qproc (contents query) frame-stream)
         (simple-query query frame-stream))))
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Type} and @code{contents}, defined in @ref{4.4.4.7}, implement
@@ -1983,7 +2149,8 @@ arguments a simple query (a pattern) together with a stream of frames, and it
 returns the stream formed by extending each frame by all data-base matches of
 the query.
 
-@lisp
+@example typescript
+readAll(`
 (define (simple-query query-pattern 
                       frame-stream)
   (stream-flatmap
@@ -1993,7 +2160,8 @@ the query.
       (delay 
         (apply-rules query-pattern frame))))
    frame-stream))
-@end lisp
+`);
+@end example
 
 @noindent
 For each frame in the input stream, we use @code{find-assertions} 
@@ -2018,7 +2186,8 @@ extensions that satisfy the first query in the conjunction.  Then, using this
 as the new frame stream, it recursively applies @code{conjoin} to the rest of
 the queries.
 
-@lisp
+@example typescript
+readAll(`
 (define (conjoin conjuncts frame-stream)
   (if (empty-conjunction? conjuncts)
       frame-stream
@@ -2026,14 +2195,17 @@ the queries.
                (qeval 
                 (first-conjunct conjuncts)
                 frame-stream))))
-@end lisp
+`);
+@end example
 
 @noindent
 The expression
 
-@lisp
+@example typescript
+readAll(`
 (put 'and 'qeval conjoin)
-@end lisp
+`);
+@end example
 
 @noindent
 sets up @code{qeval} to dispatch to @code{conjoin} when an @code{and} form is
@@ -2044,7 +2216,8 @@ output streams for the various disjuncts of the @code{or} are computed
 separately and merged using the @code{interleave-delayed} procedure from
 @ref{4.4.4.6}.  (See @ref{Exercise 4.71} and @ref{Exercise 4.72}.)
 
-@lisp
+@example typescript
+readAll(`
 (define (disjoin disjuncts frame-stream)
   (if (empty-disjunction? disjuncts)
       the-empty-stream
@@ -2055,7 +2228,8 @@ separately and merged using the @code{interleave-delayed} procedure from
                (rest-disjuncts disjuncts)
                frame-stream)))))
 (put 'or 'qeval disjoin)
-@end lisp
+`);
+@end example
 
 @noindent
 The predicates and selectors for the syntax of conjuncts and disjuncts are
@@ -2068,7 +2242,8 @@ attempt to extend each frame in the input stream to satisfy the query being
 negated, and we include a given frame in the output stream only if it cannot be
 extended.
 
-@lisp
+@example typescript
+readAll(`
 (define (negate operands frame-stream)
   (stream-flatmap
    (lambda (frame)
@@ -2079,7 +2254,8 @@ extended.
          the-empty-stream))
    frame-stream))
 (put 'not 'qeval negate)
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Lisp-value} is a filter similar to @code{not}.  Each frame in the stream
@@ -2087,7 +2263,8 @@ is used to instantiate the variables in the pattern, the indicated predicate is
 applied, and the frames for which the predicate returns false are filtered out
 of the input stream.  An error results if there are unbound pattern variables.
 
-@lisp
+@example typescript
+readAll(`
 (define (lisp-value call frame-stream)
   (stream-flatmap
    (lambda (frame)
@@ -2103,7 +2280,8 @@ of the input stream.  An error results if there are unbound pattern variables.
          the-empty-stream))
    frame-stream))
 (put 'lisp-value 'qeval lisp-value)
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Execute}, which applies the predicate to the arguments, must @code{eval}
@@ -2113,12 +2291,14 @@ expressions whose evaluation (in Lisp) will produce the arguments.  Note that
 @code{execute} is implemented using @code{eval} and @code{apply} from the
 underlying Lisp system.
 
-@lisp
+@example typescript
+readAll(`
 (define (execute exp)
   (apply (eval (predicate exp) 
                user-initial-environment)
          (args exp)))
-@end lisp
+`);
+@end example
 
 @noindent
 The @code{always-true} special form provides for a query that is always
@@ -2128,11 +2308,13 @@ all the frames in the input stream.  @code{Always-true} is used by the
 that were defined without bodies (that is, rules whose conclusions are always
 satisfied).
 
-@lisp
+@example typescript
+readAll(`
 (define (always-true ignore frame-stream) 
   frame-stream)
 (put 'always-true 'qeval always-true)
-@end lisp
+`);
+@end example
 
 @noindent
 The selectors that define the syntax of @code{not} and @code{lisp-value} are
@@ -2153,20 +2335,23 @@ still work if we eliminated @code{fetch-assertions} and simply checked a stream
 of all assertions in the data base, but the computation would be less efficient
 because we would need to make many more calls to the matcher.
 
-@lisp
+@example typescript
+readAll(`
 (define (find-assertions pattern frame)
   (stream-flatmap 
     (lambda (datum) 
       (check-an-assertion datum pattern frame))
     (fetch-assertions pattern frame)))
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Check-an-assertion} takes as arguments a pattern, a data object
 (assertion), and a frame and returns either a one-element stream containing the
 extended frame or @code{the-empty-stream} if the match fails.
 
-@lisp
+@example typescript
+readAll(`
 (define (check-an-assertion 
          assertion query-pat query-frame)
   (let ((match-result
@@ -2175,7 +2360,8 @@ extended frame or @code{the-empty-stream} if the match fails.
     (if (eq? match-result 'failed)
         the-empty-stream
         (singleton-stream match-result))))
-@end lisp
+`);
+@end example
 
 @noindent
 The basic pattern matcher returns either the symbol @code{failed} or an
@@ -2191,7 +2377,8 @@ frame; in this frame we then match the @code{cdr} of the pattern against the
 @code{cdr} of the data.  If none of these cases are applicable, the match fails
 and we return the symbol @code{failed}.
 
-@lisp
+@example typescript
+readAll(`
 (define (pattern-match pat dat frame)
   (cond ((eq? frame 'failed) 'failed)
         ((equal? pat dat) frame)
@@ -2205,20 +2392,23 @@ and we return the symbol @code{failed}.
           (pattern-match
            (car pat) (car dat) frame)))
         (else 'failed)))
-@end lisp
+`);
+@end example
 
 @noindent
 Here is the procedure that extends a frame by adding a new binding, if this is
 consistent with the bindings already in the frame:
 
-@lisp
+@example typescript
+readAll(`
 (define (extend-if-consistent var dat frame)
   (let ((binding (binding-in-frame var frame)))
     (if binding
         (pattern-match 
          (binding-value binding) dat frame)
         (extend var dat frame))))
-@end lisp
+`);
+@end example
 
 @noindent
 If there is no binding for the variable in the frame, we simply add the binding
@@ -2279,13 +2469,15 @@ of extension frames by applying rules from the data base.
 applicable rules (selected by @code{fetch-rules}, @ref{4.4.4.5}) and
 combines the resulting streams of frames.
 
-@lisp
+@example typescript
+readAll(`
 (define (apply-rules pattern frame)
   (stream-flatmap 
    (lambda (rule)
      (apply-a-rule rule pattern frame))
    (fetch-rules pattern frame)))
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Apply-a-rule} applies rules using the method outlined in 
@@ -2305,7 +2497,8 @@ the renaming approach we have chosen here is the most straightforward, even if
 not the most efficient.  (See @ref{Exercise 4.79}.)  Here is the
 @code{apply-a-rule} procedure:
 
-@lisp
+@example typescript
+readAll(`
 (define (apply-a-rule rule
                       query-pattern
                       query-frame)
@@ -2320,7 +2513,8 @@ not the most efficient.  (See @ref{Exercise 4.79}.)  Here is the
           (qeval (rule-body clean-rule)
                  (singleton-stream 
                   unify-result))))))
-@end lisp
+`);
+@end example
 
 @noindent
 The selectors @code{rule-body} and @code{conclusion} that extract parts of a
@@ -2334,7 +2528,8 @@ the rule to @code{?y-7}.  (@code{Make-new-variable} and
 @code{new-rule-application-id} are included with the syntax procedures in
 @ref{4.4.4.7}.)
 
-@lisp
+@example typescript
+readAll(`
 (define (rename-variables-in rule)
   (let ((rule-application-id 
          (new-rule-application-id)))
@@ -2348,7 +2543,8 @@ the rule to @code{?y-7}.  (@code{Make-new-variable} and
                    (tree-walk (cdr exp))))
             (else exp)))
     (tree-walk rule)))
-@end lisp
+`);
+@end example
 
 @noindent
 The unification algorithm is implemented as a procedure that takes as inputs
@@ -2359,7 +2555,8 @@ symmetrical---variables are allowed on both sides of the match.
 there is extra code (marked ``@code{***}'' below) to handle the case where the
 object on the right side of the match is a variable.
 
-@lisp
+@example typescript
+readAll(`
 (define (unify-match p1 p2 frame)
   (cond ((eq? frame 'failed) 'failed)
         ((equal? p1 p2) frame)
@@ -2380,7 +2577,8 @@ object on the right side of the match is a variable.
            (car p2)
            frame)))
         (else 'failed)))
-@end lisp
+`);
+@end example
 
 @noindent
 In unification, as in one-sided pattern matching, we want to accept a proposed
@@ -2477,7 +2675,8 @@ attempt to bind @code{?x} to @code{?y} matches @code{?y} (the stored value of
 @code{?x}) against @code{?y} (the new value of @code{?x}).  This is taken care
 of by the @code{equal?}  clause of @code{unify-match}.
 
-@lisp
+@example typescript
+readAll(`
 (define (extend-if-possible var val frame)
   (let ((binding (binding-in-frame var frame)))
     (cond (binding
@@ -2497,7 +2696,8 @@ of by the @code{equal?}  clause of @code{unify-match}.
           ((depends-on? val var frame)  @r{; ***}
            'failed)
           (else (extend var val frame)))))
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Depends-on?} is a predicate that tests whether an expression proposed to
@@ -2507,7 +2707,8 @@ a variable that already has a value that depends on our test variable.  The
 structure of @code{depends-on?} is a simple recursive tree walk in which we
 substitute for the values of variables whenever necessary.
 
-@lisp
+@example typescript
+readAll(`
 (define (depends-on? exp var frame)
   (define (tree-walk e)
     (cond ((var? e)
@@ -2526,7 +2727,8 @@ substitute for the values of variables whenever necessary.
                (tree-walk (cdr e))))
           (else false)))
   (tree-walk exp))
-@end lisp
+`);
+@end example
 
 @node 4.4.4.5, 4.4.4.6, 4.4.4.4, 4.4.4
 @subsubsection Maintaining the Data Base
@@ -2546,7 +2748,8 @@ not a constant symbol.  We avoid building our criteria for indexing (using the
 @code{car}, handling only the case of constant symbols) into the program;
 instead we call on predicates and selectors that embody our criteria.
 
-@lisp
+@example typescript
+readAll(`
 (define THE-ASSERTIONS the-empty-stream)
 
 (define (fetch-assertions pattern frame)
@@ -2559,17 +2762,20 @@ instead we call on predicates and selectors that embody our criteria.
 (define (get-indexed-assertions pattern)
   (get-stream (index-key-of pattern)
               'assertion-stream))
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Get-stream} looks up a stream in the table and returns an empty stream if
 nothing is stored there.
 
-@lisp
+@example typescript
+readAll(`
 (define (get-stream key1 key2)
   (let ((s (get key1 key2)))
     (if s s the-empty-stream)))
-@end lisp
+`);
+@end example
 
 @noindent
 Rules are stored similarly, using the @code{car} of the rule conclusion.  Rule
@@ -2583,7 +2789,8 @@ the same @code{car} as the pattern.  For this purpose we store all rules whose
 conclusions start with a variable in a separate stream in our table, indexed by
 the symbol @code{?}.
 
-@lisp
+@example typescript
+readAll(`
 (define THE-RULES the-empty-stream)
 
 (define (fetch-rules pattern frame)
@@ -2598,14 +2805,16 @@ the symbol @code{?}.
    (get-stream (index-key-of pattern)
                'rule-stream)
    (get-stream '? 'rule-stream)))
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Add-rule-or-assertion!} is used by @code{query-driver-loop} to add
 assertions and rules to the data base.  Each item is stored in the index, if
 appropriate, and in a stream of all assertions or rules in the data base.
 
-@lisp
+@example typescript
+readAll(`
 (define (add-rule-or-assertion! assertion)
   (if (rule? assertion)
       (add-rule! assertion)
@@ -2625,13 +2834,15 @@ appropriate, and in a stream of all assertions or rules in the data base.
     (set! THE-RULES
           (cons-stream rule old-rules))
     'ok))
-@end lisp
+`);
+@end example
 
 @noindent
 To actually store an assertion or a rule, we check to see if it can be indexed.
 If so, we store it in the appropriate stream.
 
-@lisp
+@example typescript
+readAll(`
 (define (store-assertion-in-index assertion)
   (if (indexable? assertion)
       (let ((key (index-key-of assertion)))
@@ -2656,37 +2867,44 @@ If so, we store it in the appropriate stream.
                  (cons-stream 
                   rule
                   current-rule-stream)))))))
-@end lisp
+`);
+@end example
 
 @noindent
 The following procedures define how the data-base index is used.  A pattern (an
 assertion or a rule conclusion) will be stored in the table if it starts with a
 variable or a constant symbol.
 
-@lisp
+@example typescript
+readAll(`
 (define (indexable? pat)
   (or (constant-symbol? (car pat))
       (var? (car pat))))
-@end lisp
+`);
+@end example
 
 @noindent
 The key under which a pattern is stored in the table is either @code{?} (if it
 starts with a variable) or the constant symbol with which it starts.
 
-@lisp
+@example typescript
+readAll(`
 (define (index-key-of pat)
   (let ((key (car pat)))
     (if (var? key) '? key)))
-@end lisp
+`);
+@end example
 
 @noindent
 The index will be used to retrieve items that might match a pattern if the
 pattern starts with a constant symbol.
 
-@lisp
+@example typescript
+readAll(`
 (define (use-index? pat)
   (constant-symbol? (car pat)))
-@end lisp
+`);
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.70}Exercise 4.70:} What is the purpose of the
@@ -2695,14 +2913,16 @@ pattern starts with a constant symbol.
 @code{add-assertion!}?  Hint: Recall the definition of the infinite stream of
 ones in @ref{3.5.2}: @code{(define ones (cons-stream 1 ones))}.
 
-@lisp
+@example typescript
+readAll(`
 (define (add-assertion! assertion)
   (store-assertion-in-index assertion)
   (set! THE-ASSERTIONS
         (cons-stream assertion 
                      THE-ASSERTIONS))
   'ok)
-@end lisp
+`);
+@end example
 @end quotation
 
 @node 4.4.4.6, 4.4.4.7, 4.4.4.5, 4.4.4
@@ -2716,7 +2936,8 @@ The query system uses a few stream operations that were not presented in
 they take a delayed argument (like the @code{integral} procedure in 
 @ref{3.5.4}).  This postpones looping in some cases (see @ref{Exercise 4.71}).
 
-@lisp
+@example typescript
+readAll(`
 (define (stream-append-delayed s1 delayed-s2)
   (if (stream-null? s1)
       (force delayed-s2)
@@ -2733,7 +2954,8 @@ they take a delayed argument (like the @code{integral} procedure in
        (interleave-delayed 
         (force delayed-s2)
         (delay (stream-cdr s1))))))
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Stream-flatmap}, which is used throughout the query evaluator to map a
@@ -2743,7 +2965,8 @@ lists in @ref{2.2.3}.  Unlike ordinary @code{flatmap}, however, we
 accumulate the streams with an interleaving process, rather than simply
 appending them (see @ref{Exercise 4.72} and @ref{Exercise 4.73}).
 
-@lisp
+@example typescript
+readAll(`
 (define (stream-flatmap proc s)
   (flatten-stream (stream-map proc s)))
 
@@ -2754,16 +2977,19 @@ appending them (see @ref{Exercise 4.72} and @ref{Exercise 4.73}).
        (stream-car stream)
        (delay (flatten-stream
                (stream-cdr stream))))))
-@end lisp
+`);
+@end example
 
 @noindent
 The evaluator also uses the following simple procedure to generate a stream
 consisting of a single element:
 
-@lisp
+@example typescript
+readAll(`
 (define (singleton-stream x)
   (cons-stream x the-empty-stream))
-@end lisp
+`);
+@end example
 
 @node 4.4.4.7, 4.4.4.8, 4.4.4.6, 4.4.4
 @subsubsection Query Syntax Procedures
@@ -2773,7 +2999,8 @@ specify that a special form is identified by the symbol in its @code{car}.
 They are the same as the @code{type-tag} and @code{contents} procedures in
 @ref{2.4.2}, except for the error message.
 
-@lisp
+@example typescript
+readAll(`
 (define (type exp)
   (if (pair? exp)
       (car exp)
@@ -2785,26 +3012,30 @@ They are the same as the @code{type-tag} and @code{contents} procedures in
       (cdr exp)
       (error "Unknown expression CONTENTS"
              exp)))
-@end lisp
+`);
+@end example
 
 @noindent
 The following procedures, used by @code{query-driver-loop} (in 
 @ref{4.4.4.1}), specify that rules and assertions are added to the data base by
 expressions of the form @code{(assert! ⟨@var{rule-or-assertion}⟩)}:
 
-@lisp
+@example typescript
+readAll(`
 (define (assertion-to-be-added? exp)
   (eq? (type exp) 'assert!))
 
 (define (add-assertion-body exp)
   (car (contents exp)))
-@end lisp
+`);
+@end example
 
 @noindent
 Here are the syntax definitions for the @code{and}, @code{or}, @code{not}, and
 @code{lisp-value} special forms (@ref{4.4.4.2}):
 
-@lisp
+@example typescript
+readAll(`
 (define (empty-conjunction? exps) (null? exps))
 (define (first-conjunct exps) (car exps))
 (define (rest-conjuncts exps) (cdr exps))
@@ -2814,12 +3045,14 @@ Here are the syntax definitions for the @code{and}, @code{or}, @code{not}, and
 (define (negated-query exps) (car exps))
 (define (predicate exps) (car exps))
 (define (args exps) (cdr exps))
-@end lisp
+`);
+@end example
 
 @noindent
 The following three procedures define the syntax of rules:
 
-@lisp
+@example typescript
+readAll(`
 (define (rule? statement)
   (tagged-list? statement 'rule))
 
@@ -2829,7 +3062,8 @@ The following three procedures define the syntax of rules:
   (if (null? (cddr rule))
       '(always-true)
       (caddr rule)))
-@end lisp
+`);
+@end example
 
 @noindent
 @code{Query-driver-loop} (@ref{4.4.4.1}) calls
@@ -2853,7 +3087,8 @@ procedure here explicitly.
 @code{Expand-question-mark} and @code{contract-question-mark} use several
 procedures with @code{string} in their names.  These are Scheme primitives.}
 
-@lisp
+@example typescript
+readAll(`
 (define (query-syntax-process exp)
   (map-over-symbols expand-question-mark exp))
 
@@ -2875,17 +3110,20 @@ procedures with @code{string} in their names.  These are Scheme primitives.}
                    1 
                    (string-length chars))))
         symbol)))
-@end lisp
+`);
+@end example
 
 @noindent
 Once the variables are transformed in this way, the variables in a pattern are
 lists starting with @code{?}, and the constant symbols (which need to be
 recognized for data-base indexing, @ref{4.4.4.5}) are just the symbols.
 
-@lisp
+@example typescript
+readAll(`
 (define (var? exp) (tagged-list? exp '?))
 (define (constant-symbol? exp) (symbol? exp))
-@end lisp
+`);
+@end example
 
 @noindent
 Unique variables are constructed during rule application (in 
@@ -2893,7 +3131,8 @@ Unique variables are constructed during rule application (in
 a rule application is a number, which is incremented each time a rule is
 applied.
 
-@lisp
+@example typescript
+readAll(`
 (define rule-counter 0)
 
 (define (new-rule-application-id)
@@ -2904,14 +3143,16 @@ applied.
          var rule-application-id)
   (cons '? (cons rule-application-id
                  (cdr var))))
-@end lisp
+`);
+@end example
 
 @noindent
 When @code{query-driver-loop} instantiates the query to print the answer, it
 converts any unbound pattern variables back to the right form for printing,
 using
 
-@lisp
+@example typescript
+readAll(`
 (define (contract-question-mark variable)
   (string->symbol
    (string-append "?"
@@ -2921,14 +3162,16 @@ using
           "-"
           (number->string (cadr variable)))
          (symbol->string (cadr variable))))))
-@end lisp
+`);
+@end example
 
 @node 4.4.4.8, Chapter 5, 4.3, 4.4.4
 @subsubsection Frames and Bindings
 
 Frames are represented as lists of bindings, which are variable-value pairs:
 
-@lisp
+@example typescript
+readAll(`
 (define (make-binding variable value)
   (cons variable value))
 
@@ -2943,7 +3186,8 @@ Frames are represented as lists of bindings, which are variable-value pairs:
 
 (define (extend variable value frame)
   (cons (make-binding variable value) frame))
-@end lisp
+`);
+@end example
 
 @quotation
 @strong{@anchor{Exercise 4.71}Exercise 4.71:} Louis Reasoner wonders why the
@@ -2951,7 +3195,8 @@ Frames are represented as lists of bindings, which are variable-value pairs:
 implemented using explicit @code{delay} operations, rather than being defined
 as follows:
 
-@lisp
+@example typescript
+readAll(`
 (define (simple-query 
          query-pattern frame-stream)
   (stream-flatmap
@@ -2969,7 +3214,8 @@ as follows:
               frame-stream)
        (disjoin (rest-disjuncts disjuncts)
                 frame-stream))))
-@end lisp
+`);
+@end example
 
 Can you give examples of queries where these simpler definitions would lead to
 undesirable behavior?
@@ -2986,14 +3232,16 @@ use @code{interleave} in @ref{3.5.3}?)
 @strong{@anchor{Exercise 4.73}Exercise 4.73:} Why does @code{flatten-stream}
 use @code{delay} explicitly?  What would be wrong with defining it as follows:
 
-@lisp
+@example typescript
+readAll(`
 (define (flatten-stream stream)
   (if (stream-null? stream)
       the-empty-stream
       (interleave (stream-car stream)
                   (flatten-stream 
                    (stream-cdr stream)))))
-@end lisp
+`);
+@end example
 @end quotation
 
 @quotation
@@ -3008,7 +3256,8 @@ a singleton stream, so no interleaving is needed when combining these streams.
 @item
 Fill in the missing expressions in Alyssa's program.
 
-@lisp
+@example typescript
+readAll(`
 (define (simple-stream-flatmap proc s)
   (simple-flatten (stream-map proc s)))
 
@@ -3016,7 +3265,8 @@ Fill in the missing expressions in Alyssa's program.
   (stream-map ⟨??⟩
               (stream-filter ⟨??⟩ 
                              stream)))
-@end lisp
+`);
+@end example
 
 @item
 Does the query system's behavior change if we change it in this way?
@@ -3030,33 +3280,41 @@ a new special form called @code{unique}.  @code{Unique} should succeed if there
 is precisely one item in the data base satisfying a specified query.  For
 example,
 
-@lisp
+@example typescript
+readAll(`
 (unique (job ?x (computer wizard)))
-@end lisp
+`);
+@end example
 
 @noindent
 should print the one-item stream
 
-@lisp
+@example typescript
+readAll(`
 (unique (job (Bitdiddle Ben)
              (computer wizard)))
-@end lisp
+`);
+@end example
 
 @noindent
 since Ben is the only computer wizard, and
 
-@lisp
+@example typescript
+readAll(`
 (unique (job ?x (computer programmer)))
-@end lisp
+`);
+@end example
 
 @noindent
 should print the empty stream, since there is more than one computer
 programmer.  Moreover,
 
-@lisp
+@example typescript
+readAll(`
 (and (job ?x ?j) 
      (unique (job ?anyone ?j)))
-@end lisp
+`);
+@end example
 
 @noindent
 should list all the jobs that are filled by only one person, and the people who
@@ -3068,9 +3326,11 @@ procedure that handles this special form, and the second is to make
 @code{qeval} does its dispatching in a data-directed way.  If your procedure is
 called @code{uniquely-asserted}, all you need to do is
 
-@lisp
+@example typescript
+readAll(`
 (put 'unique 'qeval uniquely-asserted)
-@end lisp
+`);
+@end example
 
 @noindent
 and @code{qeval} will dispatch to this procedure for every query whose
@@ -3140,7 +3400,8 @@ evaluator in @ref{4.1}, we saw how to use local environments to avoid
 name conflicts between the parameters of procedures.  For example, in
 evaluating
 
-@lisp
+@example typescript
+readAll(`
 (define (square x) 
   (* x x))
 
@@ -3148,7 +3409,8 @@ evaluating
   (+ (square x) (square y)))
 
 (sum-of-squares 3 4)
-@end lisp
+`);
+@end example
 
 @noindent
 there is no confusion between the @code{x} in @code{square} and the @code{x} in

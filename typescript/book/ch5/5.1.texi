@@ -9,12 +9,11 @@ divisor (@abbr{GCD}) of two integers.  As we saw in @ref{1.2.5},
 Euclid's Algorithm can be carried out by an iterative process, as specified by
 the following procedure:
 
-@lisp
-(define (gcd a b)
-  (if (= b 0)
-      a
-      (gcd b (remainder a b))))
-@end lisp
+@example typescript
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+@end example
 
 @noindent
 A machine to carry out this algorithm must keep track of two numbers, @math{a} and
@@ -172,15 +171,12 @@ reaches @code{done}, we will find the value of the @abbr{GCD} in register
 compute factorials using the iterative algorithm specified by the following
 procedure.  Draw data-path and controller diagrams for this machine.
 
-@lisp
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
-@end lisp
+@example typescript
+import { factorialIterative, runMachine } from "@sicp-ts/ch5/01-register-machines";
+
+const result = runMachine(factorialIterative, { n: 5 });
+result.ok ? result.value.registers["product"] : result.error;
+@end example
 @end quotation
 
 @menu
@@ -252,7 +248,7 @@ and each button and test is used only once in the controller.
 @strong{@anchor{Figure 5.3}Figure 5.3:} @math{\downarrow} A specification of the @abbr{GCD}
 machine.
 
-@lisp
+@example register-machine
 (data-paths
  (registers
   ((name a)
@@ -281,7 +277,7 @@ machine.
    (goto 
     (label test-b))    @r{; unconditional branch}
  gcd-done)             @r{; label}
-@end lisp
+@end example
 
 @end quotation
 
@@ -307,7 +303,7 @@ contents of register @code{b} and the constant 0,'' we will say ``Perform the
 will omit the data-path description, leaving only the controller sequence.
 Thus, the @abbr{GCD} machine is described as follows:
 
-@lisp
+@example register-machine
 (controller
  test-b
    (test (op =) (reg b) (const 0))
@@ -317,7 +313,7 @@ Thus, the @abbr{GCD} machine is described as follows:
    (assign b (reg t))
    (goto (label test-b))
  gcd-done)
-@end lisp
+@end example
 
 @noindent
 This form of description is easier to read than the kind illustrated in
@@ -385,9 +381,9 @@ we use a new kind of instruction called @code{perform}.  Thus, the action of
 printing the contents of register @code{a} is represented in a controller
 sequence by the instruction
 
-@lisp
+@example register-machine
 (perform (op print) (reg a))
-@end lisp
+@end example
 
 @noindent
 @ref{Figure 5.4} shows the data paths and controller for the new @abbr{GCD}
@@ -430,7 +426,7 @@ loops we used in the interpreters of @ref{Chapter 4}.
                      +-----+
 @end example
 
-@lisp
+@example register-machine
  (controller
   gcd-loop
     (assign a (op read))
@@ -445,7 +441,7 @@ loops we used in the interpreters of @ref{Chapter 4}.
   gcd-done
     (perform (op print) (reg a))
     (goto (label gcd-loop)))
-@end lisp
+@end example
 
 @end ifinfo
 @ifhtml
@@ -479,19 +475,19 @@ specify how to compute remainders in terms of simpler operations, such as
 subtraction.  Indeed, we can write a Scheme procedure that finds remainders in
 this way:
 
-@lisp
-(define (remainder n d)
-  (if (< n d) n (remainder (- n d) d)))
-@end lisp
-
+@example typescript
+function remainder(n: number, d: number): number {
+  return n < d ? n : remainder(n - d, d);
+}
+@end example
 We can thus replace the remainder operation in the @abbr{GCD} machine's data
 paths with a subtraction operation and a comparison test.  @ref{Figure 5.5}
 shows the data paths and controller for the elaborated machine.  The
 instruction
 
-@lisp
+@example register-machine
 (assign t (op rem) (reg a) (reg b))
-@end lisp
+@end example
 
 @noindent
 in the @abbr{GCD} controller definition is replaced by a sequence of
@@ -562,7 +558,7 @@ instructions that contains a loop, as shown in @ref{Figure 5.6}.
 @strong{@anchor{Figure 5.6}Figure 5.6:} @math{\downarrow} Controller instruction sequence for the
 @abbr{GCD} machine in @ref{Figure 5.5}.
 
-@lisp
+@example register-machine
 (controller
  test-b
    (test (op =) (reg b) (const 0))
@@ -578,7 +574,7 @@ instructions that contains a loop, as shown in @ref{Figure 5.6}.
    (assign b (reg t))
    (goto (label test-b))
  gcd-done)
-@end lisp
+@end example
 
 @end quotation
 
@@ -586,18 +582,12 @@ instructions that contains a loop, as shown in @ref{Figure 5.6}.
 @strong{@anchor{Exercise 5.3}Exercise 5.3:} Design a machine to compute square
 roots using Newton's method, as described in @ref{Sec.1.1.7,,1.1.7}:
 
-@lisp
-(define (sqrt x)
-  (define (good-enough? guess)
-    (< (abs (- (square guess) x)) 0.001))
-  (define (improve guess)
-    (average guess (/ x guess)))
-  (define (sqrt-iter guess)
-    (if (good-enough? guess)
-        guess
-        (sqrt-iter (improve guess))))
-  (sqrt-iter 1.0))
-@end lisp
+@example typescript
+import { runMachine, sqrtExpanded } from "@sicp-ts/ch5/01-register-machines";
+
+const result = runMachine(sqrtExpanded, { x: 2 });
+result.ok ? result.value.registers["guess"] : result.error;
+@end example
 
 Begin by assuming that @code{good-enough?} and @code{improve} operations are
 available as primitives.  Then show how to expand these in terms of arithmetic
@@ -646,7 +636,7 @@ corresponding portions of the machine's controller sequence.
        +-----+                             +-----+                   
 @end example
 
-@lisp
+@example register-machine
 gcd-1
  (test (op =) (reg b) (const 0))
  (branch (label after-gcd-1))
@@ -664,7 +654,7 @@ gcd-2
  (assign d (reg s))
  (goto (label gcd-2))
 after-gcd-2
-@end lisp
+@end example
 
 @end ifinfo
 @ifhtml
@@ -695,7 +685,7 @@ as the first.  If we do this, we obtain the controller sequence shown in
 a machine that uses the same data-path components for two different
 @abbr{GCD} computations.
 
-@lisp
+@example register-machine
 gcd-1
  (test (op =) (reg b) (const 0))
  (branch (label after-gcd-1))
@@ -713,7 +703,7 @@ gcd-2
  (assign b (reg t))
  (goto (label gcd-2))
 after-gcd-2
-@end lisp
+@end example
 
 @end quotation
 
@@ -735,7 +725,7 @@ of the @code{gcd} instructions.
 @strong{@anchor{Figure 5.9}Figure 5.9:} @math{\downarrow} Using a @code{continue} register to
 avoid the duplicate controller sequence in @ref{Figure 5.8}.
 
-@lisp
+@example register-machine
 gcd
  (test (op =) (reg b) (const 0))
  (branch (label gcd-done))
@@ -760,7 +750,7 @@ after-gcd-1
  (assign continue (const 1))
  (goto (label gcd))
 after-gcd-2
-@end lisp
+@end example
 
 @end quotation
 
@@ -793,7 +783,7 @@ terminate the @code{gcd} subroutine with a branch to the location stored in the
 @code{continue} register simplifies and generalizes the strategy shown in
 @ref{Figure 5.9}.
 
-@lisp
+@example register-machine
 gcd
  (test (op =) (reg b) (const 0))
  (branch (label gcd-done))
@@ -816,7 +806,7 @@ after-gcd-1
  (assign continue (label after-gcd-2))
  (goto (label gcd))
 after-gcd-2
-@end lisp
+@end example
 
 @end quotation
 
@@ -846,23 +836,21 @@ Implementing recursive processes, however, requires an additional mechanism.
 Consider the following recursive method for computing factorials, which we
 first examined in @ref{1.2.1}:
 
-@lisp
-(define (factorial n)
-  (if (= n 1) 
-      1
-      (* (factorial (- n 1)) n)))
-@end lisp
+@example typescript
+function factorial(n: number): number {
+  return n === 1 ? 1 : factorial(n - 1) * n;
+}
+@end example
 
 @noindent
 As we see from the procedure, computing @math{{n!}} requires computing @math{{(n - 1)!}}.
 Our @abbr{GCD} machine, modeled on the procedure
 
-@lisp
-(define (gcd a b)
-  (if (= b 0) 
-      a
-      (gcd b (remainder a b))))
-@end lisp
+@example typescript
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+@end example
 
 @noindent
 similarly had to compute another @abbr{GCD}.  But there is an important
@@ -1001,7 +989,7 @@ subcomputation, is needed.
              /_1_\                  fact  /___\  /___\ done
 @end example
 
-@lisp
+@example register-machine
 (controller
    (assign continue (label fact-done))     @r{; set up final return address}
  fact-loop
@@ -1024,7 +1012,7 @@ subcomputation, is needed.
    (assign val (const 1))                  @r{; base case: }1! = 1
    (goto (reg continue))                   @r{; return to caller}
  fact-done)
-@end lisp
+@end example
 
 @end ifinfo
 @ifhtml
@@ -1057,13 +1045,11 @@ modified during solution of the subproblem (see @ref{Exercise 5.4}).
 Let us examine a more complex recursive process, the tree-recursive computation
 of the Fibonacci numbers, which we introduced in @ref{1.2.2}:
 
-@lisp
-(define (fib n)
-  (if (< n 2) 
-      n 
-      (+ (fib (- n 1)) (fib (- n 2)))))
-@end lisp
-
+@example typescript
+function fib(n: number): number {
+  return n < 2 ? n : fib(n - 1) + fib(n - 2);
+}
+@end example
 @noindent
 Just as with factorial, we can implement the recursive Fibonacci computation as
 a register machine with registers @code{n}, @code{val}, and @code{continue}.
@@ -1082,7 +1068,7 @@ shows the controller sequence for this machine.
 @strong{@anchor{Figure 5.12}Figure 5.12:} @math{\downarrow} Controller for a machine to compute
 Fibonacci numbers.
 
-@lisp
+@example register-machine
 (controller
    (assign continue (label fib-done))
  fib-loop
@@ -1123,7 +1109,7 @@ Fibonacci numbers.
            (reg n))   @r{; base case: Fib(@emph{n}) = @emph{n}}
    (goto (reg continue))
  fib-done)
-@end lisp
+@end example
 
 @end quotation
 
@@ -1137,25 +1123,22 @@ controller instruction sequence and draw a diagram showing the data paths.
 @item
 Recursive exponentiation:
 
-@lisp
-(define (expt b n)
-  (if (= n 0)
-      1
-      (* b (expt b (- n 1)))))
-@end lisp
+@example typescript
+import { exponentRecursive, runMachine } from "@sicp-ts/ch5/01-register-machines";
+
+const result = runMachine(exponentRecursive, { b: 3, n: 4 });
+result.ok ? result.value.registers["val"] : result.error;
+@end example
 
 @item
 Iterative exponentiation:
 
-@lisp
-(define (expt b n)
-  (define (expt-iter counter product)
-    (if (= counter 0)
-        product
-        (expt-iter (- counter 1)
-                   (* b product))))
-  (expt-iter n 1))
-@end lisp
+@example typescript
+import { exponentIterative, runMachine } from "@sicp-ts/ch5/01-register-machines";
+
+const result = runMachine(exponentIterative, { b: 3, n: 4 });
+result.ok ? result.value.registers["product"] : result.error;
+@end example
 
 @end enumerate
 @end quotation
@@ -1182,7 +1165,7 @@ following forms, where each @math{{⟨\kern0.06em input_i⟩}} is either
 @code{(reg ⟨@var{register-name}⟩)} or @code{(const ⟨@var{constant-value}⟩)}.  
 These instructions were introduced in @ref{5.1.1}:
 
-@lisp
+@example register-machine
 (assign ⟨@var{register-name}⟩ (reg ⟨@var{register-name}⟩))
 (assign ⟨@var{register-name}⟩ 
         (const ⟨@var{constant-value}⟩))
@@ -1199,23 +1182,23 @@ These instructions were introduced in @ref{5.1.1}:
       ⟨@var{inputₙ}⟩)
 (branch (label ⟨@var{label-name}⟩))
 (goto (label ⟨@var{label-name}⟩))
-@end lisp
+@end example
 
 @noindent
 The use of registers to hold labels was introduced in @ref{5.1.3}:
 
-@lisp
+@example register-machine
 (assign ⟨@var{register-name}⟩ (label ⟨@var{label-name}⟩))
 (goto (reg ⟨@var{register-name}⟩))
-@end lisp
+@end example
 
 @noindent
 Instructions to use the stack were introduced in @ref{5.1.4}:
 
-@lisp
+@example register-machine
 (save ⟨@var{register-name}⟩)
 (restore ⟨@var{register-name}⟩)
-@end lisp
+@end example
 
 @noindent
 The only kind of @code{⟨}@var{constant-value}@code{⟩} we have seen so far is a number,

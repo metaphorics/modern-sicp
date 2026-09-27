@@ -70,6 +70,16 @@ describe("section 4.1: the metacircular evaluator", () => {
     }),
   );
 
+  it.effect("subtraction negates one argument and preserves left-associative subtraction", () =>
+    Effect.gen(function* () {
+      const env = yield* makeEnv();
+      const transcript = yield* driverLoop(env, ["(- 5)", "(- 0 5)", "(- 5 2)"]);
+      expect(transcript[3]).toBe("-5");
+      expect(transcript[7]).toBe("-5");
+      expect(transcript[11]).toBe("3");
+    }),
+  );
+
   it.effect("prints the book's 4.1.4 sample session", () =>
     Effect.gen(function* () {
       const env = yield* makeEnv();

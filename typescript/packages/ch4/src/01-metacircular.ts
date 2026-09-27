@@ -519,11 +519,20 @@ const numberArgs = (
 const primitive = (name: string, fn: Primitive): [string, Primitive] => [name, fn];
 
 const foldNumbers =
-  (who: string, zero: number, step: (a: number, b: number) => number): Primitive =>
+  (
+    who: string,
+    zero: number,
+    step: (a: number, b: number) => number,
+    unary?: (n: number) => number,
+  ): Primitive =>
   (args) =>
     Effect.flatMap(numberArgs(args, who), (ns) => {
       if (ns.length === 0) {
         return Effect.succeed({ _tag: "Number", n: zero });
+      }
+      if (ns.length === 1 && unary !== undefined) {
+        const only = ns[0];
+        return Effect.succeed({ _tag: "Number", n: unary(only ?? zero) });
       }
       return Effect.succeed({ _tag: "Number", n: ns.reduce(step) });
     });
@@ -612,7 +621,12 @@ export const makePrimitiveProcedures = (
   ),
   primitive(
     "-",
-    foldNumbers("-", 0, (a, b) => a - b),
+    foldNumbers(
+      "-",
+      0,
+      (a, b) => a - b,
+      (n) => 0 - n,
+    ),
   ),
   primitive(
     "*",

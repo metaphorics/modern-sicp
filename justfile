@@ -116,7 +116,7 @@ setup-books:
         (cd "$prefix/src" && echo '{{epubcheck-sha256}}  epubcheck-5.4.0.zip' | sha256sum -c -)
         unzip -q -o "$prefix/src/epubcheck-5.4.0.zip" -d "$prefix/opt"
         printf '#!/bin/sh\nexec java -jar %s/epubcheck.jar "$@"\n' \
-            "$prefix/opt/epubcheck-5.4.0/epubcheck.jar" > "$prefix/bin/epubcheck"
+            "$prefix/opt/epubcheck-5.4.0" > "$prefix/bin/epubcheck"
         chmod +x "$prefix/bin/epubcheck"
     fi
 

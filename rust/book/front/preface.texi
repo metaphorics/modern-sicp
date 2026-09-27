@@ -170,6 +170,13 @@ Technology.  It was edited and produced by The @abbr{MIT} Press under a
 joint production-distribution arrangement with the McGraw-Hill Book Company.
 
 @noindent
+@b{The Rust Edition}@*
+Adapted to Rust.  Every program re-expressed, every exercise kept at
+its @abbr{SICP} number.  The changes and the license terms for adapted
+material are stated in the Preface to the Rust Edition and in
+@file{NOTICE.md}.
+
+@noindent
 Unofficial Texinfo Format @url{http://sicpebook.wordpress.com, @value{utfversion}} (@value{utfversiondate}),
 based on @url{http://www.neilvandyke.org/sicp-texi/, 2.neilvandyke4} (January 10, 2007).
 
@@ -198,12 +205,16 @@ foreword by Alan J. Perlis@*
 @noindent
 Unofficial Texinfo Format version @value{utfversion} (@value{utfversiondate})
 
+@noindent
+The Rust Edition (@value{utfversion})
+
 @end ifinfo
 
 @menu
 * UTF::              Unofficial Texinfo Format
 * Dedication::       Dedication
 * Foreword::         Foreword
+* PrefaceRust:: Preface to the Rust Edition
 * Preface::          Preface to the Second Edition
 * Preface 1e::       Preface to the First Edition
 * Acknowledgments::  Acknowledgments
@@ -547,7 +558,7 @@ more.''
 ---Alan J. Perlis (April 1, 1922 -- February 7, 1990)
 @end quotation
 
-@node    Foreword, Preface, Dedication, Top
+@node    Foreword, PrefaceRust, Dedication, Top
 @unnumbered Foreword
 
 Educators, generals, dieticians, psychologists, and parents program.  Armies,
@@ -709,7 +720,46 @@ nests of parentheses.
 Alan J. Perlis@*
 New Haven, Connecticut
 
-@node    Preface, Preface 1e, Foreword, Top
+
+@node    PrefaceRust, Preface, Foreword, Top
+@unnumbered Preface to the Rust Edition
+
+This is @i{Structure and Interpretation of Computer Programs}, Second
+Edition, adapted to Rust.
+
+What this edition keeps: every section and every exercise number of the
+original book, one to one.  All five chapters and all 356 exercises are
+here.
+
+What this edition changes:
+
+@itemize @bullet
+@item
+Every program is re-expressed in Rust.  A listing appears in an
+@@example rust block, and the printed result of each interaction
+follows the code as a comment line marked with @code{// =>}.
+@item
+Chapter 0 is new.  It teaches the parts of Rust this book uses, so
+the book reads without prior Rust knowledge.
+@item
+The prose is re-cut where the host language changes the lesson:
+closures and ownership (3.2), threads and shared state (3.4), and an explicit backtracking engine for nondeterministic computing (4.3).
+@item
+Each chapter closes with an ``In this language'' note that names the
+host mechanism the chapter relied on.
+@end itemize
+
+Toolchain: Rust 1.98.1, edition 2024.  The code in @file{examples/}, @file{exercises/}, and @file{solutions/} is the source of every listing; tests run with @code{cargo nextest}.
+
+License: the prose of this book is adapted material under
+@url{http://creativecommons.org/licenses/by-sa/4.0/, @abbr{CC BY-SA} 4.0};
+the programs are licensed @abbr{GPL}-3.0-only as a BY-SA Compatible
+License.  See @file{NOTICE.md} for the full notice.
+
+How to read: section 0.8 explains the interaction convention and the
+layout of this edition.
+
+@node    Preface, Preface 1e, PrefaceRust, Top
 @unnumbered Preface to the Second Edition
 
 @quotation

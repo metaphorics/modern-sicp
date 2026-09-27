@@ -129,13 +129,13 @@ pub fn make_machine(
     register_names: &[&str],
     operations: &[(&str, OpHandler)],
     controller_text: &str,
-) -> Result<Machine, Fault> {
+) -> Result<Machine, Fault> @{
     make_machine_from_datums(
         register_names,
         operations,
         parse_controller(controller_text)?,
     )
-}
+@}
 @end example
 
 @subsubheading Registers
@@ -146,59 +146,59 @@ table maps each register name to the value the register holds.  The machine's
 changed:
 
 @example rust
-impl Machine {
+impl Machine @{
     /// Allocates one table entry per name, initialized to
     /// the book's `*unassigned*` sentinel; a repeated name
     /// is a typed fault.
-    pub fn allocate_registers(&mut self, names: &[&str]) -> Result<(), Fault> {
-        for name in names {
-            if self.registers.contains_key(*name) {
-                return Err(Fault::DuplicateRegister {
+    pub fn allocate_registers(&mut self, names: &[&str]) -> Result<(), Fault> @{
+        for name in names @{
+            if self.registers.contains_key(*name) @{
+                return Err(Fault::DuplicateRegister @{
                     reg: (*name).to_owned(),
-                });
-            }
+                @});
+            @}
             self.registers
                 .insert((*name).to_owned(), Value::sym("*unassigned*"));
-        }
+        @}
         Ok(())
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
 The following methods are the machine's whole register interface:
 
 @example rust
-impl Machine {
+impl Machine @{
     /// The single read path: every reader goes through
     /// here; a missing register is a typed fault.
-    fn read(&self, name: &str) -> Result<Value, Fault> {
+    fn read(&self, name: &str) -> Result<Value, Fault> @{
         self.registers
             .get(name)
             .cloned()
-            .ok_or_else(|| Fault::UnknownRegister {
+            .ok_or_else(|| Fault::UnknownRegister @{
                 reg: name.to_owned(),
-            })
-    }
+            @})
+    @}
 
     /// The single store path: assigns, restores, and the
     /// traced-register reports of exercise 5.18 all store
     /// through here.
-    fn store(&mut self, name: &str, value: Value) -> Result<(), Fault> {
+    fn store(&mut self, name: &str, value: Value) -> Result<(), Fault> @{
         let old = self.read(name)?;
-        if self.traced_registers.contains(name) {
+        if self.traced_registers.contains(name) @{
             let line = format!(
-                "{}: {} -> {}",
+                "@{@}: @{@} -> @{@}",
                 name,
                 display_value(&old),
                 display_value(&value)
             );
             self.transcript.push(line);
-        }
+        @}
         self.registers.insert(name.to_owned(), value);
         Ok(())
-    }
-}
+    @}
+@}
 @end example
 
 @subsubheading The stack
@@ -211,24 +211,24 @@ to @code{initialize} the stack to empty; popping an empty stack is a typed
 underflow fault, not a runtime crash.
 
 @example rust
-impl Machine {
+impl Machine @{
     /// Pushes one tagged entry onto the stack: the
     /// register name rides beside the value, the record
     /// exercise 5.18 needs.
-    fn push(&mut self, reg: &str, value: Value) {
+    fn push(&mut self, reg: &str, value: Value) @{
         self.stack.push((reg.to_owned(), value));
-    }
+    @}
 
     /// Pops the top entry; an empty stack is a typed
     /// underflow fault naming the restoring register.
-    fn pop(&mut self, reg: &str) -> Result<(String, Value), Fault> {
+    fn pop(&mut self, reg: &str) -> Result<(String, Value), Fault> @{
         self.stack
             .pop()
-            .ok_or(Fault::StackUnderflow {
+            .ok_or(Fault::StackUnderflow @{
                 reg: reg.to_owned(),
-            })
-    }
-}
+            @})
+    @}
+@}
 @end example
 
 @noindent
@@ -236,16 +236,16 @@ The save and restore instructions call these methods and nothing else does;
 @code{initialize_stack} empties the stack and resets the counters:
 
 @example rust
-impl Machine {
+impl Machine @{
     /// Empties the stack and resets the monitoring
     /// counters added in @ref{5.2.4}.
-    fn initialize_stack(&mut self) {
+    fn initialize_stack(&mut self) @{
         self.stack.clear();
         self.depth = 0;
         self.pushes = 0;
         self.max_depth = 0;
-    }
-}
+    @}
+@}
 @end example
 
 @subsubheading The basic machine
@@ -266,8 +266,8 @@ in the table.
 procedure, which implements the basic machine model.
 
 @example rust
-fn make_new_machine() -> Machine {
-    let mut machine = Machine {
+fn make_new_machine() -> Machine @{
+    let mut machine = Machine @{
         registers: HashMap::new(),
         ops: HashMap::new(),
         insts: Vec::new(),
@@ -289,7 +289,7 @@ fn make_new_machine() -> Machine {
         use_summary: InstructionUse::default(),
         pc: 0,
         flag: Value::sym("*unassigned*"),
-    };
+    @};
     // The flag is an ordinary register in the table: it
     // starts at the book's *unassigned* sentinel, and only
     // a test ever writes it.
@@ -297,7 +297,7 @@ fn make_new_machine() -> Machine {
         .registers
         .insert("flag".to_owned(), Value::sym("*unassigned*"));
     machine
-}
+@}
 @end example
 
 The @code{flag} register is used to control branching in the simulated machine.
@@ -335,35 +335,35 @@ For convenience, we provide an alternate procedural interface to a machine's
 contents, as specified at the beginning of @ref{5.2}:
 
 @example rust
-impl Machine {
+impl Machine @{
     /// The driver loop: one instruction execution
     /// procedure per turn, counting every step, until the
     /// sequence runs out or a fault stops the run.
-    fn execute(&mut self) -> Result<Stop, Fault> {
-        loop {
-            if self.pc >= self.insts.len() {
+    fn execute(&mut self) -> Result<Stop, Fault> @{
+        loop @{
+            if self.pc >= self.insts.len() @{
                 return Ok(Stop::Done);
-            }
+            @}
             self.trace_step();
             self.instruction_count += 1;
             let exec = Rc::clone(&self.insts[self.pc].exec);
             exec(self)?;
-        }
-    }
+        @}
+    @}
 
-    pub fn start(&mut self) -> Result<Stop, Fault> {
+    pub fn start(&mut self) -> Result<Stop, Fault> @{
         self.pc = 0;
         self.execute()
-    }
+    @}
 
-    pub fn get_register(&self, name: &str) -> Result<Value, Fault> {
+    pub fn get_register(&self, name: &str) -> Result<Value, Fault> @{
         self.read(name)
-    }
+    @}
 
-    pub fn set_register(&mut self, name: &str, value: Value) -> Result<(), Fault> {
+    pub fn set_register(&mut self, name: &str, value: Value) -> Result<(), Fault> @{
         self.store(name, value)
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -378,14 +378,14 @@ the book spreads over its @code{get-register} calls is
 fn check_register(
     registers: &HashSet<String>,
     name: &str,
-) -> Result<(), Fault> {
-    if registers.contains(name) {
+) -> Result<(), Fault> @{
+    if registers.contains(name) @{
         return Ok(());
-    }
-    Err(Fault::UnknownRegister {
+    @}
+    Err(Fault::UnknownRegister @{
         reg: name.to_owned(),
-    })
-}
+    @})
+@}
 @end example
 
 @node	5.2.2, 5.2.3, 5.2.1, 5.2
@@ -425,16 +425,16 @@ scanned controller, and the installer uses @code{update_insts} to generate the
 instruction execution procedures and insert them into the instruction list.
 
 @example rust
-impl Machine {
+impl Machine @{
     /// The book's `assemble`, the assembler's main entry:
     /// scans the datums into instructions and labels,
     /// then augments the instructions with their
     /// execution procedures.
-    fn install_program(&mut self, datums: &[Value]) -> Result<(), Fault> {
+    fn install_program(&mut self, datums: &[Value]) -> Result<(), Fault> @{
         let scanned = extract_labels(datums)?;
         self.update_insts(&scanned)
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -445,42 +445,42 @@ associates each label with the index in the list @code{insts} that the label
 designates.
 
 @example rust
-pub fn extract_labels(datums: &[Value]) -> Result<ScannedController, Fault> {
+pub fn extract_labels(datums: &[Value]) -> Result<ScannedController, Fault> @{
     let mut scanned = ScannedController::default();
     let mut pending: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    for datum in datums {
-        let Value::Sym(name) = datum else {
+    for datum in datums @{
+        let Value::Sym(name) = datum else @{
             let index = scanned.insts.len();
-            for label in pending.drain(..) {
+            for label in pending.drain(..) @{
                 scanned.labels.push((label, index));
-            }
+            @}
             let labels: Vec<String> = scanned
                 .labels
                 .iter()
                 .filter(|(_, at)| *at == index)
                 .map(|(name, _)| name.clone())
                 .collect();
-            scanned.insts.push(ScannedInstruction {
+            scanned.insts.push(ScannedInstruction @{
                 text: render_datum(datum),
                 datum: datum.clone(),
                 labels,
-            });
+            @});
             continue;
-        };
-        if !seen.insert(name.to_string()) {
-            return Err(Fault::DuplicateLabel {
+        @};
+        if !seen.insert(name.to_string()) @{
+            return Err(Fault::DuplicateLabel @{
                 label: name.to_string(),
-            });
-        }
+            @});
+        @}
         pending.push(name.to_string());
-    }
+    @}
     // A trailing label names one past the last instruction.
-    for label in pending.drain(..) {
+    for label in pending.drain(..) @{
         scanned.labels.push((label, scanned.insts.len()));
-    }
+    @}
     Ok(scanned)
-}
+@}
 @end example
 
 @noindent
@@ -497,10 +497,10 @@ exercise 5.8:
 @example rust
 /// The scan's two values, returned together: the
 /// instructions in order and the label table.
-struct ScannedController {
+struct ScannedController @{
     insts: Vec<ScannedInstruction>,
     labels: Vec<(String, usize)>,
-}
+@}
 @end example
 
 @noindent
@@ -522,13 +522,13 @@ only the text of the instructions, to include the corresponding execution
 procedures:
 
 @example rust
-impl Machine {
+impl Machine @{
     /// The book's `update-insts!`: builds the one
     /// execution procedure each instruction will ever
     /// need, resolving labels, registers, and operations
     /// at assembly time, and records the instruction-use
     /// summary of exercise 5.12.
-    fn update_insts(&mut self, scanned: &ScannedController) -> Result<(), Fault> {
+    fn update_insts(&mut self, scanned: &ScannedController) -> Result<(), Fault> @{
         let registers: HashSet<String> =
             self.registers.keys().cloned().collect();
         let labels: HashMap<String, usize> = scanned
@@ -537,25 +537,25 @@ impl Machine {
             .map(|(name, index)| (name.clone(), *index))
             .collect();
         let mut slots = Vec::with_capacity(scanned.insts.len());
-        for inst in &scanned.insts {
+        for inst in &scanned.insts @{
             let exec = make_execution_procedure(
                 &inst.datum,
                 &labels,
                 &self.ops,
                 &registers,
             )?;
-            slots.push(Slot {
+            slots.push(Slot @{
                 text: inst.text.clone(),
                 labels: inst.labels.clone(),
                 exec,
-            });
-        }
+            @});
+        @}
         self.insts = slots;
         self.labels = labels;
         self.use_summary = summarize(scanned);
         Ok(())
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -569,12 +569,12 @@ inserted later by @code{update-insts!}.
 /// immediately precede it (retained for exercise 5.17),
 /// and the execution procedure: one step over the
 /// machine.
-struct Slot {
+struct Slot @{
     text: String,
     dominating: Option<(String, usize)>,
     labels: Vec<String>,
     exec: Exec,
-}
+@}
 
 /// The execution-procedure type: one step over the
 /// machine.
@@ -590,9 +590,9 @@ Elements of the label table are pairs:
 @example rust
 /// The label table's entries: each pairs the label name
 /// with the index of the instruction it dominates.
-fn make_label_entry(label_name: String, index: usize) -> (String, usize) {
+fn make_label_entry(label_name: String, index: usize) -> (String, usize) @{
     (label_name, index)
-}
+@}
 @end example
 
 @noindent
@@ -604,14 +604,14 @@ Entries will be looked up in the table with
 pub fn lookup_label(
     labels: &[(String, usize)],
     name: &str,
-) -> Result<usize, Fault> {
+) -> Result<usize, Fault> @{
     labels.iter().find(|(seen, _)| seen == name).map_or(
-        Err(Fault::UnknownLabel {
+        Err(Fault::UnknownLabel @{
             label: name.to_owned(),
-        }),
+        @}),
         |(_, index)| Ok(*index),
     )
-}
+@}
 @end example
 
 @quotation
@@ -656,16 +656,16 @@ fn make_execution_procedure(
     labels: &HashMap<String, usize>,
     ops: &HashMap<String, OpHandler>,
     registers: &HashSet<String>,
-) -> Result<Exec, Fault> {
+) -> Result<Exec, Fault> @{
     let text = render_datum(datum);
-    let Ok(items) = datum.list_items() else {
-        return Err(Fault::BadInstruction { text });
-    };
-    let Some(Value::Sym(kind)) = items.first() else {
-        return Err(Fault::BadInstruction { text });
-    };
+    let Ok(items) = datum.list_items() else @{
+        return Err(Fault::BadInstruction @{ text @});
+    @};
+    let Some(Value::Sym(kind)) = items.first() else @{
+        return Err(Fault::BadInstruction @{ text @});
+    @};
     let rest = items.get(1..).unwrap_or_default();
-    match kind.as_ref() {
+    match kind.as_ref() @{
         "assign" => make_assign(&text, rest, labels, ops, registers),
         "test" => make_test(&text, rest, ops, registers),
         "branch" => make_branch(&text, rest, labels),
@@ -673,9 +673,9 @@ fn make_execution_procedure(
         "save" => make_save(&text, rest, registers),
         "restore" => make_restore(&text, rest, registers),
         "perform" => make_perform(&text, rest, ops, registers),
-        _ => Err(Fault::BadInstruction { text }),
-    }
-}
+        _ => Err(Fault::BadInstruction @{ text @}),
+    @}
+@}
 @end example
 
 @noindent
@@ -702,21 +702,21 @@ fn make_assign(
     labels: &HashMap<String, usize>,
     ops: &HashMap<String, OpHandler>,
     registers: &HashSet<String>,
-) -> Result<Exec, Fault> {
-    let bad = || Fault::BadInstruction {
+) -> Result<Exec, Fault> @{
+    let bad = || Fault::BadInstruction @{
         text: text.to_owned(),
-    };
+    @};
     let reg = sym_text(rest.first().ok_or_else(bad)?).ok_or_else(bad)?;
     check_register(registers, &reg)?;
     let source =
         assign_source(rest.get(1..).ok_or_else(bad)?, labels, ops, registers)?;
-    Ok(Rc::new(move |machine| {
+    Ok(Rc::new(move |machine| @{
         let value = source.evaluate(machine)?;
         machine.store(&reg, value)?;
         machine.advance_pc();
         Ok(())
-    }))
-}
+    @}))
+@}
 @end example
 
 @noindent
@@ -730,12 +730,12 @@ them as its own variants:
 /// assembly time: the target name and the analyzed
 /// source are the instruction's own parts, so the
 /// selectors of the text are these variants.
-enum Source {
+enum Source @{
     Reg(String),
     Const(Value),
     Label(String),
     Op(Operation),
-}
+@}
 @end example
 
 @noindent
@@ -757,13 +757,13 @@ path @code{set_register} uses, and then advances the program counter to the
 next instruction by running
 
 @example rust
-impl Machine {
+impl Machine @{
     /// The book's `advance-pc`: the next instruction in
     /// sequence.
-    fn advance_pc(&mut self) {
+    fn advance_pc(&mut self) @{
         self.pc += 1;
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -788,23 +788,23 @@ fn make_test(
     rest: &[Value],
     ops: &HashMap<String, OpHandler>,
     registers: &HashSet<String>,
-) -> Result<Exec, Fault> {
+) -> Result<Exec, Fault> @{
     let (name, inputs) =
-        operation_parts(rest, registers).map_err(|_| Fault::BadInstruction {
+        operation_parts(rest, registers).map_err(|_| Fault::BadInstruction @{
             text: text.to_owned(),
-        })?;
+        @})?;
     let handler = resolve_operation(ops, &name)?;
-    let operation = Operation {
+    let operation = Operation @{
         name,
         handler,
         inputs,
-    };
-    Ok(Rc::new(move |machine| {
+    @};
+    Ok(Rc::new(move |machine| @{
         machine.flag = operation.evaluate(machine)?;
         machine.advance_pc();
         Ok(())
-    }))
-}
+    @}))
+@}
 @end example
 
 @noindent
@@ -827,22 +827,22 @@ fn make_branch(
     text: &str,
     rest: &[Value],
     labels: &HashMap<String, usize>,
-) -> Result<Exec, Fault> {
+) -> Result<Exec, Fault> @{
     let destination = label_destination(text, rest, labels)?;
-    Ok(Rc::new(move |machine| match machine.flag {
-        Value::Bool(true) => {
+    Ok(Rc::new(move |machine| match machine.flag @{
+        Value::Bool(true) => @{
             machine.pc = destination;
             Ok(())
-        }
-        Value::Bool(false) => {
+        @}
+        Value::Bool(false) => @{
             machine.advance_pc();
             Ok(())
-        }
-        _ => Err(Fault::BranchWithoutTest {
+        @}
+        _ => Err(Fault::BranchWithoutTest @{
             step: machine.instruction_count,
-        }),
-    }))
-}
+        @}),
+    @}))
+@}
 @end example
 
 @noindent
@@ -859,51 +859,51 @@ fn make_goto(
     rest: &[Value],
     labels: &HashMap<String, usize>,
     registers: &HashSet<String>,
-) -> Result<Exec, Fault> {
-    let bad = || Fault::BadInstruction {
+) -> Result<Exec, Fault> @{
+    let bad = || Fault::BadInstruction @{
         text: text.to_owned(),
-    };
+    @};
     let destination = rest.first().ok_or_else(bad)?;
-    let Ok(items) = destination.list_items() else {
+    let Ok(items) = destination.list_items() else @{
         return Err(bad());
-    };
-    let [Value::Sym(tag), argument] = items.as_slice() else {
+    @};
+    let [Value::Sym(tag), argument] = items.as_slice() else @{
         return Err(bad());
-    };
-    match tag.as_ref() {
-        "label" => {
+    @};
+    match tag.as_ref() @{
+        "label" => @{
             let name = sym_text(argument).ok_or_else(bad)?;
             let target =
-                *labels.get(&name).ok_or_else(|| Fault::UnknownLabel {
+                *labels.get(&name).ok_or_else(|| Fault::UnknownLabel @{
                     label: name.clone(),
-                })?;
-            Ok(Rc::new(move |machine| {
+                @})?;
+            Ok(Rc::new(move |machine| @{
                 machine.pc = target;
                 Ok(())
-            }))
-        }
-        "reg" => {
+            @}))
+        @}
+        "reg" => @{
             let name = sym_text(argument).ok_or_else(bad)?;
             check_register(registers, &name)?;
-            Ok(Rc::new(move |machine| {
+            Ok(Rc::new(move |machine| @{
                 let value = machine.read(&name)?;
-                let Some(label) = sym_text(&value) else {
-                    return Err(Fault::GotoNonLabel {
+                let Some(label) = sym_text(&value) else @{
+                    return Err(Fault::GotoNonLabel @{
                         reg: name.clone(),
                         value: display_value(&value),
                         step: machine.instruction_count,
-                    });
-                };
+                    @});
+                @};
                 machine.pc = *machine
                     .labels
                     .get(&label)
-                    .ok_or(Fault::UnknownLabel { label })?;
+                    .ok_or(Fault::UnknownLabel @{ label @})?;
                 Ok(())
-            }))
-        }
+            @}))
+        @}
         _ => Err(bad()),
-    }
-}
+    @}
+@}
 @end example
 
 @subsubheading Other instructions
@@ -920,37 +920,37 @@ fn make_save(
     text: &str,
     rest: &[Value],
     registers: &HashSet<String>,
-) -> Result<Exec, Fault> {
+) -> Result<Exec, Fault> @{
     let reg = register_argument(text, rest, registers)?;
-    Ok(Rc::new(move |machine| {
+    Ok(Rc::new(move |machine| @{
         let value = machine.read(&reg)?;
         machine.push(&reg, value);
         machine.advance_pc();
         Ok(())
-    }))
-}
+    @}))
+@}
 
 fn make_restore(
     text: &str,
     rest: &[Value],
     registers: &HashSet<String>,
-) -> Result<Exec, Fault> {
+) -> Result<Exec, Fault> @{
     let reg = register_argument(text, rest, registers)?;
-    Ok(Rc::new(move |machine| {
+    Ok(Rc::new(move |machine| @{
         let step = machine.instruction_count;
         let (saved, value) = machine.pop(&reg)?;
-        if machine.discipline == RestoreDiscipline::Tagged && saved != reg {
-            return Err(Fault::MismatchedRestore {
+        if machine.discipline == RestoreDiscipline::Tagged && saved != reg @{
+            return Err(Fault::MismatchedRestore @{
                 reg: reg.clone(),
                 saved,
                 step,
-            });
-        }
+            @});
+        @}
         machine.store(&reg, value)?;
         machine.advance_pc();
         Ok(())
-    }))
-}
+    @}))
+@}
 @end example
 
 @noindent
@@ -966,23 +966,23 @@ fn make_perform(
     rest: &[Value],
     ops: &HashMap<String, OpHandler>,
     registers: &HashSet<String>,
-) -> Result<Exec, Fault> {
+) -> Result<Exec, Fault> @{
     let (name, inputs) =
-        operation_parts(rest, registers).map_err(|_| Fault::BadInstruction {
+        operation_parts(rest, registers).map_err(|_| Fault::BadInstruction @{
             text: text.to_owned(),
-        })?;
+        @})?;
     let handler = resolve_operation(ops, &name)?;
-    let operation = Operation {
+    let operation = Operation @{
         name,
         handler,
         inputs,
-    };
-    Ok(Rc::new(move |machine| {
+    @};
+    Ok(Rc::new(move |machine| @{
         operation.evaluate(machine)?;
         machine.advance_pc();
         Ok(())
-    }))
-}
+    @}))
+@}
 @end example
 
 @subsubheading Execution procedures for subexpressions
@@ -1003,30 +1003,30 @@ fn make_input(
     datum: &Value,
     op: &str,
     registers: &HashSet<String>,
-) -> Result<Input, Fault> {
-    let bad = || Fault::BadInstruction {
+) -> Result<Input, Fault> @{
+    let bad = || Fault::BadInstruction @{
         text: render_datum(datum),
-    };
-    let Ok(items) = datum.list_items() else {
+    @};
+    let Ok(items) = datum.list_items() else @{
         return Err(bad());
-    };
-    let [Value::Sym(tag), argument] = items.as_slice() else {
+    @};
+    let [Value::Sym(tag), argument] = items.as_slice() else @{
         return Err(bad());
-    };
-    match tag.as_ref() {
-        "reg" => {
+    @};
+    match tag.as_ref() @{
+        "reg" => @{
             let name = sym_text(argument).ok_or_else(bad)?;
             check_register(registers, &name)?;
             Ok(Input::Reg(name))
-        }
+        @}
         "const" => Ok(Input::Const(const_value(argument)?)),
-        "label" => Err(Fault::LabelOperand {
+        "label" => Err(Fault::LabelOperand @{
             op: op.to_owned(),
             label: sym_text(argument).unwrap_or_default(),
-        }),
+        @}),
         _ => Err(bad()),
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1036,10 +1036,10 @@ The analyzed forms carry the syntax with them; the shared reader's parse of
 @example rust
 /// One analyzed operation input: a register reference or
 /// a constant.
-enum Input {
+enum Input @{
     Reg(String),
     Const(Value),
-}
+@}
 @end example
 
 @noindent
@@ -1055,41 +1055,41 @@ its analyzed inputs, ready to run:
 fn operation_parts(
     value_exp: &[Value],
     registers: &HashSet<String>,
-) -> Result<(String, Vec<Input>), Fault> {
-    let bad = || Fault::BadInstruction {
+) -> Result<(String, Vec<Input>), Fault> @{
+    let bad = || Fault::BadInstruction @{
         text: value_exp
             .first()
             .map_or_else(String::new, render_datum),
-    };
+    @};
     let head = value_exp.first().ok_or_else(bad)?;
-    let Ok(head_items) = head.list_items() else {
+    let Ok(head_items) = head.list_items() else @{
         return Err(bad());
-    };
-    let [Value::Sym(tag), op_name] = head_items.as_slice() else {
+    @};
+    let [Value::Sym(tag), op_name] = head_items.as_slice() else @{
         return Err(bad());
-    };
-    if tag.as_ref() != "op" {
+    @};
+    if tag.as_ref() != "op" @{
         return Err(bad());
-    }
+    @}
     let name = sym_text(op_name).ok_or_else(bad)?;
     let inputs = value_exp[1..]
         .iter()
         .map(|datum| make_input(datum, &name, registers))
         .collect::<Result<Vec<_>, _>>()?;
     Ok((name, inputs))
-}
+@}
 
-impl Operation {
+impl Operation @{
     /// Evaluates the application against the machine.
-    fn evaluate(&self, machine: &mut Machine) -> Result<Value, Fault> {
+    fn evaluate(&self, machine: &mut Machine) -> Result<Value, Fault> @{
         let args: Vec<Value> = self
             .inputs
             .iter()
             .map(|input| input.evaluate(machine))
             .collect::<Result<_, _>>()?;
         call_op(&self.name, &self.handler, machine, &args)
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1099,11 +1099,11 @@ components:
 @example rust
 /// One analyzed operation application: the resolved
 /// handler and its inputs, ready to run.
-struct Operation {
+struct Operation @{
     name: String,
     handler: OpHandler,
     inputs: Vec<Input>,
-}
+@}
 @end example
 
 @noindent
@@ -1121,11 +1121,11 @@ in the operation table for the machine:
 fn resolve_operation(
     ops: &HashMap<String, OpHandler>,
     name: &str,
-) -> Result<OpHandler, Fault> {
-    ops.get(name).cloned().ok_or_else(|| Fault::UnknownOperation {
+) -> Result<OpHandler, Fault> @{
+    ops.get(name).cloned().ok_or_else(|| Fault::UnknownOperation @{
         op: name.to_owned(),
-    })
-}
+    @})
+@}
 @end example
 
 @quotation
@@ -1239,17 +1239,17 @@ shared arithmetic:
 // in make_new_machine, beside the shared arithmetic:
 machine.ops.insert(
     "initialize-stack".to_owned(),
-    Rc::new(|machine: &mut Machine, _| {
+    Rc::new(|machine: &mut Machine, _| @{
         machine.initialize_stack();
         Ok(Value::sym("done"))
-    }),
+    @}),
 );
 machine.ops.insert(
     "print-stack-statistics".to_owned(),
-    Rc::new(|machine: &mut Machine, _| {
+    Rc::new(|machine: &mut Machine, _| @{
         machine.print_stack_statistics();
         Ok(Value::sym("done"))
-    }),
+    @}),
 );
 @end example
 
@@ -1257,38 +1257,38 @@ machine.ops.insert(
 Here is the new version of @code{make-stack}:
 
 @example rust
-impl Machine {
+impl Machine @{
     /// Pushes one tagged entry and keeps the monitoring
     /// counters: the number of pushes and the maximum
     /// depth reached.
-    fn push(&mut self, reg: &str, value: Value) {
-        match self.discipline {
-            RestoreDiscipline::PerRegister => {
+    fn push(&mut self, reg: &str, value: Value) @{
+        match self.discipline @{
+            RestoreDiscipline::PerRegister => @{
                 self.per_register
                     .entry(reg.to_owned())
                     .or_default()
                     .push(value);
-            }
+            @}
             _ => self.stack.push((reg.to_owned(), value)),
-        }
+        @}
         self.depth += 1;
         self.pushes += 1;
-        if self.depth > self.max_depth {
+        if self.depth > self.max_depth @{
             self.max_depth = self.depth;
-        }
-    }
+        @}
+    @}
 
     /// The book's `print-statistics`: one line to the
     /// machine transcript, so a run's measurements are
     /// collected in order and can be replayed.
-    pub fn print_stack_statistics(&mut self) {
+    pub fn print_stack_statistics(&mut self) @{
         let line = format!(
-            "(total-pushes = {} maximum-depth = {})",
+            "(total-pushes = @{@} maximum-depth = @{@})",
             self.pushes, self.max_depth
         );
         self.transcript.push(line);
-    }
-}
+    @}
+@}
 @end example
 
 @noindent

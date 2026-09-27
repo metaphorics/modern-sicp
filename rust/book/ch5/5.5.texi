@@ -1847,7 +1847,7 @@ mechanism described in @ref{Exercise 5.38} would still open-code it as a
 primitive, ignoring the new binding.  For example, consider the procedure
 
 @example rust
-let cfg = Config { open_code: true, ..default_config() };
+let cfg = Config @{ open_code: true, ..default_config() @};
 let seq = compile_program(&cfg, &new_state(), "(lambda (+ * a b x y) (+ (* a x) (* b y)))", &Linkage::Next)?;
 @end example
 
@@ -1961,7 +1961,6 @@ without exposing their entry and environment, using
 let procedure = compiled_procedure_word(Value::sym("entry2"), Value::Nil);
 let displayed = render_compiled_word(&procedure);
 @end example
-}
 
 @example
 external-entry

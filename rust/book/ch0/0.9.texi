@@ -57,7 +57,7 @@ error[E0382]: borrow of moved value: `a`
   |
 2 |     let b = a;
   |             - value moved here
-3 |     println!("{a} {b}");
+3 |     println!("@{a@} @{b@}");
   |               ^^ value borrowed here after move
 @end example
 
@@ -76,7 +76,7 @@ followed by a comment giving the value or text that line produces; a result
 comment always carries the marker @code{// =>}, as in
 
 @example rust
-println!("{}", 6 * 7);
+println!("@{@}", 6 * 7);
 // => 42
 @end example
 

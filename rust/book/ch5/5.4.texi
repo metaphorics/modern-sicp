@@ -257,10 +257,10 @@ argument lists:
 // operand list, and adjoin-arg appending at the end, the
 // book's order.
 operation("empty-arglist", |_| Ok(Value::Nil)),
-operation("adjoin-arg", |args| {
+operation("adjoin-arg", |args| @{
     let (word, argl) = two("adjoin-arg", args)?;
     adjoin_arg(word, &argl)
-}),
+@}),
 @end example
 
 @noindent
@@ -268,10 +268,10 @@ We also use an additional syntax procedure to test for the last operand in a
 combination:
 
 @example rust
-operation("last-operand?", |args| {
+operation("last-operand?", |args| @{
     let (_, last) = sequence_flags("last-operand?", &one("last-operand?", args)?.0)?;
     Ok(Value::boolean(last))
-})
+@})
 @end example
 }
 
@@ -579,10 +579,10 @@ repeating this until all the expressions have been evaluated:@footnote{We can
 define @code{no-more-exps?} as follows:
 
 @example rust
-operation("no-more-exps?", |args| {
+operation("no-more-exps?", |args| @{
     let (empty, _) = sequence_flags("no-more-exps?", &one("no-more-exps?", args)?.0)?;
     Ok(Value::boolean(empty))
-})
+@})
 @end example
 }
 
@@ -808,9 +808,9 @@ To support the @code{get-global-environment} operation we define
 let global_env = Env::global();
 global_env.define("true".into(), Value::boolean(true));
 global_env.define("false".into(), Value::boolean(false));
-for name in OBJECT_PRIMITIVES {
+for name in OBJECT_PRIMITIVES @{
     global_env.define((*name).into(), primitive_word(name));
-}
+@}
 let global = intern_environment(global_env);
 
 // The get-global-environment operation answers that word.

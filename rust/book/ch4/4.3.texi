@@ -926,9 +926,9 @@ A failure needs no closure: it is the typed signal
 /// The engine's failure signal: the book's @code{(amb)} and a
 /// @code{require} that does not hold both raise it, and the nearest
 /// choice frame catches it.
-pub fn fail(&self) -> EvalResult {
+pub fn fail(&self) -> EvalResult @{
     Err(SchemeError::Backtrack)
-}
+@}
 @end example
 
 @noindent
@@ -941,11 +941,11 @@ in the evaluator:
 /// the environment to evaluate it in; @code{k} is the continuation that
 /// consumes each chosen value; @code{trail_len} is the trail length at
 /// the push, the line backtracking rolls the trail back to.
-struct AmbFrame {
+struct AmbFrame @{
     alts: VecDeque<(Value, Rc<Env>)>,
     k: Cont,
     trail_len: usize,
-}
+@}
 @end example
 
 @noindent

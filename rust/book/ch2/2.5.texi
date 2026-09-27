@@ -86,21 +86,21 @@ according to the data type of its arguments.
 The generic arithmetic procedures are defined as follows:
 
 @example rust
-pub fn add(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn add(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> @{
     apply_generic(table, "add", &[x.clone(), y.clone()])
-}
+@}
 
-pub fn sub(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn sub(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> @{
     apply_generic(table, "sub", &[x.clone(), y.clone()])
-}
+@}
 
-pub fn mul(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn mul(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> @{
     apply_generic(table, "mul", &[x.clone(), y.clone()])
-}
+@}
 
-pub fn div(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn div(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> @{
     apply_generic(table, "div", &[x.clone(), y.clone()])
-}
+@}
 @end example
 
 @noindent
@@ -121,7 +121,7 @@ arguments, they are installed in the table keyed by the list
 @code{(scheme-number scheme-number)}:
 
 @example rust
-pub fn install_scheme_number_package(table: &OpTable) {
+pub fn install_scheme_number_package(table: &OpTable) @{
     let sn2 = key_list(&[Key::sym("scheme-number"), Key::sym("scheme-number")]);
     table.put(Key::sym("add"), sn2.clone(), Rc::new(ordinary2(checked_add, f64_add)));
     table.put(Key::sym("sub"), sn2.clone(), Rc::new(ordinary2(checked_sub, f64_sub)));
@@ -132,7 +132,7 @@ pub fn install_scheme_number_package(table: &OpTable) {
         Key::sym("scheme-number"),
         Rc::new(|args: &[Value]| Ok(args[0].clone())),
     );
-}
+@}
 @end example
 
 @noindent
@@ -146,10 +146,10 @@ the Scheme-number package will create (tagged) ordinary numbers by
 means of the procedure:
 
 @example rust
-pub fn make_scheme_number(table: &OpTable, n: i128) -> Result<Value, SchemeError> {
+pub fn make_scheme_number(table: &OpTable, n: i128) -> Result<Value, SchemeError> @{
     let make = get_make(table, "scheme-number")?;
     make(&[Value::Int(n)])
-}
+@}
 @end example
 
 @noindent
@@ -161,49 +161,49 @@ procedures in the package: the same numerator-over-denominator arithmetic,
 written over the bare pair that the @code{rational} tag wraps:
 
 @example rust
-pub fn install_rational_package(table: &OpTable) {
-    fn numer(x: &Value) -> Result<i128, SchemeError> {
+pub fn install_rational_package(table: &OpTable) @{
+    fn numer(x: &Value) -> Result<i128, SchemeError> @{
         as_int(&car(x)?)
-    }
-    fn denom(x: &Value) -> Result<i128, SchemeError> {
+    @}
+    fn denom(x: &Value) -> Result<i128, SchemeError> @{
         as_int(&cdr(x)?)
-    }
-    fn make_rat(n: i128, d: i128) -> Result<Value, SchemeError> {
+    @}
+    fn make_rat(n: i128, d: i128) -> Result<Value, SchemeError> @{
         let (n, d) = norm_ratio(n, d)?;
         Ok(pair(Value::Int(n), Value::Int(d)))
-    }
+    @}
     fn cross(
         n1: i128,
         d1: i128,
         n2: i128,
         d2: i128,
         op: fn(i128, i128) -> Result<i128, SchemeError>,
-    ) -> Result<(i128, i128), SchemeError> {
+    ) -> Result<(i128, i128), SchemeError> @{
         Ok((op(checked_mul(n1, d2)?, checked_mul(n2, d1)?)?, checked_mul(d1, d2)?))
-    }
+    @}
 
     let rat_key = key_list(&[Key::sym("rational"), Key::sym("rational")]);
-    let binary = |f: fn(&Value, &Value) -> Result<Value, SchemeError>| {
+    let binary = |f: fn(&Value, &Value) -> Result<Value, SchemeError>| @{
         move |args: &[Value]| f(&args[0], &args[1]).map(|v| attach_tag("rational", v))
-    };
-    let add_rat = |x: &Value, y: &Value| {
+    @};
+    let add_rat = |x: &Value, y: &Value| @{
         let (n, d) = cross(numer(x)?, denom(x)?, numer(y)?, denom(y)?, checked_add)?;
         make_rat(n, d)
-    };
-    let sub_rat = |x: &Value, y: &Value| {
+    @};
+    let sub_rat = |x: &Value, y: &Value| @{
         let (n, d) = cross(numer(x)?, denom(x)?, numer(y)?, denom(y)?, checked_sub)?;
         make_rat(n, d)
-    };
-    let mul_rat = |x: &Value, y: &Value| {
+    @};
+    let mul_rat = |x: &Value, y: &Value| @{
         let n = checked_mul(numer(x)?, numer(y)?)?;
         let d = checked_mul(denom(x)?, denom(y)?)?;
         make_rat(n, d)
-    };
-    let div_rat = |x: &Value, y: &Value| {
+    @};
+    let div_rat = |x: &Value, y: &Value| @{
         let n = checked_mul(numer(x)?, denom(y)?)?;
         let d = checked_mul(denom(x)?, numer(y)?)?;
         make_rat(n, d)
-    };
+    @};
     table.put(Key::sym("add"), rat_key.clone(), Rc::new(binary(add_rat)));
     table.put(Key::sym("sub"), rat_key.clone(), Rc::new(binary(sub_rat)));
     table.put(Key::sym("mul"), rat_key.clone(), Rc::new(binary(mul_rat)));
@@ -211,17 +211,17 @@ pub fn install_rational_package(table: &OpTable) {
     table.put(
         Key::sym("make"),
         Key::sym("rational"),
-        Rc::new(move |args: &[Value]| {
+        Rc::new(move |args: &[Value]| @{
             let (n, d) = (as_int(&args[0])?, as_int(&args[1])?);
             make_rat(n, d).map(|v| attach_tag("rational", v))
-        }),
+        @}),
     );
-}
+@}
 
-pub fn make_rational(table: &OpTable, n: i128, d: i128) -> Result<Value, SchemeError> {
+pub fn make_rational(table: &OpTable, n: i128, d: i128) -> Result<Value, SchemeError> @{
     let make = get_make(table, "rational")?;
     make(&[Value::Int(n), Value::Int(d)])
-}
+@}
 @end example
 
 @noindent
@@ -233,7 +233,7 @@ as the internal operations, the same @code{add_complex}, @code{sub_complex},
 @code{mul_complex}, and @code{div_complex} procedures from @ref{2.4.1}.
 
 @example rust
-pub fn install_complex_package(table: &OpTable) -> Result<(), SchemeError> {
+pub fn install_complex_package(table: &OpTable) -> Result<(), SchemeError> @{
     // imported procedures from rectangular and polar packages
     let make_from_real_imag = table
         .get(&Key::sym("make-from-real-imag"), &Key::sym("rectangular"))
@@ -244,14 +244,14 @@ pub fn install_complex_package(table: &OpTable) -> Result<(), SchemeError> {
 
     // internal procedures: the arithmetic of 2.4.1 over the bare
     // rectangular- or polar-tagged contents
-    let add_complex = {
+    let add_complex = @{
         let mk = Rc::clone(&make_from_real_imag);
-        move |args: &[Value]| {
+        move |args: &[Value]| @{
             let re = real_of(&args[0])? + real_of(&args[1])?;
             let im = imag_of(&args[0])? + imag_of(&args[1])?;
             mk(&[Value::real(re), Value::real(im)])
-        }
-    };
+        @}
+    @};
     // sub_complex, mul_complex, div_complex follow the same shape,
     // subtracting, multiplying, and dividing through the generic
     // selectors of 2.4.2.
@@ -269,7 +269,7 @@ pub fn install_complex_package(table: &OpTable) -> Result<(), SchemeError> {
         Rc::new(move |args: &[Value]| mk_ri(args).map(|z| attach_tag("complex", z))),
     );
     Ok(())
-}
+@}
 @end example
 
 @noindent
@@ -284,19 +284,19 @@ pub fn make_complex_from_real_imag(
     table: &OpTable,
     x: f64,
     y: f64,
-) -> Result<Value, SchemeError> {
+) -> Result<Value, SchemeError> @{
     let make = table
         .get(&Key::sym("make-from-real-imag"), &Key::sym("complex"))
         .ok_or_else(|| table_err("complex"))?;
     make(&[Value::real(x), Value::real(y)])
-}
+@}
 
-pub fn make_complex_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, SchemeError> {
+pub fn make_complex_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, SchemeError> @{
     let make = table
         .get(&Key::sym("make-from-mag-ang"), &Key::sym("complex"))
         .ok_or_else(|| table_err("complex"))?;
     make(&[Value::real(r), Value::real(a)])
-}
+@}
 @end example
 
 @noindent
@@ -442,13 +442,13 @@ to supply an almost identical procedure to handle the types
 @code{(scheme-number complex)}.}
 
 @example rust
-let add_complex_to_scheme_number = |args: &[Value]| {
+let add_complex_to_scheme_number = |args: &[Value]| @{
     let z = &args[0];
     let x = as_arith_real(&args[1])?;
     let re = real_of(z)? + x;
     let im = imag_of(z)?;
     make_from_real_imag(&[Value::real(re), Value::real(im)])
-};
+@};
 
 table.put(
     Key::sym("add"),
@@ -495,12 +495,12 @@ Here is a typical coercion procedure, which transforms a given ordinary number
 to a complex number with that real part and zero imaginary part:
 
 @example rust
-pub fn scheme_number_to_complex(n: &Value) -> Result<Value, SchemeError> {
+pub fn scheme_number_to_complex(n: &Value) -> Result<Value, SchemeError> @{
     Ok(Value::tagged(
         "complex",
         rect_make_from_real_imag_tagged(as_arith_real(n)?, 0.0),
     ))
-}
+@}
 @end example
 
 @noindent
@@ -541,24 +541,24 @@ known way to coerce either type to the other type, we give up.  Here is the
 procedure:
 
 @example rust
-pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SchemeError> {
+pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SchemeError> @{
     let tags = tags_of(args)?;
     let tag_key = key_list(&tags.iter().map(|t| Key::Sym(Rc::clone(t))).collect::<Vec<_>>());
-    if let Some(proc) = table.get(&Key::sym(op), &tag_key) {
+    if let Some(proc) = table.get(&Key::sym(op), &tag_key) @{
         return proc(&contents_of(args)?);
-    }
-    if let ([a1, a2], [t1, t2]) = (args, tags.as_slice()) {
-        if let Some(coerce) = get_coercion(table, t1.as_ref(), t2.as_ref()) {
+    @}
+    if let ([a1, a2], [t1, t2]) = (args, tags.as_slice()) @{
+        if let Some(coerce) = get_coercion(table, t1.as_ref(), t2.as_ref()) @{
             let a1 = coerce(std::slice::from_ref(a1))?;
             return apply_generic(table, op, &[a1, a2.clone()]);
-        }
-        if let Some(coerce) = get_coercion(table, t2.as_ref(), t1.as_ref()) {
+        @}
+        if let Some(coerce) = get_coercion(table, t2.as_ref(), t1.as_ref()) @{
             let a2 = coerce(std::slice::from_ref(a2))?;
             return apply_generic(table, op, &[a1.clone(), a2]);
-        }
-    }
+        @}
+    @}
     Err(no_method(op, &tags))
-}
+@}
 @end example
 
 @noindent
@@ -780,9 +780,9 @@ the table for those types?  For example, assume that we've defined a generic
 exponentiation operation:
 
 @example rust
-pub fn exp(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> {
+pub fn exp(table: &OpTable, x: &Value, y: &Value) -> Result<Value, SchemeError> @{
     apply_generic(table, "exp", &[x.clone(), y.clone()])
-}
+@}
 @end example
 
 @noindent
@@ -794,11 +794,11 @@ package but not in any other package:
 table.put(
     Key::sym("exp"),
     key_list(&[Key::sym("scheme-number"), Key::sym("scheme-number")]),
-    Rc::new(|args: &[Value]| {
+    Rc::new(|args: &[Value]| @{
         let b = as_int(&args[0])?;
         let e = as_int(&args[1])?;
         checked_pow(b, e).map(Value::Int)
-    }),
+    @}),
 );
 @end example
 
@@ -993,13 +993,13 @@ contents, as the @code{same_variable?} procedure of @ref{2.3.2} did.  The
 following procedures define addition and multiplication of polys:
 
 @example rust
-pub fn add_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SchemeError> {
+pub fn add_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SchemeError> @{
     poly_binary(table, p1, p2, "ADD-POLY", add_terms)
-}
+@}
 
-pub fn mul_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SchemeError> {
+pub fn mul_poly(table: &OpTable, p1: &Value, p2: &Value) -> Result<Value, SchemeError> @{
     poly_binary(table, p1, p2, "MUL-POLY", mul_terms)
-}
+@}
 
 type TermsOp = fn(&OpTable, &[Term], &[Term]) -> Result<Vec<Term>, SchemeError>;
 
@@ -1010,17 +1010,17 @@ fn poly_binary(
     p2: &Value,
     op: &str,
     terms_op: TermsOp,
-) -> Result<Value, SchemeError> {
+) -> Result<Value, SchemeError> @{
     let (v1, t1) = poly_parts(p1)?;
     let (v2, t2) = poly_parts(p2)?;
-    if !same_variable(&v1, &v2) {
-        return Err(SchemeError::UserRaised {
-            message: format!("Polys not in same var: {op}"),
+    if !same_variable(&v1, &v2) @{
+        return Err(SchemeError::UserRaised @{
+            message: format!("Polys not in same var: @{op@}"),
             irritants: vec![p1.clone(), p2.clone()],
-        });
-    }
+        @});
+    @}
     Ok(make_poly(v1.as_ref(), &terms_op(table, &t1, &t2)?))
-}
+@}
 @end example
 
 @noindent
@@ -1031,24 +1031,24 @@ embed all our code in an installation procedure for the polynomial package,
 similar to the ones in @ref{2.5.1}:
 
 @example rust
-pub fn install_polynomial_package(table: &Rc<OpTable>) {
+pub fn install_polynomial_package(table: &Rc<OpTable>) @{
     let poly_key = key_list(&[Key::sym("polynomial"), Key::sym("polynomial")]);
     let t = Rc::clone(table);
-    let poly_add = move |args: &[Value]| {
+    let poly_add = move |args: &[Value]| @{
         add_poly(&t, &args[0], &args[1]).map(|p| attach_tag("polynomial", p))
-    };
+    @};
     table.put(Key::sym("add"), poly_key.clone(), Rc::new(poly_add));
     let t = Rc::clone(table);
-    let poly_mul = move |args: &[Value]| {
+    let poly_mul = move |args: &[Value]| @{
         mul_poly(&t, &args[0], &args[1]).map(|p| attach_tag("polynomial", p))
-    };
+    @};
     table.put(Key::sym("mul"), poly_key, Rc::new(poly_mul));
     table.put(
         Key::sym("make"),
         Key::sym("polynomial"),
         Rc::new(make),
     );
-}
+@}
 @end example
 
 @noindent
@@ -1087,32 +1087,32 @@ the power of the indeterminate, then the program that produces the term list
 for a sum is almost identical to @code{union_set}.}
 
 @example rust
-pub fn add_terms(table: &OpTable, l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
-    if is_empty_termlist(l1) {
+pub fn add_terms(table: &OpTable, l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> @{
+    if is_empty_termlist(l1) @{
         return Ok(l2.to_vec());
-    }
-    if is_empty_termlist(l2) {
+    @}
+    if is_empty_termlist(l2) @{
         return Ok(l1.to_vec());
-    }
+    @}
     let t1 = first_term(l1)?;
     let t2 = first_term(l2)?;
-    match order(t1).cmp(&order(t2)) {
-        std::cmp::Ordering::Greater => {
+    match order(t1).cmp(&order(t2)) @{
+        std::cmp::Ordering::Greater => @{
             adjoin_term(table, t1.clone(), &add_terms(table, rest_terms(l1), l2)?)
-        }
-        std::cmp::Ordering::Less => {
+        @}
+        std::cmp::Ordering::Less => @{
             adjoin_term(table, t2.clone(), &add_terms(table, l1, rest_terms(l2))?)
-        }
-        std::cmp::Ordering::Equal => {
+        @}
+        std::cmp::Ordering::Equal => @{
             let sum = add(table, coeff(t1), coeff(t2))?;
             adjoin_term(
                 table,
                 make_term(order(t1), sum),
                 &add_terms(table, rest_terms(l1), rest_terms(l2))?,
             )
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -1129,26 +1129,26 @@ factors and whose coefficient is the product of the coefficients of the
 factors:
 
 @example rust
-pub fn mul_terms(table: &OpTable, l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
-    let Some(t1) = l1.first() else {
+pub fn mul_terms(table: &OpTable, l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> @{
+    let Some(t1) = l1.first() else @{
         return Ok(the_empty_termlist());
-    };
+    @};
     let head = mul_term_by_all_terms(table, t1, l2)?;
     add_terms(table, &head, &mul_terms(table, &l1[1..], l2)?)
-}
+@}
 
 pub fn mul_term_by_all_terms(
     table: &OpTable,
     t1: &Term,
     l: &[Term],
-) -> Result<Vec<Term>, SchemeError> {
-    let Some(t2) = l.first() else {
+) -> Result<Vec<Term>, SchemeError> @{
+    let Some(t2) = l.first() else @{
         return Ok(the_empty_termlist());
-    };
+    @};
     let product = mul(table, coeff(t1), &t2.coeff)?;
     let rest = mul_term_by_all_terms(table, t1, &l[1..])?;
     adjoin_term(table, make_term(order(t1) + t2.order, product), &rest)
-}
+@}
 @end example
 
 @noindent
@@ -1281,45 +1281,45 @@ guarantee, we could have implemented @code{adjoin_term} to be similar to the
 (@ref{Exercise 2.61}).}
 
 @example rust
-pub fn adjoin_term(table: &OpTable, term: Term, terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
-    if is_zero(table, &term.coeff)? {
+pub fn adjoin_term(table: &OpTable, term: Term, terms: &[Term]) -> Result<Vec<Term>, SchemeError> @{
+    if is_zero(table, &term.coeff)? @{
         return Ok(terms.to_vec());
-    }
+    @}
     let mut out = Vec::with_capacity(terms.len() + 1);
     out.push(term);
     out.extend_from_slice(terms);
     Ok(out)
-}
+@}
 
-pub fn the_empty_termlist() -> Vec<Term> {
+pub fn the_empty_termlist() -> Vec<Term> @{
     Vec::new()
-}
+@}
 
-pub fn first_term(terms: &[Term]) -> Result<&Term, SchemeError> {
-    terms.first().ok_or_else(|| {
+pub fn first_term(terms: &[Term]) -> Result<&Term, SchemeError> @{
+    terms.first().ok_or_else(|| @{
         SchemeError::TypeMismatch("first-term of an empty term list".into())
-    })
-}
+    @})
+@}
 
-pub fn rest_terms(terms: &[Term]) -> &[Term] {
+pub fn rest_terms(terms: &[Term]) -> &[Term] @{
     &terms[1.min(terms.len())..]
-}
+@}
 
-pub fn is_empty_termlist(terms: &[Term]) -> bool {
+pub fn is_empty_termlist(terms: &[Term]) -> bool @{
     terms.is_empty()
-}
+@}
 
-pub fn make_term(order: u32, coeff: Value) -> Term {
-    Term { order, coeff }
-}
+pub fn make_term(order: u32, coeff: Value) -> Term @{
+    Term @{ order, coeff @}
+@}
 
-pub fn order(term: &Term) -> u32 {
+pub fn order(term: &Term) -> u32 @{
     term.order
-}
+@}
 
-pub fn coeff(term: &Term) -> &Value {
+pub fn coeff(term: &Term) -> &Value @{
     &term.coeff
-}
+@}
 @end example
 
 @noindent
@@ -1330,11 +1330,11 @@ Users of the polynomial package will create (tagged) polynomials by means of
 the procedure:
 
 @example rust
-pub fn make_polynomial(table: &OpTable, var: &str, terms: &[Term]) -> Result<Value, SchemeError> {
+pub fn make_polynomial(table: &OpTable, var: &str, terms: &[Term]) -> Result<Value, SchemeError> @{
     let make = get_make(table, "polynomial")?;
     let term_values: Vec<Value> = terms.iter().map(term_to_value).collect();
     make(&[Value::sym(var), Value::list(term_values)])
-}
+@}
 @end example
 
 @quotation
@@ -1426,22 +1426,22 @@ pub fn div_terms(
     table: &OpTable,
     l1: &[Term],
     l2: &[Term],
-) -> Result<(Vec<Term>, Vec<Term>), SchemeError> {
-    if is_empty_termlist(l1) {
+) -> Result<(Vec<Term>, Vec<Term>), SchemeError> @{
+    if is_empty_termlist(l1) @{
         return Ok((the_empty_termlist(), the_empty_termlist()));
-    }
+    @}
     let t1 = first_term(l1)?;
     let t2 = first_term(l2)?;
-    if order(t2) > order(t1) {
+    if order(t2) > order(t1) @{
         return Ok((the_empty_termlist(), l1.to_vec()));
-    }
+    @}
     let new_c = div(table, coeff(t1), coeff(t2))?;
     let new_o = order(t1) - order(t2);
     // compute rest of result recursively
     let (rest_q, rest_r) = ...;
     // form complete result
     ...
-}
+@}
 @end example
 @end quotation
 
@@ -1567,13 +1567,13 @@ itself.  For the domain of polynomials, the measure of a polynomial is its
 degree.}  The integer version is
 
 @example rust
-fn gcd(a: i128, b: i128) -> Result<i128, SchemeError> {
-    if b == 0 {
+fn gcd(a: i128, b: i128) -> Result<i128, SchemeError> @{
+    if b == 0 @{
         Ok(a)
-    } else {
+    @} else @{
         gcd(b, a.checked_rem(b).ok_or(SchemeError::DivisionByZero)?)
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1581,14 +1581,14 @@ Using this, we could make the obvious modification to define a @abbr{GCD}
 operation that works on term lists:
 
 @example rust
-fn gcd_terms(table: &OpTable, a: &[Term], b: &[Term]) -> Result<Vec<Term>, SchemeError> {
-    if is_empty_termlist(b) {
+fn gcd_terms(table: &OpTable, a: &[Term], b: &[Term]) -> Result<Vec<Term>, SchemeError> @{
+    if is_empty_termlist(b) @{
         Ok(a.to_vec())
-    } else {
+    @} else @{
         let r = remainder_terms(table, a, b)?;
         gcd_terms(table, b, &r)
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1757,10 +1757,10 @@ Define a procedure analogous to @code{reduce_terms} that does what the original
 @code{make_rat} did for integers:
 
 @example rust
-fn reduce_integers(n: i128, d: i128) -> Result<(i128, i128), SchemeError> {
+fn reduce_integers(n: i128, d: i128) -> Result<(i128, i128), SchemeError> @{
     let g = gcd(n, d)?;
     Ok((n / g, d / g))
-}
+@}
 @end example
 
 and define @code{reduce} as a generic operation that calls @code{apply_generic}

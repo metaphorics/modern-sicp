@@ -831,7 +831,7 @@ the root between 2 and 4 of @math{{\sin x = 0}}:
 @example rust
 match half_interval_method(f64::sin, 2.0, 4.0) @{
     Ok(pi_approx) => println!("@{@}", pi_approx),
-    Err(err) => println!("Error: @{err}"),
+    Err(err) => println!("Error: @{err@}"),
 @}
 // => 3.14111328125
 @end example
@@ -843,7 +843,7 @@ the equation @math{{x^3 - 2x - 3 = 0}} between 1 and 2:
 @example rust
 match half_interval_method(|x| x * x * x - 2.0 * x - 3.0, 1.0, 2.0) @{
     Ok(root) => println!("@{@}", root),
-    Err(err) => println!("Error: @{err}"),
+    Err(err) => println!("Error: @{err@}"),
 @}
 // => 1.89306640625
 @end example
@@ -1594,7 +1594,7 @@ fn linear_combination(a: f64, b: f64, x: f64, y: f64) -> f64 @{
     a * x + b * y
 @}
 
-println!("@{}", linear_combination(2.0, 3.0, 4.0, 5.0));
+println!("@{@}", linear_combination(2.0, 3.0, 4.0, 5.0));
 // => 23.0
 @end example
 
@@ -1610,7 +1610,7 @@ fn linear_combination(a: f64, b: f64, x: f64, y: f64) -> f64 @{
     add(mul(a, x), mul(b, y))
 @}
 
-println!("@{}", linear_combination(2.0, 3.0, 4.0, 5.0));
+println!("@{@}", linear_combination(2.0, 3.0, 4.0, 5.0));
 // => 23.0
 @end example
 

@@ -343,7 +343,7 @@ posing queries in response to the system's prompt.  For example, to find all
 computer programmers one can say
 
 @example rust
-println!("{}", microshaft().session(&[
+println!("@{@}", microshaft().session(&[
     "(job ?x (computer programmer))",
 ]));
 // => ;;; Query input: (job ?x (computer programmer))
@@ -416,7 +416,7 @@ matches all job entries whose third item is a two-element list whose first item
 is @code{computer}:
 
 @example rust
-println!("{:?}", microshaft().answers("(job ?x (computer . ?type))"));
+println!("@{:?@}", microshaft().answers("(job ?x (computer . ?type))"));
 // => (job (Bitdiddle Ben) (computer wizard))
 // => (job (Hacker Alyssa P) (computer programmer))
 // => (job (Fect Cy D) (computer programmer))
@@ -428,7 +428,7 @@ println!("{:?}", microshaft().answers("(job ?x (computer . ?type))"));
 This same pattern does @emph{not} match
 
 @example rust
-println!("{:?}", microshaft().answers("(job ?x (computer programmer trainee))"));
+println!("@{:?@}", microshaft().answers("(job ?x (computer programmer trainee))"));
 // => (job (Reasoner Louis) (computer programmer trainee))
 @end example
 
@@ -440,7 +440,7 @@ to change the pattern so that the third item could be any list beginning with
 introduced in @ref{Exercise 2.20}.}
 
 @example rust
-println!("{:?}", microshaft().answers("(job ?x (computer . ?type))"));
+println!("@{:?@}", microshaft().answers("(job ?x (computer . ?type))"));
 // => (job (Bitdiddle Ben) (computer wizard))
 // => (job (Hacker Alyssa P) (computer programmer))
 // => (job (Fect Cy D) (computer programmer))
@@ -552,7 +552,7 @@ We can use @code{and} as follows to find the addresses of all the computer
 programmers:
 
 @example rust
-println!("{:?}", microshaft().answers("(and (job ?person (computer programmer)) (address ?person ?where))"));
+println!("@{:?@}", microshaft().answers("(and (job ?person (computer programmer)) (address ?person ?where))"));
 // => (and (job (Hacker Alyssa P) (computer programmer)) (address (Hacker Alyssa P) (Cambridge (Mass Ave) 78)))
 // => (and (job (Fect Cy D) (computer programmer)) (address (Fect Cy D) (Cambridge (Ames Street) 3)))
 @end example
@@ -561,7 +561,7 @@ println!("{:?}", microshaft().answers("(and (job ?person (computer programmer)) 
 The resulting output is
 
 @example rust
-println!("{:?}", microshaft().answers("(and (job ?person (computer programmer)) (address ?person ?where))"));
+println!("@{:?@}", microshaft().answers("(and (job ?person (computer programmer)) (address ?person ?where))"));
 // => (and (job (Hacker Alyssa P) (computer programmer)) (address (Hacker Alyssa P) (Cambridge (Mass Ave) 78)))
 // => (and (job (Fect Cy D) (computer programmer)) (address (Fect Cy D) (Cambridge (Ames Street) 3)))
 @end example
@@ -585,7 +585,7 @@ Another means of constructing compound queries is through @code{or}.  For
 example,
 
 @example rust
-println!("{:?}", microshaft().answers("(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))"));
+println!("@{:?@}", microshaft().answers("(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))"));
 // => (or (supervisor (Hacker Alyssa P) (Bitdiddle Ben)) (supervisor (Hacker Alyssa P) (Hacker Alyssa P)))
 // => (or (supervisor (Reasoner Louis) (Bitdiddle Ben)) (supervisor (Reasoner Louis) (Hacker Alyssa P)))
 // => (or (supervisor (Fect Cy D) (Bitdiddle Ben)) (supervisor (Fect Cy D) (Hacker Alyssa P)))
@@ -631,7 +631,7 @@ least one of @math{{⟨\kern0.1em query_1⟩}} @r{…} @math{{⟨\kern0.1em quer
 Compound queries can also be formed with @code{not}. For example,
 
 @example rust
-println!("{:?}", microshaft().answers("(and (supervisor ?x (Bitdiddle Ben)) (not (job ?x (computer programmer))))"));
+println!("@{:?@}", microshaft().answers("(and (supervisor ?x (Bitdiddle Ben)) (not (job ?x (computer programmer))))"));
 // => (and (supervisor (Tweakit Lem E) (Bitdiddle Ben)) (not (job (Tweakit Lem E) (computer programmer))))
 // => (and (supervisor (Bitdiddle Ben) (Warbucks Oliver)) (not (job (Bitdiddle Ben) (computer programmer))))
 // => (and (supervisor (Scrooge Eben) (Warbucks Oliver)) (not (job (Scrooge Eben) (computer programmer))))
@@ -674,7 +674,7 @@ matching in the query language is designed to do) or inequality (since that can
 be done with the @code{same} rule shown below).}
 
 @example rust
-println!("{:?}", microshaft().answers("(and (salary ?person ?amount) (lisp-value > ?amount 30000))"));
+println!("@{:?@}", microshaft().answers("(and (salary ?person ?amount) (lisp-value > ?amount 30000))"));
 // => (and (salary (Bitdiddle Ben) 60000) (lisp-value > 60000 30000))
 // => (and (salary (Hacker Alyssa P) 40000) (lisp-value > 40000 30000))
 // => (and (salary (Fect Cy D) 35000) (lisp-value > 35000 30000))
@@ -771,7 +771,7 @@ pattern needn't be explicitly in the data base as an assertion.  It can be an
 implicit assertion implied by a rule.  For example, the query
 
 @example rust
-println!("{:?}", microshaft().answers("(lives-near ?x (Bitdiddle Ben))"));
+println!("@{:?@}", microshaft().answers("(lives-near ?x (Bitdiddle Ben))"));
 // => (lives-near (Reasoner Louis) (Bitdiddle Ben))
 // => (lives-near (Aull DeWitt) (Bitdiddle Ben))
 @end example
@@ -780,7 +780,7 @@ println!("{:?}", microshaft().answers("(lives-near ?x (Bitdiddle Ben))"));
 results in
 
 @example rust
-println!("{:?}", microshaft().answers("(lives-near ?x (Bitdiddle Ben))"));
+println!("@{:?@}", microshaft().answers("(lives-near ?x (Bitdiddle Ben))"));
 // => (lives-near (Reasoner Louis) (Bitdiddle Ben))
 // => (lives-near (Aull DeWitt) (Bitdiddle Ben))
 @end example
@@ -789,7 +789,7 @@ println!("{:?}", microshaft().answers("(lives-near ?x (Bitdiddle Ben))"));
 To find all computer programmers who live near Ben Bitdiddle, we can ask
 
 @example rust
-println!("{:?}", microshaft().answers("(and (job ?x (computer programmer)) (lives-near ?x (Bitdiddle Ben)))"));
+println!("@{:?@}", microshaft().answers("(and (job ?x (computer programmer)) (lives-near ?x (Bitdiddle Ben)))"));
 // => (and (job (Fect Cy D) (computer programmer)) (lives-near (Fect Cy D) (Bitdiddle Ben)))
 @end example
 
@@ -1114,7 +1114,7 @@ The pattern matcher is all the mechanism that is needed to process simple
 queries that don't involve rules.  For instance, to process the query
 
 @example rust
-println!("{:?}", microshaft().answers("(job ?x (computer programmer))"));
+println!("@{:?@}", microshaft().answers("(job ?x (computer programmer))"));
 // => (job (Hacker Alyssa P) (computer programmer))
 // => (job (Fect Cy D) (computer programmer))
 @end example
@@ -1197,7 +1197,7 @@ the ability of our matcher to demand that a match be consistent with a
 specified frame.  For example, to handle the @code{and} of two queries, such as
 
 @example rust
-println!("{:?}", microshaft().answers("(and (can-do-job ?x (computer programmer trainee)) (job ?person ?x))"));
+println!("@{:?@}", microshaft().answers("(and (can-do-job ?x (computer programmer trainee)) (job ?person ?x))"));
 // => (can-do-job (computer programmer) (computer programmer trainee))
 @end example
 
@@ -1216,7 +1216,7 @@ This produces a stream of frames, each of which contains a binding for
 @code{?x}.  Then for each frame in the stream we find all entries that match
 
 @example rust
-println!("{:?}", microshaft().answers("(job ?person ?x)"));
+println!("@{:?@}", microshaft().answers("(job ?person ?x)"));
 // => (job ?person (computer programmer trainee))
 @end example
 
@@ -1444,7 +1444,7 @@ inferences from rules. To see how this is accomplished, consider processing a
 query that involves applying a rule, such as
 
 @example rust
-println!("{:?}", microshaft().answers("(lives-near ?x (Hacker Alyssa P))"));
+println!("@{:?@}", microshaft().answers("(lives-near ?x (Hacker Alyssa P))"));
 // => (lives-near (Reasoner Louis) (Hacker Alyssa P))
 @end example
 
@@ -1578,7 +1578,7 @@ that the input is not a query but rather an assertion or rule to be added to
 the data base.  For instance,
 
 @example rust
-println!("{}", microshaft().session(&[
+println!("@{@}", microshaft().session(&[
     "(assert! (job (Bitdiddle Ben) (computer wizard)))",
     "(assert! (rule (wheel ?person) (and (supervisor ?middle-manager ?person) (supervisor ?x ?middle-manager))))",
 ]));
@@ -1673,7 +1673,7 @@ infinite loops in making deductions.  As a simple example, suppose we are
 setting up a data base of famous marriages, including
 
 @example rust
-println!("{}", microshaft().session(&[
+println!("@{@}", microshaft().session(&[
     "(assert! (married Minnie Mickey))",
     "(married Mickey ?who)",
 ]));
@@ -1694,7 +1694,7 @@ we will get no response, because the system doesn't know that if @math{A} is
 married to @math{B}, then @math{B} is married to @math{A}.  So we assert the rule
 
 @example rust
-println!("{}", microshaft().session(&[
+println!("@{@}", microshaft().session(&[
     "(assert! (rule (married ?x ?y) (married ?y ?x)))",
     "(married Mickey ?who)",
 ]));
@@ -3064,9 +3064,9 @@ budget is gone.
 // This edition's measured result: the delayed engine streams the direct
 // supervisor, and the undelayed engine (whose streams are already lazy
 // structures) answers the same first answer under the same budget.
-println!("{:?}", delayed.answers_upto(ben_query, 1));
+println!("@{:?@}", delayed.answers_upto(ben_query, 1));
 // => ["(outranked-by (Bitdiddle Ben) (Warbucks Oliver))"]
-println!("{:?}", undelayed.answers_upto(ben_query, 1));
+println!("@{:?@}", undelayed.answers_upto(ben_query, 1));
 // => ["(outranked-by (Bitdiddle Ben) (Warbucks Oliver))"]
 @end example
 

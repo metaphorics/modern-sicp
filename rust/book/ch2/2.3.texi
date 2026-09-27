@@ -130,9 +130,9 @@ Symbols also let us read the parts of a list back out:
 
 @example rust
 let abc: List<Symbol> = List::from_iter([sym("a"), sym("b"), sym("c")]);
-println!("{}", abc.car().cloned().expect("cons cell"));
+println!("@{@}", abc.car().cloned().expect("cons cell"));
 // => a
-println!("{}", abc.cdr().expect("cons cell"));
+println!("@{@}", abc.cdr().expect("cons cell"));
 // => (b c)
 @end example
 
@@ -167,20 +167,20 @@ the first occurrence of the item:
 
 @example rust
 /// Finds `item` in `xs` by `eq?`-style comparison: the book's `memq`.
-pub fn memq<T: PartialEq + Clone>(item: &T, xs: &List<T>) -> Option<List<T>> {
+pub fn memq<T: PartialEq + Clone>(item: &T, xs: &List<T>) -> Option<List<T>> @{
     let mut cursor = xs;
-    loop {
-        match cursor {
+    loop @{
+        match cursor @{
             List::Nil => return None,
-            List::Cons(x, rest) => {
-                if x == item {
+            List::Cons(x, rest) => @{
+                if x == item @{
                     return Some(cursor.clone());
-                }
+                @}
                 cursor = rest;
-            }
-        }
-    }
-}
+            @}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -298,11 +298,11 @@ But we can still ask what nested quotation @emph{would} build, by
 representing exactly what a reader constructs, as data, and nothing more:
 
 @example rust
-enum Quoted {
+enum Quoted @{
     Sym(Symbol),
     Pair(Box<Quoted>, Box<Quoted>),
     Nil,
-}
+@}
 @end example
 
 @noindent
@@ -407,7 +407,7 @@ should also be able to construct expressions from parts.  The type that grants
 all of this at once is:
 
 @example rust
-pub enum Expr {
+pub enum Expr @{
     /// A number.
     Num(i128),
     /// A variable, identified by its symbol.
@@ -416,7 +416,7 @@ pub enum Expr {
     Sum(Box<Expr>, Box<Expr>),
     /// A product of two expressions.
     Product(Box<Expr>, Box<Expr>),
-}
+@}
 @end example
 
 @noindent
@@ -434,15 +434,15 @@ needs comparing, not merely a shape to match:
 @example rust
 /// Checks whether an expression is equal to a given number: the book's
 /// `=number?`.
-pub fn is_number(exp: &Expr, num: i128) -> bool {
+pub fn is_number(exp: &Expr, num: i128) -> bool @{
     matches!(exp, Expr::Num(x) if *x == num)
-}
+@}
 
 /// Checks whether `exp` is the variable `var`: the book's
 /// `(same-variable? exp var)`.
-pub fn is_same_variable(exp: &Expr, var: &Symbol) -> bool {
+pub fn is_same_variable(exp: &Expr, var: &Symbol) -> bool @{
     matches!(exp, Expr::Var(x) if x == var)
-}
+@}
 @end example
 
 @noindent
@@ -459,21 +459,21 @@ pub fn deriv_via(
     var: &Symbol,
     make_sum: &impl Fn(Expr, Expr) -> Result<Expr, SchemeError>,
     make_product: &impl Fn(Expr, Expr) -> Result<Expr, SchemeError>,
-) -> Result<Expr, SchemeError> {
-    match exp {
+) -> Result<Expr, SchemeError> @{
+    match exp @{
         Expr::Num(_) => Ok(Expr::Num(0)),
         Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
         Expr::Sum(a1, a2) => make_sum(
             deriv_via(a1, var, make_sum, make_product)?,
             deriv_via(a2, var, make_sum, make_product)?,
         ),
-        Expr::Product(m1, m2) => {
+        Expr::Product(m1, m2) => @{
             let left = make_product((**m1).clone(), deriv_via(m2, var, make_sum, make_product)?)?;
             let right = make_product(deriv_via(m1, var, make_sum, make_product)?, (**m2).clone())?;
             make_sum(left, right)
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -491,16 +491,16 @@ in the book's parenthesized prefix notation is a @code{Display} impl over the
 same four variants:
 
 @example rust
-impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expr::Num(n) => write!(f, "{n}"),
-            Expr::Var(x) => write!(f, "{x}"),
-            Expr::Sum(a, b) => write!(f, "(+ {a} {b})"),
-            Expr::Product(a, b) => write!(f, "(* {a} {b})"),
-        }
-    }
-}
+impl fmt::Display for Expr @{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result @{
+        match self @{
+            Expr::Num(n) => write!(f, "@{n@}"),
+            Expr::Var(x) => write!(f, "@{x@}"),
+            Expr::Sum(a, b) => write!(f, "(+ @{a@} @{b@})"),
+            Expr::Product(a, b) => write!(f, "(* @{a@} @{b@})"),
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -508,21 +508,21 @@ Now all that is missing is the pair of constructors @code{deriv_via} expects.
 The naive versions build a sum or a product without simplifying it at all:
 
 @example rust
-pub fn make_sum_unsimplified(a1: Expr, a2: Expr) -> Expr {
+pub fn make_sum_unsimplified(a1: Expr, a2: Expr) -> Expr @{
     Expr::Sum(Box::new(a1), Box::new(a2))
-}
-pub fn make_product_unsimplified(m1: Expr, m2: Expr) -> Expr {
+@}
+pub fn make_product_unsimplified(m1: Expr, m2: Expr) -> Expr @{
     Expr::Product(Box::new(m1), Box::new(m2))
-}
+@}
 
-pub fn deriv_unsimplified(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+pub fn deriv_unsimplified(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> @{
     deriv_via(
         exp,
         var,
         &|a, b| Ok(make_sum_unsimplified(a, b)),
         &|a, b| Ok(make_product_unsimplified(a, b)),
     )
-}
+@}
 @end example
 
 @noindent
@@ -581,18 +581,18 @@ the other summand:
 /// # Errors
 /// [`SchemeError::Overflow`] when both summands are numbers whose sum
 /// leaves the `i128` range.
-pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> {
-    if is_number(&a1, 0) {
+pub fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> @{
+    if is_number(&a1, 0) @{
         return Ok(a2);
-    }
-    if is_number(&a2, 0) {
+    @}
+    if is_number(&a2, 0) @{
         return Ok(a1);
-    }
-    if let (Expr::Num(x), Expr::Num(y)) = (&a1, &a2) {
+    @}
+    if let (Expr::Num(x), Expr::Num(y)) = (&a1, &a2) @{
         return Ok(Expr::Num(x.checked_add(*y).ok_or(SchemeError::Overflow)?));
-    }
+    @}
     Ok(Expr::Sum(Box::new(a1), Box::new(a2)))
-}
+@}
 @end example
 
 @noindent
@@ -605,25 +605,25 @@ thing itself:
 /// # Errors
 /// [`SchemeError::Overflow`] when both factors are numbers whose
 /// product leaves the `i128` range.
-pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> {
-    if is_number(&m1, 0) || is_number(&m2, 0) {
+pub fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> @{
+    if is_number(&m1, 0) || is_number(&m2, 0) @{
         return Ok(Expr::Num(0));
-    }
-    if is_number(&m1, 1) {
+    @}
+    if is_number(&m1, 1) @{
         return Ok(m2);
-    }
-    if is_number(&m2, 1) {
+    @}
+    if is_number(&m2, 1) @{
         return Ok(m1);
-    }
-    if let (Expr::Num(x), Expr::Num(y)) = (&m1, &m2) {
+    @}
+    if let (Expr::Num(x), Expr::Num(y)) = (&m1, &m2) @{
         return Ok(Expr::Num(x.checked_mul(*y).ok_or(SchemeError::Overflow)?));
-    }
+    @}
     Ok(Expr::Product(Box::new(m1), Box::new(m2)))
-}
+@}
 
-pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> {
+pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> @{
     deriv_via(exp, var, &make_sum, &make_product)
-}
+@}
 @end example
 
 @noindent
@@ -792,9 +792,9 @@ never nested:
 @example rust
 /// Sets as unordered lists: is `x` a member of `set`? The book's
 /// `element-of-set?`, which scans the whole set in the worst case.
-pub fn element_of_set(x: i128, set: &[i128]) -> bool {
+pub fn element_of_set(x: i128, set: &[i128]) -> bool @{
     set.contains(&x)
-}
+@}
 @end example
 
 @noindent
@@ -803,15 +803,15 @@ already in the set, we just return the set unchanged.  Otherwise, we build a
 new vector with the object in front:
 
 @example rust
-pub fn adjoin_set(x: i128, set: &[i128]) -> Vec<i128> {
-    if element_of_set(x, set) {
+pub fn adjoin_set(x: i128, set: &[i128]) -> Vec<i128> @{
+    if element_of_set(x, set) @{
         set.to_vec()
-    } else {
+    @} else @{
         let mut out = vec![x];
         out.extend_from_slice(set);
         out
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -822,12 +822,12 @@ For @code{intersection_set} we can use an iterator filter.  An element of
 @example rust
 /// `Θ(n²)` for sets of size `n`, since every element
 /// of `set1` scans all of `set2`.
-pub fn intersection_set(set1: &[i128], set2: &[i128]) -> Vec<i128> {
+pub fn intersection_set(set1: &[i128], set2: &[i128]) -> Vec<i128> @{
     set1.iter()
         .copied()
         .filter(|&x| element_of_set(x, set2))
         .collect()
-}
+@}
 @end example
 
 @noindent
@@ -890,16 +890,16 @@ a set element that is larger than the item we are looking for, then we know
 that the item is not in the set:
 
 @example rust
-pub fn element_of_set_ordered(x: i128, set: &[i128]) -> bool {
-    match set.first() {
+pub fn element_of_set_ordered(x: i128, set: &[i128]) -> bool @{
+    match set.first() @{
         None => false,
-        Some(&y) => match x.cmp(&y) {
+        Some(&y) => match x.cmp(&y) @{
             Ordering::Equal => true,
             Ordering::Less => false,
             Ordering::Greater => element_of_set_ordered(x, &set[1..]),
-        },
-    }
-}
+        @},
+    @}
+@}
 @end example
 
 How many steps does this save?  In the worst case, the item we are looking for
@@ -926,23 +926,23 @@ just once rather than being copied at every recursive return, keeping the
 host type does not have:
 
 @example rust
-pub fn intersection_set_ordered(set1: &[i128], set2: &[i128]) -> Vec<i128> {
+pub fn intersection_set_ordered(set1: &[i128], set2: &[i128]) -> Vec<i128> @{
     let mut out = Vec::new();
     let mut i = 0;
     let mut j = 0;
-    while i < set1.len() && j < set2.len() {
-        match set1[i].cmp(&set2[j]) {
-            Ordering::Equal => {
+    while i < set1.len() && j < set2.len() @{
+        match set1[i].cmp(&set2[j]) @{
+            Ordering::Equal => @{
                 out.push(set1[i]);
                 i += 1;
                 j += 1;
-            }
+            @}
             Ordering::Less => i += 1,
             Ordering::Greater => j += 1,
-        }
-    }
+        @}
+    @}
     out
-}
+@}
 @end example
 
 @noindent
@@ -1039,44 +1039,44 @@ shorter since Rust's enum already is the representation.}
 /// from the insertion point to the root and shares every untouched
 /// sibling subtree by pointer, so the `Θ(log n)` claims below are
 /// genuine rather than hidden behind an `O(n)` deep clone.
-pub enum Tree {
+pub enum Tree @{
     /// No elements.
     Empty,
     /// One element, with its left and right subtrees.
     Node(i128, Rc<Tree>, Rc<Tree>),
-}
+@}
 
-impl Tree {
+impl Tree @{
     /// Builds a tree node: the book's `make-tree`.
-    pub fn make_tree(entry: i128, left: Tree, right: Tree) -> Tree {
+    pub fn make_tree(entry: i128, left: Tree, right: Tree) -> Tree @{
         Tree::Node(entry, Rc::new(left), Rc::new(right))
-    }
+    @}
 
     /// The entry at the root, or `None` on `Empty`: the book's `entry`.
-    pub fn entry(&self) -> Option<i128> {
-        match self {
+    pub fn entry(&self) -> Option<i128> @{
+        match self @{
             Tree::Node(x, ..) => Some(*x),
             Tree::Empty => None,
-        }
-    }
+        @}
+    @}
 
     /// The left subtree, or `None` on `Empty`: the book's `left-branch`.
-    pub fn left_branch(&self) -> Option<&Tree> {
-        match self {
+    pub fn left_branch(&self) -> Option<&Tree> @{
+        match self @{
             Tree::Node(_, l, _) => Some(l),
             Tree::Empty => None,
-        }
-    }
+        @}
+    @}
 
     /// The right subtree, or `None` on `Empty`: the book's
     /// `right-branch`.
-    pub fn right_branch(&self) -> Option<&Tree> {
-        match self {
+    pub fn right_branch(&self) -> Option<&Tree> @{
+        match self @{
             Tree::Node(_, _, r) => Some(r),
             Tree::Empty => None,
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -1084,16 +1084,16 @@ Now we can write the @code{element_of_set_tree} procedure using the strategy
 described above:
 
 @example rust
-pub fn element_of_set_tree(x: i128, tree: &Tree) -> bool {
-    match tree {
+pub fn element_of_set_tree(x: i128, tree: &Tree) -> bool @{
+    match tree @{
         Tree::Empty => false,
-        Tree::Node(entry, left, right) => match x.cmp(entry) {
+        Tree::Node(entry, left, right) => match x.cmp(entry) @{
             Ordering::Equal => true,
             Ordering::Less => element_of_set_tree(x, left),
             Ordering::Greater => element_of_set_tree(x, right),
-        },
-    }
-}
+        @},
+    @}
+@}
 @end example
 
 @noindent
@@ -1109,18 +1109,18 @@ to an empty tree, we generate a tree that has @code{x} as the entry and empty
 right and left branches.  Here is the procedure:
 
 @example rust
-pub fn adjoin_set_tree(x: i128, tree: &Tree) -> Tree {
-    match tree {
+pub fn adjoin_set_tree(x: i128, tree: &Tree) -> Tree @{
+    match tree @{
         Tree::Empty => Tree::make_tree(x, Tree::Empty, Tree::Empty),
-        Tree::Node(entry, left, right) => match x.cmp(entry) {
+        Tree::Node(entry, left, right) => match x.cmp(entry) @{
             Ordering::Equal => tree.clone(),
             Ordering::Less => Tree::make_tree(*entry, adjoin_set_tree(x, left), (**right).clone()),
-            Ordering::Greater => {
+            Ordering::Greater => @{
                 Tree::make_tree(*entry, (**left).clone(), adjoin_set_tree(x, right))
-            }
-        },
-    }
-}
+            @}
+        @},
+    @}
+@}
 @end example
 
 @noindent
@@ -1183,31 +1183,31 @@ devoted to this problem.  See @ref{Cormen et al. 1990}.}
 procedures converts a binary tree to a list.
 
 @example rust
-fn tree_to_list_1(tree: &Tree) -> Vec<i128> {
-    match tree {
+fn tree_to_list_1(tree: &Tree) -> Vec<i128> @{
+    match tree @{
         Tree::Empty => Vec::new(),
-        Tree::Node(..) => {
+        Tree::Node(..) => @{
             let mut out = tree_to_list_1(tree.left_branch().expect("node"));
             out.push(tree.entry().expect("node"));
             out.extend(tree_to_list_1(tree.right_branch().expect("node")));
             out
-        }
-    }
-}
+        @}
+    @}
+@}
 
-fn tree_to_list_2(tree: &Tree) -> Vec<i128> {
-    fn copy_to_list(tree: &Tree, mut result: VecDeque<i128>) -> VecDeque<i128> {
-        match tree {
+fn tree_to_list_2(tree: &Tree) -> Vec<i128> @{
+    fn copy_to_list(tree: &Tree, mut result: VecDeque<i128>) -> VecDeque<i128> @{
+        match tree @{
             Tree::Empty => result,
-            Tree::Node(..) => {
+            Tree::Node(..) => @{
                 result = copy_to_list(tree.right_branch().expect("node"), result);
                 result.push_front(tree.entry().expect("node"));
                 copy_to_list(tree.left_branch().expect("node"), result)
-            }
-        }
-    }
+            @}
+        @}
+    @}
     copy_to_list(tree, VecDeque::new()).into_iter().collect()
-}
+@}
 @end example
 
 @enumerate a
@@ -1237,14 +1237,14 @@ first @math{n} elements of the slice, returning that tree paired with the
 elements not included in it:
 
 @example rust
-fn list_to_tree(elements: &[i128]) -> Tree {
+fn list_to_tree(elements: &[i128]) -> Tree @{
     partial_tree(elements, elements.len()).0
-}
+@}
 
-fn partial_tree(elts: &[i128], n: usize) -> (Tree, &[i128]) {
-    if n == 0 {
+fn partial_tree(elts: &[i128], n: usize) -> (Tree, &[i128]) @{
+    if n == 0 @{
         return (Tree::Empty, elts);
-    }
+    @}
     let left_size = (n - 1) / 2;
     let (left_tree, non_left_elts) = partial_tree(elts, left_size);
     let right_size = n - (left_size + 1);
@@ -1256,7 +1256,7 @@ fn partial_tree(elts: &[i128], n: usize) -> (Tree, &[i128]) {
         Tree::make_tree(*this_entry, left_tree, right_tree),
         remaining_elts,
     )
-}
+@}
 @end example
 
 @enumerate a
@@ -1310,9 +1310,9 @@ there is no such record.  @code{lookup} is implemented in almost the same way as
 an unordered slice, we could use
 
 @example rust
-fn lookup<'a>(given_key: i128, set_of_records: &'a [Record]) -> Option<&'a Record> {
+fn lookup<'a>(given_key: i128, set_of_records: &'a [Record]) -> Option<&'a Record> @{
     set_of_records.iter().find(|record| record.key == given_key)
-}
+@}
 @end example
 
 @noindent
@@ -1552,78 +1552,78 @@ branches plus the aggregate symbol set and weight of everything below it,
 computed once at construction rather than walked on every query:
 
 @example rust
-pub enum HuffmanTree {
+pub enum HuffmanTree @{
     /// A leaf: one symbol and its weight.
     Leaf(Symbol, u32),
     /// A node: its two branches, the symbols reachable below it, and
     /// their total weight.
     Node(Box<HuffmanTree>, Box<HuffmanTree>, Vec<Symbol>, u32),
-}
+@}
 
-impl HuffmanTree {
+impl HuffmanTree @{
     /// Builds a leaf: the book's `make-leaf`.
-    pub fn make_leaf(symbol: Symbol, weight: u32) -> HuffmanTree {
+    pub fn make_leaf(symbol: Symbol, weight: u32) -> HuffmanTree @{
         HuffmanTree::Leaf(symbol, weight)
-    }
+    @}
 
     /// Whether this tree is a leaf: the book's `leaf?`.
-    pub fn is_leaf(&self) -> bool {
+    pub fn is_leaf(&self) -> bool @{
         matches!(self, HuffmanTree::Leaf(..))
-    }
+    @}
 
     /// The symbol at a leaf, or `None` on a node: the book's
     /// `symbol-leaf`.
-    pub fn symbol_leaf(&self) -> Option<&Symbol> {
-        match self {
+    pub fn symbol_leaf(&self) -> Option<&Symbol> @{
+        match self @{
             HuffmanTree::Leaf(s, _) => Some(s),
             HuffmanTree::Node(..) => None,
-        }
-    }
+        @}
+    @}
 
     /// Merges two subtrees into a node, computing its aggregate symbol
     /// set and weight: the book's `make-code-tree`.  Since our symbol
     /// sets are represented as `Vec`s, we can form the union by
     /// extending a clone of the left set with the right.
-    pub fn make_code_tree(left: HuffmanTree, right: HuffmanTree) -> HuffmanTree {
+    pub fn make_code_tree(left: HuffmanTree, right: HuffmanTree) -> HuffmanTree @{
         let mut symbols = left.symbols();
         symbols.extend(right.symbols());
         let weight = left.weight() + right.weight();
         HuffmanTree::Node(Box::new(left), Box::new(right), symbols, weight)
-    }
+    @}
 
     /// The left branch, or `None` on a leaf: the book's `left-branch`.
-    pub fn left_branch(&self) -> Option<&HuffmanTree> {
-        match self {
+    pub fn left_branch(&self) -> Option<&HuffmanTree> @{
+        match self @{
             HuffmanTree::Node(l, ..) => Some(l),
             HuffmanTree::Leaf(..) => None,
-        }
-    }
+        @}
+    @}
 
     /// The right branch, or `None` on a leaf: the book's
     /// `right-branch`.
-    pub fn right_branch(&self) -> Option<&HuffmanTree> {
-        match self {
+    pub fn right_branch(&self) -> Option<&HuffmanTree> @{
+        match self @{
             HuffmanTree::Node(_, r, ..) => Some(r),
             HuffmanTree::Leaf(..) => None,
-        }
-    }
+        @}
+    @}
 
     /// The symbols reachable below this tree: a leaf contributes its
     /// one symbol; a node returns its precomputed set.
-    pub fn symbols(&self) -> Vec<Symbol> {
-        match self {
+    pub fn symbols(&self) -> Vec<Symbol> @{
+        match self @{
             HuffmanTree::Leaf(s, _) => vec![Rc::clone(s)],
             HuffmanTree::Node(_, _, syms, _) => syms.clone(),
-        }
-    }
+        @}
+    @}
 
     /// The total weight below this tree: the book's `weight`.
-    pub fn weight(&self) -> u32 {
-        match self {
+    pub fn weight(&self) -> u32 @{
+        match self @{
             HuffmanTree::Leaf(_, w) | HuffmanTree::Node(_, _, _, w) => *w,
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -1647,33 +1647,33 @@ restart-at-the-root behavior as a single loop:
 /// `0`) takes the left branch, `true` (the book's `1`) takes the
 /// right.  A `bool` has no third value, so the book's
 /// `(error "bad bit..." bit)` case is structurally unreachable here.
-pub fn choose_branch(bit: bool, branch: &HuffmanTree) -> Option<&HuffmanTree> {
-    if bit {
+pub fn choose_branch(bit: bool, branch: &HuffmanTree) -> Option<&HuffmanTree> @{
+    if bit @{
         branch.right_branch()
-    } else {
+    @} else @{
         branch.left_branch()
-    }
-}
+    @}
+@}
 
 /// # Errors
 /// [`SchemeError::Parse`] if a bit is consumed at a leaf, which means
 /// `bits` and `tree` are inconsistent (more bits than the encoding
 /// produced).
-pub fn decode(bits: &[bool], tree: &HuffmanTree) -> Result<Vec<Symbol>, SchemeError> {
+pub fn decode(bits: &[bool], tree: &HuffmanTree) -> Result<Vec<Symbol>, SchemeError> @{
     let mut result = Vec::new();
     let mut current = tree;
-    for &bit in bits {
+    for &bit in bits @{
         let next = choose_branch(bit, current)
             .ok_or_else(|| SchemeError::Parse("decode: bit consumed at a leaf".to_string()))?;
-        if let HuffmanTree::Leaf(symbol, _) = next {
+        if let HuffmanTree::Leaf(symbol, _) = next @{
             result.push(symbol.clone());
             current = tree;
-        } else {
+        @} else @{
             current = next;
-        }
-    }
+        @}
+    @}
     Ok(result)
-}
+@}
 @end example
 
 @noindent
@@ -1706,21 +1706,21 @@ the set is never already in it:
 @example rust
 /// Adjoins a tree to a set of trees ordered by increasing weight: the
 /// book's `adjoin-set`, re-defined here for Huffman trees.
-pub fn adjoin_huffman_set(x: HuffmanTree, set: &[HuffmanTree]) -> Vec<HuffmanTree> {
-    match set.split_first() {
+pub fn adjoin_huffman_set(x: HuffmanTree, set: &[HuffmanTree]) -> Vec<HuffmanTree> @{
+    match set.split_first() @{
         None => vec![x],
-        Some((first, rest)) if x.weight() < first.weight() => {
+        Some((first, rest)) if x.weight() < first.weight() => @{
             let mut out = vec![x, first.clone()];
             out.extend_from_slice(rest);
             out
-        }
-        Some((first, rest)) => {
+        @}
+        Some((first, rest)) => @{
             let mut out = vec![first.clone()];
             out.extend(adjoin_huffman_set(x, rest));
             out
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -1729,13 +1729,13 @@ The following procedure takes a slice of symbol-frequency pairs such as
 leaves, ready to be merged according to the Huffman algorithm:
 
 @example rust
-pub fn make_leaf_set(pairs: &[(Symbol, u32)]) -> Vec<HuffmanTree> {
+pub fn make_leaf_set(pairs: &[(Symbol, u32)]) -> Vec<HuffmanTree> @{
     let mut set = Vec::new();
-    for (symbol, weight) in pairs {
+    for (symbol, weight) in pairs @{
         set = adjoin_huffman_set(HuffmanTree::make_leaf(Rc::clone(symbol), *weight), &set);
-    }
+    @}
     set
-}
+@}
 @end example
 
 @quotation
@@ -1769,13 +1769,13 @@ as arguments a message and a tree and produces the list of bits that gives the
 encoded message.
 
 @example rust
-pub fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, SchemeError> {
+pub fn encode(message: &[Symbol], tree: &HuffmanTree) -> Result<Vec<bool>, SchemeError> @{
     let mut bits = Vec::new();
-    for symbol in message {
+    for symbol in message @{
         bits.extend(encode_symbol(symbol, tree)?);
-    }
+    @}
     Ok(bits)
-}
+@}
 @end example
 
 Write your own @code{encode_symbol}, a function that returns the
@@ -1793,9 +1793,9 @@ than one pair) and generates a Huffman encoding tree according to the Huffman
 algorithm.
 
 @example rust
-fn generate_huffman_tree(pairs: &[(Symbol, u32)]) -> Option<HuffmanTree> {
+fn generate_huffman_tree(pairs: &[(Symbol, u32)]) -> Option<HuffmanTree> @{
     successive_merge(make_leaf_set(pairs))
-}
+@}
 @end example
 
 @code{make_leaf_set} is the procedure given above that transforms the slice of

@@ -221,13 +221,13 @@ if we implement these, respectively, as
 // Inside Memory: the car reads the the-cars
 // vector at the pair's index, the cdr the the-cdrs
 // vector.
-fn read_car(&self, index: usize) -> Result<Word, MemoryFault> {
+fn read_car(&self, index: usize) -> Result<Word, MemoryFault> @{
     self.spaces[self.working]
         .cars
         .get(index)
         .cloned()
-        .ok_or(MemoryFault::IndexOutOfRange { op: "car" })
-}
+        .ok_or(MemoryFault::IndexOutOfRange @{ op: "car" @})
+@}
 @end example
 
 @noindent
@@ -246,14 +246,14 @@ are implemented as
 @example rust
 // The store behind set-car!: one half of the
 // pair's cell, overwritten in place.
-fn write_car(&mut self, index: usize, value: Word) -> Result<(), MemoryFault> {
+fn write_car(&mut self, index: usize, value: Word) -> Result<(), MemoryFault> @{
     let slot = self.spaces[self.working]
         .cars
         .get_mut(index)
-        .ok_or(MemoryFault::IndexOutOfRange { op: "set-car!" })?;
+        .ok_or(MemoryFault::IndexOutOfRange @{ op: "set-car!" @})?;
     *slot = value;
     Ok(())
-}
+@}
 @end example
 
 @noindent
@@ -283,16 +283,16 @@ essentially the implementation of @code{cons} in terms of @code{set-car!} and
 @example rust
 /// The allocation path of cons: store the two
 /// halves at the free pointer, then bump it.
-pub fn cons(&mut self, car_word: Word, cdr_word: Word) -> Result<Word, MemoryFault> {
-    if self.free >= self.data_limit() {
+pub fn cons(&mut self, car_word: Word, cdr_word: Word) -> Result<Word, MemoryFault> @{
+    if self.free >= self.data_limit() @{
         return Err(MemoryFault::Exhausted);
-    }
+    @}
     let index = self.free;
     self.spaces[self.working].cars[index] = car_word;
     self.spaces[self.working].cdrs[index] = cdr_word;
     self.free += 1;
     Ok(Word::Pair(index))
-}
+@}
 @end example
 
 @noindent
@@ -489,28 +489,28 @@ longer needed---they are @newterm{garbage}.  For instance, the computation
 // the enumeration and the filtered list are built in the
 // memory, and both are garbage once the sum is known.
 let mut interval = Word::Empty;
-for item in (0..=n).rev() {
+for item in (0..=n).rev() @{
     interval = memory.borrow_mut().cons(Word::Num(item), interval)?;
-}
+@}
 let mut odds = Word::Empty;
 let mut cursor = interval;
-while let Word::Pair(_) = cursor {
+while let Word::Pair(_) = cursor @{
     let car_word = memory.borrow().car(&cursor)?;
-    if let Word::Num(value) = car_word {
-        if value % 2 == 1 {
+    if let Word::Num(value) = car_word @{
+        if value % 2 == 1 @{
             odds = memory.borrow_mut().cons(car_word, odds)?;
-        }
-    }
+        @}
+    @}
     cursor = memory.borrow().cdr(&cursor)?;
-}
+@}
 let mut sum = 0;
 let mut cursor = odds;
-while let Word::Pair(_) = cursor {
-    if let Word::Num(value) = memory.borrow().car(&cursor)? {
+while let Word::Pair(_) = cursor @{
+    if let Word::Num(value) = memory.borrow().car(&cursor)? @{
         sum += value;
-    }
+    @}
     cursor = memory.borrow().cdr(&cursor)?;
-}
+@}
 @end example
 
 @noindent
@@ -702,7 +702,7 @@ install the new pointer as the new @code{root} and enter the main loop of the
 garbage collector.
 
 @example rust
-pub fn collect(memory: &SharedMemory, roots: &[Word]) -> Result<Vec<Word>, Fault> {
+pub fn collect(memory: &SharedMemory, roots: &[Word]) -> Result<Vec<Word>, Fault> @{
     let root = plant_root_list(memory, roots)?;
     let mut machine = make_machine_from_datums(
         &["root", "the-cars", "the-cdrs", "new-cars", "new-cdrs",
@@ -718,7 +718,7 @@ pub fn collect(memory: &SharedMemory, roots: &[Word]) -> Result<Vec<Word>, Fault
     machine.set_register("root", Value::from(root))?;
     machine.start()?;
     finish_collection(memory, &machine, roots.len())
-}
+@}
 @end example
 
 @noindent

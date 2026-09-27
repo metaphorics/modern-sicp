@@ -629,7 +629,7 @@ You will find it useful to have a function that returns a number chosen at
 random from a given range.  The following @code{random_in_range} function
 implements this in terms of the runtime's seeded @code{Random} generator,
 whose draws are whole 64-bit words rather than the book's decimals in
-@math{[0, @var{n})} (see @ref{1.2.6}).@footnote{The book's
+@math{[0, n)} (see @ref{1.2.6}).@footnote{The book's
 @code{random}, as provided by @abbr{MIT} Scheme, returns an exact integer when
 given an exact integer (as in @ref{1.2.6}) and a decimal value when given a
 decimal value (as in this exercise).  The runtime's generator draws 64-bit

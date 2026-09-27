@@ -227,48 +227,48 @@ procedure application.
 Here is the dispatch of @code{eval}:
 
 @example rust
-fn base_step(&self, exp: &Value, env: &Rc<Env>) -> StepResult {
-    if is_self_evaluating(exp) {
+fn base_step(&self, exp: &Value, env: &Rc<Env>) -> StepResult @{
+    if is_self_evaluating(exp) @{
         return Ok(Step::Done(exp.clone()));
-    }
-    if is_variable(exp) {
+    @}
+    if is_variable(exp) @{
         return Ok(Step::Done(lookup_variable_value(exp, env)?));
-    }
-    if is_quoted(exp) {
+    @}
+    if is_quoted(exp) @{
         return Ok(Step::Done(text_of_quotation(exp)?));
-    }
-    if is_assignment(exp) {
+    @}
+    if is_assignment(exp) @{
         return Ok(Step::Done(self.eval_assignment(exp, env)?));
-    }
-    if is_definition(exp) {
+    @}
+    if is_definition(exp) @{
         return Ok(Step::Done(self.eval_definition(exp, env)?));
-    }
-    if is_if(exp) {
+    @}
+    if is_if(exp) @{
         let (predicate, consequent, alternative) = if_parts(exp)?;
         let tested = self.eval(&predicate, env)?;
         return Ok(Step::Tail(
-            if is_true(&tested) { consequent } else { alternative },
+            if is_true(&tested) @{ consequent @} else @{ alternative @},
             Rc::clone(env),
         ));
-    }
-    if is_lambda(exp) {
+    @}
+    if is_lambda(exp) @{
         return Ok(Step::Done(self.make_procedure(exp, env)?));
-    }
-    if is_begin(exp) {
+    @}
+    if is_begin(exp) @{
         return self.step_sequence(&operand_items(exp)?, env);
-    }
-    if is_cond(exp) {
+    @}
+    if is_cond(exp) @{
         return Ok(Step::Tail(cond_to_if(exp)?, Rc::clone(env)));
-    }
-    if is_application(exp) {
+    @}
+    if is_application(exp) @{
         let proc = self.eval(&first_of(exp)?, env)?;
         let args = self.list_of_values(&operand_items(exp)?, env)?;
         return self.tail_apply(&proc, &args);
-    }
+    @}
     Err(SchemeError::TypeMismatch(format!(
-        "Unknown expression type: EVAL {exp}"
+        "Unknown expression type: EVAL @{exp@}"
     )))
-}
+@}
 @end example
 
 @noindent
@@ -294,18 +294,18 @@ arguments to which the procedure is to be applied.  Here is the application
 half of @code{apply}:
 
 @example rust
-fn tail_apply(&self, proc: &Value, args: &[Value]) -> StepResult {
-    match proc {
-        Value::Primitive { f, .. } => f(args).map(Step::Done),
-        Value::Closure(c) => {
+fn tail_apply(&self, proc: &Value, args: &[Value]) -> StepResult @{
+    match proc @{
+        Value::Primitive @{ f, .. @} => f(args).map(Step::Done),
+        Value::Closure(c) => @{
             let frame = extend_environment(
                 &closure_name(c), &c.params, c.rest.as_ref(), args, &c.env,
             )?;
             self.step_sequence(&c.body, &frame)
-        }
+        @}
         other => Err(SchemeError::NotProcedure(other.clone())),
-    }
-}
+    @}
+@}
 @end example
 
 @subsubheading Procedure arguments
@@ -323,13 +323,13 @@ written in a language that doesn't have higher-order procedures), even though
 the language that it supports will include higher-order procedures.}
 
 @example rust
-fn list_of_values(&self, exps: &[Value], env: &Rc<Env>) -> EvalList {
+fn list_of_values(&self, exps: &[Value], env: &Rc<Env>) -> EvalList @{
     let mut values = Vec::with_capacity(exps.len());
-    for exp in exps {
+    for exp in exps @{
         values.push(self.eval(exp, env)?);
-    }
+    @}
     Ok(values)
-}
+@}
 @end example
 
 @subsubheading Conditionals
@@ -339,11 +339,11 @@ given environment.  If the result is true, @code{eval_if} evaluates the
 consequent, otherwise it evaluates the alternative:
 
 @example rust
-fn eval_if(&self, exp: &Value, env: &Rc<Env>) -> EvalResult {
+fn eval_if(&self, exp: &Value, env: &Rc<Env>) -> EvalResult @{
     let (predicate, consequent, alternative) = if_parts(exp)?;
     let tested = self.eval(&predicate, env)?;
-    self.eval(if is_true(&tested) { &consequent } else { &alternative }, env)
-}
+    self.eval(if is_true(&tested) @{ &consequent @} else @{ &alternative @}, env)
+@}
 @end example
 
 @noindent
@@ -367,17 +367,17 @@ expressions and an environment, and evaluates the expressions in the order in
 which they occur.  The value returned is the value of the final expression.
 
 @example rust
-fn eval_sequence(&self, exps: &[Value], env: &Rc<Env>) -> EvalResult {
-    let Some((last, head)) = exps.split_last() else {
+fn eval_sequence(&self, exps: &[Value], env: &Rc<Env>) -> EvalResult @{
+    let Some((last, head)) = exps.split_last() else @{
         return Err(SchemeError::TypeMismatch(
             "empty sequence: EVAL-SEQUENCE".to_owned(),
         ));
-    };
-    for exp in head {
+    @};
+    for exp in head @{
         self.eval(exp, env)?;
-    }
+    @}
     self.eval(last, env)
-}
+@}
 @end example
 
 @subsubheading Assignments and definitions
@@ -388,17 +388,17 @@ value to @code{set_variable_value_} to be installed in the designated
 environment.
 
 @example rust
-fn eval_assignment(&self, exp: &Value, env: &Rc<Env>) -> EvalResult {
+fn eval_assignment(&self, exp: &Value, env: &Rc<Env>) -> EvalResult @{
     let name = assignment_variable(exp)?;
     let value = self.eval(&assignment_value(exp)?, env)?;
-    let Value::Sym(name) = name else {
+    let Value::Sym(name) = name else @{
         return Err(SchemeError::TypeMismatch(format!(
-            "not an assignment target: {name}"
+            "not an assignment target: @{name@}"
         )));
-    };
+    @};
     set_variable_value_(&name, value, env)?;
     Ok(Value::sym("ok"))
-}
+@}
 @end example
 
 @noindent
@@ -408,16 +408,16 @@ internal definitions, although it works correctly in most cases.  We will see
 what the problem is and how to solve it in @ref{4.1.6}.}
 
 @example rust
-fn eval_definition(&self, exp: &Value, env: &Rc<Env>) -> EvalResult {
+fn eval_definition(&self, exp: &Value, env: &Rc<Env>) -> EvalResult @{
     let name = definition_variable(exp)?;
-    let Value::Sym(name) = name else {
+    let Value::Sym(name) = name else @{
         return Err(SchemeError::TypeMismatch(format!(
-            "not a definition target: {name}"
+            "not a definition target: @{name@}"
         )));
-    };
+    @};
     let value = self.eval(&definition_value(exp)?, env)?;
     define_variable_(&name, value, env)
-}
+@}
 @end example
 
 @noindent
@@ -462,18 +462,18 @@ Here is the specification of the syntax of our language:
 The only self-evaluating items are numbers and strings:
 
 @example rust
-fn is_self_evaluating(exp: &Value) -> bool {
+fn is_self_evaluating(exp: &Value) -> bool @{
     matches!(exp, Value::Int(_) | Value::Real(_) | Value::Bool(_) | Value::Str(_))
-}
+@}
 @end example
 
 @item
 Variables are represented by symbols:
 
 @example rust
-fn is_variable(exp: &Value) -> bool {
+fn is_variable(exp: &Value) -> bool @{
     matches!(exp, Value::Sym(_))
-}
+@}
 @end example
 
 @item
@@ -484,22 +484,22 @@ example, the expression @code{'a} is read as the quotation of the symbol
 @code{a}, the same form as @code{(quote a)}.  See @ref{Exercise 2.55}.}
 
 @example rust
-fn is_quoted(exp: &Value) -> bool {
+fn is_quoted(exp: &Value) -> bool @{
     is_tagged_list(exp, "quote")
-}
+@}
 
-fn text_of_quotation(exp: &Value) -> EvalResult {
+fn text_of_quotation(exp: &Value) -> EvalResult @{
     second_of(exp)
-}
+@}
 @end example
 
 @item
 Assignments have the form @code{(set! ⟨@var{var}⟩ ⟨@var{value}⟩)}:
 
 @example rust
-fn is_assignment(exp: &Value) -> bool {
+fn is_assignment(exp: &Value) -> bool @{
     is_tagged_list(exp, "set!")
-}
+@}
 @end example
 
 @item
@@ -526,29 +526,29 @@ The latter form (standard procedure definition) is syntactic sugar for
 @end example
 
 @example rust
-fn definition_variable(exp: &Value) -> EvalResult {
+fn definition_variable(exp: &Value) -> EvalResult @{
     let second = second_of(exp)?;
-    if is_variable(&second) { Ok(second) } else { first_of(&second) }
-}
+    if is_variable(&second) @{ Ok(second) @} else @{ first_of(&second) @}
+@}
 
-fn definition_value(exp: &Value) -> EvalResult {
+fn definition_value(exp: &Value) -> EvalResult @{
     let second = second_of(exp)?;
-    if is_variable(&second) {
+    if is_variable(&second) @{
         third_of(exp)
-    } else {
+    @} else @{
         let (params, rest) = split_params(&rest_of(&second)?)?;
         Ok(make_lambda(&params, rest.as_ref(), &body_of(exp)))
-    }
-}
+    @}
+@}
 @end example
 
 @item
 @code{Lambda} expressions are lists that begin with the symbol @code{lambda}:
 
 @example rust
-fn is_lambda(exp: &Value) -> bool {
+fn is_lambda(exp: &Value) -> bool @{
     is_tagged_list(exp, "lambda")
-}
+@}
 @end example
 
 We also provide a constructor for @code{lambda} expressions,
@@ -564,13 +564,13 @@ variables @code{true} and @code{false} in expressions to be evaluated by
 binding them in the global environment.  See @ref{4.1.4}.}
 
 @example rust
-fn if_parts(exp: &Value) -> Result<(Value, Value, Value), SchemeError> {
+fn if_parts(exp: &Value) -> Result<(Value, Value, Value), SchemeError> @{
     let items = exp.list_items()?;
     let predicate = items.get(1).cloned().unwrap_or(Value::Nil);
     let consequent = items.get(2).cloned().unwrap_or(Value::Nil);
     let alternative = items.get(3).cloned().unwrap_or(Value::Bool(false));
     Ok((predicate, consequent, alternative))
-}
+@}
 @end example
 
 @item
@@ -583,17 +583,17 @@ operations to make it easier to understand the explicit-control
 evaluator in @ref{5.4}.}
 
 @example rust
-fn is_begin(exp: &Value) -> bool {
+fn is_begin(exp: &Value) -> bool @{
     is_tagged_list(exp, "begin")
-}
+@}
 
-fn first_exp(seq: &[Value]) -> Value {
+fn first_exp(seq: &[Value]) -> Value @{
     seq[0].clone()
-}
+@}
 
-fn rest_exps(seq: &[Value]) -> Vec<Value> {
+fn rest_exps(seq: &[Value]) -> Vec<Value> @{
     seq[1..].to_vec()
-}
+@}
 @end example
 
 We also include a constructor @code{sequence_to_exp} (for use by
@@ -601,15 +601,15 @@ We also include a constructor @code{sequence_to_exp} (for use by
 @code{begin} if necessary:
 
 @example rust
-fn sequence_to_exp(seq: &[Value]) -> EvalResult {
-    match seq {
+fn sequence_to_exp(seq: &[Value]) -> EvalResult @{
+    match seq @{
         [] => Err(SchemeError::TypeMismatch(
             "empty sequence: SEQUENCE->EXP".to_owned(),
         )),
         [one] => Ok(one.clone()),
         many => Ok(make_begin(many)),
-    }
-}
+    @}
+@}
 @end example
 
 @item
@@ -618,13 +618,13 @@ above expression types.  The operator is the first item and the operands are
 the rest:
 
 @example rust
-fn is_application(exp: &Value) -> bool {
+fn is_application(exp: &Value) -> bool @{
     exp.is_pair()
-}
+@}
 
-fn operand_items(exp: &Value) -> EvalList {
+fn operand_items(exp: &Value) -> EvalList @{
     exp.list_items().map(|items| items[1..].to_vec())
-}
+@}
 @end example
 
 @end itemize
@@ -668,27 +668,27 @@ all the predicates are false and there is no @code{else} clause is unspecified
 in Scheme; we have chosen here to make it false.}
 
 @example rust
-fn cond_to_if(exp: &Value) -> EvalResult {
+fn cond_to_if(exp: &Value) -> EvalResult @{
     expand_clauses(&cond_clauses(exp)?)
-}
+@}
 
-fn expand_clauses(clauses: &[Value]) -> EvalResult {
-    let Some((first, rest)) = clauses.split_first() else {
+fn expand_clauses(clauses: &[Value]) -> EvalResult @{
+    let Some((first, rest)) = clauses.split_first() else @{
         return Ok(Value::Bool(false));
-    };
-    if is_else_clause(first)? {
-        if rest.is_empty() {
+    @};
+    if is_else_clause(first)? @{
+        if rest.is_empty() @{
             return sequence_to_exp(&clause_actions(first)?);
-        }
+        @}
         return Err(SchemeError::TypeMismatch(
             "ELSE clause isn't last: COND->IF".to_owned(),
         ));
-    }
+    @}
     let consequent = sequence_to_exp(&clause_actions(first)?)?;
     let alternative = expand_clauses(rest)?;
     let predicate = first_of(first)?;
     Ok(make_if(&predicate, &consequent, &alternative))
-}
+@}
 @end example
 
 @noindent
@@ -901,9 +901,9 @@ For conditionals, we accept anything to be true that is not the explicit
 
 @example rust
 /// is_true holds for every value except the false object.
-fn is_true(v: &Value) -> bool {
+fn is_true(v: &Value) -> bool @{
     !matches!(v, Value::Bool(false))
-}
+@}
 @end example
 
 @subsubheading Representing procedures
@@ -946,15 +946,15 @@ fn make_named_procedure(
     rest: Option<&Symbol>,
     body: &[Value],
     env: &Rc<Env>,
-) -> EvalResult {
-    Ok(Value::Closure(Rc::new(Closure {
+) -> EvalResult @{
+    Ok(Value::Closure(Rc::new(Closure @{
         name: Some(Rc::from(name)),
         params: params.to_vec(),
         rest: rest.cloned(),
         body: body.to_vec(),
         env: Rc::clone(env),
-    })))
-}
+    @})))
+@}
 @end example
 
 @subsubheading Operations on Environments
@@ -1006,9 +1006,9 @@ to values, searched newest first, and the four operations are thin wrappers
 over that representation.
 
 @example rust
-fn lookup_variable_value(name: &str, env: &Rc<Env>) -> EvalResult {
+fn lookup_variable_value(name: &str, env: &Rc<Env>) -> EvalResult @{
     env.lookup(name)
-}
+@}
 
 fn extend_environment(
     procedure: &str,
@@ -1016,24 +1016,24 @@ fn extend_environment(
     rest: Option<&Symbol>,
     args: &[Value],
     base: &Rc<Env>,
-) -> Result<Rc<Env>, SchemeError> {
+) -> Result<Rc<Env>, SchemeError> @{
     // ... an arity error when the counts disagree, one frame
     // binding each parameter to its argument in front of base ...
     let frame = Env::child(base);
-    for (param, arg) in params.iter().zip(args) {
+    for (param, arg) in params.iter().zip(args) @{
         frame.define(param.clone(), arg.clone());
-    }
+    @}
     Ok(frame)
-}
+@}
 
-fn set_variable_value_(name: &str, value: Value, env: &Rc<Env>) -> Result<(), SchemeError> {
+fn set_variable_value_(name: &str, value: Value, env: &Rc<Env>) -> Result<(), SchemeError> @{
     env.set(name, value)
-}
+@}
 
-fn define_variable_(name: &str, value: Value, env: &Rc<Env>) -> EvalResult {
+fn define_variable_(name: &str, value: Value, env: &Rc<Env>) -> EvalResult @{
     env.define(Rc::from(name), value);
     Ok(Value::sym("ok"))
-}
+@}
 @end example
 
 @noindent
@@ -1126,18 +1126,18 @@ also includes bindings for the symbols @code{true} and @code{false}, so that
 they can be used as variables in expressions to be evaluated.
 
 @example rust
-fn setup_environment_in(sink: &OutputSink) -> Rc<Env> {
+fn setup_environment_in(sink: &OutputSink) -> Rc<Env> @{
     let env = Env::global();
     env.define(Rc::from("true"), Value::boolean(true));
     env.define(Rc::from("false"), Value::boolean(false));
-    for (name, handler) in primitive_table(sink) {
-        env.define(Rc::from(name), Value::Primitive {
+    for (name, handler) in primitive_table(sink) @{
+        env.define(Rc::from(name), Value::Primitive @{
             name: Rc::from(name),
             f: handler,
-        });
-    }
+        @});
+    @}
     env
-}
+@}
 @end example
 
 @noindent
@@ -1192,11 +1192,11 @@ number 23 and the symbol @code{x}.  If the user types @code{'x}, the reader
 returns the quotation of the symbol @code{x}.}
 
 @example rust
-fn driver_transcript(lines: &[&str]) -> String {
+fn driver_transcript(lines: &[&str]) -> String @{
     // For each input line: read it, evaluate it in the global
     // environment, and announce the value behind the output prompt.
     // A raised error ends the transcript with one Error line.
-}
+@}
 @end example
 
 @noindent
@@ -1563,15 +1563,15 @@ in constant host stack; non-tail recursion, which still grows the stack, is
 postponed by @code{run_program} on a worker thread with a 256 MiB stack.
 
 @example rust
-impl Evaluator for WithLet {
-    fn step(&self, exp: &Value, env: &Rc<Env>) -> StepResult {
-        if is_let(exp) {
+impl Evaluator for WithLet @{
+    fn step(&self, exp: &Value, env: &Rc<Env>) -> StepResult @{
+        if is_let(exp) @{
             Ok(Step::Tail(let_to_combination(exp)?, Rc::clone(env)))
-        } else {
+        @} else @{
             self.base_step(exp, env)
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 The book's mechanism still wins when forms must grow at runtime: exercise
@@ -1737,8 +1737,8 @@ factorial procedure:@footnote{This example illustrates a programming trick for
 formulating recursive procedures without using @code{define}. The most general
 trick of this sort is the @math{Y} @newterm{operator}, which can be used to
 give a ``pure @code{lambda}-calculus'' implementation of recursion.  See
-@ref{Rees 1977} for details on the λ-calculus and @ref{Gabriel 1988} for an
-expansion of this trick in Scheme.}
+@ref{Stoy 1977} for details on the λ-calculus and @ref{Gabriel 1988} for an
+exposition of the @math{Y} operator in Scheme.}
 
 @example
 ((lambda (n)
@@ -1789,7 +1789,6 @@ Fill in the missing expressions to complete an alternative definition of
          false
          (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
 @end example
-@end quotation
 
 @node	4.1.7, 4.2, Chapter 4, 4.1
 @subsection Separating Syntactic Analysis from Execution
@@ -1838,10 +1837,10 @@ is exactly the book's closures-produced-once design. With the separation into
 analysis and execution, @code{eval} now becomes
 
 @example rust
-fn eval_exp(&self, exp: &Value, env: &Rc<Env>) -> EvalResult {
+fn eval_exp(&self, exp: &Value, env: &Rc<Env>) -> EvalResult @{
     let exec = self.analyze(exp)?;
     exec(env)
-}
+@}
 @end example
 
 @noindent
@@ -1851,21 +1850,21 @@ performed by the original @code{eval} of @ref{4.1.1}, except that the
 procedures to which we dispatch perform only analysis, not full evaluation:
 
 @example rust
-fn base_analyze(&self, exp: &Value) -> Result<Exec, SchemeError> {
-    match exp {
-        Value::Int(_) | Value::Real(_) | Value::Bool(_) | Value::Str(_) => {
+fn base_analyze(&self, exp: &Value) -> Result<Exec, SchemeError> @{
+    match exp @{
+        Value::Int(_) | Value::Real(_) | Value::Bool(_) | Value::Str(_) => @{
             let constant = exp.clone();
             Ok(Rc::new(move |_| Ok(constant.clone())))
-        }
-        Value::Sym(name) => {
+        @}
+        Value::Sym(name) => @{
             let name = name.clone();
             Ok(Rc::new(move |env| lookup_variable_value(&name, env)))
-        }
-        _ if is_quoted(exp) => {
+        @}
+        _ if is_quoted(exp) => @{
             let constant = text_of_quotation(exp)?;
             Ok(Rc::new(move |_| Ok(constant.clone())))
-        }
-        _ if is_assignment(exp) => { /* analyze_assignment */ }
+        @}
+        _ if is_assignment(exp) => @{ /* analyze_assignment */ @}
         _ if is_definition(exp) => self.analyze_definition(exp),
         _ if is_if(exp) => self.analyze_if(exp),
         _ if is_lambda(exp) => self.analyze_lambda(exp),
@@ -1873,10 +1872,10 @@ fn base_analyze(&self, exp: &Value) -> Result<Exec, SchemeError> {
         _ if is_cond(exp) => self.analyze(&cond_to_if(exp)?),
         _ if is_application(exp) => self.analyze_application(exp),
         _ => Err(SchemeError::TypeMismatch(format!(
-            "Unknown expression type: ANALYZE {exp}"
+            "Unknown expression type: ANALYZE @{exp@}"
         ))),
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1896,10 +1895,10 @@ of the quotation only once, in the analysis phase, rather than in the execution
 phase.
 
 @example rust
-_ if is_quoted(exp) => {
+_ if is_quoted(exp) => @{
     let constant = text_of_quotation(exp)?;
     Ok(Rc::new(move |_| Ok(constant.clone())))
-}
+@}
 @end example
 
 @noindent
@@ -1912,10 +1911,10 @@ be found, thus obviating the need to scan the environment for the entry that
 matches the variable.}
 
 @example rust
-Value::Sym(name) => {
+Value::Sym(name) => @{
     let name = name.clone();
     Ok(Rc::new(move |env| lookup_variable_value(&name, env)))
-}
+@}
 @end example
 
 @noindent
@@ -1928,11 +1927,11 @@ definitions.
 
 @example rust
 let vproc = self.analyze(&value)?;
-Ok(Rc::new(move |env| {
+Ok(Rc::new(move |env| @{
     let value = vproc(env)?;
     set_variable_value_(&name, value, env)?;
     Ok(Value::sym("ok"))
-}))
+@}))
 @end example
 
 @noindent
@@ -1940,15 +1939,15 @@ For @code{if} expressions, we extract and analyze the predicate, consequent,
 and alternative at analysis time.
 
 @example rust
-fn analyze_if(&self, exp: &Value) -> Result<Exec, SchemeError> {
+fn analyze_if(&self, exp: &Value) -> Result<Exec, SchemeError> @{
     let (predicate, consequent, alternative) = if_parts(exp)?;
     let pproc = self.analyze(&predicate)?;
     let cproc = self.analyze(&consequent)?;
     let aproc = self.analyze(&alternative)?;
-    Ok(Rc::new(move |env| {
-        if is_true(&pproc(env)?) { cproc(env) } else { aproc(env) }
-    }))
-}
+    Ok(Rc::new(move |env| @{
+        if is_true(&pproc(env)?) @{ cproc(env) @} else @{ aproc(env) @}
+    @}))
+@}
 @end example
 
 @noindent
@@ -1957,20 +1956,20 @@ We analyze the @code{lambda} body only once, even though procedures resulting
 from evaluation of the @code{lambda} may be applied many times.
 
 @example rust
-fn analyze_lambda(&self, exp: &Value) -> Result<Exec, SchemeError> {
+fn analyze_lambda(&self, exp: &Value) -> Result<Exec, SchemeError> @{
     let (params, rest) = lambda_parameters(exp)?;
     let body = lambda_body(exp)?;
     let bproc = self.analyze_sequence(&body)?;
     let bodies = Rc::clone(self.bodies());
-    Ok(Rc::new(move |env| {
-        let closure = Rc::new(Closure {
+    Ok(Rc::new(move |env| @{
+        let closure = Rc::new(Closure @{
             name: None, params: params.clone(), rest: rest.clone(),
             body: body.clone(), env: Rc::clone(env),
-        });
+        @});
         bodies.borrow_mut().insert(body_key(&closure), Rc::clone(&bproc));
         Ok(Value::Closure(closure))
-    }))
-}
+    @}))
+@}
 @end example
 
 @noindent
@@ -1983,28 +1982,28 @@ environment as argument and sequentially calls each individual execution
 procedure with the environment as argument.
 
 @example rust
-fn analyze_sequence(&self, exps: &[Value]) -> Result<Exec, SchemeError> {
-    let Some((first, rest)) = exps.split_first() else {
+fn analyze_sequence(&self, exps: &[Value]) -> Result<Exec, SchemeError> @{
+    let Some((first, rest)) = exps.split_first() else @{
         return Err(SchemeError::TypeMismatch(
             "Empty sequence: ANALYZE".to_owned(),
         ));
-    };
-    if rest.is_empty() {
+    @};
+    if rest.is_empty() @{
         return self.analyze(first);
-    }
+    @}
     let first_proc = self.analyze(first)?;
     let rest_proc = self.analyze_sequence(rest)?;
     Ok(sequentially(first_proc, rest_proc))
-}
+@}
 
 /// The book's `sequentially`: two execution procedures combined into
 /// one that runs the first for effect and answers the second.
-fn sequentially(proc1: Exec, proc2: Exec) -> Exec {
-    Rc::new(move |env| {
+fn sequentially(proc1: Exec, proc2: Exec) -> Exec @{
+    Rc::new(move |env| @{
         proc1(env)?;
         proc2(env)
-    })
-}
+    @})
+@}
 @end example
 
 @noindent
@@ -2020,41 +2019,41 @@ analysis.  Instead, we just call the registered execution procedure for the
 body on the extended environment.
 
 @example rust
-fn analyze_application(&self, exp: &Value) -> Result<Exec, SchemeError> {
+fn analyze_application(&self, exp: &Value) -> Result<Exec, SchemeError> @{
     let fproc = self.analyze(&first_of(exp)?)?;
     let aprocs: Vec<Exec> = operand_items(exp)?
         .iter()
         .map(|op| self.analyze(op))
         .collect::<Result<_, _>>()?;
     let bodies = Rc::clone(self.bodies());
-    Ok(Rc::new(move |env| {
+    Ok(Rc::new(move |env| @{
         let proc = fproc(env)?;
         let mut args = Vec::with_capacity(aprocs.len());
-        for aproc in &aprocs {
+        for aproc in &aprocs @{
             args.push(aproc(env)?);
-        }
+        @}
         execute_with_bodies(&bodies, &proc, &args)
-    }))
-}
+    @}))
+@}
 
-fn execute_with_bodies(bodies: &Bodies, proc: &Value, args: &[Value]) -> EvalResult {
-    match proc {
-        Value::Primitive { f, .. } => f(args),
-        Value::Closure(c) => {
+fn execute_with_bodies(bodies: &Bodies, proc: &Value, args: &[Value]) -> EvalResult @{
+    match proc @{
+        Value::Primitive @{ f, .. @} => f(args),
+        Value::Closure(c) => @{
             let frame = extend_environment(
                 &closure_name(c), &c.params, c.rest.as_ref(), args, &c.env,
             )?;
             let body = bodies.borrow().get(&body_key(c)).cloned();
-            match body {
+            match body @{
                 Some(exec) => exec(&frame),
                 None => Err(SchemeError::TypeMismatch(
                     "the analyzed body is missing".to_owned(),
                 )),
-            }
-        }
+            @}
+        @}
         other => Err(SchemeError::NotProcedure(other.clone())),
-    }
-}
+    @}
+@}
 @end example
 
 @noindent

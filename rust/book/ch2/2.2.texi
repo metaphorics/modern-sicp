@@ -218,7 +218,7 @@ same way.  Thus, the data object in @ref{Figure 2.4} is displayed as
 @example rust
 let one_through_four: List<i128> = List::from_iter([1, 2, 3, 4]);
 
-println!("{one_through_four}");
+println!("@{one_through_four@}");
 // => (1 2 3 4)
 @end example
 
@@ -244,14 +244,14 @@ constructor @code{cons} makes a list like the original one, but with an
 additional item at the beginning.
 
 @example rust
-println!("{}", one_through_four.car().copied().expect("cons cell"));
+println!("@{@}", one_through_four.car().copied().expect("cons cell"));
 // => 1
 
-println!("{}", one_through_four.cdr().expect("cons cell"));
+println!("@{@}", one_through_four.cdr().expect("cons cell"));
 // => (2 3 4)
 
 println!(
-    "{}",
+    "@{@}",
     one_through_four
         .cdr()
         .and_then(List::car)
@@ -260,10 +260,10 @@ println!(
 );
 // => 2
 
-println!("{}", List::cons(10, &one_through_four));
+println!("@{@}", List::cons(10, &one_through_four));
 // => (10 1 2 3 4)
 
-println!("{}", List::cons(5, &one_through_four));
+println!("@{@}", List::cons(5, &one_through_four));
 // => (5 1 2 3 4)
 @end example
 
@@ -317,7 +317,7 @@ pub fn list_ref<T: Clone>(
 
 let squares: List<i128> = List::from_iter([1, 4, 9, 16, 25]);
 
-println!("{}", list_ref(&squares, 3)?);
+println!("@{@}", list_ref(&squares, 3)?);
 // => 16
 @end example
 
@@ -339,7 +339,7 @@ pub fn length<T>(items: &List<T>) -> usize @{
 
 let odds: List<i128> = List::from_iter([1, 3, 5, 7]);
 
-println!("{}", length(&odds));
+println!("@{@}", length(&odds));
 // => 4
 @end example
 
@@ -387,10 +387,10 @@ list while @code{cdr}ing down a list, as in the procedure @code{append}, which
 takes two lists as arguments and combines their elements to make a new list:
 
 @example rust
-println!("{}", append(&squares, &odds));
+println!("@{@}", append(&squares, &odds));
 // => (1 4 9 16 25 1 3 5 7)
 
-println!("{}", append(&odds, &squares));
+println!("@{@}", append(&odds, &squares));
 // => (1 3 5 7 1 4 9 16 25)
 @end example
 
@@ -590,10 +590,10 @@ pub fn map_list<T, U: Clone>(
 @}
 
 let absolute: List<f64> = map_list(|x| x.abs(), &List::from_iter([-10.0, 2.5, -11.6, 17.0]));
-println!("{absolute}");
+println!("@{absolute@}");
 // => (10 2.5 11.6 17)
 
-println!("{}", map_list(|x| x * x, &List::from_iter([1, 2, 3, 4])));
+println!("@{@}", map_list(|x| x * x, &List::from_iter([1, 2, 3, 4])));
 // => (1 4 9 16)
 @end example
 
@@ -702,7 +702,7 @@ printing.  For example,
 
 @example rust
 for_each(&List::from_iter([57, 321, 88]), |x| @{
-    println!("{x}");
+    println!("@{x@}");
 @});
 // 57
 // 321
@@ -815,25 +815,25 @@ let x: Nest<i128> = sub(&[sub(&[leaf(1), leaf(2)]), leaf(3), leaf(4)]);
 
 @example rust
 if let Nest::Sub(items) = &x @{
-    println!("{}", length(items));
+    println!("@{@}", length(items));
 @}
 // => 3
 @end example
 
 @example rust
-println!("{}", count_leaves(&x));
+println!("@{@}", count_leaves(&x));
 // => 4
 
 let doubled: Nest<i128> = sub(&[x.clone(), x.clone()]);
-println!("{doubled}");
+println!("@{doubled@}");
 // => (((1 2) 3 4) ((1 2) 3 4))
 
 if let Nest::Sub(items) = &doubled @{
-    println!("{}", length(items));
+    println!("@{@}", length(items));
 @}
 // => 2
 
-println!("{}", count_leaves(&doubled));
+println!("@{@}", count_leaves(&doubled));
 // => 8
 @end example
 
@@ -963,13 +963,13 @@ branches reversed and with all sublists deep-reversed as well.  For example,
 @example rust
 let x: Nest<i128> = sub(&[sub(&[leaf(1), leaf(2)]), sub(&[leaf(3), leaf(4)])]);
 
-println!("{x}");
+println!("@{x@}");
 // => ((1 2) (3 4))
 
-println!("{x}");
+println!("@{x@}");
 // reverse(x) is ((3 4) (1 2))
 
-println!("{}", deep_reverse(&x));
+println!("@{@}", deep_reverse(&x));
 // => ((4 3) (2 1))
 @end example
 @end quotation
@@ -983,10 +983,10 @@ order.  For example,
 @example rust
 let x: Nest<i128> = sub(&[sub(&[leaf(1), leaf(2)]), sub(&[leaf(3), leaf(4)])]);
 
-println!("{}", fringe(&x));
+println!("@{@}", fringe(&x));
 // => (1 2 3 4)
 
-println!("{}", fringe(&sub(&[x.clone(), x])));
+println!("@{@}", fringe(&sub(&[x.clone(), x])));
 // => (1 2 3 4 1 2 3 4)
 @end example
 @end quotation
@@ -1344,7 +1344,7 @@ the @code{map} adapter:
 
 @example rust
 let mapped: Vec<i128> = [1, 2, 3, 4, 5].iter().map(|x| x * x).copied().collect();
-println!("{mapped:?}");
+println!("@{mapped:?@}");
 // => [1, 4, 9, 16, 25]
 @end example
 
@@ -1370,7 +1370,7 @@ For example,
 
 @example rust
 let odd: Vec<i128> = filter(|x| x % 2 != 0, &[1, 2, 3, 4, 5]);
-println!("{odd:?}");
+println!("@{odd:?@}");
 // => [1, 3, 5]
 @end example
 
@@ -1392,13 +1392,13 @@ pub fn accumulate<T, A>(
     go(&op, initial, sequence)
 @}
 
-println!("{}", accumulate(|x, acc: i128| acc + x, 0, &[1, 2, 3, 4, 5]));
+println!("@{@}", accumulate(|x, acc: i128| acc + x, 0, &[1, 2, 3, 4, 5]));
 // => 15
-println!("{}", accumulate(|x, acc: i128| acc * x, 1, &[1, 2, 3, 4, 5]));
+println!("@{@}", accumulate(|x, acc: i128| acc * x, 1, &[1, 2, 3, 4, 5]));
 // => 120
 let rebuilt: List<i128> =
     accumulate(|x, acc: List<i128>| List::cons(*x, &acc), List::Nil, &[1, 2, 3, 4, 5]);
-println!("{rebuilt}");
+println!("@{rebuilt@}");
 // => (1 2 3 4 5)
 @end example
 
@@ -1412,7 +1412,7 @@ the pipelines use it directly, so @code{(enumerate-interval low high)} is
 
 @example rust
 let interval: Vec<i64> = (2..=7).collect();
-println!("{interval:?}");
+println!("@{interval:?@}");
 // => [2, 3, 4, 5, 6, 7]
 @end example
 
@@ -1437,7 +1437,7 @@ pub fn enumerate_tree<T: Clone>(tree: &Nest<T>) -> List<T> @{
 @}
 
 let tree = sub(&[leaf(1), sub(&[leaf(2), sub(&[leaf(3), leaf(4)])]), leaf(5)]);
-println!("{}", enumerate_tree(&tree));
+println!("@{@}", enumerate_tree(&tree));
 // => (1 2 3 4 5)
 @end example
 
@@ -1497,7 +1497,7 @@ pub fn list_fib_squares(n: u32) -> Result<List<i128>, SchemeError> @{
     Ok(squares?.into_iter().collect())
 @}
 
-println!("{}", list_fib_squares(10)?);
+println!("@{@}", list_fib_squares(10)?);
 // => (0 1 1 4 9 25 64 169 441 1156 3025)
 @end example
 
@@ -1518,7 +1518,7 @@ pub fn product_of_squares_of_odd_elements(
         @})
 @}
 
-println!("{}", product_of_squares_of_odd_elements(&[1, 2, 3, 4, 5])?);
+println!("@{@}", product_of_squares_of_odd_elements(&[1, 2, 3, 4, 5])?);
 // => 225
 @end example
 
@@ -2172,10 +2172,10 @@ Two graphic images not included.
 @code{figures/generated/chap2/square_limit.std.svg}.)
 @end ifinfo
 @ifhtml
-@image{../figures/generated/chap2/square_limit,,60mm,Figure 2.9 (this edition): The square-limit of wave drawn as SVG.,.std.svg}
+@image{figures/generated/chap2/square_limit,,60mm,Figure 2.9 (this edition): The square-limit of wave drawn as SVG.,.std.svg}
 @end ifhtml
 @iftex
-@image{../figures/generated/chap2/square_limit,,60mm,,.pdf}
+@image{figures/generated/chap2/square_limit,,60mm,,.pdf}
 
 @end iftex
 @end float
@@ -2205,9 +2205,14 @@ different from the university education of the time, with its overemphasis on
 the classics, which, as he wrote, ``stand in the way of broader, higher and
 more practical instruction and discipline of the natural and social sciences.''
 This education was likewise to be different from narrow trade-school
-education.  In Rogers's words:@quotation ``The world-enforced distinction
+education.  In Rogers's words:
+
+@quotation
+``The world-enforced distinction
 between the practical and the scientific worker is utterly futile, and the
-whole experience of modern times has demonstrated its utter worthlessness.@end quotation
+whole experience of modern times has demonstrated its utter worthlessness.
+@end quotation
+
 Rogers served as president of @abbr{MIT} until 1870, when he resigned due to
 ill health.  In 1878, the second president of @abbr{MIT}, John Runkle, resigned under the
 pressure of a financial crisis brought on by the Panic of 1873 and strain of
@@ -2215,7 +2220,10 @@ fighting off attempts by Harvard to take over @abbr{MIT}.  Rogers returned to ho
 president until 1881.  Rogers collapsed and died while addressing @abbr{MIT}'s
 graduating class at the commencement ceremonies of 1882.  Runkle quoted
 Rogers's last words in a memo-rial address delivered that same
-year:@quotation ``As I stand here today and see what the Institute is, I call to
+year:
+
+@quotation
+``As I stand here today and see what the Institute is, I call to
 mind the beginnings of science.  I remember one hundred and fifty years ago
 Stephen Hales published a pamphlet on the subject of illuminating gas, in
 which he stated that his researches had demonstrated that 128 grains of
@@ -2225,11 +2233,17 @@ slowly regaining an erect position, threw up his hands, and was translated from
 the scene of his earthly labors and triumphs to ``the tomorrow of death,''
 where the mysteries of life are solved, and the disembodied spirit finds
 undisturbed satisfaction in contemplating the new and still unfathomable
-mysteries of the infinite future.@end quotation In the words of Francis A. Walker
-(@abbr{MIT}'s third president):@quotation ``All his life he had borne himself most
-faithfully and heroically, and he died as so good a knight would surely have
-wished, in harness, at his post, and in the very part and act of public duty.@end quotation}
+mysteries of the infinite future.
+@end quotation
 
+In the words of Francis A. Walker (@abbr{MIT}'s third president):
+
+@quotation
+``All his life he had borne himself most
+faithfully and heroically, and he died as so good a knight would surely have
+wished, in harness, at his post, and in the very part and act of public duty.
+@end quotation
+}
 @float
 @anchor{Figure 2.10}
 @ifinfo
@@ -2244,7 +2258,7 @@ Four graphic images not included.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.10,,58mm,Figure 2.10: Images produced by the @code{wave} painter, with respect to four different frames. The frames, shown with dotted lines, are not part of the images.,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.10,,58mm,Figure 2.10: Images produced by the wave painter@comma{} with respect to four different frames. The frames@comma{} shown with dotted lines@comma{} are not part of the images.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap2/Fig2.10.std,,58mm,,.pdf}
@@ -2262,10 +2276,10 @@ into one frame by this edition's picture language.}
 @code{figures/generated/chap2/wave.std.svg}.)
 @end ifinfo
 @ifhtml
-@image{../figures/generated/chap2/wave,,58mm,Figure 2.10 (this edition): The wave painter drawn as SVG.,.std.svg}
+@image{figures/generated/chap2/wave,,58mm,Figure 2.10 (this edition): The wave painter drawn as SVG.,.std.svg}
 @end ifhtml
 @iftex
-@image{../figures/generated/chap2/wave,,58mm,,.pdf}
+@image{figures/generated/chap2/wave,,58mm,,.pdf}
 
 @end iftex
 @end float
@@ -2349,10 +2363,10 @@ in the same two stages.}
 @code{figures/generated/chap2/wave4.std.svg}.)
 @end ifinfo
 @ifhtml
-@image{../figures/generated/chap2/wave4,,90mm,Figure 2.12 (this edition): The wave4 figure drawn as SVG.,.std.svg}
+@image{figures/generated/chap2/wave4,,90mm,Figure 2.12 (this edition): The wave4 figure drawn as SVG.,.std.svg}
 @end ifhtml
 @iftex
-@image{../figures/generated/chap2/wave4,,90mm,,.pdf}
+@image{figures/generated/chap2/wave4,,90mm,,.pdf}
 
 @end iftex
 @end float
@@ -2491,10 +2505,10 @@ Four graphic images not included.
 @code{figures/generated/chap2/corner_split.std.svg}.)
 @end ifinfo
 @ifhtml
-@image{../figures/generated/chap2/corner_split,,110mm,Figure 2.14 (this edition): right-split and corner-split of wave drawn as SVG.,.std.svg}
+@image{figures/generated/chap2/corner_split,,110mm,Figure 2.14 (this edition): right-split and corner-split of wave drawn as SVG.,.std.svg}
 @end ifhtml
 @iftex
-@image{../figures/generated/chap2/corner_split,,110mm,,.pdf}
+@image{figures/generated/chap2/corner_split,,110mm,,.pdf}
 
 @end iftex
 @end float

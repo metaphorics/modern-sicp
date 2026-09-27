@@ -177,8 +177,7 @@ joint production-distribution arrangement with the McGraw-Hill Book Company.
 @b{The TypeScript Edition}@*
 Adapted to TypeScript.  Every program re-expressed, every exercise kept at
 its @abbr{SICP} number.  The changes and the license terms for adapted
-material are stated in the Preface to the TypeScript Edition and in
-@file{NOTICE.md}.
+material are stated in the Preface to the TypeScript Edition.
 
 @noindent
 Unofficial Texinfo Format @url{http://sicpebook.wordpress.com, @value{utfversion}} (@value{utfversiondate}),
@@ -755,10 +754,24 @@ host mechanism the chapter relied on.
 
 Toolchain: TypeScript 7.0.2 on Node 24 LTS with pnpm; Effect 4 enters at section 3.1.  The code in @file{examples/}, @file{exercises/}, and @file{solutions/} is the source of every listing; tests run with @code{vitest}.
 
-License: the prose of this book is adapted material under
-@url{http://creativecommons.org/licenses/by-sa/4.0/, @abbr{CC BY-SA} 4.0};
-the programs are licensed @abbr{GPL}-3.0-only as a BY-SA Compatible
-License.  See @file{NOTICE.md} for the full notice.
+@noindent
+@b{Notice}@*
+@i{Structure and Interpretation of Computer Programs}, second edition,
+by Harold Abelson and Gerald Jay Sussman with Julie Sussman.  The
+@abbr{MIT} Press, 1996.  Licensed by The @abbr{MIT} Press under the
+Creative Commons Attribution-ShareAlike 4.0 International License.
+
+@noindent
+Adapted by the Modern @abbr{SICP} editions from the Unofficial Texinfo
+Format and the @abbr{HTML}5 and @abbr{EPUB}3 edition (sarabander/sicp).
+Changes: the prose is rewritten in %NAME%; every program is re-expressed;
+section and exercise numbers are unchanged; a Chapter 0 primer is added.
+
+@noindent
+Prose, figures, and exercise statements: @abbr{CC BY-SA} 4.0.  Programs:
+@abbr{GPL}-3.0-only, applied as the @abbr{BY-SA} Compatible License that
+@abbr{CC BY-SA} 4.0 Section 3(b)(1) permits.  The two never mix in one
+file.
 
 How to read: section 0.8 explains the interaction convention and the
 layout of this edition.

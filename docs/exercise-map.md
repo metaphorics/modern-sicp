@@ -384,7 +384,7 @@ Statements quote the book's `parallel-execute` and serializers; under the shared
 | 3.43 | exchange preserves multiset of balances | T | T | T | T |  |
 | 3.44 | transfer needs no joint lock | T | T | T | T |  |
 | 3.45 | double serialization deadlocks | T | T | T | T |  |
-| 3.46 | test-and-set race window | T | T | T | T | demonstrate race via stress test |
+| 3.46 | test-and-set race window | T | T | T | T | demonstrate the non-atomic race; Rust forces the load/load/store/store interleaving |
 | 3.47 | semaphore from mutex or test-and-set | T | T | A: Effect provides Semaphore; build anyway | A: kotlinx provides Semaphore; build anyway | blocking bounded semaphore with try-acquire; chosen: ocaml — implemented as 3.47a, a bounded semaphore on Mutex and Condition; see report |
 | 3.48 | deadlock avoidance by lock ordering | T | T | T | T |  |
 | 3.49 | ordering avoidance fails scenario | T | T | T | T | resource acquisition without known set |
@@ -449,7 +449,7 @@ Each row sums to 82 per language.
 - Self-referential stream definitions (`ones`, `integers`, `fibs`, `primes`, `integral`'s `int`): OCaml permits `let rec` over `Lazy`-celled streams; Kotlin self-reference works inside `by lazy`; TS needs a thunk/`Effect.suspend` closure; Rust needs function-based streams or `Rc::new_cyclic`/`OnceCell` cycles. Statements survive, but this is the chapter's hardest Rust design decision.
 - Memoized `delay`: only OCaml `Lazy.t` memoizes out of the box; Rust/TS/Kotlin editions must hand-roll the book's `memo-proc`. 3.51, 3.57, 3.63 answers depend on this editorial choice (see assumption above).
 - Environment-diagram exercises (3.9 to 3.11, 3.20, 3.27, 3.36) lean on Scheme frames; each edition needs the replacement trace/diagram named in the R cells.
-- Concurrency: the busy-wait mutex of 3.46 burns cores under real threads; recommend implementing `test-and-set!` over atomics (Rust `AtomicBool`, OCaml `Atomic`) or blocking primitives. Real nondeterminism makes exhaustive "list all values" answers paper exercises; a stress-test tailored addition (3.46) covers the gap.
+- Concurrency: the busy-wait mutex of 3.46 burns cores under real threads; implement test-and-set over atomics (Rust `AtomicBool`, OCaml `Atomic`) or blocking primitives. Controlled interleavings provide required race witnesses without depending on scheduler timing. Stress tests can observe other schedules but cannot guarantee a race.
 - REPL interactions: the book's `;Value:` transcripts (3.21, 3.51, 3.52) have no counterpart; each edition must define a printing convention, and quoted printed forms change in every edition.
 
 ### Outside-standard-library needs

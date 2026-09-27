@@ -4,97 +4,57 @@
 //! The reference solution of exercise 3.46: the race window of the
 //! book's plain-procedure `test-and-set!`. The test and the set are two
 //! separate operations, so two processes can both read `false` and both
-//! decide they acquired the mutex. Two demonstrations pin the window:
-//! one forced interleaving -- read, read, write, write -- where both
-//! processes provably acquire, and a stress test where two real threads
-//! race through the window a thousand times. The atomic cell of the
-//! module, `TestAndSetCell`, runs the identical stress and never once
-//! lets two processes in: the indivisible instruction is the fix.
+//! decide they acquired the mutex. Two real threads make the failure
+//! deterministic: each trial owns one fresh cell, both threads load it,
+//! and a two-party barrier keeps either from storing until both have
+//! loaded. The one-trial witness and each of the 1000 repeated trials
+//! therefore admit both processes without relying on the scheduler.
+//!
+//! The atomic comparison also starts with a fresh cell per trial and
+//! requires exactly one winner. The threads may proceed in either order
+//! after their start barrier; `TestAndSetCell` makes the outcome correct
+//! under either schedule.
 //!
 //! The module's plain-procedure `test_and_set` works on a `Cell<bool>`,
-//! which is neither `Send` nor `Sync`, so the race cannot even be
-//! offered to a second thread -- Rust refuses to hand the shared cell
-//! over. This solution spells the same two separate operations over an
-//! `AtomicBool` (a plain load, then a plain store) so the window is
-//! real and reachable from parallel hardware.
+//! which is not `Sync`, so Rust refuses to share a reference to the
+//! cell between threads. This solution uses an `AtomicBool` with a
+//! separate load and store, so the check-and-set as a whole
+//! remains non-atomic while the example is safe to share across threads.
 
+use std::sync::Barrier;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, PoisonError};
 
 use ch03::sec_3_4::TestAndSetCell;
 
-/// How many stress runs the demonstration attempts.
-const STRESS_RUNS: usize = 1000;
+/// How many trials of each kind the demonstration runs.
+const TRIALS: usize = 1000;
 
-/// The book's `test-and-set!` as two separate machine operations: a
-/// plain load, then -- if the load read `false` -- a plain store. The
-/// one yield between them is the time-slicing preemption the book asks
-/// us to imagine, widened so the window is visible under stress.
-fn racy_test_and_set(cell: &AtomicBool) -> bool {
-    if cell.load(Ordering::SeqCst) {
+/// The book's `test-and-set!` as two separate machine operations: load
+/// the cell, wait until both threads have loaded, then store if the load
+/// read `false`. The barrier forces the read, read, write, write
+/// interleaving that the timing diagram of the statement needs.
+fn racy_test_and_set(cell: &AtomicBool, both_loaded: &Barrier) -> bool {
+    let was_set = cell.load(Ordering::SeqCst);
+    both_loaded.wait();
+    if was_set {
         true
     } else {
-        for _ in 0..4 {
-            std::thread::yield_now();
-        }
         cell.store(true, Ordering::SeqCst);
         false
     }
 }
 
-/// One process's steps over the racy cell, as forced steps: the test
-/// parks its answer in the process's slot, the set acts on it.
-fn racer_steps(
-    cell: &Arc<AtomicBool>,
-    acquired: &Arc<AtomicUsize>,
-    slot: &Arc<std::sync::Mutex<bool>>,
-) -> Vec<Box<dyn FnOnce() + Send>> {
-    let (test_cell, test_slot) = (Arc::clone(cell), Arc::clone(slot));
-    let test = Box::new(move || {
-        let was_set = test_cell.load(Ordering::SeqCst);
-        *test_slot.lock().unwrap_or_else(PoisonError::into_inner) = was_set;
-    }) as Box<dyn FnOnce() + Send>;
-    let (set_cell, set_acquired, set_slot) =
-        (Arc::clone(cell), Arc::clone(acquired), Arc::clone(slot));
-    let set = Box::new(move || {
-        if !*set_slot.lock().unwrap_or_else(PoisonError::into_inner) {
-            set_cell.store(true, Ordering::SeqCst);
-            set_acquired.fetch_add(1, Ordering::SeqCst);
-        }
-    });
-    vec![test, set]
-}
-
-/// The forced demonstration: process 0 tests, process 1 tests, process
-/// 1 sets, process 0 sets. Both saw `false`, both set, both count as
-/// having acquired the mutex.
+/// One forced race trial over a fresh cell: both threads load `false`
+/// before either is allowed to store, so both acquire.
 #[must_use]
-fn forced_acquirers() -> usize {
-    let cell = Arc::new(AtomicBool::new(false));
-    let acquired = Arc::new(AtomicUsize::new(0));
-    let free = || Arc::new(std::sync::Mutex::new(false));
-    let (slot0, slot1) = (free(), free());
-    let procs = vec![
-        racer_steps(&cell, &acquired, &slot0),
-        racer_steps(&cell, &acquired, &slot1),
-    ];
-    ch03::sec_3_4::run_forced(procs, &[0, 1, 1, 0]);
-    acquired.load(Ordering::SeqCst)
-}
-
-/// One stress run: two threads released together, each attempting one
-/// acquisition through `acquire`; answers how many of the two got in.
-fn one_stress_run(acquire: &(dyn Fn() -> bool + Sync)) -> usize {
+fn one_racy_trial() -> usize {
+    let cell = AtomicBool::new(false);
+    let both_loaded = Barrier::new(2);
     let acquired = AtomicUsize::new(0);
-    let barrier = AtomicUsize::new(0);
     std::thread::scope(|scope| {
         for _ in 0..2 {
             scope.spawn(|| {
-                barrier.fetch_add(1, Ordering::SeqCst);
-                while barrier.load(Ordering::SeqCst) < 2 {
-                    std::thread::yield_now();
-                }
-                if acquire() {
+                if !racy_test_and_set(&cell, &both_loaded) {
                     acquired.fetch_add(1, Ordering::SeqCst);
                 }
             });
@@ -103,45 +63,61 @@ fn one_stress_run(acquire: &(dyn Fn() -> bool + Sync)) -> usize {
     acquired.load(Ordering::SeqCst)
 }
 
-/// Runs the stress `runs` times and answers how many runs admitted more
-/// than one process.
-fn stressed_double_acquires(runs: usize, acquire: &(dyn Fn() -> bool + Sync)) -> usize {
-    (0..runs).filter(|_| one_stress_run(acquire) > 1).count()
+/// Runs the forced race `trials` times, one fresh cell per trial, and
+/// answers how many trials admitted both processes.
+#[must_use]
+fn racy_double_acquires(trials: usize) -> usize {
+    (0..trials).filter(|_| one_racy_trial() > 1).count()
+}
+
+/// One atomic comparison trial over a fresh cell: the two threads start
+/// together and interleave freely; the indivisible test-and-set admits
+/// exactly one of them.
+#[must_use]
+fn one_atomic_trial() -> usize {
+    let cell = TestAndSetCell::new();
+    let start = Barrier::new(2);
+    let acquired = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..2 {
+            scope.spawn(|| {
+                start.wait();
+                if !cell.test_and_set() {
+                    acquired.fetch_add(1, Ordering::SeqCst);
+                }
+            });
+        }
+    });
+    acquired.load(Ordering::SeqCst)
 }
 
 mod ex_3_46 {
-    use std::sync::atomic::AtomicBool;
-
-    use super::{STRESS_RUNS, forced_acquirers, racy_test_and_set, stressed_double_acquires};
+    use super::{TRIALS, one_racy_trial, racy_double_acquires};
 
     /// Exercise 3.46: test-and-set race window
     ///
     /// Answers the acquirer count of the forced interleaving, the number
-    /// of stressed runs where two processes both acquired, and the
-    /// number of runs attempted.
+    /// of trials in which both processes acquired through the non-atomic
+    /// test-and-set, and the number of trials attempted.
     #[must_use]
     pub fn ex_3_46() -> (usize, usize, usize) {
-        let cell = AtomicBool::new(false);
-        let racy = || !racy_test_and_set(&cell);
-        (
-            forced_acquirers(),
-            stressed_double_acquires(STRESS_RUNS, &racy),
-            STRESS_RUNS,
-        )
+        let forced = one_racy_trial();
+        let racy = racy_double_acquires(TRIALS);
+        (forced, racy, TRIALS)
     }
 }
 
 #[test]
 fn ex_3_46() {
-    let (forced, racy, runs) = ex_3_46::ex_3_46();
-    // The forced interleaving is the timing diagram made real: two
-    // processes both hold a mutex that admits one.
-    assert_eq!(forced, 2);
-    // Under stress the window bites on its own, with no forcing at all.
-    assert!(racy > 0, "no stress run hit the window in {runs} runs");
-    assert!(racy <= runs);
-    // The atomic cell runs the identical race and never once fails.
-    let atomic_cell = TestAndSetCell::new();
-    let atomic = move || !atomic_cell.test_and_set();
-    assert_eq!(stressed_double_acquires(STRESS_RUNS, &atomic), 0);
+    let (forced_acquirers, racy_runs, runs) = ex_3_46::ex_3_46();
+    assert_eq!(forced_acquirers, 2);
+    assert_eq!(racy_runs, runs);
+    assert_eq!(runs, 1000);
+    for trial in 0..runs {
+        assert_eq!(
+            one_atomic_trial(),
+            1,
+            "atomic trial {trial} must have exactly one winner"
+        );
+    }
 }

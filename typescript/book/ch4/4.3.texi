@@ -1031,9 +1031,9 @@ We must also add to the dispatch in @code{analyze} a clause that will recognize
 this special form and generate an appropriate execution procedure:
 
 @example typescript
-    if (isAmb(exp)) {
+    if (isAmb(exp)) @{
       return analyzeAmb(exp);
-    }
+    @}
 @end example
 
 @noindent
@@ -1098,10 +1098,10 @@ expression, passing along the failure continuation that was passed to them.
 const analyzeSelfEvaluating = (exp: Value): AmbExecute => (_env, succeed, fail) =>
   succeed(exp, fail);
 
-const analyzeQuoted = (exp: Cons<Value>): AmbExecute => {
+const analyzeQuoted = (exp: Cons<Value>): AmbExecute => @{
   const qval = textOfQuotation(exp);
   return (_env, succeed, fail) => succeed(qval, fail);
-};
+@};
 
 const analyzeVariable = (exp: SymbolValue): AmbExecute => (env, succeed, fail) =>
   Effect.flatMap(lookupVariableValue(exp, env), (value) => succeed(value, fail));
@@ -1127,7 +1127,7 @@ consequent or the alternative.  If the execution of @code{pproc} fails, the
 original failure continuation for the @code{if} expression is called.
 
 @example typescript
-const analyzeIf = (exp: Cons<Value>): AmbExecute => {
+const analyzeIf = (exp: Cons<Value>): AmbExecute => @{
   const pproc = analyze(ifPredicate(exp));
   const cproc = analyze(ifConsequent(exp));
   const aproc = analyze(ifAlternative(exp));
@@ -1142,7 +1142,7 @@ const analyzeIf = (exp: Cons<Value>): AmbExecute => {
       // evaluating the predicate
       fail,
     );
-};
+@};
 @end example
 
 @noindent
@@ -1153,10 +1153,10 @@ then @code{b}, we call @code{a} with a success continuation that calls
 @code{b}.
 
 @example typescript
-const analyzeSequence = (exps: List<Value>): AmbExecute => {
-  if (exps._tag === "Nil") {
-    return () => Effect.fail(new RuntimeError({ message: "Empty sequence: AMB-EVAL", detail: "" }));
-  }
+const analyzeSequence = (exps: List<Value>): AmbExecute => @{
+  if (exps._tag === "Nil") @{
+    return () => Effect.fail(new RuntimeError(@{ message: "Empty sequence: AMB-EVAL", detail: "" @}));
+  @}
   const procs = toArray(exps).map(analyze);
   const sequentially = (a: AmbExecute, b: AmbExecute): AmbExecute => (env, succeed, fail) =>
     // success continuation for calling `a`
@@ -1164,7 +1164,7 @@ const analyzeSequence = (exps: List<Value>): AmbExecute => {
       // failure continuation for calling `a`
       fail);
   return procs.reduce(sequentially);
-};
+@};
 @end example
 
 @subsubheading Definitions and assignments
@@ -1178,7 +1178,7 @@ execution of @code{vproc} succeeds, obtaining a value @code{val} for the
 defined variable, the variable is defined and the success is propagated:
 
 @example typescript
-const analyzeDefinition = (exp: Cons<Value>): AmbExecute => {
+const analyzeDefinition = (exp: Cons<Value>): AmbExecute => @{
   const variable = definitionVariable(exp);
   const vproc = analyze(definitionValue(exp));
   return (env, succeed, fail) =>
@@ -1188,7 +1188,7 @@ const analyzeDefinition = (exp: Cons<Value>): AmbExecute => {
         Effect.flatMap(defineVariableValue(variable, value, env), () => succeed(ok, fail2)),
       fail,
     );
-};
+@};
 @end example
 
 @noindent
@@ -1216,12 +1216,12 @@ would otherwise have called @code{fail2} calls this procedure instead, to undo
 the assignment before actually calling @code{fail2}.
 
 @example typescript
-const analyzeAssignment = (exp: Cons<Value>): AmbExecute => {
+const analyzeAssignment = (exp: Cons<Value>): AmbExecute => @{
   const variable = assignmentVariable(exp);
   const vproc = analyze(assignmentValue(exp));
   return (env, succeed, fail) =>
     vproc(env, (value, fail2) => assignWithUndo(variable, value, env, succeed, fail2), fail);
-};
+@};
 
 // The write of `analyzeAssignment` plus its undo record: the old value is
 // read before the write, and the success is handed a failure continuation
@@ -1253,7 +1253,7 @@ failure continuations as we evaluate the operands.  We use a procedure
 @code{map} as in the ordinary evaluator.
 
 @example typescript
-const analyzeApplication = (exp: Cons<Value>): AmbExecute => {
+const analyzeApplication = (exp: Cons<Value>): AmbExecute => @{
   const fproc = analyze(exp.head);
   const aprocs = toArray(exp.tail).map(analyze);
   return (env, succeed, fail) =>
@@ -1267,7 +1267,7 @@ const analyzeApplication = (exp: Cons<Value>): AmbExecute => {
         ),
       fail,
     );
-};
+@};
 @end example
 
 @noindent
@@ -1282,11 +1282,11 @@ arguments:
 @example typescript
 const getArgs =
   (aprocs: ReadonlyArray<AmbExecute>): AmbExecute =>
-  (env, succeed, fail) => {
+  (env, succeed, fail) => @{
     const first = aprocs[0];
-    if (first === undefined) {
+    if (first === undefined) @{
       return succeed(nil, fail);
-    }
+    @}
     return first(
       env,
       // success continuation for this `aproc`
@@ -1299,7 +1299,7 @@ const getArgs =
         ),
       fail,
     );
-  };
+  @};
 @end example
 
 @noindent
@@ -1313,19 +1313,19 @@ const executeApplication = (
   args: List<Value>,
   succeed: Succeed,
   fail: Fail,
-): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag === "Primitive") {
+): Effect.Effect<Value, EvaluationError> => @{
+  if (procedure._tag === "Primitive") @{
     return Effect.flatMap(applyPrimitiveProcedure(procedure, args), (value) =>
       succeed(value, fail),
     );
-  }
-  if (procedure._tag === "Compound") {
+  @}
+  if (procedure._tag === "Compound") @{
     return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
       analyzeSequence(procedure.body)(newEnv, succeed, fail),
     );
-  }
-  return Effect.fail(new NotAProcedure({ value: format(procedure) }));
-};
+  @}
+  return Effect.fail(new NotAProcedure(@{ value: format(procedure) @}));
+@};
 @end example
 
 @subsubheading Evaluating @code{amb} expressions
@@ -1344,24 +1344,24 @@ const tryChoices = (
   env: Env,
   succeed: Succeed,
   fail: Fail,
-): Effect.Effect<Value, EvaluationError> => {
-  const tryNext = (rest: ReadonlyArray<AmbExecute>): Effect.Effect<Value, EvaluationError> => {
+): Effect.Effect<Value, EvaluationError> => @{
+  const tryNext = (rest: ReadonlyArray<AmbExecute>): Effect.Effect<Value, EvaluationError> => @{
     const first = rest[0];
-    if (first === undefined) {
+    if (first === undefined) @{
       return fail();
-    }
-    return first(env, succeed, () => {
+    @}
+    return first(env, succeed, () => @{
       noteFailure();
       return tryNext(rest.slice(1));
-    });
-  };
+    @});
+  @};
   return tryNext(cprocs);
-};
+@};
 
-const analyzeAmb = (exp: Cons<Value>): AmbExecute => {
+const analyzeAmb = (exp: Cons<Value>): AmbExecute => @{
   const cprocs = toArray(ambChoices(exp)).map(analyze);
   return (env, succeed, fail) => tryChoices(cprocs, env, succeed, fail);
-};
+@};
 @end example
 
 @subsubheading Driver loop
@@ -1397,60 +1397,60 @@ export const ambDriverLoop = (
   env: Env,
   inputs: ReadonlyArray<string>,
 ): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.gen(function* () {
+  Effect.gen(function* () @{
     const lines: string[] = [];
     // the failure continuation that asks for the next alternative
     let next: Fail | undefined;
     let current: string | undefined;
-    const record: Succeed = (value, fail) => {
+    const record: Succeed = (value, fail) => @{
       next = fail;
       return Effect.succeed(value);
-    };
+    @};
     const terminalFail: Fail = () => Effect.fail(new AmbExhausted());
     const runForm = (input: string): Effect.Effect<Value, EvaluationError> =>
       Effect.flatMap(
-        Effect.try({
+        Effect.try(@{
           try: () => read(input),
           catch: (e) =>
-            new RuntimeError({
+            new RuntimeError(@{
               message: "read failed",
               detail: e instanceof ReadError || e instanceof Error ? e.message : String(e),
-            }),
-        }),
+            @}),
+        @}),
         (exp) => evaluator.ambeval(exp, env, record, terminalFail),
       );
     const settle = (
       outcome: Result.Result<Value, EvaluationError>,
       input: string,
-    ): Effect.Effect<void, EvaluationError> => {
-      if (outcome._tag === "Success") {
+    ): Effect.Effect<void, EvaluationError> => @{
+      if (outcome._tag === "Success") @{
         lines.push(";;; Amb-Eval value:", format(outcome.success));
         return Effect.void;
-      }
-      if (outcome.failure instanceof AmbExhausted) {
+      @}
+      if (outcome.failure instanceof AmbExhausted) @{
         lines.push(";;; There are no more values of", input);
         next = undefined;
         return Effect.void;
-      }
+      @}
       return Effect.fail(outcome.failure);
-    };
-    for (const input of inputs) {
-      if (input === "try-again") {
+    @};
+    for (const input of inputs) @{
+      if (input === "try-again") @{
         lines.push(";;; Amb-Eval input:", input);
-        if (next === undefined) {
+        if (next === undefined) @{
           lines.push(";;; There is no current problem");
           continue;
-        }
+        @}
         yield* settle(yield* Effect.result(next()), current ?? input);
         continue;
-      }
+      @}
       current = input;
       next = undefined;
       lines.push(";;; Amb-Eval input:", input, ";;; Starting a new problem");
       yield* settle(yield* Effect.result(runForm(input)), input);
-    }
+    @}
     return lines;
-  });
+  @});
 @end example
 
 @noindent
@@ -1474,7 +1474,7 @@ of trials required to make a successful choice as follows:
 
 @example typescript
 const transcript = Effect.runSync(
-  ambDriverLoop(makeAmbEvaluator({ permanentSet: true }), env, [
+  ambDriverLoop(makeAmbEvaluator(@{ permanentSet: true @}), env, [
     "(define count 0)",
     `(let ((x (an-element-of '(a b c)))
       (y (an-element-of '(a b c))))
@@ -1508,7 +1508,7 @@ following example:
 
 @example typescript
 const transcript = Effect.runSync(
-  ambDriverLoop(makeAmbEvaluator({ ifFail: true }), env, [
+  ambDriverLoop(makeAmbEvaluator(@{ ifFail: true @}), env, [
     `(if-fail
  (let ((x (an-element-of '(1 3 5))))
    (require (even? x))
@@ -1572,9 +1572,9 @@ export const requirePredicate = (exp: Cons<Value>): Value => cadrOf(exp.tail);
 and a new clause in the dispatch in @code{analyze}
 
 @example typescript
-    if (requireForm && isRequire(exp)) {
+    if (requireForm && isRequire(exp)) @{
       return analyzeRequire(exp, analyze);
-    }
+    @}
 @end example
 
 @noindent
@@ -1582,7 +1582,7 @@ as well the procedure @code{analyze-require} that handles @code{require}
 expressions.  Complete the following definition of @code{analyze-require}.
 
 @example typescript
-export const analyzeRequire = (exp: Cons<Value>, analyze: AmbAnalyze): AmbExecute => {
+export const analyzeRequire = (exp: Cons<Value>, analyze: AmbAnalyze): AmbExecute => @{
   const pproc = analyze(requirePredicate(exp));
   return (env, succeed, fail) =>
     pproc(
@@ -1590,7 +1590,7 @@ export const analyzeRequire = (exp: Cons<Value>, analyze: AmbAnalyze): AmbExecut
       (predValue, fail2) => (isTrue(predValue) ? succeed(ok, fail2) : fail2()),
       fail,
     );
-};
+@};
 @end example
 @end quotation
 

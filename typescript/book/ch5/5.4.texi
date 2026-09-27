@@ -842,37 +842,40 @@ undefined variable) interrupts an evaluation.@footnote{We could perform the
 stack initialization only after errors, but doing it in the driver loop will be
 convenient for monitoring the evaluator's performance, as described below.}
 
-If we combine all the code fragments presented in 
+If we combine all the code fragments presented in
 @ref{5.4.1}--@ref{5.4.4}, we can create an evaluator machine model that we can
-run.  In this edition the fragments are the named controller fragments
-of the module @code{04-eceval.ts}, the base controller is their
-concatenation, and the machine runs the assembled text over the word
-registers.
+run.  In this edition the controller in module @code{04-eceval.ts} is a
+sequence of labeled instructions.  Its labels name the entry points that
+correspond to the book's controller fragments, and @code{makeEvaluator}
+assembles that controller with the evaluator's registers and base operations:
 
 @example typescript
-let eceval = Eval.make_evaluator ~source:program ()
-(* the registers are the book's seven plus flag; the controller is the
-   concatenation of the fragments above, assembled by the 5.1 reader *)
+import @{
+  baseOperations,
+  controllerText,
+  evaluatorController,
+  makeEvaluator,
+@} from "@sicp-ts{}/ch5/04-eceval";
+
+const eceval = makeEvaluator(program);
+const controllerLabels = controllerText.split("\n").filter((label) => label !== "");
 @end example
 
 @noindent
-We must define Scheme procedures to simulate the operations used as primitives
-by the evaluator.  These are the same procedures we used for the metacircular
-evaluator in @ref{4.1}, together with the few additional ones defined
-in footnotes throughout @ref{5.4}.
+The exported controller retains its labels, and the module exposes the base
+operation table used by the evaluator:
 
 @example typescript
-let base_operations =
-  [ test_op "self-evaluating?" `self_evaluating
-  ; (* ... the complete table of 4.1 typed over words ... *)
-  ]
+evaluatorController.length;
+controllerLabels;
+Object.keys(baseOperations(eceval.state));
 @end example
 
 @noindent
-Finally, we can initialize the global environment and run the evaluator:
+Finally, we can run the evaluator and read its transcript:
 
 @example typescript
-Eval.start eceval
+const transcript = eceval.run();
 @end example
 
 @noindent

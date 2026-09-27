@@ -199,7 +199,7 @@ export const compile = (
   exp: Word,
   target: string,
   linkage: Linkage,
-): Seq => {
+): Seq => @{
   if (isSelfEvaluating(exp)) return compileSelfEvaluating(cfg, exp, target, linkage);
   if (isTaggedForm(exp, "quote")) return compileQuoted(cfg, exp, target, linkage);
   if (isSymbolWord(exp)) return compileVariable(cfg, cenv, exp, target, linkage);
@@ -212,7 +212,7 @@ export const compile = (
   if (isTaggedForm(exp, "cond")) return compile(cfg, state, cenv, condToIf(exp), target, linkage);
   if (isPair(exp)) return compileApplication(cfg, state, cenv, exp, target, linkage);
   throw new EvaluatorFault("Unknown expression type: COMPILE");
-};
+@};
 @end example
 
 @subsubheading Targets and linkages
@@ -401,7 +401,7 @@ const makeInstructionSequence = (
   needs: readonly string[],
   modifies: readonly string[],
   stmts: readonly ControllerLine[],
-): Seq => ({ needs, modifies, stmts });
+): Seq => (@{ needs, modifies, stmts @});
 @end example
 
 @noindent
@@ -426,7 +426,7 @@ therefore be constructed as
 We sometimes need to construct an instruction sequence with no statements:
 
 @example typescript
-const emptyInstructionSequence = (): Seq => ({ needs: [], modifies: [], stmts: [] });
+const emptyInstructionSequence = (): Seq => (@{ needs: [], modifies: [], stmts: [] @});
 @end example
 
 @noindent
@@ -524,16 +524,16 @@ evaluates to the list
 }
 
 @example typescript
-const compileLinkage = (linkage: Linkage): Seq => {
-  switch (linkage.kind) {
+const compileLinkage = (linkage: Linkage): Seq => @{
+  switch (linkage.kind) @{
     case "return":
       return makeInstructionSequence(["continue"], [], [jumpReg("continue")]);
     case "next":
       return emptyInstructionSequence();
     case "label":
       return makeInstructionSequence([], [], [jump(linkage.name)]);
-  }
-};
+  @}
+@};
 @end example
 
 @noindent
@@ -731,7 +731,7 @@ procedures, analogous to the structure for compound procedures described in
 
 @example typescript
 const compiledProcedureWord = (entry: Value, environment: Word): TaggedWord =>
-  makeTaggedWord("compiled-procedure", { entry, env: envIndex(environment) });
+  makeTaggedWord("compiled-procedure", @{ entry, env: envIndex(environment) @});
 @end example
 }
 
@@ -742,14 +742,14 @@ const construct = endWithLinkage(
   cfg,
   lambdaLinkage,
   makeInstructionSequence(["env"], [target], [
-    assign(target, op("make-compiled-procedure", wconst({ label: procEntry }), reg("env"))),
+    assign(target, op("make-compiled-procedure", wconst(@{ label: procEntry @}), reg("env"))),
   ]),
 );
 const body = compileLambdaBody(cfg, state, cenv, exp, procEntry);
-return { ...tackOnInstructionSequence(construct, body), stmts: [
+return @{ ...tackOnInstructionSequence(construct, body), stmts: [
   ...tackOnInstructionSequence(construct, body).stmts,
   mark(afterLambda),
-] };
+] @};
 @end example
 
 @noindent
@@ -1079,32 +1079,32 @@ be sure that @code{continue} will have the correct value when we enter the
 compiled procedure.
 
 @example typescript
-const compileProcAppl = (state: CompilerState, target: string, linkage: Linkage): Seq => {
+const compileProcAppl = (state: CompilerState, target: string, linkage: Linkage): Seq => @{
   const entry = assign("val", op("compiled-procedure-entry", reg("proc")));
   const goto = jumpReg("val");
-  if (linkage.kind === "return") {
+  if (linkage.kind === "return") @{
     if (target !== "val") throw new EvaluatorFault("return linkage, target not val: COMPILE");
     return makeInstructionSequence(["proc", "continue"], ALL_REGS, [entry, goto]);
-  }
-  if (linkage.kind === "label") {
+  @}
+  if (linkage.kind === "label") @{
     if (target === "val")
       return makeInstructionSequence(["proc"], ALL_REGS, [
-        assign("continue", wconst({ label: linkage.name })),
+        assign("continue", wconst(@{ label: linkage.name @})),
         entry,
         goto,
       ]);
     const procReturn = makeLabel(state, "proc-return");
     return makeInstructionSequence(["proc"], ALL_REGS, [
-      assign("continue", wconst({ label: procReturn })),
+      assign("continue", wconst(@{ label: procReturn @})),
       entry,
       goto,
       mark(procReturn),
       assign(target, reg("val")),
       jump(linkage.name),
     ]);
-  }
+  @}
   throw new EvaluatorFault("compile-proc-appl: the call carries no next linkage");
-};
+@};
 @end example
 
 @node	5.5.4, 5.5.5, 5.5.3, 5.5
@@ -1158,11 +1158,11 @@ needed by @code{seq2} and the registers modified by @code{seq1}.)  Thus,
 @code{append-instruction-sequences} is implemented as follows:
 
 @example typescript
-const append2Sequences = (seq1: Seq, seq2: Seq): Seq => ({
+const append2Sequences = (seq1: Seq, seq2: Seq): Seq => (@{
   needs: listUnion(seq1.needs, listDifference(seq2.needs, seq1.modifies)),
   modifies: listUnion(seq1.modifies, seq2.modifies),
   stmts: [...seq1.stmts, ...seq2.stmts],
-});
+@});
 @end example
 
 @noindent
@@ -1171,11 +1171,11 @@ lists, similar to the (unordered) set representation described in
 @ref{2.3.3}:
 
 @example typescript
-const listUnion = (s1: readonly string[], s2: readonly string[]): string[] => {
+const listUnion = (s1: readonly string[], s2: readonly string[]): string[] => @{
   const out = [...s1];
   for (const name of s2) if (!out.includes(name)) out.push(name);
   return out;
-};
+@};
 @end example
 
 @noindent
@@ -1204,20 +1204,20 @@ const preservingInstructionSequences = (
   regs: readonly string[],
   seq1: Seq,
   seq2: Seq,
-): Seq => {
+): Seq => @{
   let current = seq1;
-  for (const name of regs) {
+  for (const name of regs) @{
     const needed = seq2.needs.includes(name) && current.modifies.includes(name);
-    if (cfg.preservingOn ? needed : true) {
-      current = {
+    if (cfg.preservingOn ? needed : true) @{
+      current = @{
         needs: listUnion([name], current.needs),
         modifies: listDifference(current.modifies, [name]),
         stmts: [save(name), ...current.stmts, restore(name)],
-      };
-    }
-  }
+      @};
+    @}
+  @}
   return append2Sequences(current, seq2);
-};
+@};
 @end example
 
 @noindent
@@ -1229,11 +1229,11 @@ which it is embedded.  We thus ignore the procedure body's sets of needed and
 modified registers when we tack it onto the other sequence.
 
 @example typescript
-const tackOnInstructionSequence = (seq: Seq, bodySeq: Seq): Seq => ({
+const tackOnInstructionSequence = (seq: Seq, bodySeq: Seq): Seq => (@{
   needs: seq.needs,
   modifies: seq.modifies,
   stmts: [...seq.stmts, ...bodySeq.stmts],
-});
+@});
 @end example
 
 @noindent
@@ -1246,11 +1246,11 @@ branch are still needed by the combined sequence, even if these are modified by
 the first branch.
 
 @example typescript
-const parallelInstructionSequences = (seq1: Seq, seq2: Seq): Seq => ({
+const parallelInstructionSequences = (seq1: Seq, seq2: Seq): Seq => (@{
   needs: listUnion(seq1.needs, seq2.needs),
   modifies: listUnion(seq1.modifies, seq2.modifies),
   stmts: [...seq1.stmts, ...seq2.stmts],
-});
+@});
 @end example
 
 @node	5.5.5, 5.5.6, 5.5.4, 5.5
@@ -2172,14 +2172,14 @@ export const compileAndGo = (
   state: CompilerState,
   compiledSource: string,
   driverSource = "",
-  options: CompiledEvaluatorOptions = {},
-): CompiledEvaluator => {
-  const { entry, lines } = compileBlock(cfg, state, compiledSource);
+  options: CompiledEvaluatorOptions = @{@},
+): CompiledEvaluator => @{
+  const @{ entry, lines @} = compileBlock(cfg, state, compiledSource);
   const controller = controllerReplacingDriver(guardedDriver);
   const evaluator = makeCompiledEvaluator([...controller, ...lines], driverSource, options);
   evaluator.armEntry(entry);
   return evaluator;
-};
+@};
 @end example
 
 @noindent

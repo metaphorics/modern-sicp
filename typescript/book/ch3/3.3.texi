@@ -3002,3 +3002,13 @@ indirectly via operations on connectors.  Although it is easy to implement the
 expression-oriented style in terms of the imperative implementation, it is very
 difficult to do the converse.}
 @end quotation
+
+@quotation
+@strong{In this language: mutable data and shared identity.}
+
+The section's mutable pairs, queues, tables, wires, and connectors keep their
+changing state in ordinary TypeScript objects.  Closures can hide that state
+behind message-passing procedures, while direct objects make it available
+through methods.  Aliasing remains observable: two names that hold the same
+object see the same mutations.
+@end quotation

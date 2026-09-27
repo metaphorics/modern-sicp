@@ -63,7 +63,7 @@ import @{
   op,
   reg,
   test,
-@} from "@sicp-ts/ch5/02-simulator";
+@} from "@sicp-ts{}/ch5/02-simulator";
 
 const gcdController: ControllerLine[] = [
   mark("test-b"),
@@ -95,7 +95,7 @@ To compute @abbr{GCD}s with this machine, we set the input registers, start
 the machine, and examine the result when the simulation terminates:
 
 @example typescript
-import @{ getRegisterContents, setRegisterContents @} from "@sicp-ts/ch5/02-simulator";
+import @{ getRegisterContents, setRegisterContents @} from "@sicp-ts{}/ch5/02-simulator";
 
 const machine = expectOk(gcdMachine);
 expectOk(setRegisterContents(machine, "a", 206));
@@ -152,7 +152,7 @@ const makeMachine = (
   registerNames: ReadonlyArray<string>,
   operations: Readonly<Record<string, Operation>>,
   controller: ReadonlyArray<ControllerLine>,
-  options: MachineOptions = @{},
+  options: MachineOptions = @{@},
 ): Outcome<Machine> => @{
   const machine = makeNewMachine(registerNames, operations, options);
   const program = assemble(controller, machine);
@@ -219,7 +219,7 @@ export const makeStack = (): MachineStack => @{
       maxDepth = 0;
     @},
     statistics: () => (@{ pushes, maxDepth @}),
-    statisticsLine: () => `(total-pushes = ${pushes} maximum-depth = ${maxDepth})`,
+    statisticsLine: () => `(total-pushes = $@{pushes@} maximum-depth = $@{maxDepth@})`,
   @};
 @};
 @end example
@@ -250,7 +250,7 @@ function, which implements the basic machine model.
 export const makeNewMachine = (
   registerNames: ReadonlyArray<string>,
   userOperations: Readonly<Record<string, Operation>>,
-  options: MachineOptions = @{},
+  options: MachineOptions = @{@},
 ): Machine => @{
   const newRegister = options.makeRegister ?? makeRegister;
   const registers = new Map<string, Register>();
@@ -295,7 +295,7 @@ export const makeNewMachine = (
     @},
   @};
   const allocateRegister = (name: string): Register => @{
-    if (registers.has(name)) throw new Error(`multiply defined register: ${name}`);
+    if (registers.has(name)) throw new Error(`multiply defined register: $@{name@}`);
     const register = newRegister(name);
     registers.set(name, register);
     return register;
@@ -436,7 +436,7 @@ gathers the summary of exercise 5.12:
 export const assemble = (
   controller: ReadonlyArray<ControllerLine>,
   machine: Machine,
-  options: AssemblerOptions = @{},
+  options: AssemblerOptions = @{@},
 ): Outcome<Program> => @{
   const scanned = extractLabels(controller);
   if (!scanned.ok) return scanned;
@@ -545,7 +545,7 @@ export const executionProcedure = (
   instr: Instruction,
   machine: Machine,
   labels: ReadonlyMap<string, number>,
-  options: AssemblerOptions = @{},
+  options: AssemblerOptions = @{@},
 ): Outcome<Exec> => @{
   if (options.saveRestore) @{
     const variant = options.saveRestore(instr);

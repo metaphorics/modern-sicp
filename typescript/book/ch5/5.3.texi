@@ -249,17 +249,17 @@ The instructions
 are implemented as
 
 @example typescript
-export const setCar = (memory: Memory, word: Value, value: Value): Value => {
-  if (!isPairPointer(word)) return fault({ tag: "NotAPair", op: "set-car!", word });
+export const setCar = (memory: Memory, word: Value, value: Value): Value => @{
+  if (!isPairPointer(word)) return fault(@{ tag: "NotAPair", op: "set-car!", word @});
   storeTheCars(memory, word.index, value);
   return emptyList;
-};
+@};
 
-export const setCdr = (memory: Memory, word: Value, value: Value): Value => {
-  if (!isPairPointer(word)) return fault({ tag: "NotAPair", op: "set-cdr!", word });
+export const setCdr = (memory: Memory, word: Value, value: Value): Value => @{
+  if (!isPairPointer(word)) return fault(@{ tag: "NotAPair", op: "set-cdr!", word @});
   storeTheCdrs(memory, word.index, value);
   return emptyList;
-};
+@};
 @end example
 
 @noindent
@@ -289,15 +289,15 @@ essentially the implementation of @code{cons} in terms of @code{set-car!} and
 @code{free} pointer.}
 
 @example typescript
-export const cons = (memory: Memory, carWord: Value, cdrWord: Value): PairPointer => {
+export const cons = (memory: Memory, carWord: Value, cdrWord: Value): PairPointer => @{
   if (memory.free >= memory.size)
-    fault({ tag: "MemoryExhausted", free: memory.free, size: memory.size });
+    fault(@{ tag: "MemoryExhausted", free: memory.free, size: memory.size @});
   const index = memory.free;
   memory.theCars[index] = carWord;
   memory.theCdrs[index] = cdrWord;
   memory.free = index + 1;
   return pairPointer(index);
-};
+@};
 @end example
 
 @noindent

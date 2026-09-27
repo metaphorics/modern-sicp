@@ -10,9 +10,9 @@ Euclid's Algorithm can be carried out by an iterative process, as specified by
 the following procedure:
 
 @example typescript
-function gcd(a: number, b: number): number {
+function gcd(a: number, b: number): number @{
   return b === 0 ? a : gcd(b, a % b);
-}
+@}
 @end example
 
 @noindent
@@ -172,9 +172,9 @@ compute factorials using the iterative algorithm specified by the following
 procedure.  Draw data-path and controller diagrams for this machine.
 
 @example typescript
-import { factorialIterative, runMachine } from "@sicp-ts/ch5/01-register-machines";
+import @{ factorialIterative, runMachine @} from "@sicp-ts{}/ch5/01-register-machines";
 
-const result = runMachine(factorialIterative, { n: 5 });
+const result = runMachine(factorialIterative, @{ n: 5 @});
 result.ok ? result.value.registers["product"] : result.error;
 @end example
 @end quotation
@@ -476,9 +476,9 @@ subtraction.  Indeed, we can write a Scheme procedure that finds remainders in
 this way:
 
 @example typescript
-function remainder(n: number, d: number): number {
+function remainder(n: number, d: number): number @{
   return n < d ? n : remainder(n - d, d);
-}
+@}
 @end example
 We can thus replace the remainder operation in the @abbr{GCD} machine's data
 paths with a subtraction operation and a comparison test.  @ref{Figure 5.5}
@@ -583,9 +583,9 @@ instructions that contains a loop, as shown in @ref{Figure 5.6}.
 roots using Newton's method, as described in @ref{Sec.1.1.7,,1.1.7}:
 
 @example typescript
-import { runMachine, sqrtExpanded } from "@sicp-ts/ch5/01-register-machines";
+import @{ runMachine, sqrtExpanded @} from "@sicp-ts{}/ch5/01-register-machines";
 
-const result = runMachine(sqrtExpanded, { x: 2 });
+const result = runMachine(sqrtExpanded, @{ x: 2 @});
 result.ok ? result.value.registers["guess"] : result.error;
 @end example
 
@@ -837,9 +837,9 @@ Consider the following recursive method for computing factorials, which we
 first examined in @ref{1.2.1}:
 
 @example typescript
-function factorial(n: number): number {
+function factorial(n: number): number @{
   return n === 1 ? 1 : factorial(n - 1) * n;
-}
+@}
 @end example
 
 @noindent
@@ -847,9 +847,9 @@ As we see from the procedure, computing @math{{n!}} requires computing @math{{(n
 Our @abbr{GCD} machine, modeled on the procedure
 
 @example typescript
-function gcd(a: number, b: number): number {
+function gcd(a: number, b: number): number @{
   return b === 0 ? a : gcd(b, a % b);
-}
+@}
 @end example
 
 @noindent
@@ -1046,9 +1046,9 @@ Let us examine a more complex recursive process, the tree-recursive computation
 of the Fibonacci numbers, which we introduced in @ref{1.2.2}:
 
 @example typescript
-function fib(n: number): number {
+function fib(n: number): number @{
   return n < 2 ? n : fib(n - 1) + fib(n - 2);
-}
+@}
 @end example
 @noindent
 Just as with factorial, we can implement the recursive Fibonacci computation as
@@ -1124,9 +1124,9 @@ controller instruction sequence and draw a diagram showing the data paths.
 Recursive exponentiation:
 
 @example typescript
-import { exponentRecursive, runMachine } from "@sicp-ts/ch5/01-register-machines";
+import @{ exponentRecursive, runMachine @} from "@sicp-ts{}/ch5/01-register-machines";
 
-const result = runMachine(exponentRecursive, { b: 3, n: 4 });
+const result = runMachine(exponentRecursive, @{ b: 3, n: 4 @});
 result.ok ? result.value.registers["val"] : result.error;
 @end example
 
@@ -1134,9 +1134,9 @@ result.ok ? result.value.registers["val"] : result.error;
 Iterative exponentiation:
 
 @example typescript
-import { exponentIterative, runMachine } from "@sicp-ts/ch5/01-register-machines";
+import @{ exponentIterative, runMachine @} from "@sicp-ts{}/ch5/01-register-machines";
 
-const result = runMachine(exponentIterative, { b: 3, n: 4 });
+const result = runMachine(exponentIterative, @{ b: 3, n: 4 @});
 result.ok ? result.value.registers["product"] : result.error;
 @end example
 

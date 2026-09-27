@@ -1956,10 +1956,10 @@ build arbitrarily complicated patterns.
 (The rendered figure is the checked-in file
 @code{figures/generated/chap2/square_limit.std.svg}.)
 
-@image{../figures/generated/chap2/square_limit,,60mm,Figure 2.9 (this edition): The square-limit of wave drawn as SVG.,.std.svg}
+@image{figures/generated/chap2/square_limit,,60mm,Figure 2.9 (this edition): The square-limit of wave drawn as SVG.,.std.svg}
 @end ifhtml
 @iftex
-@image{../figures/generated/chap2/square_limit,,60mm,,.pdf}
+@image{figures/generated/chap2/square_limit,,60mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.9 (this edition):} The square-limit of wave drawn as SVG.}
@@ -2066,10 +2066,10 @@ lines, are not part of the images.
 (The rendered figure is the checked-in file
 @code{figures/generated/chap2/wave.std.svg}.)
 
-@image{../figures/generated/chap2/wave,,58mm,Figure 2.10 (this edition): The wave painter drawn as SVG.,.std.svg}
+@image{figures/generated/chap2/wave,,58mm,Figure 2.10 (this edition): The wave painter drawn as SVG.,.std.svg}
 @end ifhtml
 @iftex
-@image{../figures/generated/chap2/wave,,58mm,,.pdf}
+@image{figures/generated/chap2/wave,,58mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.10 (this edition):} The wave painter drawn as SVG.}
@@ -2149,10 +2149,10 @@ const wave4 = below(wave2, wave2);
 (The rendered figure is the checked-in file
 @code{figures/generated/chap2/wave4.std.svg}.)
 
-@image{../figures/generated/chap2/wave4,,90mm,Figure 2.12 (this edition): The wave4 figure drawn as SVG.,.std.svg}
+@image{figures/generated/chap2/wave4,,90mm,Figure 2.12 (this edition): The wave4 figure drawn as SVG.,.std.svg}
 @end ifhtml
 @iftex
-@image{../figures/generated/chap2/wave4,,90mm,,.pdf}
+@image{figures/generated/chap2/wave4,,90mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.12 (this edition):} The wave4 figure drawn as SVG.}
@@ -2296,10 +2296,10 @@ symmetric @code{square-limit} designs as shown in @ref{Figure 2.9}.
 (The rendered figure is the checked-in file
 @code{figures/generated/chap2/corner_split.std.svg}.)
 
-@image{../figures/generated/chap2/corner_split,,110mm,Figure 2.14 (this edition): right-split and corner-split of wave drawn as SVG.,.std.svg}
+@image{figures/generated/chap2/corner_split,,110mm,Figure 2.14 (this edition): right-split and corner-split of wave drawn as SVG.,.std.svg}
 @end ifhtml
 @iftex
-@image{../figures/generated/chap2/corner_split,,110mm,,.pdf}
+@image{figures/generated/chap2/corner_split,,110mm,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.14 (this edition):} right-split and corner-split of wave drawn as SVG.}

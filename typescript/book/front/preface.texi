@@ -113,6 +113,10 @@
 @cindex \term\
 @dfn{\term\}
 @end macro
+@macro sicp-ts{}
+@@sicp-ts
+@end macro
+
 
 
 @titlepage

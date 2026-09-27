@@ -1240,3 +1240,13 @@ organization would be most appropriate for a system in which new types must
 often be added?  Which would be most appropriate for a system in which new
 operations must often be added?
 @end quotation
+
+@quotation
+@strong{In this language: open data-directed arithmetic.}
+
+TypeScript makes each value's shape explicit, but the section's open extension
+point is the operation table.  Packages install handlers by operation and
+type, and @code{applyGeneric} finds the matching function at run time.  A new
+representation therefore adds its own package and table entries without
+changing the generic operations that use it.
+@end quotation

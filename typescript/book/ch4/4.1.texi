@@ -2403,3 +2403,13 @@ experiments to compare the speed of the original metacircular evaluator with
 the version in this section.  Use your results to estimate the fraction of time
 that is spent in analysis versus execution for various procedures.
 @end quotation
+
+@quotation
+@strong{In this language: the metacircular evaluator.}
+
+The evaluator reads Lisp text into the edition's cons-list values, classifies
+forms through syntax procedures, and evaluates them in environments that hold
+bindings.  The later analysis pass turns each expression into an execution
+procedure, while typed Effect failures carry evaluation errors back to the
+driver.
+@end quotation

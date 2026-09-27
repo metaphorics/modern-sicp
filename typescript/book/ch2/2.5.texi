@@ -1623,6 +1623,15 @@ algorithm, as is the fast test for primality that we discussed in @ref{Chapter
 compute polynomial @abbr{GCD}s.}
 
 
+@quotation
+@strong{In this language: generic arithmetic and symbolic algebra.}
+
+This edition keeps the common arithmetic interface while each numeric type
+installs its operations in the shared table.  Raising, projection, and dropping
+make the tower's conversions explicit; polynomials use the same generic
+operations for coefficients, so a polynomial can itself be a coefficient.
+@end quotation
+
 @node    Chapter 3, 3.1, 2.5, Top
 @chapter Modularity, Objects, and State
 

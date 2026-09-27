@@ -188,11 +188,16 @@ jobs:
           cp site/index.html site/site.css _site/
           # Pages reference figures at /text/original/figures and fonts at
           # fonts/ relative to each page; stage both beside the editions.
+          # Edition-rendered figures are referenced as figures/... relative
+          # to each page, so they stage inside the edition directory.
           mkdir -p _site/text/original
           cp -r text/original/figures _site/text/original/figures
           for lang in rust ocaml typescript kotlin; do
             cp -r "$lang/book/_build/html" "_site/$lang"
             cp -r text/assets/css/fonts "_site/$lang/fonts"
+            if [ -d "$lang/book/figures" ]; then
+              cp -r "$lang/book/figures" "_site/$lang/figures"
+            fi
             mkdir -p "_site/$lang/book/_build"
             cp "$lang/book/_build/$lang-sicp.epub" "_site/$lang/book/_build/"
             cp "$lang/book/_build/$lang-sicp.pdf" "_site/$lang/book/_build/" || true

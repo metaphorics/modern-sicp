@@ -33,7 +33,10 @@ book-html-epub:
     uv run --directory ../.. tools/edition_switcher.py --html kotlin/book/_build/html --edition kotlin
     uv run --directory ../.. tools/check_html_assets.py --html kotlin/book/_build/html --site-root .
     uv run --directory ../.. tools/math_check.py --html kotlin/book/_build/html --source kotlin/book
-    ../../tools/texi2any_html.sh --epub3 -c HIGHLIGHT_SYNTAX=pygments \
+    # No HIGHLIGHT_SYNTAX here: texi2any 7.3 wraps multi-line pygments
+    # output in a div inside the example pre, which epubcheck rejects
+    # (RSC-005).  EPUB ships unhighlighted, as the first shipped epubs did.
+    ../../tools/texi2any_html.sh --epub3 \
         --css-include=book-epub.css -o _build/kotlin-sicp.epub main.texi
     uv run --directory ../.. tools/epub_manifest_fix.py --epub kotlin/book/_build/kotlin-sicp.epub
     epubcheck _build/kotlin-sicp.epub

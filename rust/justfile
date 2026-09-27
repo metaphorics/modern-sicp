@@ -34,10 +34,20 @@ book-html-epub:
     mkdir -p _build/html
     ../../tools/texi2any_html.sh --html --split=section -c HIGHLIGHT_SYNTAX=pygments \
         --css-include=book.css -o _build/html main.texi
+    # Pages reference edition-rendered figures as figures/... (book-relative,
+    # the one shape both the HTML splitter and the EPUB image copier resolve).
+    # Stage copies beside the pages and beside the epub output so the built
+    # tree is self-contained and check_html_assets resolves them.
+    rm -rf _build/html/figures _build/figures
+    cp -r figures _build/html/figures
+    cp -r figures _build/figures
     uv run --directory ../.. tools/edition_switcher.py --html rust/book/_build/html --edition rust
     uv run --directory ../.. tools/check_html_assets.py --html rust/book/_build/html --site-root .
     uv run --directory ../.. tools/math_check.py --html rust/book/_build/html --source rust/book
-    ../../tools/texi2any_html.sh --epub3 -c HIGHLIGHT_SYNTAX=pygments \
+    # No HIGHLIGHT_SYNTAX here: texi2any 7.3 wraps multi-line pygments
+    # output in a div inside the example pre, which epubcheck rejects
+    # (RSC-005).  EPUB ships unhighlighted, as the first shipped epubs did.
+    ../../tools/texi2any_html.sh --epub3 \
         --css-include=book-epub.css -o _build/rust-sicp.epub main.texi
     uv run --directory ../.. tools/epub_manifest_fix.py --epub rust/book/_build/rust-sicp.epub
     epubcheck _build/rust-sicp.epub
@@ -51,6 +61,11 @@ book-pdf:
     fi
     uv run --directory .. tools/figures_pdf.py --src text/original/figures --out text/original/figures/pdf
     cd book
+    # The PDF image references need PDF renders of the edition-generated
+    # figures; rsvg-convert renders the committed .std.svg sources.
+    for svg in figures/generated/*/*.std.svg; do
+        rsvg-convert -f pdf -o "${svg%.std.svg}.pdf" "$svg"
+    done
     mkdir -p _build
     texi2dvi --expand --pdf --batch --build=local -o _build/rust-sicp.pdf main.texi
 

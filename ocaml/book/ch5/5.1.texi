@@ -282,7 +282,7 @@ let gcd_machine =
         , Machine.Value_op (function
             | [ x; y ] -> Ok (Machine.Bool (Machine.equal_value x y))
             | _ -> Error (Machine.Arity "= needs two arguments")) ) ]
-    {|(controller
+    @{|(controller
  test-b
    (test (op =) (reg b) (const 0))
    (branch (label gcd-done))
@@ -290,7 +290,7 @@ let gcd_machine =
    (assign a (reg b))
    (assign b (reg t))
    (goto (label test-b))
- gcd-done)|}
+ gcd-done)|@}
 ;;
 (* run on a = 12 and b = 8, the machine stops with a = 4 *)
 @end example
@@ -325,7 +325,7 @@ let gcd_machine =
   Machine.make_machine
     ~registers:[ "a"; "b"; "t" ]
     ~operations:Machine.arith_operations
-    {|(controller
+    @{|(controller
  test-b
    (test (op =) (reg b) (const 0))
    (branch (label gcd-done))
@@ -333,7 +333,7 @@ let gcd_machine =
    (assign a (reg b))
    (assign b (reg t))
    (goto (label test-b))
- gcd-done)|}
+ gcd-done)|@}
 ;;
 (* run on a = 12 and b = 8, the machine answers 4; on 48 and 36, 12;
    on 17 and 5, 1 *)
@@ -410,7 +410,7 @@ printing the contents of register @code{a} is represented in a controller
 sequence by the instruction
 
 @example ocaml
-match Machine.parse_program {|(controller (perform (op print) (reg a)))|} with
+match Machine.parse_program @{|(controller (perform (op print) (reg a)))|@} with
 | Ok p -> Machine.instruction_to_string p.code.(0)
 | Error e -> Machine.error_to_string e
 ;;
@@ -464,7 +464,7 @@ let gcd_driver inputs output =
   Machine.make_machine
     ~registers:[ "a"; "b"; "t" ]
     ~operations:(Machine.read_print ~inputs ~output @ Machine.arith_operations)
-    {|(controller
+    @{|(controller
  gcd-loop
    (assign a (op read))
    (assign b (op read))
@@ -477,7 +477,7 @@ let gcd_driver inputs output =
    (goto (label test-b))
  gcd-done
    (perform (op print) (reg a))
-   (goto (label gcd-loop)))|}
+   (goto (label gcd-loop)))|@}
 ;;
 (* with the inputs 12, 8, 20, 14 queued, the transcript is "4" then
    "2", and the next read fails with "operation failed: read: the
@@ -527,7 +527,7 @@ shows the data paths and controller for the elaborated machine.  The
 instruction
 
 @example ocaml
-match Machine.parse_program {|(controller (assign t (op rem) (reg a) (reg b)))|} with
+match Machine.parse_program @{|(controller (assign t (op rem) (reg a) (reg b)))|@} with
 | Ok p -> Machine.instruction_to_string p.code.(0)
 | Error e -> Machine.error_to_string e
 ;;
@@ -608,7 +608,7 @@ let gcd_elaborated =
   Machine.make_machine
     ~registers:[ "a"; "b"; "t" ]
     ~operations:Machine.arith_operations
-    {|(controller
+    @{|(controller
  test-b
    (test (op =) (reg b) (const 0))
    (branch (label gcd-done))
@@ -622,7 +622,7 @@ let gcd_elaborated =
    (assign a (reg b))
    (assign b (reg t))
    (goto (label test-b))
- gcd-done)|}
+ gcd-done)|@}
 ;;
 (* run on a = 12 and b = 8, the machine answers 4; on 25 and 55, 5 *)
 @end example
@@ -696,7 +696,7 @@ corresponding portions of the machine's controller sequence.
 @example ocaml
 match
   Machine.parse_program
-    {|(controller
+    @{|(controller
  gcd-1
  (test (op =) (reg b) (const 0))
  (branch (label after-gcd-1))
@@ -712,7 +712,7 @@ gcd-2
  (assign c (reg d))
  (assign d (reg s))
  (goto (label gcd-2))
-after-gcd-2)|}
+after-gcd-2)|@}
 with
 | Ok p -> Array.length p.code
 | Error e -> Machine.error_to_string e
@@ -752,7 +752,7 @@ a machine that uses the same data-path components for two different
 @example ocaml
 match
   Machine.parse_program
-    {|(controller
+    @{|(controller
  gcd-1
  (test (op =) (reg b) (const 0))
  (branch (label after-gcd-1))
@@ -768,7 +768,7 @@ gcd-2
  (assign a (reg b))
  (assign b (reg t))
  (goto (label gcd-2))
-after-gcd-2)|}
+after-gcd-2)|@}
 with
 | Ok p -> Array.length p.code
 | Error e -> Machine.error_to_string e
@@ -799,7 +799,7 @@ avoid the duplicate controller sequence in @ref{Figure 5.8}.
 @example ocaml
 match
   Machine.parse_program
-    {|(controller
+    @{|(controller
  gcd
  (test (op =) (reg b) (const 0))
  (branch (label gcd-done))
@@ -819,7 +819,7 @@ after-gcd-1
  ; before the second use of gcd, we place 1 in the continue register
  (assign continue (const 1))
  (goto (label gcd))
-after-gcd-2)|}
+after-gcd-2)|@}
 with
 | Ok p -> Array.length p.code
 | Error e -> Machine.error_to_string e
@@ -861,7 +861,7 @@ terminate the @code{gcd} subroutine with a branch to the location stored in the
 @example ocaml
 match
   Machine.parse_program
-    {|(controller
+    @{|(controller
  gcd
  (test (op =) (reg b) (const 0))
  (branch (label gcd-done))
@@ -879,7 +879,7 @@ after-gcd-1
  ; here is the second call to gcd, with a different continuation
  (assign continue (label after-gcd-2))
  (goto (label gcd))
-after-gcd-2)|}
+after-gcd-2)|@}
 with
 | Ok p -> Array.length p.code
 | Error e -> Machine.error_to_string e
@@ -1075,7 +1075,7 @@ let factorial_machine =
   Machine.make_machine
     ~registers:[ "n"; "val"; "continue" ]
     ~operations:Machine.arith_operations
-    {|(controller
+    @{|(controller
    (assign continue (label fact-done))
  fact-loop
    (test (op =) (reg n) (const 1))
@@ -1093,7 +1093,7 @@ let factorial_machine =
  base-case
    (assign val (const 1))
    (goto (reg continue))
- fact-done)|}
+ fact-done)|@}
 ;;
 (* with n = 5 the machine stops with val = 120; with n = 3, val = 6 *)
 @end example
@@ -1159,7 +1159,7 @@ let fib_machine =
   Machine.make_machine
     ~registers:[ "n"; "val"; "continue" ]
     ~operations:Machine.arith_operations
-    {|(controller
+    @{|(controller
    (assign continue (label fib-done))
  fib-loop
    (test (op <) (reg n) (const 2))
@@ -1186,7 +1186,7 @@ let fib_machine =
  immediate-answer
    (assign val (reg n))
    (goto (reg continue))
- fib-done)|}
+ fib-done)|@}
 ;;
 (* with n = 6 the machine stops with val = 8; with n = 10, val = 55 *)
 @end example

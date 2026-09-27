@@ -284,7 +284,7 @@ let apply_procedure proc args =
      | Some f -> f args
      | None ->
        Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
-  | Value.Compound_procedure { parameters; body; env; _ } ->
+  | Value.Compound_procedure @{ parameters; body; env; _ @} ->
     Env.extend parameters args env >>= fun extended -> eval_sequence body extended
   | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
 ;;
@@ -392,7 +392,7 @@ let eval_definition d env =
   match Ast.view_definition d with
   | Ast.Define_variable (name, exp) ->
     Eval.eval exp env >>= fun value -> define_variable_ name value env
-  | Ast.Define_function { name; parameters; body } ->
+  | Ast.Define_function @{ name; parameters; body @} ->
     let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
     define_variable_ name proc env
 ;;
@@ -499,8 +499,8 @@ The corresponding definition views are the following:
 
 @example ocaml
 (* Define_variable of string * expr
-   Define_function of { name : string; parameters : string list;
-                        body : expr list } *)
+   Define_function of @{ name : string; parameters : string list;
+                        body : expr list @} *)
 @end example
 
 @item
@@ -1862,7 +1862,7 @@ and analyze_definition d =
     analyze exp
     >>= fun get ->
     Ok (fun env -> get env >>= fun value -> define_variable_ name value env)
-  | Ast.Define_function { name; parameters; body } ->
+  | Ast.Define_function @{ name; parameters; body @} ->
     analyze_sequence body
     >>= fun body_exec ->
     Ok
@@ -1984,7 +1984,7 @@ and apply proc args =
      | Some f -> f args
      | None ->
        Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
-  | Value.Compound_procedure { parameters; env; _ } ->
+  | Value.Compound_procedure @{ parameters; env; _ @} ->
     Env.extend parameters args env
     >>= fun extended ->
     (match registered proc with

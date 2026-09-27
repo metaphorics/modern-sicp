@@ -419,7 +419,7 @@ let rec append list1 list2 =
 @end example
 
 @noindent
-The standard library's @code{List.append}, and its infix spelling @code{@},
+The standard library's @code{List.append}, and its infix spelling @code{@@},
 are this @code{append}.
 
 @quotation
@@ -1484,7 +1484,7 @@ want to find the salary of the highest-paid programmer.  Assume that a record
 is a value of the type
 
 @example ocaml
-type personnel_record = { is_programmer : bool; salary : int }
+type personnel_record = @{ is_programmer : bool; salary : int @}
 @end example
 
 @noindent
@@ -1673,10 +1673,10 @@ basic matrix and vector operations.  These operations (which are described in
 any book on matrix algebra) are the following:
 @displaymath
 \eqalign{
-	\hbox{(dot_product v w)} 	& \hbox{returns the sum}\;\Sigma_i v_i w_i; \cr
-	\hbox{(matrix_times_vector m v)} 	& \hbox{returns the vector}\;{\bf t}, \cr
+	\hbox{(dot\_product v w)} 	& \hbox{returns the sum}\;\Sigma_i v_i w_i; \cr
+	\hbox{(matrix\_times\_vector m v)} 	& \hbox{returns the vector}\;{\bf t}, \cr
 		& \hbox{where}\; t_i = \Sigma_j m_{ij} v_j; \cr
-	\hbox{(matrix_times_matrix m n)} 	& \hbox{returns the matrix}\;{\bf p}, \cr
+	\hbox{(matrix\_times\_matrix m n)} 	& \hbox{returns the matrix}\;{\bf p}, \cr
 		& \hbox{where}\; p_{ij} = \Sigma_k m_{ik} n_{kj}; \cr
 	\hbox{(transpose m)} 		& \hbox{returns the matrix}\;{\bf n}, \cr
 		& \hbox{where}\; n_{ij} = m_{ji}. \cr
@@ -2617,7 +2617,7 @@ running from the origin to a point can be represented as a record with an
 @math{x}-coordinate and a @math{y}-coordinate:
 
 @example ocaml
-type vect = { x : float; y : float }
+type vect = @{ x : float; y : float @}
 @end example
 
 @noindent
@@ -2688,13 +2688,13 @@ any painter, in any frame, without clipping it:
 module Svg = struct
   let line (a, b) =
     Printf.sprintf
-      {|<line x1="%g" y1="%g" x2="%g" y2="%g"/>|}
+      @{|<line x1="%g" y1="%g" x2="%g" y2="%g"/>|@}
       (xcor_vect a) (ycor_vect a) (xcor_vect b) (ycor_vect b)
   ;;
 
   let document ~view_box ~size body =
     Printf.sprintf
-      {|<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="%s"><g stroke="black" stroke-width="0.008" stroke-linecap="round" fill="none">%s</g></svg>|}
+      @{|<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="%s"><g stroke="black" stroke-width="0.008" stroke-linecap="round" fill="none">%s</g></svg>|@}
       size size view_box body
   ;;
 

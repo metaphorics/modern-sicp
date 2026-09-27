@@ -955,9 +955,9 @@ it built:
 
 @example ocaml
 type withdraw_with_cell =
-  { withdraw : int -> withdraw_result
+  @{ withdraw : int -> withdraw_result
   ; balance_cell : int ref
-  }
+  @}
 @end example
 
 @noindent
@@ -1133,7 +1133,7 @@ let make_account balance =
     balance := !balance + amount;
     !balance
   in
-  { withdraw; deposit }
+  @{ withdraw; deposit @}
 ;;
 @end example
 

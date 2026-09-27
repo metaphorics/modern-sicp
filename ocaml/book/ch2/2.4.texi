@@ -260,13 +260,13 @@ supplies.
 
 @example ocaml
 type 'a complex_ops =
-  { real_part : 'a -> float
+  @{ real_part : 'a -> float
   ; imag_part : 'a -> float
   ; magnitude : 'a -> float
   ; angle : 'a -> float
   ; make_from_real_imag : float -> float -> 'a
   ; make_from_mag_ang : float -> float -> 'a
-  }
+  @}
 
 let add_complex ops z1 z2 =
   ops.make_from_real_imag
@@ -379,23 +379,23 @@ value built from @code{Rectangular} or one built from @code{Polar}:
 
 @example ocaml
 let rectangular_ops =
-  { real_part = Rectangular.real_part
+  @{ real_part = Rectangular.real_part
   ; imag_part = Rectangular.imag_part
   ; magnitude = Rectangular.magnitude
   ; angle = Rectangular.angle
   ; make_from_real_imag = Rectangular.make_from_real_imag
   ; make_from_mag_ang = Rectangular.make_from_mag_ang
-  }
+  @}
 ;;
 
 let polar_ops =
-  { real_part = Polar.real_part
+  @{ real_part = Polar.real_part
   ; imag_part = Polar.imag_part
   ; magnitude = Polar.magnitude
   ; angle = Polar.angle
   ; make_from_real_imag = Polar.make_from_real_imag
   ; make_from_mag_ang = Polar.make_from_mag_ang
-  }
+  @}
 ;;
 @end example
 
@@ -449,11 +449,11 @@ type value =
   | Tagged of tagged
 
 and tagged =
-  { tag : string
+  @{ tag : string
   ; contents : value
-  }
+  @}
 
-let attach_tag tag contents = { tag; contents }
+let attach_tag tag contents = @{ tag; contents @}
 let type_tag t = t.tag
 let contents_of t = t.contents
 @end example

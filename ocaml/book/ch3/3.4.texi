@@ -841,13 +841,13 @@ property that we need to guarantee.
 @example ocaml
 let make_serializer () =
   let mutex = make_mutex () in
-  { protect =
+  @{ protect =
       fun thunk ->
         mutex.acquire ();
         let value = thunk () in
         mutex.release ();
         value
-  }
+  @}
 @end example
 
 @noindent
@@ -872,16 +872,16 @@ lesson.}  To release the mutex, we set the cell contents to false.
 
 @example ocaml
 type mutex =
-  { acquire : unit -> unit
+  @{ acquire : unit -> unit
   ; release : unit -> unit
-  }
+  @}
 
 let clear cell = Atomic.set cell false
 
 let make_mutex () =
   let cell = Atomic.make false in
   let rec acquire () = if atomic_test_and_set cell then acquire () (* retry *) in
-  { acquire; release = fun () -> clear cell }
+  @{ acquire; release = fun () -> clear cell @}
 @end example
 
 @noindent

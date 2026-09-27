@@ -235,7 +235,11 @@ further concepts.  For instance, the definite integral of a function @math{f}
 between the limits @math{a} and @math{b} can be approximated numerically using the
 formula
 @displaymath
-{\int_a^b \kern-0.3em f}\left[\;=\;{\left[\;f\left(a + {d x \over 2}\right)\right.} + {f\left(a + dx + {d x \over 2}\right)} + {f\left(a + 2dx + {d x \over 2}\right)} + \dots\;\right] dx\right.
+{\int_a^b \kern-0.3em f}
+  \;=\; {\left[\;f\left(a + {d x \over 2}\right)\right.}
+  \,+\, {f\left(a + dx + {dx \over 2}\right)}
+  \,+\, {\left. f\left(a + 2dx + {dx \over 2}\right)
+  \,+\, \dots \;\right] dx}
 @end displaymath
 @ifinfo
 

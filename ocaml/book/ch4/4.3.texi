@@ -935,7 +935,7 @@ let choice (alternatives : exec list) : exec =
     | [] -> Effect.perform Fail
     | first :: rest ->
       Effect.Deep.match_with (fun env -> first env succeed) env
-        { retc = (fun () -> try_next rest)
+        @{ retc = (fun () -> try_next rest)
         ; exnc = raise
         ; effc =
             (fun (type a) (eff : a Effect.t) ->
@@ -946,7 +946,7 @@ let choice (alternatives : exec list) : exec =
                     incr backtracks;
                     try_next rest)
               | _ -> None)
-        }
+        @}
   in
   try_next alternatives
 ;;
@@ -997,7 +997,7 @@ driver means the choices are exhausted:
 @example ocaml
 let rec driver_handler
     : (unit, (Value.t, Eval_error.t) result) Effect.Deep.handler =
-  { retc = (fun () -> pending := None; Error no_more_values)
+  @{ retc = (fun () -> pending := None; Error no_more_values)
   ; exnc = (fun e ->
       match e with
       | Raised error -> pending := None; Error error
@@ -1011,7 +1011,7 @@ let rec driver_handler
               Ok v)
         | Fail ->
           Some (fun _dead -> pending := None; Error no_more_values)
-        | _ -> None) }
+        | _ -> None) @}
 and try_again () =
   match !pending with
   | None -> Error (Eval_error.User_error "there is no current problem")

@@ -269,9 +269,9 @@ closures that operate on it:
 
 @example ocaml
 type account =
-  { withdraw : int -> withdraw_result
+  @{ withdraw : int -> withdraw_result
   ; deposit : int -> int
-  }
+  @}
 
 let make_account balance =
   let balance = ref balance in
@@ -286,7 +286,7 @@ let make_account balance =
     balance := !balance + amount;
     !balance
   in
-  { withdraw; deposit }
+  @{ withdraw; deposit @}
 ;;
 @end example
 

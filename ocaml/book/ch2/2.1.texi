@@ -455,10 +455,10 @@ raise.
 
 @example ocaml
 module Rational_error = struct
-  type t = Zero_denominator of { n : int }
+  type t = Zero_denominator of @{ n : int @}
 
   let to_string = function
-    | Zero_denominator { n } -> Printf.sprintf "make %d 0: zero denominator" n
+    | Zero_denominator @{ n @} -> Printf.sprintf "make %d 0: zero denominator" n
   ;;
 end;;
 @end example
@@ -481,16 +481,16 @@ module Rational : sig
   val denom : t -> int
 end = struct
   type t =
-    { n : int
+    @{ n : int
     ; d : int
-    }
+    @}
 
   let make n d =
     if d = 0
-    then Error (Rational_error.Zero_denominator { n })
+    then Error (Rational_error.Zero_denominator @{ n @})
     else (
       let g = Sicp_ch1.Sec_1_2.Gcd.gcd (abs n) (abs d) in
-      Ok { n = n / g; d = d / g })
+      Ok @{ n = n / g; d = d / g @})
   ;;
 
   let numer r = r.n

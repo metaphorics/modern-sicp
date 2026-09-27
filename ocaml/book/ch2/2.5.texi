@@ -100,21 +100,21 @@ type value =
   | Tagged of tagged
 
 and tagged =
-  { tag : string
+  @{ tag : string
   ; contents : value
-  }
+  @}
 
 and term =
-  { order : int
+  @{ order : int
   ; coeff : value
-  }
+  @}
 
 and poly =
-  { var : string
+  @{ var : string
   ; term_list : term list
-  }
+  @}
 
-let attach_tag tag contents = { tag; contents }
+let attach_tag tag contents = @{ tag; contents @}
 let type_tag t = t.tag
 let contents_of t = t.contents
 let table : (string * string list, value list -> value) Hashtbl.t = Hashtbl.create 32
@@ -591,7 +591,7 @@ to a complex number with that real part and zero imaginary part:
 @example ocaml
 let scheme_number_to_complex n =
   match n with
-  | { tag = "scheme-number"; contents = Num x } -> make_complex_from_real_imag x 0.0
+  | @{ tag = "scheme-number"; contents = Num x @} -> make_complex_from_real_imag x 0.0
   | _ -> invalid_arg "scheme_number_to_complex: expected a tagged scheme-number"
 ;;
 @end example
@@ -1122,7 +1122,7 @@ just a string, so we can use the @code{same_variable} procedure of
 multiplication of polys:
 
 @example ocaml
-let make_poly var term_list = { var; term_list }
+let make_poly var term_list = @{ var; term_list @}
 let variable p = p.var
 let term_list p = p.term_list
 let same_variable = String.equal
@@ -1392,7 +1392,7 @@ let rest_terms = function
   | [] -> invalid_arg "rest_terms: empty term list"
 ;;
 
-let make_term order coeff = { order; coeff }
+let make_term order coeff = @{ order; coeff @}
 let order t = t.order
 let coeff t = t.coeff
 

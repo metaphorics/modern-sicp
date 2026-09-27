@@ -65,9 +65,9 @@ type mobj =
   | Proc of (unit -> unit)
 
 and mpair =
-  { mutable car : mobj
+  @{ mutable car : mobj
   ; mutable cdr : mobj
-  }
+  @}
 @end example
 
 The primitive mutators for these pairs are @code{set_car} and
@@ -285,7 +285,7 @@ literal below is the request for a fresh block.}
 
 @example ocaml
 let cons_from_mutators x y =
-  let new_pair = { car = mnil; cdr = mnil } in
+  let new_pair = @{ car = mnil; cdr = mnil @} in
   set_car (Pair new_pair) x;
   set_cdr (Pair new_pair) y;
   Pair new_pair
@@ -641,7 +641,7 @@ procedural pair @code{p}: the pair is a record of closures over two cells.
 let proc_cons x y =
   let x = ref x in
   let y = ref y in
-  { pcar = (fun () -> !x); pcdr = (fun () -> !y) }
+  @{ pcar = (fun () -> !x); pcdr = (fun () -> !y) @}
 @end example
 
 @noindent
@@ -655,8 +655,8 @@ using @code{make_account} in @ref{3.1.1}:
 let proc_cons x y =
   let x = ref x in
   let y = ref y in
-  { pcar = (fun () -> !x); pcdr = (fun () -> !y)
-  ; set_pcar = (fun v -> x := v); set_pcdr = (fun v -> y := v) }
+  @{ pcar = (fun () -> !x); pcdr = (fun () -> !y)
+  ; set_pcar = (fun v -> x := v); set_pcdr = (fun v -> y := v) @}
 @end example
 
 @noindent
@@ -869,7 +869,7 @@ The @code{make_queue} constructor returns, as an initially empty queue, a pair
 whose @code{car} and @code{cdr} are both the empty list:
 
 @example ocaml
-let make_queue () : t = { Mpairs.car = Mpairs.Nil; cdr = Mpairs.Nil }
+let make_queue () : t = @{ Mpairs.car = Mpairs.Nil; cdr = Mpairs.Nil @}
 @end example
 
 @noindent
@@ -924,7 +924,7 @@ also set the rear pointer to the new pair.
 
 @example ocaml
 let insert_queue q item =
-  let new_pair = { Mpairs.car = item; cdr = Mpairs.Nil } in
+  let new_pair = @{ Mpairs.car = item; cdr = Mpairs.Nil @} in
   if empty_queue q
   then (
     set_front_ptr q (Mpairs.Pair new_pair);
@@ -1030,11 +1030,11 @@ let make_queue () =
   let front_ptr = ⟨@r{…}⟩ in
   let rear_ptr = ⟨@r{…}⟩ in
   (* ⟨@var{definitions of internal procedures}⟩ *)
-  { q_empty = ⟨@r{…}⟩
+  @{ q_empty = ⟨@r{…}⟩
   ; q_front = ⟨@r{…}⟩
   ; q_insert = ⟨@r{…}⟩
   ; q_delete = ⟨@r{…}⟩
-  }
+  @}
 @end example
 
 Complete the definition of @code{make_queue} and provide implementations of the
@@ -1283,15 +1283,15 @@ two-dimensional tables represented in this fashion:
 
 @example ocaml
 type table_object =
-  { lookup_proc : mobj -> mobj -> mobj option
+  @{ lookup_proc : mobj -> mobj -> mobj option
   ; insert_proc : mobj -> mobj -> mobj -> unit
-  }
+  @}
 
 let make_table_object () =
   let local_table = make_table () in
-  { lookup_proc = (fun k1 k2 -> lookup2 local_table k1 k2)
+  @{ lookup_proc = (fun k1 k2 -> lookup2 local_table k1 k2)
   ; insert_proc = (fun k1 k2 v -> insert2 local_table k1 k2 v)
-  }
+  @}
 @end example
 
 @noindent
@@ -1768,10 +1768,10 @@ did with the simple bank-account object in @ref{3.1.1}:
 
 @example ocaml
 type wire =
-  { get_signal : unit -> int
+  @{ get_signal : unit -> int
   ; set_signal : int -> unit
   ; add_action : (unit -> unit) -> unit
-  }
+  @}
 
 let make_wire () =
   let signal_value = ref 0 in
@@ -1786,10 +1786,10 @@ let make_wire () =
     action_procedures := proc :: !action_procedures;
     proc ()
   in
-  { get_signal = (fun () -> !signal_value)
+  @{ get_signal = (fun () -> !signal_value)
   ; set_signal = set_my_signal
   ; add_action = accept_action_procedure
-  }
+  @}
 @end example
 
 @noindent
@@ -2383,11 +2383,11 @@ procedure with local state (the @code{me} record below):
 @example ocaml
 let adder a1 a2 sum =
   let rec me =
-    { me =
+    @{ me =
         (function
           | I_have_a_value -> process_new_value ()
           | I_lost_my_value -> process_forget_value ())
-    }
+    @}
   and process_new_value () =
     if a1.has_value () && a2.has_value ()
     then sum.set_value (a1.get_value () + a2.get_value ()) (Of_constraint me)
@@ -2447,11 +2447,11 @@ if either of the factors is 0, even if the other factor is not known.
 @example ocaml
 let multiplier m1 m2 product =
   let rec me =
-    { me =
+    @{ me =
         (function
           | I_have_a_value -> process_new_value ()
           | I_lost_my_value -> process_forget_value ())
-    }
+    @}
   and process_new_value () =
     if
       (m1.has_value () && m1.get_value () = 0)
@@ -2482,7 +2482,7 @@ the constant box will produce an error.
 
 @example ocaml
 let constant value connector =
-  let handle = { me = (fun _ -> invalid_arg "Unknown request: CONSTANT") } in
+  let handle = @{ me = (fun _ -> invalid_arg "Unknown request: CONSTANT") @} in
   connector.connect handle;
   connector.set_value value (Of_constraint handle);
   handle
@@ -2495,7 +2495,7 @@ the designated connector:
 @example ocaml
 let probe log name connector =
   connector.connect
-    { me =
+    @{ me =
         (function
           | I_have_a_value ->
             log
@@ -2503,7 +2503,7 @@ let probe log name connector =
                :: !log
           | I_lost_my_value ->
             log := Printf.sprintf "Probe: %s = ?" name :: !log)
-    }
+    @}
 @end example
 
 @subsubheading Representing connectors
@@ -2546,12 +2546,12 @@ let rec make_connector () =
     then constraints := new_constraint :: !constraints;
     if has_value () then new_constraint.me I_have_a_value
   in
-  { has_value
+  @{ has_value
   ; get_value = (fun () -> !value)
   ; set_value = set_my_value
   ; forget_value = forget_my_value
   ; connect
-  }
+  @}
 @end example
 
 @noindent
@@ -2603,7 +2603,7 @@ object's state is exactly the cells its closures capture.  Aliasing, two
 names for one record, shows up as physical equality with @code{==}.
 
 @example ocaml
-type cell = { mutable v : int }
+type cell = @{ mutable v : int @}
 
 let bump c = c.v <- c.v + 1
 @end example
@@ -2645,11 +2645,11 @@ procedure to implement such a constraint:
 @example ocaml
 let squarer a b =
   let rec me =
-    { me =
+    @{ me =
         (function
           | I_have_a_value -> process_new_value ()
           | I_lost_my_value -> process_forget_value ())
-    }
+    @}
   and process_new_value () =
     if b.has_value ()
     then

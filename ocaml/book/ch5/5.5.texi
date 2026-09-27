@@ -409,12 +409,12 @@ constructor for instruction sequences is thus
 
 @example ocaml
 type seq =
-  { needs : string list
+  @{ needs : string list
   ; modifies : string list
   ; stmts : string list
-  }
+  @}
 
-let make_instruction_sequence needs modifies stmts = { needs; modifies; stmts }
+let make_instruction_sequence needs modifies stmts = @{ needs; modifies; stmts @}
 @end example
 
 @noindent
@@ -437,7 +437,7 @@ make_instruction_sequence
 We sometimes need to construct an instruction sequence with no statements:
 
 @example ocaml
-let empty_instruction_sequence = { needs = []; modifies = []; stmts = [] }
+let empty_instruction_sequence = @{ needs = []; modifies = []; stmts = [] @}
 @end example
 
 @noindent
@@ -753,7 +753,7 @@ and compile_if cfg state cenv exp target linkage =
         (append_2_sequences (make_instruction_sequence [] [] [ t_branch ]) c_code)
         (append_2_sequences (make_instruction_sequence [] [] [ f_branch ]) a_code)
     in
-    let branch_tail = { branches with stmts = branches.stmts @ [ after_if ] } in
+    let branch_tail = @{ branches with stmts = branches.stmts @ [ after_if ] @} in
     let with_test = append_2_sequences test_code branch_tail in
     preserving cfg [ "env"; "continue" ] p_code with_test
   | _ -> Error (Op_failed "compile-if needs an if")
@@ -1461,10 +1461,10 @@ needed by @code{seq2} and the registers modified by @code{seq1}.)  Thus,
 
 @example ocaml
 let append_2_sequences seq1 seq2 =
-  { needs = list_union seq1.needs (list_difference seq2.needs seq1.modifies)
+  @{ needs = list_union seq1.needs (list_difference seq2.needs seq1.modifies)
   ; modifies = list_union seq1.modifies seq2.modifies
   ; stmts = seq1.stmts @ seq2.stmts
-  }
+  @}
 ;;
 
 let rec append_sequences = function
@@ -1529,12 +1529,12 @@ let preserving cfg regs seq1 seq2 =
       then go seq1 rest
       else (
         let wrapped =
-          { needs = first_reg :: seq1.needs
+          @{ needs = first_reg :: seq1.needs
           ; modifies = list_difference seq1.modifies [ first_reg ]
           ; stmts =
               (("(save " ^ first_reg ^ ")") :: seq1.stmts)
               @ [ "(restore " ^ first_reg ^ ")" ]
-          }
+          @}
         in
         go wrapped rest)
   in
@@ -1551,7 +1551,7 @@ modified registers when we tack it onto the other sequence.
 
 @example ocaml
 let tack_on_instruction_sequence seq body_seq =
-  { seq with stmts = seq.stmts @ body_seq.stmts }
+  @{ seq with stmts = seq.stmts @ body_seq.stmts @}
 ;;
 @end example
 
@@ -1566,10 +1566,10 @@ the first branch.
 
 @example ocaml
 let parallel_instruction_sequences seq1 seq2 =
-  { needs = list_union seq1.needs seq2.needs
+  @{ needs = list_union seq1.needs seq2.needs
   ; modifies = list_union seq1.modifies seq2.modifies
   ; stmts = seq1.stmts @ seq2.stmts
-  }
+  @}
 ;;
 @end example
 
@@ -1583,10 +1583,10 @@ definition of a recursive @code{factorial} procedure by calling @code{compile}:
 @example ocaml
 let state = Sec_5_5.new_state () in
 Sec_5_5.compile_block state
-{|(define (factorial n)
+@{|(define (factorial n)
   (if (= n 1)
       1
-      (* (factorial (- n 1)) n)))|}
+      (* (factorial (- n 1)) n)))|@}
 @end example
 
 @noindent
@@ -2403,10 +2403,10 @@ it:
 
 @example ocaml
 let factorial_source =
-  {|(define (factorial n)
+  @{|(define (factorial n)
   (if (= n 1)
       1
-      (* (factorial (- n 1)) n)))|}
+      (* (factorial (- n 1)) n)))|@}
 ;;
 @end example
 

@@ -141,11 +141,11 @@ returns the sublist beginning with the first occurrence of the item:
 
 @example kotlin
 fun memq(item: Value, x: Value): Value =
-    when {
+    when @{
         x is VPair && x.car == item -> x
         x is VPair -> memq(item, x.cdr)
         else -> VBool(false)
-    }
+    @}
 @end example
 
 @noindent
@@ -330,12 +330,12 @@ the book assumes ten free-floating procedures for this (@code{variable?},
 @code{make-product}), one sealed hierarchy grants all of them at once:
 
 @example kotlin
-sealed interface Expr {
+sealed interface Expr @{
     data class Num(val n: Long) : Expr
     data class Var(val name: String) : Expr
     data class Sum(val a1: Expr, val a2: Expr) : Expr
     data class Product(val a1: Expr, val a2: Expr) : Expr
-}
+@}
 @end example
 
 @noindent
@@ -351,7 +351,7 @@ rules as the following function:
 
 @example kotlin
 fun deriv(exp: Expr, variable: String): Expr =
-    when (exp) {
+    when (exp) @{
         is Expr.Num -> Expr.Num(0)
         is Expr.Var -> Expr.Num(if (exp.name == variable) 1 else 0)
         is Expr.Sum -> Expr.Sum(deriv(exp.a1, variable), deriv(exp.a2, variable))
@@ -360,7 +360,7 @@ fun deriv(exp: Expr, variable: String): Expr =
                 Expr.Product(exp.a1, deriv(exp.a2, variable)),
                 Expr.Product(deriv(exp.a1, variable), exp.a2),
             )
-    }
+    @}
 @end example
 
 @noindent
@@ -377,12 +377,12 @@ a small recursive function over the same four variants:
 
 @example kotlin
 fun printExpr(e: Expr): String =
-    when (e) {
+    when (e) @{
         is Expr.Num -> e.n.toString()
         is Expr.Var -> e.name
-        is Expr.Sum -> "(+ ${printExpr(e.a1)} ${printExpr(e.a2)})"
-        is Expr.Product -> "(* ${printExpr(e.a1)} ${printExpr(e.a2)})"
-    }
+        is Expr.Sum -> "(+ $@{printExpr(e.a1)@} $@{printExpr(e.a2)@})"
+        is Expr.Product -> "(* $@{printExpr(e.a1)@} $@{printExpr(e.a2)@})"
+    @}
 @end example
 
 @noindent
@@ -437,12 +437,12 @@ the other summand:
 fun isNumber(e: Expr, n: Long): Boolean = e is Expr.Num && e.n == n
 
 fun makeSum(a1: Expr, a2: Expr): Expr =
-    when {
+    when @{
         isNumber(a1, 0) -> a2
         isNumber(a2, 0) -> a1
         a1 is Expr.Num && a2 is Expr.Num -> Expr.Num(a1.n + a2.n)
         else -> Expr.Sum(a1, a2)
-    }
+    @}
 @end example
 
 @noindent
@@ -453,16 +453,16 @@ thing itself:
 
 @example kotlin
 fun makeProduct(m1: Expr, m2: Expr): Expr =
-    when {
+    when @{
         isNumber(m1, 0) || isNumber(m2, 0) -> Expr.Num(0)
         isNumber(m1, 1) -> m2
         isNumber(m2, 1) -> m1
         m1 is Expr.Num && m2 is Expr.Num -> Expr.Num(m1.n * m2.n)
         else -> Expr.Product(m1, m2)
-    }
+    @}
 
 fun deriv(exp: Expr, variable: String): Expr =
-    when (exp) {
+    when (exp) @{
         is Expr.Num -> Expr.Num(0)
         is Expr.Var -> Expr.Num(if (exp.name == variable) 1 else 0)
         is Expr.Sum -> makeSum(deriv(exp.a1, variable), deriv(exp.a2, variable))
@@ -471,7 +471,7 @@ fun deriv(exp: Expr, variable: String): Expr =
                 makeProduct(exp.a1, deriv(exp.a2, variable)),
                 makeProduct(deriv(exp.a1, variable), exp.a2),
             )
-    }
+    @}
 @end example
 
 @noindent
@@ -637,11 +637,11 @@ with @code{==} directly, since this edition's sets are never nested:
 
 @example kotlin
 fun elementOfSet(x: Long, set: List<Long>): Boolean =
-    when {
+    when @{
         set.isEmpty() -> false
         x == set[0] -> true
         else -> elementOfSet(x, set.drop(1))
-    }
+    @}
 @end example
 
 @noindent
@@ -662,11 +662,11 @@ function:
 
 @example kotlin
 fun intersectionSet(set1: List<Long>, set2: List<Long>): List<Long> =
-    when {
+    when @{
         set1.isEmpty() || set2.isEmpty() -> emptyList()
         elementOfSet(set1[0], set2) -> listOf(set1[0]) + intersectionSet(set1.drop(1), set2)
         else -> intersectionSet(set1.drop(1), set2)
-    }
+    @}
 @end example
 
 @noindent
@@ -718,12 +718,12 @@ know that the item is not in the set:
 
 @example kotlin
 fun elementOfSetOrdered(x: Long, set: List<Long>): Boolean =
-    when {
+    when @{
         set.isEmpty() -> false
         x == set[0] -> true
         x < set[0] -> false
         else -> elementOfSetOrdered(x, set.drop(1))
-    }
+    @}
 @end example
 
 How many steps does this save?  In the worst case, the item we are looking for
@@ -754,16 +754,16 @@ intersection of @code{set1} with the tail of @code{set2}.  Here is the
 function:
 
 @example kotlin
-fun intersectionSetOrdered(set1: List<Long>, set2: List<Long>): List<Long> {
+fun intersectionSetOrdered(set1: List<Long>, set2: List<Long>): List<Long> @{
     if (set1.isEmpty() || set2.isEmpty()) return emptyList()
     val x1 = set1[0]
     val x2 = set2[0]
-    return when {
+    return when @{
         x1 == x2 -> listOf(x1) + intersectionSetOrdered(set1.drop(1), set2.drop(1))
         x1 < x2 -> intersectionSetOrdered(set1.drop(1), set2)
         else -> intersectionSetOrdered(set1, set2.drop(1))
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -850,10 +850,10 @@ hierarchy instead, so @code{entry}, @code{left}, and @code{right} are its own
 data-class fields rather than list positions read out by @code{car}/@code{cadr}/@code{caddr}:@footnote{We are representing sets in terms of trees, and trees directly as a Kotlin sealed interface---one data abstraction built on the host language's own sum types, rather than on a second, hand-rolled list encoding the way the book builds trees out of lists.  We can regard @code{entry}, @code{left}, @code{right}, and @code{makeTree} as isolating the abstraction of a ``binary tree'' from @code{SetTree}'s own representation, the same separation the book draws between a tree and the list structure that encodes it, one layer shorter since the data class already is the representation.}
 
 @example kotlin
-sealed interface SetTree {
+sealed interface SetTree @{
     data object Empty : SetTree
     data class Node(val entry: Long, val left: SetTree, val right: SetTree) : SetTree
-}
+@}
 
 fun makeTree(entry: Long, left: SetTree, right: SetTree): SetTree = SetTree.Node(entry, left, right)
 @end example
@@ -869,15 +869,15 @@ using the strategy described above:
 
 @example kotlin
 fun elementOfSetTree(x: Long, tree: SetTree): Boolean =
-    when (tree) {
+    when (tree) @{
         is SetTree.Empty -> false
         is SetTree.Node ->
-            when {
+            when @{
                 x == tree.entry -> true
                 x < tree.entry -> elementOfSetTree(x, tree.left)
                 else -> elementOfSetTree(x, tree.right)
-            }
-    }
+            @}
+    @}
 @end example
 
 @noindent
@@ -893,15 +893,15 @@ and left branches.  Here is the function:
 
 @example kotlin
 fun adjoinSetTree(x: Long, tree: SetTree): SetTree =
-    when (tree) {
+    when (tree) @{
         is SetTree.Empty -> makeTree(x, SetTree.Empty, SetTree.Empty)
         is SetTree.Node ->
-            when {
+            when @{
                 x == tree.entry -> tree
                 x < tree.entry -> makeTree(tree.entry, adjoinSetTree(x, tree.left), tree.right)
                 else -> makeTree(tree.entry, tree.left, adjoinSetTree(x, tree.right))
-            }
-    }
+            @}
+    @}
 @end example
 
 @noindent
@@ -965,19 +965,19 @@ functions converts a binary tree to a list.
 
 @example kotlin
 fun treeToList1(tree: SetTree): List<Long> =
-    when (tree) {
+    when (tree) @{
         is SetTree.Empty -> emptyList()
         is SetTree.Node -> treeToList1(tree.left) + listOf(tree.entry) + treeToList1(tree.right)
-    }
+    @}
 
-fun treeToList2(tree: SetTree): List<Long> {
+fun treeToList2(tree: SetTree): List<Long> @{
     fun copyToList(tree: SetTree, result: List<Long>): List<Long> =
-        when (tree) {
+        when (tree) @{
             is SetTree.Empty -> result
             is SetTree.Node -> copyToList(tree.left, listOf(tree.entry) + copyToList(tree.right, result))
-        }
+        @}
     return copyToList(tree, emptyList())
-}
+@}
 @end example
 
 @enumerate a
@@ -1013,7 +1013,7 @@ tree.
 @example kotlin
 fun listToTree(elements: List<Long>): SetTree = partialTree(elements, elements.size).first
 
-fun partialTree(elts: List<Long>, n: Int): Pair<SetTree, List<Long>> {
+fun partialTree(elts: List<Long>, n: Int): Pair<SetTree, List<Long>> @{
     if (n == 0) return SetTree.Empty to elts
     val leftSize = (n - 1) / 2
     val (leftTree, nonLeftElts) = partialTree(elts, leftSize)
@@ -1021,7 +1021,7 @@ fun partialTree(elts: List<Long>, n: Int): Pair<SetTree, List<Long>> {
     val thisEntry = nonLeftElts[0]
     val (rightTree, remainingElts) = partialTree(nonLeftElts.drop(1), rightSize)
     return makeTree(thisEntry, leftTree, rightTree) to remainingElts
-}
+@}
 @end example
 
 @enumerate a
@@ -1085,7 +1085,7 @@ there is no such record.  @code{lookup} is implemented in almost the same way as
 an unordered list, we could use
 
 @example kotlin
-fun lookup(givenKey: Long, setOfRecords: List<Record>): Record? = setOfRecords.find { it.key == givenKey }
+fun lookup(givenKey: Long, setOfRecords: List<Record>): Record? = setOfRecords.find @{ it.key == givenKey @}
 @end example
 
 @noindent
@@ -1328,19 +1328,19 @@ everything below it, computed once at construction rather than walked on
 every query:
 
 @example kotlin
-sealed interface HuffmanTree {
+sealed interface HuffmanTree @{
     val weight: Long
     data class Leaf(val sym: String, override val weight: Long) : HuffmanTree
     data class Branch(val left: HuffmanTree, val right: HuffmanTree, override val weight: Long, val syms: List<String>) : HuffmanTree
-}
+@}
 
 fun makeLeaf(sym: String, weight: Long): HuffmanTree = HuffmanTree.Leaf(sym, weight)
 
 fun symbols(t: HuffmanTree): List<String> =
-    when (t) {
+    when (t) @{
         is HuffmanTree.Leaf -> listOf(t.sym)
         is HuffmanTree.Branch -> t.syms
-    }
+    @}
 
 fun makeCodeTree(left: HuffmanTree, right: HuffmanTree): HuffmanTree =
     HuffmanTree.Branch(left, right, left.weight + right.weight, symbols(left) + symbols(right))
@@ -1365,27 +1365,27 @@ restart-at-the-root behavior as a single loop:
 
 @example kotlin
 fun chooseBranch(bit: Int, branch: HuffmanTree): HuffmanTree =
-    when {
+    when @{
         branch !is HuffmanTree.Branch -> throw IllegalArgumentException("choose-branch of a leaf")
         bit == 0 -> branch.left
         bit == 1 -> branch.right
         else -> throw IllegalArgumentException("bad bit: $bit")
-    }
+    @}
 
-fun decode(bits: List<Int>, tree: HuffmanTree): List<String> {
+fun decode(bits: List<Int>, tree: HuffmanTree): List<String> @{
     val result = mutableListOf<String>()
     var current = tree
-    for (bit in bits) {
+    for (bit in bits) @{
         val next = chooseBranch(bit, current)
-        if (next is HuffmanTree.Leaf) {
+        if (next is HuffmanTree.Leaf) @{
             result.add(next.sym)
             current = tree
-        } else {
+        @} else @{
             current = next
-        }
-    }
+        @}
+    @}
     return result
-}
+@}
 @end example
 
 @noindent
@@ -1413,11 +1413,11 @@ element being added to the set is never already in it:
 
 @example kotlin
 fun adjoinHuffmanSet(x: HuffmanTree, set: List<HuffmanTree>): List<HuffmanTree> =
-    when {
+    when @{
         set.isEmpty() -> listOf(x)
         x.weight < set[0].weight -> listOf(x) + set
         else -> listOf(set[0]) + adjoinHuffmanSet(x, set.drop(1))
-    }
+    @}
 @end example
 
 @noindent
@@ -1427,7 +1427,7 @@ ordered set of leaves, ready to be merged according to the Huffman algorithm:
 
 @example kotlin
 fun makeLeafSet(pairs: List<Pair<String, Long>>): List<HuffmanTree> =
-    pairs.fold(emptyList()) { set, (sym, weight) -> adjoinHuffmanSet(makeLeaf(sym, weight), set) }
+    pairs.fold(emptyList()) @{ set, (sym, weight) -> adjoinHuffmanSet(makeLeaf(sym, weight), set) @}
 @end example
 
 @quotation
@@ -1453,7 +1453,7 @@ as arguments a message and a tree and produces the list of bits that gives the
 encoded message.
 
 @example kotlin
-fun encode(message: List<String>, tree: HuffmanTree): List<Int> = message.flatMap { encodeSymbol(it, tree) }
+fun encode(message: List<String>, tree: HuffmanTree): List<Int> = message.flatMap @{ encodeSymbol(it, tree) @}
 @end example
 
 Write your own @code{encodeSymbol}, a function that returns the bits that

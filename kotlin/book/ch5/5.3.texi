@@ -230,11 +230,11 @@ if we implement these, respectively, as
 @example kotlin
 context(r: Raise<MachineError>)
 public fun Memory.car(word: Value): Value =
-    pairIndexOf(word)?.let { readTheCars(it) } ?: r.raise(NotAPair("car", word))
+    pairIndexOf(word)?.let @{ readTheCars(it) @} ?: r.raise(NotAPair("car", word))
 
 context(r: Raise<MachineError>)
 public fun Memory.cdr(word: Value): Value =
-    pairIndexOf(word)?.let { readTheCdrs(it) } ?: r.raise(NotAPair("cdr", word))
+    pairIndexOf(word)?.let @{ readTheCdrs(it) @} ?: r.raise(NotAPair("cdr", word))
 @end example
 
 @noindent
@@ -253,21 +253,21 @@ context(r: Raise<MachineError>)
 public fun Memory.setCar(
     word: Value,
     value: Value,
-): Value {
+): Value @{
     val index = pairIndexOf(word) ?: r.raise(NotAPair("set-car!", word))
     storeTheCars(index, value)
     return VNil
-}
+@}
 
 context(r: Raise<MachineError>)
 public fun Memory.setCdr(
     word: Value,
     value: Value,
-): Value {
+): Value @{
     val index = pairIndexOf(word) ?: r.raise(NotAPair("set-cdr!", word))
     storeTheCdrs(index, value)
     return VNil
-}
+@}
 @end example
 
 @noindent
@@ -301,14 +301,14 @@ context(r: Raise<MachineError>)
 public fun Memory.cons(
     carValue: Value,
     cdrValue: Value,
-): Value {
+): Value @{
     if (free >= size) r.raise(MemoryExhausted(free, size))
     val index = free
     theCars[index] = carValue
     theCdrs[index] = cdrValue
     free = index + 1
     return pairPointer(index)
-}
+@}
 // on a fresh memory, cons(memory, VInt(1), VInt(2)) answers p0, the
 // cell holds (n1 n2), and the free pointer moves on to p1
 @end example

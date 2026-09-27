@@ -612,7 +612,7 @@ For instance, consider the following definition of the stream of positive
 integers:
 
 @example kotlin
-fun integersStartingFrom(n: Long): LStream<Long> = consStream(n) { integersStartingFrom(Math.addExact(n, 1L)) }
+fun integersStartingFrom(n: Long): LStream<Long> = consStream(n) @{ integersStartingFrom(Math.addExact(n, 1L)) @}
 
 val integers: LStream<Long> = integersStartingFrom(1L)
 @end example
@@ -630,7 +630,7 @@ of integers that are not divisible by 7:
 @example kotlin
 fun divisible(x: Long, y: Long): Boolean = x % y == 0L
 
-val noSevens: LStream<Long> = streamFilter({ x -> !divisible(x, 7L) }, integers)
+val noSevens: LStream<Long> = streamFilter(@{ x -> !divisible(x, 7L) @}, integers)
 @end example
 
 @noindent
@@ -646,7 +646,7 @@ In analogy with @code{integers}, we can define the infinite stream of Fibonacci
 numbers:
 
 @example kotlin
-fun fibGen(a: Long, b: Long): LStream<Long> = consStream(a) { fibGen(b, Math.addExact(a, b)) }
+fun fibGen(a: Long, b: Long): LStream<Long> = consStream(a) @{ fibGen(b, Math.addExact(a, b)) @}
 
 val fibs: LStream<Long> = fibGen(0L, 1L)
 @end example
@@ -680,11 +680,11 @@ first element of @code{s} out of the rest of @code{s} and sieving the
 result. This process is readily described in terms of stream operations:
 
 @example kotlin
-fun sieve(s: Sequence<Long>): Sequence<Long> = sequence {
+fun sieve(s: Sequence<Long>): Sequence<Long> = sequence @{
     val p = s.first()
     yield(p)
-    yieldAll(sieve(s.drop(1).filter { it % p != 0L }))
-}
+    yieldAll(sieve(s.drop(1).filter @{ it % p != 0L @}))
+@}
 @end example
 
 @noindent
@@ -762,7 +762,7 @@ evaluation to define streams implicitly.  For example, the following expression
 defines the stream @code{ones} to be an infinite stream of ones:
 
 @example kotlin
-val ones: LStream<Long> = consStream(1L) { ones }
+val ones: LStream<Long> = consStream(1L) @{ ones @}
 @end example
 
 @noindent
@@ -779,14 +779,14 @@ carries the same sum over @code{Double} streams.}
 
 @example kotlin
 fun addStreams(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> =
-    zipStream(s1, s2) { a, b -> Math.addExact(a, b) }
+    zipStream(s1, s2) @{ a, b -> Math.addExact(a, b) @}
 @end example
 
 @noindent
 Now we can define the integers as follows:
 
 @example kotlin
-val integers: LStream<Long> = consStream(1L) { addStreams(integers, ones) }
+val integers: LStream<Long> = consStream(1L) @{ addStreams(integers, ones) @}
 @end example
 
 @noindent
@@ -807,9 +807,9 @@ We can define the Fibonacci numbers in the same style:
 
 @example kotlin
 val fibs: LStream<Long> =
-    consStream(0L) {
-        consStream(1L) { zipStream(fibs, fibs.streamTail()) { a, b -> Math.addExact(a, b) } }
-    }
+    consStream(0L) @{
+        consStream(1L) @{ zipStream(fibs, fibs.streamTail()) @{ a, b -> Math.addExact(a, b) @} @}
+    @}
 @end example
 
 @noindent
@@ -839,14 +839,14 @@ definitions.  This multiplies each item in a stream by a given constant:
 
 @example kotlin
 fun scaleStream(s: LStream<Long>, factor: Long): LStream<Long> =
-    streamMap({ Math.multiplyExact(factor, it) }, s)
+    streamMap(@{ Math.multiplyExact(factor, it) @}, s)
 @end example
 
 @noindent
 For example,
 
 @example kotlin
-val double: LStream<Long> = consStream(1L) { scaleStream(double, 2L) }
+val double: LStream<Long> = consStream(1L) @{ scaleStream(double, 2L) @}
 @end example
 
 @noindent
@@ -858,9 +858,9 @@ first prime, 2, to get started; the edition keeps the sieve's @code{primes}
 above and names this construction @code{primesAlt}:
 
 @example kotlin
-val primesAlt: LStream<Long> = consStream(2L) {
+val primesAlt: LStream<Long> = consStream(2L) @{
     streamFilter(::isPrimeByPrimes, integersStartingFrom(3L))
-}
+@}
 @end example
 
 @noindent
@@ -872,8 +872,8 @@ predicate consults the @code{primesAlt} stream itself:
 @example kotlin
 fun isPrimeByPrimes(n: Long): Boolean =
     primesAlt.asSequence()
-        .takeWhile { p -> p * p <= n }
-        .all { p -> n % p != 0L }
+        .takeWhile @{ p -> p * p <= n @}
+        .all @{ p -> n % p != 0L @}
 @end example
 
 @noindent
@@ -900,7 +900,7 @@ A proof can be found in section 22.3 of @ref{Hardy and Wright 1960}.}
 describe the elements of the stream defined by
 
 @example kotlin
-val s: LStream<Long> = consStream(1L) { addStreams(s, s) }
+val s: LStream<Long> = consStream(1L) @{ addStreams(s, s) @}
 @end example
 @end quotation
 
@@ -912,7 +912,7 @@ stream of @code{integers} to complete the following definition of the stream
 whose @math{n^{\hbox{th}}} element (counting from 0) is @math{{n + 1}} factorial:
 
 @example kotlin
-val factorials: LStream<Long> = consStream(1L) { mulStreams(⟨??⟩, ⟨??⟩) }
+val factorials: LStream<Long> = consStream(1L) @{ mulStreams(⟨??⟩, ⟨??⟩) @}
 @end example
 @end quotation
 
@@ -957,21 +957,21 @@ define a function @code{merge} that combines two ordered streams into one
 ordered result stream, eliminating repetitions:
 
 @example kotlin
-fun merge(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> {
+fun merge(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> @{
     val s1car = s1.streamHead() ?: return s2
     val s2car = s2.streamHead() ?: return s1
-    return when {
-        s1car < s2car -> consStream(s1car) { merge(s1.streamTail(), s2) }
-        s1car > s2car -> consStream(s2car) { merge(s1, s2.streamTail()) }
-        else -> consStream(s1car) { merge(s1.streamTail(), s2.streamTail()) }
-    }
-}
+    return when @{
+        s1car < s2car -> consStream(s1car) @{ merge(s1.streamTail(), s2) @}
+        s1car > s2car -> consStream(s2car) @{ merge(s1, s2.streamTail()) @}
+        else -> consStream(s1car) @{ merge(s1.streamTail(), s2.streamTail()) @}
+    @}
+@}
 @end example
 
 Then the required stream may be constructed with @code{merge}, as follows:
 
 @example kotlin
-val s: LStream<Long> = consStream(1L) { merge(⟨??⟩, ⟨??⟩) }
+val s: LStream<Long> = consStream(1L) @{ merge(⟨??⟩, ⟨??⟩) @}
 @end example
 
 Fill in the missing expressions in the places marked @code{⟨??⟩} above.
@@ -982,7 +982,7 @@ Fill in the missing expressions in the places marked @code{⟨??⟩} above.
 when we compute the @math{n^{\hbox{th}}} Fibonacci number using the definition of
 @code{fibs} based on the @code{addStreams} function?  Show that the number of
 additions would be exponentially greater if the tails had been plain lambdas
-@code{{ ⟨@var{exp}⟩ }}, run again on every access, without the memoization that
+@code{@{ ⟨@var{exp}⟩ @}}, run again on every access, without the memoization that
 @code{lazy} and the @code{memoProc} of @ref{3.5.1}
 provide.@footnote{This exercise shows how call-by-need is closely related
 to ordinary memoization as described in @ref{Exercise 3.27}.  In that exercise,
@@ -997,9 +997,9 @@ stream computed by the following function:
 
 @example kotlin
 fun expand(num: Long, den: Long, radix: Long): LStream<Long> =
-    consStream(num * radix / den) {
+    consStream(num * radix / den) @{
         expand(num * radix % den, den, radix)
-    }
+    @}
 @end example
 
 (@code{/} on @code{Long} is the integer quotient here, and @code{%} the
@@ -1074,7 +1074,7 @@ constant term, which is @math{{e^0 = 1}}.  Accordingly, we can generate the seri
 for @math{e^x} as
 
 @example kotlin
-val expSeries: LStream<Rat> = consStream(Rat.ONE) { integrateSeries(expSeries) }
+val expSeries: LStream<Rat> = consStream(Rat.ONE) @{ integrateSeries(expSeries) @}
 @end example
 
 Show how to generate the series for sine and cosine, starting from the facts
@@ -1082,9 +1082,9 @@ that the derivative of sine is cosine and the derivative of cosine is the
 negative of sine:
 
 @example kotlin
-val cosineSeries: LStream<Rat> = consStream(Rat.ONE) { ⟨??⟩ }
+val cosineSeries: LStream<Rat> = consStream(Rat.ONE) @{ ⟨??⟩ @}
 
-val sineSeries: LStream<Rat> = consStream(Rat.ZERO) { ⟨??⟩ }
+val sineSeries: LStream<Rat> = consStream(Rat.ZERO) @{ ⟨??⟩ @}
 @end example
 @end enumerate
 @end quotation
@@ -1104,7 +1104,7 @@ following function for multiplying series:
 
 @example kotlin
 fun mulSeries(s1: LStream<Rat>, s2: LStream<Rat>): LStream<Rat> =
-    consStream(⟨??⟩) { zipStream(⟨??⟩, ⟨??⟩) { a, b -> a + b } }
+    consStream(⟨??⟩) @{ zipStream(⟨??⟩, ⟨??⟩) @{ a, b -> a + b @} @}
 @end example
 
 You can test your function by verifying that @math{{\sin^2x + \cos^2x = 1,}}
@@ -1191,15 +1191,15 @@ first and fills it after the definition is complete.  @ref{Exercise 3.63}
 addresses why we want a local variable here.}
 
 @example kotlin
-fun sqrtStream(x: Double): LStream<Double> {
+fun sqrtStream(x: Double): LStream<Double> @{
     var guesses: LStream<Double>? = null
     val tied: LStream<Double> =
-        consStream(1.0) {
-            streamMap({ g -> sqrtImprove(g, x) }, checkNotNull(guesses) { "guesses not yet tied" })
-        }
+        consStream(1.0) @{
+            streamMap(@{ g -> sqrtImprove(g, x) @}, checkNotNull(guesses) @{ "guesses not yet tied" @})
+        @}
     guesses = tied
     return tied
-}
+@}
 
 sqrtStream(2.0).take(5)
 // => [1.0, 1.5, 1.4166666666666665, 1.4142156862745097, 1.4142135623746899]
@@ -1232,7 +1232,7 @@ and scale the result by 4:
 
 @example kotlin
 fun piSummands(n: Long): LStream<Double> =
-    consStream(1.0 / n) { streamMap({ x -> -x }, piSummands(n + 2L)) }
+    consStream(1.0 / n) @{ streamMap(@{ x -> -x @}, piSummands(n + 2L)) @}
 
 val piStream: LStream<Double> = scaleStream(partialSums(piSummands(1L)), 4.0)
 
@@ -1272,17 +1272,17 @@ Thus, if the original sequence is represented as a stream of values, the
 transformed sequence is given by
 
 @example kotlin
-fun eulerTransform(s: LStream<Double>): LStream<Double> {
+fun eulerTransform(s: LStream<Double>): LStream<Double> @{
     val s0 = streamRef(s, 0)   // Sₙ₋₁
     val s1 = streamRef(s, 1)   // Sₙ
     val s2 = streamRef(s, 2)   // Sₙ₊₁
     val d21 = s2 - s1
     val d01 = s0 - s1
     val denominator = d21 + d01
-    return consStream(s2 - d21 * d21 / denominator) {
+    return consStream(s2 - d21 * d21 / denominator) @{
         eulerTransform(s.streamTail())
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1305,7 +1305,7 @@ fun makeTableau(
     transform: (LStream<Double>) -> LStream<Double>,
     s: LStream<Double>,
 ): LStream<LStream<Double>> =
-    consStream(s) { makeTableau(transform, transform(s)) }
+    consStream(s) @{ makeTableau(transform, transform(s)) @}
 @end example
 
 @noindent
@@ -1337,7 +1337,7 @@ fun acceleratedSequence(
     s: LStream<Double>,
 ): LStream<Double> =
     streamMap<LStream<Double>, Double>(
-        { checkNotNull(it.streamHead()) { "empty tableau row" } },
+        @{ checkNotNull(it.streamHead()) @{ "empty tableau row" @} @},
         makeTableau(transform, s),
     )
 @end example
@@ -1370,9 +1370,9 @@ straightforward way, without the local variable @code{guesses}:
 
 @example kotlin
 fun sqrtStream(x: Double): LStream<Double> =
-    consStream(1.0) {
-        streamMap({ guess -> sqrtImprove(guess, x) }, sqrtStream(x))
-    }
+    consStream(1.0) @{
+        streamMap(@{ guess -> sqrtImprove(guess, x) @}, sqrtStream(x))
+    @}
 @end example
 
 Alyssa P. Hacker replies that this version of the function is considerably
@@ -1432,7 +1432,7 @@ of @ref{2.2.3} to produce the stream of pairs of @emph{all} integers
 cons pair.}
 
 @example kotlin
-streamFilter({ pair -> isPrime(pair.first + pair.second) }, intPairs)
+streamFilter(@{ pair -> isPrime(pair.first + pair.second) @}, intPairs)
 @end example
 
 @noindent
@@ -1511,23 +1511,23 @@ first row) is (recursively) the pairs formed from @code{s.streamTail()} and
 row) is
 
 @example kotlin
-streamMap({ x -> streamRef(s, 0) to x }, t.streamTail())
+streamMap(@{ x -> streamRef(s, 0) to x @}, t.streamTail())
 @end example
 
 @noindent
 Thus we can form our stream of pairs as follows:
 
 @example kotlin
-fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> {
+fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> @{
     val sh = s.streamHead() ?: return LStream.Empty
     val th = t.streamHead() ?: return LStream.Empty
-    return consStream(sh to th) {
+    return consStream(sh to th) @{
         ⟨combineInSomeWay⟩(
-            streamMap({ x -> sh to x }, t.streamTail()),
+            streamMap(@{ x -> sh to x @}, t.streamTail()),
             pairs(s.streamTail(), t.streamTail()),
         )
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1537,10 +1537,10 @@ function from @ref{2.2.1}:
 
 @example kotlin
 fun <T> streamAppend(s1: LStream<T>, s2: LStream<T>): LStream<T> =
-    when (s1) {
+    when (s1) @{
         is LStream.Empty -> s2
-        is LStream.Cons -> consStream(s1.head) { streamAppend(s1.tail, s2) }
-    }
+        is LStream.Cons -> consStream(s1.head) @{ streamAppend(s1.tail, s2) @}
+    @}
 @end example
 
 @noindent
@@ -1570,10 +1570,10 @@ employed it in the language KRC (@ref{Turner 1981}).}
 
 @example kotlin
 fun <T> interleave(s1: LStream<T>, s2: LStream<T>): LStream<T> =
-    when (s1) {
+    when (s1) @{
         is LStream.Empty -> s2
-        is LStream.Cons -> consStream(s1.head) { interleave(s2, s1.tail) }
-    }
+        is LStream.Cons -> consStream(s1.head) @{ interleave(s2, s1.tail) @}
+    @}
 @end example
 
 @noindent
@@ -1584,16 +1584,16 @@ stream, even if the first stream is infinite.
 We can thus generate the required stream of pairs as
 
 @example kotlin
-fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> {
+fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> @{
     val sh = s.streamHead() ?: return LStream.Empty
     val th = t.streamHead() ?: return LStream.Empty
-    return consStream(sh to th) {
+    return consStream(sh to th) @{
         interleave(
-            streamMap({ x -> sh to x }, t.streamTail()),
+            streamMap(@{ x -> sh to x @}, t.streamTail()),
             pairs(s.streamTail(), t.streamTail()),
         )
-    }
-}
+    @}
+@}
 @end example
 
 @quotation
@@ -1621,7 +1621,7 @@ the first row, he proposes to work with the whole first row, as follows:
 @example kotlin
 fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> =
     interleave(
-        streamMap({ x -> streamRef(s, 0) to x }, t),
+        streamMap(@{ x -> streamRef(s, 0) to x @}, t),
         pairs(s.streamTail(), t.streamTail()),
     )
 @end example
@@ -1729,15 +1729,15 @@ and returns the stream of values @math{{S = (S_i)}}.  The following
 of the stream of integers (@ref{3.5.2}):
 
 @example kotlin
-fun integral(integrand: LStream<Double>, initialValue: Double, dt: Double): LStream<Double> {
+fun integral(integrand: LStream<Double>, initialValue: Double, dt: Double): LStream<Double> @{
     var int: LStream<Double>? = null
     val tied: LStream<Double> =
-        consStream(initialValue) {
-            addStreams(scaleStream(integrand, dt), checkNotNull(int) { "int not yet tied" })
-        }
+        consStream(initialValue) @{
+            addStreams(scaleStream(integrand, dt), checkNotNull(int) @{ "int not yet tied" @})
+        @}
     int = tied
     return tied
-}
+@}
 @end example
 
 @noindent
@@ -1862,12 +1862,12 @@ signs of the values to produce an appropriate @math{0}, @math{1}, or @math{{-1}}
 constructs her zero-crossing stream as follows:
 
 @example kotlin
-fun makeZeroCrossings(inputStream: LStream<Double>, lastValue: Double): LStream<Double> {
+fun makeZeroCrossings(inputStream: LStream<Double>, lastValue: Double): LStream<Double> @{
     val head = inputStream.streamHead() ?: return LStream.Empty
-    return consStream(signChangeDetector(head, lastValue)) {
+    return consStream(signChangeDetector(head, lastValue)) @{
         makeZeroCrossings(inputStream.streamTail(), head)
-    }
-}
+    @}
+@}
 
 val zeroCrossings = makeZeroCrossings(senseData, 0.0)
 @end example
@@ -1895,13 +1895,13 @@ the problem to her assistant, Louis Reasoner, who attempts to implement the
 idea, altering Alyssa's program as follows:
 
 @example kotlin
-fun makeZeroCrossings(inputStream: LStream<Double>, lastValue: Double): LStream<Double> {
+fun makeZeroCrossings(inputStream: LStream<Double>, lastValue: Double): LStream<Double> @{
     val head = inputStream.streamHead() ?: return LStream.Empty
     val avpt = (head + lastValue) / 2
-    return consStream(signChangeDetector(avpt, lastValue)) {
+    return consStream(signChangeDetector(avpt, lastValue)) @{
         makeZeroCrossings(inputStream.streamTail(), avpt)
-    }
-}
+    @}
+@}
 @end example
 
 This does not correctly implement Alyssa's plan.  Find the bug that Louis has
@@ -1933,9 +1933,9 @@ itself:
 @example kotlin
 var int: LStream<Double>? = null
 val tied: LStream<Double> =
-    consStream(initialValue) {
-        addStreams(scaleStream(integrand, dt), checkNotNull(int) { "int not yet tied" })
-    }
+    consStream(initialValue) @{
+        addStreams(scaleStream(integrand, dt), checkNotNull(int) @{ "int not yet tied" @})
+    @}
 int = tied
 @end example
 
@@ -1992,11 +1992,11 @@ Assuming we are given an initial value @math{y_0} for @math{y}, we could try to 
 this system using the function
 
 @example kotlin
-fun solve(f: (Double) -> Double, y0: Double, dt: Double): LStream<Double> {
+fun solve(f: (Double) -> Double, y0: Double, dt: Double): LStream<Double> @{
     val y: LStream<Double> = integral(dy, y0, dt)
     val dy: LStream<Double> = streamMap(f, y)
     return y
-}
+@}
 @end example
 This procedure does not compile, because in the first line of @code{solve} the
 call to @code{integral} requires that the input @code{dy} be defined, which
@@ -2024,15 +2024,15 @@ fun integral(
     delayedIntegrand: Lazy<LStream<Double>>,
     initialValue: Double,
     dt: Double,
-): LStream<Double> {
+): LStream<Double> @{
     var int: LStream<Double>? = null
     val tied: LStream<Double> =
-        consStream(initialValue) {
-            addStreams(scaleStream(delayedIntegrand.value, dt), checkNotNull(int) { "int not yet tied" })
-        }
+        consStream(initialValue) @{
+            addStreams(scaleStream(delayedIntegrand.value, dt), checkNotNull(int) @{ "int not yet tied" @})
+        @}
     int = tied
     return tied
-}
+@}
 @end example
 
 @noindent
@@ -2055,12 +2055,12 @@ fun solve(
     f: (Double) -> Double,
     y0: Double,
     dt: Double,
-): LStream<Double> {
+): LStream<Double> @{
     var dy: LStream<Double>? = null
-    val y: LStream<Double> = integral(lazy { checkNotNull(dy) { "dy not yet tied" } }, y0, dt)
+    val y: LStream<Double> = integral(lazy @{ checkNotNull(dy) @{ "dy not yet tied" @} @}, y0, dt)
     dy = streamMap(f, y)
     return y
-}
+@}
 @end example
 
 @noindent
@@ -2070,13 +2070,13 @@ itself inside the lazy value.
 
 @noindent
 In general, every caller of @code{integral} must now pass the integrand as a
-@code{lazy { ... }} value.  We can demonstrate that the @code{solve} function
+@code{lazy @{ ... @}} value.  We can demonstrate that the @code{solve} function
 works by approximating @math{{e \approx 2.718}} by computing the value at
 @math{{y = 1}} of the solution to the differential equation
 @math{{dy / dt = y}} with initial condition @math{{y(0) = 1}}:
 
 @example kotlin
-streamRef(solve({ y -> y }, 1.0, 0.001), 1000)
+streamRef(solve(@{ y -> y @}, 1.0, 0.001), 1000)
 // => 2.716923932235896 (the book's 2.716924 rounded)
 @end example
 
@@ -2093,14 +2093,14 @@ fun integral(
     initialValue: Double,
     dt: Double,
 ): LStream<Double> =
-    consStream(initialValue) {
+    consStream(initialValue) @{
         val head = integrand.streamHead()
-        if (head == null) {
+        if (head == null) @{
             LStream.Empty
-        } else {
+        @} else @{
             integral(integrand.streamTail(), dt * head + initialValue, dt)
-        }
-    }
+        @}
+    @}
 @end example
 
 When used in systems with loops, this function has the same problem as does
@@ -2403,10 +2403,10 @@ produce a random-number generator:
 @example kotlin
 var x = RANDOM_INIT
 
-val rand: () -> ULong = {
+val rand: () -> ULong = @{
     x = randNext(x)
     x
-}
+@}
 @end example
 
 @noindent
@@ -2416,7 +2416,7 @@ just a stream of random numbers produced by successive applications of
 
 @example kotlin
 val randomNumbers: LStream<ULong> =
-    consStream(RANDOM_INIT) { streamMap(::randNext, randomNumbers) }
+    consStream(RANDOM_INIT) @{ streamMap(::randNext, randomNumbers) @}
 @end example
 
 @noindent
@@ -2425,16 +2425,16 @@ performed on consecutive pairs in the @code{randomNumbers} stream:
 
 @example kotlin
 val cesaroStream: LStream<Boolean> =
-    mapSuccessivePairs({ r1, r2 -> gcdULong(r1, r2) == 1UL }, randomNumbers)
+    mapSuccessivePairs(@{ r1, r2 -> gcdULong(r1, r2) == 1UL @}, randomNumbers)
 
 fun <A, R> mapSuccessivePairs(
     f: (A, A) -> R,
     s: LStream<A>,
-): LStream<R> {
+): LStream<R> @{
     val a0 = s.streamHead() ?: return LStream.Empty
     val a1 = s.streamTail().streamHead() ?: return LStream.Empty
-    return consStream(f(a0, a1)) { mapSuccessivePairs(f, s.streamTail().streamTail()) }
-}
+    return consStream(f(a0, a1)) @{ mapSuccessivePairs(f, s.streamTail().streamTail()) @}
+@}
 @end example
 
 @noindent
@@ -2450,25 +2450,25 @@ fun monteCarloStream(
     experiments: LStream<Boolean>,
     passed: Long,
     failed: Long,
-): LStream<Double> {
+): LStream<Double> @{
     val outcome = experiments.streamHead() ?: return LStream.Empty
     val rest = experiments.streamTail()
     val p: Long
     val q: Long
-    if (outcome) {
+    if (outcome) @{
         p = Math.addExact(passed, 1L)
         q = failed
-    } else {
+    @} else @{
         p = passed
         q = Math.addExact(failed, 1L)
-    }
-    return consStream(p.toDouble() / (p + q).toDouble()) {
+    @}
+    return consStream(p.toDouble() / (p + q).toDouble()) @{
         monteCarloStream(rest, p, q)
-    }
-}
+    @}
+@}
 
 val pi: LStream<Double> =
-    streamMap({ p -> sqrt(6.0 / p) }, monteCarloStream(cesaroStream, 0, 0))
+    streamMap(@{ p -> sqrt(6.0 / p) @}, monteCarloStream(cesaroStream, 0, 0))
 @end example
 
 @noindent
@@ -2518,13 +2518,13 @@ bank account.  In @ref{3.1.3} we implemented a simplified version of
 such a processor:
 
 @example kotlin
-fun makeSimplifiedWithdraw(balance: Long): (Long) -> Long {
+fun makeSimplifiedWithdraw(balance: Long): (Long) -> Long @{
     var b = balance
-    return { amount ->
+    return @{ amount ->
         b -= amount
         b
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -2544,9 +2544,9 @@ fun streamWithdraw(
     balance: Long,
     amountStream: LStream<Long>,
 ): LStream<Long> =
-    consStream(balance) {
+    consStream(balance) @{
         streamWithdraw(balance - (amountStream.streamHead() ?: 0L), amountStream.streamTail())
-    }
+    @}
 @end example
 
 @noindent
@@ -2833,8 +2833,8 @@ the Lisp evaluator.
 
 @menu
 * 4.1::              The Metacircular Evaluator
-* 4.2::              Variations on a Scheme -- Lazy Evaluation
-* 4.3::              Variations on a Scheme -- Nondeterministic Computing
+* 4.2::              Variations on a Scheme: Lazy Evaluation
+* 4.3::              Variations on a Scheme: Nondeterministic Computing
 * 4.4::              Logic Programming
 @end menu
 

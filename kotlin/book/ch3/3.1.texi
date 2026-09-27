@@ -56,19 +56,19 @@ we begin with $100 in the account, we should obtain the following sequence of
 responses using @code{withdraw}:
 
 @example kotlin
-sealed interface WithdrawError {
+sealed interface WithdrawError @{
     data object InsufficientFunds : WithdrawError
-}
+@}
 
 var balance: Long = 100L
 
 fun withdraw(amount: Long): Either<WithdrawError, Long> =
-    if (amount > balance) {
+    if (amount > balance) @{
         Either.Left(WithdrawError.InsufficientFunds)
-    } else {
+    @} else @{
         balance -= amount
         Either.Right(balance)
-    }
+    @}
 
 withdraw(25L)
 // => Either.Right(75)
@@ -129,7 +129,7 @@ rule directly on their properties.}
 @code{Withdraw}'s @code{if} branch does two things in sequence when the
 balance suffices: first decrementing @code{balance} and then returning the new
 value of @code{balance}.  In general, a Kotlin block already sequences its
-statements this way -- @code{@{ balance -= amount; balance @}} runs the first
+statements this way: @code{@{ balance -= amount; balance @}} runs the first
 statement for its effect and returns the second as the block's
 value.@footnote{Scheme needs a separate @code{begin} form to sequence
 side-effecting expressions, because the body of a Scheme procedure and each
@@ -152,25 +152,25 @@ We can make @code{balance} internal to @code{withdraw} by rewriting the
 definition as follows:
 
 @example kotlin
-fun newWithdraw(): (Long) -> Either<WithdrawError, Long> {
+fun newWithdraw(): (Long) -> Either<WithdrawError, Long> @{
     var b = 100L
-    return { amount ->
-        if (amount > b) {
+    return @{ amount ->
+        if (amount > b) @{
             Either.Left(WithdrawError.InsufficientFunds)
-        } else {
+        @} else @{
             b -= amount
             Either.Right(b)
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
 What we have done here is declare a local @code{var b}, bound to the initial
 value 100.  Within this local environment, we build a lambda that takes
 @code{amount} as an argument and behaves like our previous @code{withdraw}
-function.  This function -- returned as the result of calling
-@code{newWithdraw()} -- behaves in precisely the same way as @code{withdraw}
+function.  This function, returned as the result of calling
+@code{newWithdraw()}, behaves in precisely the same way as @code{withdraw}
 but whose variable @code{b} is not accessible by any other
 function.@footnote{In programming-language jargon, the variable @code{b}
 is said to be @newterm{encapsulated} within the closure @code{newWithdraw}
@@ -207,17 +207,17 @@ local.  This will be clearer after the discussion of the environment model of
 evaluation in @ref{3.2}.  (See also @ref{Exercise 3.10}.)}
 
 @example kotlin
-fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> {
+fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> @{
     var b = balance
-    return { amount ->
-        if (amount > b) {
+    return @{ amount ->
+        if (amount > b) @{
             Either.Left(WithdrawError.InsufficientFunds)
-        } else {
+        @} else @{
             b -= amount
             Either.Right(b)
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -257,29 +257,29 @@ implementing that interface directly, rather than a bare closure, because the
 book has now given the object a real protocol of named operations.
 
 @example kotlin
-interface Account {
+interface Account @{
     fun withdraw(amount: Long): Either<WithdrawError, Long>
 
     fun deposit(amount: Long): Long
-}
+@}
 
-fun makeAccount(balance: Long): Account {
+fun makeAccount(balance: Long): Account @{
     var b = balance
-    return object : Account {
+    return object : Account @{
         override fun withdraw(amount: Long): Either<WithdrawError, Long> =
-            if (amount > b) {
+            if (amount > b) @{
                 Either.Left(WithdrawError.InsufficientFunds)
-            } else {
+            @} else @{
                 b -= amount
                 Either.Right(b)
-            }
+            @}
 
-        override fun deposit(amount: Long): Long {
+        override fun deposit(amount: Long): Long @{
             b += amount
             return b
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -358,7 +358,7 @@ counter.  For instance, we could make a monitored version of the @code{sqrt}
 function:
 
 @example kotlin
-val s = makeMonitored { x: Double -> sqrt(x) }
+val s = makeMonitored @{ x: Double -> sqrt(x) @}
 
 s.call(100.0)
 // => 10.0
@@ -459,13 +459,13 @@ computes @code{randUpdate} of the current value of @code{x}, returns this as
 the random word, and also stores this as the new value of @code{x}.
 
 @example kotlin
-fun makeRand(seed: ULong): () -> ULong {
+fun makeRand(seed: ULong): () -> ULong @{
     var x = seed
-    return {
+    return @{
         x = randUpdate(x)
         x
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -498,19 +498,19 @@ trials in which the experiment was found to be true.
 
 @example kotlin
 fun estimatePi(trials: Int, rand: () -> ULong): Double =
-    sqrt(6.0 / monteCarlo(trials) { cesaroTest(rand) })
+    sqrt(6.0 / monteCarlo(trials) @{ cesaroTest(rand) @})
 
 fun cesaroTest(rand: () -> ULong): Boolean = gcd(rand(), rand()) == 1UL
 
-fun monteCarlo(trials: Int, experiment: () -> Boolean): Double {
+fun monteCarlo(trials: Int, experiment: () -> Boolean): Double @{
     tailrec fun iter(remaining: Int, passed: Int): Double =
-        when {
+        when @{
             remaining == 0 -> passed.toDouble() / trials
             experiment() -> iter(remaining - 1, passed + 1)
             else -> iter(remaining - 1, passed)
-        }
+        @}
     return iter(trials, 0)
-}
+@}
 @end example
 
 @noindent
@@ -522,18 +522,18 @@ assignment to model local state:
 fun estimatePiStateless(trials: Int, initialX: ULong): Double =
     sqrt(6.0 / randomGcdTest(trials, initialX))
 
-fun randomGcdTest(trials: Int, initialX: ULong): Double {
-    tailrec fun iter(remaining: Int, passed: Int, x: ULong): Double {
+fun randomGcdTest(trials: Int, initialX: ULong): Double @{
+    tailrec fun iter(remaining: Int, passed: Int, x: ULong): Double @{
         val x1 = randUpdate(x)
         val x2 = randUpdate(x1)
-        return when {
+        return when @{
             remaining == 0 -> passed.toDouble() / trials
             gcd(x1, x2) == 1UL -> iter(remaining - 1, passed + 1, x2)
             else -> iter(remaining - 1, passed, x2)
-        }
-    }
+        @}
+    @}
     return iter(trials, 0, initialX)
-}
+@}
 @end example
 
 @noindent
@@ -610,10 +610,10 @@ itself, so there is no separate exact-versus-decimal case the way MIT
 Scheme's @code{random} has.}
 
 @example kotlin
-fun randomInRange(low: Double, high: Double, next: () -> ULong): Double {
+fun randomInRange(low: Double, high: Double, next: () -> ULong): Double @{
     val range = high - low
     return low + range * (next().toDouble() / ULong.MAX_VALUE.toDouble())
-}
+@}
 @end example
 @end quotation
 
@@ -651,13 +651,13 @@ of the @code{makeWithdraw} function of @ref{3.1.1} that does not
 bother to check for an insufficient amount:
 
 @example kotlin
-fun makeSimplifiedWithdraw(balance: Long): (Long) -> Long {
+fun makeSimplifiedWithdraw(balance: Long): (Long) -> Long @{
     var b = balance
-    return { amount ->
+    return @{ amount ->
         b -= amount
         b
-    }
-}
+    @}
+@}
 
 val w = makeSimplifiedWithdraw(25L)
 
@@ -673,7 +673,7 @@ Compare this function with the following @code{makeDecrementer} function,
 which closes over no @code{var}:
 
 @example kotlin
-fun makeDecrementer(balance: Long): (Long) -> Long = { amount -> balance - amount }
+fun makeDecrementer(balance: Long): (Long) -> Long = @{ amount -> balance - amount @}
 @end example
 
 @noindent
@@ -706,7 +706,7 @@ We first simplify the call by substituting 25 for
 expression to
 
 @example kotlin
-( { amount: Long -> 25L - amount } )(20L)
+( @{ amount: Long -> 25L - amount @} )(20L)
 @end example
 
 @noindent
@@ -736,10 +736,10 @@ expression: substituting would give @code{25L -= amount}, which is not
 something Kotlin lets you write.}
 
 @example kotlin
-( { amount: Long ->
+( @{ amount: Long ->
     b -= amount
     25L
-  }
+  @}
 )(20L)
 @end example
 
@@ -908,11 +908,11 @@ programs.  For example, recall the iterative factorial program from
 @ref{1.2.1}:
 
 @example kotlin
-fun factorial(n: Long): Long {
+fun factorial(n: Long): Long @{
     tailrec fun iter(product: Long, counter: Long): Long =
         if (counter > n) product else iter(product * counter, counter + 1)
     return iter(1L, 1L)
-}
+@}
 @end example
 
 @noindent
@@ -921,15 +921,15 @@ more imperative style by using explicit assignment to update the values of the
 variables @code{product} and @code{counter}:
 
 @example kotlin
-fun factorialImperative(n: Long): Long {
+fun factorialImperative(n: Long): Long @{
     var product = 1L
     var counter = 1L
-    while (counter <= n) {
+    while (counter <= n) @{
         product *= counter
         counter += 1
-    }
+    @}
     return product
-}
+@}
 @end example
 
 @noindent
@@ -993,7 +993,7 @@ model in @ref{1.1.3}, we said that the first step in evaluating an
 expression is to evaluate its subexpressions.  Scheme never specifies the order
 in which the subexpressions should be evaluated (e.g., left to right or right
 to left), and when we introduce assignment, the order in which the arguments to a
-procedure are evaluated can make a difference to the result -- SICP's original
+procedure are evaluated can make a difference to the result; SICP's original
 exercise turns that gap into a probe.  Kotlin closes the gap instead: a
 function's arguments are evaluated strictly left to right, and @code{a + b}
 desugars to @code{a.plus(b)}, so the receiver @code{a} is always evaluated
@@ -1013,7 +1013,7 @@ f(1) + f(0)
 @end example
 
 @noindent
-always evaluates to 1 -- deterministically, on every conformant Kotlin
+always evaluates to 1, deterministically on every conformant Kotlin
 implementation, because the order is specified rather than left open the way
 Scheme leaves it.
 @end quotation

@@ -122,12 +122,12 @@ class Cell(public var value: Long)
 val balance = Cell(100L)
 
 fun withdraw(amount: Long): Either<WithdrawError, Long> =
-    if (balance.value < amount) {
+    if (balance.value < amount) @{
         Either.Left(WithdrawError.InsufficientFunds)
-    } else {
+    @} else @{
         balance.value -= amount
         Either.Right(balance.value)
-    }
+    @}
 @end example
 
 @noindent
@@ -431,11 +431,11 @@ In Kotlin the form is structured concurrency, @code{launch} inside
 @code{coroutineScope}, which is exactly that contract:
 
 @example kotlin
-coroutineScope {
-    launch { ⟨@var{p₁}⟩() }   // each ⟨p⟩ is a suspend () -> Unit
-    launch { ⟨@var{p₂}⟩() }
+coroutineScope @{
+    launch @{ ⟨@var{p₁}⟩() @}   // each ⟨p⟩ is a suspend () -> Unit
+    launch @{ ⟨@var{p₂}⟩() @}
     @dots{}
-}
+@}
 @end example
 
 @noindent
@@ -452,10 +452,10 @@ every program of this section:
 @example kotlin
 var x = 10L
 
-coroutineScope {
-    launch { x = x * x }   // P1 sets x to x times x
-    launch { x = x + 1 }   // P2 increments x
-}
+coroutineScope @{
+    launch @{ x = x * x @}   // P1 sets x to x times x
+    launch @{ x = x + 1 @}   // P2 increments x
+@}
 @end example
 
 @noindent
@@ -503,10 +503,10 @@ Thus, in contrast to the example above, executing
 var x = 10L
 val s = Serializer()
 
-coroutineScope {
-    launch { s.serialized { x = x * x }() }
-    launch { s.serialized { x = x + 1 }() }
-}
+coroutineScope @{
+    launch @{ s.serialized @{ x = x * x @}() @}
+    launch @{ s.serialized @{ x = x + 1 @}() @}
+@}
 @end example
 
 @noindent
@@ -521,37 +521,37 @@ balance stays a captured @code{var} for the reason 3.1 gave, and the book's
 dispatch symbol becomes a method:
 
 @example kotlin
-interface SerializedAccount {
+interface SerializedAccount @{
     suspend fun withdraw(amount: Long): Either<WithdrawError, Long>
 
     suspend fun deposit(amount: Long): Long
 
     suspend fun balance(): Long
-}
+@}
 
-fun makeSerializedAccount(balance: Long): SerializedAccount {
+fun makeSerializedAccount(balance: Long): SerializedAccount @{
     var b = balance
     val s = Serializer()
-    return object : SerializedAccount {
+    return object : SerializedAccount @{
         override suspend fun withdraw(amount: Long) =
-            s.serialized {
-                if (b < amount) {
+            s.serialized @{
+                if (b < amount) @{
                     Either.Left(WithdrawError.InsufficientFunds)
-                } else {
+                @} else @{
                     b -= amount
                     Either.Right(b)
-                }
-            }()
+                @}
+            @}()
 
         override suspend fun deposit(amount: Long): Long =
-            s.serialized {
+            s.serialized @{
                 b += amount
                 b
-            }()
+            @}()
 
         override suspend fun balance(): Long = b
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -572,13 +572,13 @@ as follows:
 var x = 10L
 val s = Serializer()
 
-coroutineScope {
-    launch {
-        val squared = s.serialized { x * x }()
+coroutineScope @{
+    launch @{
+        val squared = s.serialized @{ x * x @}()
         x = squared // the assignment is outside the serializer
-    }
-    launch { s.serialized { x = x + 1 }() }
-}
+    @}
+    launch @{ s.serialized @{ x = x + 1 @}() @}
+@}
 @end example
 @end quotation
 
@@ -589,10 +589,10 @@ coroutineScope {
 @example kotlin
 var x = 10L
 
-coroutineScope {
-    launch { x = x * x }      // P1
-    launch { x = x * x * x }  // P2
-}
+coroutineScope @{
+    launch @{ x = x * x @}      // P1
+    launch @{ x = x * x * x @}  // P2
+@}
 @end example
 
 Which of these possibilities remain if we instead use serialized procedures:
@@ -601,10 +601,10 @@ Which of these possibilities remain if we instead use serialized procedures:
 var x = 10L
 val s = Serializer()
 
-coroutineScope {
-    launch { s.serialized { x = x * x }() }
-    launch { s.serialized { x = x * x * x }() }
-}
+coroutineScope @{
+    launch @{ s.serialized @{ x = x * x @}() @}
+    launch @{ s.serialized @{ x = x * x * x @}() @}
+@}
 @end example
 @end quotation
 
@@ -614,30 +614,30 @@ would be better to implement the bank account as follows (where the commented
 method has been changed):
 
 @example kotlin
-fun bensAccount(balance: Long): SerializedAccount {
+fun bensAccount(balance: Long): SerializedAccount @{
     var b = balance
     val s = Serializer()
-    return object : SerializedAccount {
+    return object : SerializedAccount @{
         override suspend fun withdraw(amount: Long) =
-            s.serialized {
-                if (b < amount) {
+            s.serialized @{
+                if (b < amount) @{
                     Either.Left(WithdrawError.InsufficientFunds)
-                } else {
+                @} else @{
                     b -= amount
                     Either.Right(b)
-                }
-            }()
+                @}
+            @}()
 
         override suspend fun deposit(amount: Long): Long =
-            s.serialized {
+            s.serialized @{
                 b += amount
                 b
-            }()
+            @}()
 
         override suspend fun balance(): Long =
-            s.serialized { b }() // serialized
-    }
-}
+            s.serialized @{ b @}() // serialized
+    @}
+@}
 @end example
 
 @noindent
@@ -672,30 +672,30 @@ dispatch.  That is, an account would answer the same serialized procedures
 a withdrawal or deposit.
 
 @example kotlin
-class BenAccount(balance: Long) : SerializedAccount {
+class BenAccount(balance: Long) : SerializedAccount @{
     private var b = balance
     private val s = Serializer()
     private val protectedWithdraw =
-        s.serializedArg { amount: Long ->
-            if (b < amount) {
+        s.serializedArg @{ amount: Long ->
+            if (b < amount) @{
                 Either.Left(WithdrawError.InsufficientFunds)
-            } else {
+            @} else @{
                 b -= amount
                 Either.Right(b)
-            }
-        }
+            @}
+        @}
     private val protectedDeposit =
-        s.serializedArg { amount: Long ->
+        s.serializedArg @{ amount: Long ->
             b += amount
             b
-        }
+        @}
 
     override suspend fun withdraw(amount: Long) = protectedWithdraw(amount)
 
     override suspend fun deposit(amount: Long) = protectedDeposit(amount)
 
     override suspend fun balance(): Long = b
-}
+@}
 @end example
 
 Is this a safe change to make?  In particular, is there any difference in what
@@ -720,12 +720,12 @@ that our @code{deposit} accepts negative amounts.  (This is a serious
 bug in our banking system!)}
 
 @example kotlin
-suspend fun exchange(account1: RawAccount, account2: RawAccount): Long {
+suspend fun exchange(account1: RawAccount, account2: RawAccount): Long @{
     val difference = account1.balance() - account2.balance()
     account1.withdraw(difference)
     account2.deposit(difference)
     return difference
-}
+@}
 @end example
 
 @noindent
@@ -754,7 +754,7 @@ given in @ref{3.1.1}, except that a serializer is provided to protect
 the balance variable, and the serializer is exported via the interface:
 
 @example kotlin
-interface RawAccount {
+interface RawAccount @{
     suspend fun withdraw(amount: Long): Either<WithdrawError, Long>
 
     suspend fun deposit(amount: Long): Long
@@ -763,32 +763,32 @@ interface RawAccount {
 
     /** The book's 'serializer message: the account's own serializer. */
     fun serializer(): Serializer
-}
+@}
 
-fun makeAccountAndSerializer(balance: Long): RawAccount {
+fun makeAccountAndSerializer(balance: Long): RawAccount @{
     var b = balance
     val s = Serializer()
     // The raw procedures the book's dispatch returned: serialization is
     // the caller's job now.
-    return object : RawAccount {
+    return object : RawAccount @{
         override suspend fun withdraw(amount: Long): Either<WithdrawError, Long> =
-            if (b < amount) {
+            if (b < amount) @{
                 Either.Left(WithdrawError.InsufficientFunds)
-            } else {
+            @} else @{
                 b -= amount
                 Either.Right(b)
-            }
+            @}
 
-        override suspend fun deposit(amount: Long): Long {
+        override suspend fun deposit(amount: Long): Long @{
             b += amount
             return b
-        }
+        @}
 
         override suspend fun balance(): Long = b
 
         override fun serializer(): Serializer = s
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -800,9 +800,9 @@ are no longer automatically serialized by the account.}
 
 @example kotlin
 suspend fun deposit(account: RawAccount, amount: Long): Long =
-    account.serializer().serialized {
+    account.serializer().serialized @{
         account.deposit(amount)
-    }()
+    @}()
 @end example
 
 @noindent
@@ -815,11 +815,11 @@ suspend fun serializedExchange(
     account1: RawAccount,
     account2: RawAccount,
 ): Long =
-    account1.serializer().serialized {
-        account2.serializer().serialized {
+    account1.serializer().serialized @{
+        account2.serializer().serialized @{
             exchange(account1, account2)
-        }()
-    }()
+        @}()
+    @}()
 @end example
 
 @quotation
@@ -849,10 +849,10 @@ suspend fun transfer(
     fromAccount: SerializedAccount,
     toAccount: SerializedAccount,
     amount: Long,
-) {
+) @{
     fromAccount.withdraw(amount)
     toAccount.deposit(amount)
-}
+@}
 @end example
 
 Louis Reasoner claims that there is a problem here, and that we need to use a
@@ -872,31 +872,31 @@ instead of) using it to serialize accounts and deposits as @code{makeSerializedA
 did.  He proposes to redefine accounts as follows:
 
 @example kotlin
-fun louisAccount(balance: Long): RawAccount {
+fun louisAccount(balance: Long): RawAccount @{
     var b = balance
     val s = Serializer()
-    return object : RawAccount {
+    return object : RawAccount @{
         override suspend fun withdraw(amount: Long) =
-            s.serialized {
-                if (b < amount) {
+            s.serialized @{
+                if (b < amount) @{
                     Either.Left(WithdrawError.InsufficientFunds)
-                } else {
+                @} else @{
                     b -= amount
                     Either.Right(b)
-                }
-            }()
+                @}
+            @}()
 
         override suspend fun deposit(amount: Long): Long =
-            s.serialized {
+            s.serialized @{
                 b += amount
                 b
-            }()
+            @}()
 
         override suspend fun balance(): Long = b
 
         override fun serializer(): Serializer = s
-    }
-}
+    @}
+@}
 @end example
 
 Then deposits are handled as with the original @code{makeAccount}:
@@ -938,32 +938,32 @@ property that we need to guarantee.
 @example kotlin
 import kotlinx.coroutines.sync.Mutex
 
-class Serializer {
+class Serializer @{
     private val mutex = Mutex() // kotlinx's Mutex: a waiter parks in lock
 
     /** The book's make-serializer over a procedure of no arguments. */
-    fun <A> serialized(p: suspend () -> A): suspend () -> A = {
+    fun <A> serialized(p: suspend () -> A): suspend () -> A = @{
         mutex.lock()
-        try {
+        try @{
             p()
-        } finally {
+        @} finally @{
             mutex.unlock()
-        }
-    }
+        @}
+    @}
 
     /** The same set over a one-argument procedure: the book's
      * make-serializer is indifferent to the wrapped procedure's shape.
      * A separate name, not an overload: a brace lambda matches both
      * arities through its implicit `it`. */
-    fun <P, A> serializedArg(p: suspend (P) -> A): suspend (P) -> A = {
+    fun <P, A> serializedArg(p: suspend (P) -> A): suspend (P) -> A = @{
         mutex.lock()
-        try {
+        try @{
             p(it)
-        } finally {
+        @} finally @{
             mutex.unlock()
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -993,28 +993,28 @@ the waiter hands the thread back each turn instead of burning it.}  To release
 the mutex, we set the cell contents to false.
 
 @example kotlin
-interface BookMutex {
+interface BookMutex @{
     suspend fun acquire()
 
     fun release()
-}
+@}
 
 class FlagCell(public var value: Boolean)
 
-fun makeMutex(): BookMutex {
+fun makeMutex(): BookMutex @{
     val cell = FlagCell(false)
-    return object : BookMutex {
-        override suspend fun acquire() {
-            while (testAndSet(cell)) {
+    return object : BookMutex @{
+        override suspend fun acquire() @{
+            while (testAndSet(cell)) @{
                 yield() // retry: hand the thread back, then test again
-            }
-        }
+            @}
+        @}
 
-        override fun release() {
+        override fun release() @{
             cell.value = false
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -1025,12 +1025,12 @@ procedure:
 
 @example kotlin
 fun testAndSet(cell: Cell): Boolean =
-    if (cell.value) {
+    if (cell.value) @{
         true
-    } else {
+    @} else @{
         cell.value = true
         false
-    }
+    @}
 @end example
 
 @noindent
@@ -1058,14 +1058,14 @@ and the cell becomes an atomic boolean holding the mutex's state:
 @example kotlin
 import java.util.concurrent.atomic.AtomicBoolean
 
-class AtomicCell(private val flag: AtomicBoolean = AtomicBoolean(false)) {
+class AtomicCell(private val flag: AtomicBoolean = AtomicBoolean(false)) @{
     /** The book's test-and-set, atomic: true when the cell was already set. */
     fun testAndSet(): Boolean = !flag.compareAndSet(false, true)
 
-    fun clear() {
+    fun clear() @{
         flag.set(false)
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1242,11 +1242,11 @@ of exercise 3.47 is a token @code{Channel<Unit>(n)}, receive to acquire and
 send in @code{finally} to release.
 
 @example kotlin
-coroutineScope {
-    val done = launch { x = x * x }
-    launch { x = x + 1 }
+coroutineScope @{
+    val done = launch @{ x = x * x @}
+    launch @{ x = x + 1 @}
     done.cancel() // the control object halts P1 mid-flight
-}
+@}
 @end example
 
 The lock makes the serializer's contract visible to the reader: the protected

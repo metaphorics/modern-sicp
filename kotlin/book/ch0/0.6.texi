@@ -15,7 +15,7 @@ Since @code{raise} never returns, the code after a guard needs no branch
 for the failure:
 
 @example kotlin
-public sealed interface PortError {
+public sealed interface PortError @{
     public data object Blank : PortError
 
     public data class NotDigits(
@@ -25,17 +25,17 @@ public sealed interface PortError {
     public data class OutOfRange(
         val n: Int,
     ) : PortError
-}
+@}
 
 context(r: Raise<PortError>)
-public fun parsePort(s: String): Int {
+public fun parsePort(s: String): Int @{
     val t = s.trim()
     if (t.isEmpty()) r.raise(PortError.Blank)
-    if (t.any { c -> c !in '0'..'9' }) r.raise(PortError.NotDigits(s))
+    if (t.any @{ c -> c !in '0'..'9' @}) r.raise(PortError.NotDigits(s))
     val n = t.toInt()
     if (n !in 1..65535) r.raise(PortError.OutOfRange(n))
     return n
-}
+@}
 @end example
 
 @noindent
@@ -46,7 +46,7 @@ the block the context argument is supplied by the scope itself, so calls
 read as plain calls:
 
 @example kotlin
-public fun parsePortEither(s: String): Either<PortError, Int> = either { parsePort(s) }
+public fun parsePortEither(s: String): Either<PortError, Int> = either @{ parsePort(s) @}
 
 parsePortEither(" 8080 ")
 // => Either.Right(8080)
@@ -86,10 +86,10 @@ paths: a probe asserts @code{Either.Left(NotDigits("1x"))} where an
 exception-based design would assert a throw.
 
 @example kotlin
-either { parsePort("   ") }
+either @{ parsePort("   ") @}
 // => Either.Left(Blank)
 
-either { parsePort("99999") }
+either @{ parsePort("99999") @}
 // => Either.Left(OutOfRange(n=99999))
 @end example
 

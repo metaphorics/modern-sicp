@@ -97,11 +97,11 @@ import io.kotest.matchers.shouldBe
 public fun tourSquare(x: Long): Long = x * x
 
 public class S0_1TourTest :
-    FunSpec({
-        test("the call returns the value the prose annotates") {
+    FunSpec(@{
+        test("the call returns the value the prose annotates") @{
             tourSquare(21) shouldBe 441L
-        }
-    })
+        @}
+    @})
 @end example
 
 @noindent

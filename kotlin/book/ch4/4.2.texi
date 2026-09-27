@@ -155,7 +155,7 @@ than as a special form.
 @end quotation
 
 @quotation
-@emph{Exercise 4.26a is added by this edition and extends exercise 4.26; SICP numbers stop at 4.26.} @strong{@anchor{Exercise 4.26a}Exercise 4.26a:} @code{When} is the mirror of @code{unless}: it evaluates a condition and, when the condition holds, evaluates a body of expressions in order and answers the value of the last one, answering false otherwise.  Implement @code{when} as a derived expression over your lazy evaluator -- one rewrite to forms the evaluator already has -- and pin the derivation with a before-and-after trace: the same expression read as an application of an unbound name before the derivation, and evaluated after it.
+@emph{Exercise 4.26a is added by this edition and extends exercise 4.26; SICP numbers stop at 4.26.} @strong{@anchor{Exercise 4.26a}Exercise 4.26a:} @code{When} is the mirror of @code{unless}: it evaluates a condition and, when the condition holds, evaluates a body of expressions in order and answers the value of the last one, answering false otherwise.  Implement @code{when} as a derived expression over your lazy evaluator (one rewrite to forms the evaluator already has) and pin the derivation with a before-and-after trace: the same expression read as an application of an unbound name before the derivation, and evaluated after it.
 @end quotation
 
 @node	4.2.2, 4.2.3, 4.2.1, 4.2

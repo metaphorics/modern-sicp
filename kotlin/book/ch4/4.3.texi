@@ -287,7 +287,7 @@ driver.input("(prime-sum-pair '(19 27 30) '(11 36 58))")
 The section rides the same analyzed seam the exercises of @ref{4.1} used:
 @code{AmbEvaluator} analyzes each expression once into an execution procedure
 that takes the environment and a success continuation.  Failure is the
-edition's @code{Fail} signal -- a dead end throws it, unwinding the branch --
+edition's @code{Fail} signal; a dead end throws it, unwinding the branch, and the engine keeps the choice stack of resumable frames, so the drive loop
 and the engine keeps the choice stack of resumable frames, so the drive loop
 always resumes the deepest pending choice.  Assignment commits through an undo
 trail that the loop rolls back on backtrack.  The driver exposes the first

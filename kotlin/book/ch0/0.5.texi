@@ -16,21 +16,21 @@ edition writes it with a plain @code{var} rather than hiding the cell
 inside a class:
 
 @example kotlin
-public fun makeCounter(start: Int): () -> Int {
+public fun makeCounter(start: Int): () -> Int @{
     var n = start
-    return {
+    return @{
         n += 1
         n
-    }
-}
+    @}
+@}
 
-public fun makeWithdrawer(balance: Long): (Long) -> Long {
+public fun makeWithdrawer(balance: Long): (Long) -> Long @{
     var b = balance
-    return { amount ->
+    return @{ amount ->
         b -= amount
         b
-    }
-}
+    @}
+@}
 
 val c1 = makeCounter(0)
 val c2 = makeCounter(0)
@@ -96,13 +96,13 @@ while the maps themselves are values that are never edited in place:
 val global = Env.global()
 val inner = Env.child(global)
 inner.define("x", VInt(1))
-either { inner.lookup("x") }
+either @{ inner.lookup("x") @}
 // => Either.Right(1)
 
 inner.set("x", VInt(99))
-either { inner.lookup("x") }
+either @{ inner.lookup("x") @}
 // => Either.Right(99)
-either { global.lookup("x") }
+either @{ global.lookup("x") @}
 // => Either.Left(SchemeError.Unbound("x"))
 @end example
 

@@ -862,7 +862,7 @@ in footnotes throughout @ref{5.4}.
 @example kotlin
 val evaluatorOperations: Map<String, Op> =
     mapOf(
-        "self-evaluating?" to oneArg("self-evaluating?") { w -> VBool(selfEvaluating(w)) },
+        "self-evaluating?" to oneArg("self-evaluating?") @{ w -> VBool(selfEvaluating(w)) @},
         // ... the complete table of 4.1 operations typed over the words ...
     )
 @end example

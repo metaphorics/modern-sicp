@@ -43,11 +43,11 @@ returned explicitly:
 @example kotlin
 public fun square(x: Long): Long = x * x
 
-public fun hypotenuseSquared(a: Long, b: Long): Long {
+public fun hypotenuseSquared(a: Long, b: Long): Long @{
     val a2 = square(a)
     val b2 = square(b)
     return a2 + b2
-}
+@}
 
 square(21)
 // => 441
@@ -70,7 +70,7 @@ A lambda is a function value. It closes over the names around it, so
 @code{makeAdder} builds a family of functions from one declaration:
 
 @example kotlin
-public fun makeAdder(n: Long): (Long) -> Long = { x -> x + n }
+public fun makeAdder(n: Long): (Long) -> Long = @{ x -> x + n @}
 
 val add5 = makeAdder(5L)
 val add12 = makeAdder(12L)
@@ -91,9 +91,9 @@ function may write it after the parentheses in trailing position:
 public typealias Mapper = (Long) -> Long
 
 public fun sumOver(f: Mapper, a: Long, b: Long): Long =
-    (a..b).fold(0L) { acc, k -> acc + f(k) }
+    (a..b).fold(0L) @{ acc, k -> acc + f(k) @}
 
-public fun twice(m: Mapper): Mapper = { x -> m(m(x)) }
+public fun twice(m: Mapper): Mapper = @{ x -> m(m(x)) @}
 
 sumOver(::square, 1L, 3L)
 // => 14
@@ -119,20 +119,20 @@ order:
 
 @example kotlin
 public fun sign(n: Long): String =
-    if (n > 0L) {
+    if (n > 0L) @{
         "positive"
-    } else if (n < 0L) {
+    @} else if (n < 0L) @{
         "negative"
-    } else {
+    @} else @{
         "zero"
-    }
+    @}
 
 public fun classify(n: Long): String =
-    when (n) {
+    when (n) @{
         0L -> "zero"
         in 1L..9L -> "small"
         else -> "large"
-    }
+    @}
 
 sign(-3L)
 // => negative

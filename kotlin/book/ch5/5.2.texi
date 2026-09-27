@@ -63,9 +63,9 @@ public val gcdController: List<Stmt> =
 @end example
 
 @example kotlin
-val gcdMachine = either {
+val gcdMachine = either @{
     makeMachine(listOf("a", "b", "t"), arithOperations, gcdController)
-}
+@}
 // Ok(machine) -- the assembler checked every register, label, and
 // operation before the machine exists
 @end example
@@ -86,13 +86,13 @@ To compute @abbr{GCD}s with this machine, we set the input registers, start
 the machine, and examine the result when the simulation terminates:
 
 @example kotlin
-either {
+either @{
     val machine = makeMachine(listOf("a", "b", "t"), arithOperations, gcdController)
     machine.setRegisterContents("a", VInt(206))
     machine.setRegisterContents("b", VInt(40))
     machine.start()
     machine.getRegisterContents("a")
-}
+@}
 // Ok(VInt(2))
 @end example
 
@@ -144,7 +144,7 @@ public fun makeMachine(
     registerNames: List<Reg>,
     operations: Map<String, Op>,
     controller: List<Stmt>,
-): Machine = Machine(registerNames, operations).apply { install(controller) }
+): Machine = Machine(registerNames, operations).apply @{ install(controller) @}
 @end example
 
 @subsubheading Registers
@@ -157,17 +157,17 @@ can be accessed or changed:
 @example kotlin
 public open class Register(
     public val name: Reg,
-) {
+) @{
     private var cell: Value = unassigned
 
     /** The register's contents. */
     public val content: Value get() = cell
 
     /** Writes [value] into the register. */
-    public open fun store(value: Value) {
+    public open fun store(value: Value) @{
         cell = value
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -188,13 +188,13 @@ stack, to @code{pop} the top item off the stack and return it, and to
 @code{initialize} the stack to empty.
 
 @example kotlin
-public class MachineStack {
+public class MachineStack @{
     private val entries = ArrayDeque<Value>()
 
     /** Push [value], advancing the monitoring counters of 5.2.4. */
-    public fun push(value: Value) {
+    public fun push(value: Value) @{
         entries.addLast(value)
-    }
+    @}
 
     /** Pops the top word; [reg] names the `restore` that asked, so an
      *  empty stack is the typed underflow naming the register. */
@@ -204,10 +204,10 @@ public class MachineStack {
     ): Value = entries.removeLastOrNull() ?: r.raise(MachineError.StackUnderflow(reg))
 
     /** The book's `initialize-stack`. */
-    public fun initialize() {
+    public fun initialize() @{
         entries.clear()
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -238,7 +238,7 @@ public open class Machine(
     registerNames: List<Reg>,
     userOperations: Map<String, Op>,
     private val deriveRegisters: Boolean = false,
-) {
+) @{
     /** The machine's registers by name, allocated in the given order. */
     public val registers: MutableMap<Reg, Register> = LinkedHashMap()
 
@@ -254,13 +254,13 @@ public open class Machine(
     /** The operations table: the basic-machine operations first, then
      *  the caller's, which may override them. */
     public val operations: Map<String, Op> =
-        buildMap {
-            put("initialize-stack") { _ ->
+        buildMap @{
+            put("initialize-stack") @{ _ ->
                 stack.initialize()
                 VNil
-            }
+            @}
             putAll(userOperations)
-        }
+        @}
 
     /** The program counter: the index of the next instruction to execute. */
     public var pc: Int = 0
@@ -272,15 +272,15 @@ public open class Machine(
      *  trailing label points. */
     public val halted: Boolean get() = pc >= insts.size
 
-    init {
-        registerNames.forEach { allocateRegister(it) }
-    }
+    init @{
+        registerNames.forEach @{ allocateRegister(it) @}
+    @}
 
     /** Allocates one register; a duplicated name is a host bug. */
-    public fun allocateRegister(name: Reg): Register {
-        check(name !in registers) { "multiply defined register: $name" }
-        return newRegister(name).also { registers[name] = it }
-    }
+    public fun allocateRegister(name: Reg): Register @{
+        check(name !in registers) @{ "multiply defined register: $name" @}
+        return newRegister(name).also @{ registers[name] = it @}
+    @}
 
     /** Builds the register named [name]; 5.18's traced registers
      *  override this one factory. */
@@ -291,46 +291,46 @@ public open class Machine(
      *  the controller (exercise 5.13), in which case first sight
      *  allocates. */
     context(r: Raise<MachineError>)
-    public fun registerFor(name: Reg): Register {
-        registers[name]?.let { return it }
-        if (deriveRegisters) {
+    public fun registerFor(name: Reg): Register @{
+        registers[name]?.let @{ return it @}
+        if (deriveRegisters) @{
             return allocateRegister(name)
-        }
+        @}
         return r.raise(MachineError.UnknownRegister(name))
-    }
+    @}
 
     /** Assembles [controller] and installs it as the instruction
      *  sequence. */
     context(r: Raise<MachineError>)
-    public fun install(controller: List<Stmt>) {
+    public fun install(controller: List<Stmt>) @{
         install(assemble(controller, this))
-    }
+    @}
 
     /** Installs an already-assembled program (the seam the variant
      *  assemblers of exercises 5.9 to 5.11 plug). */
-    public fun install(program: CompiledProgram) {
+    public fun install(program: CompiledProgram) @{
         insts = program.insts
         labels = program.labels
-    }
+    @}
 
     /** Runs the machine from the beginning of the controller sequence
      *  and stops when it reaches the end. */
     context(r: Raise<MachineError>)
-    public fun start() {
+    public fun start() @{
         pc = 0
         execute()
-    }
+    @}
 
     /** The execution loop: runs the instruction under pc and repeats
      *  until the sequence ends. Exercises 5.15 to 5.19 override this
      *  one method to count, trace, or stop between instructions. */
     context(r: Raise<MachineError>)
-    protected open fun execute() {
-        while (pc < insts.size) {
+    protected open fun execute() @{
+        while (pc < insts.size) @{
             insts[pc].exec(r)
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -381,9 +381,9 @@ context(r: Raise<MachineError>)
 public fun Machine.setRegisterContents(
     name: Reg,
     value: Value,
-) {
+) @{
     registerFor(name).store(value)
-}
+@}
 @end example
 
 @noindent
@@ -429,8 +429,8 @@ controller text and the machine model as arguments and returns the assembled
 program to be stored in the model.  @code{Assemble} calls
 @code{extractLabels} to build the initial instruction list and label table
 from the supplied controller text, then pairs every instruction with the
-execution procedure @code{executionProcedure} generates for it -- the work of
-the book's @code{update-insts!} -- and, walking the instructions once, also
+execution procedure @code{executionProcedure} generates for it (the work of
+the book's @code{update-insts!}), and, walking the instructions once, also
 gathers the summary of exercise 5.12:
 
 @example kotlin
@@ -439,12 +439,12 @@ public fun assemble(
     controller: List<Stmt>,
     machine: Machine,
     strictLabels: Boolean = false,
-): CompiledProgram {
+): CompiledProgram @{
     val (insts, labels) = extractLabels(controller)
     val compiled =
-        insts.map { inst -> Inst(renderStmt(inst), executionProcedure(inst, machine, labels, strictLabels)) }
+        insts.map @{ inst -> Inst(renderStmt(inst), executionProcedure(inst, machine, labels, strictLabels)) @}
     return CompiledProgram(compiled, labels, summarize(insts, labels))
-}
+@}
 @end example
 
 @noindent
@@ -457,20 +457,20 @@ designates.
 
 @example kotlin
 context(r: Raise<MachineError>)
-public fun extractLabels(controller: List<Stmt>): Pair<List<Stmt>, Map<String, Int>> {
+public fun extractLabels(controller: List<Stmt>): Pair<List<Stmt>, Map<String, Int>> @{
     val insts = ArrayList<Stmt>()
     val labels = LinkedHashMap<String, Int>()
-    for (stmt in controller) {
-        when (stmt) {
-            is Label -> {
+    for (stmt in controller) @{
+        when (stmt) @{
+            is Label -> @{
                 if (stmt.name in labels) r.raise(MachineError.DuplicateLabel(stmt.name)) // 5.8's refusal
                 labels[stmt.name] = insts.size
-            }
+            @}
             else -> insts.add(stmt)
-        }
-    }
+        @}
+    @}
     return insts to labels
-}
+@}
 @end example
 
 @noindent
@@ -575,7 +575,7 @@ public fun executionProcedure(
     machine: Machine,
     labels: Map<String, Int>,
 ): Exec =
-    when (stmt) {
+    when (stmt) @{
         is Assign -> assignProc(stmt, machine, labels)
         is Test -> testProc(stmt, machine, labels)
         is Branch -> branchProc(stmt, machine, labels)
@@ -584,7 +584,7 @@ public fun executionProcedure(
         is Restore -> restoreProc(stmt, machine)
         is Perform -> performProc(stmt, machine, labels)
         is Label -> throw IllegalStateException("a label names a place, it does not execute")
-    }
+    @}
 @end example
 
 @noindent
@@ -613,14 +613,14 @@ public fun assignProc(
     inst: Assign,
     machine: Machine,
     labels: Map<String, Int>,
-): Exec {
+): Exec @{
     val target = machine.registerFor(inst.reg)
     val source = primitiveExp(inst.src, machine, labels)
-    return { r ->
+    return @{ r ->
         target.store(source(r))
         machine.pc += 1
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -670,16 +670,16 @@ public fun testProc(
     inst: Test,
     machine: Machine,
     labels: Map<String, Int>,
-): Exec {
+): Exec @{
     val condition =
-        when (val cond = inst.cond) {
+        when (val cond = inst.cond) @{
             is OpCond -> operationValue(cond.name, cond.args, machine, labels)
-        }
-    return { r ->
+        @}
+    return @{ r ->
         machine.flag.store(condition(r))
         machine.pc += 1
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -702,16 +702,16 @@ public fun branchProc(
     inst: Branch,
     machine: Machine,
     labels: Map<String, Int>,
-): Exec {
+): Exec @{
     val address = lookupLabel(labels, inst.label)
-    return { r ->
+    return @{ r ->
         machine.pc =
-            when (val flagValue = machine.flag.content) {
+            when (val flagValue = machine.flag.content) @{
                 is VBool -> if (flagValue.b) address else machine.pc + 1
                 else -> r.raise(MachineError.BranchWithoutTest)
-            }
-    }
-}
+            @}
+    @}
+@}
 @end example
 
 @noindent
@@ -730,25 +730,25 @@ public fun gotoProc(
     machine: Machine,
     labels: Map<String, Int>,
 ): Exec =
-    when (val dest = inst.to) {
-        is GotoTarget.Lbl -> {
+    when (val dest = inst.to) @{
+        is GotoTarget.Lbl -> @{
             val address = lookupLabel(labels, dest.name)
-            val exec: Exec = { _ -> machine.pc = address }
+            val exec: Exec = @{ _ -> machine.pc = address @}
             exec
-        }
-        is GotoTarget.ByReg -> {
+        @}
+        is GotoTarget.ByReg -> @{
             val target = machine.registerFor(dest.reg)
             val exec: Exec =
-                { r ->
+                @{ r ->
                     machine.pc =
-                        when (val value = target.content) {
+                        when (val value = target.content) @{
                             is VInt -> value.n.toInt()
                             else -> r.raise(MachineError.BadGotoTarget(dest.reg, value))
-                        }
-                }
+                        @}
+                @}
             exec
-        }
-    }
+        @}
+    @}
 @end example
 
 @noindent
@@ -766,25 +766,25 @@ context(r: Raise<MachineError>)
 public fun saveProc(
     inst: Save,
     machine: Machine,
-): Exec {
+): Exec @{
     val source = machine.registerFor(inst.reg)
-    return { r ->
+    return @{ r ->
         machine.stack.push(source.content)
         machine.pc += 1
-    }
-}
+    @}
+@}
 
 context(r: Raise<MachineError>)
 public fun restoreProc(
     inst: Restore,
     machine: Machine,
-): Exec {
+): Exec @{
     val target = machine.registerFor(inst.reg)
-    return { r ->
+    return @{ r ->
         target.store(machine.stack.pop(inst.reg, r))
         machine.pc += 1
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -798,16 +798,16 @@ public fun performProc(
     inst: Perform,
     machine: Machine,
     labels: Map<String, Int>,
-): Exec {
+): Exec @{
     val action =
-        when (val act = inst.act) {
+        when (val act = inst.act) @{
             is OpAct -> operationValue(act.name, act.args, machine, labels)
-        }
-    return { r ->
+        @}
+    return @{ r ->
         action(r)
         machine.pc += 1
-    }
-}
+    @}
+@}
 @end example
 
 @subsubheading Execution procedures for subexpressions
@@ -825,24 +825,24 @@ public fun primitiveExp(
     machine: Machine,
     labels: Map<String, Int>,
 ): ValueProc =
-    when (exp) {
-        is Source.RegSrc -> {
+    when (exp) @{
+        is Source.RegSrc -> @{
             val source = machine.registerFor(exp.reg)
-            val read: ValueProc = { _ -> source.content }
+            val read: ValueProc = @{ _ -> source.content @}
             read
-        }
-        is Source.ConstSrc -> {
+        @}
+        is Source.ConstSrc -> @{
             val value = exp.v
-            val read: ValueProc = { _ -> value }
+            val read: ValueProc = @{ _ -> value @}
             read
-        }
-        is Source.LabelSrc -> {
+        @}
+        is Source.LabelSrc -> @{
             val address = VInt(lookupLabel(labels, exp.name).toLong())
-            val read: ValueProc = { _ -> address }
+            val read: ValueProc = @{ _ -> address @}
             read
-        }
+        @}
         is Source.OpSrc -> operationValue(exp.name, exp.args, machine, labels)
-    }
+    @}
 @end example
 
 @noindent
@@ -869,11 +869,11 @@ public fun operationValue(
     args: List<Source>,
     machine: Machine,
     labels: Map<String, Int>,
-): ValueProc {
+): ValueProc @{
     val prim = lookupPrim(machine, name)
-    val argProcs = args.map { operandValue(it, machine, labels) }
-    return { r -> prim(r, argProcs.map { it(r) }) }
-}
+    val argProcs = args.map @{ operandValue(it, machine, labels) @}
+    return @{ r -> prim(r, argProcs.map @{ it(r) @}) @}
+@}
 @end example
 
 @noindent
@@ -1020,24 +1020,24 @@ alongside @code{initialize-stack} in the machine's operations table:
 
 @example kotlin
 public val operations: Map<String, Op> =
-    buildMap {
-        put("initialize-stack") { _ ->
+    buildMap @{
+        put("initialize-stack") @{ _ ->
             stack.initialize()
             VNil
-        }
-        put("print-stack-statistics") { _ ->
+        @}
+        put("print-stack-statistics") @{ _ ->
             transcript.appendLine(stack.statistics())
             VNil
-        }
+        @}
         putAll(userOperations)
-    }
+    @}
 @end example
 
 @noindent
 Here is the new version of the stack:
 
 @example kotlin
-public class MachineStack {
+public class MachineStack @{
     private val entries = ArrayDeque<Value>()
 
     /** Total pushes since the last [initialize]. */
@@ -1049,11 +1049,11 @@ public class MachineStack {
         private set
 
     /** Push [value], advancing both counters. */
-    public fun push(value: Value) {
+    public fun push(value: Value) @{
         entries.addLast(value)
         pushes += 1
         if (entries.size > maxDepth) maxDepth = entries.size
-    }
+    @}
 
     /** Pops the top word; [reg] names the `restore` that asked. */
     public fun pop(
@@ -1063,15 +1063,15 @@ public class MachineStack {
 
     /** The book's `initialize-stack`: empties the stack and zeroes the
      *  counters. */
-    public fun initialize() {
+    public fun initialize() @{
         entries.clear()
         pushes = 0
         maxDepth = 0
-    }
+    @}
 
     /** The statistics line `print-stack-statistics` writes. */
     public fun statistics(): String = "(total-pushes = $pushes maximum-depth = $maxDepth)"
-}
+@}
 @end example
 
 @noindent

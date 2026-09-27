@@ -201,7 +201,7 @@ fun compile(
     target: String,
     linkage: Linkage,
 ): InstructionSequence =
-    when {
+    when @{
         selfEvaluating(exp) -> compileSelfEvaluating(cfg, exp, target, linkage)
         isHead(exp, "quote") -> compileQuoted(cfg, exp, target, linkage)
         exp is VSym -> compileVariable(cfg, cenv, exp.name, target, linkage)
@@ -224,7 +224,7 @@ fun compile(
             compileApplication(cfg, state, cenv, exp.car, (exp.cdr as? VPair)?.toItems().orEmpty(), target, linkage)
 
         else -> r.raise(EvaluatorFault("Unknown expression type: COMPILE"))
-    }
+    @}
 @end example
 
 @noindent
@@ -548,7 +548,7 @@ renders to the controller line
 
 @example kotlin
 fun compileLinkage(linkage: Linkage): InstructionSequence =
-    when (linkage) {
+    when (linkage) @{
         is Linkage.Return ->
             makeInstructionSequence(
                 listOf("continue"),
@@ -564,7 +564,7 @@ fun compileLinkage(linkage: Linkage): InstructionSequence =
                 emptyList(),
                 listOf(Goto(GotoTarget.Lbl(linkage.name))),
             )
-    }
+    @}
 @end example
 
 @noindent
@@ -628,7 +628,7 @@ fun compileVariable(
     name: String,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     // the exercises 5.40 to 5.42 hook in here: with cfg.lexical the
     // access is a lexical-address lookup through findVariable
     return endWithLinkage(
@@ -648,7 +648,7 @@ fun compileVariable(
             ),
         ),
     )
-}
+@}
 @end example
 
 @noindent
@@ -675,7 +675,7 @@ fun compileAssignment(
     exp: Value,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     val name = nameOf("assignment-variable", exp)
     val valueCode = compile(cfg, state, cenv, thirdOf("assignment-value", exp), "val", Linkage.Next)
     val tail =
@@ -690,7 +690,7 @@ fun compileAssignment(
             ),
         )
     return endWithLinkage(cfg, linkage, preserving(cfg, listOf("env"), valueCode, tail))
-}
+@}
 
 fun compileDefinition(
     cfg: CompilerConfig,
@@ -699,7 +699,7 @@ fun compileDefinition(
     exp: Value,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     val name = nameOf("definition-variable", exp)
     val valueCode = compile(cfg, state, cenv, definitionValue(exp), "val", Linkage.Next)
     val tail =
@@ -717,7 +717,7 @@ fun compileDefinition(
             ),
         )
     return endWithLinkage(cfg, linkage, preserving(cfg, listOf("env"), valueCode, tail))
-}
+@}
 @end example
 
 @noindent
@@ -762,15 +762,15 @@ example, successive calls to @code{state.makeLabel("a")} would return
 compiler's state, beside the entry counter of @code{compileBlock}:
 
 @example kotlin
-class CompilerState(seed: Int = 0) {
+class CompilerState(seed: Int = 0) @{
     private var counter: Int = seed
     private var entries: Int = 0
 
-    fun makeLabel(name: String): String {
+    fun makeLabel(name: String): String @{
         counter += 1
         return "$name$counter"
-    }
-}
+    @}
+@}
 @end example
 } In this arrangement of code, we must branch around the true branch if the
 test is false.  The only slight complication is in how the linkage for the true
@@ -787,7 +787,7 @@ fun compileIf(
     exp: Value,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     // the labels allocate after-if, false-branch, true-branch, and the
     // branches compile alternative, consequent, predicate: the orders
     // the book's own figures show
@@ -814,7 +814,7 @@ fun compileIf(
         )
     val branchTail = InstructionSequence(branches.needs, branches.modifies, branches.stmts + Label(afterIf))
     return preserving(cfg, listOf("env", "continue"), pCode, append2Sequences(testCode, branchTail))
-}
+@}
 @end example
 
 @noindent
@@ -849,13 +849,13 @@ fun compileSequence(
     body: List<Value>,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     if (body.isEmpty()) r.raise(EvaluatorFault("compile-sequence of an empty body"))
     if (body.size == 1) return compile(cfg, state, cenv, body[0], target, linkage)
     val firstCode = compile(cfg, state, cenv, body[0], target, Linkage.Next)
     val restCode = compileSequence(cfg, state, cenv, body.drop(1), target, linkage)
     return preserving(cfg, listOf("env", "continue"), firstCode, restCode)
-}
+@}
 @end example
 
 @subsubheading Compiling @code{lambda} expressions
@@ -903,34 +903,34 @@ procedures, analogous to the structure for compound procedures described in
 // label resolved against the assembled machine's label table, over an
 // environment word's table entry
 "make-compiled-procedure" to
-    compiledTwoArgs("make-compiled-procedure") { entry, env ->
+    compiledTwoArgs("make-compiled-procedure") @{ entry, env ->
         val address =
-            when (entry) {
+            when (entry) @{
                 is VInt -> entry.n.toInt()
                 else -> raise(EvaluatorFault("make-compiled-procedure needs an entry label"))
-            }
-        val machine = requireNotNull(state.machine) { "make-compiled-procedure: the machine is not installed" }
+            @}
+        val machine = requireNotNull(state.machine) @{ "make-compiled-procedure: the machine is not installed" @}
         val name =
-            machine.labels.entries.firstOrNull { it.value == address }?.key
+            machine.labels.entries.firstOrNull @{ it.value == address @}?.key
                 ?: raise(EvaluatorFault("make-compiled-procedure: no label at address $address"))
         VCompiledProc(name, noParams, state.envOf("make-compiled-procedure", env))
-    }
+    @}
 
 "compiled-procedure?" to
-    compiledOneArg("compiled-procedure?") { w -> VBool(w is VCompiledProc) }
+    compiledOneArg("compiled-procedure?") @{ w -> VBool(w is VCompiledProc) @}
 
 "compiled-procedure-entry" to
-    compiledOneArg("compiled-procedure-entry") { w ->
+    compiledOneArg("compiled-procedure-entry") @{ w ->
         val word = compiledWordOf("compiled-procedure-entry", w)
         VInt(entryAddress(state, "compiled-procedure-entry", word.entry).toLong())
-    }
+    @}
 
 "compiled-procedure-env" to
-    compiledOneArg("compiled-procedure-env") { w ->
+    compiledOneArg("compiled-procedure-env") @{ w ->
         val word = compiledWordOf("compiled-procedure-env", w)
         state.envs.add(word.env)
         envWord(state.envs.size - 1)
-    }
+    @}
 @end example
 }
 
@@ -942,7 +942,7 @@ fun compileLambda(
     exp: Value,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     val afterLambda = state.makeLabel("after-lambda")
     val procEntry = state.makeLabel("entry")
     val lambdaLinkage = if (linkage == Linkage.Next) Linkage.Lab(afterLambda) else linkage
@@ -963,7 +963,7 @@ fun compileLambda(
     val body = compileLambdaBody(cfg, state, cenv, exp, procEntry)
     val tacked = tackOnInstructionSequence(endWithLinkage(cfg, lambdaLinkage, construct), body)
     return append2Sequences(tacked, makeInstructionSequence(emptyList(), emptyList(), listOf(Label(afterLambda))))
-}
+@}
 @end example
 
 @noindent
@@ -994,14 +994,14 @@ fun compileLambdaBody(
     cenv: CompileTimeEnv,
     exp: Value,
     procEntry: String,
-): InstructionSequence {
+): InstructionSequence @{
     val paramsForm = secondOf("lambda-parameters", exp)
     val params =
-        when (paramsForm) {
+        when (paramsForm) @{
             is VNil -> emptyList()
-            is VPair -> paramsForm.toItems().map { it.toString() }
+            is VPair -> paramsForm.toItems().map @{ it.toString() @}
             else -> r.raise(EvaluatorFault("lambda-parameters needs a parameter list"))
-        }
+        @}
     // 5.43 scans the internal definitions out of the body first, on the
     // cfg.scanOut switch
     val bodyItems = (((exp as VPair).cdr as VPair).cdr as VPair).toItems()
@@ -1025,7 +1025,7 @@ fun compileLambdaBody(
     val bodyCode =
         compileSequence(cfg, state, extendCompileTimeEnv(params, cenv), body, "val", Linkage.Return)
     return append2Sequences(entryCode, bodyCode)
-}
+@}
 @end example
 
 @node	5.5.3, 5.5.4, 5.5.2, 5.5
@@ -1074,14 +1074,14 @@ fun compileApplication(
     operands: List<Value>,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     val procCode = compile(cfg, state, cenv, operator, "proc", Linkage.Next)
-    val operandCodes = operands.map { compile(cfg, state, cenv, it, "val", Linkage.Next) }
+    val operandCodes = operands.map @{ compile(cfg, state, cenv, it, "val", Linkage.Next) @}
     val arglistCode = constructArglist(cfg, operandCodes)
     val callCode = compileProcedureCall(cfg, state, target, linkage)
     val callAndArgs = preserving(cfg, listOf("proc", "continue"), arglistCode, callCode)
     return preserving(cfg, listOf("env", "continue"), procCode, callAndArgs)
-}
+@}
 @end example
 
 @noindent
@@ -1132,17 +1132,17 @@ sequences from the order supplied by @code{compile-application}.
 fun constructArglist(
     cfg: CompilerConfig,
     operandCodes: List<InstructionSequence>,
-): InstructionSequence {
+): InstructionSequence @{
     // 5.36 flips the order with the cfg.leftToRight switch; the default
     // compiles the operands right to left, the book's reverse
     val ordered = if (cfg.leftToRight) operandCodes else operandCodes.reversed()
-    if (ordered.isEmpty()) {
+    if (ordered.isEmpty()) @{
         return makeInstructionSequence(
             emptyList(),
             listOf("argl"),
             listOf(Assign("argl", Source.ConstSrc(VNil))),
         )
-    }
+    @}
     val codeToGetLastArg =
         append2Sequences(
             ordered[0],
@@ -1155,12 +1155,12 @@ fun constructArglist(
     val restCodes = ordered.drop(1)
     if (restCodes.isEmpty()) return codeToGetLastArg
     return preserving(cfg, listOf("env"), codeToGetLastArg, codeToGetRestArgs(cfg, restCodes))
-}
+@}
 
 fun codeToGetRestArgs(
     cfg: CompilerConfig,
     operandCodes: List<InstructionSequence>,
-): InstructionSequence {
+): InstructionSequence @{
     val consStep =
         makeInstructionSequence(
             listOf("val", "argl"),
@@ -1176,7 +1176,7 @@ fun codeToGetRestArgs(
     val rest = operandCodes.drop(1)
     if (rest.isEmpty()) return codeForNextArg
     return preserving(cfg, listOf("env"), codeForNextArg, codeToGetRestArgs(cfg, rest))
-}
+@}
 @end example
 
 @subsubheading Applying procedures
@@ -1219,7 +1219,7 @@ fun compileProcedureCall(
     state: CompilerState,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     val afterCall = state.makeLabel("after-call")
     val compiledBranch = state.makeLabel("compiled-branch")
     val primitiveBranch = state.makeLabel("primitive-branch")
@@ -1227,11 +1227,11 @@ fun compileProcedureCall(
     val compiledLinkage = if (linkage == Linkage.Next) Linkage.Lab(afterCall) else linkage
     val applCode = compileProcAppl(state, target, compiledLinkage)
     val primitiveTail =
-        if (compoundBranch != null && linkage == Linkage.Next) {
+        if (compoundBranch != null && linkage == Linkage.Next) @{
             listOf(Goto(GotoTarget.Lbl(afterCall)))
-        } else {
+        @} else @{
             emptyList()
-        }
+        @}
     val primitiveCode =
         endWithLinkage(
             cfg,
@@ -1261,7 +1261,7 @@ fun compileProcedureCall(
             ),
         ),
     )
-    if (compoundBranch != null) {
+    if (compoundBranch != null) @{
         blocks.add(
             makeInstructionSequence(
                 listOf("proc"),
@@ -1272,23 +1272,23 @@ fun compileProcedureCall(
                 ),
             ),
         )
-    }
+    @}
     blocks.add(
         parallelInstructionSequences(
             append2Sequences(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(compiledBranch))), applCode),
             append2Sequences(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(primitiveBranch))), primitiveCode),
         ),
     )
-    if (compoundBranch != null) {
+    if (compoundBranch != null) @{
         // the compound calls of exercise 5.47 hand interpreted procedures
         // to the evaluator's compound-apply through the unev register,
         // dead at the call site
         val contSetup =
-            when (linkage) {
+            when (linkage) @{
                 is Linkage.Return -> emptyList()
                 is Linkage.Next -> listOf<Stmt>(Assign("continue", Source.LabelSrc(afterCall)))
                 is Linkage.Lab -> listOf<Stmt>(Assign("continue", Source.LabelSrc(linkage.name)))
-            }
+            @}
         blocks.add(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(compoundBranch))))
         blocks.add(
             makeInstructionSequence(
@@ -1302,10 +1302,10 @@ fun compileProcedureCall(
                     ),
             ),
         )
-    }
+    @}
     blocks.add(makeInstructionSequence(emptyList(), emptyList(), listOf(Label(afterCall))))
     return appendSequences(blocks)
-}
+@}
 @end example
 
 @noindent
@@ -1465,11 +1465,11 @@ fun compileProcAppl(
     state: CompilerState,
     target: String,
     linkage: Linkage,
-): InstructionSequence {
+): InstructionSequence @{
     val allRegs = listOf("env", "proc", "val", "argl", "continue")
-    if (target == "val") {
+    if (target == "val") @{
         val statements =
-            when (linkage) {
+            when (linkage) @{
                 is Linkage.Return ->
                     listOf(
                         Assign("val", Source.OpSrc("compiled-procedure-entry", listOf(Source.RegSrc("proc")))),
@@ -1484,14 +1484,14 @@ fun compileProcAppl(
                     )
 
                 is Linkage.Next -> emptyList()
-            }
-        if (statements.isNotEmpty()) {
+            @}
+        if (statements.isNotEmpty()) @{
             val needs = if (linkage == Linkage.Return) listOf("proc", "continue") else listOf("proc")
             return makeInstructionSequence(needs, allRegs, statements)
-        }
-    } else if (linkage == Linkage.Return) {
+        @}
+    @} else if (linkage == Linkage.Return) @{
         r.raise(EvaluatorFault("return linkage, target not val: COMPILE"))
-    }
+    @}
     val procReturn = state.makeLabel("proc-return")
     val gotoLabel = (linkage as? Linkage.Lab)?.name ?: procReturn
     return makeInstructionSequence(
@@ -1506,7 +1506,7 @@ fun compileProcAppl(
             Goto(GotoTarget.Lbl(gotoLabel)),
         ),
     )
-}
+@}
 @end example
 
 @node	5.5.4, 5.5.5, 5.5.3, 5.5
@@ -1588,12 +1588,12 @@ lists, similar to the (unordered) set representation described in
 fun listUnion(
     s1: List<String>,
     s2: List<String>,
-): List<String> = s1 + s2.filterNot { it in s1 }
+): List<String> = s1 + s2.filterNot @{ it in s1 @}
 
 fun listDifference(
     s1: List<String>,
     s2: List<String>,
-): List<String> = s1.filterNot { it in s2 }
+): List<String> = s1.filterNot @{ it in s2 @}
 @end example
 
 @noindent
@@ -1621,9 +1621,9 @@ fun preserving(
     regs: List<String>,
     seq1: InstructionSequence,
     seq2: InstructionSequence,
-): InstructionSequence {
+): InstructionSequence @{
     var wrapped = seq1
-    for (firstReg in regs) {
+    for (firstReg in regs) @{
         val needed = firstReg in seq2.needs && firstReg in wrapped.modifies
         if (cfg.preservingOn && !needed) continue
         wrapped =
@@ -1632,9 +1632,9 @@ fun preserving(
                 wrapped.modifies - firstReg,
                 listOf(Save(firstReg)) + wrapped.stmts + listOf(Restore(firstReg)),
             )
-    }
+    @}
     return append2Sequences(wrapped, seq2)
-}
+@}
 @end example
 
 @noindent
@@ -1694,9 +1694,9 @@ val (entry, block) =
     compileBlock(
         CompilerConfig(),
         state,
-        either { readProgram(factorialSource) }.fold(
-            { e -> error("the source did not parse: $e") },
-            { it },
+        either @{ readProgram(factorialSource) @}.fold(
+            @{ e -> error("the source did not parse: $e") @},
+            @{ it @},
         ),
     )
 @end example
@@ -2500,9 +2500,9 @@ val (entry, block) =
     compileBlock(
         cfg,
         state,
-        either { readProgram(factorialSource) }.fold(
-            { e -> error("the source did not parse: $e") },
-            { it },
+        either @{ readProgram(factorialSource) @}.fold(
+            @{ e -> error("the source did not parse: $e") @},
+            @{ it @},
         ),
     )
 val evaluator = compileAndGo(entry, block, "(factorial 5)")
@@ -2571,10 +2571,10 @@ machine.  To start the machine at its ordinary read-eval-print loop, we could
 use
 
 @example kotlin
-fun startEceval(eceval: CompiledEvaluator) {
+fun startEceval(eceval: CompiledEvaluator) @{
     eceval.machine.flag.store(VBool(false))
     eceval.drive()
-}
+@}
 @end example
 
 @noindent
@@ -2605,10 +2605,10 @@ runtime value the print operation renders by name:
 
 @example kotlin
 "user-print" to
-    oneArg("user-print") { w ->
+    oneArg("user-print") @{ w ->
         state.machinePrompt(renderWord(w))
         w
-    }
+    @}
 @end example
 
 @noindent
@@ -2645,7 +2645,7 @@ fun compileAndGo(
     controller: List<Stmt> = ecevalController,
     extraPrimitives: Map<String, ObjectPrimitive> = emptyMap(),
     runtimeSupport: Boolean = false,
-): CompiledEvaluator {
+): CompiledEvaluator @{
     val evaluator = makeCompiledEvaluator(source, controller + block, runtimeSupport = runtimeSupport, extraPrimitives = extraPrimitives)
     val address =
         evaluator.machine.labels[entry]
@@ -2653,7 +2653,7 @@ fun compileAndGo(
     evaluator.machine.registers.getValue("val").store(VInt(address.toLong()))
     evaluator.machine.flag.store(VBool(true))
     return evaluator
-}
+@}
 @end example
 
 @noindent
@@ -2903,9 +2903,9 @@ val (entry, block) =
     compileBlock(
         CompilerConfig(),
         state,
-        either { readProgram(metacircularEvaluatorSource) }.fold(
-            { e -> error("the source did not parse: $e") },
-            { it },
+        either @{ readProgram(metacircularEvaluatorSource) @}.fold(
+            @{ e -> error("the source did not parse: $e") @},
+            @{ it @},
         ),
     )
 val evaluator =

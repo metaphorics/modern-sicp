@@ -73,11 +73,11 @@ of the basic list constructor @code{cons}, as we did in @ref{2.2.1}:
 
 @example kotlin
 fun append(x: Value, y: Value): Value =
-    if (x is VNil) {
+    if (x is VNil) @{
         y
-    } else {
+    @} else @{
         cons(x.car, append(x.cdr as VPair, y))
-    }
+    @}
 // => the append of 2.2.1, over the runtime's pairs
 @end example
 
@@ -991,7 +991,8 @@ What will the response be to the following queries?
 @example
 (?x next-to ?y in (1 (2 3) 4))
 (?x next-to 1 in (2 1 3 1))
-@end example@end quotation
+@end example
+@end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.62}Exercise 4.62:} Define rules to implement the
@@ -1814,7 +1815,7 @@ Why is Oliver Warbucks listed four times?
 @end quotation
 
 @quotation
-@emph{Exercise 4.65a is added by this edition and extends exercise 4.65; SICP numbers stop at 4.65.} @strong{@anchor{Exercise 4.65a}Exercise 4.65a:} The wheel rule of @ref{4.4.1} lists the same person once for every deduction route that reaches them: under the chronological data base of this edition, Ben appears once and Warbucks four times. Give a procedure that runs the same wheel rule and produces the @emph{deduplicated} answer set: state the deduplication rule -- which answers count as the same answer, and which occurrence is kept -- and pin the deduplicated listing your procedure produces.
+@emph{Exercise 4.65a is added by this edition and extends exercise 4.65; SICP numbers stop at 4.65.} @strong{@anchor{Exercise 4.65a}Exercise 4.65a:} The wheel rule of @ref{4.4.1} lists the same person once for every deduction route that reaches them: under the chronological data base of this edition, Ben appears once and Warbucks four times. Give a procedure that runs the same wheel rule and produces the @emph{deduplicated} answer set: state the deduplication rule: which answers count as the same answer and which occurrence is kept; then pin the deduplicated listing your procedure produces.
 @end quotation
 
 @quotation
@@ -1919,18 +1920,18 @@ the terminal:
 public val inputPrompt: String = ";;; Query input:"
 public val outputPrompt: String = ";;; Query results:"
 
-public fun QuerySystem.repl(text: String): String {
+public fun QuerySystem.repl(text: String): String @{
     val lines = mutableListOf(";;; Query input:")
-    val parsed = either { readDatum(text) }
-    when (parsed) {
-        is Either.Left -> lines.add("Error: ${formatError(parsed.value)}")
-        is Either.Right -> {
+    val parsed = either @{ readDatum(text) @}
+    when (parsed) @{
+        is Either.Left -> lines.add("Error: $@{formatError(parsed.value)@}")
+        is Either.Right -> @{
             lines.add(printValue(parsed.value))
             recordOutcome(lines, run(text))
-        }
-    }
+        @}
+    @}
     return lines.joinToString(separator = "\n", postfix = "\n")
-}
+@}
 @end example
 
 @noindent
@@ -1961,17 +1962,17 @@ public fun instantiate(
     frame: Frame,
     unboundVarHandler: (Value, Frame) -> Value,
 ): Value =
-    when {
-        isVar(exp) -> {
+    when @{
+        isVar(exp) -> @{
             val binding = bindingInFrame(exp, frame)
             if (binding != null) instantiate(binding, frame, unboundVarHandler) else unboundVarHandler(exp, frame)
-        }
+        @}
 
         exp is VPair ->
             cons(instantiate(exp.car, frame, unboundVarHandler), instantiate(exp.cdr, frame, unboundVarHandler))
 
         else -> exp
-    }
+    @}
 @end example
 
 @noindent
@@ -1992,12 +1993,12 @@ processed by @code{simpleQuery}.
 public fun qeval(
     query: Value,
     frameStream: LStream<Frame>,
-): LStream<Frame> {
+): LStream<Frame> @{
     if (query !is VPair) return simpleQuery(query, frameStream)
     val head = query.car as? VSym ?: return simpleQuery(query, frameStream)
     val proc = getQuery(head.name) ?: return simpleQuery(query, frameStream)
     return proc(query.cdr, frameStream)
-}
+@}
 @end example
 
 @noindent
@@ -2023,11 +2024,11 @@ public open fun simpleQuery(
     frameStream: LStream<Frame>,
 ): LStream<Frame> =
     flatmapFrames(
-        { frame ->
+        @{ frame ->
             streamAppendDelayed(
                 findAssertions(queryPattern, frame),
-            ) { applyRules(queryPattern, frame) }
-        },
+            ) @{ applyRules(queryPattern, frame) @}
+        @},
         frameStream,
     )
 @end example
@@ -2059,10 +2060,10 @@ the queries.
 public open fun conjoin(
     conjuncts: Value,
     frameStream: LStream<Frame>,
-): LStream<Frame> {
+): LStream<Frame> @{
     if (isEmptyConjunction(conjuncts)) return frameStream
     return conjoin(restConjuncts(conjuncts), qeval(firstConjunct(conjuncts), frameStream))
-}
+@}
 
 putQuery("and", ::conjoin)
 @end example
@@ -2086,12 +2087,12 @@ separately and merged using the @code{interleaveDelayed} procedure from
 public open fun disjoin(
     disjuncts: Value,
     frameStream: LStream<Frame>,
-): LStream<Frame> {
+): LStream<Frame> @{
     if (isEmptyDisjunction(disjuncts)) return LStream.Empty
-    return interleaveDelayed(qeval(firstDisjunct(disjuncts), frameStream)) {
+    return interleaveDelayed(qeval(firstDisjunct(disjuncts), frameStream)) @{
         disjoin(restDisjuncts(disjuncts), frameStream)
-    }
-}
+    @}
+@}
 
 putQuery("or", ::disjoin)
 @end example
@@ -2113,13 +2114,13 @@ public open fun negate(
     frameStream: LStream<Frame>,
 ): LStream<Frame> =
     flatmapFrames(
-        { frame ->
-            if (qeval(negatedQuery(operands), singletonStream(frame)) is LStream.Empty) {
+        @{ frame ->
+            if (qeval(negatedQuery(operands), singletonStream(frame)) is LStream.Empty) @{
                 singletonStream(frame)
-            } else {
+            @} else @{
                 LStream.Empty
-            }
-        },
+            @}
+        @},
         frameStream,
     )
 
@@ -2138,9 +2139,9 @@ public open fun lispValue(
     frameStream: LStream<Frame>,
 ): LStream<Frame> =
     flatmapFrames(
-        { frame ->
+        @{ frame ->
             if (executeCall(instantiateCall(operands, frame))) singletonStream(frame) else LStream.Empty
-        },
+        @},
         frameStream,
     )
 
@@ -2149,20 +2150,20 @@ putQuery("lispValue", ::lispValue)
 
 @noindent
 @code{executeCall}, which applies the predicate to the arguments, looks the
-predicate up in the underlying system's procedure registry -- the one the
-driver of @ref{4.1} installs -- to get the procedure to apply.  It does not
+predicate up in the underlying system's procedure registry (the one the
+driver of @ref{4.1} installs) to get the procedure to apply.  It does not
 evaluate the arguments, since they are already the actual argument values.
 
 @example kotlin
 /** The book's `execute`: apply the named underlying procedure. */
 private fun executeCall(call: List<Value>): Boolean =
-    queryScoped {
+    queryScoped @{
         val name = (call[0] as VSym).name
         val op =
             primitives[name]
                 ?: raise(SchemeError.NotApplicable(VSym(name)))
         isTrue(op(call.drop(1)))
-    }
+    @}
 // the predicates are the registry the 4.1 driver installs
 @end example
 
@@ -2206,7 +2207,7 @@ because we would need to make many more calls to the matcher.
 public fun findAssertions(
     pattern: Value,
     frame: Frame,
-): LStream<Frame> = flatmapFrames({ checkAnAssertion(it, pattern, frame) }, fetchAssertions(pattern))
+): LStream<Frame> = flatmapFrames(@{ checkAnAssertion(it, pattern, frame) @}, fetchAssertions(pattern))
 @end example
 
 @noindent
@@ -2219,10 +2220,10 @@ public fun checkAnAssertion(
     assertion: Value,
     queryPat: Value,
     queryFrame: Frame,
-): LStream<Frame> {
+): LStream<Frame> @{
     val matchResult = patternMatch(queryPat, assertion, queryFrame) ?: return LStream.Empty
     return singletonStream(matchResult)
-}
+@}
 @end example
 
 @noindent
@@ -2244,15 +2245,15 @@ public fun patternMatch(
     pat: Value,
     dat: Value,
     frame: Frame?,
-): Frame? {
+): Frame? @{
     if (frame == null) return null
     if (equalv(pat, dat)) return frame
     if (isVar(pat)) return extendIfConsistent(pat, dat, frame)
-    if (pat is VPair && dat is VPair) {
+    if (pat is VPair && dat is VPair) @{
         return patternMatch(pat.cdr, dat.cdr, patternMatch(pat.car, dat.car, frame))
-    }
+    @}
     return null
-}
+@}
 // failure is the option type: null, never a sentinel
 @end example
 
@@ -2265,10 +2266,10 @@ public fun extendIfConsistent(
     v: Value,
     dat: Value,
     frame: Frame,
-): Frame? {
+): Frame? @{
     val bound = bindingInFrame(v, frame) ?: return frame.extended(v, dat)
     return patternMatch(bound, dat, frame)
-}
+@}
 @end example
 
 @noindent
@@ -2334,7 +2335,7 @@ combines the resulting streams of frames.
 public fun applyRules(
     pattern: Value,
     frame: Frame,
-): LStream<Frame> = flatmapFrames({ applyARule(it, pattern, frame) }, fetchRules(pattern))
+): LStream<Frame> = flatmapFrames(@{ applyARule(it, pattern, frame) @}, fetchRules(pattern))
 @end example
 
 @noindent
@@ -2360,11 +2361,11 @@ public open fun applyARule(
     rule: Value,
     queryPattern: Value,
     queryFrame: Frame,
-): LStream<Frame> {
+): LStream<Frame> @{
     val cleanRule = renameVariablesIn(rule)
     val unifyResult = unifyMatch(queryPattern, conclusionOfOf(cleanRule), queryFrame) ?: return LStream.Empty
     return qeval(ruleBodyOf(cleanRule), singletonStream(unifyResult))
-}
+@}
 @end example
 
 @noindent
@@ -2380,20 +2381,20 @@ the rule to @code{?y-7}.  (@code{Make-new-variable} and
 @ref{4.4.4.7}.)
 
 @example kotlin
-public fun renameVariablesIn(rule: Value): Value {
+public fun renameVariablesIn(rule: Value): Value @{
     val id = newRuleApplicationId()
     return renameTreeWalk(rule, id)
-}
+@}
 
 private fun renameTreeWalk(
     exp: Value,
     id: Int,
 ): Value =
-    when {
+    when @{
         isVar(exp) -> makeNewVariable(exp, id)
         exp is VPair -> cons(renameTreeWalk(exp.car, id), renameTreeWalk(exp.cdr, id))
         else -> exp
-    }
+    @}
 @end example
 
 @noindent
@@ -2410,16 +2411,16 @@ public fun unifyMatch(
     p1: Value,
     p2: Value,
     frame: Frame?,
-): Frame? {
+): Frame? @{
     if (frame == null) return null
     if (equalv(p1, p2)) return frame
     if (isVar(p1)) return extendIfPossible(p1, p2, frame)
     if (isVar(p2)) return extendIfPossible(p2, p1, frame)
-    if (p1 is VPair && p2 is VPair) {
+    if (p1 is VPair && p2 is VPair) @{
         return unifyMatch(p1.cdr, p2.cdr, unifyMatch(p1.car, p2.car, frame))
-    }
+    @}
     return null
-}
+@}
 @end example
 
 @noindent
@@ -2522,16 +2523,16 @@ public fun extendIfPossible(
     v: Value,
     value: Value,
     frame: Frame,
-): Frame? {
+): Frame? @{
     val bound = bindingInFrame(v, frame)
     if (bound != null) return unifyMatch(bound, value, frame)
-    if (isVar(value)) {
+    if (isVar(value)) @{
         val boundValue = bindingInFrame(value, frame)
         return if (boundValue != null) unifyMatch(v, boundValue, frame) else frame.extended(v, value)
-    }
+    @}
     if (dependsOn(value, v, frame)) return null
     return frame.extended(v, value)
-}
+@}
 @end example
 
 @noindent
@@ -2548,13 +2549,13 @@ public fun dependsOn(
     v: Value,
     frame: Frame,
 ): Boolean =
-    when {
+    when @{
         isVar(exp) ->
-            if (equalv(exp, v)) true else bindingInFrame(exp, frame)?.let { dependsOn(it, v, frame) } ?: false
+            if (equalv(exp, v)) true else bindingInFrame(exp, frame)?.let @{ dependsOn(it, v, frame) @} ?: false
 
         exp is VPair -> dependsOn(exp.car, v, frame) || dependsOn(exp.cdr, v, frame)
         else -> false
-    }
+    @}
 @end example
 
 @node 4.4.4.5, 4.4.4.6, 4.4.4.4, 4.4.4
@@ -2574,7 +2575,7 @@ frame, or try also to optimize the case where the @code{car} of the pattern is
 not a constant symbol.  We avoid building our criteria for indexing (using the
 @code{car}, handling only the case of constant symbols) into the program;
 instead we call on predicates and selectors that embody our criteria.  The
-collections are chronological -- appended, not consed in front -- because
+collections are chronological (appended, not consed in front) because
 every transcript the book pins lists answers in insertion order.
 
 @example kotlin
@@ -2613,12 +2614,12 @@ the symbol @code{?}.
 @example kotlin
 private var rules: PersistentList<Value> = persistentListOf()
 
-public fun fetchRules(pattern: Value): LStream<Value> {
+public fun fetchRules(pattern: Value): LStream<Value> @{
     if (!useIndex(pattern)) return listStream(rules)
     val indexed = ruleIndex[indexKeyOf(pattern)].orEmpty()
     val variableHeaded = ruleIndex[VSym("?")].orEmpty()
     return listStream(indexed + variableHeaded)
-}
+@}
 @end example
 
 @noindent
@@ -2627,21 +2628,21 @@ assertions and rules to the data base.  Each item is stored in the index, if
 appropriate, and in a stream of all assertions or rules in the data base.
 
 @example kotlin
-public fun addRuleOrAssertion(assertion: Value) {
+public fun addRuleOrAssertion(assertion: Value) @{
     if (isRule(assertion)) addRule(assertion) else addAssertion(assertion)
-}
+@}
 
-public fun addAssertion(assertion: Value) {
+public fun addAssertion(assertion: Value) @{
     storeAssertionInIndex(assertion)
     val old = assertions
     assertions = old.adding(assertion)
-}
+@}
 
-public fun addRule(rule: Value) {
+public fun addRule(rule: Value) @{
     storeRuleInIndex(rule)
     val old = rules
     rules = old.adding(rule)
-}
+@}
 // each let binding of the book becomes an `old` val read before the
 // collection is reinstalled (exercise 4.70)
 @end example
@@ -2651,22 +2652,22 @@ To actually store an assertion or a rule, we check to see if it can be indexed.
 If so, we store it in the appropriate stream.
 
 @example kotlin
-private fun storeAssertionInIndex(assertion: Value) {
+private fun storeAssertionInIndex(assertion: Value) @{
     if (isIndexable(assertion)) storeInIndex(assertionIndex, indexKeyOf(assertion), assertion)
-}
+@}
 
-private fun storeRuleInIndex(rule: Value) {
+private fun storeRuleInIndex(rule: Value) @{
     val pattern = conclusionOfOf(rule)
     if (isIndexable(pattern)) storeInIndex(ruleIndex, indexKeyOf(pattern), rule)
-}
+@}
 
 private fun storeInIndex(
     index: HashMap<Value, MutableList<Value>>,
     key: Value,
     item: Value,
-) {
-    index.getOrPut(key) { mutableListOf() }.add(item)
-}
+) @{
+    index.getOrPut(key) @{ mutableListOf() @}.add(item)
+@}
 @end example
 
 @noindent
@@ -2684,10 +2685,10 @@ The key under which a pattern is stored in the table is either @code{?} (if it
 starts with a variable) or the constant symbol with which it starts.
 
 @example kotlin
-public fun indexKeyOf(pat: Value): Value {
+public fun indexKeyOf(pat: Value): Value @{
     val key = (pat as VPair).car
     return if (isVar(key)) VSym("?") else key
-}
+@}
 @end example
 
 @noindent
@@ -2712,7 +2713,8 @@ ones in @ref{3.5.2}: @code{(define ones (cons-stream 1 ones))}.
         (cons-stream assertion 
                      THE-ASSERTIONS))
   'ok)
-@end example@end quotation
+@end example
+@end quotation
 
 @node 4.4.4.6, 4.4.4.7, 4.4.4.5, 4.4.4
 @subsubsection Stream Operations
@@ -2729,18 +2731,18 @@ they take a delayed argument (like the @code{integral} procedure in
 public fun <T> streamAppendDelayed(
     s1: LStream<T>,
     delayedS2: () -> LStream<T>,
-): LStream<T> {
+): LStream<T> @{
     val first = s1 as? LStream.Cons ?: return delayedS2()
-    return consStream(first.head) { streamAppendDelayed(first.tail, delayedS2) }
-}
+    return consStream(first.head) @{ streamAppendDelayed(first.tail, delayedS2) @}
+@}
 
 public fun <T> interleaveDelayed(
     s1: LStream<T>,
     delayedS2: () -> LStream<T>,
-): LStream<T> {
+): LStream<T> @{
     val first = s1 as? LStream.Cons ?: return delayedS2()
-    return consStream(first.head) { interleaveDelayed(delayedS2()) { first.tail } }
-}
+    return consStream(first.head) @{ interleaveDelayed(delayedS2()) @{ first.tail @} @}
+@}
 @end example
 
 @noindent
@@ -2757,10 +2759,10 @@ public fun <T> streamFlatmap(
     s: LStream<T>,
 ): LStream<Frame> = flattenStream(streamMap(proc, s))
 
-public fun flattenStream(stream: LStream<LStream<Frame>>): LStream<Frame> {
+public fun flattenStream(stream: LStream<LStream<Frame>>): LStream<Frame> @{
     val first = stream as? LStream.Cons ?: return LStream.Empty
-    return interleaveDelayed(first.head) { flattenStream(first.tail) }
-}
+    return interleaveDelayed(first.head) @{ flattenStream(first.tail) @}
+@}
 @end example
 
 @noindent
@@ -2768,7 +2770,7 @@ The evaluator also uses the following simple procedure to generate a stream
 consisting of a single element:
 
 @example kotlin
-public fun <T> singletonStream(x: T): LStream<T> = consStream(x) { LStream.Empty }
+public fun <T> singletonStream(x: T): LStream<T> = consStream(x) @{ LStream.Empty @}
 @end example
 
 @node 4.4.4.7, 4.4.4.8, 4.4.4.6, 4.4.4
@@ -2822,10 +2824,10 @@ public fun isRule(statement: Value): Boolean =
 
 public fun conclusionOfOf(rule: Value): Value = ((rule as VPair).cdr as VPair).car
 
-public fun ruleBodyOf(rule: Value): Value {
+public fun ruleBodyOf(rule: Value): Value @{
     val rest = ((rule as VPair).cdr as VPair).cdr
     return if (rest is VNil) valueListOf(listOf(VSym("always-true"))) else (rest as VPair).car
-}
+@}
 @end example
 
 @noindent
@@ -2852,17 +2854,17 @@ procedures with @code{string} in their names.  These are Scheme primitives.}
 
 @example kotlin
 public fun querySyntaxProcess(exp: Value): Value =
-    mapOverSymbols({ symbol -> if (symbol.name.startsWith("?")) patternVar(symbol.name.substring(1)) else symbol }, exp)
+    mapOverSymbols(@{ symbol -> if (symbol.name.startsWith("?")) patternVar(symbol.name.substring(1)) else symbol @}, exp)
 
 public fun mapOverSymbols(
     proc: (VSym) -> Value,
     exp: Value,
 ): Value =
-    when (exp) {
+    when (exp) @{
         is VPair -> cons(mapOverSymbols(proc, exp.car), mapOverSymbols(proc, exp.cdr))
         is VSym -> proc(exp)
         else -> exp
-    }
+    @}
 // a written ?name becomes the tagged datum (? name), which VTagged
 // renders exactly as the book's internal form
 @end example
@@ -2886,15 +2888,15 @@ applied.
 @example kotlin
 private var ruleCounter: Int = 0
 
-public fun newRuleApplicationId(): Int {
+public fun newRuleApplicationId(): Int @{
     ruleCounter += 1
     return ruleCounter
-}
+@}
 
 public fun makeNewVariable(
     variable: Value,
     ruleApplicationId: Int,
-): Value = VTagged("?", VSym("$ruleApplicationId ${patternVarName(variable)}"))
+): Value = VTagged("?", VSym("$ruleApplicationId $@{patternVarName(variable)@}"))
 // the renamed form keeps the id in the symbol so two occurrences of one
 // renamed variable stay equal, and it prints as the book's (? 7 x)
 @end example
@@ -2905,11 +2907,11 @@ converts any unbound pattern variables back to the right form for printing,
 using
 
 @example kotlin
-public fun contractQuestionMark(variable: Value): String {
+public fun contractQuestionMark(variable: Value): String @{
     val name = ((variable as VTagged).data as VSym).name
     val space = name.indexOf(' ')
-    return if (space < 0) "?$name" else "?${name.substring(space + 1)}-${name.substring(0, space)}"
-}
+    return if (space < 0) "?$name" else "?$@{name.substring(space + 1)@}-$@{name.substring(0, space)@}"
+@}
 // (? x) prints ?x; (? 7 x) prints ?x-7
 @end example
 
@@ -2921,10 +2923,10 @@ Frames are represented as persistent maps of bindings, keyed by variable:
 @example kotlin
 public data class Frame(
     public val bindings: PersistentMap<Value, Value>,
-) {
-    public companion object {
+) @{
+    public companion object @{
         public val Empty: Frame = Frame(persistentMapOf())
-    }
+    @}
 
     public operator fun get(variable: Value): Value? = bindings[variable]
 
@@ -2932,7 +2934,7 @@ public data class Frame(
         variable: Value,
         value: Value,
     ): Frame = Frame(bindings.putting(variable, value))
-}
+@}
 
 public fun bindingInFrame(
     variable: Value,
@@ -2995,7 +2997,8 @@ use @code{delay} explicitly?  What would be wrong with defining it as follows:
       (interleave (stream-car stream)
                   (flattenStream 
                    (stream-cdr stream)))))
-@end example@end quotation
+@end example
+@end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.74}Exercise 4.74:} Alyssa P. Hacker proposes to use

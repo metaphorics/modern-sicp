@@ -89,7 +89,7 @@ operating in a context in which @code{+} is the operator for addition.  Thus, in
 our model of evaluation we will always speak of evaluating an expression with
 respect to some environment.  To describe programs, we will suppose that there
 is a global environment, consisting of a single frame (with no enclosing
-environment) that holds every top-level declaration -- every function and
+environment) that holds every top-level declaration, every function and
 @code{val} declared directly in a file, not nested inside another
 declaration.  Kotlin resolves these names when the program is compiled, so the
 global environment of a running Kotlin program is fixed before the program
@@ -98,8 +98,8 @@ lambda opens while the program runs, and they hold parameters, local
 declarations, and captured variables.  The idea that @code{+} is the operator
 for addition needs no binding at all: it is part of the language itself,
 outside every frame.  Chapter 4's evaluator gives this model a concrete data
-structure -- a chain of @code{Env} frames, each a map from name to value plus a
-pointer to the frame it extends -- and every captured @code{var} in this
+structure: a chain of @code{Env} frames, each a map from name to value plus a
+pointer to the frame it extends. Every captured @code{var} in this
 section is what that structure realizes.
 
 @menu
@@ -164,12 +164,12 @@ syntactic sugar for an underlying implicit lambda expression.  It would
 have been equivalent to have used
 
 @example kotlin
-val squareFn: (Long) -> Long = { x -> x * x }
+val squareFn: (Long) -> Long = @{ x -> x * x @}
 @end example
 
 @noindent
 which evaluates @code{@{ x -> x * x @}} and binds @code{squareFn} to the
-resulting value, all in the global environment -- under a fresh name, since
+resulting value, all in the global environment under a fresh name, since
 Kotlin refuses a second declaration of @code{square} in one scope.
 
 @ref{Figure 3.2} shows the result of evaluating this @code{fun} declaration.
@@ -297,7 +297,7 @@ the function was created.
 We also specify that declaring a name with @code{val} or @code{fun} creates a
 binding in the current environment frame and assigns to the name the indicated
 value.@footnote{Kotlin, unlike Scheme's @code{define}, refuses a second
-declaration of the same name in the same frame outright -- the compiler
+declaration of the same name in the same frame outright: the compiler
 reports a redeclaration error rather than silently changing the existing
 binding.  Where the book's footnote here notes that some people prefer
 redefinitions of existing symbols to signal errors, Kotlin simply takes that
@@ -314,14 +314,14 @@ contains a binding for the variable and modifies that frame.  Kotlin checks
 this at compile time rather than at the moment of assignment: a name that
 was declared @code{val}, or that has no visible declaration at all, is a
 compile error, so the analogue of ``@code{set!} signals an error'' for an
-unbound variable can never happen at run time in Kotlin -- the program that
+unbound variable can never happen at run time in Kotlin: the program that
 would trigger it does not compile.
 
 These evaluation rules, though considerably more complex than the substitution
 model, are still reasonably straightforward.  Moreover, the evaluation model,
 though abstract, provides a correct description of how the interpreter
 evaluates expressions.  In @ref{Chapter 4} we shall see how this model can
-serve as a blueprint for implementing a working interpreter -- the runtime's
+serve as a blueprint for implementing a working interpreter: the runtime's
 @code{Env} class, a frame of bindings plus a pointer to the frame it extends,
 is that blueprint made concrete.  The following
 sections elaborate the details of the model by analyzing some illustrative
@@ -492,8 +492,8 @@ model will not clarify our claim in @ref{1.2.1} that the interpreter
 can execute a function such as @code{factIter} in a constant amount of space
 using tail recursion.  Kotlin restores that guarantee only for a function
 marked @code{tailrec}: the compiler rewrites the one self-recursive call in
-tail position as a loop, and refuses the mark -- a build error under this
-edition's @code{allWarningsAsErrors} -- when no call is in tail position.  We
+tail position as a loop, and refuses the mark (a build error under this
+edition's @code{allWarningsAsErrors}) when no call is in tail position.  We
 will discuss how an interpreter can supply the guarantee for every recursive
 call, tail-marked or not, in @ref{5.4}.}
 @end quotation
@@ -523,17 +523,17 @@ be used to represent objects with local state.  As an example, consider the
 function
 
 @example kotlin
-fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> {
+fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> @{
     var b = balance
-    return { amount ->
-        if (amount > b) {
+    return @{ amount ->
+        if (amount > b) @{
             Either.Left(WithdrawError.InsufficientFunds)
-        } else {
+        @} else @{
             b -= amount
             Either.Right(b)
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 @noindent
@@ -670,12 +670,12 @@ specified by the @code{w1} function object.  Within this new environment, we
 evaluate the body of the function:
 
 @example kotlin
-if (amount > b) {
+if (amount > b) @{
     Either.Left(WithdrawError.InsufficientFunds)
-} else {
+@} else @{
     b -= amount
     Either.Right(b)
-}
+@}
 @end example
 
 @noindent
@@ -790,7 +790,7 @@ environment.  The environment E2 for @code{w2} was created by the call to
 the code specified by the lambda expression in the body of
 @code{makeWithdraw}.@footnote{Whether @code{w1} and @code{w2} share the same
 physical code stored in the computer, or whether they each keep a copy of the
-code, is a detail of the implementation -- for the JVM, the compiled bytecode
+code, is a detail of the implementation: for the JVM, the compiled bytecode
 of the lambda is a single class shared by every function value created from
 it, and only the captured environment differs between instances.  For the
 interpreter we implement in @ref{Chapter 4}, the code is in fact shared.} We see here
@@ -844,17 +844,17 @@ function, the local variable @code{balance} is created as a parameter of
 explicitly, as a local declaration:
 
 @example kotlin
-fun makeWithdrawLet(initialAmount: Long): (Long) -> Either<WithdrawError, Long> {
+fun makeWithdrawLet(initialAmount: Long): (Long) -> Either<WithdrawError, Long> @{
     var balance = initialAmount
-    return { amount ->
-        if (amount > balance) {
+    return @{ amount ->
+        if (amount > balance) @{
             Either.Left(WithdrawError.InsufficientFunds)
-        } else {
+        @} else @{
             balance -= amount
             Either.Right(balance)
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 Recall from @ref{1.3.2} that Scheme's @code{let} is simply syntactic sugar for
@@ -888,7 +888,7 @@ definitions, thus leading to a block structure as in the following function to
 compute square roots:
 
 @example kotlin
-fun sqrt(x: Double): Double {
+fun sqrt(x: Double): Double @{
     fun goodEnough(guess: Double): Boolean = abs(guess * guess - x) < 0.001
 
     fun improve(guess: Double): Double = (guess + x / guess) / 2.0
@@ -897,7 +897,7 @@ fun sqrt(x: Double): Double {
         if (goodEnough(guess)) guess else sqrtIter(improve(guess))
 
     return sqrtIter(1.0)
-}
+@}
 @end example
 
 @noindent
@@ -1024,28 +1024,28 @@ object contains both of these aspects.  Consider the bank account function of
 @ref{3.1.1}:
 
 @example kotlin
-interface BankAccount {
+interface BankAccount @{
     fun withdraw(amount: Long): Either<WithdrawError, Long>
     fun deposit(amount: Long): Long
-}
+@}
 
-fun makeBankAccount(balance: Long): BankAccount {
+fun makeBankAccount(balance: Long): BankAccount @{
     var b = balance
-    return object : BankAccount {
+    return object : BankAccount @{
         override fun withdraw(amount: Long): Either<WithdrawError, Long> =
-            if (amount > b) {
+            if (amount > b) @{
                 Either.Left(WithdrawError.InsufficientFunds)
-            } else {
+            @} else @{
                 b -= amount
                 Either.Right(b)
-            }
+            @}
 
-        override fun deposit(amount: Long): Long {
+        override fun deposit(amount: Long): Long @{
             b += amount
             return b
-        }
-    }
-}
+        @}
+    @}
+@}
 @end example
 
 Show the environment structure generated by the sequence of interactions

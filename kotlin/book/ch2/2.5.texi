@@ -121,45 +121,45 @@ arguments, they are installed in the table keyed by the list of tags
 @code{listOf("integer", "integer")}:
 
 @example kotlin
-fun installIntegerPackage(table: NumTable) {
-    table.put("add", listOf("integer", "integer")) { args ->
+fun installIntegerPackage(table: NumTable) @{
+    table.put("add", listOf("integer", "integer")) @{ args ->
         val (a, b) = twoLongs(args)
-        try {
+        try @{
             ZLong(Math.addExact(a, b))
-        } catch (e: ArithmeticException) {
+        @} catch (e: ArithmeticException) @{
             BigZ(a.toBigInteger().add(b.toBigInteger()))
-        }
-    }
-    table.put("sub", listOf("integer", "integer")) { args ->
+        @}
+    @}
+    table.put("sub", listOf("integer", "integer")) @{ args ->
         val (a, b) = twoLongs(args)
-        try {
+        try @{
             ZLong(Math.subtractExact(a, b))
-        } catch (e: ArithmeticException) {
+        @} catch (e: ArithmeticException) @{
             BigZ(a.toBigInteger().subtract(b.toBigInteger()))
-        }
-    }
-    table.put("mul", listOf("integer", "integer")) { args ->
+        @}
+    @}
+    table.put("mul", listOf("integer", "integer")) @{ args ->
         val (a, b) = twoLongs(args)
-        try {
+        try @{
             ZLong(Math.multiplyExact(a, b))
-        } catch (e: ArithmeticException) {
+        @} catch (e: ArithmeticException) @{
             BigZ(a.toBigInteger().multiply(b.toBigInteger()))
-        }
-    }
-    table.put("div", listOf("integer", "integer")) { args ->
+        @}
+    @}
+    table.put("div", listOf("integer", "integer")) @{ args ->
         val (a, b) = twoLongs(args)
         if (b == 0L) raise(GenError.DivideByZero("integer div"))
-        try {
+        try @{
             ZLong(Math.divideExact(a, b))
-        } catch (e: ArithmeticException) {
+        @} catch (e: ArithmeticException) @{
             BigZ(a.toBigInteger().divide(b.toBigInteger()))
-        }
-    }
-    table.put("make", listOf("integer")) { args ->
+        @}
+    @}
+    table.put("make", listOf("integer")) @{ args ->
         val (a, _) = twoNums("make", args)
         a
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -168,10 +168,10 @@ the function:
 
 @example kotlin
 context(r: Raise<GenError>)
-fun makeInteger(table: NumTable, n: Long): Num {
+fun makeInteger(table: NumTable, n: Long): Num @{
     val make = table.get("make", listOf("integer")) ?: r.raise(GenError.NoMethod("make", listOf("integer")))
     return make.invoke(r, listOf(ZLong(n)))
-}
+@}
 @end example
 
 @noindent
@@ -184,50 +184,50 @@ numerator and denominator as @code{BigInteger} values, since a @code{Long}
 pair can overflow during multiplication before any reduction happens:
 
 @example kotlin
-fun installRationalPackage(table: NumTable) {
+fun installRationalPackage(table: NumTable) @{
     fun Raise<GenError>.makeRat(
         n: BigInteger,
         d: BigInteger,
-    ): QRat {
+    ): QRat @{
         if (d.signum() == 0) raise(GenError.DivideByZero("make-rational"))
         val g = n.abs().gcd(d.abs())
         val pair = if (d.signum() < 0) n.negate() to d.negate() else n to d
         return QRat(pair.first.divide(g), pair.second.divide(g))
-    }
+    @}
 
-    fun Raise<GenError>.twoRats(args: List<Num>): Pair<QRat, QRat> {
+    fun Raise<GenError>.twoRats(args: List<Num>): Pair<QRat, QRat> @{
         val (a, b) = twoNums("rational arithmetic", args)
         if (a !is QRat || b !is QRat) raise(GenError.BadArgs("rational arithmetic", "expected two rationals"))
         return a to b
-    }
-    table.put("add", listOf("rational", "rational")) { args ->
+    @}
+    table.put("add", listOf("rational", "rational")) @{ args ->
         val (a, b) = twoRats(args)
         makeRat(a.num.multiply(b.den).add(b.num.multiply(a.den)), a.den.multiply(b.den))
-    }
-    table.put("sub", listOf("rational", "rational")) { args ->
+    @}
+    table.put("sub", listOf("rational", "rational")) @{ args ->
         val (a, b) = twoRats(args)
         makeRat(a.num.multiply(b.den).subtract(b.num.multiply(a.den)), a.den.multiply(b.den))
-    }
-    table.put("mul", listOf("rational", "rational")) { args ->
+    @}
+    table.put("mul", listOf("rational", "rational")) @{ args ->
         val (a, b) = twoRats(args)
         makeRat(a.num.multiply(b.num), a.den.multiply(b.den))
-    }
-    table.put("div", listOf("rational", "rational")) { args ->
+    @}
+    table.put("div", listOf("rational", "rational")) @{ args ->
         val (a, b) = twoRats(args)
         makeRat(a.num.multiply(b.den), a.den.multiply(b.num))
-    }
-    table.put("make", listOf("rational")) { args ->
+    @}
+    table.put("make", listOf("rational")) @{ args ->
         val (n, d) = twoNums("make", args)
         if (n !is ZLong || d !is ZLong) raise(GenError.BadArgs("make", "expected two integers"))
         makeRat(n.n.toBigInteger(), d.n.toBigInteger())
-    }
-}
+    @}
+@}
 
 context(r: Raise<GenError>)
-fun makeRational(table: NumTable, n: Long, d: Long): Num {
+fun makeRational(table: NumTable, n: Long, d: Long): Num @{
     val make = table.get("make", listOf("rational")) ?: r.raise(GenError.NoMethod("make", listOf("rational")))
     return make.invoke(r, listOf(ZLong(n), ZLong(d)))
-}
+@}
 @end example
 
 @example kotlin
@@ -248,34 +248,34 @@ prefixes: @code{repRealPart}, @code{repImagPart}, @code{repMagnitude}, and
 @code{repAngle}.
 
 @example kotlin
-fun installComplexPackage(table: NumTable) {
-    table.put("add", listOf("complex", "complex")) { args ->
+fun installComplexPackage(table: NumTable) @{
+    table.put("add", listOf("complex", "complex")) @{ args ->
         val (a, b) = twoComplex(args)
         Complex(repMakeFromRealImag(repRealPart(a.rep) + repRealPart(b.rep), repImagPart(a.rep) + repImagPart(b.rep)))
-    }
-    table.put("sub", listOf("complex", "complex")) { args ->
+    @}
+    table.put("sub", listOf("complex", "complex")) @{ args ->
         val (a, b) = twoComplex(args)
         Complex(repMakeFromRealImag(repRealPart(a.rep) - repRealPart(b.rep), repImagPart(a.rep) - repImagPart(b.rep)))
-    }
-    table.put("mul", listOf("complex", "complex")) { args ->
+    @}
+    table.put("mul", listOf("complex", "complex")) @{ args ->
         val (a, b) = twoComplex(args)
         Complex(repMakeFromMagAng(repMagnitude(a.rep) * repMagnitude(b.rep), repAngle(a.rep) + repAngle(b.rep)))
-    }
-    table.put("div", listOf("complex", "complex")) { args ->
+    @}
+    table.put("div", listOf("complex", "complex")) @{ args ->
         val (a, b) = twoComplex(args)
         Complex(repMakeFromMagAng(repMagnitude(a.rep) / repMagnitude(b.rep), repAngle(a.rep) - repAngle(b.rep)))
-    }
-    table.put("make-from-real-imag", listOf("complex")) { args ->
+    @}
+    table.put("make-from-real-imag", listOf("complex")) @{ args ->
         val (x, y) = twoNums("make-from-real-imag", args)
         if (x !is Real || y !is Real) raise(GenError.BadArgs("make-from-real-imag", "expected two reals"))
         Complex(repMakeFromRealImag(x.d, y.d))
-    }
-    table.put("make-from-mag-ang", listOf("complex")) { args ->
+    @}
+    table.put("make-from-mag-ang", listOf("complex")) @{ args ->
         val (m, a) = twoNums("make-from-mag-ang", args)
         if (m !is Real || a !is Real) raise(GenError.BadArgs("make-from-mag-ang", "expected two reals"))
         Complex(repMakeFromMagAng(m.d, a.d))
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -287,20 +287,20 @@ outside world.
 
 @example kotlin
 context(r: Raise<GenError>)
-fun makeComplexFromRealImag(table: NumTable, x: Double, y: Double): Num {
+fun makeComplexFromRealImag(table: NumTable, x: Double, y: Double): Num @{
     val make =
         table.get("make-from-real-imag", listOf("complex"))
             ?: r.raise(GenError.NoMethod("make-from-real-imag", listOf("complex")))
     return make.invoke(r, listOf(Real(x), Real(y)))
-}
+@}
 
 context(r: Raise<GenError>)
-fun makeComplexFromMagAng(table: NumTable, mag: Double, ang: Double): Num {
+fun makeComplexFromMagAng(table: NumTable, mag: Double, ang: Double): Num @{
     val make =
         table.get("make-from-mag-ang", listOf("complex"))
             ?: r.raise(GenError.NoMethod("make-from-mag-ang", listOf("complex")))
     return make.invoke(r, listOf(Real(mag), Real(ang)))
-}
+@}
 @end example
 
 @noindent
@@ -359,8 +359,8 @@ representation-level internals keep the @code{rep} prefixes adopted in
 @quotation
 @strong{In this language: the type tag is the type.}
 The book attaches a tag to every datum because every Lisp datum is a pair; here
-the tower is a @newterm{@code{sealed interface}} whose levels -- @code{ZLong},
-@code{QRat}, @code{Real}, @code{Complex} -- present themselves as their own
+the tower is a @newterm{@code{sealed interface}} whose levels (@code{ZLong},
+@code{QRat}, @code{Real}, @code{Complex}) present themselves as their own
 tags, and @code{applyGeneric}'s dispatch key is the list of runtime types its
 arguments carry:
 @example kotlin
@@ -386,22 +386,22 @@ following to the @code{complex} package:''
 
 @example kotlin
 // following added to the complex package
-table.put("real-part", listOf("complex")) { args ->
+table.put("real-part", listOf("complex")) @{ args ->
     val z = args.single() as Complex
     applyRepGeneric(reps, "real-part", z.rep)
-}
-table.put("imag-part", listOf("complex")) { args ->
+@}
+table.put("imag-part", listOf("complex")) @{ args ->
     val z = args.single() as Complex
     applyRepGeneric(reps, "imag-part", z.rep)
-}
-table.put("magnitude", listOf("complex")) { args ->
+@}
+table.put("magnitude", listOf("complex")) @{ args ->
     val z = args.single() as Complex
     applyRepGeneric(reps, "magnitude", z.rep)
-}
-table.put("angle", listOf("complex")) { args ->
+@}
+table.put("angle", listOf("complex")) @{ args ->
     val z = args.single() as Complex
     applyRepGeneric(reps, "angle", z.rep)
-}
+@}
 @end example
 
 Describe in detail why this works.  As an example, trace through all the
@@ -469,10 +469,10 @@ to supply an almost identical procedure to handle the types
 fun addComplexToInteger(z: Complex, n: ZLong): Num =
     Complex(repMakeFromRealImag(repRealPart(z.rep) + n.n, repImagPart(z.rep)))
 
-table.put("add", listOf("complex", "integer")) { args ->
+table.put("add", listOf("complex", "integer")) @{ args ->
     val (z, n) = args
     addComplexToInteger(z as Complex, n as ZLong)
-}
+@}
 @end example
 
 @noindent
@@ -514,7 +514,7 @@ to a complex number with that real part and zero imaginary part:
 
 @example kotlin
 val integerToComplex: (Num) -> Num =
-    { n -> Complex(Rect((n as ZLong).n.toDouble(), 0.0)) }
+    @{ n -> Complex(Rect((n as ZLong).n.toDouble(), 0.0)) @}
 @end example
 
 @noindent
@@ -558,26 +558,26 @@ fun applyGenericWithCoercion(
     coercions: CoercionTable,
     op: String,
     args: List<Num>,
-): Num {
-    val tags = args.map { typeTagOf(it) }
-    table.get(op, tags)?.let { return it.invoke(r, args) }
-    if (args.size == 2) {
+): Num @{
+    val tags = args.map @{ typeTagOf(it) @}
+    table.get(op, tags)?.let @{ return it.invoke(r, args) @}
+    if (args.size == 2) @{
         val t1toT2 = coercions.getCoercion(args[0]::class, args[1]::class)
         val t2toT1 = coercions.getCoercion(args[1]::class, args[0]::class)
-        when {
-            t1toT2 != null -> {
+        when @{
+            t1toT2 != null -> @{
                 return applyGenericWithCoercion(table, coercions, op, listOf(t1toT2(args[0]), args[1]))
-            }
+            @}
 
-            t2toT1 != null -> {
+            t2toT1 != null -> @{
                 return applyGenericWithCoercion(table, coercions, op, listOf(args[0], t2toT1(args[1])))
-            }
+            @}
 
-            else -> {}
-        }
-    }
+            else -> @{@}
+        @}
+    @}
     return r.raise(GenError.NoMethod(op, tags))
-}
+@}
 @end example
 
 @noindent
@@ -806,10 +806,10 @@ package but not in any other package:
 
 @example kotlin
 // following added to the integer package
-table.put("exp", listOf("integer", "integer")) { args ->
+table.put("exp", listOf("integer", "integer")) @{ args ->
     val (a, b) = twoNums("exp", args)
     ZLong(Math.round(Math.pow((a as ZLong).n.toDouble(), (b as ZLong).n.toDouble()))) // using the host's pow
-}
+@}
 @end example
 
 @noindent
@@ -1003,16 +1003,16 @@ following functions define addition and multiplication of polys:
 
 @example kotlin
 context(r: Raise<GenError>)
-fun addPoly(table: NumTable, p1: Poly, p2: Poly): Poly {
+fun addPoly(table: NumTable, p1: Poly, p2: Poly): Poly @{
     if (!sameVariable(p1.v, p2.v)) r.raise(GenError.NotSameVariable("add-poly", p1.v, p2.v))
     return Poly(p1.v, addTerms(table, p1.terms, p2.terms))
-}
+@}
 
 context(r: Raise<GenError>)
-fun mulPoly(table: NumTable, p1: Poly, p2: Poly): Poly {
+fun mulPoly(table: NumTable, p1: Poly, p2: Poly): Poly @{
     if (!sameVariable(p1.v, p2.v)) r.raise(GenError.NotSameVariable("mul-poly", p1.v, p2.v))
     return Poly(p1.v, mulTerms(table, p1.terms, p2.terms))
-}
+@}
 @end example
 
 @noindent
@@ -1024,21 +1024,21 @@ To incorporate polynomials into our generic arithmetic system, we supply them
 to the tower as @code{Poly} values, which present the tag @code{polynomial}.
 We install appropriate operations on them in the operation table, in an
 installation procedure like the ones in @ref{2.5.1}; the internal
-functions -- the poly operations above and the term-list operations below --
+functions (the poly operations above and the term-list operations below)
 live at the top level of the package's own file, so the installer itself only
 wires the table:
 
 @example kotlin
-fun installPolynomialPackage(table: NumTable) {
-    table.put("add", listOf("polynomial", "polynomial")) { args ->
+fun installPolynomialPackage(table: NumTable) @{
+    table.put("add", listOf("polynomial", "polynomial")) @{ args ->
         val (p1, p2) = twoPolys(args)
         addPoly(table, p1, p2)
-    }
-    table.put("mul", listOf("polynomial", "polynomial")) { args ->
+    @}
+    table.put("mul", listOf("polynomial", "polynomial")) @{ args ->
         val (p1, p2) = twoPolys(args)
         mulPoly(table, p1, p2)
-    }
-}
+    @}
+@}
 @end example
 
 @noindent
@@ -1076,37 +1076,37 @@ fun addTerms(
     l1: PersistentList<Term>,
     l2: PersistentList<Term>,
 ): PersistentList<Term> =
-    when {
-        emptyTermlistQ(l1) -> {
+    when @{
+        emptyTermlistQ(l1) -> @{
             l2
-        }
+        @}
 
-        emptyTermlistQ(l2) -> {
+        emptyTermlistQ(l2) -> @{
             l1
-        }
+        @}
 
-        else -> {
+        else -> @{
             val t1 = firstTerm(l1)
             val t2 = firstTerm(l2)
-            when {
-                orderOf(t1) > orderOf(t2) -> {
+            when @{
+                orderOf(t1) > orderOf(t2) -> @{
                     adjoinTerm(table, t1, addTerms(table, restTerms(l1), l2))
-                }
+                @}
 
-                orderOf(t1) < orderOf(t2) -> {
+                orderOf(t1) < orderOf(t2) -> @{
                     adjoinTerm(table, t2, addTerms(table, l1, restTerms(l2)))
-                }
+                @}
 
-                else -> {
+                else -> @{
                     adjoinTerm(
                         table,
                         makeTerm(orderOf(t1), add(table, coeffOf(t1), coeffOf(t2))),
                         addTerms(table, restTerms(l1), restTerms(l2)),
                     )
-                }
-            }
-        }
-    }
+                @}
+            @}
+        @}
+    @}
 @end example
 
 @noindent
@@ -1129,15 +1129,15 @@ fun mulTerms(
     l1: PersistentList<Term>,
     l2: PersistentList<Term>,
 ): PersistentList<Term> =
-    if (emptyTermlistQ(l1)) {
+    if (emptyTermlistQ(l1)) @{
         theEmptyTermlist()
-    } else {
+    @} else @{
         addTerms(
             table,
             mulTermByAllTerms(table, firstTerm(l1), l2),
             mulTerms(table, restTerms(l1), l2),
         )
-    }
+    @}
 
 context(r: Raise<GenError>)
 fun mulTermByAllTerms(
@@ -1145,16 +1145,16 @@ fun mulTermByAllTerms(
     t1: Term,
     l: PersistentList<Term>,
 ): PersistentList<Term> =
-    if (emptyTermlistQ(l)) {
+    if (emptyTermlistQ(l)) @{
         theEmptyTermlist()
-    } else {
+    @} else @{
         val t2 = firstTerm(l)
         adjoinTerm(
             table,
             makeTerm(orderOf(t1) + orderOf(t2), mul(table, coeffOf(t1), coeffOf(t2))),
             mulTermByAllTerms(table, t1, restTerms(l)),
         )
-    }
+    @}
 @end example
 
 @noindent
@@ -1326,7 +1326,7 @@ the function:
 fun makePolynomial(
     v: String,
     terms: List<Term>,
-): Poly = Poly(v, terms.fold(persistentListOf()) { acc, t -> acc.adding(t) })
+): Poly = Poly(v, terms.fold(persistentListOf()) @{ acc, t -> acc.adding(t) @})
 @end example
 
 @quotation
@@ -1405,22 +1405,22 @@ fun divTerms(
     l1: PersistentList<Term>,
     l2: PersistentList<Term>,
 ): Pair<PersistentList<Term>, PersistentList<Term>> =
-    if (emptyTermlistQ(l1)) {
+    if (emptyTermlistQ(l1)) @{
         theEmptyTermlist() to theEmptyTermlist()
-    } else {
+    @} else @{
         val t1 = firstTerm(l1)
         val t2 = firstTerm(l2)
-        if (orderOf(t2) > orderOf(t1)) {
+        if (orderOf(t2) > orderOf(t1)) @{
             theEmptyTermlist() to l1
-        } else {
+        @} else @{
             val newC = div(table, coeffOf(t1), coeffOf(t2))
             val newO = orderOf(t1) - orderOf(t2)
             val restOfResult =
                 ⟨@var{compute rest of result
                 recursively}⟩
             ⟨@var{form complete result}⟩
-        }
-    }
+        @}
+    @}
 @end example
 @end quotation
 
@@ -1576,11 +1576,11 @@ fun gcdTerms(
     a: PersistentList<Term>,
     b: PersistentList<Term>,
     budget: Int = 32,
-): PersistentList<Term> {
+): PersistentList<Term> @{
     if (emptyTermlistQ(b)) return a
     if (budget <= 0) r.raise(GenError.BadArgs("gcd-terms", "no progress under integer coefficient division"))
     return gcdTerms(table, b, remainderTerms(table, a, b), budget - 1)
-}
+@}
 @end example
 
 @noindent
@@ -1588,7 +1588,7 @@ where @code{remainderTerms} picks out the remainder component of the pair
 returned by the term-list division operation @code{divTerms} that was
 implemented in @ref{Exercise 2.91}.  The budget counts steps because Euclid's
 Algorithm over raw integer coefficients can stall on a division that makes no
-progress -- exactly the failure exercise 2.95 exhibits.
+progress, exactly the failure exercise 2.95 exhibits.
 
 @quotation
 @strong{@anchor{Exercise 2.94}Exercise 2.94:} Using @code{divTerms}, implement
@@ -1741,10 +1741,10 @@ Define a function analogous to @code{reduceTerms} that does what the original
 @code{makeRat} did for integers:
 
 @example kotlin
-fun reduceIntegers(n: Long, d: Long): Pair<Long, Long> {
+fun reduceIntegers(n: Long, d: Long): Pair<Long, Long> @{
     val g = gcd(n, d)
     return n / g to d / g
-}
+@}
 @end example
 
 and define @code{reduce} as a generic operation that calls @code{applyGeneric}

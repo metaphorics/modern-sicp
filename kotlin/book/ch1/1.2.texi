@@ -143,13 +143,13 @@ structure introduced in the last section to hide the definition of the
 counting loop:
 
 @example kotlin
-public fun factorialBlockStructured(n: Long): Long {
+public fun factorialBlockStructured(n: Long): Long @{
     tailrec fun iter(
         product: Long,
         counter: Long,
     ): Long = if (counter > n) product else iter(product * counter, counter + 1L)
     return iter(1L, 1L)
-}
+@}
 @end example
 
 We avoided doing this here so as to minimize the number of things to think
@@ -332,12 +332,12 @@ public fun ackermann(
     x: Long,
     y: Long,
 ): Long =
-    when {
+    when @{
         y == 0L -> 0L
         x == 0L -> 2L * y
         y == 1L -> 2L
         else -> ackermann(x - 1L, ackermann(x, y - 1L))
-    }
+    @}
 @end example
 
 What are the values of the following expressions?
@@ -399,11 +399,11 @@ computing Fibonacci numbers:
 
 @example kotlin
 public fun fibRecursive(n: Long): Long =
-    when {
+    when @{
         n == 0L -> 0L
         n == 1L -> 1L
         else -> fibRecursive(n - 1L) + fibRecursive(n - 2L)
-    }
+    @}
 @end example
 
 @noindent
@@ -609,20 +609,20 @@ private fun cc(
     amount: Long,
     kindsOfCoins: Int,
 ): Long =
-    when {
+    when @{
         amount == 0L -> 1L
         amount < 0L || kindsOfCoins == 0 -> 0L
         else -> cc(amount, kindsOfCoins - 1) + cc(amount - firstDenomination(kindsOfCoins), kindsOfCoins)
-    }
+    @}
 
 private fun firstDenomination(kindsOfCoins: Int): Long =
-    when (kindsOfCoins) {
+    when (kindsOfCoins) @{
         1 -> 1L
         2 -> 5L
         3 -> 10L
         4 -> 25L
         else -> 50L
-    }
+    @}
 @end example
 
 @noindent
@@ -919,11 +919,11 @@ public fun fastExpt(
     b: Long,
     n: Long,
 ): Long =
-    when {
+    when @{
         n == 0L -> 1L
         isEven(n) -> square(fastExpt(b, n / 2L))
         else -> b * fastExpt(b, n - 1L)
-    }
+    @}
 @end example
 
 @noindent
@@ -1037,11 +1037,11 @@ private tailrec fun fibIterLog(
     q: BigInteger,
     count: Long,
 ): BigInteger =
-    when {
+    when @{
         count == 0L -> b
         isEven(count) -> fibIterLog(a, b, TODO("compute p'"), TODO("compute q'"), count / 2L)
         else -> fibIterLog(b * q + a * q + a * p, b * p + a * q, p, q, count - 1L)
-    }
+    @}
 
 public fun fibLog(n: Long): BigInteger = fibIterLog(BigInteger.ONE, BigInteger.ZERO, BigInteger.ZERO, BigInteger.ONE, n)
 @end example
@@ -1211,11 +1211,11 @@ private tailrec fun findDivisor(
     n: Long,
     testDivisor: Long,
 ): Long =
-    when {
+    when @{
         testDivisor * testDivisor > n -> n
         divides(testDivisor, n) -> testDivisor
         else -> findDivisor(n, testDivisor + 1L)
-    }
+    @}
 
 public fun smallestDivisor(n: Long): Long = findDivisor(n, 2L)
 @end example
@@ -1289,11 +1289,11 @@ public fun expmod(
     exp: Long,
     m: Long,
 ): Long =
-    when {
+    when @{
         exp == 0L -> 1L
         exp % 2L == 0L -> square(expmod(base, exp / 2L, m)) % m
         else -> (base * expmod(base, exp - 1L, m)) % m
-    }
+    @}
 @end example
 
 @noindent
@@ -1324,10 +1324,10 @@ input.  Hence, to obtain a random number between 1 and @math{{n-1}}, we call
 public fun fermatTest(
     n: Long,
     rng: Random,
-): Boolean {
+): Boolean @{
     val a = 1L + rng.random(n - 1L)
     return expmod(a, n, n) == a
-}
+@}
 @end example
 
 @noindent
@@ -1341,11 +1341,11 @@ public tailrec fun fastPrime(
     times: Int,
     rng: Random,
 ): Boolean =
-    when {
+    when @{
         times == 0 -> true
         fermatTest(n, rng) -> fastPrime(n, times - 1, rng)
         else -> false
-    }
+    @}
 @end example
 
 @subsubheading Probabilistic methods
@@ -1424,10 +1424,10 @@ public data class TimedPrimeResult(
     val elapsedNanos: Long,
 )
 
-public fun timedPrimeTest(n: Long): TimedPrimeResult? {
+public fun timedPrimeTest(n: Long): TimedPrimeResult? @{
     val start = System.nanoTime()
     return if (isPrime(n)) TimedPrimeResult(n, System.nanoTime() - start) else null
-}
+@}
 @end example
 
 Using this procedure, write a procedure @code{searchForPrimes} that checks
@@ -1502,11 +1502,11 @@ public fun expmodExplicit(
     exp: Long,
     m: Long,
 ): Long =
-    when {
+    when @{
         exp == 0L -> 1L
         exp % 2L == 0L -> (expmodExplicit(base, exp / 2L, m) * expmodExplicit(base, exp / 2L, m)) % m
         else -> (base * expmodExplicit(base, exp - 1L, m)) % m
-    }
+    @}
 @end example
 
 ``I don't see what difference that could make,'' says Louis.  Eva says,

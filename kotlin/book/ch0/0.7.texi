@@ -20,17 +20,17 @@ does not pin, so the book's listings write the loop out:
 public fun parity(n: Long): String = if (n % 2L == 0L) "even" else "odd"
 
 public class S0_7TestingTest :
-    FunSpec({
+    FunSpec(@{
         listOf(
             0L to "even",
             1L to "odd",
             42L to "even",
-        ).forEach { (n, expected) ->
-            test("parity($n) is $expected") {
+        ).forEach @{ (n, expected) ->
+            test("parity($n) is $expected") @{
                 parity(n) shouldBe expected
-            }
-        }
-    })
+            @}
+        @}
+    @})
 @end example
 
 @noindent
@@ -41,16 +41,16 @@ reports the first counterexample. Boundary cases that generation would
 rarely hit stay explicit:
 
 @example kotlin
-test("a property test runs the assertion over generated inputs") {
-    checkAll(Arb.long(-100L, 100L), Arb.long(-100L, 100L)) { a, b ->
+test("a property test runs the assertion over generated inputs") @{
+    checkAll(Arb.long(-100L, 100L), Arb.long(-100L, 100L)) @{ a, b ->
         absDiff(a, b) shouldBe absDiff(b, a)
-    }
-}
+    @}
+@}
 
-test("boundary cases stay explicit") {
+test("boundary cases stay explicit") @{
     absDiff(0L, 0L) shouldBe 0L
     absDiff(Long.MAX_VALUE, Long.MAX_VALUE) shouldBe 0L
-}
+@}
 @end example
 
 @noindent

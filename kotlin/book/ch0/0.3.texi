@@ -49,15 +49,15 @@ A @code{while} states the loop directly when no recursion is wanted, and it
 carries its state in local variables:
 
 @example kotlin
-public fun sumTo(n: Long): Long {
+public fun sumTo(n: Long): Long @{
     var total = 0L
     var k = 1L
-    while (k <= n) {
+    while (k <= n) @{
         total += k
         k += 1
-    }
+    @}
     return total
-}
+@}
 
 sumTo(100)
 // => 5050
@@ -80,10 +80,10 @@ most once, at the first read. Every later read returns the memoized result:
 @example kotlin
 public var lazyCalls: Int = 0
 
-public val expensiveAnswer: Long by lazy {
+public val expensiveAnswer: Long by lazy @{
     lazyCalls += 1
     40L + 2L
-}
+@}
 
 expensiveAnswer
 // => 42
@@ -103,18 +103,18 @@ and @code{filter} record work without doing any of it. A terminal operation
 such as @code{take(n)} or @code{toList()} drives the pipeline:
 
 @example kotlin
-public fun naturals(): Sequence<Long> = generateSequence(1L) { it + 1L }
+public fun naturals(): Sequence<Long> = generateSequence(1L) @{ it + 1L @}
 
-public fun squaresSeq(): Sequence<Long> = naturals().map { x -> x * x }
+public fun squaresSeq(): Sequence<Long> = naturals().map @{ x -> x * x @}
 
 public fun evens(): Sequence<Long> =
-    sequence {
+    sequence @{
         var n = 0L
-        while (true) {
+        while (true) @{
             yield(n)
             n += 2L
-        }
-    }
+        @}
+    @}
 
 squaresSeq().take(5).toList()
 // => [1, 4, 9, 16, 25]
@@ -138,7 +138,7 @@ stream being defined. The runtime therefore ships a second type,
 a tail that computes at most once.
 
 @example kotlin
-public fun squareStream(n: Long): LStream<Long> = consStream(n * n) { squareStream(n + 1L) }
+public fun squareStream(n: Long): LStream<Long> = consStream(n * n) @{ squareStream(n + 1L) @}
 
 squareStream(1L).take(5)
 // => [1, 4, 9, 16, 25]

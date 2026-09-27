@@ -75,10 +75,10 @@ public data class Rect(
 ) : Shape
 
 public fun area(s: Shape): Double =
-    when (s) {
+    when (s) @{
         is Circle -> PI * s.r * s.r
         is Rect -> s.w * s.h
-    }
+    @}
 
 area(Circle(1.0))
 // => 3.141592653589793

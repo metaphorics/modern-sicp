@@ -218,9 +218,9 @@ we show only what @code{printRat} prints, not what the interpreter shows as
 the value @code{printRat} returns.}
 
 @example kotlin
-fun printRat(x: Rational) {
-    println("${x.numer}/${x.denom}")
-}
+fun printRat(x: Rational) @{
+    println("$@{x.numer@}/$@{x.denom@}")
+@}
 @end example
 
 @noindent
@@ -258,10 +258,10 @@ names the reducing version @code{makeRatReduced}; every section and exercise
 from here on that says ``@code{makeRat}'' means this one:
 
 @example kotlin
-fun makeRatReduced(n: Long, d: Long): Rational {
+fun makeRatReduced(n: Long, d: Long): Rational @{
     val g = gcd(n, d)
     return Rational(n / g, d / g)
-}
+@}
 @end example
 
 @noindent
@@ -415,9 +415,9 @@ midpoint (the point whose coordinates are the average of the coordinates of the
 endpoints).  To try your procedures, you'll need a way to print points:
 
 @example kotlin
-fun printPoint(p: Point) {
-    println("(${xPoint(p)},${yPoint(p)})")
-}
+fun printPoint(p: Point) @{
+    println("($@{xPoint(p)@},$@{yPoint(p)@})")
+@}
 @end example
 @end quotation
 
@@ -502,15 +502,15 @@ could implement @code{cons}, @code{car}, and @code{cdr} without using any data
 structures at all but only using functions.  Here are the definitions:
 
 @example kotlin
-fun cons(x: Long, y: Long): (Long) -> Long {
+fun cons(x: Long, y: Long): (Long) -> Long @{
     fun dispatch(m: Long): Long =
-        when (m) {
+        when (m) @{
             0L -> x
             1L -> y
             else -> error("Argument not 0 or 1: CONS $m")
-        }
+        @}
     return ::dispatch
-}
+@}
 
 fun car(z: (Long) -> Long): Long = z(0L)
 
@@ -556,9 +556,9 @@ representation of pairs.  For this representation, verify that
 @code{y}.
 
 @example kotlin
-fun <T> consFn(x: T, y: T): ((T, T) -> T) -> T = { m -> m(x, y) }
+fun <T> consFn(x: T, y: T): ((T, T) -> T) -> T = @{ m -> m(x, y) @}
 
-fun <T> carFn(z: ((T, T) -> T) -> T): T = z { p, _ -> p }
+fun <T> carFn(z: ((T, T) -> T) -> T): T = z @{ p, _ -> p @}
 @end example
 
 What is the corresponding definition of @code{cdrFn}? (Hint: To verify that this
@@ -594,9 +594,9 @@ adding 1 as
 @example kotlin
 typealias Church<T> = ((T) -> T) -> (T) -> T
 
-fun <T> churchZero(): Church<T> = { _ -> { x -> x } }
+fun <T> churchZero(): Church<T> = @{ _ -> @{ x -> x @} @}
 
-fun <T> churchAddOne(n: Church<T>): Church<T> = { f -> { x -> f(n(f)(x)) } }
+fun <T> churchAddOne(n: Church<T>): Church<T> = @{ f -> @{ x -> f(n(f)(x)) @} @}
 @end example
 
 This representation is known as @newterm{Church numerals}, after its inventor,
@@ -669,13 +669,13 @@ resulting interval.  (@code{minOf} and @code{maxOf} are Kotlin standard-library
 functions that find the minimum or maximum of any number of arguments.)
 
 @example kotlin
-fun mulInterval(x: Interval, y: Interval): Interval {
+fun mulInterval(x: Interval, y: Interval): Interval @{
     val p1 = x.lowerBound * y.lowerBound
     val p2 = x.lowerBound * y.upperBound
     val p3 = x.upperBound * y.lowerBound
     val p4 = x.upperBound * y.upperBound
     return makeInterval(minOf(p1, p2, p3, p4), maxOf(p1, p2, p3, p4))
-}
+@}
 @end example
 
 @noindent
@@ -817,10 +817,10 @@ parallel-resistors formula differently:
 fun par1(r1: Interval, r2: Interval): Interval =
     divInterval(mulInterval(r1, r2), addInterval(r1, r2))
 
-fun par2(r1: Interval, r2: Interval): Interval {
+fun par2(r1: Interval, r2: Interval): Interval @{
     val one = makeInterval(1.0, 1.0)
     return divInterval(one, addInterval(divInterval(one, r1), divInterval(one, r2)))
-}
+@}
 @end example
 
 @example kotlin

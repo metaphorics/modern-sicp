@@ -1,0 +1,228 @@
+@node	0.2, 0.3, 0.1, Chapter 0
+@section Values, names, and functions
+
+This section covers literals, bindings, functions, closures, higher-order
+functions, booleans, comparison operators, conditionals, operator
+precedence, and the number model this book uses. Everything here reappears
+in @ref{1.1} and nothing else from Kotlin is assumed.
+
+@heading Literals and names
+
+The book's integers are @code{Long}, its inexact reals are @code{Double},
+its truth values are @code{Boolean}, and its text is a @code{String}.
+Underscores may group digits in any numeric literal, and a string template
+splices a value into text:
+
+@example kotlin
+486
+6.626_070_15e-34
+true
+"n is $n"
+@end example
+
+@noindent
+A name is bound with @code{val}, which cannot be reassigned; the mutable
+@code{var} exists and has a section of its own (@ref{0.5}). A binding is
+not a cell the program later assigns into, which is the substance of what
+Scheme's @code{define} does in the book's first programs: it names a value.
+
+@example kotlin
+val size = 2L
+// => 2
+
+5L + 3L + size
+// => 10
+@end example
+
+@heading Functions
+
+A function is declared with @code{fun}. An expression body writes the body
+after @code{=}; a block body is a braced sequence whose value must be
+returned explicitly:
+
+@example kotlin
+public fun square(x: Long): Long = x * x
+
+public fun hypotenuseSquared(a: Long, b: Long): Long @{
+    val a2 = square(a)
+    val b2 = square(b)
+    return a2 + b2
+@}
+
+square(21)
+// => 441
+
+square(2L + 5L)
+// => 49
+
+square(square(3))
+// => 81
+@end example
+
+@noindent
+A function may be declared inside another, where it sees the local names of
+its enclosing scope, and a local @code{val} plays the role of Scheme's
+@code{let}. One restriction matters from chapter 1 on: local functions
+cannot forward-reference, so two mutually recursive local functions must be
+hoisted or restructured; @ref{0.3} returns to this.
+
+A lambda is a function value. It closes over the names around it, so
+@code{makeAdder} builds a family of functions from one declaration:
+
+@example kotlin
+public fun makeAdder(n: Long): (Long) -> Long = @{ x -> x + n @}
+
+val add5 = makeAdder(5L)
+val add12 = makeAdder(12L)
+add5(1L)
+// => 6
+
+add12(1L)
+// => 13
+@end example
+
+@noindent
+The type @code{(Long) -> Long} is a function type: a procedure is an
+ordinary value. A @code{typealias} names a shape that recurs, a declaration
+can pass functions as arguments, and a call whose last argument is a
+function may write it after the parentheses in trailing position:
+
+@example kotlin
+public typealias Mapper = (Long) -> Long
+
+public fun sumOver(f: Mapper, a: Long, b: Long): Long =
+    (a..b).fold(0L) @{ acc, k -> acc + f(k) @}
+
+public fun twice(m: Mapper): Mapper = @{ x -> m(m(x)) @}
+
+sumOver(::square, 1L, 3L)
+// => 14
+
+val quad = twice(::square)
+quad(2L)
+// => 16
+@end example
+
+@noindent
+The @code{::square} form is a reference to a named function, usable wherever
+a lambda would do. Higher-order programs from @ref{1.3} translate onto this
+directly, and the composed procedures of @ref{3.1} are closures of exactly
+the @code{makeAdder} shape.
+
+@heading Booleans, comparisons, and conditionals
+
+The comparison operators are @code{== != < > <= >=}, the connectives are
+@code{&& || !}, and @code{==} compares values by content for the data types
+of @ref{0.4}. Both @code{if} and @code{when} are expressions: they produce
+the value of the branch taken, and a @code{when} tries its candidates in
+order:
+
+@example kotlin
+public fun sign(n: Long): String =
+    if (n > 0L) @{
+        "positive"
+    @} else if (n < 0L) @{
+        "negative"
+    @} else @{
+        "zero"
+    @}
+
+public fun classify(n: Long): String =
+    when (n) @{
+        0L -> "zero"
+        in 1L..9L -> "small"
+        else -> "large"
+    @}
+
+sign(-3L)
+// => negative
+
+classify(7L)
+// => small
+
+classify(42L)
+// => large
+@end example
+
+@noindent
+Operator precedence follows the customary infix reading: @code{* /} bind
+tighter than @code{+ -}, comparison binds looser than arithmetic, and
+@code{&&} binds tighter than @code{||}. Parentheses win, and the book's
+listings use them wherever two readings are plausible.
+
+@heading The number model
+
+An integer is a 64-bit @code{Long} and a real is a @code{Double}. The
+division rule is the one the book's first sessions need: @code{Long / Long}
+truncates toward zero, and real division requires a real operand.
+
+@example kotlin
+public fun halfOf(n: Long): Long = n / 2L
+public fun realHalf(n: Long): Double = n / 2.0
+
+halfOf(9L)
+// => 4
+
+realHalf(9L)
+// => 4.5
+@end example
+
+@footnote{@code{Long} arithmetic wraps silently when it passes its width,
+as on the JVM. Listings that can plausibly overflow call
+@code{Math.addExact} and its siblings, which throw instead of wrapping; the
+exercises of @ref{1.2} probe that boundary, and the runtime's interpreted
+integers use checked arithmetic that raises a typed overflow error
+(@ref{0.6}).}
+
+Small counters, indices, and the register pointers of chapter 5 use
+@code{Int}; everything the main text prints as a number is a @code{Long} or
+a @code{Double}.
+
+@strong{@anchor{Exercise 0.1}Exercise 0.1:} Below are three of the
+interactive sessions of section 1.1 of this book, kept in their Scheme
+form. Translate each into Kotlin, evaluating the expressions in order, with
+each call rendered in Kotlin and each response written as a
+@code{// ;Value:} comment, as the transcripts of this section do. Verify
+that every numeric response matches Scheme's.
+
+@example scheme
+486
+100
+(+ 5 3 4)
+(- 10 9)
+(+ (* 2 4) (- 4 6))
+@end example
+
+@example scheme
+(define a 3)
+(define b (+ a 1))
+(+ a b (* a b))
+(= a b)
+(if (and (> b a) (< b (* a b)))
+    b
+    a)
+(cond ((= a 4) 6)
+      ((= b 4) (+ 6 7 a))
+      (else (+ 25 a)))
+(+ 2 (if (> b a) b a))
+(* (cond ((> a b) a)
+         ((< a b) b)
+         (else -1))
+   (+ a 1))
+@end example
+
+@example scheme
+(define (square x) (* x x))
+(square 21)
+(square (+ 2 5))
+(square (square 3))
+@end example
+
+@strong{@anchor{Exercise 0.2}Exercise 0.2:} Implement @code{compose} and
+@code{repeated} over @code{(Long) -> Long} procedures:
+@code{compose(f, g)(x)} applies @code{g} and then @code{f}, and
+@code{repeated(f, n)(x)} applies @code{f} exactly @code{n} times, with
+@code{repeated(f, 0)(x)} the identity. Prove them with Kotest property
+tests: use @code{checkAll} over generated inputs and compare each result
+with hand-computed cases, including the @code{n = 0} boundary and both
+orders of @code{compose}.

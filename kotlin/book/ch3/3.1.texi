@@ -1,0 +1,1019 @@
+@node	3.1, 3.2, Chapter 3, Chapter 3
+@section Assignment and Local State
+
+We ordinarily view the world as populated by independent objects, each of which
+has a state that changes over time.  An object is said to ``have state'' if its
+behavior is influenced by its history.  A bank account, for example, has state
+in that the answer to the question ``Can I withdraw $100?''  depends upon the
+history of deposit and withdrawal transactions.  We can characterize an
+object's state by one or more @newterm{state variables}, which among them
+maintain enough information about history to determine the object's current
+behavior.  In a simple banking system, we could characterize the state of an
+account by a current balance rather than by remembering the entire history of
+account transactions.
+
+In a system composed of many objects, the objects are rarely completely
+independent.  Each may influence the states of others through interactions,
+which serve to couple the state variables of one object to those of other
+objects.  Indeed, the view that a system is composed of separate objects is
+most useful when the state variables of the system can be grouped into closely
+coupled subsystems that are only loosely coupled to other subsystems.
+
+This view of a system can be a powerful framework for organizing computational
+models of the system.  For such a model to be modular, it should be decomposed
+into computational objects that model the actual objects in the system.  Each
+computational object must have its own @newterm{local state variables}
+describing the actual object's state.  Since the states of objects in the
+system being modeled change over time, the state variables of the corresponding
+computational objects must also change.  If we choose to model the flow of time
+in the system by the elapsed time in the computer, then we must have a way to
+construct computational objects whose behaviors change as our programs run.  In
+particular, if we wish to model state variables by ordinary symbolic names in
+the programming language, then the language must provide an @newterm{assignment operator}
+to enable us to change the value associated with a name.  Kotlin's own
+assignment operator, @code{=}, does this only for names declared @code{var};
+this edition writes local state as a captured @code{var}, the decision this
+section exists to teach.
+
+@menu
+* 3.1.1::            Local State Variables
+* 3.1.2::            The Benefits of Introducing Assignment
+* 3.1.3::            The Costs of Introducing Assignment
+@end menu
+
+@node	3.1.1, 3.1.2, 3.1, 3.1
+@subsection Local State Variables
+
+To illustrate what we mean by having a computational object with time-varying
+state, let us model the situation of withdrawing money from a bank account.  We
+will do this using a function @code{withdraw}, which takes as argument an
+@code{amount} to be withdrawn.  If there is enough money in the account to
+accommodate the withdrawal, then @code{withdraw} should return the balance
+remaining after the withdrawal.  Otherwise, @code{withdraw} should raise the
+typed error @code{WithdrawError.InsufficientFunds}, the one book string this
+edition types this way (see the conventions of the companion).  For example, if
+we begin with $100 in the account, we should obtain the following sequence of
+responses using @code{withdraw}:
+
+@example kotlin
+sealed interface WithdrawError @{
+    data object InsufficientFunds : WithdrawError
+@}
+
+var balance: Long = 100L
+
+fun withdraw(amount: Long): Either<WithdrawError, Long> =
+    if (amount > balance) @{
+        Either.Left(WithdrawError.InsufficientFunds)
+    @} else @{
+        balance -= amount
+        Either.Right(balance)
+    @}
+
+withdraw(25L)
+// => Either.Right(75)
+
+withdraw(25L)
+// => Either.Right(50)
+
+withdraw(60L)
+// => Either.Left(InsufficientFunds)
+
+withdraw(15L)
+// => Either.Right(35)
+@end example
+
+@noindent
+Observe that the expression @code{withdraw(25L)}, evaluated twice, yields
+different values.  This is a new kind of behavior for a function.  Until now,
+all our functions could be viewed as specifications for computing mathematical
+functions.  A call to a function computed the value of the function applied to
+the given arguments, and two calls to the same function with the same
+arguments always produced the same result.@footnote{Actually, this is not quite
+true.  One exception was the random-number generator in @ref{1.2.6}.
+Another exception involved the operation/type tables we introduced in
+@ref{2.4.3}, where the values of two calls to @code{get} with the same
+arguments depended on intervening calls to @code{put}.  On the other hand,
+until we introduce assignment, we have no way to create such functions
+ourselves.}
+
+To implement @code{withdraw}, we can use a variable @code{balance} to indicate
+the balance of money in the account and define @code{withdraw} as a function
+that accesses @code{balance}.  The @code{withdraw} function checks to see if
+@code{balance} is at least as large as the requested @code{amount}.  If so,
+@code{withdraw} decrements @code{balance} by @code{amount} and returns the new
+value of @code{balance}.  Otherwise, @code{withdraw} raises the
+@emph{Insufficient funds} error, as shown above: @code{balance} is an ordinary
+top-level @code{var}, freely visible and modifiable by any other declaration in
+the program.
+
+@noindent
+Decrementing @code{balance} is accomplished by the statement
+
+@example kotlin
+balance -= amount
+@end example
+
+@noindent
+This is Kotlin's ordinary compound-assignment operator, working directly on
+the @code{var} named @code{balance}.  @code{Balance -= amount} changes
+@code{balance} so that its new value is the result obtained by evaluating
+@code{balance - amount}: the previous value of @code{balance} minus
+@code{amount}.@footnote{Kotlin needs no special naming convention for
+mutation the way Scheme's @code{set!} does: assigning to a @code{var} is
+visibly different from an ordinary call, and the compiler itself refuses the
+assignment unless the name was declared @code{var}.  Data structures that
+mutate their own fields, as we will see in @ref{3.3}, follow the same
+rule directly on their properties.}
+
+@code{Withdraw}'s @code{if} branch does two things in sequence when the
+balance suffices: first decrementing @code{balance} and then returning the new
+value of @code{balance}.  In general, a Kotlin block already sequences its
+statements this way: @code{@{ balance -= amount; balance @}} runs the first
+statement for its effect and returns the second as the block's
+value.@footnote{Scheme needs a separate @code{begin} form to sequence
+side-effecting expressions, because the body of a Scheme procedure and each
+clause of a @code{cond} are themselves single expressions.  Kotlin's function
+bodies and each branch of a @code{when} are blocks of statements already, so
+no equivalent form is needed anywhere in this book.}
+
+Although @code{withdraw} works as desired, the variable @code{balance} presents
+a problem.  As specified above, @code{balance} is a name defined at the top
+level and is freely accessible to be examined or modified by any other
+declaration.  It would be much better if we could somehow make @code{balance}
+internal to @code{withdraw}, so that @code{withdraw} would be the only
+function that could access @code{balance} directly and any other function
+could access @code{balance} only indirectly (through calls to @code{withdraw}).
+This would more accurately model the notion that @code{balance} is a local
+state variable used by @code{withdraw} to keep track of the state of the
+account.
+
+We can make @code{balance} internal to @code{withdraw} by rewriting the
+definition as follows:
+
+@example kotlin
+fun newWithdraw(): (Long) -> Either<WithdrawError, Long> @{
+    var b = 100L
+    return @{ amount ->
+        if (amount > b) @{
+            Either.Left(WithdrawError.InsufficientFunds)
+        @} else @{
+            b -= amount
+            Either.Right(b)
+        @}
+    @}
+@}
+@end example
+
+@noindent
+What we have done here is declare a local @code{var b}, bound to the initial
+value 100.  Within this local environment, we build a lambda that takes
+@code{amount} as an argument and behaves like our previous @code{withdraw}
+function.  This function, returned as the result of calling
+@code{newWithdraw()}, behaves in precisely the same way as @code{withdraw}
+but whose variable @code{b} is not accessible by any other
+function.@footnote{In programming-language jargon, the variable @code{b}
+is said to be @newterm{encapsulated} within the closure @code{newWithdraw}
+returns.  Encapsulation reflects the general system-design principle known
+as the @newterm{hiding principle}: One can make a system more modular and
+robust by protecting parts of the system from each other; that is, by
+providing information access only to those parts of the system that have a
+``need to know.''}
+
+Combining a captured @code{var} with local variables is the general
+programming technique we will use for constructing computational objects with
+local state.  Unfortunately, using this technique raises a serious problem:
+when we first introduced functions, we also introduced the informal model of
+substituting argument values into function bodies
+(@ref{1.1.5}) to provide an interpretation of what a function
+call means.  We said that calling a function should be interpreted as
+evaluating the body of the function with the parameters replaced by
+their values.  The trouble is that, as soon as we introduce a captured @code{var} into our
+language, substitution is no longer an adequate model of a function call.
+(We will see why this is so in @ref{3.1.3}.)  As a consequence, we
+technically have at this point no way to understand why the @code{newWithdraw}
+function behaves as claimed above.  In order to really understand a function
+such as @code{newWithdraw}, we will need to develop a new model of function
+application.  In @ref{3.2} we will introduce such a model, together
+with an explanation of the captured @code{var} and local variables.  First, however, we
+examine some variations on the theme established by @code{newWithdraw}.
+
+The following function, @code{makeWithdraw}, creates ``withdrawal
+processors.''  The parameter @code{balance} in @code{makeWithdraw}
+specifies the initial amount of money in the account.@footnote{In contrast with
+@code{newWithdraw} above, we do not have to declare a separate local @code{var}
+to make @code{balance} local, since a function's parameters are already
+local.  This will be clearer after the discussion of the environment model of
+evaluation in @ref{3.2}.  (See also @ref{Exercise 3.10}.)}
+
+@example kotlin
+fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> @{
+    var b = balance
+    return @{ amount ->
+        if (amount > b) @{
+            Either.Left(WithdrawError.InsufficientFunds)
+        @} else @{
+            b -= amount
+            Either.Right(b)
+        @}
+    @}
+@}
+@end example
+
+@noindent
+@code{MakeWithdraw} can be used as follows to create two objects @code{w1} and
+@code{w2}:
+
+@example kotlin
+val w1 = makeWithdraw(100L)
+val w2 = makeWithdraw(100L)
+
+w1(50L)
+// => Either.Right(50)
+
+w2(70L)
+// => Either.Right(30)
+
+w2(40L)
+// => Either.Left(InsufficientFunds)
+
+w1(40L)
+// => Either.Right(10)
+@end example
+
+@noindent
+Observe that @code{w1} and @code{w2} are completely independent objects, each
+with its own local state variable @code{b}.  Withdrawals from one do not
+affect the other.
+
+We can also create objects that handle deposits as well as withdrawals, and
+thus we can represent simple bank accounts.  Here is a function that returns a
+``bank-account object'' with a specified initial balance.  Scheme's
+@code{dispatch} procedure, which hands back the @code{withdraw} or
+@code{deposit} closure for a message symbol, becomes this edition's
+@code{Account} interface: the dispatch the book's @code{cond} approximates is
+an ordinary method call in Kotlin, and @code{makeAccount} returns an object
+implementing that interface directly, rather than a bare closure, because the
+book has now given the object a real protocol of named operations.
+
+@example kotlin
+interface Account @{
+    fun withdraw(amount: Long): Either<WithdrawError, Long>
+
+    fun deposit(amount: Long): Long
+@}
+
+fun makeAccount(balance: Long): Account @{
+    var b = balance
+    return object : Account @{
+        override fun withdraw(amount: Long): Either<WithdrawError, Long> =
+            if (amount > b) @{
+                Either.Left(WithdrawError.InsufficientFunds)
+            @} else @{
+                b -= amount
+                Either.Right(b)
+            @}
+
+        override fun deposit(amount: Long): Long @{
+            b += amount
+            return b
+        @}
+    @}
+@}
+@end example
+
+@noindent
+Each call to @code{makeAccount} sets up an environment with a local state
+variable @code{b}.  Within this environment, @code{makeAccount} builds an
+anonymous object implementing @code{withdraw} and @code{deposit}, both
+closing over the one captured @code{b}.  The returned object itself
+represents the bank-account object; calling its methods is precisely the
+@newterm{message-passing} style of programming that we saw in
+@ref{2.4.3}, although here we are using it in conjunction with the
+ability to modify local variables.
+
+@code{MakeAccount} can be used as follows:
+
+@example kotlin
+val acc = makeAccount(100L)
+
+acc.withdraw(50L)
+// => Either.Right(50)
+
+acc.withdraw(60L)
+// => Either.Left(InsufficientFunds)
+
+acc.deposit(40L)
+// => 90
+
+acc.withdraw(60L)
+// => Either.Right(30)
+@end example
+
+@noindent
+Each call on @code{acc} invokes the locally defined @code{deposit} or
+@code{withdraw} method, which is then applied to the specified
+@code{amount}.  As was the case with @code{makeWithdraw}, another call to
+@code{makeAccount}
+
+@example kotlin
+val acc2 = makeAccount(100L)
+@end example
+
+@noindent
+will produce a completely separate account object, which maintains its own
+local @code{balance}.
+
+@quotation
+@strong{@anchor{Exercise 3.1}Exercise 3.1:} An @newterm{accumulator} is a
+function that is called repeatedly with a single numeric argument and
+accumulates its arguments into a sum.  Each time it is called, it returns the
+currently accumulated sum.  Write a function @code{makeAccumulator} that
+generates accumulators, each maintaining an independent sum.  The input to
+@code{makeAccumulator} should specify the initial value of the sum; for
+example
+
+@example kotlin
+val a = makeAccumulator(5L)
+
+a(10L)
+// => 15
+
+a(10L)
+// => 25
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.2}Exercise 3.2:} In software-testing applications,
+it is useful to be able to count the number of times a given function is
+called during the course of a computation.  Write a function
+@code{makeMonitored} that takes as input a function, @code{f}, that itself
+takes one input.  The result returned by @code{makeMonitored} keeps track of
+the number of times it has been called by maintaining an internal counter.
+Its @code{howManyCalls()} method returns the value of the counter; its
+@code{resetCount()} method resets the counter to zero; its @code{call(x)}
+method returns the result of calling @code{f} on @code{x} and increments the
+counter.  For instance, we could make a monitored version of the @code{sqrt}
+function:
+
+@example kotlin
+val s = makeMonitored @{ x: Double -> sqrt(x) @}
+
+s.call(100.0)
+// => 10.0
+
+s.howManyCalls()
+// => 1
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.3}Exercise 3.3:} Modify the @code{makeAccount}
+function so that it creates password-protected accounts.  That is,
+@code{makeAccount} should take a password as an additional argument, as in
+
+@example kotlin
+val acc = makeAccount(100L, "secret-password")
+@end example
+
+The resulting account object should process a request only if it is accompanied
+by the password with which the account was created, and should otherwise raise
+@code{AccountError.WrongPassword}:
+
+@example kotlin
+acc.withdraw("secret-password", 40L)
+// => Either.Right(60)
+
+acc.deposit("some-other-password", 50L)
+// => Either.Left(WrongPassword)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.4}Exercise 3.4:} Modify the @code{makeAccount}
+function of @ref{Exercise 3.3} by adding another local state variable so that,
+if an account is accessed more than seven consecutive times with an incorrect
+password, it raises @code{AccountError.CallTheCops} instead of
+@code{WrongPassword}.
+@end quotation
+
+@quotation
+@emph{Exercise 3.4a is added by this edition and extends exercise 3.4; SICP
+numbers stop at 3.4.} @strong{@anchor{Exercise 3.4a}Exercise 3.4a:} Exercise
+3.4 locks an account out after seven consecutive wrong passwords, but a
+locked-out account keeps no record of what happened to it.  Extend
+@code{makeAccountWithLockout} into @code{makeAccountWithAuditLog}, whose
+@code{auditLog()} method returns every access attempt in the order it
+happened, each entry naming the operation (@code{"withdraw"} or
+@code{"deposit"}) and its outcome (@code{"ok"}, @code{"wrong-password"},
+@code{"insufficient-funds"}, or @code{"call-the-cops"}).
+@end quotation
+
+@node	3.1.2, 3.1.3, 3.1.1, 3.1
+@subsection The Benefits of Introducing Assignment
+
+As we shall see, introducing assignment into our programming language leads us
+into a thicket of difficult conceptual issues.  Nevertheless, viewing systems
+as collections of objects with local state is a powerful technique for
+maintaining a modular design.  As a simple example, consider the design of a
+function @code{rand} that, whenever it is called, returns an integer chosen at
+random.
+
+It is not at all clear what is meant by ``chosen at random.''  What we
+presumably want is for successive calls to @code{rand} to produce a sequence of
+numbers that has statistical properties of uniform distribution.  We will not
+discuss methods for generating suitable sequences here.  Rather, let us assume
+that we have a function @code{randUpdate} that has the property that if we
+start with a given word @math{x_1} and form
+
+@example kotlin
+val x2 = randUpdate(x1)
+val x3 = randUpdate(x2)
+@end example
+
+@noindent
+then the sequence of values @math{x_1}, @math{x_2}, @math{x_3}, @dots{} will have the
+desired statistical properties.@footnote{One common way to implement
+@code{randUpdate} is to use the rule that @math{x} is updated to @math{{ax + b}}
+modulo @math{m}, where @math{a}, @math{b}, and @math{m} are appropriately chosen
+integers.  Chapter 3 of @ref{Knuth 1981} includes an extensive discussion of
+techniques for generating sequences of random numbers and establishing their
+statistical properties.  This edition's own @code{randUpdate} is one step of
+the seeded xorshift64* generator (Vigna 2016) that the runtime's shared
+@code{Random} also uses (decision D31), reimplemented as a section-local pure
+function.  Notice that @code{randUpdate} computes a mathematical function:
+Given the same input twice, it produces the same output.  Therefore, the word
+sequence produced by @code{randUpdate} certainly is not ``random,'' if by
+``random'' we insist that each word in the sequence is unrelated to the
+preceding word.  The relation between ``real randomness'' and so-called
+@newterm{pseudo-random} sequences, which are produced by well-determined
+computations and yet have suitable statistical properties, is a complex
+question involving difficult issues in mathematics and philosophy.
+Kolmogorov, Solomonoff, and Chaitin have made great progress in clarifying
+these issues; a discussion can be found in @ref{Chaitin 1975}.}
+
+We can implement @code{rand} as a closure over a local state variable
+@code{x} that is initialized to some fixed seed.  Each call to the closure
+computes @code{randUpdate} of the current value of @code{x}, returns this as
+the random word, and also stores this as the new value of @code{x}.
+
+@example kotlin
+fun makeRand(seed: ULong): () -> ULong @{
+    var x = seed
+    return @{
+        x = randUpdate(x)
+        x
+    @}
+@}
+@end example
+
+@noindent
+Of course, we could generate the same sequence of random numbers without using
+assignment by simply calling @code{randUpdate} directly.  However, this would
+mean that any part of our program that used random numbers would have to
+explicitly remember the current value of @code{x} to be passed as an argument
+to @code{randUpdate}.  To realize what an annoyance this would be, consider
+using random numbers to implement a technique called @newterm{Monte Carlo simulation}.
+
+The Monte Carlo method consists of choosing sample experiments at random from a
+large set and then making deductions on the basis of the probabilities
+estimated from tabulating the results of those experiments.  For example, we
+can approximate @math{\pi} using the fact that @math{{6/\pi^2}} is the probability
+that two integers chosen at random will have no factors in common; that is,
+that their greatest common divisor will be 1.@footnote{This theorem is due to
+E. Ces@`aro.  See section 4.5.2 of @ref{Knuth 1981} for a discussion and a proof.} To
+obtain the approximation to @math{\pi}, we perform a large number of experiments.
+In each experiment we choose two integers at random and perform a test to see
+if their @abbr{GCD} is 1.  The fraction of times that the test is passed
+gives us our estimate of @math{{6/\pi^2}}, and from this we obtain our
+approximation to @math{\pi}.
+
+The heart of our program is a function @code{monteCarlo}, which takes as
+arguments the number of times to try an experiment, together with the
+experiment, represented as a no-argument function that will return true or
+false each time it is run.  @code{MonteCarlo} runs the experiment for the
+designated number of trials and returns a number telling the fraction of the
+trials in which the experiment was found to be true.
+
+@example kotlin
+fun estimatePi(trials: Int, rand: () -> ULong): Double =
+    sqrt(6.0 / monteCarlo(trials) @{ cesaroTest(rand) @})
+
+fun cesaroTest(rand: () -> ULong): Boolean = gcd(rand(), rand()) == 1UL
+
+fun monteCarlo(trials: Int, experiment: () -> Boolean): Double @{
+    tailrec fun iter(remaining: Int, passed: Int): Double =
+        when @{
+            remaining == 0 -> passed.toDouble() / trials
+            experiment() -> iter(remaining - 1, passed + 1)
+            else -> iter(remaining - 1, passed)
+        @}
+    return iter(trials, 0)
+@}
+@end example
+
+@noindent
+Now let us try the same computation using @code{randUpdate} directly rather
+than a closure over @code{rand}, the way we would be forced to proceed if we did not use
+assignment to model local state:
+
+@example kotlin
+fun estimatePiStateless(trials: Int, initialX: ULong): Double =
+    sqrt(6.0 / randomGcdTest(trials, initialX))
+
+fun randomGcdTest(trials: Int, initialX: ULong): Double @{
+    tailrec fun iter(remaining: Int, passed: Int, x: ULong): Double @{
+        val x1 = randUpdate(x)
+        val x2 = randUpdate(x1)
+        return when @{
+            remaining == 0 -> passed.toDouble() / trials
+            gcd(x1, x2) == 1UL -> iter(remaining - 1, passed + 1, x2)
+            else -> iter(remaining - 1, passed, x2)
+        @}
+    @}
+    return iter(trials, 0, initialX)
+@}
+@end example
+
+@noindent
+While the program is still simple, it betrays some painful breaches of
+modularity.  In our first version of the program, using a closure over
+@code{rand}, we can express the Monte Carlo method directly as a general
+@code{monteCarlo} function that takes as an argument an arbitrary
+@code{experiment} function.  In our second version of the program, with no
+local state for the random-number generator, @code{randomGcdTest} must
+explicitly manipulate the random words @code{x1} and @code{x2} and recycle
+@code{x2} through the iterative loop as the new input to @code{randUpdate}.
+This explicit handling of the random numbers intertwines the structure of
+accumulating test results with the fact that our particular experiment uses
+two random numbers, whereas other Monte Carlo experiments might use one
+random number or three.  Even the top-level function @code{estimatePiStateless}
+has to be concerned with supplying an initial random word.  The fact that the
+random-number generator's insides are leaking out into other parts of the
+program makes it difficult for us to isolate the Monte Carlo idea so that it
+can be applied to other tasks.  In the first version of the program, the
+captured @code{var} encapsulates the state of the random-number generator
+within the closure @code{makeRand} returns, so that the details of
+random-number generation remain independent of the rest of the program.
+
+The general phenomenon illustrated by the Monte Carlo example is this: From the
+point of view of one part of a complex process, the other parts appear to
+change with time.  They have hidden time-varying local state.  If we wish to
+write programs whose structure reflects this decomposition, we make
+computational objects (such as bank accounts and random-number generators)
+whose behavior changes with time.  We model state with local state variables,
+and we model the changes of state with assignments to those variables.
+
+It is tempting to conclude this discussion by saying that, by introducing
+assignment and the technique of hiding state in local variables, we are able to
+structure systems in a more modular fashion than if all state had to be
+manipulated explicitly, by passing additional parameters.  Unfortunately, as we
+shall see, the story is not so simple.
+
+@quotation
+@strong{@anchor{Exercise 3.5}Exercise 3.5:} @newterm{Monte Carlo integration}
+is a method of estimating definite integrals by means of Monte Carlo
+simulation.  Consider computing the area of a region of space described by a
+predicate @math{{P(x, y)}} that is true for points @math{{(x, y)}} in the
+region and false for points not in the region.  For example, the region
+contained within a circle of radius 3 centered at (5, 7) is described by the
+predicate that tests whether @math{{(x - 5)^2} + {(y - 7)^2 \le 3^2}}.  To estimate
+the area of the region described by such a predicate, begin by choosing a
+rectangle that contains the region.  For example, a rectangle with diagonally
+opposite corners at (2, 4) and (8, 10) contains the circle above.  The desired
+integral is the area of that portion of the rectangle that lies in the region.
+We can estimate the integral by picking, at random, points @math{{(x, y)}} that
+lie in the rectangle, and testing @math{{P(x, y)}} for each point to
+determine whether the point lies in the region.  If we try this with many
+points, then the fraction of points that fall in the region should give an
+estimate of the proportion of the rectangle that lies in the region.  Hence,
+multiplying this fraction by the area of the entire rectangle should produce an
+estimate of the integral.
+
+Implement Monte Carlo integration as a function @code{estimateIntegral} that
+takes as arguments a predicate @code{p}, upper and lower bounds @code{x1},
+@code{x2}, @code{y1}, and @code{y2} for the rectangle, a random-word generator,
+and the number of trials to perform in order to produce the estimate.  Your
+function should use the same @code{monteCarlo} function that was used above
+to estimate @math{\pi}.  Use your @code{estimateIntegral} to produce an
+estimate of @math{\pi} by measuring the area of a unit circle.
+
+You will find it useful to have a function that returns a number chosen at
+random from a given range.  The following @code{randomInRange} function
+implements this in terms of the generator used in
+@ref{1.2.6}, scaling its raw word into the range.@footnote{This
+edition's generator, the same seeded xorshift64* generator introduced in
+@ref{1.2.6}, always returns a raw word regardless of the range
+requested; @code{randomInRange} does the scaling to a @code{Double}
+itself, so there is no separate exact-versus-decimal case the way MIT
+Scheme's @code{random} has.}
+
+@example kotlin
+fun randomInRange(low: Double, high: Double, next: () -> ULong): Double @{
+    val range = high - low
+    return low + range * (next().toDouble() / ULong.MAX_VALUE.toDouble())
+@}
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.6}Exercise 3.6:} It is useful to be able to reset a
+random-number generator to produce a sequence starting from a given value.
+Design a new @code{makeResettableRand} function that returns an object with
+two methods: @code{generate()} produces a new random word, the way
+@code{(rand 'generate)} would; @code{reset(newValue)} resets the internal
+state variable to @code{newValue}, the way @code{((rand 'reset) newValue)}
+would.  Thus, by resetting the state, one can generate repeatable sequences.
+These are very handy to have when testing and debugging programs that use
+random numbers.
+@end quotation
+
+@node	3.1.3, 3.2, Chapter 3, 3.1
+@subsection The Costs of Introducing Assignment
+
+As we have seen, the captured-@code{var} mechanism enables us to model
+objects that have local state.  However, this advantage comes at a price.
+Our programming language can no longer be understood purely by substituting
+argument values into function bodies, the informal model we have relied on
+since @ref{1.1.5}.  Moreover, no simple model with ``nice'' mathematical
+properties can be an adequate framework for dealing with objects and
+assignment in programming languages.
+
+So long as we do not use assignments, two evaluations of the same function
+with the same arguments will produce the same result, so that functions can be
+viewed as computing mathematical functions.  Programming without any use of
+assignments, as we did throughout the first two chapters of this book, is
+accordingly known as @newterm{functional programming}.
+
+To understand how assignment complicates matters, consider a simplified version
+of the @code{makeWithdraw} function of @ref{3.1.1} that does not
+bother to check for an insufficient amount:
+
+@example kotlin
+fun makeSimplifiedWithdraw(balance: Long): (Long) -> Long @{
+    var b = balance
+    return @{ amount ->
+        b -= amount
+        b
+    @}
+@}
+
+val w = makeSimplifiedWithdraw(25L)
+
+w(20L)
+// => 5
+
+w(10L)
+// => -5
+@end example
+
+@noindent
+Compare this function with the following @code{makeDecrementer} function,
+which closes over no @code{var}:
+
+@example kotlin
+fun makeDecrementer(balance: Long): (Long) -> Long = @{ amount -> balance - amount @}
+@end example
+
+@noindent
+@code{MakeDecrementer} returns a function that subtracts its input from a
+designated amount @code{balance}, but there is no accumulated effect over
+successive calls, as with @code{makeSimplifiedWithdraw}:
+
+@example kotlin
+val d = makeDecrementer(25L)
+
+d(20L)
+// => 5
+
+d(10L)
+// => 15
+@end example
+
+@noindent
+We can reason about how @code{makeDecrementer} works by substituting arguments
+into function bodies, the way we have throughout this book.  For instance, let
+us analyze the evaluation of the expression
+
+@example kotlin
+makeDecrementer(25L)(20L)
+@end example
+
+@noindent
+We first simplify the call by substituting 25 for
+@code{balance} in the body of @code{makeDecrementer}.  This reduces the
+expression to
+
+@example kotlin
+( @{ amount: Long -> 25L - amount @} )(20L)
+@end example
+
+@noindent
+Now we apply the lambda by substituting 20 for @code{amount} in its
+body:
+
+@example kotlin
+25L - 20L
+@end example
+
+@noindent
+The final answer is 5.
+
+Observe, however, what happens if we attempt a similar substitution analysis
+with @code{makeSimplifiedWithdraw}:
+
+@example kotlin
+makeSimplifiedWithdraw(25L)(20L)
+@end example
+
+@noindent
+We first simplify the call by substituting 25 for
+@code{balance} in the body of @code{makeSimplifiedWithdraw}.  This reduces the
+expression to@footnote{We don't substitute for the occurrence of @code{b} in
+the @code{-=} statement, because an assignment target is not an ordinary
+expression: substituting would give @code{25L -= amount}, which is not
+something Kotlin lets you write.}
+
+@example kotlin
+( @{ amount: Long ->
+    b -= amount
+    25L
+  @}
+)(20L)
+@end example
+
+@noindent
+Now we apply the lambda by substituting 20 for @code{amount} in its
+body:
+
+@example kotlin
+b -= 20L
+25L
+@end example
+
+@noindent
+If we adhered to substitution as our only model, we would have to say that the meaning
+of the call is to first set @code{b} to 5 and then
+return 25 as the value of the expression.  This gets the wrong answer.  In
+order to get the correct answer, we would have to somehow distinguish the first
+occurrence of @code{b} (before the effect of @code{-=})  from the
+second occurrence of @code{b} (after the effect of @code{-=}), and
+plain substitution cannot do this.
+
+The trouble here is that substitution is based ultimately on the notion that
+the symbols in our language are essentially names for values.  But as soon as
+we introduce a captured @code{var} and the idea that the value of a variable can change,
+a variable can no longer be simply a name.  Now a variable somehow refers to a
+place where a value can be stored, and the value stored at this place can
+change.  In @ref{3.2} we will see how environments play this role of
+``place'' in our computational model.
+
+@subsubheading Sameness and change
+
+The issue surfacing here is more profound than the mere breakdown of a
+particular model of computation.  As soon as we introduce change into our
+computational models, many notions that were previously straightforward become
+problematical.  Consider the concept of two things being ``the same.''
+
+Suppose we call @code{makeDecrementer} twice with the same argument to create
+two functions:
+
+@example kotlin
+val d1 = makeDecrementer(25L)
+val d2 = makeDecrementer(25L)
+@end example
+
+@noindent
+Are @code{d1} and @code{d2} the same?  An acceptable answer is yes, because
+@code{d1} and @code{d2} have the same computational behavior---each is a
+function that subtracts its input from 25.  In fact, @code{d1} could be
+substituted for @code{d2} in any computation without changing the result.
+
+Contrast this with making two calls to @code{makeSimplifiedWithdraw}:
+
+@example kotlin
+val w1 = makeSimplifiedWithdraw(25L)
+val w2 = makeSimplifiedWithdraw(25L)
+@end example
+
+@noindent
+Are @code{w1} and @code{w2} the same?  Surely not, because calls to @code{w1}
+and @code{w2} have distinct effects, as shown by the following sequence of
+interactions:
+
+@example kotlin
+w1(20L)
+// => 5
+
+w1(20L)
+// => -15
+
+w2(20L)
+// => 5
+@end example
+
+@noindent
+Even though @code{w1} and @code{w2} are ``equal'' in the sense that they are
+both created by evaluating the same expression, @code{makeSimplifiedWithdraw(25L)},
+it is not true that @code{w1} could be substituted for @code{w2} in any
+expression without changing the result of evaluating the expression.
+
+A language that supports the concept that ``equals can be substituted for
+equals'' in an expression without changing the value of the expression is said
+to be @newterm{referentially transparent}.  Referential transparency is
+violated when we include mutable @code{var}s in our computer language.  This makes it
+tricky to determine when we can simplify expressions by substituting equivalent
+expressions.  Consequently, reasoning about programs that use assignment
+becomes drastically more difficult.
+
+Once we forgo referential transparency, the notion of what it means for
+computational objects to be ``the same'' becomes difficult to capture in a
+formal way.  Indeed, the meaning of ``same'' in the real world that our
+programs model is hardly clear in itself.  In general, we can determine that
+two apparently identical objects are indeed ``the same one'' only by modifying
+one object and then observing whether the other object has changed in the same
+way.  But how can we tell if an object has ``changed'' other than by observing
+the ``same'' object twice and seeing whether some property of the object
+differs from one observation to the next?  Thus, we cannot determine ``change''
+without some @emph{a priori} notion of ``sameness,'' and we cannot determine
+sameness without observing the effects of change.
+
+As an example of how this issue arises in programming, consider the situation
+where Peter and Paul have a bank account with $100 in it.  There is a
+substantial difference between modeling this as
+
+@example kotlin
+val peterAcc = makeAccount(100L)
+val paulAcc = makeAccount(100L)
+@end example
+
+@noindent
+and modeling it as
+
+@example kotlin
+val peterAcc = makeAccount(100L)
+val paulAcc = peterAcc
+@end example
+
+@noindent
+In the first situation, the two bank accounts are distinct.  Transactions made
+by Peter will not affect Paul's account, and vice versa.  In the second
+situation, however, we have defined @code{paulAcc} to be @emph{the same object}
+as @code{peterAcc}.  In effect, Peter and Paul now have a joint bank account,
+and if Peter makes a withdrawal from @code{peterAcc} Paul will observe less
+money in @code{paulAcc}.  These two similar but distinct situations can cause
+confusion in building computational models.  With the shared account, in
+particular, it can be especially confusing that there is one object (the bank
+account) that has two different names (@code{peterAcc} and @code{paulAcc});
+if we are searching for all the places in our program where @code{paulAcc} can
+be changed, we must remember to look also at things that change
+@code{peterAcc}.@footnote{The phenomenon of a single computational object
+being accessed by more than one name is known as @newterm{aliasing}.  The joint
+bank account situation illustrates a very simple example of an alias.  In
+@ref{3.3} we will see much more complex examples, such as ``distinct''
+compound data structures that share parts.  Bugs can occur in our programs if
+we forget that a change to an object may also, as a ``side effect,'' change a
+``different'' object because the two ``different'' objects are actually a
+single object appearing under different aliases.  These so-called
+@newterm{side-effect bugs} are so difficult to locate and to analyze that some
+people have proposed that programming languages be designed in such a way as to
+not allow side effects or aliasing (@ref{Lampson et al. 1981};
+@ref{Morris et al. 1980}).}
+
+With reference to the above remarks on ``sameness'' and ``change,'' observe
+that if Peter and Paul could only examine their bank balances, and could not
+perform operations that changed the balance, then the issue of whether the two
+accounts are distinct would be moot.  In general, so long as we never modify
+data objects, we can regard a compound data object to be precisely the totality
+of its pieces.  For example, a rational number is determined by giving its
+numerator and its denominator.  But this view is no longer valid in the
+presence of change, where a compound data object has an ``identity'' that is
+something different from the pieces of which it is composed.  A bank account is
+still ``the same'' bank account even if we change the balance by making a
+withdrawal; conversely, we could have two different bank accounts with the same
+state information.  This complication is a consequence, not of our programming
+language, but of our perception of a bank account as an object.  We do not, for
+example, ordinarily regard a rational number as a changeable object with
+identity, such that we could change the numerator and still have ``the same''
+rational number.
+
+@subsubheading Pitfalls of imperative programming
+
+In contrast to functional programming, programming that makes extensive use of
+assignment is known as @newterm{imperative programming}.  In addition to
+raising complications about computational models, programs written in
+imperative style are susceptible to bugs that cannot occur in functional
+programs.  For example, recall the iterative factorial program from
+@ref{1.2.1}:
+
+@example kotlin
+fun factorial(n: Long): Long @{
+    tailrec fun iter(product: Long, counter: Long): Long =
+        if (counter > n) product else iter(product * counter, counter + 1)
+    return iter(1L, 1L)
+@}
+@end example
+
+@noindent
+Instead of passing arguments in the internal iterative loop, we could adopt a
+more imperative style by using explicit assignment to update the values of the
+variables @code{product} and @code{counter}:
+
+@example kotlin
+fun factorialImperative(n: Long): Long @{
+    var product = 1L
+    var counter = 1L
+    while (counter <= n) @{
+        product *= counter
+        counter += 1
+    @}
+    return product
+@}
+@end example
+
+@noindent
+This does not change the results produced by the program, but it does introduce
+a subtle trap.  How do we decide the order of the assignments?  As it happens,
+the program is correct as written.  But writing the assignments in the opposite
+order
+
+@example kotlin
+counter += 1
+product *= counter
+@end example
+
+@noindent
+would have produced a different, incorrect result.  In general, programming
+with assignment forces us to carefully consider the relative orders of the
+assignments to make sure that each statement is using the correct version of
+the variables that have been changed.  This issue simply does not arise in
+functional programs.@footnote{In view of this, it is ironic that introductory
+programming is most often taught in a highly imperative style.  This may be a
+vestige of a belief, common throughout the 1960s and 1970s, that programs that
+call procedures must inherently be less efficient than programs that perform
+assignments.  (@ref{Steele 1977} debunks this argument.)  Alternatively it may
+reflect a view that step-by-step assignment is easier for beginners to
+visualize than a function call.  Whatever the reason, it often saddles beginning
+programmers with ``should I set this variable before or after that one''
+concerns that can complicate programming and obscure the important ideas.}
+
+The complexity of imperative programs becomes even worse if we consider
+applications in which several processes execute concurrently.  We will return
+to this in @ref{3.4}.  First, however, we will address the issue of
+providing a computational model for expressions that involve assignment, and
+explore the uses of objects with local state in designing simulations.
+
+@quotation
+@strong{@anchor{Exercise 3.7}Exercise 3.7:} Consider the bank account objects
+created by @code{makeAccount}, with the password modification described in
+@ref{Exercise 3.3}.  Suppose that our banking system requires the ability to
+make joint accounts.  Define a function @code{makeJoint} that accomplishes
+this.  @code{MakeJoint} takes three arguments.  The first is a
+password-protected account.  The second argument must match the password with
+which the account was defined in order for the @code{makeJoint} operation to
+proceed.  The third argument is a new password.  @code{MakeJoint} creates
+an additional access to the original account using the new password.  For
+example, if @code{peterAcc} is a bank account with password
+@code{"open-sesame"}, then
+
+@example kotlin
+val paulAcc = makeJoint(peterAcc, "open-sesame", "rosebud")
+@end example
+
+@noindent
+will allow one to make transactions on @code{peterAcc} using the name
+@code{paulAcc} and the password @code{"rosebud"}.  You may wish to modify your
+solution to @ref{Exercise 3.3} to accommodate this new feature.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.8}Exercise 3.8:} When we defined the evaluation
+model in @ref{1.1.3}, we said that the first step in evaluating an
+expression is to evaluate its subexpressions.  Scheme never specifies the order
+in which the subexpressions should be evaluated (e.g., left to right or right
+to left), and when we introduce assignment, the order in which the arguments to a
+procedure are evaluated can make a difference to the result; SICP's original
+exercise turns that gap into a probe.  Kotlin closes the gap instead: a
+function's arguments are evaluated strictly left to right, and @code{a + b}
+desugars to @code{a.plus(b)}, so the receiver @code{a} is always evaluated
+before the argument @code{b}, a guarantee of the language rather than an
+accident of one implementation.  Define a simple function @code{f}, closing
+over one mutable cell, such that evaluating
+
+@example kotlin
+f(0) + f(1)
+@end example
+
+@noindent
+always evaluates to 0, and evaluating
+
+@example kotlin
+f(1) + f(0)
+@end example
+
+@noindent
+always evaluates to 1, deterministically on every conformant Kotlin
+implementation, because the order is specified rather than left open the way
+Scheme leaves it.
+@end quotation

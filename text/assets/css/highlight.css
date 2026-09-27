@@ -1,0 +1,15 @@
+/* Syntax highlighting for @example blocks: the one Pygments theme shared by
+   all four editions and both output formats. Result lines after a listing are
+   comments, so they render in the comment style on purpose. Every color meets
+   WCAG AA contrast against the page background. Code keeps the book faces
+   (Inconsolata LGC at the existing size) set by the ported style rules. */
+
+.example span.k, .example span.kd, .example span.kr { color: #5a3696; }
+.example span.kt, .example span.nc { color: #7a3e00; }
+.example span.s, .example span.s1, .example span.s2, .example span.sc { color: #2f6b2f; }
+.example span.m, .example span.mi, .example span.mf, .example span.mh { color: #8a4b08; }
+.example span.nb { color: #0b5fa5; }
+.example span.nf, .example span.fm { color: #383838; font-weight: bold; }
+.example span.c, .example span.c1, .example span.cm, .example span.cp { color: #6a737d; font-style: italic; }
+.example span.o, .example span.p { color: #383838; }
+.example span.err { color: #b00020; }

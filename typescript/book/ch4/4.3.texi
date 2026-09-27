@@ -1,0 +1,1596 @@
+@node	4.3, 4.4, 4.2, Chapter 4
+@section Variations on a Scheme --- Nondeterministic Computing
+
+In this section, we extend the Scheme evaluator to support a programming
+paradigm called @newterm{nondeterministic computing} by building into the
+evaluator a facility to support automatic search.  This is a much more profound
+change to the language than the introduction of lazy evaluation in 
+@ref{4.2}.
+
+Nondeterministic computing, like stream processing, is useful for ``generate
+and test'' applications.  Consider the task of starting with two lists of
+positive integers and finding a pair of integers---one from the first list and
+one from the second list---whose sum is prime.  We saw how to handle this with
+finite sequence operations in @ref{2.2.3} and with infinite streams in
+@ref{3.5.3}.  Our approach was to generate the sequence of all possible
+pairs and filter these to select the pairs whose sum is prime.  Whether we
+actually generate the entire sequence of pairs first as in @ref{Chapter 2}, or
+interleave the generating and filtering as in @ref{Chapter 3}, is immaterial to
+the essential image of how the computation is organized.
+
+The nondeterministic approach evokes a different image.  Imagine simply that we
+choose (in some way) a number from the first list and a number from the second
+list and require (using some mechanism) that their sum be prime.  This is
+expressed by following procedure:
+
+@example typescript
+read(`
+  (define (prime-sum-pair list1 list2)
+    (let ((a (an-element-of list1))
+          (b (an-element-of list2)))
+      (require (prime? (+ a b)))
+      (list a b)))
+`)
+@end example
+
+@noindent
+It might seem as if this procedure merely restates the problem, rather than
+specifying a way to solve it.  Nevertheless, this is a legitimate
+nondeterministic program.@footnote{We assume that we have previously defined a
+procedure @code{prime?} that tests whether numbers are prime.  Even with
+@code{prime?} defined, the @code{prime-sum-pair} procedure may look
+suspiciously like the unhelpful ``pseudo-Lisp'' attempt to define the
+square-root function, which we described at the beginning of 
+@ref{1.1.7}.  In fact, a square-root procedure along those lines can actually
+be formulated as a nondeterministic program.  By incorporating a search
+mechanism into the evaluator, we are eroding the distinction between purely
+declarative descriptions and imperative specifications of how to compute
+answers.  We'll go even farther in this direction in @ref{4.4}.}
+
+The key idea here is that expressions in a nondeterministic language can have
+more than one possible value.  For instance, @code{an-element-of} might return
+any element of the given list.  Our nondeterministic program evaluator will
+work by automatically choosing a possible value and keeping track of the
+choice.  If a subsequent requirement is not met, the evaluator will try a
+different choice, and it will keep trying new choices until the evaluation
+succeeds, or until we run out of choices.  Just as the lazy evaluator freed the
+programmer from the details of how values are delayed and forced, the
+nondeterministic program evaluator will free the programmer from the details of
+how choices are made.
+
+It is instructive to contrast the different images of time evoked by
+nondeterministic evaluation and stream processing.  Stream processing uses lazy
+evaluation to decouple the time when the stream of possible answers is
+assembled from the time when the actual stream elements are produced.  The
+evaluator supports the illusion that all the possible answers are laid out
+before us in a timeless sequence.  With nondeterministic evaluation, an
+expression represents the exploration of a set of possible worlds, each
+determined by a set of choices.  Some of the possible worlds lead to dead ends,
+while others have useful values.  The nondeterministic program evaluator
+supports the illusion that time branches, and that our programs have different
+possible execution histories.  When we reach a dead end, we can revisit a
+previous choice point and proceed along a different branch.
+
+The nondeterministic program evaluator implemented below is called the
+@code{amb} evaluator because it is based on a new special form called
+@code{amb}.  We can type the above definition of @code{prime-sum-pair} at the
+@code{amb} evaluator driver loop (along with definitions of @code{prime?},
+@code{an-element-of}, and @code{require}) and run the procedure as follows:
+
+@example typescript
+const transcript = Effect.runSync(
+  ambDriverLoop(ambEvaluator, env, [
+    "// ... require, an-element-of, prime-sum-pair, prime? defined here ...",
+    "(prime-sum-pair '(1 3 5 8) '(20 35 110))",
+  ]),
+);
+// ;;; Amb-Eval input:
+// ;;; Starting a new problem
+// ;;; Amb-Eval value:
+// (3 20)
+@end example
+
+@noindent
+The value returned was obtained after the evaluator repeatedly chose elements
+from each of the lists, until a successful choice was made.
+
+Section @ref{4.3.1} introduces @code{amb} and explains how it supports
+nondeterminism through the evaluator's automatic search mechanism.  
+@ref{4.3.2} presents examples of nondeterministic programs, and 
+@ref{4.3.3} gives the details of how to implement the @code{amb} evaluator by
+modifying the ordinary Scheme evaluator.
+
+@menu
+* 4.3.1::            Amb and Search
+* 4.3.2::            Examples of Nondeterministic Programs
+* 4.3.3::            Implementing the @code{Amb} Evaluator
+@end menu
+
+The amb evaluator of this section lives beside the metacircular one, in
+@code{03-nondeterministic.ts}: it reuses the 4.1 syntax predicates,
+environment operations, and primitive table wholesale, and changes only the
+execution procedures, which now take the environment plus the two
+continuation procedures.  The evaluator is built once by
+@code{makeAmbEvaluator} over an @code{AmbTuning} record, and the exercise
+variants of 4.50 to 4.54 differ from the section's evaluator by a named knob
+rather than by a forked dispatch.
+
+@node	4.3.1, 4.3.2, 4.3, 4.3
+@subsection Amb and Search
+
+To extend Scheme to support nondeterminism, we introduce a new special form
+called @code{amb}.@footnote{The idea of @code{amb} for nondeterministic
+programming was first described in 1961 by John McCarthy (see @ref{McCarthy 1963}).}
+The expression
+
+@example typescript
+read(`
+  (amb <e1> <e2> ... <en>)
+`)
+@end example
+
+@noindent
+returns the value of one of the @math{n} expressions @math{{⟨\kern0.03em e_i⟩}}
+``ambiguously.''  For example, the expression
+
+@example typescript
+read(`
+  (list (amb 1 2 3) (amb 'a 'b))
+`)
+@end example
+
+@noindent
+can have six possible values:
+
+@example
+@code{(1 a)} @code{(1 b)} @code{(2 a)} @code{(2 b)} @code{(3 a)} @code{(3 b)}
+@end example
+
+@noindent
+@code{Amb} with a single choice produces an ordinary (single) value.
+
+@code{Amb} with no choices---the expression @code{(amb)}---is an expression
+with no acceptable values.  Operationally, we can think of @code{(amb)} as an
+expression that when evaluated causes the computation to ``fail'': The
+computation aborts and no value is produced.  Using this idea, we can express
+the requirement that a particular predicate expression @code{p} must be true as
+follows:
+
+@example typescript
+read(`
+  (define (require p)
+    (if (not p) (amb)))
+`)
+@end example
+
+@noindent
+With @code{amb} and @code{require}, we can implement the @code{an-element-of}
+procedure used above:
+
+@example typescript
+read(`
+  (define (an-element-of items)
+    (require (not (null? items)))
+    (amb (car items)
+         (an-element-of (cdr items))))
+`)
+@end example
+
+@noindent
+@code{An-element-of} fails if the list is empty.  Otherwise it ambiguously
+returns either the first element of the list or an element chosen from the rest
+of the list.
+
+We can also express infinite ranges of choices.  The following procedure
+potentially returns any integer greater than or equal to some given @math{n}:
+
+@example typescript
+read(`
+  (define (an-integer-starting-from n)
+    (amb n (an-integer-starting-from (+ n 1))))
+`)
+@end example
+
+@noindent
+This is like the stream procedure @code{integers-starting-from} described in
+@ref{3.5.2}, but with an important difference: The stream procedure
+returns an object that represents the sequence of all integers beginning with
+@math{n}, whereas the @code{amb} procedure returns a single integer.@footnote{In
+actuality, the distinction between nondeterministically returning a single
+choice and returning all choices depends somewhat on our point of view.  From
+the perspective of the code that uses the value, the nondeterministic choice
+returns a single value.  From the perspective of the programmer designing the
+code, the nondeterministic choice potentially returns all possible values, and
+the computation branches so that each value is investigated separately.}
+
+Abstractly, we can imagine that evaluating an @code{amb} expression causes time
+to split into branches, where the computation continues on each branch with one
+of the possible values of the expression.  We say that @code{amb} represents a
+@newterm{nondeterministic choice point}.  If we had a machine with a sufficient
+number of processors that could be dynamically allocated, we could implement
+the search in a straightforward way.  Execution would proceed as in a
+sequential machine, until an @code{amb} expression is encountered.  At this
+point, more processors would be allocated and initialized to continue all of
+the parallel executions implied by the choice.  Each processor would proceed
+sequentially as if it were the only choice, until it either terminates by
+encountering a failure, or it further subdivides, or it finishes.@footnote{One
+might object that this is a hopelessly inefficient mechanism.  It might require
+millions of processors to solve some easily stated problem this way, and most
+of the time most of those processors would be idle.  This objection should be
+taken in the context of history.  Memory used to be considered just such an
+expensive commodity.  In 1964 a megabyte of @abbr{RAM} cost about $400,000.  Now every
+personal computer has many megabytes of @abbr{RAM}, and most of the time most of that
+@abbr{RAM} is unused.  It is hard to underestimate the cost of mass-produced
+electronics.}
+
+On the other hand, if we have a machine that can execute only one process (or a
+few concurrent processes), we must consider the alternatives sequentially.  One
+could imagine modifying an evaluator to pick at random a branch to follow
+whenever it encounters a choice point.  Random choice, however, can easily lead
+to failing values.  We might try running the evaluator over and over, making
+random choices and hoping to find a non-failing value, but it is better to
+@newterm{systematically search} all possible execution paths.  The @code{amb}
+evaluator that we will develop and work with in this section implements a
+systematic search as follows: When the evaluator encounters an application of
+@code{amb}, it initially selects the first alternative.  This selection may
+itself lead to a further choice.  The evaluator will always initially choose
+the first alternative at each choice point.  If a choice results in a failure,
+then the evaluator automagically@footnote{@anchor{Footnote 250}Automagically: ``Automatically, but
+in a way which, for some reason (typically because it is too complicated, or
+too ugly, or perhaps even too trivial), the speaker doesn't feel like
+explaining.''  (@ref{Steele et al. 1983}, @ref{Raymond 1993})} 
+@newterm{backtracks} to the most
+recent choice point and tries the next alternative.  If it runs out of
+alternatives at any choice point, the evaluator will back up to the previous
+choice point and resume from there.  This process leads to a search strategy
+known as @newterm{depth-first search} or @newterm{chronological backtracking}.@footnote{The integration of 
+automatic search strategies into programming languages has had a long and
+checkered history.  The first suggestions that nondeterministic algorithms
+might be elegantly encoded in a programming language with search and automatic
+backtracking came from Robert @ref{Floyd (1967)}.  Carl @ref{Hewitt (1969)} invented a
+programming language called Planner that explicitly supported automatic
+chronological backtracking, providing for a built-in depth-first search
+strategy.  @ref{Sussman et al. (1971)} implemented a subset of this
+language, called MicroPlanner, which was used to support work in problem
+solving and robot planning.  Similar ideas, arising from logic and theorem
+proving, led to the genesis in Edinburgh and Marseille of the elegant language
+Prolog (which we will discuss in @ref{4.4}).  After sufficient
+frustration with automatic search, @ref{McDermott and Sussman (1972)} developed a
+language called Conniver, which included mechanisms for placing the search
+strategy under programmer control.  This proved unwieldy, however, and @ref{Sussman and Stallman 1975} 
+found a more tractable approach while investigating methods
+of symbolic analysis for electrical circuits.  They developed a
+non-chronological backtracking scheme that was based on tracing out the logical
+dependencies connecting facts, a technique that has come to be known as
+@newterm{dependency-directed backtracking}.  Although their method was complex,
+it produced reasonably efficient programs because it did little redundant
+search.  @ref{Doyle (1979)} and @ref{McAllester (1978; 1980)} generalized and clarified the
+methods of Stallman and Sussman, developing a new paradigm for formulating
+search that is now called @newterm{truth maintenance}.  Modern problem-solving
+systems all use some form of truth-maintenance system as a substrate.  See
+@ref{Forbus and deKleer 1993} for a discussion of elegant ways to build
+truth-maintenance systems and applications using truth maintenance.  
+@ref{Zabih et al. 1987} describes a nondeterministic extension to Scheme
+that is based on @code{amb}; it is similar to the interpreter described in this
+section, but more sophisticated, because it uses dependency-directed
+backtracking rather than chronological backtracking.  @ref{Winston 1992} gives an
+introduction to both kinds of backtracking.}
+
+@subsubheading Driver loop
+
+The driver loop for the @code{amb} evaluator has some unusual properties.  It
+reads an expression and prints the value of the first non-failing execution, as
+in the @code{prime-sum-pair} example shown above.  If we want to see the value
+of the next successful execution, we can ask the interpreter to backtrack and
+attempt to generate a second non-failing execution.  This is signaled by typing
+the symbol @code{try-again}.  If any expression except @code{try-again} is
+given, the interpreter will start a new problem, discarding the unexplored
+alternatives in the previous problem.  Here is a sample interaction:
+
+@example typescript
+const transcript = Effect.runSync(
+  ambDriverLoop(ambEvaluator, env, [
+    "(define (require p) (if (not p) (amb)))",
+    // ... an-element-of, prime-sum-pair, prime? defined here ...
+    "(prime-sum-pair '(1 3 5 8) '(20 35 110))",
+  ]),
+);
+// ;;; Amb-Eval input:
+// ;;; Starting a new problem
+// ;;; Amb-Eval value:
+// (3 20)
+//
+// ;;; Amb-Eval input:
+// try-again
+// ;;; Amb-Eval value:
+// (3 110)
+//
+// ;;; Amb-Eval input:
+// try-again
+// ;;; Amb-Eval value:
+// (8 35)
+//
+// ;;; Amb-Eval input:
+// try-again
+// ;;; There are no more values of
+// (prime-sum-pair '(1 3 5 8) '(20 35 110))
+//
+// ;;; Amb-Eval input:
+// ;;; Starting a new problem
+// ;;; Amb-Eval value:
+// (30 11)
+@end example
+
+@quotation
+@strong{@anchor{Exercise 4.35}Exercise 4.35:} Write a procedure
+@code{an-integer-between} that returns an integer between two given bounds.
+This can be used to implement a procedure that finds Pythagorean triples, i.e.,
+triples of integers @math{{(i, j, k)}} between the given bounds such that
+@math{{i \le j}} and @math{{i^2 + j^2 = k^2}}, as follows:
+
+@example typescript
+read(`
+  (define (a-pythagorean-triple-between low high)
+    (let ((i (an-integer-between low high)))
+      (let ((j (an-integer-between i high)))
+        (let ((k (an-integer-between j high)))
+          (require (= (+ (* i i) (* j j))
+                      (* k k)))
+          (list i j k)))))
+`)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.36}Exercise 4.36:} @ref{Exercise 3.69} discussed how
+to generate the stream of @emph{all} Pythagorean triples, with no upper bound
+on the size of the integers to be searched.  Explain why simply replacing
+@code{an-integer-between} by @code{an-integer-starting-from} in the procedure
+in @ref{Exercise 4.35} is not an adequate way to generate arbit@-rary Py@-tha@-go@-rean
+triples.  Write a procedure that actually will accomplish this.  (That is,
+write a procedure for which repeatedly typing @code{try-again} would in
+principle eventually generate all Py@-tha@-go@-rean triples.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.37}Exercise 4.37:} Ben Bitdiddle claims that the
+following method for generating Pythagorean triples is more efficient than the
+one in @ref{Exercise 4.35}.  Is he correct?  (Hint: Consider the number of
+possibilities that must be explored.)
+
+@example typescript
+read(`
+  (define (a-pythagorean-triple-between low high)
+    (let ((i (an-integer-between low high))
+          (hsq (* high high)))
+      (let ((j (an-integer-between i high)))
+        (let ((ksq (+ (* i i) (* j j))))
+          (require (>= hsq ksq))
+          (let ((k (sqrt ksq)))
+            (require (integer? k))
+            (list i j k))))))
+`)
+@end example
+@end quotation
+
+@node	4.3.2, 4.3.3, 4.3.1, 4.3
+@subsection Examples of Nondeterministic Programs
+
+Section @ref{4.3.3} describes the implementation of the @code{amb} evaluator.
+First, however, we give some examples of how it can be used.  The advantage of
+nondeterministic programming is that we can suppress the details of how search
+is carried out, thereby expressing our programs at a higher level of
+abstraction.
+
+@subsubheading Logic Puzzles
+
+The following puzzle (taken from @ref{Dinesman 1968}) is typical of a large class of
+simple logic puzzles:
+
+@quotation
+Baker, Cooper, Fletcher, Miller, and Smith live on different floors of an
+apartment house that contains only five floors.  Baker does not live on the top
+floor.  Cooper does not live on the bottom floor.  Fletcher does not live on
+either the top or the bottom floor.  Miller lives on a higher floor than does
+Cooper.  Smith does not live on a floor adjacent to Fletcher's.  Fletcher does
+not live on a floor adjacent to Cooper's.  Where does everyone live?
+@end quotation
+
+@noindent
+We can determine who lives on each floor in a straightforward way by
+enumerating all the possibilities and imposing the given
+restrictions:@footnote{Our program uses the following procedure to determine if
+the elements of a list are distinct:
+
+@example typescript
+read(`
+  (define (distinct? items)
+    (cond ((null? items) true)
+          ((null? (cdr items)) true)
+          ((member (car items) (cdr items)) false)
+          (else (distinct? (cdr items)))))
+`)
+@end example
+
+@code{Member} is like @code{memq} except that it uses @code{equal?} instead
+of @code{eq?} to test for equality.}
+
+@example typescript
+read(`
+  (define (multiple-dwelling)
+    (let ((baker (amb 1 2 3 4 5))
+          (cooper (amb 1 2 3 4 5))
+          (fletcher (amb 1 2 3 4 5))
+          (miller (amb 1 2 3 4 5))
+          (smith (amb 1 2 3 4 5)))
+      (require
+       (distinct? (list baker cooper fletcher
+                        miller smith)))
+      (require (not (= baker 5)))
+      (require (not (= cooper 1)))
+      (require (not (= fletcher 5)))
+      (require (not (= fletcher 1)))
+      (require (> miller cooper))
+      (require
+       (not (= (abs (- smith fletcher)) 1)))
+      (require
+       (not (= (abs (- fletcher cooper)) 1)))
+      (list (list 'baker baker)
+            (list 'cooper cooper)
+            (list 'fletcher fletcher)
+            (list 'miller miller)
+            (list 'smith smith))))
+`)
+@end example
+
+@noindent
+Evaluating the expression @code{(multiple-dwelling)} produces the result
+
+@example typescript
+// ;;; Amb-Eval value:
+// ((baker 3) (cooper 2) (fletcher 4)
+//  (miller 5) (smith 1))
+@end example
+
+@noindent
+Although this simple procedure works, it is very slow.  @ref{Exercise 4.39} and
+@ref{Exercise 4.40} discuss some possible improvements.
+
+@quotation
+@strong{@anchor{Exercise 4.38}Exercise 4.38:} Modify the multiple-dwelling
+procedure to omit the requirement that Smith and Fletcher do not live on
+adjacent floors.  How many solutions are there to this modified puzzle?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.39}Exercise 4.39:} Does the order of the
+restrictions in the multiple-dwelling procedure affect the answer? Does it
+affect the time to find an answer?  If you think it matters, demonstrate a
+faster program obtained from the given one by reordering the restrictions.  If
+you think it does not matter, argue your case.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.40}Exercise 4.40:} In the multiple dwelling problem,
+how many sets of assignments are there of people to floors, both before and
+after the requirement that floor assignments be distinct?  It is very
+inefficient to generate all possible assignments of people to floors and then
+leave it to backtracking to eliminate them.  For example, most of the
+restrictions depend on only one or two of the person-floor variables, and can
+thus be imposed before floors have been selected for all the people.  Write and
+demonstrate a much more efficient nondeterministic procedure that solves this
+problem based upon generating only those possibilities that are not already
+ruled out by previous restrictions.  (Hint: This will require a nest of
+@code{let} expressions.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.41}Exercise 4.41:} Write an ordinary Scheme program
+to solve the multiple dwelling puzzle.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.42}Exercise 4.42:} Solve the following ``Liars''
+puzzle (from @ref{Phillips 1934}):
+
+Five schoolgirls sat for an examination.  Their parents---so they
+thought---showed an undue degree of interest in the result.  They therefore
+agreed that, in writing home about the examination, each girl should make one
+true statement and one untrue one.  The following are the relevant passages
+from their letters:
+
+@itemize @bullet
+
+@item
+Betty: ``Kitty was second in the examination.  I was only third.''
+
+@item
+Ethel: ``You'll be glad to hear that I was on top.  Joan was second.''
+
+@item
+Joan: ``I was third, and poor old Ethel was bottom.''
+
+@item
+Kitty: ``I came out second.  Mary was only fourth.''
+
+@item
+Mary: ``I was fourth.  Top place was taken by Betty.''
+
+@end itemize
+
+What in fact was the order in which the five girls were placed?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.43}Exercise 4.43:} Use the @code{amb} evaluator to
+solve the following puzzle:@footnote{This is taken from a booklet called
+``Problematical Recreations,'' published in the 1960s by Litton Industries,
+where it is attributed to the @cite{Kansas State Engineer}.}
+
+@quotation
+Mary Ann Moore's father has a yacht and so has each of his four friends:
+Colonel Downing, Mr. Hall, Sir Barnacle Hood, and Dr.  Parker.  Each of the
+five also has one daughter and each has named his yacht after a daughter of one
+of the others.  Sir Barnacle's yacht is the Gabrielle, Mr. Moore owns the
+Lorna; Mr. Hall the Rosalind.  The Melissa, owned by Colonel Downing, is named
+after Sir Barnacle's daughter.  Gabrielle's father owns the yacht that is named
+after Dr.  Parker's daughter.  Who is Lorna's father?
+@end quotation
+
+Try to write the program so that it runs efficiently (see @ref{Exercise 4.40}).
+Also determine how many solutions there are if we are not told that Mary Ann's
+last name is Moore.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.44}Exercise 4.44:} @ref{Exercise 2.42} described the
+``eight-queens puzzle'' of placing queens on a chessboard so that no two attack
+each other.  Write a nondeterministic program to solve this puzzle.
+@end quotation
+
+@subsubheading Parsing natural language
+
+Programs designed to accept natural language as input usually start by
+attempting to @newterm{parse} the input, that is, to match the input against
+some grammatical structure.  For example, we might try to recognize simple
+sentences consisting of an article followed by a noun followed by a verb, such
+as ``The cat eats.''  To accomplish such an analysis, we must be able to
+identify the parts of speech of individual words.  We could start with some
+lists that classify various words:@footnote{Here we use the convention that the
+first element of each list designates the part of speech for the rest of the
+words in the list.}
+
+@example typescript
+read(`
+  (define nouns
+    '(noun student professor cat class))
+
+  (define verbs
+    '(verb studies lectures eats sleeps))
+
+  (define articles '(article the a))
+`)
+@end example
+
+@noindent
+We also need a @newterm{grammar}, that is, a set of rules describing how
+grammatical elements are composed from simpler elements.  A very simple grammar
+might stipulate that a sentence always consists of two pieces---a noun phrase
+followed by a verb---and that a noun phrase consists of an article followed by
+a noun.  With this grammar, the sentence ``The cat eats'' is parsed as follows:
+
+@example typescript
+// (sentence
+//  (noun-phrase (article the) (noun cat))
+//  (verb eats))
+@end example
+
+@noindent
+We can generate such a parse with a simple program that has separate procedures
+for each of the grammatical rules.  To parse a sentence, we identify its two
+constituent pieces and return a list of these two elements, tagged with the
+symbol @code{sentence}:
+
+@example typescript
+read(`
+  (define (parse-sentence)
+    (list 'sentence
+           (parse-noun-phrase)
+           (parse-word verbs)))
+`)
+@end example
+
+@noindent
+A noun phrase, similarly, is parsed by finding an article followed by a
+noun:
+
+@example typescript
+read(`
+  (define (parse-noun-phrase)
+    (list 'noun-phrase
+          (parse-word articles)
+          (parse-word nouns)))
+`)
+@end example
+
+@noindent
+At the lowest level, parsing boils down to repeatedly checking that the next
+unparsed word is a member of the list of words for the required part of speech.
+To implement this, we maintain a global variable @code{*unparsed*}, which is
+the input that has not yet been parsed.  Each time we check a word, we require
+that @code{*unparsed*} must be non-empty and that it should begin with a word
+from the designated list.  If so, we remove that word from @code{*unparsed*}
+and return the word together with its part of speech (which is found at the
+head of the list):@footnote{Notice that @code{parse-word} uses @code{set!} to
+modify the unparsed input list.  For this to work, our @code{amb} evaluator
+must undo the effects of @code{set!} operations when it backtracks.}
+
+@example typescript
+read(`
+  (define (parse-word word-list)
+    (require (not (null? *unparsed*)))
+    (require (memq (car *unparsed*)
+                   (cdr word-list)))
+    (let ((found-word (car *unparsed*)))
+      (set! *unparsed* (cdr *unparsed*))
+      (list (car word-list) found-word)))
+`)
+@end example
+
+@noindent
+To start the parsing, all we need to do is set @code{*unparsed*} to be the
+entire input, try to parse a sentence, and check that nothing is left over:
+
+@example typescript
+read(`
+  (define *unparsed* '())
+  (define (parse input)
+    (set! *unparsed* input)
+    (let ((sent (parse-sentence)))
+      (require (null? *unparsed*))
+      sent))
+`)
+@end example
+
+@noindent
+We can now try the parser and verify that it works for our simple test
+sentence:
+
+@example typescript
+const transcript = Effect.runSync(
+  ambDriverLoop(ambEvaluator, env, [
+    "// ... the parse procedures defined above ...",
+    "(parse '(the cat eats))",
+  ]),
+);
+// ;;; Amb-Eval input:
+// ;;; Starting a new problem
+// ;;; Amb-Eval value:
+// (sentence
+//  (noun-phrase (article the) (noun cat))
+//  (verb eats))
+@end example
+
+@noindent
+The @code{amb} evaluator is useful here because it is convenient to express the
+parsing constraints with the aid of @code{require}.  Automatic search and
+backtracking really pay off, however, when we consider more complex grammars
+where there are choices for how the units can be decomposed.
+
+Let's add to our grammar a list of prepositions:
+
+@example typescript
+read(`
+  (define prepositions
+    '(prep for to in by with))
+`)
+@end example
+
+@noindent
+and define a prepositional phrase (e.g., ``for the cat'') to be a preposition
+followed by a noun phrase:
+
+@example typescript
+read(`
+  (define (parse-prepositional-phrase)
+    (list 'prep-phrase
+          (parse-word prepositions)
+          (parse-noun-phrase)))
+`)
+@end example
+
+@noindent
+Now we can define a sentence to be a noun phrase followed by a verb phrase,
+where a verb phrase can be either a verb or a verb phrase extended by a
+prepositional phrase:@footnote{Observe that this definition is recursive---a
+verb may be followed by any number of prepositional phrases.}
+
+@example typescript
+read(`
+  (define (parse-sentence)
+    (list 'sentence
+           (parse-noun-phrase)
+           (parse-verb-phrase)))
+
+  (define (parse-verb-phrase)
+    (define (maybe-extend verb-phrase)
+      (amb
+       verb-phrase
+       (maybe-extend
+        (list 'verb-phrase
+              verb-phrase
+              (parse-prepositional-phrase)))))
+    (maybe-extend (parse-word verbs)))
+`)
+@end example
+
+@noindent
+While we're at it, we can also elaborate the definition of noun phrases to
+permit such things as ``a cat in the class.''  What we used to call a noun
+phrase, we'll now call a simple noun phrase, and a noun phrase will now be
+either a simple noun phrase or a noun phrase extended by a prepositional
+phrase:
+
+@example typescript
+read(`
+  (define (parse-simple-noun-phrase)
+    (list 'simple-noun-phrase
+          (parse-word articles)
+          (parse-word nouns)))
+
+  (define (parse-noun-phrase)
+    (define (maybe-extend noun-phrase)
+      (amb
+       noun-phrase
+       (maybe-extend
+        (list 'noun-phrase
+              noun-phrase
+              (parse-prepositional-phrase)))))
+    (maybe-extend (parse-simple-noun-phrase)))
+`)
+@end example
+
+@noindent
+Our new grammar lets us parse more complex sentences.  For example
+
+@example typescript
+// (parse '(the student with the cat
+//          sleeps in the class))
+@end example
+
+@noindent
+produces
+
+@example typescript
+// (sentence
+//  (noun-phrase
+//   (simple-noun-phrase (article the)
+//                       (noun student))
+//   (prep-phrase (prep with)
+//                (simple-noun-phrase
+//                 (article the)
+//                 (noun cat))))
+//  (verb-phrase
+//   (verb sleeps)
+//   (prep-phrase (prep in)
+//                (simple-noun-phrase
+//                 (article the)
+//                 (noun class)))))
+@end example
+
+@noindent
+Observe that a given input may have more than one legal parse.  In the sentence
+``The professor lectures to the student with the cat,'' it may be that the
+professor is lecturing with the cat, or that the student has the cat.  Our
+nondeterministic program finds both possibilities:
+
+@example typescript
+// (parse '(the professor lectures to
+//          the student with the cat))
+@end example
+
+@noindent
+produces
+
+@example typescript
+// (sentence
+//  (simple-noun-phrase (article the)
+//                      (noun professor))
+//  (verb-phrase
+//   (verb-phrase
+//    (verb lectures)
+//    (prep-phrase (prep to)
+//                 (simple-noun-phrase
+//                  (article the)
+//                  (noun student))))
+//   (prep-phrase (prep with)
+//                (simple-noun-phrase
+//                 (article the)
+//                 (noun cat)))))
+@end example
+
+@noindent
+Asking the evaluator to try again yields
+
+@example typescript
+// ;;; Amb-Eval value:
+// (sentence
+//  (simple-noun-phrase (article the)
+//                      (noun professor))
+//  (verb-phrase (verb lectures)
+//               (prep-phrase
+//                (prep to)
+//                (noun-phrase
+//                 (simple-noun-phrase
+//                  (article the)
+//                  (noun student))
+//                 (prep-phrase
+//                  (prep with)
+//                  (simple-noun-phrase
+//                   (article the)
+//                   (noun cat)))))))
+@end example
+
+@quotation
+@strong{@anchor{Exercise 4.45}Exercise 4.45:} With the grammar given above, the
+following sentence can be parsed in five different ways: ``The professor
+lectures to the student in the class with the cat.''  Give the five parses and
+explain the differences in shades of meaning among them.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.46}Exercise 4.46:} The evaluators in 
+@ref{4.1} and @ref{4.2} do not determine what order operands are evaluated in.
+We will see that the @code{amb} evaluator evaluates them from left to right.
+Explain why our parsing program wouldn't work if the operands were evaluated in
+some other order.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.47}Exercise 4.47:} Louis Reasoner suggests that,
+since a verb phrase is either a verb or a verb phrase followed by a
+prepositional phrase, it would be much more straightforward to define the
+procedure @code{parse-verb-phrase} as follows (and similarly for noun phrases):
+
+@example typescript
+read(`
+  (define (parse-verb-phrase)
+    (amb (parse-word verbs)
+         (list
+          'verb-phrase
+          (parse-verb-phrase)
+          (parse-prepositional-phrase))))
+`)
+@end example
+
+Does this work?  Does the program's behavior change if we interchange the order
+of expressions in the @code{amb}?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.48}Exercise 4.48:} Extend the grammar given above to
+handle more complex sentences.  For example, you could extend noun phrases and
+verb phrases to include adjectives and adverbs, or you could handle compound
+sentences.@footnote{This kind of grammar can become arbitrarily complex, but it
+is only a toy as far as real language understanding is concerned.  Real
+natural-language understanding by computer requires an elaborate mixture of
+syntactic analysis and interpretation of meaning.  On the other hand, even toy
+parsers can be useful in supporting flexible command languages for programs
+such as information-retrieval systems.  @ref{Winston 1992} discusses computational
+approaches to real language understanding and also the applications of simple
+grammars to command languages.}
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.49}Exercise 4.49:} Alyssa P. Hacker is more
+interested in generating interesting sentences than in parsing them.  She
+reasons that by simply changing the procedure @code{parse-word} so that it
+ignores the ``input sentence'' and instead always succeeds and generates an
+appropriate word, we can use the programs we had built for parsing to do
+generation instead.  Implement Alyssa's idea, and show the first half-dozen or
+so sentences generated.@footnote{Although Alyssa's idea works just fine (and is
+surprisingly simple), the sentences that it generates are a bit boring---they
+don't sample the possible sentences of this language in a very interesting way.
+In fact, the grammar is highly recursive in many places, and Alyssa's technique
+``falls into'' one of these recursions and gets stuck.  See @ref{Exercise 4.50}
+for a way to deal with this.}
+@end quotation
+
+@node	4.3.3, 4.4, 4.2, 4.3
+@subsection Implementing the @code{Amb} Evaluator
+
+The evaluation of an ordinary Scheme expression may return a value, may never
+terminate, or may signal an error.  In nondeterministic Scheme the evaluation
+of an expression may in addition result in the discovery of a dead end, in
+which case evaluation must backtrack to a previous choice point.  The
+interpretation of nondeterministic Scheme is complicated by this extra case.
+
+We will construct the @code{amb} evaluator for nondeterministic Scheme by
+modifying the analyzing evaluator of @ref{4.1.7}.@footnote{We chose to
+implement the lazy evaluator in @ref{4.2} as a modification of the
+ordinary metacircular evaluator of @ref{4.1.1}.  In contrast, we will
+base the @code{amb} evaluator on the analyzing evaluator of
+@ref{4.1.7}, because the execution procedures in that evaluator provide a
+convenient framework for implementing backtracking.}  As in the analyzing
+evaluator, evaluation of an expression is accomplished by calling an execution
+procedure produced by analysis of that expression.  The difference between the
+interpretation of ordinary Scheme and the interpretation of nondeterministic
+Scheme will be entirely in the execution procedures.
+
+@subsubheading Execution procedures and continuations
+
+Recall that the execution procedures for the ordinary evaluator take one
+argument: the environment of execution.  In contrast, the execution procedures
+in the @code{amb} evaluator take three arguments: the environment, and two
+procedures called @newterm{continuation procedures}.  The evaluation of an
+expression will finish by calling one of these two continuations: If the
+evaluation results in a value, the @newterm{success continuation} is called
+with that value; if the evaluation results in the discovery of a dead end, the
+@newterm{failure continuation} is called.  Constructing and calling appropriate
+continuations is the mechanism by which the nondeterministic evaluator
+implements backtracking.
+
+It is the job of the success continuation to receive a value and proceed with
+the computation.  Along with that value, the success continuation is passed
+another failure continuation, which is to be called subsequently if the use of
+that value leads to a dead end.
+
+It is the job of the failure continuation to try another branch of the
+nondeterministic process.  The essence of the nondeterministic language is in
+the fact that expressions may represent choices among alternatives.  The
+evaluation of such an expression must proceed with one of the indicated
+alternative choices, even though it is not known in advance which choices will
+lead to acceptable results.  To deal with this, the evaluator picks one of the
+alternatives and passes this value to the success continuation.  Together with
+this value, the evaluator constructs and passes along a failure continuation
+that can be called later to choose a different alternative.
+
+A failure is triggered during evaluation (that is, a failure continuation is
+called) when a user program explicitly rejects the current line of attack (for
+example, a call to @code{require} may result in execution of @code{(amb)}, an
+expression that always fails---see @ref{4.3.1}).  The failure
+continuation in hand at that point will cause the most recent choice point to
+choose another alternative.  If there are no more alternatives to be considered
+at that choice point, a failure at an earlier choice point is triggered, and so
+on.  Failure continuations are also invoked by the driver loop in response to a
+@code{try-again} request, to find another value of the expression.
+
+In addition, if a side-effect operation (such as assignment to a variable)
+occurs on a branch of the process resulting from a choice, it may be necessary,
+when the process finds a dead end, to undo the side effect before making a new
+choice.  This is accomplished by having the side-effect operation produce a
+failure continuation that undoes the side effect and propagates the failure.
+
+In summary, failure continuations are constructed by
+
+@itemize @bullet
+
+@item
+@code{amb} expressions---to provide a mechanism to make alternative choices if
+the current choice made by the @code{amb} expression leads to a dead end;
+
+@item
+the top-level driver---to provide a mechanism to report failure when the
+choices are exhausted;
+
+@item
+assignments---to intercept failures and undo assignments during backtracking.
+
+@end itemize
+
+@noindent
+Failures are initiated only when a dead end is encountered.  This occurs
+
+@itemize @bullet
+
+@item
+if the user program executes @code{(amb)};
+
+@item
+if the user types @code{try-again} at the top-level driver.
+
+@end itemize
+
+@noindent
+Failure continuations are also called during processing of a failure:
+
+@itemize @bullet
+
+@item
+When the failure continuation created by an assignment finishes undoing a side
+effect, it calls the failure continuation it intercepted, in order to propagate
+the failure back to the choice point that led to this assignment or to the top
+level.
+
+@item
+When the failure continuation for an @code{amb} runs out of choices, it calls
+the failure continuation that was originally given to the @code{amb}, in order
+to propagate the failure back to the previous choice point or to the top level.
+
+@end itemize
+
+@subsubheading Structure of the evaluator
+
+The syntax- and data-representation procedures for the @code{amb} evaluator,
+and also the basic @code{analyze} procedure, are identical to those in the
+evaluator of @ref{4.1.7}, except for the fact that we need additional
+syntax procedures to recognize the @code{amb} special form:@footnote{We assume
+that the evaluator supports @code{let} (see @ref{Exercise 4.22}), which we have
+used in our nondeterministic programs.}
+
+@example typescript
+/** The book's `amb?`: the tagged `amb` form. */
+export const isAmb = (exp: Value): exp is Cons<Value> => taggedList("amb", exp);
+
+/** The book's `amb-choices`: the alternatives, unevaluated. */
+export const ambChoices = (exp: Cons<Value>): List<Value> => exp.tail;
+@end example
+
+@noindent
+We must also add to the dispatch in @code{analyze} a clause that will recognize
+this special form and generate an appropriate execution procedure:
+
+@example typescript
+    if (isAmb(exp)) @{
+      return analyzeAmb(exp);
+    @}
+@end example
+
+@noindent
+The top-level procedure @code{ambeval} (similar to the version of @code{evaluate}
+given in @ref{4.1.7}) analyzes the given expression and applies the
+resulting execution procedure to the given environment, together with two given
+continuations:
+
+@example typescript
+/** The book's `ambeval` of the section. */
+export const ambeval = ambEvaluator.ambeval;
+// where the evaluator's own definition is
+//   ambeval: (exp, env, succeed, fail) => analyze(exp)(env, succeed, fail)
+@end example
+
+@noindent
+A success continuation is a procedure of two arguments: the value just obtained
+and another failure continuation to be used if that value leads to a subsequent
+failure. A failure continuation is a procedure of no arguments.  So the general
+form of an execution procedure is
+
+@example typescript
+export type AmbExecute = (
+  env: Env,
+  // `succeed` is `(value, fail) => Effect<Value, EvaluationError>`
+  succeed: Succeed,
+  // `fail` is `() => Effect<Value, EvaluationError>`
+  fail: Fail,
+) => Effect.Effect<Value, EvaluationError>;
+@end example
+
+@noindent
+For example, executing
+
+@example typescript
+ambeval(exp, theGlobalEnvironment, (value, fail) => Effect.succeed(value), () =>
+  Effect.succeed(symbol("failed")),
+);
+@end example
+
+@noindent
+will attempt to evaluate the given expression and will return either the
+expression's value (if the evaluation succeeds) or the symbol @code{failed} (if
+the evaluation fails).  The call to @code{ambeval} in the driver loop shown
+below uses much more complicated continuation procedures, which continue the
+loop and support the @code{try-again} request.
+
+Most of the complexity of the @code{amb} evaluator results from the mechanics
+of passing the continuations around as the execution procedures call each
+other.  In going through the following code, you should compare each of the
+execution procedures with the corresponding procedure for the ordinary
+evaluator given in @ref{4.1.7}.
+
+@subsubheading Simple expressions
+
+The execution procedures for the simplest kinds of expressions are essentially
+the same as those for the ordinary evaluator, except for the need to manage the
+continuations.  The execution procedures simply succeed with the value of the
+expression, passing along the failure continuation that was passed to them.
+
+@example typescript
+const analyzeSelfEvaluating = (exp: Value): AmbExecute => (_env, succeed, fail) =>
+  succeed(exp, fail);
+
+const analyzeQuoted = (exp: Cons<Value>): AmbExecute => @{
+  const qval = textOfQuotation(exp);
+  return (_env, succeed, fail) => succeed(qval, fail);
+@};
+
+const analyzeVariable = (exp: SymbolValue): AmbExecute => (env, succeed, fail) =>
+  Effect.flatMap(lookupVariableValue(exp, env), (value) => succeed(value, fail));
+
+const analyzeLambda = (exp: Cons<Value>): AmbExecute => (env, succeed, fail) =>
+  succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env), fail);
+@end example
+
+@noindent
+Notice that looking up a variable always `succeeds.'  If
+@code{lookup-variable-value} fails to find the variable, it signals an error,
+as usual.  Such a ``failure'' indicates a program bug---a reference to an
+unbound variable; it is not an indication that we should try another
+nondeterministic choice instead of the one that is currently being tried.
+
+@subsubheading Conditionals and sequences
+
+Conditionals are also handled in a similar way as in the ordinary evaluator.
+The execution procedure generated by @code{analyze-if} invokes the predicate
+execution procedure @code{pproc} with a success continuation that checks
+whether the predicate value is true and goes on to execute either the
+consequent or the alternative.  If the execution of @code{pproc} fails, the
+original failure continuation for the @code{if} expression is called.
+
+@example typescript
+const analyzeIf = (exp: Cons<Value>): AmbExecute => @{
+  const pproc = analyze(ifPredicate(exp));
+  const cproc = analyze(ifConsequent(exp));
+  const aproc = analyze(ifAlternative(exp));
+  return (env, succeed, fail) =>
+    pproc(
+      env,
+      // success continuation for evaluating
+      // the predicate to obtain `predValue`
+      (predValue, fail2) =>
+        isTrue(predValue) ? cproc(env, succeed, fail2) : aproc(env, succeed, fail2),
+      // failure continuation for
+      // evaluating the predicate
+      fail,
+    );
+@};
+@end example
+
+@noindent
+Sequences are also handled in the same way as in the previous evaluator, except
+for the machinations in the subprocedure @code{sequentially} that are required
+for passing the continuations.  Namely, to sequentially execute @code{a} and
+then @code{b}, we call @code{a} with a success continuation that calls
+@code{b}.
+
+@example typescript
+const analyzeSequence = (exps: List<Value>): AmbExecute => @{
+  if (exps._tag === "Nil") @{
+    return () => Effect.fail(new RuntimeError(@{ message: "Empty sequence: AMB-EVAL", detail: "" @}));
+  @}
+  const procs = toArray(exps).map(analyze);
+  const sequentially = (a: AmbExecute, b: AmbExecute): AmbExecute => (env, succeed, fail) =>
+    // success continuation for calling `a`
+    a(env, (_value, fail2) => b(env, succeed, fail2),
+      // failure continuation for calling `a`
+      fail);
+  return procs.reduce(sequentially);
+@};
+@end example
+
+@subsubheading Definitions and assignments
+
+Definitions are another case where we must go to some trouble to manage the
+continuations, because it is necessary to evaluate the definition-value
+expression before actually defining the new variable.  To accomplish this, the
+definition-value execution procedure @code{vproc} is called with the
+environment, a success continuation, and the failure continuation.  If the
+execution of @code{vproc} succeeds, obtaining a value @code{val} for the
+defined variable, the variable is defined and the success is propagated:
+
+@example typescript
+const analyzeDefinition = (exp: Cons<Value>): AmbExecute => @{
+  const variable = definitionVariable(exp);
+  const vproc = analyze(definitionValue(exp));
+  return (env, succeed, fail) =>
+    vproc(
+      env,
+      (value, fail2) =>
+        Effect.flatMap(defineVariableValue(variable, value, env), () => succeed(ok, fail2)),
+      fail,
+    );
+@};
+@end example
+
+@noindent
+Assignments are more interesting.  This is the first place where we really use
+the continuations, rather than just passing them around.  The execution
+procedure for assignments starts out like the one for definitions.  It first
+attempts to obtain the new value to be assigned to the variable. If this
+evaluation of @code{vproc} fails, the assignment fails.
+
+If @code{vproc} succeeds, however, and we go on to make the assignment, we must
+consider the possibility that this branch of the computation might later fail,
+which will require us to backtrack out of the assignment.  Thus, we must
+arrange to undo the assignment as part of the backtracking process.@footnote{We
+didn't worry about undoing definitions, since we can assume that internal
+definitions are scanned out (@ref{4.1.6}).}
+
+This is accomplished by giving @code{vproc} a success continuation (marked with
+the comment ``*1*'' below) that saves the old value of the variable before
+assigning the new value to the variable and proceeding from the assignment.
+The failure continuation that is passed along with the value of the assignment
+(marked with the comment ``*2*'' below) restores the old value of the variable
+before continuing the failure.  That is, a successful assignment provides a
+failure continuation that will intercept a subsequent failure; whatever failure
+would otherwise have called @code{fail2} calls this procedure instead, to undo
+the assignment before actually calling @code{fail2}.
+
+@example typescript
+const analyzeAssignment = (exp: Cons<Value>): AmbExecute => @{
+  const variable = assignmentVariable(exp);
+  const vproc = analyze(assignmentValue(exp));
+  return (env, succeed, fail) =>
+    vproc(env, (value, fail2) => assignWithUndo(variable, value, env, succeed, fail2), fail);
+@};
+
+// The write of `analyzeAssignment` plus its undo record: the old value is
+// read before the write, and the success is handed a failure continuation
+// that restores the old value before propagating (*2*), so a backtrack
+// unwrites the branch's assignments, newest first.
+const assignWithUndo = (
+  variable: SymbolValue,
+  value: Value,
+  env: Env,
+  succeed: Succeed,
+  fail2: Fail,
+): Effect.Effect<Value, EvaluationError> =>
+  Effect.flatMap(lookupVariableValue(variable, env), (oldValue) =>
+    Effect.flatMap(setVariableValue(variable, value, env), () =>
+      succeed(ok, () =>
+        Effect.flatMap(setVariableValue(variable, oldValue, env), () => fail2()),
+      ),
+    ),
+  );
+@end example
+
+@subsubheading Procedure applications
+
+The execution procedure for applications contains no new ideas except for the
+technical complexity of managing the continuations.  This complexity arises in
+@code{analyze-application}, due to the need to keep track of the success and
+failure continuations as we evaluate the operands.  We use a procedure
+@code{get-args} to evaluate the list of operands, rather than a simple
+@code{map} as in the ordinary evaluator.
+
+@example typescript
+const analyzeApplication = (exp: Cons<Value>): AmbExecute => @{
+  const fproc = analyze(exp.head);
+  const aprocs = toArray(exp.tail).map(analyze);
+  return (env, succeed, fail) =>
+    fproc(
+      env,
+      (proc, fail2) =>
+        getArgs(aprocs)(
+          env,
+          (args, fail3) => executeApplication(proc, listValue(args), succeed, fail3),
+          fail2,
+        ),
+      fail,
+    );
+@};
+@end example
+
+@noindent
+In @code{get-args}, notice how @code{cdr}-ing down the list of @code{aproc}
+execution procedures and @code{cons}ing up the resulting list of @code{args} is
+accomplished by calling each @code{aproc} in the list with a success
+continuation that recursively calls @code{get-args}.  Each of these recursive
+calls to @code{get-args} has a success continuation whose value is the
+@code{cons} of the newly obtained argument onto the list of accumulated
+arguments:
+
+@example typescript
+const getArgs =
+  (aprocs: ReadonlyArray<AmbExecute>): AmbExecute =>
+  (env, succeed, fail) => @{
+    const first = aprocs[0];
+    if (first === undefined) @{
+      return succeed(nil, fail);
+    @}
+    return first(
+      env,
+      // success continuation for this `aproc`
+      (arg, fail2) =>
+        getArgs(aprocs.slice(1))(
+          env,
+          // success continuation for the recursive call
+          (args, fail3) => succeed(cons(arg, listValue(args)), fail3),
+          fail2,
+        ),
+      fail,
+    );
+  @};
+@end example
+
+@noindent
+The actual procedure application, which is performed by
+@code{execute-application}, is accomplished in the same way as for the ordinary
+evaluator, except for the need to manage the continuations.
+
+@example typescript
+const executeApplication = (
+  procedure: Value,
+  args: List<Value>,
+  succeed: Succeed,
+  fail: Fail,
+): Effect.Effect<Value, EvaluationError> => @{
+  if (procedure._tag === "Primitive") @{
+    return Effect.flatMap(applyPrimitiveProcedure(procedure, args), (value) =>
+      succeed(value, fail),
+    );
+  @}
+  if (procedure._tag === "Compound") @{
+    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
+      analyzeSequence(procedure.body)(newEnv, succeed, fail),
+    );
+  @}
+  return Effect.fail(new NotAProcedure(@{ value: format(procedure) @}));
+@};
+@end example
+
+@subsubheading Evaluating @code{amb} expressions
+
+The @code{amb} special form is the key element in the nondeterministic
+language.  Here we see the essence of the interpretation process and the reason
+for keeping track of the continuations.  The execution procedure for @code{amb}
+defines a loop @code{try-next} that cycles through the execution procedures for
+all the possible values of the @code{amb} expression.  Each execution procedure
+is called with a failure continuation that will try the next one.  When there
+are no more alternatives to try, the entire @code{amb} expression fails.
+
+@example typescript
+const tryChoices = (
+  cprocs: ReadonlyArray<AmbExecute>,
+  env: Env,
+  succeed: Succeed,
+  fail: Fail,
+): Effect.Effect<Value, EvaluationError> => @{
+  const tryNext = (rest: ReadonlyArray<AmbExecute>): Effect.Effect<Value, EvaluationError> => @{
+    const first = rest[0];
+    if (first === undefined) @{
+      return fail();
+    @}
+    return first(env, succeed, () => @{
+      noteFailure();
+      return tryNext(rest.slice(1));
+    @});
+  @};
+  return tryNext(cprocs);
+@};
+
+const analyzeAmb = (exp: Cons<Value>): AmbExecute => @{
+  const cprocs = toArray(ambChoices(exp)).map(analyze);
+  return (env, succeed, fail) => tryChoices(cprocs, env, succeed, fail);
+@};
+@end example
+
+@subsubheading Driver loop
+
+The driver loop for the @code{amb} evaluator is complex, due to the mechanism
+that permits the user to try again in evaluating an expression.  The driver
+uses a procedure called @code{internal-loop}, which takes as argument a
+procedure @code{try-again}.  The intent is that calling @code{try-again} should
+go on to the next untried alternative in the nondeterministic evaluation.
+@code{Internal-loop} either calls @code{try-again} in response to the user
+typing @code{try-again} at the driver loop, or else starts a new evaluation by
+calling @code{ambeval}.
+
+The failure continuation for this call to @code{ambeval} informs the user that
+there are no more values and re-invokes the driver loop.
+
+The success continuation for the call to @code{ambeval} is more subtle.  We
+print the obtained value and then invoke the internal loop again with a
+@code{try-again} procedure that will be able to try the next alternative.  This
+@code{next-alternative} procedure is the second argument that was passed to the
+success continuation.  Ordinarily, we think of this second argument as a
+failure continuation to be used if the current evaluation branch later fails.
+In this case, however, we have completed a successful evaluation, so we can
+invoke the ``failure'' alternative branch in order to search for additional
+successful evaluations.
+
+@example typescript
+// The book's input-prompt and output-prompt are the literal lines the
+// transcript reports for every problem: ";;; Amb-Eval input:" and
+// ";;; Amb-Eval value:".
+export const ambDriverLoop = (
+  evaluator: AmbEvaluator,
+  env: Env,
+  inputs: ReadonlyArray<string>,
+): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
+  Effect.gen(function* () @{
+    const lines: string[] = [];
+    // the failure continuation that asks for the next alternative
+    let next: Fail | undefined;
+    let current: string | undefined;
+    const record: Succeed = (value, fail) => @{
+      next = fail;
+      return Effect.succeed(value);
+    @};
+    const terminalFail: Fail = () => Effect.fail(new AmbExhausted());
+    const runForm = (input: string): Effect.Effect<Value, EvaluationError> =>
+      Effect.flatMap(
+        Effect.try(@{
+          try: () => read(input),
+          catch: (e) =>
+            new RuntimeError(@{
+              message: "read failed",
+              detail: e instanceof ReadError || e instanceof Error ? e.message : String(e),
+            @}),
+        @}),
+        (exp) => evaluator.ambeval(exp, env, record, terminalFail),
+      );
+    const settle = (
+      outcome: Result.Result<Value, EvaluationError>,
+      input: string,
+    ): Effect.Effect<void, EvaluationError> => @{
+      if (outcome._tag === "Success") @{
+        lines.push(";;; Amb-Eval value:", format(outcome.success));
+        return Effect.void;
+      @}
+      if (outcome.failure instanceof AmbExhausted) @{
+        lines.push(";;; There are no more values of", input);
+        next = undefined;
+        return Effect.void;
+      @}
+      return Effect.fail(outcome.failure);
+    @};
+    for (const input of inputs) @{
+      if (input === "try-again") @{
+        lines.push(";;; Amb-Eval input:", input);
+        if (next === undefined) @{
+          lines.push(";;; There is no current problem");
+          continue;
+        @}
+        yield* settle(yield* Effect.result(next()), current ?? input);
+        continue;
+      @}
+      current = input;
+      next = undefined;
+      lines.push(";;; Amb-Eval input:", input, ";;; Starting a new problem");
+      yield* settle(yield* Effect.result(runForm(input)), input);
+    @}
+    return lines;
+  @});
+@end example
+
+@noindent
+The initial call to @code{internal-loop} uses a @code{try-again} procedure that
+complains that there is no current problem and restarts the driver loop.  This
+is the behavior that will happen if the user types @code{try-again} when there
+is no evaluation in progress.
+
+@quotation
+@strong{@anchor{Exercise 4.50}Exercise 4.50:} Implement a new special form
+@code{ramb} that is like @code{amb} except that it searches alternatives in a
+random order, rather than from left to right.  Show how this can help with
+Alyssa's problem in @ref{Exercise 4.49}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.51}Exercise 4.51:} Implement a new kind of
+assignment called @code{permanent-set!} that is not undone upon failure.  For
+example, we can choose two distinct elements from a list and count the number
+of trials required to make a successful choice as follows:
+
+@example typescript
+const transcript = Effect.runSync(
+  ambDriverLoop(makeAmbEvaluator(@{ permanentSet: true @}), env, [
+    "(define count 0)",
+    `(let ((x (an-element-of '(a b c)))
+      (y (an-element-of '(a b c))))
+  (permanent-set! count (+ count 1))
+  (require (not (eq? x y)))
+  (list x y count))`,
+  ]),
+);
+// ;;; Amb-Eval input:
+// ;;; Starting a new problem
+// ;;; Amb-Eval value:
+// (a b 2)
+//
+// ;;; Amb-Eval input:
+// try-again
+// ;;; Amb-Eval value:
+// (a c 3)
+@end example
+
+What values would have been displayed if we had used @code{set!} here
+rather than @code{permanent-set!}?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.52}Exercise 4.52:} Implement a new construct called
+@code{if-fail} that permits the user to catch the failure of an expression.
+@code{If-fail} takes two expressions.  It evaluates the first expression as
+usual and returns as usual if the evaluation succeeds.  If the evaluation
+fails, however, the value of the second expression is returned, as in the
+following example:
+
+@example typescript
+const transcript = Effect.runSync(
+  ambDriverLoop(makeAmbEvaluator(@{ ifFail: true @}), env, [
+    `(if-fail
+ (let ((x (an-element-of '(1 3 5))))
+   (require (even? x))
+   x)
+ 'all-odd)`,
+    `(if-fail
+ (let ((x (an-element-of '(1 3 5 8))))
+   (require (even? x))
+   x)
+ 'all-odd)`,
+  ]),
+);
+// ;;; Amb-Eval input:
+// ;;; Starting a new problem
+// ;;; Amb-Eval value:
+// all-odd
+//
+// ;;; Amb-Eval input:
+// ;;; Starting a new problem
+// ;;; Amb-Eval value:
+// 8
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.53}Exercise 4.53:} With @code{permanent-set!} as
+described in @ref{Exercise 4.51} and @code{if-fail} as in @ref{Exercise 4.52},
+what will be the result of evaluating
+
+@example typescript
+read(`
+  (let ((pairs '()))
+    (if-fail
+     (let ((p (prime-sum-pair
+               '(1 3 5 8)
+               '(20 35 110))))
+       (permanent-set! pairs
+                       (cons p pairs))
+       (amb))
+     pairs))
+`)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.54}Exercise 4.54:} If we had not realized that
+@code{require} could be implemented as an ordinary procedure that uses
+@code{amb}, to be defined by the user as part of a nondeterministic program, we
+would have had to implement it as a special form.  This would require syntax
+procedures
+
+@example typescript
+/** Exercise 4.54's `require?`: the tagged `require` form. */
+export const isRequire = (exp: Value): exp is Cons<Value> => taggedList("require", exp);
+
+/** Exercise 4.54's `require-predicate`. */
+export const requirePredicate = (exp: Cons<Value>): Value => cadrOf(exp.tail);
+@end example
+
+@noindent
+and a new clause in the dispatch in @code{analyze}
+
+@example typescript
+    if (requireForm && isRequire(exp)) @{
+      return analyzeRequire(exp, analyze);
+    @}
+@end example
+
+@noindent
+as well the procedure @code{analyze-require} that handles @code{require}
+expressions.  Complete the following definition of @code{analyze-require}.
+
+@example typescript
+export const analyzeRequire = (exp: Cons<Value>, analyze: AmbAnalyze): AmbExecute => @{
+  const pproc = analyze(requirePredicate(exp));
+  return (env, succeed, fail) =>
+    pproc(
+      env,
+      (predValue, fail2) => (isTrue(predValue) ? succeed(ok, fail2) : fail2()),
+      fail,
+    );
+@};
+@end example
+@end quotation
+

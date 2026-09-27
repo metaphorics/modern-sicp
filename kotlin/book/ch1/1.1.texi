@@ -1,0 +1,1768 @@
+@node    Chapter 1, 1.1, 0.8, Top
+@chapter Building Abstractions with Procedures
+
+@quotation
+The acts of the mind, wherein it exerts its power over simple ideas, are
+chiefly these three: @w{1. Combining} several simple ideas into one compound one,
+and thus all complex ideas are made.  @w{2. The second} is bringing two ideas,
+whether simple or complex, together, and setting them by one another so as to
+take a view of them at once, without uniting them into one, by which it gets
+all its ideas of relations.  @w{3. The third} is separating them from all other
+ideas that accompany them in their real existence: this is called abstraction,
+and thus all its general ideas are made.
+
+---John Locke, @cite{An Essay Concerning Human Understanding} (1690)
+@end quotation
+
+
+@noindent
+We are about to study the idea of a @newterm{computational process}.
+Computational processes are abstract beings that inhabit computers.  As they
+evolve, processes manipulate other abstract things called @newterm{data}.  The
+evolution of a process is directed by a pattern of rules called a
+@newterm{program}.  People create programs to direct processes.  In effect, we
+conjure the spirits of the computer with our spells.
+
+A computational process is indeed much like a sorcerer's idea of a spirit.  It
+cannot be seen or touched.  It is not composed of matter at all.  However, it
+is very real.  It can perform intellectual work.  It can answer questions.  It
+can affect the world by disbursing money at a bank or by controlling a robot
+arm in a factory.  The programs we use to conjure processes are like a
+sorcerer's spells.  They are carefully composed from symbolic expressions in
+arcane and esoteric @newterm{programming languages} that prescribe the tasks we
+want our processes to perform.
+
+A computational process, in a correctly working computer, executes programs
+precisely and accurately.  Thus, like the sorcerer's apprentice, novice
+programmers must learn to understand and to anticipate the consequences of
+their conjuring.  Even small errors (usually called @newterm{bugs} or
+@newterm{glitches}) in programs can have complex and unanticipated
+consequences.
+
+Fortunately, learning to program is considerably less dangerous than learning
+sorcery, because the spirits we deal with are conveniently contained in a
+secure way.  Real-world programming, however, requires care, expertise, and
+wisdom.  A small bug in a computer-aided design program, for example, can lead
+to the catastrophic collapse of an airplane or a dam or the self-destruction of
+an industrial robot.
+
+Master software engineers have the ability to organize programs so that they
+can be reasonably sure that the resulting processes will perform the tasks
+intended.  They can visualize the behavior of their systems in advance.  They
+know how to structure programs so that unanticipated problems do not lead to
+catastrophic consequences, and when problems do arise, they can @newterm{debug}
+their programs.  Well-designed computational systems, like well-designed
+automobiles or nuclear reactors, are designed in a modular manner, so that the
+parts can be constructed, replaced, and debugged separately.
+
+@subsubheading Programming in Kotlin
+
+We need an appropriate language for describing processes, and we will use for
+this purpose the programming language Kotlin.  Just as our everyday thoughts are
+usually expressed in our natural language (such as English, French, or
+Japanese), and descriptions of quantitative phenomena are expressed with
+mathematical notations, our procedural thoughts will be expressed in Kotlin.
+The language of the original book, Lisp, was invented in the late 1950s as a
+formalism for reasoning about the use of certain kinds of logical expressions,
+called @newterm{recursion equations}, as a model for computation.  It was
+conceived by John McCarthy and is based on his paper ``Recursive Functions of
+Symbolic Expressions and Their Computation by Machine'' (@ref{McCarthy 1960}).
+
+Despite its inception as a mathematical formalism, Lisp is a practical
+programming language, and studying it remains the surest way into the ideas of
+this book.  A Lisp @newterm{interpreter} is a machine that carries out
+processes described in the Lisp language, and the interpreters that
+@ref{Chapter 4} builds are exactly such machines, written in Kotlin.  The first
+Lisp interpreter was implemented by McCarthy with the help of colleagues and
+students in the Artificial Intelligence Group of the @abbr{MIT} Research
+Laboratory of Electronics and in the @abbr{MIT} Computation
+Center.@footnote{The @cite{Lisp 1 Programmer's Manual} appeared in 1960 and the
+@cite{Lisp 1.5 Programmer's Manual} (@ref{McCarthy et al. 1965}) was published
+in 1962.  The early history of Lisp is described in @ref{McCarthy 1978}.}  Lisp,
+whose name is an acronym for LISt Processing, was designed to provide
+symbol-manipulating capabilities for attacking programming problems such as the
+symbolic differentiation and integration of algebraic expressions.  It included
+for this purpose new data objects known as atoms and lists, which most
+strikingly set it apart from all other languages of the period.
+
+Lisp was not the product of a concerted design effort.  Instead, it evolved
+informally in an experimental manner in response to users' needs and to
+pragmatic implementation considerations.  Lisp's informal evolution has
+continued through the years, and the community of Lisp users has traditionally
+resisted attempts to promulgate any ``official'' definition of the language.
+This evolution, together with the flexibility and elegance of the initial
+conception, has enabled Lisp, which is the second oldest language in widespread
+use today (only Fortran is older), to continually adapt to encompass the most
+modern ideas about program design.  Thus, Lisp is by now a family of dialects,
+which, while sharing most of the original features, may differ from one another
+in significant ways.  The dialect of Lisp in which the original edition of this
+book was written is called Scheme.@footnote{The two dialects in which most major Lisp programs of the
+1970s were written are MacLisp (@ref{Moon 1978}; @ref{Pitman 1983}), developed at the
+@abbr{MIT} Project @abbr{MAC}, and Interlisp (@ref{Teitelman 1974}), developed
+at Bolt Beranek and Newman Inc. and the Xerox Palo Alto Research Center.
+Portable Standard Lisp (@ref{Hearn 1969}; @ref{Griss 1981}) was a Lisp dialect designed to
+be easily portable between different machines.  MacLisp spawned a number of
+subdialects, such as Franz Lisp, which was developed at the University of
+California at Berkeley, and Zetalisp (@ref{Moon and Weinreb 1981}), which was based on a
+special-purpose processor designed at the @abbr{MIT} Artificial Intelligence
+Laboratory to run Lisp very efficiently.  The Lisp dialect used in the original
+book, called Scheme (@ref{Steele and Sussman 1975}), was invented in 1975 by
+Guy Lewis Steele Jr. and Gerald Jay Sussman of the @abbr{MIT} Artificial
+Intelligence Laboratory and later reimplemented for instructional use at
+@abbr{MIT}.  Scheme became an @abbr{IEEE} standard in 1990 (@ref{IEEE 1990}).
+The Common Lisp dialect (@ref{Steele 1982}, @ref{Steele 1990}) was developed by
+the Lisp community to combine features from the earlier Lisp dialects to make
+an industrial standard for Lisp.  Common Lisp became an @abbr{ANSI} standard in
+1994 (@ref{ANSI 1994}).}
+
+Because of its experimental character and its emphasis on symbol manipulation,
+Lisp was at first very inefficient for numerical computations, at least in
+comparison with Fortran.  Over the years, however, Lisp compilers have been
+developed that translate programs into machine code that can perform numerical
+computations reasonably efficiently.  And for special applications, Lisp has
+been used with great effectiveness.@footnote{One such special application was a
+breakthrough computation of scientific importance---an integration of the
+motion of the Solar System that extended previous results by nearly two orders
+of magnitude, and demonstrated that the dynamics of the Solar System is
+chaotic.  This computation was made possible by new integration algorithms, a
+special-purpose compiler, and a special-purpose computer all implemented with
+the aid of software tools written in Lisp (@ref{Abelson et al. 1992}; @ref{Sussman and Wisdom 1992}).}
+Although Lisp has not yet overcome its old reputation as
+hopelessly inefficient, Lisp is now used in many applications where efficiency
+is not the central concern.  For example, Lisp has become a language of choice
+for operating-system shell languages and for extension languages for editors
+and computer-aided design systems.
+
+Kotlin, by contrast, is a mainstream language, and that is why this edition
+chooses it as the framework for our discussion of programming: the features
+the book needs are the features it ships.  Functions are ordinary values, so
+the higher-order procedures of @ref{1.3} are arguments and results like any
+other.  Sealed hierarchies with exhaustive @code{when} give the generic
+operations of chapter 2 a static home.  Coroutines carry the concurrency of
+@ref{3.4}, and @code{Long} and @code{Double} cover the numbers of the first
+three chapters with the standard library behind them.  The most significant of
+these features is the fact that Kotlin functions---the book's
+@newterm{procedures}---are themselves values that can be passed, returned, and
+stored as data.  The importance of this is that there are powerful
+program-design techniques that rely on the ability to blur the traditional
+distinction between ``passive'' data and ``active'' processes.  As we shall
+discover, Kotlin's functions as values make it a convenient language for
+exploring these techniques.  The ability to represent procedures as data also
+makes Kotlin an excellent language for writing programs that must manipulate
+other programs as data, such as the interpreter and the compiler that
+@ref{Chapter 4} and @ref{Chapter 5} build.  Above and beyond these
+considerations, programming in Kotlin is great fun.
+
+@menu
+* 1.1::              The Elements of Programming
+* 1.2::              Procedures and the Processes They Generate
+* 1.3::              Formulating Abstractions with Higher-Order Procedures
+@end menu
+
+@node	1.1, 1.2, Chapter 1, Chapter 1
+@section The Elements of Programming
+
+A powerful programming language is more than just a means for instructing a
+computer to perform tasks.  The language also serves as a framework within
+which we organize our ideas about processes.  Thus, when we describe a
+language, we should pay particular attention to the means that the language
+provides for combining simple ideas to form more complex ideas.  Every powerful
+language has three mechanisms for accomplishing this:
+
+@itemize @bullet
+
+@item @b{primitive expressions},
+which represent the simplest entities the language is concerned with,
+
+@item @b{means of combination},
+by which compound elements are built from simpler ones, and
+
+@item @b{means of abstraction},
+by which compound elements can be named and manipulated as units.
+
+@end itemize
+
+@noindent
+In programming, we deal with two kinds of elements: procedures and data. (Later
+we will discover that they are really not so distinct.)  Informally, data is
+``stuff'' that we want to manipulate, and procedures are descriptions of the
+rules for manipulating the data.  Thus, any powerful programming language
+should be able to describe primitive data and primitive procedures and should
+have methods for combining and abstracting procedures and data.
+
+In this chapter we will deal only with simple numerical data so that we can
+focus on the rules for building procedures.@footnote{The characterization of
+numbers as ``simple data'' is a barefaced bluff.  In fact, the treatment of
+numbers is one of the trickiest and most confusing aspects of any programming
+language.  Some typical issues involved are these: Some computer systems
+distinguish @newterm{integers}, such as 2, from @newterm{real numbers}, such as
+2.71.  Is the real number 2.00 different from the integer 2?  Are the
+arithmetic operations used for integers the same as the operations used for
+real numbers?  Does 6 divided by 2 produce 3, or 3.0?  How large a number can
+we represent?  How many decimal places of accuracy can we represent?  Is the
+range of integers the same as the range of real numbers?  Above and beyond
+these questions, of course, lies a collection of issues concerning roundoff and
+truncation errors---the entire science of numerical analysis.  Since our focus
+in this book is on large-scale program design rather than on numerical
+techniques, we are going to ignore these problems.  The numerical examples in
+this chapter will exhibit the usual roundoff behavior that one observes when
+using arithmetic operations that preserve a limited number of decimal places of
+accuracy in noninteger operations.  Kotlin draws the lines for us from the
+start: its integers are @code{Long}, its reals are @code{Double}, and
+@ref{0.2} fixes the correspondence.} In later chapters we will see that these
+same rules allow us to build procedures to manipulate compound data as well.
+
+@menu
+* 1.1.1::            Expressions
+* 1.1.2::            Naming and the Environment
+* 1.1.3::            Evaluating Combinations
+* 1.1.4::            Compound Procedures
+* 1.1.5::            The Substitution Model for Procedure Application
+* 1.1.6::            Conditional Expressions and Predicates
+* 1.1.7::            Example: Square Roots by Newton's Method
+* 1.1.8::            Procedures as Black-Box Abstractions
+@end menu
+
+@node	1.1.1, 1.1.2, 1.1, 1.1
+@subsection Expressions
+
+One easy way to get started at programming is to examine some typical
+expressions of a program and the results they produce.  Imagine that you are
+sitting at a computer terminal.  You present an @newterm{expression} to a
+running program, and it responds by displaying the result of
+@newterm{evaluating} that expression.  Throughout this book, an expression
+appears in Kotlin, and the value it evaluates to appears just below it as a
+comment line carrying a @code{=>} marker, in the convention of @ref{0.8}.
+
+One kind of primitive expression you might present is a number.  (More
+precisely, the expression that you write consists of the numerals that
+represent the number in base 10.)  If you present the program with a number
+
+@example kotlin
+486L
+// => 486
+@end example
+
+@noindent
+the value printed is the number itself.@footnote{Throughout this book, when
+we wish to emphasize the distinction between the expression written by the
+author and the value the program produces, we show the latter as a comment
+line introduced by @code{=>}.}
+
+Expressions representing numbers may be combined with an expression
+representing a primitive operation (such as @code{+} or @code{*}) to form a
+compound expression that represents the application of the operation to those
+numbers.  For @w{example}:
+
+@example kotlin
+137L + 349L
+// => 486
+
+1000L - 334L
+// => 666
+
+5L * 99L
+// => 495
+
+10L / 5L
+// => 2
+
+2.7 + 10.0
+// => 12.7
+@end example
+
+@noindent
+Expressions such as these, formed by placing an operator between operand
+expressions so as to denote the application of an operation, are called
+@newterm{combinations}.  The book's original language wrote its operators in
+front of their operands: it called the leftmost element the
+@newterm{operator}, the other elements the @newterm{operands}, and the
+convention @newterm{prefix notation}.  Kotlin spells its arithmetic operators
+between the operands, in the customary mathematical way, and reserves the
+prefix position for names: a function such as @code{square} is written before
+the parentheses that hold its arguments, so every operator of this chapter is
+also a function, viewed through its infix spelling.  The value of a
+combination is obtained by applying the operation specified by the operator
+to the @newterm{arguments} that are the values of the operands.
+
+Two properties of the book's prefix notation are worth carrying across,
+because Kotlin's notation preserves both.  The first is that an operation may
+take any number of arguments; a sum of four numbers is written as a chain of
+the same operator:
+
+@example kotlin
+21L + 35L + 12L + 7L
+// => 75
+
+25L * 4L * 12L
+// => 1200
+@end example
+
+@noindent
+The second is that no ambiguity can arise: the language fixes the precedence
+and associativity of every operator, so the sum above groups as
+@code{((21L + 35L) + 12L) + 7L}, and parentheses may always make the intended
+grouping explicit.
+
+A second advantage of prefix notation extends in a straightforward way to
+allow combinations to be @i{nested}, that is, to have combinations whose
+elements are themselves combinations.  Kotlin nests the same way:
+
+@example kotlin
+3L * 5L + (10L - 6L)
+// => 19
+@end example
+
+@noindent
+There is no limit (in principle) to the depth of such nesting and to the
+overall complexity of the expressions that the Kotlin compiler can evaluate.
+It is we humans who get confused by still relatively simple expressions such
+as
+
+@example kotlin
+3L * (2L * 4L + (3L + 5L)) + (10L - 7L + 6L)
+@end example
+
+@noindent
+which the program would readily evaluate to be 57.  We can help ourselves by
+writing such an expression in the form
+
+@example kotlin
+3L * (
+    2L * 4L +
+        (3L + 5L)
+) +
+    ((10L - 7L) + 6L)
+// => 57
+@end example
+
+@noindent
+following a formatting convention known as @newterm{pretty-printing}, in
+which each long combination is written so that the operands are aligned
+vertically.  The resulting indentations display clearly the structure of the
+expression.@footnote{Kotlin development environments typically provide
+features to aid the user in formatting expressions.  Two especially useful
+features are one that automatically indents to the proper pretty-print
+position whenever a new line is started and one that highlights the matching
+left bracket whenever a right bracket is typed.  This book's own listings are
+kept in a form its formatter accepts, so the shape shown is the shape the
+machine checks.}
+
+Even with complex expressions, evaluation always operates in the same basic
+cycle: the compiler resolves each name against the environment of the
+program, the running program evaluates the expression, and the value is
+recorded.  An interactive Lisp system runs this cycle continuously and calls
+it a @newterm{read-eval-print loop}; the listings of this book play the
+loop's role one interaction at a time, and nothing in a listing is
+hand-copied: the file under @file{kotlin/examples/} that the listing names
+computes and asserts every value shown.@footnote{Kotlin comes close to
+obeying the convention that every expression has a value; a statement such as
+a loop carries the uninformative one, the type @code{Unit}.  The convention,
+together with the old reputation of Lisp as an inefficient language, is the
+source of the quip by Alan Perlis (paraphrasing Oscar Wilde) that ``Lisp
+programmers know the value of everything but the cost of nothing.''}
+
+@node	1.1.2, 1.1.3, 1.1.1, 1.1
+@subsection Naming and the Environment
+
+A critical aspect of a programming language is the means it provides for using
+names to refer to computational objects.  We say that the name identifies a
+@newterm{variable} whose @newterm{value} is the object.
+
+In Kotlin, we name things with @code{val}, which binds a name that no later
+binding in the same scope can rebind (@ref{0.2}).  Writing
+
+@example kotlin
+val size = 2L
+@end example
+
+@noindent
+binds the name @code{size} to the value 2.@footnote{A definition produces no
+value to record, which is why the book annotates only expressions.}  Once the
+name @code{size} has been bound to the number 2, we can refer to the value 2
+by name:
+
+@example kotlin
+size
+// => 2
+
+5L * size
+// => 10
+@end example
+
+@noindent
+Here are further examples of the use of @code{val}:
+
+@example kotlin
+val pi = 3.14159
+val radius = 10L
+
+pi * (radius * radius)
+// => 314.159
+
+val circumference = 2L * pi * radius
+
+circumference
+// => 62.8318
+@end example
+
+@noindent
+@code{Val} is our language's simplest means of abstraction, for it allows us
+to use simple names to refer to the results of compound operations, such as
+the @code{circumference} computed above.  In general, computational objects
+may have very complex structures, and it would be extremely inconvenient to
+have to remember and repeat their details each time we want to use them.
+Indeed, complex programs are constructed by building, step by step,
+computational objects of increasing complexity.  Kotlin makes this
+step-by-step program construction particularly convenient: name-object
+associations are created incrementally across the small definitions of a
+program, and the tests that accompany every listing re-run them on each
+build.  This encourages the incremental development and testing of programs
+and is largely responsible for the fact that a well-written Kotlin program
+usually consists of a large number of relatively simple functions.
+
+It should be clear that the possibility of associating values with names and
+later retrieving them means that something must keep track of the
+name-object pairs.  In the book's original language that something is a table
+the interpreter consults while the program runs.  In Kotlin it is the
+compiler's own record of the program's declarations, consulted when a name is
+resolved; its shape is exactly the structure the book is about to name, and
+@ref{Chapter 4} will implement it as a literal table.  This memory is called
+the @newterm{environment} (more precisely the @newterm{global environment},
+since we will see later that a computation may involve a number of different
+environments).@footnote{@ref{Chapter 3} will show that this notion of
+environment is crucial, both for understanding how the interpreter works and
+for implementing interpreters.}
+
+@node	1.1.3, 1.1.4, 1.1.2, 1.1
+@subsection Evaluating Combinations
+
+One of our goals in this chapter is to isolate issues about thinking
+procedurally.  As a case in point, let us consider that, in evaluating
+combinations, the evaluator is itself following a procedure.
+
+@quotation
+To evaluate a combination, do the following:
+
+@enumerate 1
+
+@item
+Evaluate the subexpressions of the combination.
+
+@item
+Apply the procedure that is the value of the operator subexpression to the
+arguments that are the values of the other subexpressions (the operands).
+
+@end enumerate
+@end quotation
+
+@noindent
+Even this simple rule illustrates some important points about processes in
+general.  First, observe that the first step dictates that in order to
+accomplish the evaluation process for a combination we must first perform the
+evaluation process on each element of the combination.  Thus, the evaluation
+rule is @newterm{recursive} in nature; that is, it includes, as one of its
+steps, the need to invoke the rule itself.@footnote{It may seem strange that
+the evaluation rule says, as part of the first step, that we should evaluate
+the operator, since at this point an operator can only be a fixed infix
+symbol such as @code{+} or @code{*} that names a primitive operation of the
+type of its operands.  We will see later that it is useful to be able to work
+with combinations whose operator position holds an arbitrary expression.}
+
+Notice how succinctly the idea of recursion can be used to express what, in
+the case of a deeply nested combination, would otherwise be viewed as a
+rather complicated process.  For example, evaluating
+
+@example kotlin
+(2L + 4L * 6L) * (3L + 5L + 7L)
+@end example
+
+@noindent
+requires that the evaluation rule be applied to four different combinations.
+We can obtain a picture of this process by representing the combination in
+the form of a tree, as shown in @ref{Figure 1.1}.  Each combination is
+represented by a node with branches corresponding to the operator and the
+operands of the combination stemming from it.  The terminal nodes (that is,
+nodes with no branches stemming from them) represent either operators or
+numbers.  Viewing evaluation in terms of the tree, we can imagine that the
+values of the operands percolate upward, starting from the terminal nodes
+and then combining at higher and higher levels.  In general, we shall see
+that recursion is a very powerful technique for dealing with hierarchical,
+treelike objects.  In fact, the ``percolate values upward'' form of the
+evaluation rule is an example of a general kind of process known as
+@newterm{tree accumulation}.
+
+@float
+@anchor{Figure 1.1}
+@ifinfo
+@strong{Figure 1.1:} Tree representation, showing the value of each subcombination.
+
+@example
+   390
+   /|\____________
+  / |             \
+ *  26            15
+    /|\           /|\
+   / | \         // \\
+  +  2  24      / | | \
+        /|\    +  3 5  7
+       / | \
+      *  4  6
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap1/Fig1.1g,,58mm,Figure 1.1: Tree representation@comma{} showing the value of each subcombination.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap1/Fig1.1g.std,,58mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 1.1:} Tree representation, showing the value of each subcombination.}
+@end float
+
+@noindent
+Next, observe that the repeated application of the first step brings us to
+the point where we need to evaluate, not combinations, but primitive
+expressions such as numerals, built-in operators, or other names.  We take
+care of the primitive cases by stipulating that
+
+@itemize @bullet
+
+@item
+the values of numerals are the numbers that they name,
+
+@item
+the values of built-in operators are the primitive operations of the number
+types that carry out the corresponding operations, and
+
+@item
+the values of other names are the objects bound to those names in the
+environment.
+
+@end itemize
+
+@noindent
+In the book's original language the operator names live in the global
+environment beside all the other names, and the second rule is a special case
+of the third.  In Kotlin the arithmetic operators are fixed spellings for the
+primitive operations of each type, which is the same fact seen from the
+compiler's side.  The key point to notice is the role of the environment in
+determining the meaning of the names in expressions.  In a compiled language
+such as Kotlin, an expression such as @code{x + 1L} does not compile unless
+the environment of the program provides a meaning for the name @code{x}; the
+compiler rejects an unbound name before the program ever runs, rather than
+stumbling over it at run time.  As we shall see in @ref{Chapter 3}, the
+general notion of the environment as providing a context in which evaluation
+takes place will play an important role in our understanding of program
+execution.
+
+Notice that the evaluation rule given above does not handle definitions.
+For instance, evaluating @code{val x = 3L} does not bind @code{x} by
+applying some procedure to two arguments, one of which is the value of the
+symbol @code{x} and the other of which is 3, since the purpose of the
+declaration is precisely to associate @code{x} with a value.  (That is,
+@code{val x = 3L} is not an expression.)
+
+Such exceptions to the general evaluation rule are called @newterm{special forms}.  A declaration is one example; we will meet others shortly, and
+Kotlin has its own stock of them wherever the general rule would be wrong or
+wasteful: the connective @code{&&} does not evaluate its right operand unless
+it must, and a @code{when} evaluates only the arm it takes.  Each special
+form has its own evaluation rule.  The various kinds of expressions (each
+with its associated evaluation rule) constitute the syntax of the programming
+language.  The full syntax of Kotlin is much larger than the syntax of Lisp,
+which is famously small: one general evaluation rule plus specialized rules
+for a handful of special forms.  But the expression language of this
+chapter---arithmetic, names, calls, and conditionals---is described by
+exactly one general rule and a small number of special
+forms.@footnote{Special syntactic forms that are simply convenient
+alternative surface structures for things that can be written in more uniform
+ways are sometimes called @newterm{syntactic sugar}, to use a phrase coined
+by Peter Landin.  In comparison with users of other languages, Lisp
+programmers, as a rule, are less concerned with matters of syntax.  (By
+contrast, examine any Pascal manual and notice how much of it is devoted to
+descriptions of syntax.)  This disdain for syntax is due partly to the
+flexibility of Lisp, which makes it easy to change surface syntax, and partly
+to the observation that many ``convenient'' syntactic constructs, which make
+the language less uniform, end up causing more trouble than they are worth
+when programs become large and complex.  In the words of Alan Perlis,
+``Syntactic sugar causes cancer of the semicolon.''}
+
+@node	1.1.4, 1.1.5, 1.1.3, 1.1
+@subsection Compound Procedures
+
+We have identified in Kotlin some of the elements that must appear in any
+powerful programming language:
+
+@itemize @bullet
+
+@item
+Numbers and arithmetic operations are primitive data and procedures.
+
+@item
+Nesting of combinations provides a means of combining operations.
+
+@item
+Definitions that associate names with values provide a limited means of
+abstraction.
+
+@end itemize
+
+@noindent
+Now we will learn about @newterm{procedure definitions}, a much more powerful
+abstraction technique by which a compound operation can be given a name and
+then referred to as a unit.
+
+We begin by examining how to express the idea of ``squaring.''  We might say,
+``To square something, multiply it by itself.''  This is expressed in our
+language as
+
+@example kotlin
+public fun square(x: Long): Long = x * x
+@end example
+
+@noindent
+We can understand this in the following way:
+
+@example
+fun square(x: Long): Long = x * x
+ |     |     |                 |
+ To square something, multiply it by itself.
+@end example
+
+@noindent
+We have here a @newterm{compound procedure}, which has been given the name
+@code{square}.  The procedure represents the operation of multiplying
+something by itself.  The thing to be multiplied is given a local name,
+@code{x}, which plays the same role that a pronoun plays in natural language.
+Evaluating the definition creates this compound procedure and associates it
+with the name @code{square}.@footnote{Observe that there are two different
+operations being combined here: we are creating the procedure, and we are
+giving it the name @code{square}.  It is possible, indeed important, to be
+able to separate these two notions---to create procedures without naming
+them, and to give names to procedures that have already been created.  In
+Kotlin an unnamed procedure is a lambda such as @code{@{ x -> x * x @}}, and
+an existing named one can be handed around as a function reference; we will
+see how to do this in @ref{1.3.2}.}
+
+The general form of a procedure definition is
+
+@example kotlin
+public fun ⟨@var{name}⟩(⟨@var{formal parameters}⟩): ⟨@var{type}⟩ = ⟨@var{body}⟩
+@end example
+
+@noindent
+The @code{⟨}@var{name}@code{⟩} is a symbol to be associated with the procedure definition in
+the environment.@footnote{Throughout this book, we will describe the general
+syntax of expressions by using italic symbols delimited by angle
+brackets---e.g., @code{⟨}@var{name}@code{⟩}---to denote the ``slots'' in the expression to be
+filled in when such an expression is actually used.} The
+@code{⟨}@var{formal parameters}@code{⟩} are the names used within the body of the function to
+refer to the corresponding arguments of the function.  The
+@code{⟨}@var{body}@code{⟩} is an expression that will yield the value of the procedure
+application when the formal parameters are replaced by the actual arguments
+to which the procedure is applied.@footnote{More generally, the body of a
+function can be a braced block of statements; in that case the function's
+value is stated with a @code{return}.} The formal parameters are grouped
+within the parentheses that follow the name, just as they would appear in an
+actual call to the function being defined.
+
+Having defined @code{square}, we can now use it:
+
+@example kotlin
+square(21L)
+// => 441
+
+square(2L + 5L)
+// => 49
+
+square(square(3L))
+// => 81
+@end example
+
+@noindent
+We can also use @code{square} as a building block in defining other
+procedures.  For example, @math{x^2 + y^2} can be expressed as
+
+@example kotlin
+square(x) + square(y)
+@end example
+
+@noindent
+We can easily define a procedure @code{sumOfSquares} that, given any two
+numbers as arguments, produces the sum of their squares:
+
+@example kotlin
+public fun sumOfSquares(x: Long, y: Long): Long = square(x) + square(y)
+
+sumOfSquares(3L, 4L)
+// => 25
+@end example
+
+@noindent
+Now we can use @code{sumOfSquares} as a building block in constructing
+further procedures:
+
+@example kotlin
+public fun f(a: Long): Long = sumOfSquares(a + 1L, a * 2L)
+
+f(5L)
+// => 136
+@end example
+
+@noindent
+Compound procedures are used in exactly the same way as primitive procedures.
+Indeed, one could not tell by looking at the definition of
+@code{sumOfSquares} given above whether @code{square} came from the standard
+library, like @code{+} and @code{*}, or was defined as a compound procedure.
+
+@node	1.1.5, 1.1.6, 1.1.4, 1.1
+@subsection The Substitution Model for Procedure Application
+
+To evaluate a combination whose operator names a compound procedure, the
+evaluator follows much the same process as for combinations whose operators
+name primitive procedures, which we described in @ref{1.1.3}.  That is,
+the evaluator evaluates the elements of the combination and applies the
+procedure (which is the value of the operator of the combination) to the
+arguments (which are the values of the operands of the combination).
+
+We can assume that the mechanism for applying primitive procedures to
+arguments is built into the evaluator.  For compound procedures, the
+application process is as follows:
+
+@quotation
+To apply a compound procedure to arguments, evaluate the body of the
+procedure with each formal parameter replaced by the corresponding argument.
+@end quotation
+
+@noindent
+To illustrate this process, let's evaluate the combination
+
+@example kotlin
+f(5L)
+@end example
+
+@noindent
+where @code{f} is the procedure defined in @ref{1.1.4}.  We begin by
+retrieving the body of @code{f}:
+
+@example kotlin
+sumOfSquares(a + 1L, a * 2L)
+@end example
+
+@noindent
+Then we replace the formal parameter @code{a} by the argument 5:
+
+@example kotlin
+sumOfSquares(5L + 1L, 5L * 2L)
+@end example
+
+@noindent
+Thus the problem reduces to the evaluation of a combination with two operands
+and an operator @code{sumOfSquares}.  Evaluating this combination involves
+three subproblems.  We must evaluate the operator to get the procedure to be
+applied, and we must evaluate the operands to get the arguments.  Now
+@code{5L + 1L} produces 6 and @code{5L * 2L} produces 10, so we must apply
+the @code{sumOfSquares} procedure to 6 and 10.  These values are substituted
+for the formal parameters @code{x} and @code{y} in the body of
+@code{sumOfSquares}, reducing the expression to
+
+@example kotlin
+square(6L) + square(10L)
+@end example
+
+@noindent
+If we use the definition of @code{square}, this reduces to
+
+@example kotlin
+6L * 6L + 10L * 10L
+@end example
+
+@noindent
+which reduces by multiplication to
+
+@example kotlin
+36L + 100L
+@end example
+
+@noindent
+and finally to
+
+@example kotlin
+136
+@end example
+
+@noindent
+The process we have just described is called the @newterm{substitution model}
+for procedure application.  It can be taken as a model that determines the
+``meaning'' of procedure application, insofar as the procedures in this
+chapter are concerned.  However, there are two points that should be stressed:
+
+@itemize @bullet
+
+@item
+The purpose of the substitution is to help us think about procedure
+application, not to provide a description of how the evaluator really works.
+The Kotlin compiler does not evaluate calls by manipulating the text of a
+function to substitute values for the formal parameters.  In practice, the
+``substitution'' is accomplished by giving each call its own frame of
+parameter bindings.  We will discuss this more fully in @ref{Chapter 3} and
+@ref{Chapter 4} when we examine the implementation of an interpreter in
+detail.
+
+@item
+Over the course of this book, we will present a sequence of increasingly
+elaborate models of how evaluators work, culminating with a complete
+implementation of an interpreter and compiler in @ref{Chapter 5}.  The
+substitution model is only the first of these models---a way to get started
+thinking formally about the evaluation process.  In general, when modeling
+phenomena in science and engineering, we begin with simplified, incomplete
+models.  As we examine things in greater detail, these simple models become
+inadequate and must be replaced by more refined models.  The substitution
+model is no exception.  In particular, when we address in @ref{Chapter 3} the
+use of procedures with ``mutable data,'' we will see that the substitution
+model breaks down and must be replaced by a more complicated model of
+procedure application.@footnote{Despite the simplicity of the substitution
+idea, it turns out to be surprisingly complicated to give a rigorous
+mathematical definition of the substitution process.  The problem arises from
+the possibility of confusion between the names used for the formal parameters
+of a procedure and the (possibly identical) names used in the expressions to
+which the procedure may be applied.  Indeed, there is a long history of
+erroneous definitions of @newterm{substitution} in the literature of logic
+and programming semantics.  See @ref{Stoy 1977} for a careful discussion of
+substitution.}
+
+@end itemize
+
+@subsubheading Applicative order versus normal order
+
+According to the description of evaluation given in @ref{1.1.3}, the
+evaluator first evaluates the operator and operands and then applies the
+resulting procedure to the resulting arguments.  Kotlin commits to this
+order---it is not one alternative among several but the only order a call
+site has: every parameter of a function is an eager one, and its argument
+expression is evaluated before the body runs.  This is called
+@newterm{applicative-order evaluation}.  It is not the only way to perform
+evaluation.  An alternative evaluation model would not evaluate the operands
+until their values were needed.  Instead it would first substitute operand
+expressions for parameters until it obtained an expression involving only
+primitive operators, and would then perform the evaluation.  If we used this
+method, the evaluation of @code{f(5L)} would proceed according to the
+sequence of expansions
+
+@example kotlin
+sumOfSquares(5L + 1L, 5L * 2L)
+
+square(5L + 1L) + square(5L * 2L)
+
+(5L + 1L) * (5L + 1L) + (5L * 2L) * (5L * 2L)
+@end example
+
+@noindent
+followed by the reductions
+
+@example kotlin
+6L * 6L + 10L * 10L
+
+36L + 100L
+
+136
+@end example
+
+@noindent
+This gives the same answer as our previous evaluation model, but the process
+is different.  In particular, the evaluations of @code{5L + 1L} and
+@code{5L * 2L} are each performed twice here, corresponding to the reduction
+of the expression @code{x * x} with @code{x} replaced respectively by
+@code{5L + 1L} and @code{5L * 2L}.
+
+This alternative ``fully expand and then reduce'' evaluation method is known
+as @newterm{normal-order evaluation}, in contrast to the ``evaluate the
+arguments and then apply'' method that Kotlin actually uses, applicative
+order.  It can be shown that, for procedure applications that can be modeled
+using substitution (including all the procedures in the first two chapters of
+this book) and that yield legitimate values, normal-order and
+applicative-order evaluation produce the same value.  (See @ref{Exercise 1.5}
+for an instance of an ``illegitimate'' value where normal-order and
+applicative-order evaluation do not give the same result.)
+
+Normal order has no automatic form in Kotlin, but its central device---do not
+evaluate an operand until its value is needed---is available explicitly, as
+a parameter of function type.  The two shapes sit side by side:
+
+@example kotlin
+public fun testEager(x: Long, y: Long): Long = if (x == 0L) 0L else y
+
+public fun testDeferred(x: Long, y: () -> Long): Long = if (x == 0L) 0L else y()
+@end example
+
+@noindent
+An operand in the eager slot of @code{testEager} is evaluated even when
+@code{x} is 0 and the body never reads @code{y}; an operand handed to
+@code{testDeferred} is evaluated only if the body invokes it.  Which shape
+matches the book's applicative-order interpreter, and which mimics normal
+order for one argument, is the subject of @ref{Exercise 1.5}.  Applicative
+order is the language's choice partly because of the additional efficiency
+obtained from avoiding multiple evaluations of expressions such as those
+illustrated with @code{5L + 1L} and @code{5L * 2L} above and, more
+significantly, because normal-order evaluation becomes much more complicated
+to deal with when we leave the realm of procedures that can be modeled by
+substitution.  On the other hand, normal-order evaluation can be an extremely
+valuable tool, and we will investigate some of its implications in
+@ref{Chapter 3} and @ref{Chapter 4}.@footnote{In @ref{Chapter 3} we will
+introduce @newterm{stream processing}, which is a way of handling apparently
+``infinite'' data structures by incorporating a limited form of normal-order
+evaluation.  In @ref{4.2} we will extend the evaluator of @ref{4.1} with
+explicit thunks, producing a lazy variant of the book's language whose
+arguments are deferred exactly where normal order defers them.}
+
+@node	1.1.6, 1.1.7, 1.1.5, 1.1
+@subsection Conditional Expressions and Predicates
+
+The expressive power of the class of procedures that we can define at this
+point is very limited, because we have no way to make tests and to perform
+different operations depending on the result of a test.  For instance, we
+cannot define a procedure that computes the absolute value of a number by
+testing whether the number is positive, negative, or zero and taking different
+actions in the different cases according to the rule
+@displaymath
+\left|{x}\right| \; = \;
+  \cases{	 	 
+       x & \hbox{if } $x > 0$, \cr
+       0 & \hbox{if } $x  =  0$, \cr
+      -x & \hbox{if } $x < 0$. 
+    }
+@end displaymath
+@ifinfo
+
+@example
+      /
+      |   x  if x > 0
+|x| = <   0  if x = 0
+      |  -x  if x < 0
+      \
+@end example
+
+@end ifinfo
+This construct is called a @newterm{case analysis}, and Kotlin notates it
+with a @code{when} expression:
+
+@example kotlin
+public fun abs(x: Long): Long =
+    when @{
+        x > 0L -> x
+        x == 0L -> 0L
+        else -> -x
+    @}
+@end example
+
+@noindent
+A @code{when} without a subject tries its conditions in order.  Kotlin
+requires a @code{when} used as an expression to be exhaustive, so the
+negation arm of the case analysis carries @code{else}; the explicit test
+@code{x < 0L} would be redundant after the first two arms, and the compiler
+accepts only the exhaustive spelling.
+
+The general form of a conditional expression is
+
+@example kotlin
+when @{
+    ⟨@var{p₁}⟩ -> ⟨@var{e₁}⟩
+    ⟨@var{p₂}⟩ -> ⟨@var{e₂}⟩
+    @r{…}
+    else -> ⟨@var{eₙ}⟩
+@}
+@end example
+
+@noindent
+consisting of the symbol @code{when} followed by a sequence of arms
+
+@example kotlin
+⟨@var{p}⟩ -> ⟨@var{e}⟩
+@end example
+
+@noindent
+called @newterm{clauses}. The expression before the arrow in each arm is a
+@newterm{predicate}---that is, an expression whose value is interpreted as
+either true or false.@footnote{``Interpreted as either true or false'' means
+this: In Kotlin a condition must be a @code{Boolean}, and the only
+@code{Boolean} values are the constants @code{true} and @code{false}; there
+is no third value, and no other value is admitted where a condition is
+expected.  (Scheme, the language of the original book, interprets any value
+other than @code{#f} as true, which made providing @code{#t} logically
+unnecessary but convenient.)}
+
+Conditional expressions are evaluated as follows.  The predicate
+@math{{⟨p_1⟩}} is evaluated first.  If its value is false, then
+@math{{⟨p_2⟩}} is evaluated.  If @math{{⟨p_2⟩}}'s value is also false, then
+@math{{⟨p_3⟩}} is evaluated.  This process continues until a predicate is
+found whose value is true, in which case the evaluator returns the value of
+the corresponding @newterm{consequent expression} @math{{⟨e⟩}} of the arm as
+the value of the conditional expression.  If none of the @math{{⟨p⟩}}'s is
+found to be true, the value of the @code{when} is the value of its
+@code{else} arm; a @code{when} without @code{else} that falls through
+produces the uninformative value @code{Unit}, and the compiler requires the
+@code{else} whenever the result is to be used as a value.
+
+The word @newterm{predicate} is used for procedures that return true or
+false, as well as for expressions that evaluate to true or false.  The
+absolute-value procedure @code{abs} makes use of the primitive predicates
+@code{>}, @code{<}, and @code{==}.@footnote{@code{Abs} also uses the
+``minus'' operator @code{-}, which, when written before its single operand,
+as in @code{-x}, indicates negation.} These take two numbers as arguments and
+test whether the first number is, respectively, greater than, less than, or
+equal to the second number, returning true or false accordingly.
+
+Another way to write the absolute-value procedure is
+
+@example kotlin
+public fun abs(x: Long): Long =
+    when @{
+        x < 0L -> -x
+        else -> x
+    @}
+@end example
+
+@noindent
+which could be expressed in English as ``If @math{x} is less than zero return
+@math{{-x}}; otherwise return @math{x}.''  @code{Else} is a keyword that can
+be used in place of the final predicate of a @code{when}.  This causes the
+@code{when} to return the value of the corresponding @math{{⟨e⟩}} whenever
+all previous arms have been bypassed.
+
+Here is yet another way to write the absolute-value procedure:
+
+@example kotlin
+public fun abs(x: Long): Long = if (x < 0L) -x else x
+@end example
+
+@noindent
+This uses the special form @code{if}, a restricted type of conditional that
+can be used when there are precisely two cases in the case analysis.  The
+general form of an @code{if} expression is
+
+@example kotlin
+if (⟨@var{predicate}⟩) ⟨@var{consequent}⟩ else ⟨@var{alternative}⟩
+@end example
+
+@noindent
+To evaluate an @code{if} expression, the evaluator starts by evaluating the
+@code{⟨}@var{predicate}@code{⟩} part of the expression.  If the
+@code{⟨}@var{predicate}@code{⟩} evaluates to a true value, the evaluator then
+evaluates the @code{⟨}@var{consequent}@code{⟩} and returns its value.
+Otherwise it evaluates the @code{⟨}@var{alternative}@code{⟩} and returns its
+value.@footnote{A minor difference between @code{when} and @code{if} is that
+a @code{when} arm may carry a guard, written @code{@var{p} where
+@var{guard}}, which is tested after @var{p} succeeds; and the branches of
+either form may be braced blocks, whose value is the value of their final
+expression.}  Only the taken branch is evaluated, which is what makes
+@code{if} a special form rather than an ordinary function.
+
+In addition to primitive predicates such as @code{<}, @code{==}, and
+@code{>}, there are logical composition operations, which enable us to
+construct compound predicates.  The three most frequently used are these:
+
+@itemize @bullet
+
+@item
+@code{⟨@var{e₁}⟩ && @r{…} && ⟨@var{eₙ}⟩}
+
+The evaluator evaluates the operands one at a time, in left-to-right order.
+If any operand evaluates to false, the value of the whole is false, and the
+rest of the operands are not evaluated.  If all operands evaluate to true,
+the value of the whole is the value of the last one.
+
+@item
+@code{⟨@var{e₁}⟩ || @r{…} || ⟨@var{eₙ}⟩}
+
+The evaluator evaluates the operands one at a time, in left-to-right order.
+If any operand evaluates to a true value, that value is returned as the value
+of the whole, and the rest of the operands are not evaluated.  If all
+operands evaluate to false, the value of the whole is false.
+
+@item
+@code{!(⟨@var{e}⟩)}
+
+The value of a @code{!} expression is true when the expression
+@code{⟨}@var{e}@code{⟩} evaluates to false, and false otherwise.
+
+@end itemize
+
+@noindent
+Notice that @code{&&} and @code{||} are special forms, not procedures,
+because the operands are not necessarily all evaluated.  @code{!} is an
+ordinary operator.
+
+As an example of how these are used, the condition that a number @math{x} be
+in the range @math{5 < x < 10} may be expressed as
+
+@example kotlin
+x > 5L && x < 10L
+@end example
+
+@noindent
+As another example, we can define a predicate to test whether one number is
+greater than or equal to another as
+
+@example kotlin
+public fun greaterOrEqual(x: Long, y: Long): Boolean = x > y || x == y
+@end example
+
+@noindent
+or alternatively as
+
+@example kotlin
+public fun greaterOrEqual(x: Long, y: Long): Boolean = !(x < y)
+@end example
+
+@noindent
+(The book redefines @code{>=} here; in one Kotlin file the second definition
+would need a name of its own, and the listing's file gives it
+@code{greaterOrEqualNot}.)
+
+@quotation
+@strong{@anchor{Exercise 1.1}Exercise 1.1:} Below is a sequence of expressions.
+What is the result of evaluating each expression?  Assume that the sequence is
+to be evaluated in the order in which it is presented.
+
+@example kotlin
+10L
+
+5L + 3L + 4L
+
+9L - 1L
+
+6L / 2L
+
+2L * 4L + (4L - 6L)
+
+val a = 3L
+val b = a + 1L
+
+a + b + (a * b)
+
+a == b
+
+if (b > a && b < a * b) b else a
+
+when @{
+    a == 4L -> 6L
+    b == 4L -> 6L + 7L + a
+    else -> 25L
+@}
+
+2L + (if (b > a) b else a)
+
+(when @{
+    a > b -> a
+    a < b -> b
+    else -> -1L
+@}) * (a + 1L)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.2}Exercise 1.2:} @emph{SICP exercise 1.2 is about
+Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  Translate the following
+expression into pure nested calls, with every operator written as a call,
+over the four primitives @code{sum}, @code{diff}, @code{prod}, and
+@code{quot}, each of type @code{(Double, Double) -> Double}:
+@displaymath
+{{5 + 4 + (2 - (3 - (6 + {4 \over 5}))) \over 3(6 - 2)(2 - 7)}.}
+@end displaymath
+@ifinfo
+
+@example
+5 + 4 + (2 - (3 - (6 + 4/5)))
+-----------------------------
+       3(6 - 2)(2 - 7)
+@end example
+
+@end ifinfo
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.3}Exercise 1.3:} Define a function that takes three
+numbers as arguments and returns the sum of the squares of the two larger
+numbers.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.4}Exercise 1.4:} Observe that our model of
+evaluation allows for combinations whose operators are compound expressions.
+In Kotlin the operator of a call can be any expression that evaluates to a
+function, and a function reference such as @code{Long::plus} is such an
+expression.  Use this observation to describe the behavior of the following
+function:
+
+@example kotlin
+public fun aPlusAbsB(a: Long, b: Long): Long @{
+    val op: Long.(Long) -> Long = if (b > 0L) Long::plus else Long::minus
+    return op(a, b)
+@}
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.5}Exercise 1.5:} Ben Bitdiddle has invented a test
+to determine whether the language he is faced with evaluates its arguments
+before a call---applicative order---or defers them until their values are
+needed---normal order.  Kotlin always evaluates arguments, so Ben gives his
+test two shapes, one with an eager parameter and one with a parameter of
+function type:
+
+@example kotlin
+public fun p(): Nothing = p()
+
+public fun test(x: Long, y: Long): Long =
+    if (x == 0L) 0L else y
+
+public fun testDeferred(x: Long, y: () -> Long): Long =
+    if (x == 0L) 0L else y()
+@end example
+
+Then he evaluates the calls
+
+@example kotlin
+test(0L, p())
+
+testDeferred(0L) @{ p() @}
+@end example
+
+What behavior will Ben observe for the eager-parameter shape?  What behavior
+will he observe for the deferred shape?  Which shape matches the
+applicative-order evaluation of the text, and which mimics normal order for
+one argument?  Explain your answers.  (Assume that the evaluation rule for
+the special form @code{if} is the same in every order: The predicate
+expression is evaluated first, and the result determines whether to evaluate
+the consequent or the alternative expression.)
+@end quotation
+
+@anchor{Sec.1.1.7}
+@node	1.1.7, 1.1.8, 1.1.6, 1.1
+@subsection Example: Square Roots by Newton's Method
+
+Procedures, as introduced above, are much like ordinary mathematical functions.
+They specify a value that is determined by one or more parameters.  But there
+is an important difference between mathematical functions and computer
+procedures.  Procedures must be effective.
+
+As a case in point, consider the problem of computing square roots.  We can
+define the square-root function as
+@displaymath
+\sqrt{x} \;\; = \;\; {\hbox{the} \;\; y} \;\;
+{\hbox{such that}} \;\; {y \ge 0} \;\; {\hbox{and} \;\; y^2 = x.}
+@end displaymath
+@ifinfo
+
+@example
+sqrt(x) = the y such that y >= 0 and y^2 = x
+@end example
+
+@end ifinfo
+This describes a perfectly legitimate mathematical function.  We could use it
+to recognize whether one number is the square root of another, or to derive
+facts about square roots in general.  On the other hand, the definition does
+not describe a procedure.  Indeed, it tells us almost nothing about how to
+actually find the square root of a given number.  It will not help matters to
+rephrase this definition in pseudo-Kotlin:
+
+@example kotlin
+public fun sqrt(x: Double): Double = the(y, y >= 0.0 && y * y == x)
+@end example
+
+@noindent
+This only begs the question; there is no such @code{the}, and if there were,
+it would still have to find the value somehow.
+
+The contrast between function and procedure is a reflection of the general
+distinction between describing properties of things and describing how to do
+things, or, as it is sometimes referred to, the distinction between declarative
+knowledge and imperative knowledge.  In mathematics we are usually concerned
+with declarative (what is) descriptions, whereas in computer science we are
+usually concerned with imperative (how to) descriptions.@footnote{Declarative
+and imperative descriptions are intimately related, as indeed are mathematics
+and computer science.  For instance, to say that the answer produced by a
+program is ``correct'' is to make a declarative statement about the program.
+There is a large amount of research aimed at establishing techniques for
+proving that programs are correct, and much of the technical difficulty of this
+subject has to do with negotiating the transition between imperative statements
+(from which programs are constructed) and declarative statements (which can be
+used to deduce things).  In a related vein, an important current area in
+programming-language design is the exploration of so-called very high-level
+languages, in which one actually programs in terms of declarative statements.
+The idea is to make compilers and interpreters sophisticated enough so that,
+given ``what is'' knowledge specified by the programmer, they can generate
+``how to'' knowledge automatically.  This cannot be done in general, but there
+are important areas where progress has been made.  We shall revisit this idea
+in @ref{Chapter 4}.}
+
+How does one compute square roots?  The most common way is to use Newton's
+method of successive approximations, which says that whenever we have a guess
+@math{y} for the value of the square root of a number @math{x}, we can perform a
+simple manipulation to get a better guess (one closer to the actual square
+root) by averaging @math{y} with @math{{x / y}}.@footnote{This square-root algorithm
+is actually a special case of Newton's method, which is a general technique for
+finding roots of equations.  The square-root algorithm itself was developed by
+Heron of Alexandria in the first century @abbr{A.D.}  We will see how to
+express the general Newton's method as a Kotlin function in @ref{1.3.4}.}
+For example, we can compute the square root of 2 as follows.
+Suppose our initial guess is 1:
+
+@example
+Guess     Quotient      Average
+
+1         (2/1)  = 2    ((2 + 1)/2)  = 1.5
+
+1.5       (2/1.5)       ((1.3333 + 1.5)/2)
+            = 1.3333      = 1.4167
+
+1.4167    (2/1.4167)    ((1.4167 + 1.4118)/2) 
+            = 1.4118      = 1.4142  
+
+1.4142    ...           ...
+@end example
+
+@noindent
+Continuing this process, we obtain better and better approximations to the
+square root.
+
+Now let's formalize the process in terms of procedures.  We start with a value
+for the radicand (the number whose square root we are trying to compute) and a
+value for the guess.  If the guess is good enough for our purposes, we are
+done; if not, we must repeat the process with an improved guess.  We write this
+basic strategy as a procedure:
+
+@example kotlin
+public fun sqrtIter(guess: Double, x: Double): Double =
+    if (goodEnough(guess, x)) guess else sqrtIter(improve(guess, x), x)
+@end example
+
+@noindent
+A guess is improved by averaging it with the quotient of the radicand and the
+old guess:
+
+@example kotlin
+public fun improve(guess: Double, x: Double): Double = average(guess, x / guess)
+@end example
+
+@noindent
+where
+
+@example kotlin
+public fun average(x: Double, y: Double): Double = (x + y) / 2.0
+@end example
+
+@noindent
+We also have to say what we mean by ``good enough.''  The following will do for
+illustration, but it is not really a very good test.  (See @ref{Exercise 1.7}.)
+The idea is to improve the answer until it is close
+enough so that its square differs from the radicand by less than a
+predetermined tolerance (here 0.001):@footnote{We will usually give predicates
+names shaped like a yes/no question---@code{goodEnough}, @code{isPrime}---to
+help us remember that they are predicates.  The original book's language
+spelled such names with a trailing question mark, a character Kotlin cannot
+carry inside an identifier.  This is just a stylistic convention either way.}
+
+@example kotlin
+public fun goodEnough(guess: Double, x: Double): Boolean =
+    abs(square(guess) - x) < 0.001
+@end example
+
+@noindent
+Here @code{square} and @code{abs} are the procedures of the earlier sections,
+now defined over the reals as well: Kotlin accepts one definition of each per
+type of number, the integer @code{square} of @ref{1.1.4} and this real one
+side by side.
+
+Finally, we need a way to get started.  For instance, we can always guess that
+the square root of any number is 1.0:@footnote{Observe that we express our
+initial guess as 1.0 rather than 1.  In Kotlin the two are values of different
+types from the start: @code{1} is an @code{Int} (@code{1L} a @code{Long}) and @code{1.0} a
+@code{Double}, and mixing them would change the type of every result in the
+computation.  Division follows the operand types: @code{10L / 6L} truncates to
+@code{1}, while @code{10.0 / 6.0} yields @code{1.6666666666666667}.  (We will
+learn how to implement arithmetic on exact rational numbers in @ref{2.1.1}.)}
+
+@example kotlin
+public fun sqrt(x: Double): Double = sqrtIter(1.0, x)
+@end example
+
+@noindent
+With these definitions in a program, we can call @code{sqrt} just as we can
+call any function:
+
+@example kotlin
+sqrt(9.0)
+// => 3.00009155413138
+
+sqrt(100.0 + 37.0)
+// => 11.704699917758145
+
+sqrt(sqrt(2.0) + sqrt(3.0))
+// => 1.7739279023207892
+
+sqrt(1000.0) * sqrt(1000.0)
+// => 1000.000369924366
+@end example
+
+@noindent
+The @code{sqrt} program also illustrates that the simple procedural language
+we have introduced so far is sufficient for writing any purely numerical program
+that one could write in, say, C or Pascal.  This might seem surprising, since
+we have not included in our language any iterative (looping) constructs that
+direct the computer to do something over and over again.  @code{SqrtIter}, on
+the other hand, demonstrates how iteration can be accomplished using no special
+construct other than the ordinary ability to call a procedure.@footnote{Readers
+who are worried about the efficiency issues involved in using procedure calls
+to implement iteration should note the remarks on ``tail recursion'' in
+@ref{1.2.1}.  Kotlin makes the guarantee explicit: a function marked
+@code{tailrec} compiles its self-call in tail position into a loop, and
+@ref{1.2} takes up when that marking matters.}
+
+@quotation
+@strong{@anchor{Exercise 1.6}Exercise 1.6:} Alyssa P. Hacker doesn't see why
+@code{if} needs to be provided as a special form.  ``Why can't I just define it
+as an ordinary procedure in terms of @code{when}?'' she asks.  Alyssa's friend
+Eva Lu Ator claims this can indeed be done, and she defines a new version of
+@code{if}:
+
+@example kotlin
+public fun <A> newIf(
+    predicate: Boolean,
+    thenClause: A,
+    elseClause: A,
+): A =
+    when @{
+        predicate -> thenClause
+        else -> elseClause
+    @}
+@end example
+
+Eva demonstrates the program for Alyssa:
+
+@example kotlin
+newIf(2L == 3L, 0L, 5L)
+// => 5
+
+newIf(1L == 1L, 0L, 5L)
+// => 0
+@end example
+
+Delighted, Alyssa uses @code{newIf} to rewrite the square-root program:
+
+@example kotlin
+public fun sqrtIter(guess: Double, x: Double): Double =
+    newIf(goodEnough(guess, x), guess, sqrtIter(improve(guess, x), x))
+@end example
+
+What happens when Alyssa attempts to use this to compute square roots?
+Explain.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.7}Exercise 1.7:} The @code{goodEnough} test used
+in computing square roots will not be very effective for finding the square
+roots of very small numbers.  Also, in real computers, arithmetic operations
+are almost always performed with limited precision.  This makes our test
+inadequate for very large numbers.  Explain these statements, with examples
+showing how the test fails for small and large numbers.  An alternative
+strategy for implementing @code{goodEnough} is to watch how @code{guess}
+changes from one iteration to the next and to stop when the change is a very
+small fraction of the guess.  Design a square-root function that uses this
+kind of end test.  Does this work better for small and large numbers?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.8}Exercise 1.8:} Newton's method for cube roots is
+based on the fact that if @math{y} is an approximation to the cube root of @math{x},
+then a better approximation is given by the value
+@displaymath
+{{{x / y^2} + 2y \over 3}.}
+@end displaymath
+@ifinfo
+
+@example
+x/y^2 + 2y
+----------
+    3
+@end example
+
+@end ifinfo
+@noindent
+Use this formula to implement a cube-root function analogous to the
+square-root function.  (In @ref{1.3.4} we will see how to implement
+Newton's method in general as an abstraction of these square-root and cube-root
+procedures.)
+@end quotation
+
+@node	1.1.8, 1.2, Chapter 1, 1.1
+@subsection Procedures as Black-Box Abstractions
+
+@code{Sqrt} is our first example of a process defined by a set of mutually
+defined procedures.  Notice that the definition of @code{sqrtIter} is
+@newterm{recursive}; that is, the procedure is defined in terms of itself.  The
+idea of being able to define a procedure in terms of itself may be disturbing;
+it may seem unclear how such a ``circular'' definition could make sense at all,
+much less specify a well-defined process to be carried out by a computer.  This
+will be addressed more carefully in @ref{1.2}.  But first let's
+consider some other important points illustrated by the @code{sqrt} example.
+
+Observe that the problem of computing square roots breaks up naturally into a
+number of subproblems: how to tell whether a guess is good enough, how to
+improve a guess, and so on.  Each of these tasks is accomplished by a separate
+procedure.  The entire @code{sqrt} program can be viewed as a cluster of
+procedures (shown in @ref{Figure 1.2}) that mirrors the decomposition of the
+problem into subproblems.
+
+@float
+@anchor{Figure 1.2}
+@ifinfo
+@strong{Figure 1.2:} Procedural decomposition of the @code{sqrt} program.
+
+@example
+                 sqrt
+                  |
+              sqrtIter
+              /       \
+        goodEnough    improve
+        /         \         \
+   square         abs       average
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap1/Fig1.2,,38mm,Figure 1.2: Procedural decomposition of the sqrt program.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap1/Fig1.2.std,,38mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 1.2:} Procedural decomposition of the @code{sqrt} program.}
+@end float
+
+@noindent
+The importance of this decomposition strategy is not simply that one is
+dividing the program into parts.  After all, we could take any large program
+and divide it into parts---the first ten lines, the next ten lines, the next
+and so on. Rather, each procedure must accomplish an identifiable task that
+can be used as a module in defining other procedures.
+For example, when we define the @code{goodEnough} procedure in terms of
+@code{square}, we are able to regard the @code{square} procedure as a ``black
+box.''  We are not at that moment concerned with @emph{how} the procedure
+computes its result, only with the fact that it computes the square.  The
+details of how the square is computed can be suppressed, to be considered at a
+later time.  Indeed, as far as the @code{goodEnough} procedure is concerned,
+@code{square} is not quite a procedure but rather an abstraction of a
+procedure, a so-called @newterm{procedural abstraction}.  At this level of
+abstraction, any procedure that computes the square is equally good.
+
+Thus, considering only the values they return, the following two procedures for
+squaring a number should be indistinguishable.  Each takes a numerical argument
+and produces the square of that number as the value.@footnote{It is not even
+clear which of these procedures is a more efficient implementation.  This
+depends upon the hardware available.  There are machines for which the
+``obvious'' implementation is the less efficient one.  Consider a machine that
+has extensive tables of logarithms and antilogarithms stored in a very
+efficient manner.  Kotlin's reals also make the fine print visible: the two
+implementations agree on @code{3.0} only up to a rounding error, since the
+logarithm route computes @code{9.000000000000002}.}
+
+@example kotlin
+public fun square(x: Double): Double = x * x
+@end example
+
+@noindent
+and, where @code{exp} and @code{ln} are the exponential and the natural
+logarithm of the mathematics library,
+
+@example kotlin
+public fun double(x: Double): Double = x + x
+
+public fun square(x: Double): Double = exp(double(ln(x)))
+@end example
+
+@noindent
+(The book redefines @code{square} here; a Kotlin file binds a signature once,
+so the listing's file carries the second implementation under the name
+@code{squareByLog}.)  So a procedure definition should be able to suppress
+detail.  The users of the
+procedure may not have written the procedure themselves, but may have obtained
+it from another programmer as a black box.  A user should not need to know how
+the procedure is implemented in order to use it.
+
+@subsubheading Local names
+
+One detail of a procedure's implementation that should not matter to the user
+of the procedure is the implementer's choice of names for the procedure's
+formal parameters.  Thus, the following procedures should not be
+distinguishable:
+
+@example kotlin
+public fun square(x: Long): Long = x * x
+@end example
+
+@noindent
+and
+
+@example kotlin
+public fun square(y: Long): Long = y * y
+@end example
+
+@noindent
+This principle---that the meaning of a procedure should be independent of the
+parameter names used by its author---seems on the surface to be self-evident,
+but its consequences are profound.  The simplest consequence is that the
+parameter names of a procedure must be local to the body of the procedure.  For
+example, we used @code{square} in the definition of @code{goodEnough} in our
+square-root procedure:
+
+@example kotlin
+public fun goodEnough(guess: Double, x: Double): Boolean =
+    abs(square(guess) - x) < 0.001
+@end example
+
+@noindent
+The intention of the author of @code{goodEnough} is to determine if the
+square of the first argument is within a given tolerance of the second
+argument.  We see that the author of @code{goodEnough} used the name
+@code{guess} to refer to the first argument and @code{x} to refer to the second
+argument.  The argument of @code{square} is @code{guess}.  If the author of
+@code{square} used @code{x} (as above) to refer to that argument, we see that
+the @code{x} in @code{goodEnough} must be a different @code{x} than the one
+in @code{square}.  Running the procedure @code{square} must not affect the
+value of @code{x} that is used by @code{goodEnough}, because that value of
+@code{x} may be needed by @code{goodEnough} after @code{square} is done
+computing.
+
+If the parameters were not local to the bodies of their respective procedures,
+then the parameter @code{x} in @code{square} could be confused with the
+parameter @code{x} in @code{goodEnough}, and the behavior of
+@code{goodEnough} would depend upon which version of @code{square} we used.
+Thus, @code{square} would not be the black box we desired.
+
+A formal parameter of a procedure has a very special role in the procedure
+definition, in that it doesn't matter what name the formal parameter has.  Such
+a name is called a @newterm{bound variable}, and we say that the procedure
+definition @newterm{binds} its formal parameters.  The meaning of a procedure
+definition is unchanged if a bound variable is consistently renamed throughout
+the definition.@footnote{The concept of consistent renaming is actually subtle
+and difficult to define formally.  Famous logicians have made embarrassing
+errors here.}  If a variable is not bound, we say that it is @newterm{free}.
+The set of expressions for which a binding defines a name is called the
+@newterm{scope} of that name.  In a procedure definition, the bound variables
+declared as the formal parameters of the procedure have the body of the
+procedure as their scope.
+
+In the definition of @code{goodEnough} above, @code{guess} and @code{x} are
+bound variables but @code{<}, @code{-}, @code{abs}, and @code{square} are free.
+The meaning of @code{goodEnough} should be independent of the names we choose
+for @code{guess} and @code{x} so long as they are distinct and different from
+@code{<}, @code{-}, @code{abs}, and @code{square}.  (If we renamed @code{guess}
+to @code{abs} we would have introduced a bug by @newterm{capturing} the name
+@code{abs}: the parameter would shadow the @code{abs} procedure, the body's
+call to @code{abs} would no longer resolve to it, and the compiler would
+reject the program rather than silently change its meaning.  The name would
+have changed from free to bound.)  The meaning of
+@code{goodEnough} is not independent of the names of its free variables,
+however.  It surely depends upon the fact (external to this definition) that
+the name @code{abs} denotes a procedure for computing the absolute value of a
+number.  @code{GoodEnough} will compute a different function if we substitute
+@code{cos} for @code{abs} in its definition.
+
+@subsubheading Internal definitions and block structure
+
+We have one kind of name isolation available to us so far: The formal
+parameters of a procedure are local to the body of the procedure.  The
+square-root program illustrates another way in which we would like to control
+the use of names.  The existing program consists of separate procedures:
+
+@example kotlin
+public fun sqrt(x: Double): Double = sqrtIter(1.0, x)
+
+public fun sqrtIter(guess: Double, x: Double): Double =
+    if (goodEnough(guess, x)) guess else sqrtIter(improve(guess, x), x)
+
+public fun goodEnough(guess: Double, x: Double): Boolean =
+    abs(square(guess) - x) < 0.001
+
+public fun improve(guess: Double, x: Double): Double = average(guess, x / guess)
+@end example
+
+@noindent
+The problem with this program is that the only procedure that is important to
+users of @code{sqrt} is @code{sqrt}.  The other procedures (@code{sqrtIter},
+@code{goodEnough}, and @code{improve}) only clutter up their minds.  They may
+not define any other procedure called @code{goodEnough} as part of another
+program to work together with the square-root program, because @code{sqrt}
+needs it.  The problem is especially severe in the construction of large
+systems by many separate programmers.  For example, in the construction of a
+large library of numerical procedures, many numerical functions are computed as
+successive approximations and thus might have procedures named
+@code{goodEnough} and @code{improve} as auxiliary procedures.  We would like
+to localize the subprocedures, hiding them inside @code{sqrt} so that
+@code{sqrt} could coexist with other successive approximations, each having its
+own private @code{goodEnough} procedure.  To make this possible, we allow a
+procedure to have internal definitions that are local to that procedure.
+Kotlin spells an internal definition as a @newterm{local function}, declared
+inside the body of its enclosing function.  For example, in the square-root
+problem we can write
+
+@example kotlin
+public fun sqrt(x: Double): Double @{
+    fun goodEnough(guess: Double, x: Double): Boolean =
+        abs(square(guess) - x) < 0.001
+
+    fun improve(guess: Double, x: Double): Double =
+        average(guess, x / guess)
+
+    fun sqrtIter(guess: Double, x: Double): Double =
+        if (goodEnough(guess, x)) guess else sqrtIter(improve(guess, x), x)
+
+    return sqrtIter(1.0, x)
+@}
+@end example
+
+@noindent
+Such nesting of definitions, called @newterm{block structure}, is the
+right solution to the simplest name-packaging problem.  But there is a better
+idea lurking here.  In addition to internalizing the definitions of the
+auxiliary procedures, we can simplify them.  Since @code{x} is bound in the
+definition of @code{sqrt}, the procedures @code{goodEnough}, @code{improve},
+and @code{sqrtIter}, which are defined internally to @code{sqrt}, are in the
+scope of @code{x}.  Thus, it is not necessary to pass @code{x} explicitly to
+each of these procedures.  Instead, we allow @code{x} to be a free variable in
+the internal definitions, as shown below. Then @code{x} gets its value from the
+argument with which the enclosing procedure @code{sqrt} is called.  This
+discipline is called @newterm{lexical scoping}.@footnote{Lexical scoping dictates 
+that free variables in a procedure are taken to refer to bindings made by enclosing 
+procedure definitions; that is, they are looked up in the environment in which the
+procedure was defined. We will see how this works in detail in chapter 3 when we study 
+environments and the detailed behavior of the interpreter.@anchor{Footnote 28}}
+
+@example kotlin
+public fun sqrt(x: Double): Double @{
+    fun goodEnough(guess: Double): Boolean =
+        abs(square(guess) - x) < 0.001
+
+    fun improve(guess: Double): Double =
+        average(guess, x / guess)
+
+    fun sqrtIter(guess: Double): Double =
+        if (goodEnough(guess)) guess else sqrtIter(improve(guess))
+
+    return sqrtIter(1.0)
+@}
+@end example
+
+@noindent
+We will use block structure extensively to help us break up large
+programs into tractable pieces.@footnote{Local declarations must precede
+their uses in a block, and Kotlin's local functions cannot
+forward-reference one another: the @code{sqrtIter} of the listing calls
+@code{goodEnough} and @code{improve}, which are declared above it.  The
+management is not responsible for the consequences of running programs that
+intertwine definition and use.}
+The idea of block structure originated with the programming language
+Algol 60. It appears in most advanced programming languages and is an
+important tool for helping to organize the construction of large
+programs.

@@ -1,0 +1,156 @@
+@node	0.3, 0.4, 0.2, Chapter 0
+@section Recursion and the call stack
+
+This section covers recursive and iterative processes in this language, and
+how tail calls or loops express them. It is the grounding for @ref{1.2},
+where the book first separates a recursive process from an iterative one.
+
+@heading Recursion takes a stack
+
+A plain recursive call takes a stack frame and holds it until the calls it
+spawned return. The tree-recursive @code{fib} of @ref{1.2.2} fans out
+exactly this way:
+
+@example typescript
+const factorial = (n: number): number =>
+  n <= 1 ? 1 : n * factorial(n - 1);
+
+const fib = (n: number): number => (n < 2 ? n : fib(n - 1) + fib(n - 2));
+
+factorial(18)
+// => 6402373705728000
+
+fib(10)
+// => 55
+@end example
+
+@noindent
+@code{factorial(18)} is the last factorial the @code{number} type holds
+exactly (@ref{0.2}); @code{19!} crosses the @code{2 ** 53} bound and moves
+to @code{bigint}. TypeScript gives the book's processes no tail-call
+guarantee: the language standard reserves none, and no engine this book
+runs on performs one in practice. A linear-recursive @code{factorial}
+written as above is a linear-recursive process here too, and the engine's
+stack bounds how deep it may run; past the bound it raises a
+@code{RangeError} instead of returning a wrong answer. Exercise 0.3
+measures the bound.
+
+@heading Loops make the iteration
+
+The iterative process of @ref{1.2.1} is expressed with a loop: the state
+the recursive version kept in pending multiplications lives in local
+variables instead, and the stack stops growing:
+
+@example typescript
+const factorialIter = (n: number): number => @{
+  let acc = 1;
+  for (let k = 2; k <= n; k += 1) @{
+    acc *= k;
+  @}
+  return acc;
+@};
+
+factorialIter(18)
+// => 6402373705728000
+@end example
+
+@example typescript
+const sumTo = (n: number): number => @{
+  let total = 0;
+  let k = 1;
+  while (k <= n) @{
+    total += k;
+    k += 1;
+  @}
+  return total;
+@};
+
+sumTo(100)
+// => 5050
+@end example
+
+@noindent
+One consequence shapes the rest of the book. A loop rewrites only the
+shape the programmer writes, so a tree-recursive process such as
+@code{fib} stays tree-recursive, and deep non-tail recursion such as the
+tree walks of @ref{1.2} and @ref{2.2.2} stays bounded by the stack. The
+evaluators of @ref{4.1} say plainly that they are not tail recursive, as
+the book's own dialect does, and @ref{5.4} restores tail recursion in the
+explicit-control evaluator.
+
+@heading Deferring work: generators
+
+A @newterm{generator} records how to compute a sequence and runs that
+work one step at a time, at each pull. @code{function*} declares one, and
+@code{yield} hands out the next element and pauses:
+
+@example typescript
+function* naturals(): Generator<number> @{
+  let n = 1;
+  for (;;) @{
+    yield n;
+    n += 1;
+  @}
+@}
+
+function* squaresOf(g: Generator<number>): Generator<number> @{
+  for (const x of g) @{
+    yield x * x;
+  @}
+@}
+
+function* take<A>(g: Generator<A>, n: number): Generator<A> @{
+  let k = 0;
+  for (const x of g) @{
+    if (k >= n) @{
+      return;
+    @}
+    yield x;
+    k += 1;
+  @}
+@}
+@end example
+
+@noindent
+Nothing is computed until something pulls:
+
+@example typescript
+Array.from(take(squaresOf(naturals()), 5))
+// => [1, 4, 9, 16, 25]
+@end example
+
+@noindent
+The intermediate steps record work, and each pull drives exactly one
+element out of the pipeline. Cold means recomputing: a generator holds a
+recipe, not a row of results, so walking a fresh one runs the recipe
+again from the start.
+
+The streams of @ref{3.5} need two properties a generator does not have.
+They are memoized, so two cursors over one stream force each element
+once; and they permit self-reference, where a tail must capture the very
+stream being defined. Chapter 3 therefore ships a second type, the
+memoized @code{LazyList} of @ref{3.5.1}, and the rule this book follows
+from @ref{3.5} onward: a generator carries a pipeline whose elements are
+consumed as they are produced, and a stream carries a shared, memoized
+structure that may observe and reuse its own past.
+
+@noindent
+The runnable version of this section's listings is
+@file{packages/ch0/src/03-recursion.ts}, asserted by the test file beside
+it.
+
+@strong{@anchor{Exercise 0.3}Exercise 0.3:} This section said a loop
+carries its state in locals while a plain recursion takes a frame per
+call. Implement @code{sumToRecursive(n)} as a recursion that takes a
+frame per call and @code{sumToIterative(n)} as a loop over the same sum;
+the two agree on inputs the recursion survives. Then write
+@code{recursionDepth()}, a probe that descends until the engine refuses
+and returns the last completed depth, catching the @code{RangeError} and
+rethrowing anything else. Test that @code{sumToIterative(100000)} is
+@code{5000050000} while @code{sumToRecursive(100000)} raises a
+@code{RangeError}, and that @code{recursionDepth()} reports a finite
+depth above 1000 on this machine.
+
+@cindex RangeError
+@cindex generator
+@cindex tail call

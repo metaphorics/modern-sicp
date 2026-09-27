@@ -1,0 +1,20 @@
+;; SPDX-License-Identifier: GPL-3.0-only
+;; Adapted from SICP sections 4.1 to 5.2
+ok
+ok
+1
+2
+3
+;;; There are no more values of
+(amb 1 2 3)
+;;; There are no more values of
+(amb)
+1
+2
+3
+;;; There are no more values of
+(an-integer-between 1 3)
+ok
+(4 . 4)
+ok
+42

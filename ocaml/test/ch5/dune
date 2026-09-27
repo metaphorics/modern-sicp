@@ -1,0 +1,49 @@
+(executable
+ (name test_sec_5_1)
+ (modules test_sec_5_1)
+ (libraries sicp_ch5_solutions sicp_ch5 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_5_1.exe)))
+
+(executable
+ (name test_sec_5_2)
+ (modules test_sec_5_2)
+ (libraries sicp_ch5_solutions sicp_ch5 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_5_2.exe)))
+
+(executable
+ (name test_sec_5_3)
+ (modules test_sec_5_3)
+ (libraries sicp_ch5_solutions sicp_ch5 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_5_3.exe)))
+
+(executable
+ (name test_sec_5_4)
+ (modules test_sec_5_4)
+ (libraries sicp_ch5_solutions sicp_ch5 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_5_4.exe)))
+
+(executable
+ (name test_sec_5_5)
+ (modules test_sec_5_5)
+ (libraries sicp_ch5_solutions sicp_ch5 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_5_5.exe)))

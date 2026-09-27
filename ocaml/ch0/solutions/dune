@@ -1,0 +1,3 @@
+(library
+ (name sicp_ch0_solutions)
+ (modules ex_0_01 ex_0_02 ex_0_03 ex_0_04 ex_0_05))

@@ -1,0 +1,862 @@
+@node	2.1, 2.2, Chapter 2, Chapter 2
+@section Introduction to Data Abstraction
+
+In @ref{1.1.8}, we noted that a procedure used as an element in
+creating a more complex procedure could be regarded not only as a collection of
+particular operations but also as a procedural abstraction.  That is, the
+details of how the procedure was implemented could be suppressed, and the
+particular procedure itself could be replaced by any other procedure with the
+same overall behavior.  In other words, we could make an abstraction that would
+separate the way the procedure would be used from the details of how the
+procedure would be implemented in terms of more primitive procedures.  The
+analogous notion for compound data is called @newterm{data abstraction}.  Data
+abstraction is a methodology that enables us to isolate how a compound data
+object is used from the details of how it is constructed from more primitive
+data objects.
+
+The basic idea of data abstraction is to structure the programs that are to use
+compound data objects so that they operate on ``abstract data.'' That is, our
+programs should use data in such a way as to make no assumptions about the data
+that are not strictly necessary for performing the task at hand.  At the same
+time, a ``concrete'' data representation is defined independent of the programs
+that use the data.  The interface between these two parts of our system will be
+a set of procedures, called @newterm{selectors} and @newterm{constructors},
+that implement the abstract data in terms of the concrete representation.  To
+illustrate this technique, we will consider how to design a set of procedures
+for manipulating rational numbers.
+
+@menu
+* 2.1.1::            Example: Arithmetic Operations for Rational Numbers
+* 2.1.2::            Abstraction Barriers
+* 2.1.3::            What Is Meant by Data?
+* 2.1.4::            Extended Exercise: Interval Arithmetic
+@end menu
+
+@node	2.1.1, 2.1.2, 2.1, 2.1
+@subsection Example: Arithmetic Operations for Rational Numbers
+
+Suppose we want to do arithmetic with rational numbers.  We want to be able to
+add, subtract, multiply, and divide them and to test whether two rational
+numbers are equal.
+
+Let us begin by assuming that we already have a way of constructing a rational
+number from a numerator and a denominator.  We also assume that, given a
+rational number, we have a way of extracting (or selecting) its numerator and
+its denominator.  Let us further assume that the constructor and selectors are
+available as procedures:
+
+@itemize @bullet
+
+@item
+@code{makeRat(⟨@var{n}⟩, ⟨@var{d}⟩)} returns the rational number whose numerator
+is the integer @code{⟨@var{n}⟩} and whose denominator is the integer
+@code{⟨@var{d}⟩}.
+
+@item
+@code{numer(⟨@var{x}⟩)} returns the numerator of the rational number
+@code{⟨@var{x}⟩}.
+
+@item
+@code{denom(⟨@var{x}⟩)} returns the denominator of the rational number
+@code{⟨@var{x}⟩}.
+
+@end itemize
+
+@noindent
+We are using here a powerful strategy of synthesis: @newterm{wishful thinking}.
+We haven't yet said how a rational number is represented, or how the procedures
+@code{numer}, @code{denom}, and @code{makeRat} should be implemented.  Even
+so, if we did have these three procedures, we could then add, subtract,
+multiply, divide, and test equality by using the following relations:
+@displaymath
+\eqalign{
+{n_1 \over d_1} + {n_2 \over d_2}       &= {n_1 d_2 + n_2 d_1 \over d_1 d_2}, \cr
+{n_1 \over d_1} - {n_2 \over d_2} 	&= {n_1 d_2 - n_2 d_1 \over d_1 d_2}, \cr
+{n_1 \over d_1} \times {n_2 \over d_2} 	&= {n_1 n_2 \over d_1 d_2}, \cr
+{n_1 \,/\, d_1} \over {n_2 \,/\, d_2} 	&= {n_1 d_2 \over d_1 n_2}, \cr
+{n_1 \over d_1} 			&= {n_2 \over d_2} \quad
+						{\rm\ if\ and\ only\ if\quad} 
+						n_1 d_2 = n_2 d_1. 
+}
+@end displaymath
+@ifinfo
+
+@example
+n_1   n_2   n_1 d_2 + n_2 d_1
+--- + --- = -----------------
+d_1   d_2        d_1 d_2
+
+n_1   n_2   n_1 d_2 - n_2 d_1
+--- - --- = -----------------
+d_1   d_2        d_1 d_2
+
+n_1   n_2   n_1 n_2
+--- * --- = -------
+d_1   d_2   d_1 d_2
+
+n_1 / d_1   n_1 d_2
+--------- = -------
+n_2 / d_2   d_1 n_2
+
+n_1   n_2
+--- = ---  if and only if n_1 d_2 = n_2 d_1
+d_1   d_2
+@end example
+
+@end ifinfo
+@noindent
+We can express these rules as procedures:
+
+@example kotlin
+fun addRat(x: Rational, y: Rational): Rational =
+    makeRat(x.numer * y.denom + y.numer * x.denom, x.denom * y.denom)
+
+fun subRat(x: Rational, y: Rational): Rational =
+    makeRat(x.numer * y.denom - y.numer * x.denom, x.denom * y.denom)
+
+fun mulRat(x: Rational, y: Rational): Rational =
+    makeRat(x.numer * y.numer, x.denom * y.denom)
+
+fun divRat(x: Rational, y: Rational): Rational =
+    makeRat(x.numer * y.denom, x.denom * y.numer)
+
+fun equalRat(x: Rational, y: Rational): Boolean =
+    x.numer * y.denom == y.numer * x.denom
+@end example
+
+@noindent
+Now we have the operations on rational numbers defined in terms of the selector
+and constructor procedures @code{numer}, @code{denom}, and @code{makeRat}.
+But we haven't yet defined these.  What we need is some way to glue together a
+numerator and a denominator to form a rational number.
+
+@subsubheading Pairs
+
+To enable us to implement the concrete level of our data abstraction, Kotlin's
+standard library provides a compound structure called a @newterm{pair}, the
+type @code{Pair}, which can be constructed with @code{Pair(a, b)} or the infix
+form @code{a to b}.  Given a pair, we can extract the parts using the
+properties @code{first} and @code{second}, which play the role of Scheme's
+@code{car} and @code{cdr}.@footnote{Scheme's own names come from the original
+implementation of Lisp on the IBM 704, which had an addressing scheme that let
+one reference the ``address'' and ``decrement'' parts of a memory location:
+@code{car} stood for ``Contents of Address part of Register'' and @code{cdr}
+(pronounced ``could-er'') for ``Contents of Decrement part of Register.''  The
+name @code{cons} stood for ``construct.''  Kotlin's @code{first} and
+@code{second} carry no such history; they are ordinary property names.}
+Thus, we can use a pair as follows:
+
+@example kotlin
+val x = 1L to 2L
+
+x.first
+// => 1
+
+x.second
+// => 2
+@end example
+
+@noindent
+Notice that a pair is a data object that can be given a name and manipulated,
+just like a primitive data object.  Moreover, a pair can hold pairs as its own
+elements, and so on:
+
+@example kotlin
+val x = 1L to 2L
+val y = 3L to 4L
+val z = x to y
+
+z.first.first
+// => 1
+
+z.second.first
+// => 3
+@end example
+
+@noindent
+In @ref{2.2} we will see how this ability to combine pairs means that
+pairs can be used as general-purpose building blocks to create all sorts of
+complex data structures.  The single compound-data primitive @newterm{pair},
+Kotlin's own @code{Pair}, is enough glue for a great deal of this chapter, and
+where a named field reads better than @code{first} and @code{second}, a small
+data class serves the same role.  Data objects constructed from pairs are
+called @newterm{list-structured} data.
+
+@subsubheading Representing rational numbers
+
+Pairs offer a natural way to complete the rational-number system.  Kotlin's
+data class groups a numerator and a denominator under names, so we represent a
+rational number as a small immutable record:@footnote{Another way to define
+the constructor is to make @code{makeRat} an alias for the class's own
+constructor reference, @code{val makeRat = ::Rational}, rather than a
+wrapping function.  Instead of @code{makeRat} @emph{calling} @code{Rational}'s
+constructor, @code{makeRat} @emph{is} that constructor reference, so there is
+only one call, not two, when @code{makeRat} is invoked.  On the other hand,
+doing this defeats debugging aids that trace function calls or set
+breakpoints on them: you may want to watch @code{makeRat} being called, but
+you certainly don't want to watch every construction of a @code{Rational}.
+We have chosen not to use this style of definition in this book.}
+
+@example kotlin
+data class Rational(val numer: Long, val denom: Long)
+
+fun makeRat(n: Long, d: Long): Rational = Rational(n, d)
+@end example
+
+@noindent
+A data class's constructor arguments are already its named properties, so
+@code{numer} and @code{denom} need no separate selector bodies the way
+Scheme's @code{car} and @code{cdr} would; @code{x.numer} and @code{x.denom}
+are the selectors.
+
+@noindent
+Also, in order to display the results of our computations, we can print
+rational numbers by printing the numerator, a slash, and the
+denominator:@footnote{@code{println} is Kotlin's primitive for printing a line
+of data.  It returns no useful value, so in the uses of @code{printRat} below,
+we show only what @code{printRat} prints, not what the interpreter shows as
+the value @code{printRat} returns.}
+
+@example kotlin
+fun printRat(x: Rational) @{
+    println("$@{x.numer@}/$@{x.denom@}")
+@}
+@end example
+
+@noindent
+Now we can try our rational-number procedures:
+
+@example kotlin
+val oneHalf = makeRat(1L, 2L)
+printRat(oneHalf)
+// 1/2
+// => ok
+
+val oneThird = makeRat(1L, 3L)
+printRat(addRat(oneHalf, oneThird))
+// 5/6
+// => ok
+
+printRat(mulRat(oneHalf, oneThird))
+// 1/6
+// => ok
+
+printRat(addRat(oneThird, oneThird))
+// 6/9
+// => ok
+@end example
+
+@noindent
+As the final example shows, our rational-number implementation does not reduce
+rational numbers to lowest terms.  We can remedy this by changing
+@code{makeRat}.  If we have a @code{gcd} procedure like the one in
+@ref{1.2.5} that produces the greatest common divisor of two integers, we can
+use @code{gcd} to reduce the numerator and the denominator to lowest terms
+before constructing the pair.  Kotlin cannot rebind the top-level name
+@code{makeRat} the way a second Scheme @code{define} would, so this edition
+names the reducing version @code{makeRatReduced}; every section and exercise
+from here on that says ``@code{makeRat}'' means this one:
+
+@example kotlin
+fun makeRatReduced(n: Long, d: Long): Rational @{
+    val g = gcd(n, d)
+    return Rational(n / g, d / g)
+@}
+@end example
+
+@noindent
+Now we have
+
+@example kotlin
+printRat(makeRatReduced(6L, 9L))
+// 2/3
+// => ok
+@end example
+
+@noindent
+as desired: the pair @code{addRat(oneThird, oneThird)} builds, @code{(6, 9)},
+reduces to @code{2/3} once @code{makeRat} means @code{makeRatReduced}.  This
+modification was accomplished by changing the constructor @code{makeRat}
+without changing any of the procedures (such as @code{addRat} and
+@code{mulRat}) that implement the actual operations.
+
+@quotation
+@strong{@anchor{Exercise 2.1}Exercise 2.1:} Define a better version of
+@code{makeRat} that handles both positive and negative arguments.
+@code{makeRat} should normalize the sign so that if the rational number is
+positive, both the numerator and denominator are positive, and if the rational
+number is negative, only the numerator is negative.
+@end quotation
+
+@node	2.1.2, 2.1.3, 2.1.1, 2.1
+@subsection Abstraction Barriers
+
+Before continuing with more examples of compound data and data abstraction, let
+us consider some of the issues raised by the rational-number example.  We
+defined the rational-number operations in terms of a constructor
+@code{makeRat} and selectors @code{numer} and @code{denom}.  In general, the
+underlying idea of data abstraction is to identify for each type of data object
+a basic set of operations in terms of which all manipulations of data objects
+of that type will be expressed, and then to use only those operations in
+manipulating the data.
+
+We can envision the structure of the rational-number system as shown in
+@ref{Figure 2.1}.  The horizontal lines represent @newterm{abstraction barriers}
+that isolate different ``levels'' of the system.  At each level, the
+barrier separates the programs (above) that use the data abstraction from the
+programs (below) that implement the data abstraction.  Programs that use
+rational numbers manipulate them solely in terms of the procedures supplied
+``for public use'' by the rational-number package: @code{addRat},
+@code{subRat}, @code{mulRat}, @code{divRat}, and @code{equalRat}. These,
+in turn, are implemented solely in terms of the constructor and selectors
+@code{makeRat}, @code{numer}, and @code{denom}, which themselves are
+implemented in terms of a data class wrapping a pair of integers.  The details
+of how that representation is implemented are irrelevant to the rest of the
+rational-number package so long as it can be manipulated by the use of
+@code{makeRat}'s own construction and its two properties.  In effect,
+procedures at each level are the interfaces that define the abstraction
+barriers and connect the different levels.
+
+@float
+@anchor{Figure 2.1}
+@ifinfo
+@quotation
+@strong{Figure 2.1:} Data-abstraction barriers in the rational-number package.
+
+@example
+        +------------------------------------+
+--------| Programs that use rational numbers |--------
+        +------------------------------------+
+          Rational numbers in problem domain
+            +---------------------------+
+------------|   add-rat  sub-rat  ...   |-------------
+            +---------------------------+
+   Rational numbers as numerators and denominators
+              +------------------------+
+--------------| make-rat  numer  denom |--------------
+              +------------------------+
+              Rational numbers as pairs
+                  +----------------+
+------------------| cons  car  cdr |------------------
+                  +----------------+
+            However pairs are implemented
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.1d,,125mm,Figure 2.1: Data-abstraction barriers in the rational-number package.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.1d.std,,125mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.1:} Data-abstraction barriers in the rational-number package.}
+@end float
+
+@noindent
+This simple idea has many advantages.  One advantage is that it makes programs
+much easier to maintain and to modify.  Any complex data structure can be
+represented in a variety of ways with the primitive data structures provided by
+a programming language.  Of course, the choice of representation influences the
+programs that operate on it; thus, if the representation were to be changed at
+some later time, all such programs might have to be modified accordingly.  This
+task could be time-consuming and expensive in the case of large programs unless
+the dependence on the representation were to be confined by design to a very
+few program modules.
+
+For example, an alternate way to address the problem of reducing rational
+numbers to lowest terms is to perform the reduction whenever we access the
+parts of a rational number, rather than when we construct it.  This leads to
+different constructor and selector procedures, this time built directly over a
+@code{Pair<Long, Long>} rather than a named data class, so that
+@code{numerLazy} and @code{denomLazy} can each run their own @code{gcd}:
+
+@example kotlin
+typealias RationalPair = Pair<Long, Long>
+
+fun makeRatLazy(n: Long, d: Long): RationalPair = n to d
+
+fun numerLazy(x: RationalPair): Long = x.first / gcd(x.first, x.second)
+
+fun denomLazy(x: RationalPair): Long = x.second / gcd(x.first, x.second)
+@end example
+
+@noindent
+The difference between this implementation and the previous one lies in when we
+compute the @code{gcd}.  If in our typical use of rational numbers we access
+the numerators and denominators of the same rational numbers many times, it
+would be preferable to compute the @code{gcd} when the rational numbers are
+constructed.  If not, we may be better off waiting until access time to compute
+the @code{gcd}.  In any case, when we change from one representation to the
+other, the procedures @code{addRat}, @code{subRat}, and so on do not have to
+be modified at all.
+
+Constraining the dependence on the representation to a few interface procedures
+helps us design programs as well as modify them, because it allows us to
+maintain the flexibility to consider alternate implementations.  To continue
+with our simple example, suppose we are designing a rational-number package and
+we can't decide initially whether to perform the @code{gcd} at construction
+time or at selection time.  The data-abstraction methodology gives us a way to
+defer that decision without losing the ability to make progress on the rest of
+the system.
+
+@quotation
+@strong{@anchor{Exercise 2.2}Exercise 2.2:} Consider the problem of
+representing line segments in a plane.  Each segment is represented as a pair
+of points: a starting point and an ending point.  Define a constructor
+@code{makeSegment} and selectors @code{startSegment} and @code{endSegment}
+that define the representation of segments in terms of points.  Furthermore, a
+point can be represented as a pair of numbers: the @math{x} coordinate and the
+@math{y} coordinate.  Accordingly, specify a constructor @code{makePoint} and
+selectors @code{xPoint} and @code{yPoint} that define this representation.
+Finally, using your selectors and constructors, define a procedure
+@code{midpointSegment} that takes a line segment as argument and returns its
+midpoint (the point whose coordinates are the average of the coordinates of the
+endpoints).  To try your procedures, you'll need a way to print points:
+
+@example kotlin
+fun printPoint(p: Point) @{
+    println("($@{xPoint(p)@},$@{yPoint(p)@})")
+@}
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.3}Exercise 2.3:} Implement a representation for
+rectangles in a plane.  (Hint: You may want to make use of @ref{Exercise 2.2}.)
+In terms of your constructors and selectors, create procedures that compute the
+perimeter and the area of a given rectangle.  Now implement a different
+representation for rectangles.  Can you design your system with suitable
+abstraction barriers, so that the same perimeter and area procedures will work
+using either representation?
+@end quotation
+
+@node	2.1.3, 2.1.4, 2.1.2, 2.1
+@subsection What Is Meant by Data?
+
+We began the rational-number implementation in @ref{2.1.1} by
+implementing the rational-number operations @code{addRat}, @code{subRat}, and
+so on in terms of three unspecified procedures: @code{makeRat}, @code{numer},
+and @code{denom}.  At that point, we could think of the operations as being
+defined in terms of data objects---numerators, denominators, and rational
+numbers---whose behavior was specified by the latter three procedures.
+
+But exactly what is meant by @newterm{data}?  It is not enough to say
+``whatever is implemented by the given selectors and constructors.''  Clearly,
+not every arbitrary set of three procedures can serve as an appropriate basis
+for the rational-number implementation.  We need to guarantee that, if we
+construct a rational number @code{x} from a pair of integers @code{n} and
+@code{d}, then extracting the @code{numer} and the @code{denom} of @code{x} and
+dividing them should yield the same result as dividing @code{n} by @code{d}.
+In other words, @code{makeRat}, @code{numer}, and @code{denom} must satisfy
+the condition that, for any integer @code{n} and any non-zero integer @code{d},
+if @code{x} is @code{makeRat(n, d)}, then
+@displaymath
+{\hbox{numer(x)} \over \hbox{denom(x)}} = {{\hbox{n} \over \hbox{d}}.}
+@end displaymath
+@ifinfo
+
+@example
+numer(x)     n
+--------- = ---
+denom(x)     d
+@end example
+
+@end ifinfo
+In fact, this is the only condition @code{makeRat}, @code{numer}, and
+@code{denom} must fulfill in order to form a suitable basis for a
+rational-number representation.  In general, we can think of data as defined by
+some collection of selectors and constructors, together with specified
+conditions that these procedures must fulfill in order to be a valid
+representation.@footnote{Surprisingly, this idea is very difficult to formulate
+rigorously. There are two approaches to giving such a formulation.  One,
+pioneered by C. A. R. @ref{Hoare (1972)}, is known as the method of @newterm{abstract models}.  
+It formalizes the ``procedures plus conditions'' specification as
+outlined in the rational-number example above.  Note that the condition on the
+rational-number representation was stated in terms of facts about integers
+(equality and division).  In general, abstract models define new kinds of data
+objects in terms of previously defined types of data objects.  Assertions about
+data objects can therefore be checked by reducing them to assertions about
+previously defined data objects.  Another approach, introduced by Zilles at
+@abbr{MIT}, by Goguen, Thatcher, Wagner, and Wright at IBM
+(see @ref{Thatcher et al. 1978}),
+and by Guttag at Toronto (see @ref{Guttag 1977}), is called
+@newterm{algebraic specification}.  It regards the ``procedures'' as elements
+of an abstract algebraic system whose behavior is specified by axioms that
+correspond to our ``conditions,'' and uses the techniques of abstract algebra
+to check assertions about data objects.  Both methods are surveyed in the paper
+by @ref{Liskov and Zilles (1975)}.}
+
+This point of view can serve to define not only ``high-level'' data objects,
+such as rational numbers, but lower-level objects as well.  Consider the notion
+of a pair, which we used in order to define our rational numbers.  Kotlin's
+own @code{Pair} already fulfills this condition, but nothing about a pair
+requires it to be a data structure at all; the only thing we need to know
+about a pair's operations is that if we glue two objects together we can
+retrieve them again.  That is, the operations satisfy the condition that, for
+any objects @code{x} and @code{y}, if @code{z} is @code{cons(x, y)} then
+@code{car(z)} is @code{x} and @code{cdr(z)} is @code{y}.  Any triple of
+functions that satisfies this condition can be used as the basis for
+implementing pairs.  This point is illustrated strikingly by the fact that we
+could implement @code{cons}, @code{car}, and @code{cdr} without using any data
+structures at all but only using functions.  Here are the definitions:
+
+@example kotlin
+fun cons(x: Long, y: Long): (Long) -> Long @{
+    fun dispatch(m: Long): Long =
+        when (m) @{
+            0L -> x
+            1L -> y
+            else -> error("Argument not 0 or 1: CONS $m")
+        @}
+    return ::dispatch
+@}
+
+fun car(z: (Long) -> Long): Long = z(0L)
+
+fun cdr(z: (Long) -> Long): Long = z(1L)
+@end example
+
+@noindent
+This use of functions corresponds to nothing like our intuitive notion of what
+data should be.  Nevertheless, all we need to do to show that this is a valid
+way to represent pairs is to verify that these functions satisfy the condition
+given above.
+
+The subtle point to notice is that the value returned by @code{cons(x, y)} is a
+function---namely the locally defined function @code{dispatch}, which
+takes one argument and returns either @code{x} or @code{y} depending on whether
+the argument is 0 or 1.  Correspondingly, @code{car(z)} is defined to apply
+@code{z} to 0.  Hence, if @code{z} is the function formed by @code{cons(x,
+y)}, then @code{z} applied to 0 will yield @code{x}. Thus, we have shown that
+@code{car(cons(x, y))} yields @code{x}, as desired.  Similarly, @code{cdr(cons(x, y))}
+applies the function returned by @code{cons(x, y)} to 1, which
+returns @code{y}.  Therefore, this procedural implementation of pairs is a
+valid implementation, and if we access pairs using only @code{cons},
+@code{car}, and @code{cdr} we cannot distinguish this implementation from one
+that uses ``real'' data structures.
+
+The point of exhibiting the procedural representation of pairs is not that our
+language works this way (Kotlin's own @code{Pair}, like Scheme's built-in
+pairs, is implemented directly, for efficiency reasons) but that it could work
+this way.  The procedural representation, although obscure, is a perfectly
+adequate way to represent pairs, since it fulfills the only conditions that
+pairs need to fulfill.  This example also demonstrates that the ability to
+manipulate functions as objects automatically provides the ability to
+represent compound data.  This may seem a curiosity now, but procedural
+representations of data will play a central role in our programming
+repertoire.  This style of programming is often called @newterm{message
+passing}, and we will be using it as a basic tool in @ref{Chapter 3} when we
+address the issues of modeling and simulation.
+
+@quotation
+@strong{@anchor{Exercise 2.4}Exercise 2.4:} Here is an alternative procedural
+representation of pairs.  For this representation, verify that
+@code{carFn(consFn(x, y))} yields @code{x} for any objects @code{x} and
+@code{y}.
+
+@example kotlin
+fun <T> consFn(x: T, y: T): ((T, T) -> T) -> T = @{ m -> m(x, y) @}
+
+fun <T> carFn(z: ((T, T) -> T) -> T): T = z @{ p, _ -> p @}
+@end example
+
+What is the corresponding definition of @code{cdrFn}? (Hint: To verify that this
+works, make use of the substitution model of @ref{1.1.5}.)
+@end quotation
+
+@quotation
+@emph{Exercise 2.4a is added by this edition and extends exercise 2.4; SICP
+numbers stop at 2.4.} @strong{@anchor{Exercise 2.4a}Exercise 2.4a:} Exercise
+2.4 verifies the identity law @code{carFn(consFn(x, y)) == x} and
+@code{cdrFn(consFn(x, y)) == y} for one hand-picked pair, @code{(3, 4)}, by
+substitution.  Write a Kotest property test that checks the same law for
+every generated pair of @code{Long} values, not just one, using
+@code{checkAll}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.5}Exercise 2.5:} Show that we can represent pairs of
+nonnegative integers using only numbers and arithmetic operations if we
+represent the pair @math{a} and @math{b} as the integer that is the product @math{{2^a 3^b}}.
+Give the corresponding definitions of the procedures @code{consPow},
+@code{carPow}, and @code{cdrPow}.  A @code{Long} overflows for exponents past
+about 40, so use @code{java.math.BigInteger} instead.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.6}Exercise 2.6:} In case representing pairs as
+functions wasn't mind-boggling enough, consider that, in a language that can
+manipulate functions, we can get by without numbers (at least insofar as
+nonnegative integers are concerned) by implementing 0 and the operation of
+adding 1 as
+
+@example kotlin
+typealias Church<T> = ((T) -> T) -> (T) -> T
+
+fun <T> churchZero(): Church<T> = @{ _ -> @{ x -> x @} @}
+
+fun <T> churchAddOne(n: Church<T>): Church<T> = @{ f -> @{ x -> f(n(f)(x)) @} @}
+@end example
+
+This representation is known as @newterm{Church numerals}, after its inventor,
+Alonzo Church, the logician who invented the λ-calculus.
+
+Define @code{churchOne} and @code{churchTwo} directly (not in terms of
+@code{churchZero} and @code{churchAddOne}).  (Hint: Use substitution to
+evaluate @code{churchAddOne(churchZero())}).  Give a direct definition of the
+addition procedure @code{plusChurch} (not in terms of repeated application of
+@code{churchAddOne}).
+@end quotation
+
+@node	2.1.4, 2.2, Chapter 2, 2.1
+@subsection Extended Exercise: Interval Arithmetic
+
+Alyssa P. Hacker is designing a system to help people solve engineering
+problems.  One feature she wants to provide in her system is the ability to
+manipulate inexact quantities (such as measured parameters of physical devices)
+with known precision, so that when computations are done with such approximate
+quantities the results will be numbers of known precision.
+
+Electrical engineers will be using Alyssa's system to compute electrical
+quantities.  It is sometimes necessary for them to compute the value of a
+parallel equivalent resistance @math{R_p} of two resistors @math{R_1} and @math{R_2}
+using the formula
+@displaymath
+R_p \,=\, {{1 \over 1 / R_1 + 1 / R_2}.}
+@end displaymath
+@ifinfo
+
+@example
+            1
+R_p = -------------
+      1/R_1 + 1/R_2
+@end example
+
+@end ifinfo
+Resistance values are usually known only up to some tolerance guaranteed by the
+manufacturer of the resistor.  For example, if you buy a resistor labeled ``6.8
+ohms with 10% tolerance'' you can only be sure that the resistor has a
+resistance between 6.8 @math{-} 0.68 = 6.12 and 6.8 + 0.68 = 7.48 ohms.  Thus, if you
+have a 6.8-ohm 10% resistor in parallel with a 4.7-ohm 5% resistor, the
+resistance of the combination can range from about 2.58 ohms (if the two
+resistors are at the lower bounds) to about 2.97 ohms (if the two resistors are
+at the upper bounds).
+
+Alyssa's idea is to implement ``interval arithmetic'' as a set of arithmetic
+operations for combining ``intervals'' (objects that represent the range of
+possible values of an inexact quantity).  The result of adding, subtracting,
+multiplying, or dividing two intervals is itself an interval, representing the
+range of the result.
+
+Alyssa postulates the existence of an abstract object called an ``interval''
+that has two endpoints: a lower bound and an upper bound.  She also presumes
+that, given the endpoints of an interval, she can construct the interval using
+the data constructor @code{makeInterval}.  Alyssa first writes a procedure for
+adding two intervals.  She reasons that the minimum value the sum could be is
+the sum of the two lower bounds and the maximum value it could be is the sum of
+the two upper bounds:
+
+@example kotlin
+fun addInterval(x: Interval, y: Interval): Interval =
+    makeInterval(x.lowerBound + y.lowerBound, x.upperBound + y.upperBound)
+@end example
+
+@noindent
+Alyssa also works out the product of two intervals by finding the minimum and
+the maximum of the products of the bounds and using them as the bounds of the
+resulting interval.  (@code{minOf} and @code{maxOf} are Kotlin standard-library
+functions that find the minimum or maximum of any number of arguments.)
+
+@example kotlin
+fun mulInterval(x: Interval, y: Interval): Interval @{
+    val p1 = x.lowerBound * y.lowerBound
+    val p2 = x.lowerBound * y.upperBound
+    val p3 = x.upperBound * y.lowerBound
+    val p4 = x.upperBound * y.upperBound
+    return makeInterval(minOf(p1, p2, p3, p4), maxOf(p1, p2, p3, p4))
+@}
+@end example
+
+@noindent
+To divide two intervals, Alyssa multiplies the first by the reciprocal of the
+second.  Note that the bounds of the reciprocal interval are the reciprocal of
+the upper bound and the reciprocal of the lower bound, in that order.
+
+@example kotlin
+fun divInterval(x: Interval, y: Interval): Interval =
+    mulInterval(x, makeInterval(1.0 / y.upperBound, 1.0 / y.lowerBound))
+@end example
+
+@quotation
+@strong{@anchor{Exercise 2.7}Exercise 2.7:} Alyssa's program is incomplete
+because she has not specified the implementation of the interval abstraction.
+Here is a definition of the interval constructor:
+
+@example kotlin
+fun makeInterval(a: Double, b: Double): Interval = Interval(a, b)
+@end example
+
+Define selectors @code{lowerBound} and @code{upperBound} to complete the
+implementation.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.8}Exercise 2.8:} Using reasoning analogous to
+Alyssa's, describe how the difference of two intervals may be computed.  Define
+a corresponding subtraction procedure, called @code{subInterval}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.9}Exercise 2.9:} The @newterm{width} of an interval
+is half of the difference between its upper and lower bounds.  The width is a
+measure of the uncertainty of the number specified by the interval.  For some
+arithmetic operations the width of the result of combining two intervals is a
+function only of the widths of the argument intervals, whereas for others the
+width of the combination is not a function of the widths of the argument
+intervals.  Show that the width of the sum (or difference) of two intervals is
+a function only of the widths of the intervals being added (or subtracted).
+Give examples to show that this is not true for multiplication or division.
+(A Kotlin @code{Interval} places no invariant on which bound is smaller, so a
+reversed pair produces a negative width rather than a rejected construction;
+this edition leaves that choice to the exercise's own solution rather than to
+@code{Interval} itself.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.10}Exercise 2.10:} Ben Bitdiddle, an expert systems
+programmer, looks over Alyssa's shoulder and comments that it is not clear what
+it means to divide by an interval that spans zero.  Modify Alyssa's code to
+check for this condition and to raise an error if it occurs.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.11}Exercise 2.11:} In passing, Ben also cryptically
+comments: ``By testing the signs of the endpoints of the intervals, it is
+possible to break @code{mulInterval} into nine cases, only one of which
+requires more than two multiplications.''  Rewrite this procedure using Ben's
+suggestion.
+
+After debugging her program, Alyssa shows it to a potential user, who complains
+that her program solves the wrong problem.  He wants a program that can deal
+with numbers represented as a center value and an additive tolerance; for
+example, he wants to work with intervals such as 3.5 @math{\pm} 0.15 rather than
+[3.35, 3.65].  Alyssa returns to her desk and fixes this problem by supplying
+an alternate constructor and alternate selectors:
+
+@example kotlin
+fun makeCenterWidth(c: Double, w: Double): Interval = makeInterval(c - w, c + w)
+
+fun center(i: Interval): Double = (i.lowerBound + i.upperBound) / 2.0
+
+fun width(i: Interval): Double = (i.upperBound - i.lowerBound) / 2.0
+@end example
+
+@example kotlin
+makeCenterWidth(3.5, 0.15)
+// => Interval(lowerBound=3.35, upperBound=3.65)
+@end example
+
+Unfortunately, most of Alyssa's users are engineers.  Real engineering
+situations usually involve measurements with only a small uncertainty, measured
+as the ratio of the width of the interval to the midpoint of the interval.
+Engineers usually specify percentage tolerances on the parameters of devices,
+as in the resistor specifications given earlier.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.12}Exercise 2.12:} Define a constructor
+@code{makeCenterPercent} that takes a center and a percentage tolerance and
+produces the desired interval.  You must also define a selector @code{percent}
+that produces the percentage tolerance for a given interval.  The @code{center}
+selector is the same as the one shown above.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.13}Exercise 2.13:} Show that under the assumption of
+small percentage tolerances there is a simple formula for the approximate
+percentage tolerance of the product of two intervals in terms of the tolerances
+of the factors.  You may simplify the problem by assuming that all numbers are
+positive.
+
+After considerable work, Alyssa P. Hacker delivers her finished system.
+Several years later, after she has forgotten all about it, she gets a frenzied
+call from an irate user, Lem E. Tweakit.  It seems that Lem has noticed that
+the formula for parallel resistors can be written in two algebraically
+equivalent ways:
+@displaymath
+{R_1 R_2 \over R_1 + R_2}
+@end displaymath
+@ifinfo
+
+@example
+ R_1 R_2
+---------
+R_1 + R_2
+@end example
+
+@end ifinfo
+@noindent
+and
+@displaymath
+{{1 \over 1 / R_1 + 1 / R_2}.}
+@end displaymath
+@ifinfo
+
+@example
+      1
+-------------
+1/R_1 + 1/R_2
+@end example
+
+@end ifinfo
+He has written the following two functions, each of which computes the
+parallel-resistors formula differently:
+
+@example kotlin
+fun par1(r1: Interval, r2: Interval): Interval =
+    divInterval(mulInterval(r1, r2), addInterval(r1, r2))
+
+fun par2(r1: Interval, r2: Interval): Interval @{
+    val one = makeInterval(1.0, 1.0)
+    return divInterval(one, addInterval(divInterval(one, r1), divInterval(one, r2)))
+@}
+@end example
+
+@example kotlin
+val r1 = makeInterval(6.12, 7.48)
+val r2 = makeInterval(4.465, 4.935)
+
+par1(r1, r2) == par2(r1, r2)
+// => false
+@end example
+
+Lem complains that Alyssa's program gives different answers for the two ways of
+computing. This is a serious complaint.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.14}Exercise 2.14:} Demonstrate that Lem is right.
+Investigate the behavior of the system on a variety of arithmetic
+expressions. Make some intervals @math{A} and @math{B}, and use them in computing the
+expressions @math{{A / A}} and @math{{A / B}}.  You will get the most insight by
+using intervals whose width is a small percentage of the center value. Examine
+the results of the computation in center-percent form (see @ref{Exercise 2.12}).
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.15}Exercise 2.15:} Eva Lu Ator, another user, has
+also noticed the different intervals computed by different but algebraically
+equivalent expressions. She says that a formula to compute with intervals using
+Alyssa's system will produce tighter error bounds if it can be written in such
+a form that no variable that represents an uncertain number is repeated.  Thus,
+she says, @code{par2} is a ``better'' program for parallel resistances than
+@code{par1}.  Is she right?  Why?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.16}Exercise 2.16:} Explain, in general, why
+equivalent algebraic expressions may lead to different answers.  Can you devise
+an interval-arithmetic package that does not have this shortcoming, or is this
+task impossible?  (Warning: This problem is very difficult.)
+@end quotation

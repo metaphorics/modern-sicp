@@ -1,0 +1,4 @@
+node_modules/
+coverage/
+!*.json
+book/figures/generated/**/*.pdf

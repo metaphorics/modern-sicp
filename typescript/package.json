@@ -1,0 +1,24 @@
+{
+  "name": "modern-sicp-typescript",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.5.1",
+  "engines": {
+    "node": "24.21.0"
+  },
+  "scripts": {
+    "check": "biome check .",
+    "typecheck": "pnpm -r --filter './packages/*' exec tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@effect/platform-node": "4.0.0-rc.117",
+    "@effect/vitest": "4.0.0-rc.117",
+    "@types/node": "24.13.6",
+    "effect": "4.0.0-rc.117",
+    "fast-check": "4.10.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  }
+}

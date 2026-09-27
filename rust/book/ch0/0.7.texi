@@ -1,0 +1,113 @@
+@node	0.7, 0.8, 0.6, Chapter 0
+@section Shared ownership and interior mutability
+
+Section @ref{0.3} gave every value exactly one owner. Some values genuinely
+need more than one: two closures sharing one counter, two nodes in a graph
+that both point at a shared piece of data. @code{Rc<T>} (@newterm{reference
+counted}) is a pointer type that allows exactly this, at the cost of giving
+up @code{&mut} access through it: cloning an @code{Rc} does not copy the
+pointee, it bumps a count and hands back another pointer to the same
+allocation, and the allocation is freed only once that count reaches zero.
+
+@example rust
+use std::cell::RefCell;
+use std::rc::Rc;
+
+#[derive(Clone, Default)]
+struct SharedLog(Rc<RefCell<Vec<String>>>);
+
+impl SharedLog @{
+    fn push(&self, entry: impl Into<String>) @{
+        self.0.borrow_mut().push(entry.into());
+    @}
+    fn entries(&self) -> Vec<String> @{
+        self.0.borrow().clone()
+    @}
+@}
+
+let log = SharedLog::default();
+let other_handle = log.clone();
+log.push("first");
+other_handle.push("second");
+println!("@{:?@}", log.entries());
+// => ["first", "second"]
+println!("@{@}", Rc::strong_count(&log.0));
+// => 2
+@end example
+
+@code{Rc} alone only shares read access; @code{&Rc<T>} still hands out
+@code{&T}, never @code{&mut T}. @newterm{Interior mutability} is the other
+half: @code{RefCell<T>} moves Rust's borrow rule from compile time to run
+time, so a shared (non-@code{mut}) binding can still hand out a mutable
+borrow of what it wraps, checked when @code{borrow_mut} is called rather than
+when the compiler reads the source. @code{Rc<RefCell<T>>} together, as
+above, is this book's `` `set!` on shared state,'' and reappears constantly
+from chapter 3 on: @ref{3.1.1}'s accounts, @ref{3.3}'s mutable pairs, and
+@ref{3.3.4}'s wires and agenda are all built on it.
+
+Moving the check to run time means a violation is a run-time panic instead of
+a compile error:
+
+@example rust
+use std::cell::RefCell;
+let cell = RefCell::new(0);
+let _first = cell.borrow_mut();
+let _second = cell.borrow_mut();
+// panics: already mutably borrowed
+@end example
+
+Holding two mutable borrows of one @code{RefCell} at once panics exactly
+where a plain @code{&mut T} would have refused to compile; the rule has not
+changed, only when it is enforced.
+
+@code{Cell<T>} is @code{RefCell}'s simpler sibling, for @code{Copy} types: it
+never hands out a reference to its contents at all, only @code{get} and
+@code{set}, so there is no borrow to conflict and nothing to panic on.
+
+The last piece is what happens when two owners would point at each other.
+@code{Rc} counts strong references; a cycle of strong references (parent
+holds child, child holds parent) counts each other alive forever, and neither
+is ever freed. @code{Weak<T>} is a non-owning pointer alongside @code{Rc}
+that does not keep its target alive and does not participate in a cycle; it
+is the documented way this book breaks a cycle, used exactly where the plan
+calls for it (the connector-constraint links of @ref{3.3.4} and the
+constraint network of @ref{3.3.5}).
+
+@example rust
+use std::cell::RefCell;
+use std::rc::@{Rc, Weak@};
+
+struct Node @{
+    label: &'static str,
+    parent: RefCell<Weak<Node>>,
+@}
+
+let parent = Rc::new(Node @{ label: "root", parent: RefCell::new(Weak::new()) @});
+let child = Rc::new(Node @{ label: "leaf", parent: RefCell::new(Weak::new()) @});
+*child.parent.borrow_mut() = Rc::downgrade(&parent);
+
+let parent_label = child.parent.borrow().upgrade().map(|p| p.label);
+println!("@{parent_label:?@}");
+// => Some("root")
+@end example
+
+@code{Rc::downgrade} makes a @code{Weak} from an @code{Rc} without touching
+the strong count; @code{upgrade} tries to get an @code{Rc} back, returning
+@code{None} if every strong reference is already gone. The runnable listing
+combining both examples above is @code{examples/sec_0_7_shared_state.rs}.
+
+@subheading Exercise
+
+@quotation
+@strong{@anchor{Exercise 0.4}Exercise 0.4:} Write @code{make_accumulator}, a
+function that returns two closures sharing one running total: calling the
+first with an amount adds it to the total and returns the new total; calling
+the second resets the total to zero and returns the total it held. Force the
+sharing with @code{Rc<Cell<i128>>}. Then explain, without running anything,
+why moving a plain @code{i128} into both closures (instead of an
+@code{Rc<Cell<i128>>}) would not work.
+@end quotation
+
+The scaffold is @code{exercises/ch00/sec_0_7.rs}; the reference solution and
+its reasoning are @code{solutions/ch00/sec_0_7.rs} and
+@code{solutions/ch00/ex_0_04.md}.

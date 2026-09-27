@@ -1,0 +1,95 @@
+@node	0.7, 0.8, 0.6, Chapter 0
+@section Testing
+
+This section covers the test framework, property tests, how solutions are
+checked, and the pending marker. The rig is small on purpose: Kotest
+specifications for structure and assertions, generated inputs where a
+property beats an example, and one recipe that reports what is still
+unsolved.
+
+@heading Anatomy of a spec
+
+A test file is a Kotlin class extending Kotest's @code{FunSpec}. Each test
+is registered by name inside the specification block and asserts with
+matchers such as @code{shouldBe}. Table-style tests register one test per
+row by looping over the rows when the specification is built; Kotest's
+@code{withData} helper does the same job and lives in a module this edition
+does not pin, so the book's listings write the loop out:
+
+@example kotlin
+public fun parity(n: Long): String = if (n % 2L == 0L) "even" else "odd"
+
+public class S0_7TestingTest :
+    FunSpec(@{
+        listOf(
+            0L to "even",
+            1L to "odd",
+            42L to "even",
+        ).forEach @{ (n, expected) ->
+            test("parity($n) is $expected") @{
+                parity(n) shouldBe expected
+            @}
+        @}
+    @})
+@end example
+
+@noindent
+A property test states what must hold for every generated input and lets
+the framework try to break it. @code{checkAll} draws values from an
+@code{Arb} generator, shrinks a failing sample to a minimal case, and
+reports the first counterexample. Boundary cases that generation would
+rarely hit stay explicit:
+
+@example kotlin
+test("a property test runs the assertion over generated inputs") @{
+    checkAll(Arb.long(-100L, 100L), Arb.long(-100L, 100L)) @{ a, b ->
+        absDiff(a, b) shouldBe absDiff(b, a)
+    @}
+@}
+
+test("boundary cases stay explicit") @{
+    absDiff(0L, 0L) shouldBe 0L
+    absDiff(Long.MAX_VALUE, Long.MAX_VALUE) shouldBe 0L
+@}
+@end example
+
+@noindent
+Kotest test bodies may suspend, so the concurrent code of @ref{3.4} tests
+directly; chapter 3 also pins @file{kotlinx-coroutines-test} for
+the cases that need virtual time. Where the book needs randomness, it does
+not reach for the host generator: the runtime ships a seeded
+@code{Random}, so the stochastic exercises of @ref{1.2} and @ref{3.1} give
+the same transcript on every machine and every run.
+
+@heading How solutions are checked
+
+Exercises and solutions share fully qualified names, and a test run
+receives exactly one of the two on its classpath: each chapter registers
+three test tasks, @code{examplesTest}, @code{exercisesTest}, and
+@code{solutionsTest}, each carrying the runtime classpath of its own
+source set, so no run ever mixes them. The task you run chooses, not a
+flag. Day to day:
+
+@example
+just test       # examples and solutions tests, the green gate
+just scaffold   # exercisesTest --continue: the pending report
+@end example
+
+@noindent
+@command{just scaffold} runs every exercise's disabled-enabled pair. A
+solved exercise's test runs for real; an unsolved one stays disabled with
+its reason, and the recipe exits nonzero while anything is pending, which
+makes the pending list a report rather than a broken build. The marker the
+scaffold throws is the runtime's @code{PendingSolution}, and the disabled
+test is what keeps the gate green until the solution lands.
+
+The full gate is @command{just lint}: @code{./gradlew build}, which
+compiles the runtime and the four source sets of every chapter, applies
+@command{ktlint} 1.8.0, and fails on any compiler warning, because the
+build sets @code{allWarningsAsErrors}. The file names that carry section
+numbers, like @code{E1_10Ackermann.kt}, are why the stock ktlint naming
+rules are switched off project-wide.
+
+@cindex Arb
+@cindex checkAll
+@cindex FunSpec

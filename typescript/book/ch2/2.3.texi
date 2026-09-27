@@ -1,0 +1,1729 @@
+@node	2.3, 2.4, 2.2, Chapter 2
+@section Symbolic Data
+
+All the compound data objects we have used so far were constructed ultimately
+from numbers.  In this section we extend the representational capability of our
+language by introducing the ability to work with arbitrary symbols as data.
+
+@menu
+* 2.3.1::            Quotation
+* 2.3.2::            Example: Symbolic Differentiation
+* 2.3.3::            Example: Representing Sets
+* 2.3.4::            Example: Huffman Encoding Trees
+@end menu
+
+@node	2.3.1, 2.3.2, 2.3, 2.3
+@subsection Quotation
+
+If we can form compound data using symbols, we can have lists such as
+
+@example typescript
+showSymbols(list(sym("a"), sym("b"), sym("c"), sym("d")));
+// => (a b c d)
+
+showList(list(23, 45, 17));
+// => (23 45 17)
+
+showDatum(qlist(
+  qlist(qsym("Norah"), qnum(12)),
+  qlist(qsym("Molly"), qnum(9)),
+  qlist(qsym("Anna"), qnum(7)),
+  qlist(qsym("Lauren"), qnum(6)),
+  qlist(qsym("Charlotte"), qnum(4)),
+));
+// => ((Norah 12) (Molly 9) (Anna 7) (Lauren 6) (Charlotte 4))
+@end example
+
+@noindent
+Where the book writes a bare @code{(a b)} and relies on its reader to see
+symbols rather than unevaluated names, this edition builds the same data with
+plain functions: @code{sym("a")} brands the string @code{"a"} as a
+@code{Symb}, the edition's symbol type, and @code{qlist} glues symbol and
+number data into one list.  The name/age table is the first compound value in
+this book whose elements mix symbols and numbers; the section's @code{Datum}
+type carries exactly that mixture, which is why the nested lists above need no
+further machinery.
+
+Lists containing symbols can look just like the expressions of our language:
+
+@example typescript
+showExpr(naiveConstructors.makeProduct(
+  naiveConstructors.makeSum(constant(23), constant(45)),
+  naiveConstructors.makeSum(variable("x"), constant(9))),
+);
+// => (* (+ 23 45) (+ x 9))
+@end example
+
+@noindent
+Except that here they cannot: @code{naiveConstructors.makeProduct(@dots{})} is a
+value being constructed by ordinary function calls, and no sequence of tokens
+that builds it could also be read by the TypeScript compiler as executable code
+computing something else.  Lisp lists and Lisp expressions share one surface
+syntax, so the interpreter has to be told, token by token, which meaning is
+intended.  TypeScript's syntax for building a value and its syntax for computing
+one are different from the start, which is exactly why the language we work in
+never needs a @newterm{quote} operator to tell them apart.@footnote{Strictly,
+the book's use of the quotation mark violates the general rule that all
+compound expressions in its language should be delimited by parentheses and
+look like lists; the interpreter recovers the consistency through a special
+form @code{quote}, of which the quotation mark is a one-character abbreviation
+for wrapping the next complete expression.  This edition's constructors are
+that special form made explicit: @code{qlist} plays @code{quote}'s role in the
+open, building the data by a function call, with no surface syntax left to
+abbreviate.}
+
+In Scheme, quoting is what makes @code{(a b)} available as a list of symbols
+rather than a call to a function named @code{a} on a value named @code{b}.
+@code{(list a b)} builds a list of the @newterm{values} of @code{a} and
+@code{b}, not the symbols themselves.  This issue is well known in the
+context of natural languages, where words and sentences may be regarded either
+as semantic entities or as character strings (syntactic entities).  The common
+practice in natural languages is to use quotation marks to indicate that a word
+or a sentence is to be treated literally as a string of characters.  For
+instance, the first letter of ``John'' is clearly ``J.''  If we tell somebody
+``say your name aloud,'' we expect to hear that person's name.  However, if we
+tell somebody ``say `your name' aloud,'' we expect to hear the words ``your
+name.''  Note that we are forced to nest quotation marks to describe what
+somebody else might say.@footnote{Allowing quotation in a language wreaks havoc
+with the ability to reason about the language in simple terms, because it
+destroys the notion that equals can be substituted for equals.  For example,
+three is one plus two, but the word ``three'' is not the phrase ``one plus
+two.''  Quotation is powerful because it gives us a way to build expressions
+that manipulate other expressions (as we will see when we write an interpreter
+in @ref{Chapter 4}). But allowing statements in a language that talk about
+other statements in that language makes it very difficult to maintain any
+coherent principle of what ``equals can be substituted for equals'' should
+mean.  For example, if we know that the evening star is the morning star, then
+from the statement ``the evening star is Venus'' we can deduce ``the morning
+star is Venus.''  However, given that ``John knows that the evening star is
+Venus'' we cannot infer that ``John knows that the morning star is Venus.''}
+
+TypeScript never needs the marker that natural language, and Scheme, reach for
+here, because a TypeScript value is never ambiguous between ``the thing itself''
+and ``a name that stands for the thing.''  @code{list(sym("a"), sym("b"))} is
+the list @code{(a b)}: there is no reading of this call under which
+@code{sym("a")} could instead denote the value of some variable named
+@code{a}, because @code{sym} always takes a string and always returns a fresh
+@code{Symb}.  The confusion the book's @code{'} solves does not arise, so
+there is nothing here for a marker to disambiguate.@footnote{A TypeScript
+string literal such as @code{"a"} is a further, unrelated distinction the book
+does not need to draw at this point: @code{"a"} is an ordinary string meant to
+be printed and compared, and @code{sym("a")} is the one-call conversion that
+turns it into the branded, @code{===}-comparable symbol this section
+manipulates as data.  The two are never confused, because the edition's symbol
+type is a different type, and the compiler rejects the mix.}
+
+Now we can distinguish between symbols and their values:
+
+@example typescript
+const a = 1;
+const b = 2;
+
+showList(list(a, b));
+// => (1 2)
+
+showSymbols(list(sym("a"), sym("b")));
+// => (a b)
+
+showDatum(qlist(qsym("a"), qnum(b)));
+// => (a 2)
+@end example
+
+@noindent
+The first call builds a list of the numbers @code{a} and @code{b} are bound
+to; the second builds a list of the two symbols; the third mixes them, which
+only the section's @code{Datum} union admits.  In keeping with this, the empty
+list needs no quotation at all: it is the value @code{nil} of @ref{2.2.1},
+and @code{list()} with no arguments builds it too.
+
+One additional primitive used in manipulating symbols is @code{eqQ}, which
+takes two pieces of quoted data and tests whether they are the same symbol
+(or the same number).@footnote{We can consider two symbols to be ``the same''
+if they consist of the same characters in the same order.  Such a definition
+skirts a deep issue that we are not yet ready to address: the meaning of
+``sameness'' in a programming language.  We will return to this in
+@ref{Chapter 3} (@ref{3.1.3}).}  Using @code{eqQ}, we can implement a useful
+procedure called @code{memq}.  This takes two arguments, a datum and a list.
+If the datum is not contained in the list (i.e., is not @code{eqQ} to any item
+in the list), then @code{memq} returns nothing.  Otherwise, it returns the
+sublist of the list beginning with the first occurrence of the datum:
+
+@example typescript
+export const memq = (item: Datum, x: List<Datum>): Option<List<Datum>> => @{
+  if (x._tag === "Nil") @{
+    return none;
+  @}
+  if (eqQ(item, x.head)) @{
+    return some(x);
+  @}
+  return memq(item, x.tail);
+@};
+@end example
+
+@noindent
+For example, the value of
+
+@example typescript
+memq(qsym("apple"), list(qsym("pear"), qsym("banana"), qsym("prune")));
+// => None
+@end example
+
+@noindent
+is nothing, whereas the value of
+
+@example typescript
+memq(
+  qsym("apple"),
+  list(qsym("x"), qlist(qsym("apple"), qsym("sauce")), qsym("y"), qsym("apple"), qsym("pear")),
+);
+// => Some((apple pear))
+@end example
+
+@noindent
+is the sublist @code{(apple pear)}.
+
+@quotation
+@strong{@anchor{Exercise 2.53}Exercise 2.53:} @emph{SICP exercise 2.53 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  Predict the value of each of
+the following expressions, printed the way this edition prints symbolic data
+(@code{showDatum}, @code{showDataList}, and @code{showSymbols}):
+
+@example typescript
+showDatum(qlist(qsym("a"), qsym("b"), qsym("c")));
+showDatum(qlist(qlist(qsym("george"))));
+
+const xy = list(qlist(qsym("x1"), qsym("x2")), qlist(qsym("y1"), qsym("y2")));
+showDataList(getOrElse(cdr(xy), nil));
+showDatum(getOrElse(car(getOrElse(cdr(xy), nil)), qnum(0)));
+
+const headOfA = getOrElse(car(list(qsym("a"), qsym("short"), qsym("list"))), qnum(0));
+headOfA._tag === "Lst";
+
+showDataList(
+  getOrElse(
+    memq(qsym("red"), list(qlist(qsym("red"), qsym("shoes")), qlist(qsym("blue"), qsym("socks")))),
+    nil,
+  ),
+);
+showDataList(
+  getOrElse(memq(qsym("red"), list(qsym("red"), qsym("shoes"), qsym("blue"), qsym("socks"))), nil),
+);
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.54}Exercise 2.54:} Two lists are said to be
+@code{equal} if they contain equal elements arranged in the same order.  For
+example,
+
+@example typescript
+const a = qlist(qsym("this"), qsym("is"), qsym("a"), qsym("list"));
+const b = qlist(qsym("this"), qsym("is"), qsym("a"), qsym("list"));
+equalQ(a, b);
+@end example
+
+@noindent
+is true, but
+
+@example typescript
+const c = qlist(qsym("this"), qlist(qsym("is"), qsym("a")), qsym("list"));
+equalQ(a, c);
+@end example
+
+@noindent
+is false.  To be more precise, we can define the equality recursively in terms
+of the basic @code{eqQ} equality of symbols by saying that @code{x} and
+@code{y} are @code{equal} if they are both symbols and the symbols are
+@code{eqQ}, or if they are both lists such that the head of @code{x} is
+@code{equal} to the head of @code{y} and the tail of @code{x} is @code{equal}
+to the tail of @code{y}.  Using this idea, implement @code{equalQ} as a
+procedure over the section's @code{Datum} union.@footnote{In practice,
+programmers use @code{equalQ} to compare lists that contain numbers as well as
+symbols.  Numbers are not considered to be symbols.  The question of whether
+two numerically equal numbers are also the same piece of data is settled here
+by saying yes: @code{eqQ} compares numbers by @code{===}, so a recursive
+@code{equalQ} that bottoms out in @code{eqQ} compares numbers numerically as
+well.}
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.55}Exercise 2.55:} @emph{SICP exercise 2.55 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  In the book, Eva Lu Ator types
+@code{(car ''abracadabra)} to the interpreter and is surprised to see the
+symbol @code{quote} printed back.  This edition has no reader and no quote
+mark, so nothing can be typed; the same value, however, can be built by hand.
+The book's reader expands @code{''abracadabra} to @code{(quote (quote
+abracadabra))}, whose evaluation wraps the inner list once more, so the value
+of @code{''abracadabra} is the two-element list whose first item is the symbol
+@code{quote}:
+
+@example typescript
+const valueOfDoubleQuote = qlist(qsym("quote"), qsym("abracadabra"));
+@end example
+
+@noindent
+Show, with this construction and the section's list primitives, why the book's
+@code{(car ''abracadabra)} prints @code{quote}, and explain which layer of the
+hand-built datum corresponds to which quote mark of the typed expression.
+@end quotation
+
+@node	2.3.2, 2.3.3, 2.3.1, 2.3
+@subsection Example: Symbolic Differentiation
+
+As an illustration of symbol manipulation and a further illustration of data
+abstraction, consider the design of a procedure that performs symbolic
+differentiation of algebraic expressions.  We would like the procedure to take
+as arguments an algebraic expression and a variable and to return the
+derivative of the expression with respect to the variable.  For example, if the
+arguments to the procedure are @math{{ax^2 + bx + c}} and @math{x}, the
+procedure should return @math{{2ax + b}}.  Symbolic differentiation is of
+special historical significance in Lisp.  It was one of the motivating examples
+behind the development of a computer language for symbol manipulation.
+Furthermore, it marked the beginning of the line of research that led to the
+development of powerful systems for symbolic mathematical work, which are
+currently being used by a growing number of applied mathematicians and
+physicists.
+
+In developing the symbolic-differentiation program, we will follow the same
+strategy of data abstraction that we followed in developing the rational-number
+system of @ref{2.1.1}.  That is, we will first define a differentiation
+algorithm that operates on abstract objects such as ``sums,'' ``products,'' and
+``variables'' without worrying about how these are to be represented.  Only
+afterward will we address the representation problem.
+
+@subsubheading The differentiation program with abstract data
+
+In order to keep things simple, we will consider a very simple
+symbolic-differentiation program that handles expressions that are built up
+using only the operations of addition and multiplication with two arguments.
+Differentiation of any such expression can be carried out by applying the
+following reduction rules:
+@displaymath
+{{dc \over dx} \,=\, 0,}
+  \quad {\hbox{for } c \hbox{ a constant }} {\hbox{or a variable }} {\hbox{different from } x,}
+@end displaymath
+@ifinfo
+
+@example
+dc
+-- = 0  for c a constant, or a variable different from x
+dx
+
+dx
+-- = 1
+dx
+
+d(u + v)   du   dv
+-------- = -- + --
+   dx      dx   dx
+
+d(uv)     / dv \     / du \
+----- = u | -- | + v | -- |
+ dx       \ dx /     \ dx /
+@end example
+
+@end ifinfo
+@displaymath
+\eqalign{
+{dx \over dx}         &=   1, \cr
+{d(u + v) \over dx}   &=   {du \over dx} + {dv \over dx}, \cr
+{d(uv) \over dx}      &=   u \kern0.1em {dv \over dx} + v \kern0.1em {du \over dx}.
+}
+@end displaymath
+@noindent
+Observe that the latter two rules are recursive in nature.  That is, to obtain
+the derivative of a sum we first find the derivatives of the terms and add
+them.  Each of the terms may in turn be an expression that needs to be
+decomposed.  Decomposing into smaller and smaller pieces will eventually
+produce pieces that are either constants or variables, whose derivatives will
+be either 0 or 1.
+
+To embody these rules in a procedure we indulge in a little wishful thinking,
+as we did in designing the rational-number implementation.  The book assumes
+procedures for telling whether an expression is a sum, a product, a constant,
+or a variable; for extracting the addend, augend, multiplier, and multiplicand;
+and for constructing sums and products from parts.  In this edition, that
+assumption is one type: the sum and product constructors are carried
+explicitly by the differentiation program, and everything else the book
+assumes is a tag read on the expression union defined in the next
+subsubsection.  With this, and the primitive check of an expression's
+@code{Num} tag, we can express the differentiation rules as the following
+procedure:
+
+@example typescript
+export const derivVia = (
+  exp: Expr,
+  v: Symb,
+  ctors: SumProductConstructors,
+): Expr => @{
+  switch (exp._tag) @{
+    case "Num":
+      return constant(0);
+    case "Var":
+      return sameVariableQ(exp, v) ? constant(1) : constant(0);
+    case "Sum":
+      return ctors.makeSum(derivVia(exp.addend, v, ctors), derivVia(exp.augend, v, ctors));
+    case "Prod":
+      return ctors.makeSum(
+        ctors.makeProduct(exp.multiplier, derivVia(exp.multiplicand, v, ctors)),
+        ctors.makeProduct(derivVia(exp.multiplier, v, ctors), exp.multiplicand),
+      );
+  @}
+@};
+@end example
+
+@noindent
+This @code{derivVia} procedure incorporates the complete differentiation
+algorithm.  Since it is expressed in terms of abstract data, it will work no
+matter how we choose to represent algebraic expressions, as long as we design a
+proper set of tag checks and constructors.  This is the issue we must address
+next.  The book's final @code{(else (error @dots{}))} clause is gone for a
+structural reason: the union has no other shape, so the switch
+is exhaustive, and the compiler flags any missing case instead of waiting for
+an unknown expression to show up at run time.
+
+@subsubheading Representing algebraic expressions
+
+We can imagine many ways to represent algebraic expressions.  For example, we
+could use lists of symbols that mirror the usual algebraic notation,
+representing @math{{ax + b}} as the datum @code{(a * x + b)}.  However, one
+especially straightforward choice --- and the one Scheme takes with its
+parenthesized prefix notation, representing @math{{ax + b}} as
+@code{(+ (* a x) b)} --- is to name each shape with a tag.  Then our data
+representation for the differentiation problem is the following union, which
+replaces the book's list-structure representation and its nine little
+procedures: @code{variable?} and @code{number?} become the @code{Var} and
+@code{Num} tags; @code{sum?} and @code{product?} become the @code{Sum} and
+@code{Prod} tags; the selectors @code{addend}, @code{augend},
+@code{multiplier}, and @code{multiplicand} become the union's fields; and the
+constructors are the two function-valued fields of
+@code{SumProductConstructors}, which @code{derivVia} takes as an argument so
+that the section can swap them without touching the differentiation program:
+
+@example typescript
+export type Expr =
+  | @{ readonly _tag: "Var"; readonly name: Symb @}
+  | @{ readonly _tag: "Num"; readonly n: number @}
+  | @{ readonly _tag: "Sum"; readonly addend: Expr; readonly augend: Expr @}
+  | @{ readonly _tag: "Prod"; readonly multiplier: Expr; readonly multiplicand: Expr @};
+
+export const variable = (name: string): Expr => (@{ _tag: "Var", name: sym(name) @});
+export const constant = (n: number): Expr => (@{ _tag: "Num", n @});
+
+export const sameVariableQ = (e: Expr, v: Symb): boolean =>
+  e._tag === "Var" && e.name === v;
+
+export interface SumProductConstructors @{
+  readonly makeSum: (a1: Expr, a2: Expr) => Expr;
+  readonly makeProduct: (m1: Expr, m2: Expr) => Expr;
+@}
+
+export const naiveConstructors: SumProductConstructors = @{
+  makeSum: (a1, a2) => (@{ _tag: "Sum", addend: a1, augend: a2 @}),
+  makeProduct: (m1, m2) => (@{ _tag: "Prod", multiplier: m1, multiplicand: m2 @}),
+@};
+@end example
+
+@noindent
+Two variables are the same if the symbols representing them are @code{===}
+equal, which is what @code{sameVariableQ} tests.  Thus, we need only combine
+these with the algorithm as embodied by @code{derivVia} in order to have a
+working symbolic-differentiation program.  Let us look at some examples of its
+behavior, rendering expressions with @code{showExpr} (the book's printed form):
+
+@example typescript
+const x = variable("x");
+const y = variable("y");
+
+const sumX3 = naiveConstructors.makeSum(x, constant(3));
+const prodXY = naiveConstructors.makeProduct(x, y);
+const third = naiveConstructors.makeProduct(prodXY, sumX3);
+
+showExpr(derivVia(sumX3, sym("x"), naiveConstructors));
+// => (+ 1 0)
+
+showExpr(derivVia(prodXY, sym("x"), naiveConstructors));
+// => (+ (* x 0) (* 1 y))
+
+showExpr(derivVia(third, sym("x"), naiveConstructors));
+// => (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))
+@end example
+
+@noindent
+The program produces answers that are correct; however, they are unsimplified.
+It is true that
+@displaymath
+{d(xy) \over dx} \,=\, {x \cdot 0} + {1 \cdot y,}
+@end displaymath
+@ifinfo
+
+@example
+d(xy)
+----- = x * 0 + 1 * y
+ dx
+@end example
+
+@end ifinfo
+@noindent
+but we would like the program to know that @math{{x \cdot 0 = 0}}, @math{{1 \cdot y = y}},
+and @math{{0 + y = y}}.  The answer for the second example should have been
+simply @code{y}.  As the third example shows, this becomes a serious issue when
+the expressions are complex.
+
+Our difficulty is much like the one we encountered with the rational-number
+implementation: we haven't reduced answers to simplest form.  To accomplish the
+rational-number reduction, we needed to change only the constructors and the
+selectors of the implementation.  We can adopt a similar strategy here.  We
+won't change @code{derivVia} at all.  Instead, we will change @code{makeSum} so
+that if both summands are numbers, @code{makeSum} will add them and return
+their sum.  Also, if one of the summands is 0, then @code{makeSum} will return
+the other summand:
+
+@example typescript
+export const equalsNumber = (e: Expr, n: number): boolean => e._tag === "Num" && e.n === n;
+
+export const makeSum = (a1: Expr, a2: Expr): Expr => @{
+  if (equalsNumber(a1, 0)) @{
+    return a2;
+  @}
+  if (equalsNumber(a2, 0)) @{
+    return a1;
+  @}
+  if (a1._tag === "Num" && a2._tag === "Num") @{
+    return constant(a1.n + a2.n);
+  @}
+  return @{ _tag: "Sum", addend: a1, augend: a2 @};
+@};
+@end example
+
+@noindent
+This uses the procedure @code{equalsNumber}, which checks whether an expression
+is equal to a given number.  Similarly, we will change @code{makeProduct} to
+build in the rules that 0 times anything is 0 and 1 times anything is the thing
+itself:
+
+@example typescript
+export const makeProduct = (m1: Expr, m2: Expr): Expr => @{
+  if (equalsNumber(m1, 0) || equalsNumber(m2, 0)) @{
+    return constant(0);
+  @}
+  if (equalsNumber(m1, 1)) @{
+    return m2;
+  @}
+  if (equalsNumber(m2, 1)) @{
+    return m1;
+  @}
+  if (m1._tag === "Num" && m2._tag === "Num") @{
+    return constant(m1.n * m2.n);
+  @}
+  return @{ _tag: "Prod", multiplier: m1, multiplicand: m2 @};
+@};
+@end example
+
+@noindent
+Here is how this version works on our three examples, with @code{deriv} ---
+@code{derivVia} given the simplifying pair --- in place of the naive call:
+
+@example typescript
+showExpr(deriv(sumX3, sym("x")));
+// => 1
+
+showExpr(deriv(prodXY, sym("x")));
+// => y
+
+showExpr(deriv(third, sym("x")));
+// => (+ (* x y) (* y (+ x 3)))
+@end example
+
+@noindent
+Although this is quite an improvement, the third example shows that there is
+still a long way to go before we get a program that puts expressions into a
+form that we might agree is ``simplest.''  The problem of algebraic
+simplification is complex because, among other reasons, a form that may be
+simplest for one purpose may not be for another.
+
+@quotation
+@strong{@anchor{Exercise 2.56}Exercise 2.56:} Show how to extend the basic
+differentiator to handle more kinds of expressions.  For instance, implement
+the differentiation rule
+@displaymath
+{d(u^{\kern0.1ex n}) \over dx} \,=\, {nu^{\kern0.1ex n-1} \, {du \over dx}}
+@end displaymath
+@ifinfo
+
+@example
+d(u^n)            du
+------ = nu^(n-1) --  
+  dx              dx
+@end example
+
+@end ifinfo
+@noindent
+by adding a fifth case to the expression union for exponentiation, written
+@code{(** u n)} in the book's notation, and an arm to the differentiation
+switch, together with the appropriate pieces the book names
+@code{exponentiation?}, @code{base}, @code{exponent}, and
+@code{make-exponentiation} as tag checks, fields, and a constructor.  Build in
+the rules that anything raised to the power 0 is 1 and anything raised to the
+power 1 is the thing itself.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.57}Exercise 2.57:} Extend the differentiation
+program to handle sums and products of arbitrary numbers of (two or more)
+terms.  Then the last example above could be expressed as
+
+@example typescript
+derivN(
+  prodN(variable("x"), variable("y"), sumN(variable("x"), constant(3))),
+  sym("x"),
+);
+@end example
+
+Try to do this by changing only the representation for sums and products,
+without changing the shape of the differentiation switch.  For example, the
+@code{addend} of a sum would be the first term, and the @code{augend} would be
+the sum of the rest of the terms.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.58}Exercise 2.58:} Suppose we want to modify the
+differentiation program so that it works with ordinary mathematical notation,
+in which @code{+} and @code{*} are infix rather than prefix operators.  Since
+the differentiation program is defined in terms of abstract data, we can modify
+it to work with different representations of expressions solely by changing the
+predicates, selectors, and constructors that define the representation of the
+algebraic expressions on which the differentiator is to operate.
+
+@enumerate a
+
+@item
+Show how to do this in order to differentiate algebraic expressions presented
+in infix form, such as @code{(x + (3 * (x + (y + 2))))}.  In this edition the
+expression arrives as quoted data built from the section's constructors,
+
+@example typescript
+const infixA = qlist(
+  qsym("x"),
+  qsym("+"),
+  qlist(qnum(3), qsym("*"), qlist(qsym("x"), qsym("+"), qlist(qsym("y"), qsym("+"), qnum(2)))),
+);
+@end example
+
+@noindent
+and your program parses it into the section's @code{Expr}.  To simplify the
+task, assume that @code{+} and @code{*} always take two arguments and that
+expressions are fully parenthesized.
+
+@item
+The problem becomes substantially harder if we allow standard algebraic
+notation, such as @code{(x + 3 * (x + y + 2))}, which drops unnecessary
+parentheses and assumes that multiplication is done before addition.  Can you
+design appropriate parsing for this notation such that the differentiation
+switch still works?
+
+@end enumerate
+@end quotation
+
+@node	2.3.3, 2.3.4, 2.3.2, 2.3
+@subsection Example: Representing Sets
+
+In the previous examples we built representations for two kinds of compound
+data objects: rational numbers and algebraic expressions.  In one of these
+examples we had the choice of simplifying (reducing) the expressions at either
+construction time or selection time, but other than that the choice of a
+representation for these structures in terms of lists was straightforward. When
+we turn to the representation of sets, the choice of a representation is not so
+obvious.  Indeed, there are a number of possible representations, and they
+differ significantly from one another in several ways.
+
+Informally, a set is simply a collection of distinct objects.  To give a more
+precise definition we can employ the method of data abstraction.  That is, we
+define ``set'' by specifying the operations that are to be used on sets.  These
+are @code{unionSet}, @code{intersectionSet}, @code{elementOfSet}, and
+@code{adjoinSet}.  @code{ElementOfSet} is a predicate that determines whether
+a given element is a member of a set.  @code{AdjoinSet} takes an object and a
+set as arguments and returns a set that contains the elements of the original
+set and also the adjoined element.  @code{UnionSet} computes the union of two
+sets, which is the set containing each element that appears in either argument.
+@code{IntersectionSet} computes the intersection of two sets, which is the set
+containing only elements that appear in both arguments.  From the viewpoint of
+data abstraction, we are free to design any representation that implements
+these operations in a way consistent with the interpretations given
+above.@footnote{If we want to be more formal, we can specify ``consistent with
+the interpretations given above'' to mean that the operations satisfy a
+collection of rules such as these:
+
+@itemize @bullet
+
+@item
+For any set @code{S} and any object @code{x},
+@code{elementOfSet(x, adjoinSet(x, S))}
+is true (informally: ``Adjoining an object to a
+set produces a set that contains the object'').
+
+@item
+For any sets @code{S} and @code{T} and any object @code{x},
+@code{elementOfSet(x, unionSet(S, T))}
+is equal to
+@code{elementOfSet(x, S) || elementOfSet(x, T)}
+(informally: ``The elements of @code{unionSet(S, T)} are the elements that
+are in @code{S} or in @code{T}'').
+
+@item
+For any object @code{x},
+@code{elementOfSet(x, nil)}
+is false (informally: ``No object is an element of the empty set'').
+
+@end itemize
+}
+
+@subsubheading Sets as unordered lists
+
+One way to represent a set is as a list of its elements in which no element
+appears more than once.  The empty set is represented by the empty list.  The
+book's unordered @code{element-of-set?} compares elements with @code{equal?}
+so that they need not be symbols; this edition keeps the section's numeric
+examples and compares them with @code{===}, which plays exactly the same role
+here (exercise 2.54 develops the structural equality over the section's
+@code{Datum} union for the general case):
+
+@example typescript
+export const elementOfSetUnordered = (x: number, set: List<number>): boolean => @{
+  if (set._tag === "Nil") @{
+    return false;
+  @}
+  if (x === set.head) @{
+    return true;
+  @}
+  return elementOfSetUnordered(x, set.tail);
+@};
+@end example
+
+@noindent
+Using this, we can write @code{adjoinSetUnordered}.  If the object to be
+adjoined is already in the set, we just return the set.  Otherwise, we use
+@code{cons} to add the object to the list that represents the set:
+
+@example typescript
+export const adjoinSetUnordered = (x: number, set: List<number>): List<number> =>
+  elementOfSetUnordered(x, set) ? set : cons(x, set);
+@end example
+
+@noindent
+For @code{intersectionSetUnordered} we can use a recursive strategy.  If we
+know how to form the intersection of @code{set2} and the tail of
+@code{set1}, we only need to decide whether to include the head of @code{set1}
+in this.  But this depends on whether the head of @code{set1} is also in
+@code{set2}.  Here is the resulting procedure:
+
+@example typescript
+export const intersectionSetUnordered = (set1: List<number>, set2: List<number>): List<number> => @{
+  if (set1._tag === "Nil" || set2._tag === "Nil") @{
+    return nil;
+  @}
+  if (elementOfSetUnordered(set1.head, set2)) @{
+    return cons(set1.head, intersectionSetUnordered(set1.tail, set2));
+  @}
+  return intersectionSetUnordered(set1.tail, set2);
+@};
+@end example
+
+@noindent
+In designing a representation, one of the issues we should be concerned with is
+efficiency.  Consider the number of steps required by our set operations.
+Since they all use @code{elementOfSetUnordered}, the speed of this operation
+has a major impact on the efficiency of the set implementation as a whole.
+Now, in order to check whether an object is a member of a set,
+@code{elementOfSetUnordered} may have to scan the entire set. (In the worst
+case, the object turns out not to be in the set.)  Hence, if the set has
+@math{n} elements, @code{elementOfSetUnordered} might take up to @math{n}
+steps.  Thus, the number of steps required grows as @math{{\Theta(n)}}.  The
+number of steps required by @code{adjoinSetUnordered}, which uses this
+operation, also grows as @math{{\Theta(n)}}.  For
+@code{intersectionSetUnordered}, which does an @code{elementOfSetUnordered}
+check for each element of @code{set1}, the number of steps required grows as
+the product of the sizes of the sets involved, or @math{{\Theta(n^2)}} for two
+sets of size @math{n}.  The same will be true of @code{unionSet}.
+
+@quotation
+@strong{@anchor{Exercise 2.59}Exercise 2.59:} Implement the
+@code{unionSetUnordered} operation for the unordered-list representation of
+sets.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.60}Exercise 2.60:} We specified that a set would be
+represented as a list with no duplicates.  Now suppose we allow duplicates.
+For instance, the set @math{{\{1, 2, 3\}}} could be represented as the list @code{(2 3 2 1
+3 2 2)}.  Design procedures @code{elementOfSet}, @code{adjoinSet},
+@code{unionSet}, and @code{intersectionSet} that operate on this
+representation.  How does the efficiency of each compare with the corresponding
+procedure for the non-duplicate representation?  Are there applications for
+which you would use this representation in preference to the non-duplicate one?
+@end quotation
+
+@subsubheading Sets as ordered lists
+
+One way to speed up our set operations is to change the representation so that
+the set elements are listed in increasing order.  To do this, we need some way
+to compare two objects so that we can say which is bigger.  For example, we
+could compare symbols lexicographically, or we could agree on some method for
+assigning a unique number to an object and then compare the elements by
+comparing the corresponding numbers.  To keep our discussion simple, we will
+consider only the case where the set elements are numbers, so that we can
+compare elements using @code{>} and @code{<}.  We will represent a set of
+numbers by listing its elements in increasing order.  Whereas our first
+representation above allowed us to represent the set @math{{\{1, 3, 6, 10\}}} by listing
+the elements in any order, our new representation allows only the list @code{(1
+3 6 10)}.
+
+One advantage of ordering shows up in @code{elementOfSetOrdered}: In checking
+for the presence of an item, we no longer have to scan the entire set.  If we
+reach a set element that is larger than the item we are looking for, then we
+know that the item is not in the set:
+
+@example typescript
+export const elementOfSetOrdered = (x: number, set: List<number>): boolean => @{
+  if (set._tag === "Nil") @{
+    return false;
+  @}
+  if (x === set.head) @{
+    return true;
+  @}
+  return x < set.head ? false : elementOfSetOrdered(x, set.tail);
+@};
+@end example
+
+How many steps does this save?  In the worst case, the item we are looking for
+may be the largest one in the set, so the number of steps is the same as for
+the unordered representation.  On the other hand, if we search for items of
+many different sizes we can expect that sometimes we will be able to stop
+searching at a point near the beginning of the list and that other times we
+will still need to examine most of the list.  On the average we should expect
+to have to examine about half of the items in the set.  Thus, the average
+number of steps required will be about @math{{n / 2}}.  This is still
+@math{{\Theta(n)}} growth, but it does save us, on the average, a factor of 2
+in number of steps over the previous implementation.
+
+We obtain a more impressive speedup with @code{intersectionSetOrdered}.  In
+the unordered representation this operation required @math{{\Theta(n^2)}} steps,
+because we performed a complete scan of @code{set2} for each element of
+@code{set1}.  But with the ordered representation, we can use a more clever
+method.  Begin by comparing the initial elements, @code{x1} and @code{x2}, of
+the two sets.  If @code{x1} equals @code{x2}, then that gives an element of the
+intersection, and the rest of the intersection is the intersection of the
+tails of the two sets.  Suppose, however, that @code{x1} is less than
+@code{x2}.  Since @code{x2} is the smallest element in @code{set2}, we can
+immediately conclude that @code{x1} cannot appear anywhere in @code{set2} and
+hence is not in the intersection.  Hence, the intersection is equal to the
+intersection of @code{set2} with the tail of @code{set1}.  Similarly, if
+@code{x2} is less than @code{x1}, then the intersection is given by the
+intersection of @code{set1} with the tail of @code{set2}.  Here is the
+procedure:
+
+@example typescript
+export const intersectionSetOrdered = (set1: List<number>, set2: List<number>): List<number> => @{
+  if (set1._tag === "Nil" || set2._tag === "Nil") @{
+    return nil;
+  @}
+  const x1 = set1.head;
+  const x2 = set2.head;
+  if (x1 === x2) @{
+    return cons(x1, intersectionSetOrdered(set1.tail, set2.tail));
+  @}
+  return x1 < x2
+    ? intersectionSetOrdered(set1.tail, set2)
+    : intersectionSetOrdered(set1, set2.tail);
+@};
+@end example
+
+@noindent
+To estimate the number of steps required by this process, observe that at each
+step we reduce the intersection problem to computing intersections of smaller
+sets---removing the first element from @code{set1} or @code{set2} or both.
+Thus, the number of steps required is at most the sum of the sizes of
+@code{set1} and @code{set2}, rather than the product of the sizes as with the
+unordered representation.  This is @math{{\Theta(n)}} growth rather than
+@math{{\Theta(n^2)}}---a considerable speedup, even for sets of moderate size.
+
+@quotation
+@strong{@anchor{Exercise 2.61}Exercise 2.61:} Give an implementation of
+@code{adjoinSetOrdered} using the ordered representation.  By analogy with
+@code{elementOfSetOrdered} show how to take advantage of the ordering to
+produce a procedure that requires on the average about half as many steps as
+with the unordered representation.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.62}Exercise 2.62:} Give a @math{{\Theta(n)}}
+implementation of @code{unionSetOrdered} for sets represented as ordered lists.
+@end quotation
+
+@subsubheading Sets as binary trees
+
+We can do better than the ordered-list representation by arranging the set
+elements in the form of a tree.  Each node of the tree holds one element of the
+set, called the ``entry'' at that node, and a link to each of two other
+(possibly empty) nodes.  The ``left'' link points to elements smaller than the
+one at the node, and the ``right'' link to elements greater than the one at the
+node.  @ref{Figure 2.16} shows some trees that represent the set
+@math{{\{1, 3, 5, 7, 9, 11\}}}.  The same set may be represented by a tree in a number of
+different ways.  The only thing we require for a valid representation is that
+
+@float
+@anchor{Figure 2.16}
+@ifinfo
+@quotation
+@strong{Figure 2.16:} Various binary trees that represent the set @math{{\{1, 3, 5, 7, 9, 11\}}}.
+
+@example
+   7          3             5
+   /\         /\            /\
+  3  9       1  7          3  9
+ /\   \         /\        /   /\
+1  5  11       5  9      1   7  11
+                   \
+                   11
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.16c,,120mm,Figure 2.16: Various binary trees that represent the set @{1@comma{} 3@comma{} 5@comma{} 7@comma{} 9@comma{} 11@}.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,,120mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.16:} Various binary trees that represent the set @math{{\{1, 3, 5, 7, 9, 11\}}}.}
+@end float
+
+@noindent
+all elements in the left subtree be smaller than the node entry and that all
+elements in the right subtree be larger.
+
+The advantage of the tree representation is this: Suppose we want to check
+whether a number @math{x} is contained in a set.  We begin by comparing @math{x} with
+the entry in the top node.  If @math{x} is less than this, we know that we need
+only search the left subtree; if @math{x} is greater, we need only search the
+right subtree.  Now, if the tree is ``balanced,'' each of these subtrees will
+be about half the size of the original.  Thus, in one step we have reduced the
+problem of searching a tree of size @math{n} to searching a tree of size @math{{n / 2}}.
+Since the size of the tree is halved at each step, we should expect that the
+number of steps needed to search a tree of size @math{n} grows as
+@math{{\Theta(\log n)}}.@footnote{Halving the size of the problem at each
+step is the distinguishing characteristic of logarithmic growth, as we saw with
+the fast-exponentiation algorithm of @ref{1.2.4} and the half-interval
+search method of @ref{1.3.3}.} For large sets, this will be a
+significant speedup over the previous representations.
+
+The book represents trees by using lists: each node is a list of three items
+--- the entry at the node, the left subtree, and the right subtree --- with an
+empty list marking a missing subtree.  This edition gives the tree its own
+discriminated union instead: the @code{Empty} tag replaces the empty-list
+subtree, and the book's @code{entry}, @code{left-branch},
+@code{right-branch}, and @code{make-tree} collapse into the union's fields and
+one constructor:@footnote{We are representing sets in terms of trees, and the
+trees as a union of their two possible shapes.  The union isolates the
+abstraction of a ``binary tree'' from any other representation the exercises
+might wish to give it, exactly as the book's four procedures did for its
+list-of-three representation.}
+
+@example typescript
+export type TreeSet =
+  | @{ readonly _tag: "Empty" @}
+  | @{
+      readonly _tag: "Node";
+      readonly entry: number;
+      readonly left: TreeSet;
+      readonly right: TreeSet;
+    @};
+
+export const emptyTreeSet: TreeSet = @{ _tag: "Empty" @};
+
+export const makeTreeSet = (entry: number, left: TreeSet, right: TreeSet): TreeSet => (@{
+  _tag: "Node",
+  entry,
+  left,
+  right,
+@});
+@end example
+
+@noindent
+Now we can write the @code{elementOfSetTree} procedure using the strategy
+described above:
+
+@example typescript
+export const elementOfSetTree = (x: number, set: TreeSet): boolean => @{
+  if (set._tag === "Empty") @{
+    return false;
+  @}
+  if (x === set.entry) @{
+    return true;
+  @}
+  return x < set.entry
+    ? elementOfSetTree(x, set.left)
+    : elementOfSetTree(x, set.right);
+@};
+@end example
+
+@noindent
+Adjoining an item to a set is implemented similarly and also requires
+@math{{\Theta(\log n)}} steps.  To adjoin an item @code{x}, we compare
+@code{x} with the node entry to determine whether @code{x} should be added to
+the right or to the left branch, and having adjoined @code{x} to the
+appropriate branch we piece this newly constructed branch together with the
+original entry and the other branch.  If @code{x} is equal to the entry, we
+just return the node.  If we are asked to adjoin @code{x} to an empty tree, we
+generate a tree that has @code{x} as the entry and empty right and left
+branches.  Here is the procedure:
+
+@example typescript
+export const adjoinSetTree = (x: number, set: TreeSet): TreeSet => @{
+  if (set._tag === "Empty") @{
+    return makeTreeSet(x, emptyTreeSet, emptyTreeSet);
+  @}
+  if (x === set.entry) @{
+    return set;
+  @}
+  return x < set.entry
+    ? makeTreeSet(set.entry, adjoinSetTree(x, set.left), set.right)
+    : makeTreeSet(set.entry, set.left, adjoinSetTree(x, set.right));
+@};
+@end example
+
+@noindent
+The above claim that searching the tree can be performed in a logarithmic
+number of steps rests on the assumption that the tree is ``balanced,'' i.e.,
+that the left and the right subtree of every tree have approximately the same
+number of elements, so that each subtree contains about half the elements of
+its parent.  But how can we be certain that the trees we construct will be
+balanced?  Even if we start with a balanced tree, adding elements with
+@code{adjoinSetTree} may produce an unbalanced result.  Since the position of a
+newly adjoined element depends on how the element compares with the items
+already in the set, we can expect that if we add elements ``randomly'' the tree
+will tend to be balanced on the average.  But this is not a guarantee.  For
+example, if we start with an empty set and adjoin the numbers 1 through 7 in
+sequence we end up with the highly unbalanced tree shown in @ref{Figure 2.17}.
+In this tree all the left subtrees are empty, so it has no advantage over a
+simple ordered list.  One way to solve this problem is to define an operation
+that transforms an arbitrary tree into a balanced tree with the same elements.
+Then we can perform this transformation after every few @code{adjoinSetTree}
+operations to keep our set in balance.  There are also other ways to solve this
+problem, most of which involve designing new data structures for which
+searching and insertion both can be done in @math{{\Theta(\log n)}}
+steps.@footnote{Examples of such structures include @newterm{B-trees} and
+@newterm{red-black trees}.  There is a large literature on data structures
+devoted to this problem.  See @ref{Cormen et al. 1990}.}
+
+@float
+@anchor{Figure 2.17}
+@ifinfo
+@quotation
+@strong{Figure 2.17:} Unbalanced tree produced by adjoining 1 through 7 in sequence.
+
+@example
+1
+ \
+  2
+   \
+    4
+     \
+      5
+       \
+        6
+         \
+          7
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.17a,,68mm,Figure 2.17: Unbalanced tree produced by adjoining 1 through 7 in sequence.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.17a.std,,68mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.17:} Unbalanced tree produced by adjoining 1 through 7 in sequence.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 2.63}Exercise 2.63:} Each of the following two
+procedures converts a binary tree to a list.
+
+@example typescript
+export const treeToList1 = (tree: TreeSet): List<number> =>
+  tree._tag === "Empty"
+    ? nil
+    : append(treeToList1(tree.left), cons(tree.entry, treeToList1(tree.right)));
+
+export const treeToList2 = (tree: TreeSet): List<number> => @{
+  const copyToList = (t: TreeSet, resultList: List<number>): List<number> =>
+    t._tag === "Empty"
+      ? resultList
+      : copyToList(t.left, cons(t.entry, copyToList(t.right, resultList)));
+  return copyToList(tree, nil);
+@};
+@end example
+
+@enumerate a
+
+@item
+Do the two procedures produce the same result for every tree?  If not, how do
+the results differ?  What lists do the two procedures produce for the trees in
+@ref{Figure 2.16}?
+
+@item
+Do the two procedures have the same order of growth in the number of steps
+required to convert a balanced tree with @math{n} elements to a list?  If not,
+which one grows more slowly?
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.64}Exercise 2.64:} The following procedure
+@code{listToTree} converts an ordered list to a balanced binary tree.  The
+helper procedure @code{partialTree} takes as arguments an integer @math{n} and
+a list of at least @math{n} elements and constructs a balanced tree containing
+the first @math{n} elements of the list.  The result returned by
+@code{partialTree} is a two-element tuple (this edition's translation of the
+book's pair) whose first component is the constructed tree and whose second
+component is the list of elements not included in the tree.
+
+@example typescript
+export const listToTree = (elements: List<number>): TreeSet =>
+  partialTree(elements, length(elements))[0];
+
+export const partialTree = (elts: List<number>, n: number): [TreeSet, List<number>] => @{
+  if (n === 0) @{
+    return [emptyTreeSet, elts];
+  @}
+  const leftSize = Math.floor((n - 1) / 2);
+  const [leftTree, nonLeftElts] = partialTree(elts, leftSize);
+  const rightSize = n - (leftSize + 1);
+  const thisEntry = getOrElse(car(nonLeftElts), 0);
+  const [rightTree, remainingElts] = partialTree(
+    getOrElse(cdr(nonLeftElts), nil),
+    rightSize,
+  );
+  return [makeTreeSet(thisEntry, leftTree, rightTree), remainingElts];
+@};
+@end example
+
+@enumerate a
+
+@item
+Write a short paragraph explaining as clearly as you can how
+@code{partialTree} works.  Draw the tree produced by @code{listToTree} for
+the list @code{(1 3 5 7 9 11)}.
+
+@item
+What is the order of growth in the number of steps required by
+@code{listToTree} to convert a list of @math{n} elements?
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.65}Exercise 2.65:} Use the results of @ref{Exercise 2.63} 
+and @ref{Exercise 2.64} to give @math{{\Theta(n)}} implementations of
+@code{unionSetTree} and @code{intersectionSetTree} for sets implemented as
+(balanced) binary trees.@footnote{@ref{Exercise 2.63} through @ref{Exercise 2.65} are due
+to Paul Hilfinger.}
+@end quotation
+
+@subsubheading Sets and information retrieval
+
+We have examined options for using lists to represent sets and have seen how
+the choice of representation for a data object can have a large impact on the
+performance of the programs that use the data.  Another reason for
+concentrating on sets is that the techniques discussed here appear again and
+again in applications involving information retrieval.
+
+Consider a data base containing a large number of individual records, such as
+the personnel files for a company or the transactions in an accounting system.
+A typical data-management system spends a large amount of time accessing or
+modifying the data in the records and therefore requires an efficient method
+for accessing records.  This is done by identifying a part of each record to
+serve as an identifying @newterm{key}.  A key can be anything that uniquely
+identifies the record.  For a personnel file, it might be an employee's ID
+number.  For an accounting system, it might be a transaction number.  Whatever
+the key is, when we define the record as a data structure we should include a
+@code{key} selector procedure that retrieves the key associated with a given
+record.  In this edition a record is a two-element tuple whose first component
+is the numerical key, so the selector is the tuple's first component read.
+
+Now we represent the data base as a set of records. To locate the record with a
+given key we use a procedure @code{lookup}, which takes as arguments a key and
+a data base and which returns the record that has that key, or nothing if there
+is no such record.  @code{Lookup} is implemented in almost the same way as
+@code{elementOfSetUnordered}.  For example, if the set of records is
+implemented as an unordered list, we could use
+
+@example typescript
+export const lookupUnordered = <Value>(
+  givenKey: number,
+  setOfRecords: List<RecordOf<Value>>,
+): Option<RecordOf<Value>> => @{
+  if (setOfRecords._tag === "Nil") @{
+    return none;
+  @}
+  const [key, value] = setOfRecords.head;
+  if (givenKey === key) @{
+    return some([key, value]);
+  @}
+  return lookupUnordered(givenKey, setOfRecords.tail);
+@};
+@end example
+
+@noindent
+Of course, there are better ways to represent large sets than as unordered
+lists.  Information-retrieval systems in which records have to be ``randomly
+accessed'' are typically implemented by a tree-based method, such as the
+binary-tree representation discussed previously.  In designing such a system
+the methodology of data abstraction can be a great help.  The designer can
+create an initial implementation using a simple, straightforward representation
+such as unordered lists.  This will be unsuitable for the eventual system, but
+it can be useful in providing a ``quick and dirty'' data base with which to
+test the rest of the system.  Later on, the data representation can be modified
+to be more sophisticated.  If the data base is accessed in terms of abstract
+selectors and constructors, this change in representation will not require any
+changes to the rest of the system.
+
+@quotation
+@strong{@anchor{Exercise 2.66}Exercise 2.66:} Implement the @code{lookupTree}
+procedure for the case where the set of records is structured as a binary tree,
+ordered by the numerical values of the keys.
+@end quotation
+
+@node	2.3.4, 2.4, 2.2, 2.3
+@subsection Example: Huffman Encoding Trees
+
+This section provides practice in the use of list structure and data
+abstraction to manipulate sets and trees.  The application is to methods for
+representing data as sequences of ones and zeros (bits).  For example, the
+ASCII standard code used to represent text in computers encodes each character
+as a sequence of seven bits.  Using seven bits allows us to distinguish @math{2^7},
+or 128, possible different characters.  In general, if we want to distinguish
+@math{n} different symbols, we will need to use @math{{\log_2n}} bits per
+symbol.  If all our messages are made up of the eight symbols A, B, C, D, E, F,
+G, and H, we can choose a code with three bits per character, for example
+
+@example
+A 000  C 010  E 100  G 110
+B 001  D 011  F 101  H 111
+@end example
+
+@noindent
+With this code, the message
+
+@example
+BACADAEAFABBAAAGAH
+@end example
+
+@noindent
+is encoded as the string of 54 bits
+
+@example
+001000010000011000100000101
+000001001000000000110000111
+@end example
+
+@noindent
+Codes such as ASCII and the A-through-H code above are known as
+@newterm{fixed-length} codes, because they represent each symbol in the message
+with the same number of bits.  It is sometimes advantageous to use
+@newterm{variable-length} codes, in which different symbols may be represented
+by different numbers of bits.  For example, Morse code does not use the same
+number of dots and dashes for each letter of the alphabet.  In particular, E,
+the most frequent letter, is represented by a single dot.  In general, if our
+messages are such that some symbols appear very frequently and some very
+rarely, we can encode data more efficiently (i.e., using fewer bits per
+message) if we assign shorter codes to the frequent symbols.  Consider the
+following alternative code for the letters A through H:
+
+@example
+A 0    C 1010  E 1100  G 1110
+B 100  D 1011  F 1101  H 1111
+@end example
+
+@noindent
+With this code, the same message as above is encoded as the string
+
+@example
+100010100101101100011
+010100100000111001111
+@end example
+
+@noindent
+This string contains 42 bits, so it saves more than 20% in space in comparison
+with the fixed-length code shown above.
+
+One of the difficulties of using a variable-length code is knowing when you
+have reached the end of a symbol in reading a sequence of zeros and ones.
+Morse code solves this problem by using a special @newterm{separator code} (in
+this case, a pause) after the sequence of dots and dashes for each letter.
+Another solution is to design the code in such a way that no complete code for
+any symbol is the beginning (or @newterm{prefix}) of the code for another
+symbol.  Such a code is called a @newterm{prefix code}.  In the example above,
+A is encoded by 0 and B is encoded by 100, so no other symbol can have a code
+that begins with 0 or with 100.
+
+In general, we can attain significant savings if we use variable-length prefix
+codes that take advantage of the relative frequencies of the symbols in the
+messages to be encoded.  One particular scheme for doing this is called the
+Huffman encoding method, after its discoverer, David Huffman.  A Huffman code
+can be represented as a binary tree whose leaves are the symbols that are
+encoded.  At each non-leaf node of the tree there is a set containing all the
+symbols in the leaves that lie below the node.  In addition, each symbol at a
+leaf is assigned a weight (which is its relative frequency), and each non-leaf
+node contains a weight that is the sum of all the weights of the leaves lying
+below it.  The weights are not used in the encoding or the decoding process.
+We will see below how they are used to help construct the tree.
+
+@ref{Figure 2.18} shows the Huffman tree for the A-through-H code given above.
+The weights at the leaves indicate that the tree was designed for messages in
+which A appears with relative frequency 8, B with relative frequency 3, and the
+other letters each with relative frequency 1.
+
+@float
+@anchor{Figure 2.18}
+@ifinfo
+@strong{Figure 2.18:} A Huffman encoding tree.
+
+@example
+           @{A B C D E F G H@} 17
+                    *
+                   / \
+                  /   \
+                A 8    * @{B C D E F G H@} 9
+            __________/ \_____________
+           /                          \
+@{B C D@} 5 *                            * @{E F G H@} 4
+         / \                       ___/ \___
+        /   \                     /         \
+      B 3    * @{C D@} 2   @{E F@} 2 *           * @{G H@} 2
+            / \                 / \         / \
+           /   \               /   \       /   \
+         C 1   D 1           E 1   F 1   G 1   H 1
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.18a,,135mm,Figure 2.18: A Huffman encoding tree.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,,135mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.18:} A Huffman encoding tree.}
+@end float
+
+Given a Huffman tree, we can find the encoding of any symbol by starting at the
+root and moving down until we reach the leaf that holds the symbol.  Each time
+we move down a left branch we add a 0 to the code, and each time we move down a
+right branch we add a 1.  (We decide which branch to follow by testing to see
+which branch either is the leaf node for the symbol or contains the symbol in
+its set.)  For example, starting from the root of the tree in @ref{Figure 2.18}, 
+we arrive at the leaf for D by following a right branch, then a left
+branch, then a right branch, then a right branch; hence, the code for D is
+1011.
+
+@noindent
+To decode a bit sequence using a Huffman tree, we begin at the root and use the
+successive zeros and ones of the bit sequence to determine whether to move down
+the left or the right branch.  Each time we come to a leaf, we have generated a
+new symbol in the message, at which point we start over from the root of the
+tree to find the next symbol.  For example, suppose we are given the tree above
+and the sequence 10001010.  Starting at the root, we move down the right
+branch, (since the first bit of the string is 1), then down the left branch
+(since the second bit is 0), then down the left branch (since the third bit is
+also 0).  This brings us to the leaf for B, so the first symbol of the decoded
+message is B.  Now we start again at the root, and we make a left move because
+the next bit in the string is 0.  This brings us to the leaf for A.  Then we
+start again at the root with the rest of the string 1010, so we move right,
+left, right, left and reach C.  Thus, the entire message is BAC.
+
+@subsubheading Generating Huffman trees
+
+Given an ``alphabet'' of symbols and their relative frequencies, how do we
+construct the ``best'' code?  (In other words, which tree will encode messages
+with the fewest bits?)  Huffman gave an algorithm for doing this and showed
+that the resulting code is indeed the best variable-length code for messages
+where the relative frequency of the symbols matches the frequencies with which
+the code was constructed.  We will not prove this optimality of Huffman codes
+here, but we will show how Huffman trees are constructed.@footnote{See @ref{Hamming 1980} 
+for a discussion of the mathematical properties of Huffman codes.}
+
+The algorithm for generating a Huffman tree is very simple. The idea is to
+arrange the tree so that the symbols with the lowest frequency appear farthest
+away from the root. Begin with the set of leaf nodes, containing symbols and
+their frequencies, as determined by the initial data from which the code is to
+be constructed. Now find two leaves with the lowest weights and merge them to
+produce a node that has these two nodes as its left and right branches. The
+weight of the new node is the sum of the two weights. Remove the two leaves
+from the original set and replace them by this new node. Now continue this
+process. At each step, merge two nodes with the smallest weights, removing them
+from the set and replacing them with a node that has these two as its left and
+right branches. The process stops when there is only one node left, which is
+the root of the entire tree.  Here is how the Huffman tree of @ref{Figure 2.18}
+was generated:
+
+@example
+Initial @{(A 8) (B 3) (C 1) (D 1) 
+leaves   (E 1) (F 1) (G 1) (H 1)@}
+
+Merge   @{(A 8) (B 3) (@{C D@} 2) 
+         (E 1) (F 1) (G 1) (H 1)@}
+
+Merge   @{(A 8) (B 3) (@{C D@} 2) 
+         (@{E F@} 2) (G 1) (H 1)@}
+
+Merge   @{(A 8) (B 3) (@{C D@} 2) 
+         (@{E F@} 2) (@{G H@} 2)@}
+
+Merge   @{(A 8) (B 3) (@{C D@} 2) 
+         (@{E F G H@} 4)@}
+
+Merge   @{(A 8) (@{B C D@} 5) 
+         (@{E F G H@} 4)@}
+
+Merge   @{(A 8) (@{B C D E F G H@} 9)@}
+
+Final   @{(@{A B C D E F G H@} 17)@}
+merge    
+@end example
+
+@noindent
+The algorithm does not always specify a unique tree, because there may not be
+unique smallest-weight nodes at each step.  Also, the choice of the order in
+which the two nodes are merged (i.e., which will be the right branch and which
+will be the left branch) is arbitrary.
+
+@subsubheading Representing Huffman trees
+
+In the exercises below we will work with a system that uses Huffman trees to
+encode and decode messages and generates Huffman trees according to the
+algorithm outlined above.  We will begin by discussing how trees are
+represented.
+
+The book represents a leaf by a list consisting of the symbol @code{leaf}, the
+symbol at the leaf, and the weight, and a general tree by a list of a left
+branch, a right branch, a set of symbols, and a weight.  This edition gives
+the two shapes one discriminated union, so the book's @code{leaf?} test and
+its three leaf procedures collapse into the union's tags and fields:
+
+@example typescript
+export type HuffTree =
+  | @{ readonly _tag: "Leaf"; readonly symbol: Symb; readonly weight: number @}
+  | @{
+      readonly _tag: "Branch";
+      readonly left: HuffTree;
+      readonly right: HuffTree;
+      readonly symbols: List<Symb>;
+      readonly weight: number;
+    @};
+
+export const makeLeaf = (symbol: Symb, weight: number): HuffTree => (@{
+  _tag: "Leaf",
+  symbol,
+  weight,
+@});
+@end example
+
+@noindent
+When we make a tree by merging two nodes, we obtain the weight of the tree as
+the sum of the weights of the nodes, and the set of symbols as the union of
+the sets of symbols for the nodes.  Since our symbol sets are represented as
+lists, we can form the union by using the @code{append} procedure we defined
+in @ref{2.2.1}:
+
+@example typescript
+export const makeCodeTree = (left: HuffTree, right: HuffTree): HuffTree => (@{
+  _tag: "Branch",
+  left,
+  right,
+  symbols: append(symbolsOf(left), symbolsOf(right)),
+  weight: weightOf(left) + weightOf(right),
+@});
+@end example
+
+@noindent
+If we make a tree in this way, we have the following selectors.  The book's
+@code{symbols} and @code{weight} must do something slightly different
+depending on whether they are called with a leaf or a general tree; over the
+union, that choice is a tag check --- the weight is carried by both shapes,
+and the symbol set is either the single symbol of a leaf or the stored set of
+a branch:
+
+@example typescript
+export const symbolsOf = (tree: HuffTree): List<Symb> =>
+  tree._tag === "Leaf" ? list(tree.symbol) : tree.symbols;
+
+export const weightOf = (tree: HuffTree): number => tree.weight;
+@end example
+
+@noindent
+These are simple examples of @newterm{generic procedures} (procedures that can
+handle more than one kind of data), which we will have much more to say about
+in @ref{2.4} and @ref{2.5}.
+
+@subsubheading The decoding procedure
+
+The following procedure implements the decoding algorithm.  It takes as
+arguments a list of zeros and ones, together with a Huffman tree.
+
+@example typescript
+export const decode = (bits: List<number>, tree: HuffTree): Result<List<Symb>, string> => @{
+  const walk = (rest: List<number>, current: HuffTree): Result<List<Symb>, string> => @{
+    if (rest._tag === "Nil") @{
+      return ok(nil);
+    @}
+    const next = chooseBranch(rest.head, current);
+    if (next._tag === "Error") @{
+      return next;
+    @}
+    if (next.value._tag === "Leaf") @{
+      const decoded = walk(rest.tail, tree);
+      return decoded._tag === "Ok" ? ok(cons(next.value.symbol, decoded.value)) : decoded;
+    @}
+    return walk(rest.tail, next.value);
+  @};
+  return walk(bits, tree);
+@};
+
+export const chooseBranch = (bit: number, branch: HuffTree): Result<HuffTree, string> => @{
+  if (branch._tag === "Leaf") @{
+    return err("bad position: CHOOSE-BRANCH cannot branch at a leaf");
+  @}
+  if (bit === 0) @{
+    return ok(branch.left);
+  @}
+  if (bit === 1) @{
+    return ok(branch.right);
+  @}
+  return err(`bad bit: CHOOSE-BRANCH $@{bit@}`);
+@};
+@end example
+
+@noindent
+The inner procedure @code{walk} takes two arguments: the list of remaining bits
+and the current position in the tree.  It keeps moving ``down'' the tree,
+choosing a left or a right branch according to whether the next bit in the list
+is a zero or a one.  (This is done with the procedure @code{chooseBranch}.)
+When it reaches a leaf, it returns the symbol at that leaf as the next symbol
+in the message by consing it onto the result of decoding the rest of the
+message, starting at the root of the tree.  The decoding returns its answer in
+this edition's @code{Result} type, because @code{chooseBranch} complains, as
+the book puts it, if it finds something other than a zero or a one in the input
+data:
+
+@example typescript
+const littleTree = makeCodeTree(
+  makeLeaf(sym("a"), 2),
+  makeCodeTree(makeLeaf(sym("b"), 1), makeLeaf(sym("c"), 1)),
+);
+
+showSymbols(getOrElse(decode(list(0, 1, 0, 1, 1), littleTree), nil));
+// => (a b c)
+
+decode(list(2), littleTree);
+// => Error: bad bit: CHOOSE-BRANCH 2
+@end example
+
+@subsubheading Sets of weighted elements
+
+In our representation of trees, each non-leaf node contains a set of symbols,
+which we have represented as a simple list.  However, the tree-generating
+algorithm discussed above requires that we also work with sets of leaves and
+trees, successively merging the two smallest items.  Since we will be required
+to repeatedly find the smallest item in a set, it is convenient to use an
+ordered representation for this kind of set.
+
+We will represent a set of leaves and trees as a list of elements, arranged in
+increasing order of weight.  The following @code{adjoinSetWeighted} procedure
+for constructing sets is similar to the one described in @ref{Exercise 2.61};
+however, items are compared by their weights, and the element being added to
+the set is never already in it:
+
+@example typescript
+export const adjoinSetWeighted = (x: HuffTree, set: List<HuffTree>): List<HuffTree> => @{
+  if (set._tag === "Nil") @{
+    return list(x);
+  @}
+  if (weightOf(x) < weightOf(set.head)) @{
+    return cons(x, set);
+  @}
+  return cons(set.head, adjoinSetWeighted(x, set.tail));
+@};
+@end example
+
+@noindent
+The following procedure takes a list of symbol-frequency pairs such as
+@code{((A 4) (B 2) (C 1) (D 1))} --- in this edition, a list of the
+two-element tuples of @code{SymbolFrequency} --- and constructs an initial
+ordered set of leaves, ready to be merged according to the Huffman algorithm:
+
+@example typescript
+export type SymbolFrequency = readonly [symbol: Symb, frequency: number];
+
+export const makeLeafSet = (pairs: List<SymbolFrequency>): List<HuffTree> => @{
+  if (pairs._tag === "Nil") @{
+    return nil;
+  @}
+  const [symbol, frequency] = pairs.head;
+  return adjoinSetWeighted(makeLeaf(symbol, frequency), makeLeafSet(pairs.tail));
+@};
+@end example
+
+@quotation
+@strong{@anchor{Exercise 2.67}Exercise 2.67:} Define an encoding tree and a
+sample message:
+
+@example typescript
+const sampleTree = makeCodeTree(
+  makeLeaf(sym("A"), 4),
+  makeCodeTree(
+    makeLeaf(sym("B"), 2),
+    makeCodeTree(makeLeaf(sym("D"), 1), makeLeaf(sym("C"), 1)),
+  ),
+);
+
+const sampleMessage = list(0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0);
+@end example
+
+Use the @code{decode} procedure to decode the message, and give the result.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.67a}Exercise 2.67a:} @emph{Exercise 2.67a is added
+by this edition and extends exercise 2.67; SICP numbers stop at 2.67.}
+Re-express the decoding walk of @ref{Exercise 2.67} as one exhaustive
+@code{switch} over the @code{HuffTree} union's two tags, in place of the
+@code{Leaf} test of @ref{2.3.4}'s @code{decode}: standing at a branch, the
+switch consumes the next bit and descends; standing at a leaf, it emits the
+leaf's symbol and restarts at the root.  Pin the decoding of
+@code{sampleMessage} under @code{sampleTree}, and pin one error case: a bit
+string that runs off the tree, meaning the bits end while the walk stands at a
+branch.  (The book's @code{decode} stops silently in exactly this situation;
+your version should refuse it.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.68}Exercise 2.68:} The @code{encode} procedure takes
+as arguments a message and a tree and produces the list of bits that gives the
+encoded message.
+
+@example typescript
+export const encode = (message: List<Symb>, tree: HuffTree): Result<List<Symb>, string> => @{
+  if (message._tag === "Nil") @{
+    return ok(nil);
+  @}
+  const first = encodeSymbol(message.head, tree);
+  if (first._tag === "Error") @{
+    return first;
+  @}
+  const rest = encode(message.tail, tree);
+  if (rest._tag === "Error") @{
+    return rest;
+  @}
+  return ok(append(first.value, rest.value));
+@};
+@end example
+
+@code{encodeSymbol} is a procedure, which you must write, that returns the
+list of bits that encodes a given symbol according to a given tree.  You
+should design @code{encodeSymbol} so that it returns an error if the symbol is
+not in the tree at all.  Test your procedure by encoding the result you
+obtained in @ref{Exercise 2.67} with the sample tree and seeing whether it is
+the same as the original sample message.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.69}Exercise 2.69:} The following procedure takes as
+its argument a list of symbol-frequency pairs (where no symbol appears in more
+than one pair) and generates a Huffman encoding tree according to the Huffman
+algorithm.
+
+@example typescript
+export const generateHuffmanTree = (pairs: List<SymbolFrequency>): HuffTree =>
+  successiveMerge(makeLeafSet(pairs));
+@end example
+
+@code{makeLeafSet} is the procedure given above that transforms the list of
+pairs into an ordered set of leaves.  @code{successiveMerge} is the procedure
+you must write, using @code{makeCodeTree} to successively merge the
+smallest-weight elements of the set until there is only one element left, which
+is the desired Huffman tree.  (This procedure is slightly tricky, but not
+really complicated.  If you find yourself designing a complex procedure, then
+you are almost certainly doing something wrong.  You can take significant
+advantage of the fact that we are using an ordered set representation.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.70}Exercise 2.70:} The following eight-symbol
+alphabet with as@-so@-ci@-ated relative frequencies was designed to efficiently
+encode the lyr@-ics of 1950s rock songs.  (Note that the ``symbols'' of an
+``alphabet'' need not be individual letters.)
+
+@example
+
+A    2    NA  16
+BOOM 1    SHA  3
+GET  2    YIP  9
+JOB  2    WAH  1
+@end example
+
+Use @code{generateHuffmanTree} (@ref{Exercise 2.69}) to generate a
+corresponding Huffman tree, and use @code{encode} (@ref{Exercise 2.68}) to
+encode the following message:
+
+@example typescript
+const song = list(
+  sym("Get"), sym("a"), sym("Job"),
+  sym("Sha"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"),
+  sym("Get"), sym("a"), sym("Job"),
+  sym("Sha"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"),
+  sym("Wah"), sym("Yip"), sym("Yip"), sym("Yip"), sym("Yip"),
+  sym("Yip"), sym("Yip"), sym("Yip"), sym("Yip"), sym("Yip"),
+  sym("Sha"), sym("Boom"),
+);
+
+const rockPairs = list(
+  [sym("A"), 2] as const,
+  [sym("NA"), 16] as const,
+  [sym("BOOM"), 1] as const,
+  [sym("SHA"), 3] as const,
+  [sym("GET"), 2] as const,
+  [sym("YIP"), 9] as const,
+  [sym("JOB"), 2] as const,
+  [sym("WAH"), 1] as const,
+);
+@end example
+
+How many bits are required for the encoding?  What is the smallest number of
+bits that would be needed to encode this song if we used a fixed-length code
+for the eight-symbol alphabet?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.71}Exercise 2.71:} Suppose we have a Huffman tree
+for an alphabet of @math{n} symbols, and that the relative frequencies of the
+symbols are @math{{1, 2, 4, \dots, 2^{n-1}}}.  Sketch the tree for @math{{n=5}}; for
+@math{{n=10}}.  In such a tree (for general @math{n}) how many bits are required to
+encode the most frequent symbol?  The least frequent symbol?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.72}Exercise 2.72:} Consider the encoding procedure
+that you designed in @ref{Exercise 2.68}.  What is the order of growth in the
+number of steps needed to encode a symbol?  Be sure to include the number of
+steps needed to search the symbol list at each node encountered.  To answer
+this question in general is difficult.  Consider the special case where the
+relative frequencies of the @math{n} symbols are as described in @ref{Exercise 2.71}, 
+and give the order of growth (as a function of @math{n}) of the number of
+steps needed to encode the most frequent and least frequent symbols in the
+alphabet.
+@end quotation

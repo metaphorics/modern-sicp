@@ -1,0 +1,119 @@
+@node	0.1, 0.2, Chapter 0, Chapter 0
+@section Values, numbers, and bindings
+
+You already know how to program. This chapter is not about programming; it is
+about the specific handful of Rust the rest of the book leans on, taught in
+the order the book needs it. Skim what you already recognize and slow down at
+the parts that are particular to Rust: ownership in @ref{0.3}, and the
+overflow policy this section starts with.
+
+A Rust program names values with @code{let}:
+
+@example rust
+let x = 5;
+println!("@{x@}");
+// => 5
+@end example
+
+@code{x} here is a @newterm{binding}, not a variable in the mutable sense:
+without the word @code{mut}, it cannot be reassigned. Writing @code{x = 6}
+below that line is a compile error, not a runtime one. Rust catches it before
+the program ever runs, which is the theme of the next several sections: a
+whole class of mistakes moves from ``discovered while running'' to ``rejected
+while compiling.''
+
+Two different things look similar and are worth telling apart from the start.
+@newterm{Shadowing} introduces a new binding that happens to reuse an old
+name; @newterm{mutation} changes the value inside an existing binding that
+was declared @code{mut}.
+
+@example rust
+let x = 5;
+let x = x + 1;
+println!("@{x@}");
+// => 6
+
+let mut y = 5;
+y += 1;
+println!("@{y@}");
+// => 6
+@end example
+
+Both print @code{6}, but they arrived differently. The first @code{let x}
+line creates a brand-new binding named @code{x} that shadows the old one; the
+old @code{x} still exists underneath it and is simply no longer reachable by
+that name. Shadowing can even change type (@code{let x = "5"; let x =
+x.len();} is legal). The second block never introduces a second @code{y}:
+@code{y} is one binding, marked @code{mut}, and @code{+=} changes the value
+it holds in place. Chapter 3's environment model (@ref{0.3}, then chapter 3
+in full) is built entirely on this distinction between rebinding a name and
+mutating a place.
+
+Two more primitive types round out this section: @code{bool}, exactly
+@code{true} or @code{false}, and @code{char}, a single Unicode scalar value
+written in single quotes.
+
+@example rust
+let is_even: bool = 6 % 2 == 0;
+println!("@{is_even@}");
+// => true
+
+let initial: char = 'r';
+println!("@{initial@}");
+// => r
+@end example
+
+This chapter also fixes how the book displays what a program computes. Every
+runnable listing is an @code{@@example rust} block; a comment starting with
+@code{// =>} beneath a line gives the value that line's expression or
+@code{println!} produces, exactly as pinned by that listing's test. The
+listings above already use it. Section @ref{0.9} covers the convention in
+full, including how it maps onto exercise numbers; from here on it needs no
+further introduction. The runnable version of these three listings together
+is @code{examples/sec_0_1_bindings.rs}.
+
+@subheading Numbers, and the overflow policy
+
+Two number types cover almost everything in this book. @code{i128} is this
+edition's one exact integer type, wide enough that the book rarely needs
+anything else; @code{f64} is the one inexact real. Chapter 2 adds exact
+rationals and complex numbers as an explicit tower on top of @code{i128} and
+@code{f64} (@ref{2.5}); you do not need them yet.
+
+Ordinary arithmetic on a fixed-width integer has a sharp edge, and it is
+worth knowing exactly where the edge is. In a @newterm{debug} build (the
+default for @code{cargo run} and @code{cargo test}), @code{i128::MAX + 1}
+panics: Rust checks for overflow and stops the program rather than let it
+continue on a wrong answer. In a @newterm{release} build (@code{cargo run
+--release}), that same check is compiled out for speed, and the same
+expression silently wraps around to a large negative number instead. Neither
+behavior is what this book wants: a debug-only panic still crashes a program
+that a release build would have corrupted silently, and depending on which
+build mode happens to be running is not a design. This book never leaves the
+question to build mode. Every integer operation that could overflow uses a
+@newterm{checked} method, which trades both possibilities for one explicit
+@code{Option}, in every build: @code{Some} on success, @code{None} when the
+exact result would not fit.
+
+@example rust
+let ok = 1_000_000_000_000i128.checked_mul(1_000_000_000_000);
+println!("@{ok:?@}");
+// => Some(1000000000000000000000000)
+
+let overflow = i128::MAX.checked_mul(i128::MAX);
+println!("@{overflow:?@}");
+// => None
+@end example
+
+@code{Option} gets its full introduction in @ref{0.4}; for now, read
+@code{Some(v)} as ``succeeded with @code{v}'' and @code{None} as ``would have
+overflowed.'' This is the number policy the whole book follows: exact
+arithmetic is checked, and an overflow is data the program can act on rather
+than a silent wrong answer or an unannounced panic. Section @ref{1.2} leans
+on exactly this to make the point that unbounded recursion depth, not
+@code{i128}'s width, is usually what runs out first.
+
+The runnable version of this listing is
+@code{examples/sec_0_1_checked_arithmetic.rs} in this edition's
+@code{crates/ch00} crate; @code{cargo run --example
+sec_0_1_checked_arithmetic} runs it. Section @ref{0.9} explains this layout.

@@ -1,0 +1,13 @@
+;; SPDX-License-Identifier: GPL-3.0-only
+;; Adapted from SICP sections 4.1 to 5.2
+ok
+ok
+ok
+ok
+((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+;;; There are no more values of
+(multiple-dwelling)
+ok
+(4 . 4)
+ok
+42

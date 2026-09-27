@@ -1,0 +1,29 @@
+(executable
+ (name test_sec_1_1)
+ (modules test_sec_1_1)
+ (libraries sicp_ch1 sicp_ch1_solutions alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_1_1.exe)))
+
+(executable
+ (name test_sec_1_2)
+ (modules test_sec_1_2)
+ (libraries sicp_ch1 sicp_ch1_solutions alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_1_2.exe)))
+
+(executable
+ (name test_sec_1_3)
+ (modules test_sec_1_3)
+ (libraries sicp_ch1 sicp_ch1_solutions alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_1_3.exe)))

@@ -1,0 +1,205 @@
+@node	0.4, 0.5, 0.3, Chapter 0
+@section Data
+
+This section covers tuples, lists, the language's sum type, pattern
+matching, and exhaustiveness. The data abstractions of @ref{2.1} onward
+stand on these forms, and the interpreted data of chapter 4's evaluator is
+one discriminated union of exactly the kind built here.
+
+@heading Tuples and records
+
+A fixed-arity pair of values is a @newterm{tuple}: a readonly array whose
+length and element types are fixed. Where the parts have meaning, a
+record with named fields replaces it; that is the lesson of @ref{2.1} read
+in TypeScript.
+
+@example typescript
+type Point = readonly [number, number];
+
+const p: Point = [3, 4];
+const [x, y] = p;
+
+x
+// => 3
+@end example
+
+@example typescript
+interface Frac @{
+  readonly num: number;
+  readonly den: number;
+@}
+
+const f: Frac = @{ num: 1, den: 2 @};
+
+f
+// => @{ num: 1, den: 2 @}
+
+const @{ num, den @} = f;
+
+num
+// => 1
+@end example
+
+@noindent
+A @code{readonly} field can never be reassigned through the record, so a
+record is a value the program can hand around without copying, and the
+destructuring pulls the parts apart again.
+
+@heading Sums: discriminated unions and exhaustive switch
+
+A @newterm{discriminated union} is the sum: a closed set of variants,
+every variant carrying the same shape of tag. The @code{switch} that
+dispatches on the tag must cover every variant, and the return type is
+what buys the guarantee:
+
+@example typescript
+type Shape =
+  | @{ readonly _tag: "Circle"; readonly r: number @}
+  | @{ readonly _tag: "Rect"; readonly w: number; readonly h: number @};
+
+const area = (s: Shape): number => @{
+  switch (s._tag) @{
+    case "Circle":
+      return Math.PI * s.r * s.r;
+    case "Rect":
+      return s.w * s.h;
+  @}
+@};
+
+area(@{ _tag: "Circle", r: 1 @})
+// => 3.141592653589793
+
+area(@{ _tag: "Rect", w: 2, h: 3 @})
+// => 6
+@end example
+
+@noindent
+The tag both discriminates the variant and gives the case its fields,
+which is this book's pattern matching. The guarantee is the point, and
+exercise 0.4 turns it into a compile experiment: delete a case, and the
+file stops compiling with the missing return named. Data-directed
+dispatch, where the set of types must stay open at runtime, is a
+different mechanism for a different job; @ref{2.4} builds it as a
+registry for exactly that reason.
+
+@heading Option: absence as a value
+
+The book's computations sometimes find nothing: @code{car} of an empty
+list, a lookup that misses. This edition's answer is a two-variant union
+of its own, @code{Option}, so absence is a value the caller switches on,
+never @code{false} and never a @code{null} smuggled through:
+
+@example typescript
+type Option<A> =
+  | @{ readonly _tag: "Some"; readonly value: A @}
+  | @{ readonly _tag: "None" @};
+
+const some = <A>(value: A): Option<A> => (@{ _tag: "Some", value @});
+const none: Option<never> = @{ _tag: "None" @};
+@end example
+
+@heading The cons list
+
+The book's pairs of @ref{2.2.1} get the same treatment: a @code{List<A>}
+is a union of the empty list and one cons cell, and @code{cons},
+@code{car}, and @code{cdr} are the three operations on it:
+
+@example typescript
+interface Nil @{
+  readonly _tag: "Nil";
+@}
+
+interface Cons<A> @{
+  readonly _tag: "Cons";
+  readonly head: A;
+  readonly tail: List<A>;
+@}
+
+type List<A> = Nil | Cons<A>;
+
+const nil: List<never> = @{ _tag: "Nil" @};
+
+const cons = <A>(head: A, tail: List<A>): List<A> => (@{
+  _tag: "Cons",
+  head,
+  tail,
+@});
+@end example
+
+@example typescript
+const car = <A>(l: List<A>): Option<A> =>
+  l._tag === "Cons" ? some(l.head) : none;
+
+const cdr = <A>(l: List<A>): Option<List<A>> =>
+  l._tag === "Cons" ? some(l.tail) : none;
+
+car(cons(1, nil))
+// => @{ _tag: "Some", value: 1 @}
+
+car(nil)
+// => @{ _tag: "None" @}
+@end example
+
+@noindent
+A @code{list} helper builds the right-nested structure from a sequence in
+left-to-right order, and the book's listings use it wherever Scheme
+builds a display list.
+
+@heading The two equalities
+
+TypeScript separates the two equalities the book needs, though not with
+two operators. @code{===} compares the primitives by value and every
+object by identity: two records with equal fields are two different
+objects, so structural equality is written out, per type, as a small
+function.
+
+@example typescript
+const equalFrac = (a: Frac, b: Frac): boolean =>
+  a.num === b.num && a.den === b.den;
+
+const g = @{ num: 1, den: 2 @};
+const h = @{ num: 1, den: 2 @};
+
+equalFrac(g, h)
+// => true
+
+g === h
+// => false
+@end example
+
+@noindent
+The book's @code{equal?} maps to the written-out structural comparison,
+and its @code{eq?} maps to @code{===}. For lists the structural
+comparison recurs down the pairs:
+
+@example typescript
+const equalList = <A>(
+  a: List<A>,
+  b: List<A>,
+  equal: (x: A, y: A) => boolean,
+): boolean => @{
+  if (a._tag === "Nil" || b._tag === "Nil") @{
+    return a._tag === b._tag;
+  @}
+  return equal(a.head, b.head) && equalList(a.tail, b.tail, equal);
+@};
+@end example
+
+@noindent
+@ref{2.3.1} comes back to it when symbols join the data. The runnable
+version of this section's listings is @file{packages/ch0/src/04-data.ts},
+asserted by the test file beside it.
+
+@strong{@anchor{Exercise 0.4}Exercise 0.4:} Extend the section's
+@code{Shape} with a third variant, @code{Square}, carrying one side, and
+write @code{area} as an exhaustive @code{switch} over all three variants.
+Then run the compile experiment: delete the @code{Square} case, run
+@command{just lint}, record the compiler's message, restore the case, and
+say in one sentence what the exhaustiveness check bought you. The tests
+pin all three areas: a circle of radius 1 has area @code{Math.PI}, a
+2-by-3 rectangle has area 6, and a square of side 4 has area 16.
+
+@cindex discriminated union
+@cindex tuple
+@cindex Option
+@cindex exhaustiveness

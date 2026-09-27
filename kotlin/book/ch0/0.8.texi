@@ -1,0 +1,136 @@
+@node	0.8, Chapter 1, 0.7, Chapter 0
+@section Reading this book
+
+This section covers the interaction convention, how exercises map to SICP's
+numbers, the signpost sentences, and the exercise map. It is the last
+primer section; the convention it fixes applies from the first listing of
+@ref{0.2} and never changes afterward.
+
+@heading The interaction convention
+
+Each interaction in the book is one @code{@@example kotlin} block: the call,
+rendered in Kotlin, followed by its result as a comment line carrying a
+@code{=>} marker.
+
+@example kotlin
+5L + 3L + 4L
+// => 12
+
+val size = 2L
+5L + 3L + size
+// => 10
+@end example
+
+@noindent
+The marker keeps every result a valid comment in the source and readable in
+the unhighlighted PDF, and the same value is asserted in the listing's file
+under @file{kotlin/examples/}, so the transcript cannot drift from the code.
+Lines the book's programs print rather than evaluate, a probe or a table
+driven by @code{for}-each, appear as comment lines without the marker. Where
+a chapter preserves a REPL session verbatim, the session's own responses
+are kept in the same comment form, including the sessions' definitions:
+
+@example kotlin
+val a = 3L
+// ;Value: a
+
+val b = a + 1L
+// ;Value: b
+
+a + b + (a * b)
+// ;Value: 19
+@end example
+
+@noindent
+From chapter 4 on, where the book's programs are values of the runtime's
+@code{Value} type, a transcript shows the same shape with the runtime's
+printed forms. Nothing in a transcript is hand-copied: every result in
+every listing is asserted by the file the listing names.
+
+@heading How exercises map to SICP's numbers
+
+Exercise numbers are one to one with SICP. An exercise whose material
+survives in Kotlin keeps its number and its intent; only its language
+changes. When a statement exists to teach Scheme itself, the edition
+replaces it under the same number and says so. Each exercise row in the
+edition's map carries one of three classes: @code{T} for a translation
+where only the syntax changes, @code{A} for an adaptation where the idea
+survives and the statement changes, and @code{R} for a replacement that
+keeps the number but teaches the section's material on host terms. The map
+is the file @file{docs/exercise-map.md} at the repository root, one table
+per section.
+
+Two fixed sentences appear in the text wherever the numbering needs
+explaining, and they always read exactly as follows. A replacement says:
+
+@quotation
+@emph{SICP exercise @var{N.M} is about Scheme itself, so this edition
+replaces it; the exercise below keeps the number and teaches the same
+section material.}
+@end quotation
+
+@noindent
+and an addition, numbered as the exercise it extends plus a lowercase
+letter, says:
+
+@quotation
+@emph{Exercise @var{N.Ma} is added by this edition and extends exercise
+@var{N.M}; SICP numbers stop at @var{N.M}.}
+@end quotation
+
+@noindent
+At most one such addition exists per section per edition. The primer's own
+exercises, 0.1 through 0.5, are this edition's additions in the same
+spirit: they use only what @ref{0.2} through @ref{0.7} have taught, and
+each one lives in the section that teaches its material, which is why the
+sequence probe of exercise 0.5 sits in @ref{0.3} rather than at the end of
+the chapter.
+
+@heading A worked example
+
+The three sessions of exercise 0.1 become Kotlin transcripts of the
+convention's shape. The arithmetic session, evaluated in order:
+
+@example kotlin
+486L
+// => 486
+
+100L
+// => 100
+
+5L + 3L + 4L
+// => 12
+
+10L - 9L
+// => 1
+
+2L * 4L + (4L - 6L)
+// => 6
+@end example
+
+@noindent
+and the @code{square} session of that exercise, which needs a definition
+first:
+
+@example kotlin
+fun square(x: Long): Long = x * x
+
+square(21L)
+// => 441
+
+square(2L + 5L)
+// => 49
+
+square(square(3L))
+// => 81
+@end example
+
+@noindent
+The full transcript, computed and asserted, is
+@file{kotlin/examples/ch0/S0_8Transcripts.kt}. With the convention, the
+numbering, and the signposts in hand, chapter 1 begins: @ref{1.1} builds
+abstractions with procedures, and from its first listing every construct
+will be one this primer has already shown.
+
+@cindex interaction convention
+@cindex exercise map

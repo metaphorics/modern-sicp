@@ -1,0 +1,1938 @@
+@node	2.5, Chapter 3, 2.4, Chapter 2
+@section Systems with Generic Operations
+
+In the previous section, we saw how to design systems in which data objects can
+be represented in more than one way.  The key idea is to link the code that
+specifies the data operations to the several representations by means of
+generic interface procedures.  Now we will see how to use this same idea not
+only to define operations that are generic over different representations but
+also to define operations that are generic over different kinds of arguments.
+We have already seen several different packages of arithmetic operations: the
+primitive arithmetic (@code{+}, @code{-}, @code{*}, @code{/}) built into our
+language, the rational-number arithmetic (@code{add_rat}, @code{sub_rat},
+@code{mul_rat}, @code{div_rat}) of @ref{2.1.1}, and the complex-number
+arithmetic that we implemented in @ref{2.4.3}.  We will now use
+data-directed techniques to construct a package of arithmetic operations that
+incorporates all the arithmetic packages we have already constructed.
+
+@ref{Figure 2.23} shows the structure of the system we shall build.  Notice the
+abstraction barriers.  From the perspective of someone using ``numb@-ers,'' there
+is a single procedure @code{add} that operates on whatever numb@-ers are
+supplied.  @code{Add} is part of a generic interface that allows the separate
+or@-di@-na@-ry-arithmetic, rational-arithmetic, and complex-arithmetic pack@-ag@-es to be
+accessed uniformly by programs that use numbers.  Any individual arithmetic
+package (such as the complex package) may itself be accessed through generic
+procedures (such as @code{add_complex}) that combine packages designed for
+different representations (such as rectangular and polar).  Moreover, the
+structure of the system is additive, so that one can design the individual
+arithmetic packages separately and combine them to produce a generic arithmetic
+system.
+
+@float
+@anchor{Figure 2.23}
+@ifinfo
+@quotation
+@strong{Figure 2.23:} Generic arithmetic system.
+
+@example
+                        Programs that use numbers
+                           +-----------------+
+---------------------------| add sub mul div |-------------------
+                           +-----------------+
+                        Generic arithmetic package
+ +-----------------+   +-------------------------+
+ | add_rat sub_rat |   | add_complex sub_complex |   +---------+
+-|                 |-+-|                         |-+-| + - * / |-
+ | mul_rat div_rat | | | mul_complex div_complex | | +---------+
+ +-----------------+ | +-------------------------+ |
+      Rational       |     Complex artithmetic     |   Ordinary
+     arithmetic      +--------------+--------------+  arithmetic
+                     | Rectangular  |     Polar    |
+---------------------+--------------+--------------+-------------
+             List structure and primitive machine arithmetic
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.23b,,138mm,Figure 2.23: Generic arithmetic system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.23b.std,,138mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.23:} Generic arithmetic system.}
+@end float
+
+@menu
+* 2.5.1::            Generic Arithmetic Operations
+* 2.5.2::            Combining Data of Different Types
+* 2.5.3::            Example: Symbolic Algebra
+@end menu
+
+@node	2.5.1, 2.5.2, 2.5, 2.5
+@subsection Generic Arithmetic Operations
+
+The task of designing generic arithmetic operations is analogous to that of
+designing the generic complex-number operations.  We would like, for instance,
+to have a generic addition procedure @code{add} that acts like ordinary
+primitive addition @code{+} on ordinary numbers, like @code{add_rat} on
+rational numbers, and like @code{add_complex} on complex numbers.  We can
+implement @code{add}, and the other generic arithmetic operations, by following
+the same strategy we used in @ref{2.4.3} to implement the generic
+selectors for complex numbers.  We will attach a type tag to each kind of
+number and cause the generic procedure to dispatch to an appropriate package
+according to the data type of its arguments.
+
+This section's packages need one more case than 2.4's @code{value} did: a
+rational pair, a complex pair (playing the role @ref{2.4.2}'s @code{Pair}
+played, distinctly named here because this section's contents are not just a
+pair of floats), a boolean (the result of @code{=zero?}, Exercise 2.80), and a
+polynomial (2.5.3's own contribution).  This edition introduces the full
+five-case type now, ahead of when the later subsections need each case:
+
+@example ocaml
+type value =
+  | Num of float
+  | Ratpair of int * int
+  | Cpx of float * float
+  | Bool of bool
+  | Poly of poly
+  | Tagged of tagged
+
+and tagged =
+  @{ tag : string
+  ; contents : value
+  @}
+
+and term =
+  @{ order : int
+  ; coeff : value
+  @}
+
+and poly =
+  @{ var : string
+  ; term_list : term list
+  @}
+
+let attach_tag tag contents = @{ tag; contents @}
+let type_tag t = t.tag
+let contents_of t = t.contents
+let table : (string * string list, value list -> value) Hashtbl.t = Hashtbl.create 32
+let put op type_tags proc = Hashtbl.replace table (op, type_tags) proc
+let get op type_tags = Hashtbl.find_opt table (op, type_tags)
+@end example
+
+@noindent
+@code{apply_generic} restates @ref{2.4.3}'s procedure of the same name for
+this section's @code{value} type:
+
+@example ocaml
+let apply_generic op args =
+  let untag = function
+    | Tagged t -> t
+    | Num _ | Ratpair _ | Cpx _ | Bool _ | Poly _ ->
+      invalid_arg (op ^ ": apply_generic expects tagged arguments")
+  in
+  let tagged_args = List.map untag args in
+  let type_tags = List.map type_tag tagged_args in
+  match get op type_tags with
+  | Some proc -> proc (List.map contents_of tagged_args)
+  | None ->
+    invalid_arg
+      (Printf.sprintf
+         "apply_generic: no method for these types: %s (%s)"
+         op
+         (String.concat ", " type_tags))
+;;
+@end example
+
+@noindent
+The generic arithmetic procedures are defined as follows:
+
+@example ocaml
+let add x y = apply_generic "add" [ x; y ]
+let sub x y = apply_generic "sub" [ x; y ]
+let mul x y = apply_generic "mul" [ x; y ]
+let div x y = apply_generic "div" [ x; y ]
+@end example
+
+@noindent
+We begin by installing a package for handling @newterm{ordinary} numbers, that
+is, the primitive numbers of our language.  We will tag these with the string
+@code{"scheme-number"}.  The arithmetic operations in this package are the
+primitive arithmetic procedures (so there is no need to define extra procedures
+to handle the untagged numbers).  Since these operations each take two
+arguments, they are installed in the table keyed by the list
+@code{["scheme-number"; "scheme-number"]}:
+
+@example ocaml
+let install_scheme_number_package () =
+  put "add" [ "scheme-number"; "scheme-number" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a +. b)))
+    | _ -> invalid_arg "add: scheme-number expects two numbers");
+  put "sub" [ "scheme-number"; "scheme-number" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a -. b)))
+    | _ -> invalid_arg "sub: scheme-number expects two numbers");
+  put "mul" [ "scheme-number"; "scheme-number" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a *. b)))
+    | _ -> invalid_arg "mul: scheme-number expects two numbers");
+  put "div" [ "scheme-number"; "scheme-number" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a /. b)))
+    | _ -> invalid_arg "div: scheme-number expects two numbers");
+  put "=zero?" [ "scheme-number" ] (function
+    | [ Num a ] -> Bool (Float.equal a 0.0)
+    | _ -> invalid_arg "=zero?: scheme-number expects one number");
+  put "make" [ "scheme-number" ] (function
+    | [ Num n ] -> Tagged (attach_tag "scheme-number" (Num n))
+    | _ -> invalid_arg "make: scheme-number expects one number")
+;;
+@end example
+
+@noindent
+This installer also installs @code{"=zero?"}, which the book defers to
+Exercise 2.80 but 2.5.3's @code{adjoin_term} already needs to run before that
+exercise is reached.  Users of the Scheme-number package will create (tagged)
+ordinary numbers by means of the procedure:
+
+@example ocaml
+let make_scheme_number n =
+  match get "make" [ "scheme-number" ] with
+  | Some proc -> proc [ Num n ]
+  | None -> invalid_arg "make_scheme_number: no scheme-number constructor installed"
+;;
+@end example
+
+@noindent
+Now that the framework of the generic arithmetic system is in place, we can
+readily include new kinds of numbers.  Here is a package that performs rational
+arithmetic.  Notice that, as a benefit of additivity, we can reuse without
+modification @ref{2.1.1}'s @code{Sicp_ch1.Sec_1_2.Gcd.gcd} as the internal
+procedure the package needs:
+
+@example ocaml
+let install_rational_package () =
+  let numer = function
+    | Ratpair (n, _) -> n
+    | Num _ | Cpx _ | Bool _ | Poly _ | Tagged _ ->
+      invalid_arg "numer: expected a rational pair"
+  in
+  let denom = function
+    | Ratpair (_, d) -> d
+    | Num _ | Cpx _ | Bool _ | Poly _ | Tagged _ ->
+      invalid_arg "denom: expected a rational pair"
+  in
+  let make_rat n d =
+    let sign = if d < 0 then -1 else 1 in
+    let n, d = sign * n, sign * d in
+    let g = Sicp_ch1.Sec_1_2.Gcd.gcd (abs n) (abs d) in
+    Ratpair (n / g, d / g)
+  in
+  put "add" [ "rational"; "rational" ] (function
+    | [ x; y ] ->
+      Tagged
+        (attach_tag
+           "rational"
+           (make_rat ((numer x * denom y) + (numer y * denom x)) (denom x * denom y)))
+    | _ -> invalid_arg "add: rational expects two pairs");
+  put "sub" [ "rational"; "rational" ] (function
+    | [ x; y ] ->
+      Tagged
+        (attach_tag
+           "rational"
+           (make_rat ((numer x * denom y) - (numer y * denom x)) (denom x * denom y)))
+    | _ -> invalid_arg "sub: rational expects two pairs");
+  put "mul" [ "rational"; "rational" ] (function
+    | [ x; y ] ->
+      Tagged (attach_tag "rational" (make_rat (numer x * numer y) (denom x * denom y)))
+    | _ -> invalid_arg "mul: rational expects two pairs");
+  put "div" [ "rational"; "rational" ] (function
+    | [ x; y ] ->
+      Tagged (attach_tag "rational" (make_rat (numer x * denom y) (denom x * numer y)))
+    | _ -> invalid_arg "div: rational expects two pairs");
+  put "=zero?" [ "rational" ] (function
+    | [ x ] -> Bool (numer x = 0)
+    | _ -> invalid_arg "=zero?: rational expects one pair");
+  put "make" [ "rational" ] (function
+    | [ Num n; Num d ] ->
+      Tagged (attach_tag "rational" (make_rat (int_of_float n) (int_of_float d)))
+    | _ -> invalid_arg "make: rational expects two numbers")
+;;
+
+let make_rational n d =
+  match get "make" [ "rational" ] with
+  | Some proc -> proc [ Num (float_of_int n); Num (float_of_int d) ]
+  | None -> invalid_arg "make_rational: no rational constructor installed"
+;;
+@end example
+
+@noindent
+We can install a similar package to handle complex numbers, using the tag
+@code{"complex"}.  In creating the package, we extract from the table the
+constructors @code{"make_from_real_imag"} and @code{"make_from_mag_ang"} that
+were defined by the rectangular and polar packages, reusing the pure arithmetic
+of @ref{2.4.1}'s @code{Sec_2_4.Untagged.Rectangular} and
+@code{Sec_2_4.Untagged.Polar} -- the same procedures Ben and Alyssa wrote --
+but producing this section's own @code{Cpx} contents.  Additivity permits us to
+use, as the internal operations, the same @code{add_complex}, @code{sub_complex},
+@code{mul_complex}, and @code{div_complex} procedures from @ref{2.4.1}.
+
+@example ocaml
+let install_rectangular_package () =
+  let open Sec_2_4.Untagged in
+  put "real_part" [ "rectangular" ] (function
+    | [ Cpx (x, y) ] -> Num (Rectangular.real_part (x, y))
+    | _ -> invalid_arg "real_part: rectangular expects one pair");
+  put "imag_part" [ "rectangular" ] (function
+    | [ Cpx (x, y) ] -> Num (Rectangular.imag_part (x, y))
+    | _ -> invalid_arg "imag_part: rectangular expects one pair");
+  put "magnitude" [ "rectangular" ] (function
+    | [ Cpx (x, y) ] -> Num (Rectangular.magnitude (x, y))
+    | _ -> invalid_arg "magnitude: rectangular expects one pair");
+  put "angle" [ "rectangular" ] (function
+    | [ Cpx (x, y) ] -> Num (Rectangular.angle (x, y))
+    | _ -> invalid_arg "angle: rectangular expects one pair");
+  put "make_from_real_imag" [ "rectangular" ] (function
+    | [ Num x; Num y ] -> Tagged (attach_tag "rectangular" (Cpx (x, y)))
+    | _ -> invalid_arg "make_from_real_imag: rectangular expects two numbers");
+  put "make_from_mag_ang" [ "rectangular" ] (function
+    | [ Num r; Num a ] ->
+      let x, y = Rectangular.make_from_mag_ang r a in
+      Tagged (attach_tag "rectangular" (Cpx (x, y)))
+    | _ -> invalid_arg "make_from_mag_ang: rectangular expects two numbers")
+;;
+
+let install_polar_package () =
+  let open Sec_2_4.Untagged in
+  put "real_part" [ "polar" ] (function
+    | [ Cpx (r, a) ] -> Num (Polar.real_part (r, a))
+    | _ -> invalid_arg "real_part: polar expects one pair");
+  put "imag_part" [ "polar" ] (function
+    | [ Cpx (r, a) ] -> Num (Polar.imag_part (r, a))
+    | _ -> invalid_arg "imag_part: polar expects one pair");
+  put "magnitude" [ "polar" ] (function
+    | [ Cpx (r, _) ] -> Num r
+    | _ -> invalid_arg "magnitude: polar expects one pair");
+  put "angle" [ "polar" ] (function
+    | [ Cpx (_, a) ] -> Num a
+    | _ -> invalid_arg "angle: polar expects one pair");
+  put "make_from_mag_ang" [ "polar" ] (function
+    | [ Num r; Num a ] -> Tagged (attach_tag "polar" (Cpx (r, a)))
+    | _ -> invalid_arg "make_from_mag_ang: polar expects two numbers");
+  put "make_from_real_imag" [ "polar" ] (function
+    | [ Num x; Num y ] ->
+      let r, a = Polar.make_from_real_imag x y in
+      Tagged (attach_tag "polar" (Cpx (r, a)))
+    | _ -> invalid_arg "make_from_real_imag: polar expects two numbers")
+;;
+
+let as_number = function
+  | Num n -> n
+  | Ratpair _ | Cpx _ | Bool _ | Poly _ | Tagged _ ->
+    invalid_arg "expected a number result"
+;;
+
+let real_part z = as_number (apply_generic "real_part" [ z ])
+let imag_part z = as_number (apply_generic "imag_part" [ z ])
+let magnitude z = as_number (apply_generic "magnitude" [ z ])
+let angle z = as_number (apply_generic "angle" [ z ])
+
+let make_from_real_imag_rect x y =
+  match get "make_from_real_imag" [ "rectangular" ] with
+  | Some proc -> proc [ Num x; Num y ]
+  | None -> invalid_arg "make_from_real_imag: no rectangular constructor installed"
+;;
+
+let make_from_mag_ang_polar r a =
+  match get "make_from_mag_ang" [ "polar" ] with
+  | Some proc -> proc [ Num r; Num a ]
+  | None -> invalid_arg "make_from_mag_ang: no polar constructor installed"
+;;
+
+let install_complex_package () =
+  let tag z = attach_tag "complex" z in
+  let add_complex z1 z2 =
+    make_from_real_imag_rect (real_part z1 +. real_part z2) (imag_part z1 +. imag_part z2)
+  in
+  let sub_complex z1 z2 =
+    make_from_real_imag_rect (real_part z1 -. real_part z2) (imag_part z1 -. imag_part z2)
+  in
+  let mul_complex z1 z2 =
+    make_from_mag_ang_polar (magnitude z1 *. magnitude z2) (angle z1 +. angle z2)
+  in
+  let div_complex z1 z2 =
+    make_from_mag_ang_polar (magnitude z1 /. magnitude z2) (angle z1 -. angle z2)
+  in
+  put "add" [ "complex"; "complex" ] (function
+    | [ z1; z2 ] -> Tagged (tag (add_complex z1 z2))
+    | _ -> invalid_arg "add: complex expects two complex numbers");
+  put "sub" [ "complex"; "complex" ] (function
+    | [ z1; z2 ] -> Tagged (tag (sub_complex z1 z2))
+    | _ -> invalid_arg "sub: complex expects two complex numbers");
+  put "mul" [ "complex"; "complex" ] (function
+    | [ z1; z2 ] -> Tagged (tag (mul_complex z1 z2))
+    | _ -> invalid_arg "mul: complex expects two complex numbers");
+  put "div" [ "complex"; "complex" ] (function
+    | [ z1; z2 ] -> Tagged (tag (div_complex z1 z2))
+    | _ -> invalid_arg "div: complex expects two complex numbers");
+  put "make_from_real_imag" [ "complex" ] (function
+    | [ Num x; Num y ] -> Tagged (tag (make_from_real_imag_rect x y))
+    | _ -> invalid_arg "make_from_real_imag: complex expects two numbers");
+  put "make_from_mag_ang" [ "complex" ] (function
+    | [ Num r; Num a ] -> Tagged (tag (make_from_mag_ang_polar r a))
+    | _ -> invalid_arg "make_from_mag_ang: complex expects two numbers")
+;;
+@end example
+
+@noindent
+Programs outside the complex-number package can construct complex numbers
+either from real and imaginary parts or from magnitudes and angles.  Notice how
+the underlying procedures, originally defined in the rectangular and polar
+packages, are exported to the complex package, and exported from there to the
+outside world.
+
+@example ocaml
+let make_complex_from_real_imag x y =
+  match get "make_from_real_imag" [ "complex" ] with
+  | Some proc -> proc [ Num x; Num y ]
+  | None -> invalid_arg "make_complex_from_real_imag: no complex constructor installed"
+;;
+
+let make_complex_from_mag_ang r a =
+  match get "make_from_mag_ang" [ "complex" ] with
+  | Some proc -> proc [ Num r; Num a ]
+  | None -> invalid_arg "make_complex_from_mag_ang: no complex constructor installed"
+;;
+@end example
+
+@noindent
+Installing every package and adding a scheme-number to itself, two rationals,
+and two complex numbers all through the one @code{add} shows the generic
+dispatch at work: @code{add (make_scheme_number 3.) (make_scheme_number 4.)}
+tags a scheme-number holding @code{7.}; @code{add (make_rational 1 2)
+(make_rational 1 4)} tags a rational holding @code{3/4}; and
+@code{add (make_complex_from_real_imag 3. 4.) (make_complex_from_real_imag 1.
+2.)} tags a complex number whose rectangular contents are @code{(4., 6.)}.
+
+@noindent
+What we have here is a two-level tag system.  A typical complex number, such as
+@math{{3 + 4i}} in rectangular form, would be represented as shown in @ref{Figure 2.24}.  
+The outer tag (@code{"complex"}) is used to direct the number to the
+complex package.  Once within the complex package, the next tag
+(@code{"rectangular"}) is used to direct the number to the rectangular package.
+In a large and complicated system there might be many levels, each interfaced
+with the next by means of generic operations.  As a data object is passed
+``downward,'' the outer tag that is used to direct it to the appropriate
+package is stripped off (by applying @code{contents_of}) and the next level of
+tag (if any) becomes visible to be used for further dispatching.
+
+@float
+@anchor{Figure 2.24}
+@ifinfo
+@quotation
+@strong{Figure 2.24:} Representation of @math{{3 + 4i}} in rectangular form.
+
+@example
+     +---+---+     +---+---+     +---+---+
+---->| * | *-+---->| * | *-+---->| * | * |
+     +-|-+---+     +-|-+---+     +-|-+-|-+
+       |             |             |   |
+       V             V             V   V
+ +---------+   +-------------+  +---+ +---+
+ | complex |   | rectangular |  | 3 | | 4 |
+ +---------+   +-------------+  +---+ +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.24d,,108mm,Figure 2.24: Representation of 3 + 4i in rectangular form.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.24d.std,,108mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.24:} Representation of @math{{3 + 4i}} in rectangular form.}
+@end float
+
+@noindent
+In the above packages, we used @code{add_rat}, @code{add_complex}, and the
+other arithmetic procedures exactly as originally written.  Once these
+definitions are internal to different installation procedures, however, they no
+longer need names that are distinct from each other: we could simply name them
+@code{add}, @code{sub}, @code{mul}, and @code{div} in both packages.
+
+@quotation
+@strong{@anchor{Exercise 2.77}Exercise 2.77:} Louis Reasoner tries to evaluate
+the expression @code{magnitude z} where @code{z} is the object shown in
+@ref{Figure 2.24}.  To his surprise, instead of the answer 5 he gets an error
+saying there is no method for the operation @code{"magnitude"} on the types
+@code{["complex"]}.  He shows this interaction to Alyssa P. Hacker, who says
+``The problem is that the complex-number selectors were never installed for
+@code{"complex"} numbers, just for @code{"polar"} and @code{"rectangular"}
+numbers.  All you have to do to make this work is add the following to the
+@code{"complex"} package:''
+
+@example ocaml
+put "real_part" [ "complex" ] real_part;
+put "imag_part" [ "complex" ] imag_part;
+put "magnitude" [ "complex" ] magnitude;
+put "angle" [ "complex" ] angle
+@end example
+
+Describe in detail why this works.  As an example, trace through all the
+procedures called in evaluating the expression @code{magnitude z} where
+@code{z} is the object shown in @ref{Figure 2.24}.  In particular, how many
+times is @code{apply_generic} invoked?  What procedure is dispatched to in each
+case?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.78}Exercise 2.78:} The internal procedures in the
+@code{"scheme-number"} package are essentially nothing more than calls to the
+primitive procedures @code{+}, @code{-}, etc.  It was not possible to use the
+primitives of the language directly because our type-tag system requires that
+each data object have a type attached to it.  In fact, however, OCaml's own
+constructors already are a type system it uses internally: a value already
+carries its own variant tag, distinguishing a bare number from every other
+representation without any lookup.  Modify the definitions of @code{type_tag},
+@code{contents_of}, and @code{attach_tag} from @ref{2.4.2} so that our generic
+system takes advantage of OCaml's internal type system.  That is to say, the
+system should work as before except that ordinary numbers should be
+represented simply as a bare @code{Num} rather than as a @code{Tagged} record
+whose tag is @code{"scheme-number"}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.79}Exercise 2.79:} Define a generic equality
+predicate @code{equ} that tests the equality of two numbers, and install it in
+the generic arithmetic package.  This operation should work for ordinary
+numbers, rational numbers, and complex numbers.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.80}Exercise 2.80:} Define a generic predicate
+@code{is_zero} that tests if its argument is zero, and install it in the
+generic arithmetic package.  This operation should work for ordinary numbers,
+rational numbers, and complex numbers.
+@end quotation
+
+@node	2.5.2, 2.5.3, 2.5.1, 2.5
+@subsection Combining Data of Different Types
+
+We have seen how to define a unified arithmetic system that encompasses
+ordinary numbers, complex numbers, rational numbers, and any other type of
+number we might decide to invent, but we have ignored an important issue.  The
+operations we have defined so far treat the different data types as being
+completely independent.  Thus, there are separate packages for adding, say, two
+ordinary numbers, or two complex numbers.  What we have not yet considered is
+the fact that it is meaningful to define operations that cross the type
+boundaries, such as the addition of a complex number to an ordinary number.  We
+have gone to great pains to introduce barriers between parts of our programs so
+that they can be developed and understood separately.  We would like to
+introduce the cross-type operations in some carefully controlled way, so that
+we can support them without seriously violating our module boundaries.
+
+One way to handle cross-type operations is to design a different procedure for
+each possible combination of types for which the operation is valid.  For
+example, we could extend the complex-number package so that it provides a
+procedure for adding complex numbers to ordinary numbers and installs this in
+the table using the tag @code{["complex"; "scheme-number"]}:@footnote{We also have
+to supply an almost identical procedure to handle the types
+@code{["scheme-number"; "complex"]}.}
+
+@example ocaml
+let add_complex_to_schemenum z x =
+  make_from_real_imag_rect (real_part z +. x) (imag_part z)
+;;
+
+let install_cross_type_example () =
+  put "add" [ "complex"; "scheme-number" ] (function
+    | [ z; Num x ] -> Tagged (attach_tag "complex" (add_complex_to_schemenum z x))
+    | _ -> invalid_arg "add: complex+scheme-number expects a complex number and a number")
+;;
+@end example
+
+@noindent
+This technique works, but it is cumbersome.  With such a system, the cost of
+introducing a new type is not just the construction of the package of
+procedures for that type but also the construction and installation of the
+procedures that implement the cross-type operations.  This can easily be much
+more code than is needed to define the operations on the type itself.  The
+method also undermines our ability to combine separate packages additively, or
+at least to limit the extent to which the implementors of the individual packages
+need to take account of other packages.  For instance, in the example above, it
+seems reasonable that handling mixed operations on complex numbers and ordinary
+numbers should be the responsibility of the complex-number package.  Combining
+rational numbers and complex numbers, however, might be done by the complex
+package, by the rational package, or by some third package that uses operations
+extracted from these two packages.  Formulating coherent policies on the
+division of responsibility among packages can be an overwhelming task in
+designing systems with many packages and many cross-type operations.
+
+@subsubheading Coercion
+
+In the general situation of completely unrelated operations acting on
+completely unrelated types, implementing explicit cross-type operations,
+cumbersome though it may be, is the best that one can hope for.  Fortunately,
+we can usually do better by taking advantage of additional structure that may
+be latent in our type system.  Often the different data types are not
+completely independent, and there may be ways by which objects of one type may
+be viewed as being of another type.  This process is called @newterm{coercion}.
+For example, if we are asked to arithmetically combine an ordinary number with
+a complex number, we can view the ordinary number as a complex number whose
+imaginary part is zero.  This transforms the problem to that of combining two
+complex numbers, which can be handled in the ordinary way by the
+complex-arithmetic package.
+
+In general, we can implement this idea by designing coercion procedures that
+transform an object of one type into an equivalent object of another type.
+Here is a typical coercion procedure, which transforms a given ordinary number
+to a complex number with that real part and zero imaginary part:
+
+@example ocaml
+let scheme_number_to_complex n =
+  match n with
+  | @{ tag = "scheme-number"; contents = Num x @} -> make_complex_from_real_imag x 0.0
+  | _ -> invalid_arg "scheme_number_to_complex: expected a tagged scheme-number"
+;;
+@end example
+
+@noindent
+We install these coercion procedures in a special coercion table, indexed under
+the names of the two types:
+
+@example ocaml
+let coercion_table : (string * string, value -> value) Hashtbl.t = Hashtbl.create 8
+let put_coercion t1 t2 proc = Hashtbl.replace coercion_table (t1, t2) proc
+let get_coercion t1 t2 = Hashtbl.find_opt coercion_table (t1, t2)
+
+let install_coercions () =
+  put_coercion "scheme-number" "complex" (function
+    | Tagged t -> scheme_number_to_complex t
+    | Num _ | Ratpair _ | Cpx _ | Bool _ | Poly _ ->
+      invalid_arg "scheme-number->complex: expected a tagged value")
+;;
+@end example
+
+@noindent
+Generally some of the slots in the table will be empty, because it is not
+generally possible to coerce an arbitrary data object of each type into all
+other types.  For example, there is no way to coerce an arbitrary complex
+number to an ordinary number, so there will be no general
+@code{"complex"->"scheme-number"} entry in the table.
+
+Once the coercion table has been set up, we can handle coercion in a uniform
+manner by modifying the @code{apply_generic} procedure of @ref{2.4.3}.
+When asked to apply an operation, we first check whether the operation is
+defined for the arguments' types, just as before.  If so, we dispatch to the
+procedure found in the operation-and-type table.  Otherwise, we try coercion.
+For simplicity, we consider only the case where there are two
+arguments.@footnote{See @ref{Exercise 2.82} for generalizations.}  We check the
+coercion table to see if objects of the first type can be coerced to the second
+type.  If so, we coerce the first argument and try the operation again.  If
+objects of the first type cannot in general be coerced to the second type, we
+try the coercion the other way around to see if there is a way to coerce the
+second argument to the type of the first argument.  Finally, if there is no
+known way to coerce either type to the other type, we give up.  Scheme redefines
+the same @code{apply-generic} binding in place, so @code{add}, @code{sub},
+@code{mul}, and @code{div} -- already written above in terms of it -- start
+coercing automatically, because Scheme resolves the name at call time, not at
+definition time.  OCaml resolves a name where it is written; this edition
+names the coercion-aware procedure @code{apply_generic_coerce} instead of
+silently shadowing @code{apply_generic}, and restates @code{add}, @code{sub},
+@code{mul}, and @code{div} against the new name:
+
+@example ocaml
+let rec apply_generic_coerce op args =
+  let type_tags = List.map (fun a -> type_tag (untag op a)) args in
+  match get op type_tags with
+  | Some proc -> proc (List.map (fun a -> contents_of (untag op a)) args)
+  | None ->
+    (match args with
+     | [ a1; a2 ] ->
+       let t1, t2 =
+         match type_tags with
+         | [ t1; t2 ] -> t1, t2
+         | _ -> assert false
+       in
+       (match get_coercion t1 t2, get_coercion t2 t1 with
+        | Some t1_to_t2, _ -> apply_generic_coerce op [ t1_to_t2 a1; a2 ]
+        | None, Some t2_to_t1 -> apply_generic_coerce op [ a1; t2_to_t1 a2 ]
+        | None, None ->
+          invalid_arg
+            (Printf.sprintf
+               "apply_generic_coerce: no method for these types: %s (%s)"
+               op
+               (String.concat ", " type_tags)))
+     | _ ->
+       invalid_arg
+         (Printf.sprintf
+            "apply_generic_coerce: no method for these types: %s (%s)"
+            op
+            (String.concat ", " type_tags)))
+;;
+
+let as_bool = function
+  | Bool b -> b
+  | Num _ | Ratpair _ | Cpx _ | Poly _ | Tagged _ ->
+    invalid_arg "expected a boolean result"
+;;
+
+let add x y = apply_generic_coerce "add" [ x; y ]
+let sub x y = apply_generic_coerce "sub" [ x; y ]
+let mul x y = apply_generic_coerce "mul" [ x; y ]
+let div x y = apply_generic_coerce "div" [ x; y ]
+let is_zero v = as_bool (apply_generic_coerce "=zero?" [ v ])
+@end example
+
+@noindent
+Once @code{install_cross_type_example} and @code{install_coercions} are both
+installed, @code{add (make_complex_from_real_imag 1. 2.)
+(make_scheme_number 3.)} and @code{add (make_scheme_number 3.)
+(make_complex_from_real_imag 1. 2.)} answer the same complex number, with
+rectangular contents @code{(4., 2.)}, whichever route -- the explicit
+cross-type procedure or the coercion table -- @code{apply_generic_coerce}
+takes to reach it.
+
+This coercion scheme has many advantages over the method of defining explicit
+cross-type operations, as outlined above.  Although we still need to write
+coercion procedures to relate the types (possibly @math{n^2} procedures for a
+system with @math{n} types), we need to write only one procedure for each pair of
+types rather than a different procedure for each collection of types and each
+generic operation.@footnote{If we are clever, we can usually get by with fewer
+than @math{n^2} coercion procedures.  For instance, if we know how to convert from
+type 1 to type 2 and from type 2 to type 3, then we can use this knowledge to
+convert from type 1 to type 3.  This can greatly decrease the number of
+coercion procedures we need to supply explicitly when we add a new type to the
+system.  If we are willing to build the required amount of sophistication into
+our system, we can have it search the ``graph'' of relations among types and
+automatically generate those coercion procedures that can be inferred from the
+ones that are supplied explicitly.}  What we are counting on here is the fact
+that the appropriate transformation between types depends only on the types
+themselves, not on the operation to be applied.
+
+On the other hand, there may be applications for which our coercion scheme is
+not general enough.  Even when neither of the objects to be combined can be
+converted to the type of the other it may still be possible to perform the
+operation by converting both objects to a third type.  In order to deal with
+such complexity and still preserve modularity in our programs, it is usually
+necessary to build systems that take advantage of still further structure in
+the relations among types, as we discuss next.
+
+@subsubheading Hierarchies of types
+
+The coercion scheme presented above relied on the existence of natural
+relations between pairs of types.  Often there is more ``global'' structure in
+how the different types relate to each other.  For instance, suppose we are
+building a generic arithmetic system to handle integers, rational numbers, real
+numbers, and complex numbers.  In such a system, it is quite natural to regard
+an integer as a special kind of rational number, which is in turn a special
+kind of real number, which is in turn a special kind of complex number.  What
+we actually have is a so-called @newterm{hierarchy of types}, in which, for
+example, integers are a @newterm{subtype} of rational numbers (i.e., any
+operation that can be applied to a rational number can automatically be applied
+to an integer).  Conversely, we say that rational numbers form a
+@newterm{supertype} of integers.  The particular hierarchy we have here is of a
+very simple kind, in which each type has at most one supertype and at most one
+subtype.  Such a structure, called a @newterm{tower}, is illustrated in
+@ref{Figure 2.25}.
+
+@float
+@anchor{Figure 2.25}
+@ifinfo
+@quotation
+@strong{Figure 2.25:} A tower of types.
+
+@example
+ complex
+   ^
+   |
+  real
+   ^
+   |
+rational
+   ^
+   |
+integer
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.25,,20mm,Figure 2.25: A tower of types.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.25.std,,20mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.25:} A tower of types.}
+@end float
+
+@noindent
+If we have a tower structure, then we can greatly simplify the problem of
+adding a new type to the hierarchy, for we need only specify how the new type
+is embedded in the next supertype above it and how it is the supertype of the
+type below it.  For example, if we want to add an integer to a complex number,
+we need not explicitly define a special coercion procedure
+@code{integer->complex}.  Instead, we define how an integer can be transformed
+into a rational number, how a rational number is transformed into a real
+number, and how a real number is transformed into a complex number.  We then
+allow the system to transform the integer into a complex number through these
+steps and then add the two complex numbers.
+
+We can redesign our @code{apply_generic} procedure in the following way: For
+each type, we need to supply a @code{raise} procedure, which ``raises'' objects
+of that type one level in the tower.  Then when the system is required to
+operate on objects of different types it can successively raise the lower types
+until all the objects are at the same level in the tower.  (@ref{Exercise 2.83}
+and @ref{Exercise 2.84} concern the details of implementing such a strategy.)
+
+Another advantage of a tower is that we can easily implement the notion that
+every type ``inherits'' all operations defined on a supertype.  For instance,
+if we do not supply a special procedure for finding the real part of an
+integer, we should nevertheless expect that @code{real_part} will be defined
+for integers by virtue of the fact that integers are a subtype of complex
+numbers.  In a tower, we can arrange for this to happen in a uniform way by
+modifying @code{apply_generic}.  If the required operation is not directly
+defined for the type of the object given, we raise the object to its supertype
+and try again.  We thus crawl up the tower, transforming our argument as we go,
+until we either find a level at which the desired operation can be performed or
+hit the top (in which case we give up).
+
+Yet another advantage of a tower over a more general hierarchy is that it gives
+us a simple way to ``lower'' a data object to the simplest representation.  For
+example, if we add @math{{2 + 3i}} to @math{{4 - 3i}}, it would be nice to obtain the
+answer as the integer 6 rather than as the complex number @math{{6 + 0i}}.
+@ref{Exercise 2.85} discusses a way to implement such a lowering operation.
+(The trick is that we need a general way to distinguish those objects that can
+be lowered, such as @math{{6 + 0i}}, from those that cannot, such as @math{{6 + 2i}}.)
+
+@subsubheading Inadequacies of hierarchies
+
+If the data types in our system can be naturally arranged in a tower, this
+greatly simplifies the problems of dealing with generic operations on different
+types, as we have seen.  Unfortunately, this is usually not the case.
+@ref{Figure 2.26} illustrates a more complex arrangement of mixed types, this
+one showing relations among different types of geometric figures.  We see that,
+in general, a type may have more than one subtype.  Triangles and
+quadrilaterals, for instance, are both subtypes of polygons.  In addition, a
+type may have more than one supertype.  For example, an isosceles right
+triangle may be regarded either as an isosceles triangle or as a right
+triangle.  This multiple-supertypes issue is particularly thorny, since it
+means that there is no unique way to ``raise'' a type in the hierarchy.
+Finding the ``correct'' supertype in which to apply an operation to an object
+may involve considerable searching through the entire type network on the part
+of a procedure such as @code{apply_generic}.  Since there generally are
+multiple subtypes for a type, there is a similar problem in coercing a value
+``down'' the type hierarchy.  Dealing with large numbers of interrelated types
+while still preserving modularity in the design of large systems is very
+difficult, and is an area of much current research.@footnote{This statement,
+which also appears in the first edition of this book, is just as true now as it
+was when we wrote it twelve years ago.  Developing a useful, general framework
+for expressing the relations among different types of entities (what
+philosophers call ``ontology'') seems intractably difficult.  The main
+difference be@-tween the confusion that existed ten years ago and the confusion
+that exists now is that now a variety of inadequate ontological theories have
+been embodied in a ple@-tho@-ra of correspondingly inadequate programming
+languages.  For example, much of the complexity of object-oriented programming
+languages---and the subtle and confusing differences among contemporary
+object-oriented languages---centers on the treatment of generic operations on
+interrelated types.  Our own discussion of computational objects in
+@ref{Chapter 3} avoids these issues entirely.  Readers familiar with
+object-oriented programming will notice that we have much to say in
+chapter 3 about local state, but we do not even mention ``classes'' or
+``inheritance.''  In fact, we suspect that these problems cannot be adequately
+addressed in terms of computer-language design alone, without also drawing on
+work in knowledge representation and automated reasoning.}
+
+@float
+@anchor{Figure 2.26}
+@ifinfo
+@quotation
+@strong{Figure 2.26:} Relations among types of geometric figures.
+
+@example
+                     polygon
+                    /       \
+                   /         \
+            triangle         quadrilateral
+            /     \              /     \
+           /       \            /       \
+     isosceles   right      trapezoid   kite
+     triangle    triangle       |         |
+      |     \      |            |         |
+      |      \     |            |         |
+equilateral   isosceles   parallelogram   |
+triangle      right          |       \    |
+              triangle       |        \   |
+                          rectangle  rhombus
+                                \    /
+                                 \  /
+                                square
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.26f,,147mm,Figure 2.26: Relations among types of geometric figures.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.26f.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.26:} Relations among types of geometric figures.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 2.81}Exercise 2.81:} Louis Reasoner has noticed that
+@code{apply_generic} may try to coerce the arguments to each other's type even
+if they already have the same type.  Therefore, he reasons, we need to put
+procedures in the coercion table to @newterm{coerce} arguments of each type to
+their own type.  For example, in addition to the
+@code{"scheme-number"->"complex"} coercion shown above, he would do:
+
+@example ocaml
+put_coercion "scheme-number" "scheme-number" (fun n -> n);
+put_coercion "complex" "complex" (fun z -> z)
+@end example
+
+@enumerate a
+
+@item
+With Louis's coercion procedures installed, what happens if
+@code{apply_generic} is called with two arguments of type @code{"scheme-number"}
+or two arguments of type @code{"complex"} for an operation that is not found in
+the table for those types?  For example, assume that we've defined a generic
+exponentiation operation:
+
+@example ocaml
+let exp x y = apply_generic "exp" [ x; y ]
+@end example
+
+@noindent
+and have put a procedure for exponentiation in the Scheme-number
+package but not in any other package:
+
+@example ocaml
+(* following added to Scheme-number package, using primitive [**] *)
+put "exp" [ "scheme-number"; "scheme-number" ] (function
+  | [ Num x; Num y ] -> Tagged (attach_tag "scheme-number" (Num (x ** y)))
+  | _ -> invalid_arg "exp: scheme-number expects two numbers")
+@end example
+
+@noindent
+What happens if we call @code{exp} with two complex numbers as arguments?
+
+@item
+Is Louis correct that something had to be done about coercion with arguments of
+the same type, or does @code{apply_generic} work correctly as is?
+
+@item
+Modify @code{apply_generic} so that it doesn't try coercion if the two
+arguments have the same type.
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.82}Exercise 2.82:} Show how to generalize
+@code{apply_generic} to handle coercion in the general case of multiple
+arguments.  One strategy is to attempt to coerce all the arguments to the type
+of the first argument, then to the type of the second argument, and so on.
+Give an example of a situation where this strategy (and likewise the
+two-argument version given above) is not sufficiently general.  (Hint: Consider
+the case where there are some suitable mixed-type operations present in the
+table that will not be tried.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.83}Exercise 2.83:} Suppose you are designing a
+generic arithmetic system for dealing with the tower of types shown in
+@ref{Figure 2.25}: integer, rational, real, complex.  For each type (except
+complex), design a procedure that raises objects of that type one level in the
+tower.  Show how to install a generic @code{raise} operation that will work for
+each type (except complex).
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.84}Exercise 2.84:} Using the @code{raise} operation
+of @ref{Exercise 2.83}, modify the @code{apply_generic} procedure so that it
+coerces its arguments to have the same type by the method of successive
+raising, as discussed in this section.  You will need to devise a way to test
+which of two types is higher in the tower.  Do this in a manner that is
+``compatible'' with the rest of the system and will not lead to problems in
+adding new levels to the tower.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.85}Exercise 2.85:} This section mentioned a method
+for ``simplifying'' a data object by lowering it in the tower of types as far
+as possible.  Design a procedure @code{drop} that accomplishes this for the
+tower described in @ref{Exercise 2.83}.  The key is to decide, in some general
+way, whether an object can be lowered.  For example, the complex number 
+@math{{1.5 + 0i}} can be lowered as far as @code{real}, the complex number @math{{1 + 0i}} can
+be lowered as far as @code{integer}, and the complex number @math{{2 + 3i}} cannot
+be lowered at all.  Here is a plan for determining whether an object can be
+lowered: Begin by defining a generic operation @code{project} that ``pushes''
+an object down in the tower.  For example, projecting a complex number would
+involve throwing away the imaginary part.  Then a number can be dropped if,
+when we @code{project} it and @code{raise} the result back to the type we
+started with, we end up with something equal to what we started with.  Show how
+to implement this idea in detail, by writing a @code{drop} procedure that drops
+an object as far as possible.  You will need to design the various projection
+operations@footnote{A real number can be projected to an integer using
+OCaml's @code{Float.round}, which returns the closest integer to its
+argument.} and install @code{project} as a generic operation in the system.
+You will also need to make use of a generic equality predicate, such as
+described in @ref{Exercise 2.79}.  Finally, use @code{drop} to rewrite
+@code{apply_generic} from @ref{Exercise 2.84} so that it ``simplifies'' its
+answers.
+@end quotation
+
+@quotation
+@emph{Exercise 2.85a is added by this edition and extends exercise 2.85; SICP numbers stop at 2.85.}
+
+@strong{@anchor{Exercise 2.85a}Exercise 2.85a:} A coercion table, viewed as a
+directed graph whose nodes are type tags and whose edges are the installed
+@code{put_coercion} entries, can itself contain a cycle -- Exercise 2.81's
+Louis Reasoner bug is exactly a self-coercion, a one-edge cycle from a type
+back to itself.  Write a procedure @code{has_cycle} that runs a depth-first
+search over a list of coercion edges and reports whether the graph they
+describe contains a cycle, so that a coercion table can be checked for this
+mistake before it is installed, rather than discovered by an infinite loop at
+run time.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.86}Exercise 2.86:} Suppose we want to handle complex
+numbers whose real parts, imaginary parts, magnitudes, and angles can be either
+ordinary numbers, rational numbers, or other numbers we might wish to add to
+the system.  Describe and implement the changes to the system needed to
+accommodate this.  You will have to define operations such as @code{sine} and
+@code{cosine} that are generic over ordinary numbers and rational numbers.
+@end quotation
+
+@node	2.5.3, Chapter 3, 2.4, 2.5
+@subsection Example: Symbolic Algebra
+
+The manipulation of symbolic algebraic expressions is a complex process that
+illustrates many of the hardest problems that occur in the design of
+large-scale systems.  An algebraic expression, in general, can be viewed as a
+hierarchical structure, a tree of operators applied to operands.  We can
+construct algebraic expressions by starting with a set of primitive objects,
+such as constants and variables, and combining these by means of algebraic
+operators, such as addition and multiplication.  As in other languages, we form
+abstractions that enable us to refer to compound objects in simple terms.
+Typical abstractions in symbolic algebra are ideas such as linear combination,
+polynomial, rational function, or trigonometric function.  We can regard these
+as compound ``types,'' which are often useful for directing the processing of
+expressions.  For example, we could describe the expression
+@displaymath
+{x^2 \sin (y^2 + 1)} + {x \cos 2y} + {\cos(y^3 - 2y^2)}
+@end displaymath
+@ifinfo
+
+@example
+x^2 sin (y^2 + 1) + x cos 2y + cos(y^3 - 2y^2)
+@end example
+
+@end ifinfo
+@noindent
+as a polynomial in @math{x} with coefficients that are trigonometric functions of
+polynomials in @math{y} whose coefficients are integers.
+
+We will not attempt to develop a complete algebraic-manipulation system here.
+Such systems are exceedingly complex programs, embodying deep algebraic
+knowledge and elegant algorithms.  What we will do is look at a simple but
+important part of algebraic manipulation: the arithmetic of polynomials.  We
+will illustrate the kinds of decisions the designer of such a system faces, and
+how to apply the ideas of abstract data and generic operations to help organize
+this effort.
+
+@subsubheading Arithmetic on polynomials
+
+Our first task in designing a system for performing arithmetic on polynomials
+is to decide just what a polynomial is.  Polynomials are normally defined
+relative to certain variables (the @newterm{indeterminates} of the polynomial).
+For simplicity, we will restrict ourselves to polynomials having just one
+indeterminate (@newterm{univariate polynomials}).@footnote{On the other hand,
+we will allow polynomials whose coefficients are themselves polynomials in
+other variables.  This will give us essentially the same representational power
+as a full multivariate system, although it does lead to coercion problems, as
+discussed below.} We will define a polynomial to be a sum of terms, each of
+which is either a coefficient, a power of the indeterminate, or a product of a
+coefficient and a power of the indeterminate.  A coefficient is defined as an
+algebraic expression that is not dependent upon the indeterminate of the
+polynomial.  For example,
+@displaymath
+{5x^2} + {3x} + 7
+@end displaymath
+@ifinfo
+
+@example
+5x^2 + 3x + 7
+@end example
+
+@end ifinfo
+@noindent
+is a simple polynomial in @math{x}, and
+@displaymath
+{(y^2 + 1)x^3} + {(2y)x + 1}
+@end displaymath
+@ifinfo
+
+@example
+(y^2 + 1)x^3 + (2y)x + 1
+@end example
+
+@end ifinfo
+@noindent
+is a polynomial in @math{x} whose coefficients are polynomials in @math{y}.
+
+Already we are skirting some thorny issues.  Is the first of these polynomials
+the same as the polynomial @math{{5y^2 + 3y + 7}}, or not?  A reasonable answer
+might be ``yes, if we are considering a polynomial purely as a mathematical
+function, but no, if we are considering a polynomial to be a syntactic form.''
+The second polynomial is algebraically equivalent to a polynomial in @math{y}
+whose coefficients are polynomials in @math{x}.  Should our system recognize this,
+or not?  Furthermore, there are other ways to represent a polynomial---for
+example, as a product of factors, or (for a univariate polynomial) as the set
+of roots, or as a listing of the values of the polynomial at a specified set of
+points.@footnote{For univariate polynomials, giving the value of a polynomial
+at a given set of points can be a particularly good representation.  This makes
+polynomial arithmetic extremely simple.  To obtain, for example, the sum of two
+polynomials represented in this way, we need only add the values of the
+polynomials at corresponding points.  To transform back to a more familiar
+representation, we can use the Lagrange interpolation formula, which shows how
+to recover the coefficients of a polynomial of degree @math{n} given the values of
+the polynomial at @math{{n + 1}} points.}  We can finesse these questions by
+deciding that in our algebraic-manipulation system a ``polynomial'' will be a
+particular syntactic form, not its underlying mathematical meaning.
+
+Now we must consider how to go about doing arithmetic on polynomials.  In this
+simple system, we will consider only addition and multiplication.  Moreover, we
+will insist that two polynomials to be combined must have the same
+indeterminate.
+
+We will approach the design of our system by following the familiar discipline
+of data abstraction.  We will represent polynomials using a data structure
+called a @newterm{poly}, which consists of a variable and a collection of
+terms.  We assume that we have selectors @code{variable} and @code{term_list}
+that extract those parts from a poly and a constructor @code{make_poly} that
+assembles a poly from a given variable and a term list.  A variable will be
+just a string, so we can use the @code{same_variable} procedure of 
+@ref{2.3.2} to compare variables.  The following procedures define addition and
+multiplication of polys:
+
+@example ocaml
+let make_poly var term_list = @{ var; term_list @}
+let variable p = p.var
+let term_list p = p.term_list
+let same_variable = String.equal
+
+let add_poly p1 p2 =
+  if same_variable (variable p1) (variable p2)
+  then make_poly (variable p1) (add_terms (term_list p1) (term_list p2))
+  else invalid_arg "add_poly: polys not in same var"
+;;
+
+let mul_poly p1 p2 =
+  if same_variable (variable p1) (variable p2)
+  then make_poly (variable p1) (mul_terms (term_list p1) (term_list p2))
+  else invalid_arg "mul_poly: polys not in same var"
+;;
+@end example
+
+@noindent
+To incorporate polynomials into our generic arithmetic system, we need to
+supply them with type tags.  We'll use the tag @code{"polynomial"}, and install
+appropriate operations on tagged polynomials in the operation table.
+
+@example ocaml
+let install_polynomial_package () =
+  put "add" [ "polynomial"; "polynomial" ] (function
+    | [ Poly p1; Poly p2 ] -> Tagged (attach_tag "polynomial" (Poly (add_poly p1 p2)))
+    | _ -> invalid_arg "add: polynomial expects two polys");
+  put "mul" [ "polynomial"; "polynomial" ] (function
+    | [ Poly p1; Poly p2 ] -> Tagged (attach_tag "polynomial" (Poly (mul_poly p1 p2)))
+    | _ -> invalid_arg "mul: polynomial expects two polys");
+  put "make" [ "polynomial" ] (function
+    | [ Poly p ] -> Tagged (attach_tag "polynomial" (Poly p))
+    | _ -> invalid_arg "make: polynomial expects a poly")
+;;
+@end example
+
+@noindent
+Polynomial addition is performed termwise.  Terms of the same order (i.e., with
+the same power of the indeterminate) must be combined.  This is done by forming
+a new term of the same order whose coefficient is the sum of the coefficients
+of the addends.  Terms in one addend for which there are no terms of the same
+order in the other addend are simply accumulated into the sum polynomial being
+constructed.
+
+In order to manipulate term lists, we will assume that we have a value
+@code{the_empty_termlist} that is an empty term list and a constructor
+@code{adjoin_term} that adjoins a new term to a term list.  We will also assume
+that we have a predicate @code{is_empty_termlist} that tells if a given term list
+is empty, a selector @code{first_term} that extracts the highest-order term
+from a term list, and a selector @code{rest_terms} that returns all but the
+highest-order term.  To manipulate terms, we will suppose that we have a
+constructor @code{make_term} that constructs a term with given order and
+coefficient, and selectors @code{order} and @code{coeff} that return,
+respectively, the order and the coefficient of the term.  These operations
+allow us to consider both terms and term lists as data abstractions, whose
+concrete representations we can worry about separately.
+
+Here is the procedure that constructs the term list for the sum of two
+polynomials:@footnote{This operation is very much like the ordered
+@code{union_set} operation we developed in @ref{Exercise 2.62}.  In
+fact, if we think of the terms of the polynomial as a set ordered according to
+the power of the indeterminate, then the program that produces the term list
+for a sum is almost identical to @code{union_set}.}
+
+@example ocaml
+let rec add_terms l1 l2 =
+  if is_empty_termlist l1
+  then l2
+  else if is_empty_termlist l2
+  then l1
+  else (
+    let t1 = first_term l1
+    and t2 = first_term l2 in
+    if t1.order > t2.order
+    then adjoin_term t1 (add_terms (rest_terms l1) l2)
+    else if t1.order < t2.order
+    then adjoin_term t2 (add_terms l1 (rest_terms l2))
+    else
+      adjoin_term
+        (make_term t1.order (add t1.coeff t2.coeff))
+        (add_terms (rest_terms l1) (rest_terms l2)))
+;;
+@end example
+
+@noindent
+The most important point to note here is that we used the generic addition
+procedure @code{add} to add together the coefficients of the terms being
+combined.  This has powerful consequences, as we will see below.
+
+In order to multiply two term lists, we multiply each term of the first list by
+all the terms of the other list, repeatedly using @code{mul_term_by_all_terms},
+which multiplies a given term by all terms in a given term list.  The resulting
+term lists (one for each term of the first list) are accumulated into a sum.
+Multiplying two terms forms a term whose order is the sum of the orders of the
+factors and whose coefficient is the product of the coefficients of the
+factors:
+
+@example ocaml
+let mul_term_by_all_terms t1 l =
+  let rec loop l =
+    if is_empty_termlist l
+    then the_empty_termlist
+    else (
+      let t2 = first_term l in
+      adjoin_term
+        (make_term (t1.order + t2.order) (mul t1.coeff t2.coeff))
+        (loop (rest_terms l)))
+  in
+  loop l
+;;
+
+let rec mul_terms l1 l2 =
+  if is_empty_termlist l1
+  then the_empty_termlist
+  else add_terms (mul_term_by_all_terms (first_term l1) l2) (mul_terms (rest_terms l1) l2)
+;;
+@end example
+
+@noindent
+This is really all there is to polynomial addition and multiplication.  Notice
+that, since we operate on terms using the generic procedures @code{add} and
+@code{mul}, our polynomial package is automatically able to handle any type of
+coefficient that is known about by the generic arithmetic package.  If we
+include a coercion mechanism such as one of those discussed in 
+@ref{2.5.2}, then we also are automatically able to handle operations on
+polynomials of different coefficient types, such as
+@displaymath
+{[3x^2 + (2 + 3i)x + 7] \cdot} {\left[ x^4 + {2\over3} x^2 + (5 + 3i) \right].}
+@end displaymath
+@ifinfo
+
+@example
+                         /        2                 \
+[3x^2 + (2 + 3i)x + 7] * | x^4 + --- x^2 + (5 + 3i) |
+                         \        3                 /
+@end example
+
+@end ifinfo
+Because we installed the polynomial addition and multiplication procedures
+@code{add_poly} and @code{mul_poly} in the generic arithmetic system as the
+@code{add} and @code{mul} operations for type @code{"polynomial"}, our system is
+also automatically able to handle polynomial operations such as
+@displaymath
+{\Big[(y + 1)x^2} + {(y^2 + 1)x} + {(y - 1)\Big] \cdot} {\Big[(y - 2)x} + {(y^3 + 7)\Big].}
+@end displaymath
+@ifinfo
+
+@example
+[(y + 1)x^2 + (y^2 + 1)x + (y - 1)] * [(y - 2)x + (y^3 + 7)]
+@end example
+
+@end ifinfo
+The reason is that when the system tries to combine coefficients, it will
+dispatch through @code{add} and @code{mul}.  Since the coefficients are
+themselves polynomials (in @math{y}), these will be combined using @code{add_poly}
+and @code{mul_poly}.  The result is a kind of ``data-directed recursion'' in
+which, for example, a call to @code{mul_poly} will result in recursive calls to
+@code{mul_poly} to multiply the coefficients.  If the coefficients of
+the coefficients were themselves polynomials (as might be used to represent
+polynomials in three variables), the data direction would ensure that the
+system would follow through another level of recursive calls, and so on through
+as many levels as the structure of the data dictates.@footnote{To make this
+work completely smoothly, we should also add to our generic arithmetic system
+the ability to coerce a ``number'' to a polynomial by regarding it as a
+polynomial of degree zero whose coefficient is the number.  This is necessary
+if we are going to perform operations such as
+@displaymath
+{[x^2 + (y + 1)x + 5]} + {[x^2 + 2x + 1],}
+@end displaymath
+@ifinfo
+
+@example
+[x^2 + (y + 1)x + 5] + [x^2 + 2x + 1]
+@end example
+
+@end ifinfo
+@noindent
+which requires adding the coefficient @math{{y + 1}} to the coefficient 2.}
+Adding @code{x^2 + 1} to @code{x^3 + 1} and multiplying them the same way,
+both via the top-level generic @code{add} and @code{mul}, produces
+@code{x^3 + x^2 + 2} and @code{x^5 + x^3 + x^2 + 1} respectively -- the same
+@code{add_poly}/@code{mul_poly} termwise recursion at work, with no special
+case for the fact that both arguments happen to be tagged @code{"polynomial"}.
+
+@subsubheading Representing term lists
+
+Finally, we must confront the job of implementing a good representation for
+term lists.  A term list is, in effect, a set of coefficients keyed by the
+order of the term.  Hence, any of the methods for representing sets, as
+discussed in @ref{2.3.3}, can be applied to this task.  On the other
+hand, our procedures @code{add_terms} and @code{mul_terms} always access term
+lists sequentially from highest to lowest order.  Thus, we will use some kind
+of ordered list representation.
+
+How should we structure the list that represents a term list?  One
+consideration is the ``density'' of the polynomials we intend to manipulate.  A
+polynomial is said to be @newterm{dense} if it has nonzero coefficients in
+terms of most orders.  If it has many zero terms it is said to be
+@newterm{sparse}.  For example,
+@displaymath
+A: \quad {x^5} + {2x^4} + {3x^2} - {2x} - 5
+@end displaymath
+@ifinfo
+
+@example
+A : x^5 + 2x^4 + 3x^2 - 2x - 5
+@end example
+
+@end ifinfo
+@noindent
+is a dense polynomial, whereas
+@displaymath
+B: \quad x^{100} + {2x^2} + 1
+@end displaymath
+@ifinfo
+
+@example
+B : x^100 + 2x^2 + 1
+@end example
+
+@end ifinfo
+@noindent
+is sparse.
+
+The term lists of dense polynomials are most efficiently represented as lists
+of the coefficients.  For example, @math{A} above would be nicely represented as
+@code{[1; 2; 0; 3; -2; -5]}.  The order of a term in this representation is the
+length of the sublist beginning with that term's coefficient, decremented by
+1.@footnote{In these polynomial examples, we assume that we have implemented
+the generic arithmetic system using the type mechanism suggested in
+@ref{Exercise 2.78}.  Thus, coefficients that are ordinary numbers will be
+represented as the numbers themselves rather than as a @code{Tagged} record
+whose tag is @code{"scheme-number"}.}  This would be a terrible representation for
+a sparse polynomial such as @math{B}: There would be a giant list of zeros
+punctuated by a few lonely nonzero terms.  A more reasonable representation of
+the term list of a sparse polynomial is as a list of the nonzero terms, where
+each term is a pair containing the order of the term and the coefficient for
+that order.  In such a scheme, polynomial @math{B} is efficiently represented as
+@code{[(100, 1); (2, 2); (0, 1)]}.  As most polynomial manipulations are performed
+on sparse polynomials, we will use this method.  We will assume that term lists
+are represented as lists of terms, arranged from highest-order to lowest-order
+term.  Once we have made this decision, implementing the selectors and
+constructors for terms and term lists is straightforward:@footnote{Although we
+are assuming that term lists are ordered, we have implemented
+@code{adjoin_term} to simply prepend the new term onto the existing term
+list.  We can get away with this so long as we guarantee that the procedures
+(such as @code{add_terms}) that use @code{adjoin_term} always call it with a
+higher-order term than appears in the list.  If we did not want to make such a
+guarantee, we could have implemented @code{adjoin_term} to be similar to the
+ordered-list @code{adjoin_set} constructor for sets (@ref{Exercise 2.61}).}
+
+@example ocaml
+let the_empty_termlist : term list = []
+
+let is_empty_termlist = function
+  | [] -> true
+  | _ -> false
+;;
+
+let first_term = function
+  | t :: _ -> t
+  | [] -> invalid_arg "first_term: empty term list"
+;;
+
+let rest_terms = function
+  | _ :: ts -> ts
+  | [] -> invalid_arg "rest_terms: empty term list"
+;;
+
+let make_term order coeff = @{ order; coeff @}
+let order t = t.order
+let coeff t = t.coeff
+
+let adjoin_term term term_list =
+  if is_zero term.coeff then term_list else term :: term_list
+;;
+@end example
+
+@noindent
+where @code{is_zero} is as defined in @ref{Exercise 2.80}.  (See also
+@ref{Exercise 2.87} below.)
+
+Users of the polynomial package will create (tagged) polynomials by means of
+the procedure:
+
+@example ocaml
+let make_polynomial var term_list =
+  match get "make" [ "polynomial" ] with
+  | Some proc -> proc [ Poly (make_poly var term_list) ]
+  | None -> invalid_arg "make_polynomial: no polynomial constructor installed"
+;;
+@end example
+
+@quotation
+@strong{@anchor{Exercise 2.87}Exercise 2.87:} Install @code{is_zero} for
+polynomials in the generic arithmetic package.  This will allow
+@code{adjoin_term} to work for polynomials with coefficients that are
+themselves polynomials.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.88}Exercise 2.88:} Extend the polynomial system to
+include subtraction of polynomials.  (Hint: You may find it helpful to define a
+generic negation operation.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.89}Exercise 2.89:} Define procedures that implement
+the term-list representation described above as appropriate for dense
+polynomials.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.90}Exercise 2.90:} Suppose we want to have a
+polynomial system that is efficient for both sparse and dense polynomials.  One
+way to do this is to allow both kinds of term-list representations in our
+system.  The situation is analogous to the complex-number example of 
+@ref{2.4}, where we allowed both rectangular and polar representations.  To do
+this we must distinguish different types of term lists and make the operations
+on term lists generic.  Redesign the polynomial system to implement this
+generalization.  This is a major effort, not a local change.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.91}Exercise 2.91:} A univariate polynomial can be
+divided by another one to produce a polynomial quotient and a polynomial
+remainder.  For example,
+@displaymath
+{x^5 - 1 \over x^2 - 1} \,=\, {x^3 + x,} \hbox{  remainder  } {x - 1.}
+@end displaymath
+@ifinfo
+
+@example
+x^5 - 1
+------- = x^3 + x, remainder x - 1
+x^2 - 1
+@end example
+
+@end ifinfo
+Division can be performed via long division.  That is, divide the highest-order
+term of the dividend by the highest-order term of the divisor.  The result is
+the first term of the quotient.  Next, multiply the result by the divisor,
+subtract that from the dividend, and produce the rest of the answer by
+recursively dividing the difference by the divisor.  Stop when the order of the
+divisor exceeds the order of the dividend and declare the dividend to be the
+remainder.  Also, if the dividend ever becomes zero, return zero as both
+quotient and remainder.
+
+We can design a @code{div_poly} procedure on the model of @code{add_poly} and
+@code{mul_poly}. The procedure checks to see if the two polys have the same
+variable.  If so, @code{div_poly} strips off the variable and passes the
+problem to @code{div_terms}, which performs the division operation on term
+lists. @code{div_poly} finally reattaches the variable to the result supplied
+by @code{div_terms}.  It is convenient to design @code{div_terms} to compute
+both the quotient and the remainder of a division.  @code{div_terms} can take
+two term lists as arguments and return a pair of the quotient term list and the
+remainder term list.
+
+Complete the following definition of @code{div_terms} by filling in the missing
+expressions.  Use this to implement @code{div_poly}, which takes two polys as
+arguments and returns a pair of the quotient and remainder polys.
+
+@example ocaml
+let div_terms l1 l2 =
+  if is_empty_termlist l1
+  then the_empty_termlist, the_empty_termlist
+  else (
+    let t1 = first_term l1
+    and t2 = first_term l2 in
+    if t2.order > t1.order
+    then the_empty_termlist, l1
+    else (
+      let new_c = div t1.coeff t2.coeff in
+      let new_o = t1.order - t2.order in
+      let rest_of_result = (* compute rest of result recursively *) in
+      (* form complete result *) ))
+;;
+@end example
+@end quotation
+
+@subsubheading Hierarchies of types in symbolic algebra
+
+Our polynomial system illustrates how objects of one type (polynomials) may in
+fact be complex objects that have objects of many different types as parts.
+This poses no real difficulty in defining generic operations.  We need only
+install appropriate generic operations for performing the necessary
+manipulations of the parts of the compound types.  In fact, we saw that
+polynomials form a kind of ``recursive data abstraction,'' in that parts of a
+polynomial may themselves be polynomials.  Our generic operations and our
+data-directed programming style can handle this complication without much
+trouble.
+
+On the other hand, polynomial algebra is a system for which the data types
+cannot be naturally arranged in a tower.  For instance, it is possible to have
+polynomials in @math{x} whose coefficients are polynomials in @math{y}.  It is also
+possible to have polynomials in @math{y} whose coefficients are polynomials in
+@math{x}.  Neither of these types is ``above'' the other in any natural way, yet
+it is often necessary to add together elements from each set.  There are
+several ways to do this.  One possibility is to convert one polynomial to the
+type of the other by expanding and rearranging terms so that both polynomials
+have the same principal variable.  One can impose a towerlike structure on this
+by ordering the variables and thus always converting any polynomial to a
+``canonical form'' with the highest-priority variable dominant and the
+lower-priority variables buried in the coefficients.  This strategy works
+fairly well, except that the conversion may expand a polynomial unnecessarily,
+making it hard to read and perhaps less efficient to work with.  The tower
+strategy is certainly not natural for this domain or for any domain where the
+user can invent new types dynamically using old types in various combining
+forms, such as trigonometric functions, power series, and integrals.
+
+It should not be surprising that controlling coercion is a serious problem in
+the design of large-scale algebraic-manipulation systems.  Much of the
+complexity of such systems is concerned with relationships among diverse types.
+Indeed, it is fair to say that we do not yet completely understand coercion.
+In fact, we do not yet completely understand the concept of a data type.
+Nevertheless, what we know provides us with powerful structuring and modularity
+principles to support the design of large systems.
+
+@quotation
+@strong{@anchor{Exercise 2.92}Exercise 2.92:} By imposing an ordering on
+variables, extend the polynomial package so that addition and multiplication of
+polynomials works for polynomials in different variables.  (This is not easy!)
+@end quotation
+
+@subsubheading Extended exercise: Rational functions
+
+We can extend our generic arithmetic system to include @newterm{rational functions}.  
+These are ``fractions'' whose numerator and denominator are
+polynomials, such as
+@displaymath
+{{x + 1 \over x^3 - 1}.}
+@end displaymath
+@ifinfo
+
+@example
+ x + 1
+-------
+x^3 - 1
+@end example
+
+@end ifinfo
+The system should be able to add, subtract, multiply, and divide rational
+functions, and to perform such computations as
+@displaymath
+{x + 1 \over x^3 - 1} + {x \over x^2 - 1} \,=\, 
+  {{x^3 + 2x^2 + 3x + 1 \over x^4 + x^3 - x - 1}.}
+@end displaymath
+@ifinfo
+
+@example
+ x + 1       x      x^3 + 2x^2 + 3x + 1
+------- + ------- = -------------------
+x^3 - 1   x^2 - 1    x^4 + x^3 - x - 1
+@end example
+
+@end ifinfo
+@noindent
+(Here the sum has been simplified by removing common factors.  Ordinary ``cross
+multiplication'' would have produced a fourth-degree polynomial over a
+fifth-degree polynomial.)
+
+If we modify our rational-arithmetic package so that it uses generic
+operations, then it will do what we want, except for the problem of reducing
+fractions to lowest terms.
+
+@quotation
+@strong{@anchor{Exercise 2.93}Exercise 2.93:} Modify the rational-arithmetic
+package to use generic operations, but change @code{make_rat} so that it does
+not attempt to reduce fractions to lowest terms.  Test your system by calling
+@code{make_rational} on two polynomials to produce a rational function:
+
+@example ocaml
+let p1 = make_polynomial "x" [ make_term 2 (Num 1.); make_term 0 (Num 1.) ]
+let p2 = make_polynomial "x" [ make_term 3 (Num 1.); make_term 0 (Num 1.) ]
+let rf = make_rational p2 p1
+@end example
+
+Now add @code{rf} to itself, using @code{add}. You will observe that this
+addition procedure does not reduce fractions to lowest terms.
+@end quotation
+
+@noindent
+We can reduce polynomial fractions to lowest terms using the same idea we used
+with integers: modifying @code{make_rat} to divide both the numerator and the
+denominator by their greatest common divisor.  The notion of ``greatest common
+divisor'' makes sense for polynomials.  In fact, we can compute the
+@abbr{GCD} of two polynomials using essentially the same Euclid's Algorithm
+that works for integers.@footnote{The fact that Euclid's Algorithm works for
+polynomials is formalized in algebra by saying that polynomials form a kind of
+algebraic domain called a @newterm{Euclidean ring}.  A Euclidean ring is a
+domain that admits addition, subtraction, and commutative multiplication,
+together with a way of assigning to each element @math{x} of the ring a positive
+integer ``measure'' @math{{m(x)}} with the properties that 
+@math{{m(xy) \ge m(x)}} for any nonzero @math{x} and @math{y} and that, given any @math{x} and
+@math{y}, there exists a @math{q} such that @math{{y = qx + r}} and either
+@math{{r = 0}} or @math{{m(r) < m(x)}}.  From an abstract point of view, this
+is what is needed to prove that Euclid's Algorithm works.  For the domain of
+integers, the measure @math{m} of an integer is the absolute value of the integer
+itself.  For the domain of polynomials, the measure of a polynomial is its
+degree.}  The integer version is
+
+@example ocaml
+let rec gcd a b = if b = 0 then a else gcd b (a mod b)
+@end example
+
+@noindent
+Using this, we could make the obvious modification to define a @abbr{GCD}
+operation that works on term lists:
+
+@example ocaml
+let rec gcd_terms a b =
+  if is_empty_termlist b then a else gcd_terms b (remainder_terms a b)
+@end example
+
+@noindent
+where @code{remainder_terms} picks out the remainder component of the pair
+returned by the term-list division operation @code{div_terms} that was
+implemented in @ref{Exercise 2.91}.
+
+@quotation
+@strong{@anchor{Exercise 2.94}Exercise 2.94:} Using @code{div_terms}, implement
+the procedure @code{remainder_terms} and use this to define @code{gcd_terms} as
+above.  Now write a procedure @code{gcd_poly} that computes the polynomial
+@abbr{GCD} of two polys.  (The procedure should raise @code{Invalid_argument}
+if the two polys are not in the same variable.)  Install in the system a
+generic operation @code{greatest_common_divisor} that reduces to
+@code{gcd_poly} for polynomials and to ordinary @code{gcd} for ordinary
+numbers.  As a test, try
+
+@example ocaml
+let p1 = make_polynomial "x" [ make_term 4 (Num 1.); make_term 3 (Num (-1.))
+                              ; make_term 2 (Num (-2.)); make_term 1 (Num 2.) ]
+
+let p2 = make_polynomial "x" [ make_term 3 (Num 1.); make_term 1 (Num (-1.)) ]
+
+let () = ignore (greatest_common_divisor p1 p2)
+@end example
+
+@noindent
+and check your result by hand.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.95}Exercise 2.95:} Define @math{P_1}, @math{P_2}, and
+@math{P_3} to be the polynomials
+@displaymath
+\matrix{
+  P_1:  &   x^2 - 2x + 1, \cr
+  P_2:  &   11x^2 + 7,    \cr
+  P_3:  &   13x + 5.
+}
+@end displaymath
+@ifinfo
+
+@example
+P_1 : x^2 - 2x + 1
+
+P_2 : 11x^2 + 7
+
+P_3 : 13x + 5
+@end example
+
+@end ifinfo
+Now define @math{Q_1} to be the product of @math{P_1} and @math{P_2}, and @math{Q_2} to be
+the product of @math{P_1} and @math{P_3}, and use @code{greatest_common_divisor}
+(@ref{Exercise 2.94}) to compute the @abbr{GCD} of @math{Q_1} and @math{Q_2}.
+Note that the answer is not the same as @math{P_1}.  This example introduces
+noninteger operations into the computation, causing difficulties with the
+@abbr{GCD} algorithm.@footnote{This edition's coefficients are OCaml
+@code{float}s, which carry no exact-rational fallback: dividing two
+integer-valued floats that do not divide evenly produces a decimal
+approximation, not a symbolic fraction, so this naive @code{gcd_poly}
+produces a polynomial that is a divisor of @math{Q_1} and @math{Q_2} in
+the mathematical sense but whose coefficients are the nearest
+floating-point approximations to the true rational values, not exact
+integers.}  To understand what is happening, try tracing
+@code{gcd_terms} while computing the @abbr{GCD} or try performing the
+division by hand.
+@end quotation
+
+@noindent
+We can solve the problem exhibited in @ref{Exercise 2.95} if we use the
+following modification of the @abbr{GCD} algorithm (which really works only
+in the case of polynomials with integer coefficients).  Before performing any
+polynomial division in the @abbr{GCD} computation, we multiply the dividend
+by an integer constant factor, chosen to guarantee that no fractions will arise
+during the division process.  Our answer will thus differ from the actual
+@abbr{GCD} by an integer constant factor, but this does not matter in the
+case of reducing rational functions to lowest terms; the @abbr{GCD} will be
+used to divide both the numerator and denominator, so the integer constant
+factor will cancel out.
+
+More precisely, if @math{P} and @math{Q} are polynomials, let @math{O_1} be the order of
+@math{P} (i.e., the order of the largest term of @math{P}) and let @math{O_2} be the
+order of @math{Q}.  Let @math{c} be the leading coefficient of @math{Q}.  Then it can be
+shown that, if we multiply @math{P} by the @newterm{@w{integerizing} @w{factor}}
+@math{c^{1 + O_1 - O_2}}, the resulting polynomial can be divided by @math{Q} by
+using the @code{div_terms} algorithm without introducing any fractions.  The
+operation of multiplying the dividend by this constant and then dividing is
+sometimes called the @newterm{pseudodivision} of @math{P} by @math{Q}.  The remainder
+of the division is called the @newterm{pseudoremainder}.
+
+@quotation
+@strong{@anchor{Exercise 2.96}Exercise 2.96:}
+@enumerate a
+
+@item
+Implement the procedure @code{pseudoremainder_terms}, which is just like
+@code{remainder_terms} except that it multiplies the dividend by the
+integerizing factor described above before calling @code{div_terms}.  Modify
+@code{gcd_terms} to use @code{pseudoremainder_terms}, and verify that
+@code{greatest_common_divisor} now produces an answer with integer coefficients
+on the example in @ref{Exercise 2.95}.
+
+@item
+The @abbr{GCD} now has integer coefficients, but they are larger than those
+of @math{P_1}.  Modify @code{gcd_terms} so that it removes common factors from the
+coefficients of the answer by dividing all the coefficients by their (integer)
+greatest common divisor.
+
+@end enumerate
+@end quotation
+
+@noindent
+Thus, here is how to reduce a rational function to lowest terms:
+
+@itemize @bullet
+
+@item
+Compute the @abbr{GCD} of the numerator and denominator, using the version
+of @code{gcd_terms} from @ref{Exercise 2.96}.
+
+@item
+When you obtain the @abbr{GCD}, multiply both numerator and denominator by
+the same integerizing factor before dividing through by the @abbr{GCD}, so
+that division by the @abbr{GCD} will not introduce any noninteger
+coefficients.  As the factor you can use the leading coefficient of the
+@abbr{GCD} raised to the power @math{{1 + O_1 - O_2}}, where @math{O_2} is the
+order of the @abbr{GCD} and @math{O_1} is the maximum of the orders of the
+numerator and denominator.  This will ensure that dividing the numerator and
+denominator by the @abbr{GCD} will not introduce any fractions.
+
+@item
+The result of this operation will be a numerator and denominator with integer
+coefficients.  The coefficients will normally be very large because of all of
+the integerizing factors, so the last step is to remove the redundant factors
+by computing the (integer) greatest common divisor of all the coefficients of
+the numerator and the denominator and dividing through by this factor.
+
+@end itemize
+
+@quotation
+@strong{@anchor{Exercise 2.97}Exercise 2.97:}
+@enumerate a
+
+@item
+Implement this algorithm as a procedure @code{reduce_terms} that takes two term
+lists @code{n} and @code{d} as arguments and returns a pair @code{nn},
+@code{dd}, which are @code{n} and @code{d} reduced to lowest terms via the
+algorithm given above.  Also write a procedure @code{reduce_poly}, analogous to
+@code{add_poly}, that checks to see if the two polys have the same variable.
+If so, @code{reduce_poly} strips off the variable and passes the problem to
+@code{reduce_terms}, then reattaches the variable to the two term lists
+supplied by @code{reduce_terms}.
+
+@item
+Define a procedure analogous to @code{reduce_terms} that does what the original
+@code{make_rat} did for integers:
+
+@example ocaml
+let reduce_integers n d =
+  let g = gcd n d in
+  n / g, d / g
+;;
+@end example
+
+and define @code{reduce} as a generic operation that calls @code{apply_generic}
+to dispatch to either @code{reduce_poly} (for @code{"polynomial"} arguments) or
+@code{reduce_integers} (for @code{"scheme-number"} arguments).  You can now
+easily make the rational-arithmetic package reduce fractions to lowest terms by
+having @code{make_rat} call @code{reduce} before combining the given numerator
+and denominator to form a rational number.  The system now handles rational
+expressions in either integers or polynomials.  To test your program, try the
+example at the beginning of this extended exercise:
+
+@example ocaml
+let p1 = make_polynomial "x" [ make_term 1 (Num 1.); make_term 0 (Num 1.) ]
+let p2 = make_polynomial "x" [ make_term 3 (Num 1.); make_term 0 (Num (-1.)) ]
+let p3 = make_polynomial "x" [ make_term 1 (Num 1.) ]
+let p4 = make_polynomial "x" [ make_term 2 (Num 1.); make_term 0 (Num (-1.)) ]
+let rf1 = make_rational p1 p2
+let rf2 = make_rational p3 p4
+let sum = add rf1 rf2
+@end example
+
+See if you get the correct answer, correctly reduced to lowest terms.
+@end enumerate
+@end quotation
+
+@noindent
+The @abbr{GCD} computation is at the heart of any system that does
+operations on rational functions.  The algorithm used above, although
+mathematically straightforward, is extremely slow.  The slowness is due partly
+to the large number of division operations and partly to the enormous size of
+the intermediate coefficients generated by the pseudodivisions.  One of the
+active areas in the development of algebraic-manipulation systems is the design
+of better algorithms for computing polynomial @abbr{GCD}s.@footnote{One
+extremely efficient and elegant method for computing polynomial @abbr{GCD}s
+was discovered by Richard @ref{Zippel (1979)}.  The method is a probabilistic
+algorithm, as is the fast test for primality that we discussed in @ref{Chapter
+1}.  Zippel's book (@ref{Zippel 1993}) describes this method, together with other ways to
+compute polynomial @abbr{GCD}s.}
+
+@quotation
+@strong{In this language: first-class modules and functors instead of a runtime table.}
+
+Every package in this section installs its operations into one shared,
+untyped @code{Hashtbl}, so a typo in an operation name or a missing entry
+surfaces only when @code{apply_generic} runs, not when the package compiles.
+When the set of representations is known at compile time -- as it is for the
+appendix's arithmetic tower -- a module signature replaces the table: a
+@code{NUMBER} signature names @code{add}, @code{mul}, @code{is_zero}, and so
+on, and a functor over that signature builds the polynomial package once,
+for any module that satisfies it.
+
+@example ocaml
+module type Number = sig
+  type t
+
+  val add : t -> t -> t
+  val mul : t -> t -> t
+  val is_zero : t -> bool
+end
+
+module Make_polynomial (N : Number) = struct
+  type coeff = N.t
+end
+@end example
+
+A forgotten @code{mul} is a compiler error at the functor application, not a
+missing-method failure the first time two polynomials are multiplied. The
+table still wins once a representation can be installed after the program is
+already running -- a coercion added at the REPL, or a plugin -- because a
+functor needs every implementation named in the source it is applied to.
+@end quotation
+
+@node    Chapter 3, 3.1, 2.5, Top
+@chapter Modularity, Objects, and State
+
+@quotation
+Mεταβάλλον ὰναπαύεται@*
+(Even while it changes, it stands still.)@*
+---Heraclitus
+
+Plus @,{c}a change, plus c'est la m@^{e}me chose.@*
+---Alphonse Karr
+@end quotation
+
+@noindent
+The preceding chapters introduced the basic elements from which programs are
+made.  We saw how primitive procedures and primitive data are combined to
+construct compound entities, and we learned that abstraction is vital in
+helping us to cope with the complexity of large systems.  But these tools are
+not sufficient for designing programs.  Effective program synthesis also
+requires organizational principles that can guide us in formulating the overall
+design of a program.  In particular, we need strategies to help us structure
+large systems so that they will be @newterm{modular}, that is, so that they can
+be divided ``naturally'' into coherent parts that can be separately developed
+and maintained.
+
+One powerful design strategy, which is particularly appropriate to the
+construction of programs for modeling physical systems, is to base the
+structure of our programs on the structure of the system being modeled.  For
+each object in the system, we construct a corresponding computational object.
+For each system action, we define a symbolic operation in our computational
+model.  Our hope in using this strategy is that extending the model to
+accommodate new objects or new actions will require no strategic changes to the
+program, only the addition of the new symbolic analogs of those objects or
+actions.  If we have been successful in our system organization, then to add a
+new feature or debug an old one we will have to work on only a localized part
+of the system.
+
+To a large extent, then, the way we organize a large program is dictated by our
+perception of the system to be modeled.  In this chapter we will investigate
+two prominent organizational strategies arising from two rather different
+``world views'' of the structure of systems.  The first organizational strategy
+concentrates on @newterm{objects}, viewing a large system as a collection of
+distinct objects whose behaviors may change over time.  An alternative
+organizational strategy concentrates on the @newterm{streams} of information
+that flow in the system, much as an electrical engineer views a
+signal-processing system.
+
+Both the object-based approach and the stream-processing approach raise
+significant linguistic issues in programming.  With objects, we must be
+concerned with how a computational object can change and yet maintain its
+identity.  This will force us to abandon our old substitution model of
+computation (@ref{1.1.5}) in favor of a more mechanistic but less
+theoretically tractable @newterm{environment model} of computation.  The
+difficulties of dealing with objects, change, and identity are a fundamental
+consequence of the need to grapple with time in our computational models.
+These difficulties become even greater when we allow the possibility of
+concurrent execution of programs.  The stream approach can be most fully
+exploited when we decouple simulated time in our model from the order of the
+events that take place in the computer during evaluation.  We will accomplish
+this using a technique known as @newterm{delayed evaluation}.
+
+@menu
+* 3.1::              Assignment and Local State
+* 3.2::              The Environment Model of Evaluation
+* 3.3::              Modeling with Mutable Data
+* 3.4::              Concurrency: Time Is of the Essence
+* 3.5::              Streams
+@end menu

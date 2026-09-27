@@ -1,0 +1,135 @@
+@node	0.2, 0.3, 0.1, Chapter 0
+@section Functions, recursion, and iteration
+
+A Rust function is a named, typed procedure:
+
+@example rust
+fn square(n: i64) -> i64 @{
+    n * n
+@}
+@end example
+
+The last expression in the body, with no semicolon, is the return value; an
+explicit @code{return} works too and is normal for an early exit. @code{if}
+is an expression, not a statement, so it can appear anywhere a value is
+expected:
+
+@example rust
+let n = -3;
+let sign = if n < 0 @{ -1 @} else if n > 0 @{ 1 @} else @{ 0 @};
+println!("@{sign@}");
+// => -1
+@end example
+
+Both arms of an @code{if} used this way must produce the same type; the
+compiler checks it, the way it checks everything else about the value an
+expression produces.
+
+Rust has three looping constructs, and no special form for tail-recursive
+counting the way the book's @code{do} loops or named-@code{let} would.
+@code{while} repeats for as long as a condition holds, checked before each
+pass; @code{loop} repeats unconditionally until a @code{break}, which can
+hand back a value from the loop; @code{for} walks an iterator (@ref{0.5}
+covers what counts as one), most often a range like @code{1..=5}.
+
+@example rust
+let mut n = 10;
+let mut halvings = 0;
+while n > 1 @{
+    n /= 2;
+    halvings += 1;
+@}
+println!("@{halvings@}");
+// => 3
+
+let mut count = 0;
+let first_over_20 = loop @{
+    count += 3;
+    if count > 20 @{
+        break count;
+    @}
+@};
+println!("@{first_over_20@}");
+// => 21
+
+let mut total = 0;
+for i in 1..=5 @{
+    total += i;
+@}
+println!("@{total@}");
+// => 15
+@end example
+
+All three coexist as plain control flow, not syntax the way @code{if} is; the
+runnable listing above is @code{examples/sec_0_2_loops.rs}.
+
+@subheading Recursion, iteration, and the call stack
+
+The book's recurring theme in this section is that Scheme's tail-call
+optimization has no Rust equivalent. A recursive Rust function keeps one
+stack frame alive for every call still waiting on a result, exactly like a
+recursive @newterm{process} in the book's sense (1.2.1) whether or not the
+recursive call is the last thing the function does:
+
+@example rust
+fn sum_to_recursive(n: u64) -> u64 @{
+    if n == 0 @{ 0 @} else @{ n + sum_to_recursive(n - 1) @}
+@}
+
+fn sum_to_iterative(n: u64) -> u64 @{
+    let mut total = 0;
+    for i in 1..=n @{
+        total += i;
+    @}
+    total
+@}
+
+let by_recursion = sum_to_recursive(100);
+println!("@{by_recursion@}");
+// => 5050
+
+let by_loop = sum_to_iterative(100);
+println!("@{by_loop@}");
+// => 5050
+@end example
+
+Both compute the same sum, and both are correct Rust; the difference the book
+cares about is the shape of the process each one runs. The recursive version
+builds a chain of @code{n} pending additions before it can produce anything,
+one stack frame per pending addition; large enough @code{n} overflows the
+call stack (a hard crash, not a checked error) long before @code{u64} would.
+The iterative version updates one @code{total} in a single frame for however
+many iterations @code{for} runs. Section @ref{1.2} rewrites this exact
+argument for the book's own recursive procedures, with @newterm{recursion
+depth} and iterations counted side by side; the accompanying exercise below
+does it once here, on simpler ground, with a process the book already uses in
+1.2.2.
+
+The runnable listing above is
+@code{examples/sec_0_2_recursion_vs_iteration.rs}.
+
+@subheading Exercises
+
+@quotation
+@strong{@anchor{Exercise 0.1}Exercise 0.1:} Write a recursive @code{factorial}
+that computes @math{n!} using @code{checked_mul} (@ref{0.1}), returning
+@code{None} instead of wrapping when the exact result would overflow
+@code{i128}. Then find the largest @code{n} for which your @code{factorial}
+still returns @code{Some}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 0.2}Exercise 0.2:} Section 1.2.2 counts ways to make
+change from a fixed set of coins by a recursive process: use the largest
+kind of coin available, or don't. Write @code{count_change_recursive} that
+way for United States coins (half-dollars, quarters, dimes, nickels,
+pennies), then write @code{count_change_iterative} as a loop over an
+accumulator table indexed by amount, one pass per denomination. Instrument
+the recursive version to report the maximum call depth it reaches, and
+compare that depth against the loop's for amounts up to 400 cents.
+@end quotation
+
+Scaffolds for both live in @code{exercises/ch00/sec_0_2.rs}; reference
+solutions with passing tests are in @code{solutions/ch00/sec_0_2.rs}, with
+the reasoning in @code{solutions/ch00/ex_0_01.md} and
+@code{solutions/ch00/ex_0_02.md}.

@@ -1,0 +1,1094 @@
+@node	3.4, 3.5, 3.3, Chapter 3
+@section Concurrency: Time Is of the Essence
+
+We've seen the power of computational objects with local state as tools for
+modeling.  Yet, as @ref{3.1.3} warned, this power extracts a price: the
+loss of referential transparency, giving rise to a thicket of questions about
+sameness and change, and the need to abandon the substitution model of
+evaluation in favor of the more detailed environment model.
+
+The central issue lurking beneath the complexity of state, sameness, and change
+is that by introducing assignment we are forced to admit @newterm{time} into
+our computational models.  Before we introduced assignment, all our programs
+were timeless, in the sense that any expression that has a value always has the
+same value.  In contrast, recall the example of modeling withdrawals from a
+bank account and returning the resulting balance, introduced at the beginning
+of @ref{3.1.1}:
+
+@example ocaml
+withdraw 25;;
+(* => Balance 75 *)
+
+withdraw 25;;
+(* => Balance 50 *)
+@end example
+
+@noindent
+Here successive evaluations of the same expression yield different values.
+This behavior arises from the fact that the execution of assignment statements
+(in this case, assignments to the ref cell @code{balance}) delineates
+@newterm{moments in time} when values change.  The result of evaluating an
+expression depends not only on the expression itself, but also on whether the
+evaluation occurs before or after these moments.  Building models in terms of
+computational objects with local state forces us to confront time as an
+essential concept in programming.
+
+We can go further in structuring computational models to match our perception
+of the physical world.  Objects in the world do not change one at a time in
+sequence.  Rather we perceive them as acting @newterm{concurrently}---all at
+once.  So it is often natural to model systems as collections of computational
+processes that execute concurrently.  Just as we can make our programs modular
+by organizing models in terms of objects with separate local state, it is often
+appropriate to divide computational models into parts that evolve separately
+and concurrently.  Even if the programs are to be executed on a sequential
+computer, the practice of writing programs as if they were to be executed
+concurrently forces the programmer to avoid inessential timing constraints and
+thus makes programs more modular.
+
+In addition to making programs more modular, concurrent computation can provide
+a speed advantage over sequential computation.  Sequential computers execute
+only one operation at a time, so the amount of time it takes to perform a task
+is proportional to the total number of operations performed.@footnote{Most real
+processors actually execute a few operations at a time, following a strategy
+called @newterm{pipelining}.  Although this technique greatly improves the
+effective utilization of the hardware, it is used only to speed up the
+execution of a sequential instruction stream, while retaining the behavior of
+the sequential program.}  However, if it is possible to decompose a problem
+into pieces that are relatively independent and need to communicate only
+rarely, it may be possible to allocate pieces to separate computing processors,
+producing a speed advantage proportional to the number of processors available.
+
+Unfortunately, the complexities introduced by assignment become even more
+problematic in the presence of concurrency.  The fact of concurrent execution,
+either because the world operates in parallel or because our computers do,
+entails additional complexity in our understanding of time.
+
+@menu
+* 3.4.1::            The Nature of Time in Concurrent Systems
+* 3.4.2::            Mechanisms for Controlling Concurrency
+@end menu
+
+@node	3.4.1, 3.4.2, 3.4, 3.4
+@subsection The Nature of Time in Concurrent Systems
+
+On the surface, time seems straightforward.  It is an ordering imposed on
+events.@footnote{To quote some graffiti seen on a Cambridge building wall:
+``Time is a device that was invented to keep everything from happening at
+once.''}  For any events @math{A} and @math{B}, either @math{A} occurs before @math{B},
+@math{A} and @math{B} are simultaneous, or @math{A} occurs after @math{B}.  For instance,
+returning to the bank account example, suppose that Peter withdraws $10 and
+Paul withdraws $25 from a joint account that initially contains $100, leaving
+$65 in the account.  Depending on the order of the two withdrawals, the
+sequence of balances in the account is either $100 @math{\to} $90 @math{\to} $65 or $100 @math{\to} $75
+@math{\to} $65.  In a computer implementation of the banking system, this changing
+sequence of balances could be modeled by successive assignments to the ref cell
+@code{balance}.
+
+In complex situations, however, such a view can be problematic.  Suppose that
+Peter and Paul, and other people besides, are accessing the same bank account
+through a network of banking machines distributed all over the world.  The
+actual sequence of balances in the account will depend critically on the
+detailed timing of the accesses and the details of the communication among the
+machines.
+
+This indeterminacy in the order of events can pose serious problems in the
+design of concurrent systems.  For instance, suppose that the withdrawals made
+by Peter and Paul are implemented as two separate processes sharing a common
+ref cell @code{balance}, each process specified by the procedure given in
+@ref{3.1.1}:
+
+@example ocaml
+let withdraw amount =
+  if !balance >= amount
+  then (
+    balance := !balance - amount;
+    Balance !balance)
+  else Insufficient_funds
+@end example
+
+@noindent
+If the two processes operate independently, then Peter might test the
+balance and attempt to withdraw a legitimate amount.  However, Paul
+might withdraw some funds in between the time that Peter checks the
+balance and the time Peter completes the withdrawal, thus invalidating
+Peter's test.
+
+Things can be worse still.  Consider the expression
+
+@example ocaml
+balance := !balance - amount
+@end example
+
+@noindent
+executed as part of each withdrawal process.  This consists of three steps: (1)
+accessing the value of the @code{balance} cell; (2) computing the new
+balance; (3) setting @code{balance} to this new value.  If Peter and Paul's
+withdrawals execute this statement concurrently, then the two withdrawals might
+interleave the order in which they access @code{balance} and set it to the new
+value.
+
+@noindent
+The timing diagram in @ref{Figure 3.29} depicts an order of events where
+@code{balance} starts at 100, Peter withdraws 10, Paul withdraws 25, and yet
+the final value of @code{balance} is 75.  As shown in the diagram, the reason
+for this anomaly is that Paul's assignment of 75 to @code{balance} is made
+under the assumption that the value of @code{balance} to be decremented is 100.
+That assumption, however, became invalid when Peter changed @code{balance} to
+90.  This is a catastrophic failure for the banking system, because the total
+amount of money in the system is not conserved.  Before the transactions, the
+total amount of money was $100.  Afterwards, Peter has $10, Paul has $25, and
+the bank has $75.@footnote{An even worse failure for this system could occur if
+the two assignment operations attempt to change the balance simultaneously, in
+which case the actual data appearing in memory might end up being a random
+combination of the information being written by the two processes.  Most
+computers have interlocks on the primitive memory-write operations, which
+protect against such simultaneous access.  Even this seemingly simple kind of
+protection, however, raises implementation challenges in the design of
+multiprocessing computers, where elaborate @newterm{cache-coherence} protocols
+are required to ensure that the various processors will maintain a consistent
+view of memory contents, even though data may be replicated
+(``cached'') among the different processors to increase the speed of memory
+access.}
+
+@float
+@anchor{Figure 3.29}
+@ifinfo
+@strong{Figure 3.29:} Timing diagram showing how interleaving the order of events
+in two banking withdrawals can lead to an incorrect final balance.
+
+@example
+ |           Peter              Bank              Paul
+ |                              ____
+ |                             /    \
+ |             .--------------| $100 |-------------.
+ |             |               \____/              |
+ |             V                                   V
+ |  .----------------------.            .----------------------.
+ |  | Access balance: $100 |            | Access balance: $100 |
+ |  `----------+-----------'            `----------+-----------'
+ |             V                                   V
+ |  .----------------------.            .----------------------.
+ |  | new value: 100-10=90 |            | new value: 100-25=75 |
+ |  `----------+-----------'            `----------+-----------'
+ |             V                                   |
+ |  .----------------------.                       |
+ |  | set! balance to $90  |                       |
+ |  `----------+-----------'    ____               |
+ |             |               /    \              |
+ |             `------------->| $ 90 |             V
+ |                             \____/   .----------------------.
+ |                                      | new value: 100-25=75 |
+ |                              ____    `----------+-----------'
+ |                             /    \              |
+ |                            | $ 90 |<------------'
+ V                             \____/
+time
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.29b,,147mm,Figure 3.29: Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.29:} Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.}
+@end float
+
+The general phenomenon illustrated here is that several processes may share a
+common state variable.  What makes this complicated is that more than one
+process may be trying to manipulate the shared state at the same time.  For the
+bank account example, during each transaction, each customer should be able to
+act as if the other customers did not exist.  When a customer changes the
+balance in a way that depends on the balance, he must be able to assume that,
+just before the moment of change, the balance is still what he thought it was.
+
+@subsubheading Correct behavior of concurrent programs
+
+The above example typifies the subtle bugs that can creep into concurrent
+programs.  The root of this complexity lies in the assignments to cells
+that are shared among the different processes.  We already know that we must be
+careful in writing programs that use assignment, because the results of a
+computation depend on the order in which the assignments occur.@footnote{The
+factorial program in @ref{3.1.3} illustrates this for a single
+sequential process.}  With concurrent processes we must be especially careful
+about assignments, because we may not be able to control the order of the
+assignments made by the different processes.  If several such changes might be
+made concurrently (as with two depositors accessing a joint account) we need
+some way to ensure that our system behaves correctly.  For example, in the case
+of withdrawals from a joint bank account, we must ensure that money is
+conserved.  To make concurrent programs behave correctly, we may have to place
+some restrictions on concurrent execution.
+
+@noindent
+One possible restriction on concurrency would stipulate that no two operations
+that change any shared state variables can occur at the same time.  This is an
+extremely stringent requirement.  For distributed banking, it would require the
+system designer to ensure that only one transaction could proceed at a time.
+This would be both inefficient and overly conservative.  @ref{Figure 3.30}
+shows Peter and Paul sharing a bank account, where Paul has a private account
+as well.  The diagram illustrates two withdrawals from the shared account (one
+by Peter and one by Paul) and a deposit to Paul's private account.@footnote{The
+columns show the contents of Peter's wallet, the joint account (in Bank1),
+Paul's wallet, and Paul's private account (in Bank2), before and after each
+withdrawal (W) and deposit (D).  Peter withdraws $10 from Bank1; Paul deposits
+$5 in Bank2, then withdraws $25 from Bank1.}  The two withdrawals from the
+shared account must not be concurrent (since both access and update the same
+account), and Paul's deposit and withdrawal must not be concurrent (since both
+access and update the amount in Paul's wallet).  But there should be no problem
+permitting Paul's deposit to his private account to proceed concurrently with
+Peter's withdrawal from the shared account.
+
+@float
+@anchor{Figure 3.30}
+@ifinfo
+@strong{Figure 3.30:} Concurrent deposits and withdrawals from a joint account
+in Bank1 and a private account in Bank2.
+
+@example
+ |    Peter          Bank1          Paul           Bank2
+ |    ____           ____           ____           ____
+ |   /    \         /    \         /    \         /    \
+ |  |  $7  |--. .--| $100 |       |  $5  |--. .--| $300 |
+ |   \____/   V V   \____/         \____/   V V   \____/
+ |           +---+                         +---+
+ |           | W |                         | D |
+ |    ____   ++-++   ____           ____   ++-++   ____
+ |   /    \   | |   /    \         /    \   | |   /    \
+ |  | $17  |<-' `->| $90  |--. .--|  $0  |<-' `->| $305 |
+ |   \____/         \____/   V V   \____/         \____/
+ |                          +---+
+ |                          | W |
+ |    ____           ____   ++-++   ____           ____
+ |   /    \         /    \   | |   /    \         /    \
+ |  | $17  |       | $65  |<-' `->| $25  |       | $305 |
+ |   \____/         \____/         \____/         \____/
+ V
+time
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.30c,,147mm,Figure 3.30: Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.30:} Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.}
+@end float
+
+A less stringent restriction on concurrency would ensure that a concurrent
+system produces the same result as if the processes had run sequentially in
+some order.  There are two important aspects to this requirement.  First, it
+does not require the processes to actually run sequentially, but only to
+produce results that are the same @emph{as if} they had run sequentially.  For
+the example in @ref{Figure 3.30}, the designer of the bank account system can
+safely allow Paul's deposit and Peter's withdrawal to happen concurrently,
+because the net result will be the same as if the two operations had happened
+sequentially.  Second, there may be more than one possible ``correct'' result
+produced by a concurrent program, because we require only that the result be
+the same as for @emph{some} sequential order.  For example, suppose that Peter
+and Paul's joint account starts out with $100, and Peter deposits $40 while
+Paul concurrently withdraws half the money in the account.  Then sequential
+execution could result in the account balance being either $70 or $90 (see
+@ref{Exercise 3.38}).@footnote{@anchor{Footnote 167} A more formal
+way to express this idea is to say that concurrent programs are inherently
+@newterm{nondeterministic}. That is, they are described not by single-valued
+functions, but by functions whose results are sets of possible values.  In
+@ref{4.3} we will study a language for expressing nondeterministic
+computations.}
+
+There are still weaker requirements for correct execution of concurrent
+programs.  A program for simulating diffusion (say, the flow of heat in an
+object) might consist of a large number of processes, each one representing a
+small volume of space, that update their values concurrently.  Each process
+repeatedly changes its value to the average of its own value and its neighbors'
+values.  This algorithm converges to the right answer independent of the order
+in which the operations are done; there is no need for any restrictions on
+concurrent use of the shared values.
+
+@quotation
+@strong{@anchor{Exercise 3.38}Exercise 3.38:} Suppose that Peter, Paul, and
+Mary share a joint bank account that initially contains $100.  Concurrently,
+Peter deposits $10, Paul withdraws $20, and Mary withdraws half the money in
+the account, by executing the following commands:
+
+@example ocaml
+Peter: balance := !balance + 10
+Paul:  balance := !balance - 20
+Mary:  balance := !balance / 2
+@end example
+
+@enumerate a
+
+@item
+List all the different possible values for @code{balance} after these three
+transactions have been completed, assuming that the banking system forces the
+three processes to run sequentially in some order.
+
+@item
+What are some other values that could be produced if the system allows the
+processes to be interleaved?  Draw timing diagrams like the one in @ref{Figure 3.29}
+to explain how these values can occur.
+
+@end enumerate
+@end quotation
+
+@node	3.4.2, 3.5, 3.3, 3.4
+@subsection Mechanisms for Controlling Concurrency
+
+We've seen that the difficulty in dealing with concurrent processes is rooted
+in the need to consider the interleaving of the order of events in the
+different processes.  For example, suppose we have two processes, one with
+three ordered events @math{{(a, b, c)}} and one with three ordered events
+@math{{(x, y, z)}}.  If the two processes run concurrently, with no
+constraints on how their execution is interleaved, then there are 20 different
+possible orderings for the events that are consistent with the individual
+orderings for the two processes:
+
+@example
+(a,b,c,x,y,z)  (a,x,b,y,c,z)  (x,a,b,c,y,z)
+(x,a,y,z,b,c)  (a,b,x,c,y,z)  (a,x,b,y,z,c)
+(x,a,b,y,c,z)  (x,y,a,b,c,z)  (a,b,x,y,c,z)
+(a,x,y,b,c,z)  (x,a,b,y,z,c)  (x,y,a,b,z,c)
+(a,b,x,y,z,c)  (a,x,y,b,z,c)  (x,a,y,b,c,z)
+(x,y,a,z,b,c)  (a,x,b,c,y,z)  (a,x,y,z,b,c)
+(x,a,y,b,z,c)  (x,y,z,a,b,c)
+@end example
+
+@noindent
+As programmers designing this system, we would have to consider the effects of
+each of these 20 orderings and check that each behavior is acceptable.  Such an
+approach rapidly becomes unwieldy as the numbers of processes and events
+increase.
+
+A more practical approach to the design of concurrent systems is to devise
+general mechanisms that allow us to constrain the interleaving of concurrent
+processes so that we can be sure that the program behavior is correct.  Many
+mechanisms have been developed for this purpose.  In this section, we describe
+one of them, the @newterm{serializer}.
+
+@subsubheading Serializing access to shared state
+
+Serialization implements the following idea: Processes will execute
+concurrently, but there will be certain collections of procedures that cannot
+be executed concurrently.  More precisely, serialization creates distinguished
+sets of procedures such that only one execution of a procedure in each
+serialized set is permitted to happen at a time.  If some procedure in the set
+is being executed, then a process that attempts to execute any procedure in the
+set will be forced to wait until the first execution has finished.
+
+We can use serialization to control access to shared variables.  For example,
+if we want to update a shared variable based on the previous value of that
+variable, we put the access to the previous value of the variable and the
+assignment of the new value to the variable in the same procedure.  We then
+ensure that no other procedure that assigns to the variable can run
+concurrently with this procedure by serializing all of these procedures with
+the same serializer.  This guarantees that the value of the variable cannot be
+changed between an access and the corresponding assignment.
+
+@subsubheading Serializers in OCaml
+
+To make the above mechanism more concrete, suppose that we have extended OCaml
+with a function called @code{parallel}:
+
+@example ocaml
+parallel ⟨@var{p₁}⟩ ⟨@var{p₂}⟩
+@end example
+
+@noindent
+Each @code{⟨}@var{p}@code{⟩} must be a function of one argument, the run's
+handle; a procedure that does not care about stopping ignores it.
+@code{Parallel} runs the two procedures concurrently: the first on a freshly
+spawned @newterm{domain}, the second on the calling domain, and the call
+returns the pair of their two results together with the handle once the
+spawned domain has joined.  The two procedures are therefore genuinely in
+flight at the same time, each with its own stack on its own core.@footnote{@code{Parallel} is not part of the base
+language; it is a thin layer over @code{Domain.spawn} and
+@code{Domain.join}.  The runtime answers @code{Domain.count ()} with the
+number of live domains, so one can watch the section's processes come and go.
+Both procedures are handed the same handle: its @code{halted} probe answers
+whether anyone has asked the run to stop, and its @code{halt} raises that
+request by setting the flag the probe reads.  A procedure that loops can poll
+the probe between two of its own steps and give up early; the demonstrations
+that follow let every procedure run to completion and observe shared state to
+see who did what.}
+
+As an example of how this is used, consider
+
+@example ocaml
+let x = ref 10
+parallel (fun _ -> x := !x * !x) (fun _ -> incr x)
+@end example
+
+@noindent
+This creates two concurrent processes---@math{P_1}, which sets @code{x} to
+@code{x} times @code{x}, and @math{P_2}, which increments @code{x}.  After
+execution is complete, @code{x} will be left with one of five possible values,
+depending on the interleaving of the events of @math{P_1} and @math{P_2}:
+
+@example
+101: @math{P_1} sets @code{x} to 100 and then @math{P_2} increments
+     @code{x} to 101.
+121: @math{P_2} increments @code{x} to 11 and then @math{P_1} sets
+     @code{x} to @code{x} times @code{x}.
+110: @math{P_2} changes @code{x} from 10 to 11 between the
+     two times that @math{P_1} accesses the value of
+     @code{x} during the evaluation of @code{!x * !x}.
+ 11: @math{P_2} accesses @code{x}, then @math{P_1} sets @code{x} to 100,
+     then @math{P_2} sets @code{x}.
+100: @math{P_1} accesses @code{x} (twice), then @math{P_2} sets
+     @code{x} to 11, then @math{P_1} sets @code{x}.
+@end example
+
+@noindent
+We can constrain the concurrency by using serialized procedures, which are
+created by @newterm{serializers}. Serializers are constructed by
+@code{make_serializer}, whose implementation is given below.  A serializer
+wraps one mutex; protecting a procedure through it runs that procedure under
+the mutex, and the protected procedure behaves like the original one.  All
+procedures protected through a given serializer belong to the same set.
+
+Thus, in contrast to the example above, executing
+
+@example ocaml
+let x = ref 10
+let s = make_serializer ()
+parallel
+  (fun _ -> s.protect (fun () -> x := !x * !x))
+  (fun _ -> s.protect (fun () -> incr x))
+@end example
+
+@noindent
+can produce only two possible values for @code{x}, 101 or 121.  The other
+possibilities are eliminated, because the execution of @math{P_1} and @math{P_2}
+cannot be interleaved.
+
+Here is a version of the @code{make_account} procedure from
+@ref{3.1.1}, where the deposits and withdrawals have been serialized.
+Scheme's quoted messages become the constructors of a @code{message} variant,
+and the dispatch procedure becomes a pattern match that answers with a
+@code{response}; @code{Balance} and @code{Serializer} are messages that carry
+no argument, and @code{withdraw_result} is the checked result type of
+section 3.1.1's account:
+
+@example ocaml
+type message =
+  | Withdraw of int
+  | Deposit of int
+  | Balance
+  | Serializer
+
+type response =
+  | Withdrawn of withdraw_result
+  | New_balance of int
+  | Serialized of serializer
+
+let make_account balance =
+  let balance = ref balance in
+  let withdraw amount =
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+  in
+  let deposit amount =
+    balance := !balance + amount;
+    !balance
+  in
+  let protected = make_serializer () in
+  fun m ->
+    match m with
+    | Withdraw amount ->
+      Withdrawn (protected.protect (fun () -> withdraw amount))
+    | Deposit amount ->
+      New_balance (protected.protect (fun () -> deposit amount))
+    | Balance -> New_balance !balance
+    | _ -> invalid_arg "Unknown request: MAKE-ACCOUNT"
+@end example
+
+@noindent
+With this implementation, two processes cannot be withdrawing from or
+depositing into a single account concurrently.  This eliminates the source of
+the error illustrated in @ref{Figure 3.29}, where Peter changes the account
+balance between the times when Paul accesses the balance to compute the new
+value and when Paul actually performs the assignment.  On the other hand, each
+account has its own serializer, so that deposits and withdrawals for different
+accounts can proceed concurrently.
+
+@quotation
+@strong{@anchor{Exercise 3.39}Exercise 3.39:} Which of the five possibilities
+in the parallel execution shown above remain if we instead serialize execution
+as follows:
+
+@example ocaml
+let x = ref 10
+let s = make_serializer ()
+parallel
+  (fun _ -> x := s.protect (fun () -> !x * !x))
+  (fun _ -> s.protect (fun () -> incr x))
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.40}Exercise 3.40:} Give all possible values of
+@code{x} that can result from executing
+
+@example ocaml
+let x = ref 10
+parallel
+  (fun _ -> x := !x * !x)
+  (fun _ -> x := !x * !x * !x)
+@end example
+
+Which of these possibilities remain if we instead use serialized procedures:
+
+@example ocaml
+let x = ref 10
+let s = make_serializer ()
+parallel
+  (fun _ -> s.protect (fun () -> x := !x * !x))
+  (fun _ -> s.protect (fun () -> x := !x * !x * !x))
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.41}Exercise 3.41:} Ben Bitdiddle worries that it
+would be better to implement the bank account as follows (where the commented
+line has been changed):
+
+@example ocaml
+let make_account_serialized_balance balance =
+  let balance = ref balance in
+  let withdraw amount =
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+  in
+  let deposit amount =
+    balance := !balance + amount;
+    !balance
+  in
+  let protected = make_serializer () in
+  fun m ->
+    match m with
+    | Withdraw amount ->
+      Withdrawn (protected.protect (fun () -> withdraw amount))
+    | Deposit amount ->
+      New_balance (protected.protect (fun () -> deposit amount))
+    | Balance ->
+      New_balance (protected.protect (fun () -> !balance))
+      (* serialized *)
+    | _ -> invalid_arg "Unknown request: MAKE-ACCOUNT"
+@end example
+
+@noindent
+because allowing unserialized access to the bank balance can result in
+anomalous behavior.  Do you agree?  Is there any scenario that demonstrates
+Ben's concern?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.42}Exercise 3.42:} Ben Bitdiddle suggests that it's
+a waste of time to create a new serialized procedure in response to every
+@code{Withdraw} and @code{Deposit} message.  He says that @code{make_account}
+could be changed so that the calls to @code{protect} are done outside the
+dispatch function.  That is, an account would answer the same
+serialized procedures (which were created at the same time as the account) each
+time it is asked for a withdrawal or deposit.
+
+@example ocaml
+let make_account_hoisted_serialization balance =
+  let balance = ref balance in
+  let withdraw amount =
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+  in
+  let deposit amount =
+    balance := !balance + amount;
+    !balance
+  in
+  let protected = make_serializer () in
+  let protected_withdraw amount =
+    protected.protect (fun () -> withdraw amount)
+  in
+  let protected_deposit amount =
+    protected.protect (fun () -> deposit amount)
+  in
+  fun m ->
+    match m with
+    | Withdraw amount -> Withdrawn (protected_withdraw amount)
+    | Deposit amount -> New_balance (protected_deposit amount)
+    | Balance -> New_balance !balance
+    | _ -> invalid_arg "Unknown request: MAKE-ACCOUNT"
+@end example
+
+Is this a safe change to make?  In particular, is there any difference in what
+concurrency is allowed by these two versions of @code{make_account}?
+@end quotation
+
+@subsubheading Complexity of using multiple shared resources
+
+Serializers provide a powerful abstraction that helps isolate the complexities
+of concurrent programs so that they can be dealt with carefully and (hopefully)
+correctly.  However, while using serializers is relatively straightforward when
+there is only a single shared resource (such as a single bank account),
+concurrent programming can be treacherously difficult when there are multiple
+shared resources.
+
+To illustrate one of the difficulties that can arise, suppose we wish to swap
+the balances in two bank accounts.  We access each account to find the balance,
+compute the difference between the balances, withdraw this difference from one
+account, and deposit it in the other account.  We could implement this as
+follows:@footnote{We have simplified @code{exchange} by exploiting the fact
+that our @code{Deposit} message accepts negative amounts.  (This is a serious
+bug in our banking system!)}
+
+@example ocaml
+let exchange account1 account2 =
+  let difference = balance_of account1 - balance_of account2 in
+  ignore (account1.dispatch (Withdraw difference));
+  ignore (account2.dispatch (Deposit difference))
+@end example
+
+@noindent
+This procedure works well when only a single process is trying to do the
+exchange.  Suppose, however, that Peter and Paul both have access to accounts
+@math{{a1}}, @math{{a2}}, and @math{{a3}}, and that Peter exchanges @math{{a1}} and @math{{a2}} while
+Paul concurrently exchanges @math{{a1}} and @math{{a3}}.  Even with account deposits and
+withdrawals serialized for individual accounts (as in the @code{make_account}
+procedure shown above in this section), @code{exchange} can still produce
+incorrect results.  For example, Peter might compute the difference in the
+balances for @math{{a1}} and @math{{a2}}, but then Paul might change the balance in
+@math{{a1}} before Peter is able to complete the exchange.@footnote{If the account
+balances start out as $10, $20, and $30, then after any number of concurrent
+exchanges, the balances should still be $10, $20, and $30 in some order.
+Serializing the deposits to individual accounts is not sufficient to guarantee
+this.  See @ref{Exercise 3.43}.}  For correct behavior, we must arrange for the
+@code{exchange} procedure to lock out any other concurrent accesses to the
+accounts during the entire time of the exchange.
+
+One way we can accomplish this is by using both accounts' serializers to
+serialize the entire @code{exchange} procedure.  To do this, we will arrange
+for access to an account's serializer.  Note that we are deliberately breaking
+the modularity of the bank-account object by exposing the serializer.  The
+following version of @code{make_account} is identical to the original version
+given in @ref{3.1.1}, except that the serializer is provided for
+protecting the balance variable, and the serializer is exported via message
+passing; the @code{Withdraw} and @code{Deposit} branches answer raw, so
+protecting them is the caller's job:
+
+@example ocaml
+let make_account_and_serializer balance =
+  let balance = ref balance in
+  let withdraw amount =
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+  in
+  let deposit amount =
+    balance := !balance + amount;
+    !balance
+  in
+  let balance_serializer = make_serializer () in
+  fun m ->
+    match m with
+    | Withdraw amount -> Withdrawn (withdraw amount)
+    | Deposit amount -> New_balance (deposit amount)
+    | Balance -> New_balance !balance
+    | Serializer -> Serialized balance_serializer
+@end example
+
+@noindent
+We can use this to do serialized deposits and withdrawals.  However, unlike our
+earlier serialized account, it is now the responsibility of each user of
+bank-account objects to explicitly manage the serialization, for example as
+follows:@footnote{@ref{Exercise 3.45} investigates why deposits and withdrawals
+are no longer automatically serialized by the account.}
+
+@example ocaml
+let deposit account amount =
+  let s = account.serializer in
+  match s.protect (fun () -> account.dispatch (Deposit amount)) with
+  | New_balance n -> n
+  | _ -> invalid_arg "deposit: not a balance"
+@end example
+
+@noindent
+Exporting the serializer in this way gives us enough flexibility to implement a
+serialized exchange program.  We simply serialize the original @code{exchange}
+procedure with the serializers for both accounts:
+
+@example ocaml
+let serialized_exchange account1 account2 =
+  let s1 = account1.serializer in
+  let s2 = account2.serializer in
+  s1.protect (fun () -> s2.protect (fun () -> exchange account1 account2))
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.43}Exercise 3.43:} Suppose that the balances in
+three accounts start out as $10, $20, and $30, and that multiple processes run,
+exchanging the balances in the accounts.  Argue that if the processes are run
+sequentially, after any number of concurrent exchanges, the account balances
+should be $10, $20, and $30 in some order.  Draw a timing diagram like the one
+in @ref{Figure 3.29} to show how this condition can be violated if the
+exchanges are implemented using the first version of the account-exchange
+program in this section.  On the other hand, argue that even with this
+@code{exchange} program, the sum of the balances in the accounts will be
+preserved.  Draw a timing diagram to show how even this condition would be
+violated if we did not serialize the transactions on individual accounts.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.44}Exercise 3.44:} Consider the problem of
+transferring an amount from one account to another.  Ben Bitdiddle claims that
+this can be accomplished with the following procedure, even if there are
+multiple people concurrently transferring money among multiple accounts, using
+any account mechanism that serializes deposit and withdrawal transactions, for
+example, the version of @code{make_account} in the text above.
+
+@example ocaml
+let transfer from_account to_account amount =
+  ignore (from_account (Withdraw amount));
+  ignore (to_account (Deposit amount))
+@end example
+
+Louis Reasoner claims that there is a problem here, and that we need to use a
+more sophisticated method, such as the one required for dealing with the
+exchange problem.  Is Louis right?  If not, what is the essential difference
+between the transfer problem and the exchange problem?  (You should assume that
+the balance in @code{from_account} is at least @code{amount}.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.45}Exercise 3.45:} Louis Reasoner thinks our
+bank-account system is unnecessarily complex and error-prone now that deposits
+and withdrawals aren't automatically serialized.  He suggests that
+@code{make_account_and_serializer} should have exported the serializer (for use
+by such procedures as @code{serialized_exchange}) in addition to (rather than
+instead of) using it to serialize accounts and deposits as @code{make_account}
+did.  He proposes to redefine accounts as follows:
+
+@example ocaml
+let make_account_and_serializer balance =
+  let balance = ref balance in
+  let withdraw amount =
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+  in
+  let deposit amount =
+    balance := !balance + amount;
+    !balance
+  in
+  let balance_serializer = make_serializer () in
+  fun m ->
+    match m with
+    | Withdraw amount ->
+      Withdrawn (balance_serializer.protect (fun () -> withdraw amount))
+    | Deposit amount ->
+      New_balance (balance_serializer.protect (fun () -> deposit amount))
+    | Balance -> New_balance !balance
+    | Serializer -> Serialized balance_serializer
+@end example
+
+Then deposits are handled as with the original @code{make_account}:
+
+@example ocaml
+let deposit account amount = account (Deposit amount)
+@end example
+
+Explain what is wrong with Louis's reasoning.  In particular, consider what
+happens when @code{serialized_exchange} is called.
+@end quotation
+
+@subsubheading Implementing serializers
+
+We implement serializers in terms of a more primitive synchronization mechanism
+called a @newterm{mutex}.  A mutex is an object that supports two
+operations---the mutex can be @newterm{acquired}, and the mutex can be
+@newterm{released}.  Once a mutex has been acquired, no other acquire
+operations on that mutex may proceed until the mutex is released.@footnote{The
+term ``mutex'' is an abbreviation for @newterm{mutual exclusion}.  The general
+problem of arranging a mechanism that permits concurrent processes to safely
+share resources is called the mutual exclusion problem.  Our mutex is a simple
+variant of the @newterm{semaphore} mechanism (see @ref{Exercise 3.47}), which
+was introduced in the ``THE'' Multiprogramming System developed at the
+Technological University of Eindhoven and named for the university's initials
+in Dutch (@ref{Dijkstra 1968a}).  The acquire and release operations were originally
+called P and V, from the Dutch words @emph{passeren} (to pass) and
+@emph{vrijgeven} (to release), in reference to the semaphores used on railroad
+systems.  Dijkstra's classic exposition (@ref{1968b}) was one of the first to clearly
+present the issues of concurrency control, and showed how to use semaphores to
+handle a variety of concurrency problems.} In our implementation, each
+serializer has an associated mutex.  Given a procedure @code{thunk}, the
+serializer's @code{protect} field acquires the mutex, runs @code{thunk}, and
+then releases the mutex.  This ensures that only one of the procedures produced
+by the serializer can be running at once, which is precisely the serialization
+property that we need to guarantee.
+
+@example ocaml
+let make_serializer () =
+  let mutex = make_mutex () in
+  @{ protect =
+      fun thunk ->
+        mutex.acquire ();
+        let value = thunk () in
+        mutex.release ();
+        value
+  @}
+@end example
+
+@noindent
+The mutex is a mutable object (here a single boolean, an @code{Atomic.t} that
+we'll refer to as a @newterm{cell}) that can hold the value true or false.  When the
+value is false, the mutex is available to be acquired.  When the value is true,
+the mutex is unavailable, and any process that attempts to acquire the mutex
+must wait.
+
+Our mutex constructor @code{make_mutex} begins by initializing the cell
+contents to false.  To acquire the mutex, we test the cell.  If the mutex is
+available, we set the cell contents to true and proceed.  Otherwise, we wait in
+a loop, attempting to acquire over and over again, until we find that the mutex
+is available.@footnote{In most time-shared operating systems, processes that
+are blocked by a mutex do not waste time ``busy-waiting'' as above.  Instead,
+the system schedules another process to run while the first is waiting, and the
+blocked process is awakened when the mutex becomes available.  OCaml's own
+@code{Mutex} works this way, and its @code{Mutex.protect} also releases the
+mutex if the protected procedure raises; the hand-built serializer in the text
+keeps the book's plainer shape, and the spin it costs is the section's
+lesson.}  To release the mutex, we set the cell contents to false.
+
+@example ocaml
+type mutex =
+  @{ acquire : unit -> unit
+  ; release : unit -> unit
+  @}
+
+let clear cell = Atomic.set cell false
+
+let make_mutex () =
+  let cell = Atomic.make false in
+  let rec acquire () = if atomic_test_and_set cell then acquire () (* retry *) in
+  @{ acquire; release = fun () -> clear cell @}
+@end example
+
+@noindent
+@code{Atomic_test_and_set} tests the cell and returns the result of the test.  In
+addition, if the test was false, @code{atomic_test_and_set} sets the cell contents to
+true before returning false.  We can express this behavior as the following
+procedure:
+
+@example ocaml
+let test_and_set cell = if !cell then true else (cell := true; false)
+@end example
+
+@noindent
+However, this implementation of @code{test_and_set} does not suffice as it
+stands.  The subtlety here is the essential place where concurrency control enters the system: The @code{test_and_set} operation must
+be performed @newterm{atomically}.  That is, we must guarantee that, once a
+process has tested the cell and found it to be false, the cell contents will
+actually be set to true before any other process can test the cell.  If we do
+not make this guarantee, then the mutex can fail in a way similar to the
+bank-account failure in @ref{Figure 3.29}.  (See @ref{Exercise 3.46}.)
+
+The actual implementation of @code{test_and_set} depends on the details of how
+our system runs concurrent processes.  For example, we might be executing
+concurrent processes on a sequential processor using a time-slicing mechanism
+that cycles through the processes, permitting each process to run for a short
+time before interrupting it and moving on to the next process.  In that case,
+@code{test_and_set} can work by disabling time slicing during the testing and
+setting.@footnote{A runtime that schedules its domains by time slicing on a
+single core could make the test indivisible by disallowing preemption while
+the test-and-set runs.  OCaml takes the hardware route instead:
+@code{Atomic.compare_and_set} is one indivisible compare-and-exchange, and the
+cell becomes an @code{Atomic.t} holding the mutex's state.}  Alternatively, multiprocessing computers provide
+instructions that support atomic operations directly in
+hardware.@footnote{There are many variants of such instructions---including
+test-and-set, test-and-clear, swap, compare-and-exchange, load-reserve, and
+store-conditional---whose design must be carefully matched to the machine's
+processor-memory interface.  One issue that arises here is to determine what
+happens if two processes attempt to acquire the same resource at exactly the
+same time by using such an instruction.  This requires some mechanism for
+making a decision about which process gets control.  Such a mechanism is called
+an @newterm{arbiter}.  Arbiters usually boil down to some sort of hardware
+device.  Unfortunately, it is possible to prove that one cannot physically
+construct a fair arbiter that works 100% of the time unless one allows the
+arbiter an arbitrarily long time to make its decision.  The fundamental
+phenomenon here was originally observed by the fourteenth-century French
+philosopher Jean Buridan in his commentary on Aristotle's @i{De caelo}.
+Buridan argued that a perfectly rational dog placed between two equally
+attractive sources of food will starve to death, because it is incapable of
+deciding which to go to first.}
+
+In this edition, the cell of @code{make_mutex} is an @code{Atomic.t}, and the
+indivisible test-and-set it needs negates the host's compare-and-set, which
+answers true on the opposite event (a successful change from false to true):
+
+@example ocaml
+let atomic_test_and_set cell = not (Atomic.compare_and_set cell false true)
+@end example
+
+@noindent
+Substituting the naive @code{test_and_set} above for this one would seat two
+domains in the mutex at once -- exactly the failure @ref{Exercise 3.46} asks
+you to diagram.
+
+@quotation
+@strong{@anchor{Exercise 3.46}Exercise 3.46:} Suppose that we implement
+@code{test_and_set}  using an ordinary procedure as shown in the text, without
+attempting to make the operation atomic.  Draw a timing diagram like the one in
+@ref{Figure 3.29} to demonstrate how the mutex implementation can fail by
+allowing two processes to acquire the mutex at the same time.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.47}Exercise 3.47:} A semaphore (of size @math{n}) is a
+generalization of a mutex.  Like a mutex, a semaphore supports acquire and
+release operations, but it is more general in that up to @math{n} processes can
+acquire it concurrently.  Additional processes that attempt to acquire the
+semaphore must wait for release operations.  Give implementations of semaphores
+
+@enumerate a
+
+@item
+in terms of mutexes
+
+@item
+in terms of atomic @code{test_and_set} operations.
+
+@end enumerate
+@end quotation
+
+@quotation
+@emph{Exercise 3.47a is added by this edition and extends exercise 3.47; SICP
+numbers stop at 3.47.} @strong{@anchor{Exercise 3.47a}Exercise 3.47a:}
+Both semaphore constructions of exercise 3.47 make a waiting process spin, so
+an acquirer that cannot get in burns cycles while it waits.  The host offers a
+quieter pair: one @code{Mutex} to guard the permit count and one
+@code{Condition} to park waiters and wake them.  Implement a bounded semaphore
+on those: @code{make_bounded n} builds one of size @math{n} (a nonpositive
+capacity is rejected), @code{acquire_bounded} blocks while no permit is free,
+@code{release_bounded} returns a permit and wakes a waiter, and
+@code{try_acquire_bounded} answers whether a permit was available without ever
+blocking.  Check your semaphore against a size-2 one: two permits handed out, a
+third attempt refused, and an acquirer blocked on a drained semaphore that
+completes only after a release.
+@end quotation
+
+@subsubheading Deadlock
+
+Now that we have seen how to implement serializers, we can see that account
+exchanging still has a problem, even with the @code{serialized_exchange}
+procedure above.  Imagine that Peter attempts to exchange @math{{a1}} with @math{{a2}}
+while Paul concurrently attempts to exchange @math{{a2}} with @math{{a1}}.  Suppose that
+Peter's process reaches the point where it has entered a serialized procedure
+protecting @math{{a1}} and, just after that, Paul's process enters a serialized
+procedure protecting @math{{a2}}.  Now Peter cannot proceed (to enter a serialized
+procedure protecting @math{{a2}}) until Paul exits the serialized procedure
+protecting @math{{a2}}.  Similarly, Paul cannot proceed until Peter exits the
+serialized procedure protecting @math{{a1}}.  Each process is stalled forever,
+waiting for the other.  This situation is called a @newterm{deadlock}.
+Deadlock is always a danger in systems that provide concurrent access to
+multiple shared resources.
+
+One way to avoid the deadlock in this situation is to give each account a
+unique identification number and rewrite @code{serialized_exchange} so that a
+process will always attempt to enter a procedure protecting the lowest-numbered
+account first.  Although this method works well for the exchange problem, there
+are other situations that require more sophisticated deadlock-avoidance
+techniques, or where deadlock cannot be avoided at all.  (See @ref{Exercise 3.48}
+and @ref{Exercise 3.49}.)@footnote{The general technique for avoiding
+deadlock by numbering the shared resources and acquiring them in order is due
+to @ref{Havender (1968)}.  Situations where deadlock cannot be avoided require
+@newterm{deadlock-recovery} methods, which entail having processes ``back out''
+of the deadlocked state and try again.  Deadlock-recovery mechanisms are widely
+used in database management systems, a topic that is treated in detail in
+@ref{Gray and Reuter 1993}.}
+
+@quotation
+@strong{@anchor{Exercise 3.48}Exercise 3.48:} Explain in detail why the
+deadlock-avoidance method described above, (i.e., the accounts are numbered,
+and each process attempts to acquire the smaller-numbered account first) avoids
+deadlock in the exchange problem.  Rewrite @code{serialized_exchange} to
+incorporate this idea.  (You will also need to modify @code{make_account} so
+that each account is created with a number, which can be accessed by sending an
+appropriate message.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.49}Exercise 3.49:} Give a scenario where the
+deadlock-avoidance mechanism described above does not work.  (Hint: In the
+exchange problem, each process knows in advance which accounts it will need to
+get access to.  Consider a situation where a process must get access to some
+shared resources before it can know which additional shared resources it will
+require.)
+@end quotation
+
+@subsubheading Concurrency, time, and communication
+
+We've seen how programming concurrent systems requires controlling the ordering
+of events when different processes access shared state, and we've seen how to
+achieve this control through judicious use of serializers.  But the problems of
+concurrency lie deeper than this, because, from a fundamental point of view,
+it's not always clear what is meant by ``shared state.''
+
+Mechanisms such as @code{test_and_set} require processes to examine a global
+shared flag at arbitrary times.  This is problematic and inefficient to
+implement in modern high-speed processors, where due to optimization techniques
+such as pipelining and cached memory, the contents of memory may not be in a
+consistent state at every instant.  In contemporary multiprocessing systems,
+therefore, the serializer paradigm is being supplanted by new approaches to
+concurrency control.@footnote{One such alternative to serialization is called
+@newterm{barrier synchronization}.  The programmer permits concurrent processes
+to execute as they please, but establishes certain synchronization points
+(``barriers'') through which no process can proceed until all the processes
+have reached the barrier.  Modern processors provide machine instructions that
+permit programmers to establish synchronization points at places where
+consistency is required.  The @abbr{PowerPC}, for example, includes for
+this purpose two instructions called @abbr{SYNC} and @abbr{EIEIO}
+(Enforced In-order Execution of Input/Output).}
+
+The problematic aspects of shared state also arise in large, distributed
+systems.  For instance, imagine a distributed banking system where individual
+branch banks maintain local values for bank balances and periodically compare
+these with values maintained by other branches.  In such a system the value of
+``the account balance'' would be undetermined, except right after
+synchronization.  If Peter deposits money in an account he holds jointly with
+Paul, when should we say that the account balance has changed---when the
+balance in the local branch changes, or not until after the synchronization?
+And if Paul accesses the account from a different branch, what are the
+reasonable constraints to place on the banking system such that the behavior is
+``correct''?  The only thing that might matter for correctness is the behavior
+observed by Peter and Paul individually and the ``state'' of the account
+immediately after synchronization.  Questions about the ``real'' account
+balance or the order of events between synchronizations may be irrelevant or
+meaningless.@footnote{This may seem like a strange point of view, but there are
+systems that work this way.  International charges to credit-card accounts, for
+example, are normally cleared on a per-country basis, and the charges made in
+different countries are periodically reconciled.  Thus the account balance may
+be different in different countries.}
+
+The basic phenomenon here is that synchronizing different processes,
+establishing shared state, or imposing an order on events requires
+communication among the processes.  In essence, any notion of time in
+concurrency control must be intimately tied to communication.@footnote{For
+distributed systems, this perspective was pursued by @ref{Lamport (1978)}, who showed
+how to use communication to establish ``global clocks'' that can be used to
+establish orderings on events in distributed systems.}  It is intriguing that a
+similar connection between time and communication also arises in the Theory of
+Relativity, where the speed of light (the fastest signal that can be used to
+synchronize events) is a fundamental constant relating time and space.  The
+complexities we encounter in dealing with time and state in our computational
+models may in fact mirror a fundamental complexity of the physical universe.

@@ -1,0 +1,137 @@
+@node	0.8, 0.9, Chapter 0, Chapter 0
+@section Errors
+
+@noindent
+This book distinguishes two kinds of failure, and gives each its own
+mechanism. A condition that is impossible if every earlier part of the
+program is correct (a broken internal invariant, a case a caller was told never to reach) is an @newterm{exception}: it stops the program (or a
+handler further up the call chain) rather than trying to compute a sensible
+result from nonsense. A condition that is a normal, expected possibility of
+the operation itself (a string that might not parse as a number, a division that might be by zero) is a value the caller must handle, using
+@code{option} or @code{result}. Which of the two applies is a design
+decision, not a matter of taste, and this edition applies it consistently
+throughout.
+
+@subsubheading Exceptions, for violated invariants
+
+@code{exception} declares a new exception constructor, @code{raise} throws
+it, and an unhandled exception stops the program with a message naming it:
+
+@example
+# exception Empty_queue;;
+exception Empty_queue
+# let dequeue = function
+    | [] -> raise Empty_queue
+    | head :: tail -> head, tail;;
+val dequeue : 'a list -> 'a * 'a list = <fun>
+# dequeue [ 1; 2 ];;
+- : int * int list = (1, [2])
+# dequeue ([] : int list);;
+Exception: Empty_queue.
+@end example
+
+@noindent
+@code{dequeue}'s caller is expected to know the queue is nonempty before
+calling; dequeuing an empty queue is a bug at the call site, not a
+circumstance to route around, so it raises rather than returning some
+placeholder. @code{assert} is the same idea applied to a condition stated
+inline rather than as a separate @code{match} arm; it raises @code{Assert_failure}, naming the exact source location, if the asserted
+condition is false:
+
+@example
+# let checked_sqrt n =
+    assert (n >= 0);
+    sqrt (float_of_int n)
+  ;;
+val checked_sqrt : int -> float = <fun>
+# checked_sqrt 9;;
+- : float = 3.
+# checked_sqrt (-1);;
+Exception: Assert_failure ("//toplevel//", 2, 2).
+@end example
+
+@noindent
+@code{(2, 2)} names the line and column of the @code{assert} inside the phrase just typed; a real program's assertion failure names a file and
+line the same way, pointing straight at the violated invariant. This
+edition never writes a bare @code{try @dots{} with _ ->}: catching every
+exception indiscriminately, including ones the catching code has no way to
+have anticipated, throws away exactly the information @code{Assert_failure}
+and its cousins exist to preserve.
+
+@subsubheading @code{result}, for expected failure
+
+A function whose failure is a normal outcome of its input, not a broken
+invariant, returns @code{('a, 'error) result}: @code{Ok @var{value}} on
+success, @code{Error @var{error}} on the expected kind of failure. A closed
+variant of possible errors, rather than a bare string, lets a caller match
+on exactly which failure occurred:
+
+@example
+# type step_error =
+    | Bad_number of string
+    | Odd of int;;
+type step_error = Bad_number of string | Odd of int
+# let parse_int s =
+    match int_of_string_opt s with
+    | Some n -> Ok n
+    | None -> Error (Bad_number s);;
+val parse_int : string -> (int, step_error) result = <fun>
+# let halve_even n = if n mod 2 = 0 then Ok (n / 2) else Error (Odd n);;
+val halve_even : int -> (int, step_error) result = <fun>
+@end example
+
+@subsubheading Chaining fallible steps with @code{Result.bind}
+
+Three steps that each might fail compose with @code{Result.bind}, which
+runs the next step only if the previous one succeeded, and short-circuits
+to the first @code{Error} otherwise: this is this edition's whole answer
+to the question a long @code{cond} chain of error checks would otherwise
+answer by hand:
+
+@example
+# let label n = Ok (string_of_int n ^ " is half of the input");;
+val label : int -> (string, 'a) result = <fun>
+# let message = function
+    | Bad_number s -> "not a number: " ^ s
+    | Odd n -> string_of_int n ^ " is odd";;
+val message : step_error -> string = <fun>
+# let half_report s =
+    Result.bind (Result.bind (parse_int s) halve_even) label
+    |> Result.map_error message;;
+val half_report : string -> (string, string) result = <fun>
+# half_report "20";;
+- : (string, string) result = Ok "10 is half of the input"
+# half_report "7";;
+- : (string, string) result = Error "7 is odd"
+# half_report "x";;
+- : (string, string) result = Error "not a number: x"
+@end example
+
+@noindent
+@code{Result.bind (Result.bind (parse_int s) halve_even) label} reads
+inside-out: parse, then (if parsing succeeded) halve, then (if halving
+succeeded) label. @code{Result.map_error} runs only on the @code{Error} side,
+turning whichever @code{step_error} stopped the chain into one printable
+line; a caller of @code{half_report} sees exactly one of a success string or
+a failure string, never a raised exception, because nothing about a bad
+input to this function is an invariant violation: it is the input a string of unknown provenance is expected to sometimes be.
+
+Exercise 0.5 is the same chain with every error already collapsed to plain
+@code{string}, and chapter 4's evaluator leans on this same
+@code{result}-chaining shape wherever a computation can fail for a reason
+the caller should see, not merely a reason the program should stop for.
+
+@subsubheading Exercise
+
+@quotation
+@strong{@anchor{Exercise 0.5}Exercise 0.5:} Chain three fallible steps with
+@code{Result.bind}: parse a year of age from a string, check that it lies
+between @code{0} and @code{150}, and describe it in a sentence. Then map
+whichever @code{Error} stops the chain into one printable summary string, so
+that a caller of @code{age_summary} sees a readable sentence either way.
+@end quotation
+
+@noindent
+A scaffold for it lives in @file{ch0/exercises/ex_0_05.mli}; the reference
+solution is @file{ch0/solutions/ex_0_05.ml}, with the reasoning in
+@file{ch0/solutions/ex_0_05.md}.

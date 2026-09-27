@@ -1,0 +1,177 @@
+@node	0.2, 0.3, Chapter 0, Chapter 0
+@section Expressions, values, and types
+
+@noindent
+Every value in this book's OCaml has one of a small set of primitive types:
+@code{int}, @code{float}, @code{bool}, @code{string}, and @code{unit}, the
+type with exactly one value, written @code{()}, that stands for ``nothing
+interesting to return.'' A literal number is an expression, exactly as it is
+in Scheme, and the interpreter reports its type along with its value:
+
+@example
+# 486;;
+- : int = 486
+@end example
+
+@noindent
+Arithmetic combines expressions the way Scheme's @code{(+ 137 349)} does, but
+prefix notation becomes infix, and each operator works on exactly one type:
+
+@example
+# 5 + 3 + 4;;
+- : int = 12
+# 10 - 9;;
+- : int = 1
+# (2 * 4) + (4 - 6);;
+- : int = 6
+# 10 / 5;;
+- : int = 2
+# 21 * 35;;
+- : int = 735
+@end example
+
+@noindent
+@code{/} is integer division; it truncates, and @code{mod} recovers the
+remainder:
+
+@example
+# 10 / 3;;
+- : int = 3
+# 10 mod 3;;
+- : int = 1
+@end example
+
+@subsubheading Two number types, never mixed silently
+
+Scheme's numeric tower quietly moves between exact and inexact numbers;
+@code{(+ 2.7 10)} is @code{12.7} with no ceremony. OCaml keeps @code{int} and
+@code{float} apart, with distinct operators for each: @code{+}, @code{-},
+@code{*}, and @code{/} work only on @code{int}, and @code{+.}, @code{-.},
+@code{*.}, and @code{/.} work only on @code{float}. There is no automatic
+promotion between them:
+
+@example
+# 10.0 /. 3.0;;
+- : float = 3.33333333333333348
+# 1 +. 1.0;;
+Line 1, characters 0-1:
+1 | 1 +. 1.0;;
+    ^
+Error: The constant 1 has type int but an expression was expected of type
+         float
+Hint: Did you mean 1.?
+@end example
+
+@noindent
+That error is not friction; it is the type checker catching, before the
+program runs, exactly the class of mistake that in a dynamically typed
+language surfaces only when the wrong branch finally executes. The hint is
+literal advice: @code{1.} is the @code{float} literal for one, spelled with a
+trailing dot. Crossing from @code{int} to @code{float} is always a deliberate
+function call, most often @code{Float.of_int}:
+
+@example
+# Float.of_int 5;;
+- : float = 5.
+@end example
+
+@noindent
+and the reverse, @code{int_of_float}, truncates toward zero exactly as
+@code{/} does:
+
+@example
+# int_of_float 3.7;;
+- : int = 3
+@end example
+
+@noindent
+This book's numeric convention fixes which of the two is used where:
+@code{int} for counters, indices, and exact arithmetic;
+@code{float} for anything that can be irrational, such as square roots and
+iterative approximations. The two are never mixed in one expression without
+an explicit conversion, and that rule has no exceptions in this book's code.
+
+@subsubheading Strings, booleans, and comparisons
+
+Strings are a fourth primitive type, concatenated with @code{^}:
+
+@example
+# string_of_int 42;;
+- : string = "42"
+# "lis" ^ "p";;
+- : string = "lisp"
+# String.length "scheme";;
+- : int = 6
+@end example
+
+@noindent
+@code{bool} is a fifth, with the two values @code{true} and @code{false}.
+Comparison operators return @code{bool} rather than a truthy/falsy value of
+some other type, and @code{not} negates:
+
+@example
+# 1 < 2;;
+- : bool = true
+# not (1 = 2);;
+- : bool = true
+@end example
+
+@noindent
+@code{=} is structural equality on any two values of the same type,
+including two @code{int}s here; Scheme's three-way split between @code{eq?},
+@code{eqv?}, and @code{equal?} appears later, in section 0.6, once mutable
+data gives identity a reason to differ from equality.
+
+@subsubheading Named values, briefly
+
+@code{let} names a value, and every named value carries the type the
+compiler inferred for it, never a type the programmer merely hoped for. Two
+small definitions from this section's running example, reproduced in
+@file{ch0/lib/sec_0_2.ml}, show a converting function and a
+comparison-producing one side by side:
+
+@example
+# let average_of_two_ints a b = Float.of_int (a + b) /. 2.0;;
+val average_of_two_ints : int -> int -> float = <fun>
+# average_of_two_ints 5 3;;
+- : float = 4.
+# let warm_enough celsius = celsius >= 18.0;;
+val warm_enough : float -> bool = <fun>
+# warm_enough 20.0;;
+- : bool = true
+# warm_enough 10.0;;
+- : bool = false
+# let greet name = "hello, " ^ name ^ "!";;
+val greet : string -> string = <fun>
+# greet "sicp";;
+- : string = "hello, sicp!"
+@end example
+
+@noindent
+@code{average_of_two_ints} adds two @code{int}s first, then crosses to
+@code{float} in the one place the division needs it; the type checker would
+reject the addition itself becoming a @code{float} operation, since @code{a}
+and @code{b} are still @code{int} at that point. Section 0.3 covers
+@code{let} and function definitions properly; this section's point is
+narrower: every value here has exactly one type, decided at compile time, and
+that type is what the interpreter reports on the line above every value.
+
+@subsubheading Exercises
+
+@quotation
+@strong{@anchor{Exercise 0.1}Exercise 0.1:} Translate each of the five Scheme
+interactions below into OCaml and reproduce it in utop, writing each response
+exactly as the toplevel prints it, inferred type included: @code{(+ 2 (* 4
+6))}; the @code{square} definition together with the call @code{(square 7)};
+@code{(if (> 4 11) 4 11)}, generalized to a two-argument @code{larger}
+function and then specialized back to @code{larger_of_4_and_11}; and the
+anonymous square @code{((lambda (x) (* x x)) 5)}. Name the six results
+@code{sum_with_product}, @code{square}, @code{seven_squared}, @code{larger},
+@code{larger_of_4_and_11}, and @code{anonymous_square}.
+@end quotation
+
+@noindent
+A scaffold for it lives in @file{ch0/exercises/ex_0_01.mli}; the reference
+solution is @file{ch0/solutions/ex_0_01.ml}, with the reasoning in
+@file{ch0/solutions/ex_0_01.md} and its contract pinned by
+@file{ch0/test/test_solutions.ml}.

@@ -1,0 +1,139 @@
+@node	0.9, Chapter 1, 0.8, Chapter 0
+@section Modules, crates, and reading this book
+
+@subheading The workspace
+
+This edition lives under @code{rust/}, a Cargo @newterm{workspace}: one
+@code{Cargo.toml} at the root lists member @newterm{crates}, one crate per
+book chapter (@code{crates/ch01} through @code{crates/ch05}), plus
+@code{crates/sicp-runtime} for the types every chapter shares (@code{Value},
+@code{Env}, @code{Stream}, and the rest) and @code{crates/ch00} for this
+chapter. Each chapter crate follows the same shape:
+
+@example text
+crates/chNN/
+  src/lib.rs          declares one module per section
+  src/sec_X_Y.rs       that section's library code
+  examples/*.rs        one file per book listing, with assertions
+@end example
+
+@noindent
+and two top-level directories hold every exercise, outside the crates:
+@code{exercises/chNN/sec_X_Y.rs} for pending scaffolds, and
+@code{solutions/chNN/sec_X_Y.rs} for reference solutions, each wired into its
+crate's @code{Cargo.toml} as its own test target. A listing from this
+chapter, say the one in @ref{0.1}, runs with:
+
+@example text
+cargo run --example sec_0_1_bindings
+@end example
+
+@noindent
+from inside @code{rust/}, and its assertions are also checked by
+@code{cargo nextest run --workspace}, which runs every crate's tests
+(including every example's own @code{#[test]}s where it has them) in one
+pass. @code{cargo fmt --check} and @code{cargo clippy --all-targets -- -D
+warnings} are the formatting and lint gates every commit in this edition
+passes; running code is never required to read the book, only to check it or
+extend it.
+
+Every public function, type, and module in @code{crates/} carries a
+@code{///} @newterm{doc comment} directly above it; a module's own summary is
+a @code{//!} comment at the top of its file. These are not decoration:
+@code{#![deny(missing_docs)]} is a workspace-wide lint, so an undocumented
+public item is a compile error, and @code{cargo doc --open} turns every one
+of these comments into the browsable API reference for this edition's
+crates.
+
+@subheading Reading a borrow-checker error
+
+A rejected program in this book almost always fails with a specific,
+readable diagnostic rather than a bare ``no.'' A typical one for
+@ref{0.3}'s case A reads, in outline:
+
+@example text
+error[E0382]: borrow of moved value: `a`
+ --> src/main.rs:3:23
+  |
+2 |     let b = a;
+  |             - value moved here
+3 |     println!("@{a@} @{b@}");
+  |               ^^ value borrowed here after move
+@end example
+
+@noindent
+The error code (@code{E0382} here), the line the value moved on, and the line
+that tried to use it afterward are all present in every such message;
+@code{rustc --explain E0382} prints a longer explanation of that error class
+on demand. Learning to read one of these end to end, rather than pattern-
+matching on the shape of the error, pays off for the rest of the book.
+
+@subheading The interaction convention
+
+Every runnable listing in this book, starting with the first one in
+@ref{0.1}, is shown as one @code{@@example rust} block. A line of output is
+followed by a comment giving the value or text that line produces; a result
+comment always carries the marker @code{// =>}, as in
+
+@example rust
+println!("@{@}", 6 * 7);
+// => 42
+@end example
+
+@noindent
+while a line that only produces a side effect with no return value worth
+naming (a loop's intermediate prints, for instance) is followed by a plain
+@code{//} comment with no marker. The marker exists because the source this
+book adapts prints its interpreter's responses in italics after each
+expression; a comment is this edition's equivalent, and it stays a valid
+Rust comment in every renderer, including a PDF with no syntax highlighting
+at all. The value shown after @code{=>} is not asserted by the prose: it is
+asserted by a real @code{assert_eq!} in the runnable file the listing names,
+which fires when the reader runs the example with
+@code{cargo run --example}. The verification gate compiles every example, so
+a listing that stops compiling fails the gate; whether a printed value
+agrees with the code is checked by running the example, not by the gate.
+
+@subheading Exercise numbers and the exercise map
+
+Every exercise in chapters 1 through 5 keeps its original number from the
+source book; @code{docs/exercise-map.md} at the repository root records,
+for every one of those 356 exercises, which of three things this edition did
+with it: @code{T} (translate: only the syntax changed), @code{A} (adapt: the
+idea survives, the statement changed, with the reason recorded), or @code{R}
+(replace: the exercise was about Scheme itself, so a language-tailored
+exercise under the same number replaces it). A replaced exercise's statement
+opens with a fixed sentence naming the substitution:
+
+@quotation
+@emph{SICP exercise @math{N.M} is about Scheme itself, so this edition
+replaces it; the exercise below keeps the number and teaches the same
+section material.}
+@end quotation
+
+@noindent
+and the rare added exercise, at most one per section, is numbered with a
+lowercase letter after the exercise it extends (@code{2.73a}, for example)
+and opens the same way:
+
+@quotation
+@emph{Exercise @math{N.Ma} is added by this edition and extends exercise
+@math{N.M}; SICP numbers stop at @math{N.M}.}
+@end quotation
+
+This chapter is the one exception to all of it. Chapter 0 does not exist in
+the source book, so its five exercises, numbered @code{0.1} through
+@code{0.5} in the order they appear across this chapter's sections, are new
+material this edition adds outside that numbering entirely; none of them
+carries a signpost, because none of them replaces or extends anything. Every
+exercise you have seen so far in this chapter, and every one in the chapters
+ahead, has exactly three files: its scaffold, a failing test until solved; a
+reference solution, a passing test once solved; and a short rationale beside
+the solution explaining the approach. Running @code{cargo nextest run
+--workspace --run-ignored ignored-only --no-tests=pass} lists exactly the
+exercises still pending, by name, which is the standing way to see what is
+left to solve without reading every file in @code{exercises/} by hand.
+
+You now have the whole vocabulary chapter 1 assumes. It starts, as the source
+book does, with values, procedures, and the substitution model, in Rust
+syntax instead of Scheme's.

@@ -1,0 +1,1072 @@
+@node	3.2, 3.3, 3.1, Chapter 3
+@section The Environment Model of Evaluation
+
+When we introduced functions in @ref{Chapter 1}, we used the
+substitution model of evaluation (@ref{1.1.5}) to define what is meant
+by applying a function to arguments:
+
+@itemize @bullet
+
+@item
+To apply a function to arguments, evaluate the body of the function
+with each formal parameter replaced by the corresponding argument.
+
+@end itemize
+
+@noindent
+Once we admit assignment into our programming language, such a definition is no
+longer adequate.  In particular, @ref{3.1.3} argued that, in the
+presence of assignment, a variable can no longer be considered to be merely a
+name for a value.  Rather, a variable must somehow designate a ``place'' in
+which values can be stored.  In our new model of evaluation, these places will
+be maintained in structures called @newterm{environments}.
+
+An environment is a sequence of @newterm{frames}.  Each frame is a table
+(possibly empty) of @newterm{bindings}, which associate variable names with
+their corresponding values.  (A single frame may contain at most one binding
+for any variable.)  Each frame also has a pointer to its @newterm{enclosing environment}, 
+unless, for the purposes of discussion, the frame is considered
+to be @newterm{global}.  The @newterm{value of a variable} with respect to an
+environment is the value given by the binding of the variable in the first
+frame in the environment that contains a binding for that variable.  If no
+frame in the sequence specifies a binding for the variable, then the variable
+is said to be @newterm{unbound} in the environment.
+
+@ref{Figure 3.1} shows a simple environment structure consisting of three
+frames, labeled I, II, and III.  In the diagram, A, B, C, and D are pointers to
+environments.  C and D point to the same environment.  The variables @code{z}
+and @code{x} are bound in frame II, while @code{y} and @code{x} are bound in
+frame I.  The value of @code{x} in environment D is 3.  The value of @code{x}
+with respect to environment B is also 3.  This is determined as follows: We
+examine the first frame in the sequence (frame III) and do not find a binding
+for @code{x}, so we proceed to the enclosing environment D and find the binding
+in frame I.  On the other hand, the value of @code{x} in environment A is 7,
+because the first frame in the sequence (frame II) contains a binding of
+@code{x} to 7.  With respect to environment A, the binding of @code{x} to 7 in
+frame II is said to @newterm{shadow} the binding of @code{x} to 3 in frame I.
+
+@float
+@anchor{Figure 3.1}
+@ifinfo
+@quotation
+@strong{Figure 3.1:} A simple environment structure.
+
+@example
+           +--------+
+           |      I |
+           | x: 3   |
+           | y: 5   |
+           +--------+
+              ^  ^
+              |  |
+            C |  | D
++---------+   |  |   +----------+
+|      II |   |  |   |      III |
+| z: 6    +---+  +---+ m: 1     |
+| x: 7    |          | y: 2     |
++---------+          +----------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.1b,,69mm,Figure 3.1: A simple environment structure.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.1b.std,,69mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.1:} A simple environment structure.}
+@end float
+
+@noindent
+The environment is crucial to the evaluation process, because it determines the
+context in which an expression should be evaluated.  Indeed, one could say that
+expressions in a programming language do not, in themselves, have any meaning.
+Rather, an expression acquires a meaning only with respect to some environment
+in which it is evaluated.  Even the interpretation of an expression as
+straightforward as @code{1L + 1L} depends on an understanding that one is
+operating in a context in which @code{+} is the operator for addition.  Thus, in
+our model of evaluation we will always speak of evaluating an expression with
+respect to some environment.  To describe programs, we will suppose that there
+is a global environment, consisting of a single frame (with no enclosing
+environment) that holds every top-level declaration, every function and
+@code{val} declared directly in a file, not nested inside another
+declaration.  Kotlin resolves these names when the program is compiled, so the
+global environment of a running Kotlin program is fixed before the program
+starts; the frames this chapter is about are the ones a function call or a
+lambda opens while the program runs, and they hold parameters, local
+declarations, and captured variables.  The idea that @code{+} is the operator
+for addition needs no binding at all: it is part of the language itself,
+outside every frame.  Chapter 4's evaluator gives this model a concrete data
+structure: a chain of @code{Env} frames, each a map from name to value plus a
+pointer to the frame it extends. Every captured @code{var} in this
+section is what that structure realizes.
+
+@menu
+* 3.2.1::            The Rules for Evaluation
+* 3.2.2::            Applying Simple Procedures
+* 3.2.3::            Frames as the Repository of Local State
+* 3.2.4::            Internal Definitions
+@end menu
+
+@node	3.2.1, 3.2.2, 3.2, 3.2
+@subsection The Rules for Evaluation
+
+The overall specification of how a call is evaluated
+remains the same as when we first introduced it in @ref{1.1.3}:
+
+@itemize @bullet
+
+@item
+To evaluate a call:
+
+@end itemize
+
+@enumerate 1
+
+@item
+Evaluate the function expression and every argument expression.@footnote{Assignment introduces a
+subtlety into step 1 of the evaluation rule.  As shown in @ref{Exercise 3.8},
+the presence of assignment allows us to write expressions that will produce
+different values depending on the order in which the subexpressions of a call
+are evaluated.  Kotlin closes the gap this footnote originally opened: a
+call's receiver and argument expressions are always evaluated left to right,
+a guarantee of the language rather than an implementation choice, so
+@ref{Exercise 3.8} asks you to build the probe that would have been needed to
+discover an unspecified order, and to confirm that Kotlin leaves nothing left
+to discover.}
+
+@item
+Apply the value of the function expression to the values of the argument
+expressions.
+
+@end enumerate
+
+@noindent
+The environment model of evaluation replaces the substitution model in
+specifying what it means to apply a function to arguments.
+
+In the environment model of evaluation, a function value is always a pair
+consisting of some code and a pointer to an environment.  Function values are
+created in one way only: by evaluating a lambda expression.  This produces a
+function value whose code is obtained from the text of the lambda expression
+and whose environment is the environment in which the lambda expression was
+evaluated to produce the function value.  For example, consider the function
+declaration
+
+@example kotlin
+fun square(x: Long): Long = x * x
+@end example
+
+@noindent
+evaluated in the global environment.  The @code{fun} declaration syntax is just
+syntactic sugar for an underlying implicit lambda expression.  It would
+have been equivalent to have used
+
+@example kotlin
+val squareFn: (Long) -> Long = @{ x -> x * x @}
+@end example
+
+@noindent
+which evaluates @code{@{ x -> x * x @}} and binds @code{squareFn} to the
+resulting value, all in the global environment under a fresh name, since
+Kotlin refuses a second declaration of @code{square} in one scope.
+
+@ref{Figure 3.2} shows the result of evaluating this @code{fun} declaration.
+The function object is a pair whose code specifies that the function has one
+formal parameter, namely @code{x}, and a function body @code{(* x x)}.  The
+environment part of the function is a pointer to the global environment, since
+that is the environment in which the lambda expression was evaluated to
+produce the function.  A new binding, which associates the function object
+with the name @code{square}, has been added to the global frame.  In general,
+a top-level declaration creates a binding by adding it to a frame.
+
+@float
+@anchor{Figure 3.2}
+@ifinfo
+@quotation
+@strong{Figure 3.2:} Environment structure produced by
+evaluating @code{(define (square x) (* x x))} in the global environment.
+
+@example
+           +----------------------+
+           | other variables      |
+global --->|                      |
+env        | square: --+          |
+           +-----------|----------+
+                       |       ^
+(define (square x)     |       |
+  (* x x))             V       |
+                   .---.---.   |
+                   | O | O-+---+
+                   `-|-^---'
+                     |
+                     V
+                   parameters: x
+                   body: (* x x)
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.2b,,81mm,Figure 3.2: Environment structure produced by evaluating (define (square x) (* x x)) in the global environment.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.2b.std,,81mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.2:} Environment structure produced by evaluating @code{(define (square x) (* x x))} in the global environment.}
+@end float
+
+@noindent
+Now that we have seen how functions are created, we can describe how
+functions are applied.  The environment model specifies: To apply a function
+to arguments, create a new environment containing a frame that binds the
+parameters to the values of the arguments.  The enclosing environment of this
+frame is the environment specified by the function.  Now, within this new
+environment, evaluate the function body.
+
+To show how this rule is followed, @ref{Figure 3.3} illustrates the environment
+structure created by evaluating the expression @code{square(5L)} in the global
+environment, where @code{square} is the function generated in @ref{Figure 3.2}.
+Applying the function results in the creation of a new environment,
+labeled E1 in the figure, that begins with a frame in which @code{x}, the
+formal parameter for the function, is bound to the argument 5.  The pointer
+leading upward from this frame shows that the frame's enclosing environment is
+the global environment.  The global environment is chosen here, because this is
+the environment that is indicated as part of the @code{square} function
+object.  Within E1, we evaluate the body of the function, @code{x * x}.
+Since the value of @code{x} in E1 is 5, the result is @code{5 * 5}, or 25.
+
+@float
+@anchor{Figure 3.3}
+@ifinfo
+@quotation
+@strong{Figure 3.3:} Environment created by evaluating
+@code{(square 5)} in the global environment.
+
+@example
+          +------------------------------------+
+          | other variables                    |
+global -->|                                    |
+env       | square: --+                        |
+          +-----------|---------------------+--+
+                      |       ^             ^
+(square 5)            |       |             |
+                      V       |             |
+                  .---.---.   |         +---+--+
+                  | O | O-+---+   E1 -->| x: 5 |
+                  `-|-^---'             +------+
+                    |
+                    V
+                  parameters: x
+                  body: (* x x)
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.3b,,129mm,Figure 3.3: Environment created by evaluating (square 5) in the global environment.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.3b.std,,129mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.3:} Environment created by evaluating @code{(square 5)} in the global environment.}
+@end float
+
+@noindent
+The environment model of function application can be summarized by two rules:
+
+@itemize @bullet
+
+@item
+A function object is applied to a set of arguments by constructing a frame,
+binding the formal parameters of the function to the arguments of the call,
+and then evaluating the body of the function in the context of the new
+environment constructed.  The new frame has as its enclosing environment the
+environment part of the function object being applied.
+
+@item
+A function is created by evaluating a lambda expression relative to a
+given environment.  The resulting function object is a pair consisting of the
+text of the lambda expression and a pointer to the environment in which
+the function was created.
+
+@end itemize
+
+@noindent
+We also specify that declaring a name with @code{val} or @code{fun} creates a
+binding in the current environment frame and assigns to the name the indicated
+value.@footnote{Kotlin, unlike Scheme's @code{define}, refuses a second
+declaration of the same name in the same frame outright: the compiler
+reports a redeclaration error rather than silently changing the existing
+binding.  Where the book's footnote here notes that some people prefer
+redefinitions of existing symbols to signal errors, Kotlin simply takes that
+side: the only way to change a name's value after it is declared is to have
+declared it @code{var} in the first place and assign to it, which is exactly
+the mechanism @ref{3.1} introduced.} Finally, we
+specify the behavior of assignment to a captured @code{var}, the operation
+that forced us to introduce the environment model in the first place.
+Evaluating an assignment such as @code{@var{variable} = @var{value}} or
+@code{@var{variable} -= @var{value}} in some environment locates the
+binding of the variable in the environment and changes that binding to indicate
+the new value.  That is, one finds the first frame in the environment that
+contains a binding for the variable and modifies that frame.  Kotlin checks
+this at compile time rather than at the moment of assignment: a name that
+was declared @code{val}, or that has no visible declaration at all, is a
+compile error, so the analogue of ``@code{set!} signals an error'' for an
+unbound variable can never happen at run time in Kotlin: the program that
+would trigger it does not compile.
+
+These evaluation rules, though considerably more complex than the substitution
+model, are still reasonably straightforward.  Moreover, the evaluation model,
+though abstract, provides a correct description of how the interpreter
+evaluates expressions.  In @ref{Chapter 4} we shall see how this model can
+serve as a blueprint for implementing a working interpreter: the runtime's
+@code{Env} class, a frame of bindings plus a pointer to the frame it extends,
+is that blueprint made concrete.  The following
+sections elaborate the details of the model by analyzing some illustrative
+programs.
+
+@node	3.2.2, 3.2.3, 3.2.1, 3.2
+@subsection Applying Simple Procedures
+
+When we introduced the substitution model in @ref{1.1.5} we showed how
+the call @code{f(5L)} evaluates to 136, given the following function
+declarations:
+
+@example kotlin
+fun square(x: Long): Long = x * x
+
+fun sumOfSquares(x: Long, y: Long): Long = square(x) + square(y)
+
+fun f(a: Long): Long = sumOfSquares(a + 1, a * 2)
+@end example
+
+@noindent
+We can analyze the same example using the environment model.  @ref{Figure 3.4}
+shows the three function objects created by evaluating the declarations of
+@code{f}, @code{square}, and @code{sumOfSquares} in the global environment.
+Each function object consists of some code, together with a pointer to the
+global environment.
+
+@float
+@anchor{Figure 3.4}
+@ifinfo
+@strong{Figure 3.4:} Procedure objects in the global frame.
+
+@example
+          +--------------------------------------------+
+          | sum-of-squares:                            |
+global -->| square:                                    |
+env       | f: --+                                     |
+          +------|--------------+--------------+-------+
+                 |     ^        |     ^        |     ^
+                 |     |        |     |        |     |
+                 V     |        V     |        V     |
+             .---.---. |    .---.---. |    .---.---. |
+             | O | O-+-+    | O | O-+-+    | O | O-+-+
+             `-|-^---'      `-|-^---'      `-|-^---'
+               |              |              |
+               V              V              V
+   parameters: a          parameters: x  parameters: x, y
+   body: (sum-of-squares  body: (* x x)  body: (+ (square x)
+           (+ a 1)                                (square y))
+           (* a 2))
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.4b,,132mm,Figure 3.4: Procedure objects in the global frame.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.4b.std,,132mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.4:} Procedure objects in the global frame.}
+@end float
+
+@noindent
+In @ref{Figure 3.5} we see the environment structure created by evaluating the
+expression @code{f(5L)}.  The call to @code{f} creates a new environment E1
+beginning with a frame in which @code{a}, the formal parameter of @code{f}, is
+bound to the argument 5.  In E1, we evaluate the body of @code{f}:
+
+@example kotlin
+sumOfSquares(a + 1, a * 2)
+@end example
+
+@float
+@anchor{Figure 3.5}
+@ifinfo
+@strong{Figure 3.5:} Environments created by evaluating
+@code{(f 5)} using the procedures in @ref{Figure 3.4}.
+
+@example
+          +-----------------------------------------------------+
+global -->|                                                     |
+env       +-----------------------------------------------------+
+            ^              ^                ^               ^
+(f 5)       |              |                |               |
+        +------+       +-------+        +------+        +-------+
+  E1 -->| a: 5 |  E2 ->| x: 6  |  E3 -->| x: 6 |  E4 -->| x: 10 |
+        |      |       | y: 10 |        |      |        |       |
+        +------+       +-------+        +------+        +-------+
+   (sum-of-squares   (+ (square x)       (* x x)         (* x x)
+     (+ a 1)            (square u))
+     (+ a 2))
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.5b,,142mm,Figure 3.5: Environments created by evaluating (f 5) using the procedures in Figure 3.4.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.5b.std,,142mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.5:} Environments created by evaluating @code{(f 5)} @w{using} the procedures in @ref{Figure 3.4}.}
+@end float
+
+@noindent
+To evaluate this call, we first evaluate the subexpressions.  The first
+subexpression, @code{sumOfSquares}, has a value that is a function object.
+(Notice how this value is found: We first look in the first frame of E1, which
+contains no binding for @code{sumOfSquares}.  Then we proceed to the
+enclosing environment, i.e. the global environment, and find the binding shown
+in @ref{Figure 3.4}.)  The other two subexpressions are evaluated, left to
+right, by applying the operators @code{+} and @code{*} to evaluate @code{a +
+1} and @code{a * 2}, obtaining 6 and 10, respectively.
+
+@noindent
+Now we apply the function object @code{sumOfSquares} to the arguments 6 and
+10.  This results in a new environment E2 in which the formal parameters
+@code{x} and @code{y} are bound to the arguments.  Within E2 we evaluate the
+expression @code{square(x) + square(y)}.  This leads us to evaluate
+@code{square(x)}, where @code{square} is found in the global frame and
+@code{x} is 6.  Once again, we set up a new environment, E3, in which @code{x}
+is bound to 6, and within this we evaluate the body of @code{square}, which is
+@code{x * x}.  Also as part of applying @code{sumOfSquares}, we must
+evaluate the subexpression @code{square(y)}, where @code{y} is 10.  This
+second call to @code{square} creates another environment, E4, in which
+@code{x}, the formal parameter of @code{square}, is bound to 10.  And within E4
+we must evaluate @code{x * x}.
+
+The important point to observe is that each call to @code{square} creates a new
+environment containing a binding for @code{x}.  We can see here how the
+different frames serve to keep separate the different local variables all named
+@code{x}.  Notice that each frame created by @code{square} points to the global
+environment, since this is the environment indicated by the @code{square}
+function object.
+
+After the subexpressions are evaluated, the results are returned.  The values
+generated by the two calls to @code{square} are added by @code{sumOfSquares},
+and this result is returned by @code{f}.  Since our focus here is on the
+environment structures, we will not dwell on how these returned values are
+passed from call to call; however, this is also an important aspect of the
+evaluation process, and we will return to it in detail in @ref{Chapter 5}.
+
+@quotation
+@strong{@anchor{Exercise 3.9}Exercise 3.9:} @emph{SICP exercise 3.9 is about
+Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.} In @ref{1.2.1} we used the
+substitution model to analyze two functions for computing factorials, a
+recursive version
+
+@example kotlin
+fun factorial(n: Long): Long =
+    if (n <= 1L) 1L else n * factorial(n - 1L)
+@end example
+
+@noindent
+and an iterative version
+
+@example kotlin
+tailrec fun factIter(product: Long, counter: Long, maxCount: Long): Long =
+    if (counter > maxCount) product else factIter(counter * product, counter + 1, maxCount)
+
+fun factorialIter(n: Long): Long = factIter(1L, 1L, n)
+@end example
+
+Draw the stack of frames live at the deepest point of evaluating
+@code{factorial(6L)}, and show that @code{factorialIter(6L)} never has more
+than one frame live at a time.@footnote{The environment
+model will not clarify our claim in @ref{1.2.1} that the interpreter
+can execute a function such as @code{factIter} in a constant amount of space
+using tail recursion.  Kotlin restores that guarantee only for a function
+marked @code{tailrec}: the compiler rewrites the one self-recursive call in
+tail position as a loop, and refuses the mark (a build error under this
+edition's @code{allWarningsAsErrors}) when no call is in tail position.  We
+will discuss how an interpreter can supply the guarantee for every recursive
+call, tail-marked or not, in @ref{5.4}.}
+@end quotation
+
+@quotation
+@emph{Exercise 3.9a is added by this edition and extends exercise 3.9; SICP
+numbers stop at 3.9.} @strong{@anchor{Exercise 3.9a}Exercise 3.9a:} Exercise
+3.9 asked you to draw the stack of frames each version of @code{factorial}
+builds; this exercise makes the difference measurable.  Write functions
+@code{runRecursive} and @code{runTailrec} that each run one of exercise 3.9's
+two factorials on a thread whose stack is a caller-supplied number of bytes,
+and report the outcome as a @code{StackOutcome}: @code{Overflow} when the run
+dies with a @code{StackOverflowError}, @code{Completed} with the value when it
+answers.  Then run each version with @code{n = 100000} on a 64 KiB stack, and
+explain, in terms of frames and enclosing environments, what a
+@code{StackOverflowError} says about the recursive version's structure, why no
+@code{n} can produce that outcome for the @code{tailrec} version, and what
+Kotlin checks before it accepts the @code{tailrec} mark.
+@end quotation
+
+@node	3.2.3, 3.2.4, 3.2.2, 3.2
+@subsection Frames as the Repository of Local State
+
+We can turn to the environment model to see how functions and assignment can
+be used to represent objects with local state.  As an example, consider the
+``withdrawal processor'' from @ref{3.1.1} created by calling the
+function
+
+@example kotlin
+fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> @{
+    var b = balance
+    return @{ amount ->
+        if (amount > b) @{
+            Either.Left(WithdrawError.InsufficientFunds)
+        @} else @{
+            b -= amount
+            Either.Right(b)
+        @}
+    @}
+@}
+@end example
+
+@noindent
+Let us describe the evaluation of
+
+@example kotlin
+val w1 = makeWithdraw(100L)
+@end example
+
+@noindent
+followed by
+
+@example kotlin
+w1(50L)
+// => Either.Right(50)
+@end example
+
+@noindent
+@ref{Figure 3.6} shows the result of declaring the @code{makeWithdraw}
+function in the global environment.  This produces a function object that
+contains a pointer to the global environment.  So far, this is no different
+from the examples we have already seen, except that the body of the function
+is itself a lambda expression.
+
+@float
+@anchor{Figure 3.6}
+@ifinfo
+@quotation
+@strong{Figure 3.6:} Result of defining @code{make-withdraw} in the global environment.
+
+@example
+          +---------------------------+
+global -->| make-withdraw: --+        |
+env       +------------------|--------+
+                             |      ^
+                             V      |
+                         .---.---.  |
+                         | O | O-+--+
+                         `-|-^---'
+                           |
+                           V
+         parameters: balance
+         body: (lambda (amount)
+                 (if (>= balance amount)
+                     (begin (set! balance
+                                  (- balance amount))
+                            balance)
+                     "Insufficient funds"))
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.6c,,128mm,Figure 3.6: Result of defining make-withdraw in the global environment.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.6c.std,,128mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.6:} Result of defining @code{make-withdraw} in the global environment.}
+@end float
+
+@noindent
+The interesting part of the computation happens when we apply the function
+@code{makeWithdraw} to an argument:
+
+@example kotlin
+val w1 = makeWithdraw(100L)
+@end example
+
+@noindent
+We begin, as usual, by setting up an environment E1 in which the formal
+parameter @code{balance} is bound to the argument 100.  Within this
+environment, we evaluate the body of @code{makeWithdraw}, namely the
+lambda expression.  This constructs a new function object, whose code
+is as specified by the lambda and whose environment is E1, the
+environment in which the lambda was evaluated to produce the function.
+The resulting function object is the value returned by the call to
+@code{makeWithdraw}.  This is bound to @code{w1} in the global environment,
+since the @code{val} declaration itself is being evaluated in the global
+environment.  @ref{Figure 3.7} shows the resulting environment structure.
+
+@float
+@anchor{Figure 3.7}
+@ifinfo
+@strong{Figure 3.7:} Result of evaluating @code{(define W1 (make-withdraw 100))}.
+
+@example
+          +-----------------------------------------------+
+          | make-withdraw: -----------------------+       |
+global -->|                                       |       |
+          | W1: --+                               |       |
+          +-------|-------------------------------|-------+
+                  |                ^              |     ^
+                  |                |              V     |
+                  |        +-------+------+   .---.---. |
+                  |  E1 -->| balance: 100 |   | O | O-+-+
+                  |        +--------------+   `-|-^---'
+                  V                ^            |
+              .---.---.            |            V
+            +-+-O | O-+------------+    parameters: balance
+            | `---^---'                 body: ...
+            V
+    parameters: amount
+    body: (if (>= balance amount)
+              (begin (set! balance (- balance amount))
+                     balance)
+              "Insufficient funds")
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.7b,,145mm,Figure 3.7: Result of evaluating (define W1 (make-withdraw 100)).,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.7b.std,,145mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.7:} Result of evaluating @code{(define W1 (make-withdraw 100))}.}
+@end float
+
+@noindent
+Now we can analyze what happens when @code{w1} is applied to an argument:
+
+@example kotlin
+w1(50L)
+// => Either.Right(50)
+@end example
+
+@noindent
+We begin by constructing a frame in which @code{amount}, the formal parameter
+of @code{w1}, is bound to the argument 50.  The crucial point to observe is
+that this frame has as its enclosing environment not the global environment,
+but rather the environment E1, because this is the environment that is
+specified by the @code{w1} function object.  Within this new environment, we
+evaluate the body of the function:
+
+@example kotlin
+if (amount > b) @{
+    Either.Left(WithdrawError.InsufficientFunds)
+@} else @{
+    b -= amount
+    Either.Right(b)
+@}
+@end example
+
+@noindent
+The resulting environment structure is shown in @ref{Figure 3.8}.  The
+expression being evaluated references both @code{amount} and @code{b}.
+@code{Amount} will be found in the first frame in the environment, while
+@code{b} will be found by following the enclosing-environment pointer to
+E1.
+
+@float
+@anchor{Figure 3.8}
+@ifinfo
+@strong{Figure 3.8:} Environments created by applying the procedure object @code{W1}.
+
+@example
+          +---------------------------------------------------+
+          | make-withdraw: ...                                |
+global -->|                                                   |
+env       | W1: --+                                           |
+          +-------|-------------------------------------------+
+                  |               ^
+                  |               |
+                  |       +-------+------+ Here is the balance
+                  | E1 -->| balance: 100 | that will be changed
+                  |       +--------------+ by the set!.
+                  V               ^   ^
+              .---.---.           |   +----+
+              | O | O-+-----------+        |
+              `-|-^---'             +------+-----+
+                |                   | amount: 50 |
+                V                   +------------+
+      parameters: amount   (if (>= balance amount)
+      body: ...                (begin (set! balance
+                                            (- balance amount))
+                                      balance)
+                               "Insufficient funds")
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.8c,,145mm,Figure 3.8: Environments created by applying the procedure object W1.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.8c.std,,145mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.8:} Environments created by applying the procedure object @code{W1}.}
+@end float
+
+@noindent
+When the assignment @code{b -= amount} is executed, the binding of @code{b} in
+E1 is changed.  At the completion of the call to @code{w1}, @code{b} is 50,
+and the frame that contains @code{b} is still pointed to by the function
+object @code{w1}.  The frame that binds @code{amount} (in which we executed
+the code that changed @code{b}) is no longer relevant, since the call
+that constructed it has terminated, and there are no pointers to that
+frame from other parts of the environment.  The next time @code{w1} is called,
+this will build a new frame that binds @code{amount} and whose enclosing
+environment is E1.  We see that E1 serves as the ``place'' that holds the local
+state variable for the function object @code{w1}.  @ref{Figure 3.9} shows the
+situation after the call to @code{w1}.
+
+@float
+@anchor{Figure 3.9}
+@ifinfo
+@strong{Figure 3.9:} Environments after the call to @code{W1}.
+
+@example
+           +------------------------------------+
+           | make-withdraw: ...                 |
+global --->|                                    |
+env        | W1: --+                            |
+           +-------|----------------------------+
+                   |                   ^
+                   |                   |
+                   |            +------+------+
+                   |     E1 --->| balance: 50 |
+                   |            +-------------+
+                   V                   ^
+               .---.---.               |
+               | O | O-+---------------+
+               `-|-^---'
+                 |
+                 V
+          parameters: amount
+          body: ...
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.9b,,147mm,Figure 3.9: Environments after the call to W1.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.9b.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.9:} Environments after the call to @code{W1}.}
+@end float
+
+@noindent
+Observe what happens when we create a second ``withdraw'' object by making
+another call to @code{makeWithdraw}:
+
+@example kotlin
+val w2 = makeWithdraw(100L)
+@end example
+
+@noindent
+This produces the environment structure of @ref{Figure 3.10}, which shows that
+@code{w2} is a function object, that is, a pair with some code and an
+environment.  The environment E2 for @code{w2} was created by the call to
+@code{makeWithdraw}.  It contains a frame with its own local binding for
+@code{b}.  On the other hand, @code{w1} and @code{w2} have the same code:
+the code specified by the lambda expression in the body of
+@code{makeWithdraw}.@footnote{Whether @code{w1} and @code{w2} share the same
+physical code stored in the computer, or whether they each keep a copy of the
+code, is a detail of the implementation: for the JVM, the compiled bytecode
+of the lambda is a single class shared by every function value created from
+it, and only the captured environment differs between instances.  For the
+interpreter we implement in @ref{Chapter 4}, the code is in fact shared.} We see here
+why @code{w1} and @code{w2} behave as independent objects.  Calls to @code{w1}
+reference the state variable @code{b} stored in E1, whereas calls to @code{w2}
+reference the @code{b} stored in E2.  Thus, changes to the local state of one
+object do not affect the other object.
+
+@float
+@anchor{Figure 3.10}
+@ifinfo
+@strong{Figure 3.10:} Using @code{(define W2 (make-withdraw 100))} to create a second object.
+
+@example
+         +-------------------------------------------------+
+         | make-withdraw: ...                              |
+global ->| W2: ---------------------------+                |
+env      | W1: --+                        |                |
+         +-------|------------------------|----------------+
+                 |              ^         |              ^
+                 |              |         |              |
+                 |       +------+------+  |       +------+-------+
+                 |  E1 ->| balance: 50 |  |  E2 ->| balance: 100 |
+                 |       +-------------+  |       +--------------+
+                 V              ^         V              ^
+             .---.---.          |     .---.---.          |
+             | O | O-+----------+     | O | O-+----------+
+             `-|-^---'                `-|-^---'
+               | +----------------------+
+               V V
+        parameters: amount
+        body: ...
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.10b,,147mm,Figure 3.10: Using (define W2 (make-withdraw 100)) to create a second object.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.10b.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.10:} Using @code{(define W2 (make-withdraw 100))} to create a second object.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 3.10}Exercise 3.10:} @emph{SICP exercise 3.10 is
+about Scheme itself, so this edition replaces it; the exercise below keeps
+the number and teaches the same section material.} In the @code{makeWithdraw}
+function, the local variable @code{balance} is created as a parameter of
+@code{makeWithdraw}.  We could also create the local state variable
+explicitly, as a local declaration:
+
+@example kotlin
+fun makeWithdrawLet(initialAmount: Long): (Long) -> Either<WithdrawError, Long> @{
+    var balance = initialAmount
+    return @{ amount ->
+        if (amount > balance) @{
+            Either.Left(WithdrawError.InsufficientFunds)
+        @} else @{
+            balance -= amount
+            Either.Right(balance)
+        @}
+    @}
+@}
+@end example
+
+Recall from @ref{1.3.2} that Scheme's @code{let} is simply syntactic sugar for
+a procedure call, which is why the book's alternate version of
+@code{make-withdraw} builds one more frame than the version above.  A Kotlin
+local @code{var} declaration is not a call at all, so it adds no frame of its
+own; it binds in the frame the enclosing function call already built.
+
+Use the environment model to analyze this alternate version of
+@code{makeWithdraw}, drawing figures like the ones above to illustrate the
+interactions
+
+@example kotlin
+val w1 = makeWithdrawLet(100L)
+
+w1(50L)
+// => Either.Right(50)
+
+val w2 = makeWithdrawLet(100L)
+@end example
+
+Show that the two versions of @code{makeWithdraw} create objects with the same
+behavior.  How do the environment structures differ for the two versions?
+@end quotation
+
+@node	3.2.4, 3.3, 3.1, 3.2
+@subsection Internal Definitions
+
+Section @ref{1.1.8} introduced the idea that functions can have internal
+definitions, thus leading to a block structure as in the following function to
+compute square roots:
+
+@example kotlin
+fun sqrt(x: Double): Double @{
+    fun goodEnough(guess: Double): Boolean = abs(guess * guess - x) < 0.001
+
+    fun improve(guess: Double): Double = (guess + x / guess) / 2.0
+
+    tailrec fun sqrtIter(guess: Double): Double =
+        if (goodEnough(guess)) guess else sqrtIter(improve(guess))
+
+    return sqrtIter(1.0)
+@}
+@end example
+
+@noindent
+Now we can use the environment model to see why these internal definitions
+behave as desired.  @ref{Figure 3.11} shows the point in the evaluation of the
+expression @code{sqrt(2.0)} where the internal function @code{goodEnough} has
+been called for the first time with @code{guess} equal to 1.
+
+@float
+@anchor{Figure 3.11}
+@ifinfo
+@strong{Figure 3.11:} @code{Sqrt} procedure with internal definitions.
+
+@example
+          +--------------------------------------------------+
+global -->| sqrt: --+                                        |
+env       |         |                                        |
+          +---------|----------------------------------------+
+                    V       ^                   ^
+                .---.---.   |                   |
+     +----------+-O | O-+---+        +----------+------------+
+     |          `---^---'            | x: 2                  |
+     V                         E1 -->| good-enough?: -+      |
+parameters: x                        | improve: ...   |      |
+body: (define good-enough? ...)      | sqrt-iter: ... |      |
+      (define improve ...)           +----------------|------+
+      (define sqrt-iter ...)          ^  ^            |     ^
+      (sqrt-iter 1.0)                 |  |            V     |
+                            +---------++ |        .---.---. |
+                      E2 -->| guess: 1 | |        | O | O-+-+
+                            +----------+ |        `-|-^---'
+                      call to sqrt-iter  |          |
+                                         |          V
+                               +---------++    parameters: guess
+                         E3 -->| guess: 1 |    body: (< (abs ...)
+                               +----------+             ...)
+                         call to good-enough?
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.11b,,147mm,Figure 3.11: Sqrt procedure with internal definitions.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.11b.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.11:} @code{Sqrt} procedure with internal definitions.}
+@end float
+
+@noindent
+Observe the structure of the environment.  @code{Sqrt} is a name in the global
+environment that is bound to a function object whose associated environment
+is the global environment.  When @code{sqrt} was called, a new environment E1
+was formed, subordinate to the global environment, in which the parameter
+@code{x} is bound to 2.  The body of @code{sqrt} was then evaluated in E1.
+Since the first declaration in the body of @code{sqrt} is
+
+@example kotlin
+fun goodEnough(guess: Double): Boolean = abs(guess * guess - x) < 0.001
+@end example
+
+@noindent
+evaluating this declaration bound the function @code{goodEnough} in the
+environment E1.  To be more precise, the name @code{goodEnough} was added to
+the first frame of E1, bound to a function object whose associated
+environment is E1.  Similarly, @code{improve} and @code{sqrtIter} were
+declared as local functions in E1.  For conciseness, @ref{Figure 3.11} shows
+only the function object for @code{goodEnough}.
+
+Kotlin binds local declarations in the order they are written, so a local
+function can call only the names declared above it in the same block --
+@code{sqrtIter}, which calls both @code{goodEnough} and @code{improve}, is
+declared last for exactly this reason.@footnote{This differs from Scheme's
+internal-definitions rule, which scans the whole body before evaluating any
+of it, so a Scheme internal @code{define} may appear in any order and two
+internal procedures may call each other.  A Kotlin local function that needs
+to call one declared after it needs a different shape, such as a mutable
+property holding a lambda, assigned after both are ready.}
+
+@noindent
+After the local declarations, the expression @code{sqrtIter(1.0)} was
+evaluated, still in environment E1.  So the function object bound to
+@code{sqrtIter} in E1 was called with 1.0 as an argument.  This created an
+environment E2 in which @code{guess}, the parameter of @code{sqrtIter}, is
+bound to 1.0.  @code{SqrtIter} in turn called @code{goodEnough} with the value
+of @code{guess} (from E2) as the argument for @code{goodEnough}.  This set up
+another environment, E3, in which @code{guess} (the parameter of
+@code{goodEnough}) is bound to 1.0.  Although @code{sqrtIter} and
+@code{goodEnough} both have a parameter named @code{guess}, these are two
+distinct local variables located in different frames.  Also, E2 and E3 both
+have E1 as their enclosing environment, because the @code{sqrtIter} and
+@code{goodEnough} functions both have E1 as their environment part.  One
+consequence of this is that the name @code{x} that appears in the body of
+@code{goodEnough} will reference the binding of @code{x} that appears in E1,
+namely the value of @code{x} with which the original @code{sqrt} function was
+called.
+
+The environment model thus explains the two key properties that make local
+function declarations a useful technique for modularizing programs:
+
+@itemize @bullet
+
+@item
+The names of the local functions do not interfere with names external to the
+enclosing function, because the local function names will be bound in the
+frame that the function creates when it is run, rather than being bound in
+the global environment.
+
+@item
+The local functions can access the arguments of the enclosing function,
+simply by using parameter names as free variables.  This is because the body
+of the local function is evaluated in an environment that is subordinate to
+the evaluation environment for the enclosing function.
+
+@end itemize
+
+@quotation
+@strong{@anchor{Exercise 3.11}Exercise 3.11:} @emph{SICP exercise 3.11 is
+about Scheme itself, so this edition replaces it; the exercise below keeps
+the number and teaches the same section material.} In @ref{3.2.3} we saw how
+the environment model described the behavior of functions with local state.
+Now we have seen how internal definitions work.  A typical message-passing
+object contains both of these aspects.  Consider the bank account function of
+@ref{3.1.1}:
+
+@example kotlin
+interface BankAccount @{
+    fun withdraw(amount: Long): Either<WithdrawError, Long>
+    fun deposit(amount: Long): Long
+@}
+
+fun makeBankAccount(balance: Long): BankAccount @{
+    var b = balance
+    return object : BankAccount @{
+        override fun withdraw(amount: Long): Either<WithdrawError, Long> =
+            if (amount > b) @{
+                Either.Left(WithdrawError.InsufficientFunds)
+            @} else @{
+                b -= amount
+                Either.Right(b)
+            @}
+
+        override fun deposit(amount: Long): Long @{
+            b += amount
+            return b
+        @}
+    @}
+@}
+@end example
+
+Show the environment structure generated by the sequence of interactions
+
+@example kotlin
+val acc = makeBankAccount(50L)
+
+acc.deposit(40L)
+// => 90
+
+acc.withdraw(60L)
+// => Either.Right(30)
+@end example
+
+Where is the local state for @code{acc} kept?  Suppose we define another
+account
+
+@example kotlin
+val acc2 = makeBankAccount(100L)
+@end example
+
+How are the local states for the two accounts kept distinct?  Which parts of
+the environment structure are shared between @code{acc} and @code{acc2}?
+@end quotation

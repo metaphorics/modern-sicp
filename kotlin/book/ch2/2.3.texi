@@ -1,0 +1,1541 @@
+@node	2.3, 2.4, 2.2, Chapter 2
+@section Symbolic Data
+
+All the compound data objects we have used so far were constructed ultimately
+from numbers.  In this section we extend the representational capability of our
+language by introducing the ability to work with arbitrary symbols as data.
+
+@menu
+* 2.3.1::            Quotation
+* 2.3.2::            Example: Symbolic Differentiation
+* 2.3.3::            Example: Representing Sets
+* 2.3.4::            Example: Huffman Encoding Trees
+@end menu
+
+@node	2.3.1, 2.3.2, 2.3, 2.3
+@subsection Quotation
+
+If we can form compound data using symbols, we can have lists such as
+
+@example kotlin
+vlist(VSym("a"), VSym("b"), VSym("c"), VSym("d"))
+vlist(VInt(23), VInt(45), VInt(17))
+vlist(
+    vlist(VSym("Norah"), VInt(12)),
+    vlist(VSym("Molly"), VInt(9)),
+    vlist(VSym("Anna"), VInt(7)),
+    vlist(VSym("Lauren"), VInt(6)),
+    vlist(VSym("Charlotte"), VInt(4)),
+)
+@end example
+
+@noindent
+Lists containing symbols can look just like the expressions of our
+language:
+
+@example kotlin
+vlist(VSym("*"), vlist(VSym("+"), VInt(23), VInt(45)), vlist(VSym("+"), VSym("x"), VInt(9)))
+@end example
+
+@noindent
+In order to manipulate symbols we need a new element in our language: the
+ability to @newterm{quote} a data object.  In Scheme this ability matters
+because @code{(a b c)} is otherwise ambiguous: it could be a call to a
+function named @code{a}, or a list of three symbols.  Kotlin's syntax never
+carries that ambiguity.  A call always looks like @code{a(b, c)}; a @code{Value}
+literal always looks like @code{vlist(VSym("a"), VSym("b"), VSym("c"))}.
+There is no reading of the second form under which it means anything other
+than a three-element list, so this edition needs nothing to quote:
+@code{vlist(VSym("a"), VSym("b"))} already, directly, is the list @code{(a
+b)}, with no separate mark disambiguating it from a function call.@footnote{A Kotlin string literal such as @code{"a"} is a further, unrelated distinction the book does not need to draw at this point: @code{"a"} is a @code{String}, a sequence of characters meant to be printed, and @code{VSym("a")} is the conversion that turns it into the interned, @code{==}-comparable value this section manipulates as data.  The two are never confused, because Kotlin's double quotes always mean ``string'' and nothing else.}
+
+Scheme's confusion is well known in the context of natural languages, where
+words and sentences may be regarded either as semantic entities or as
+character strings (syntactic entities).  The common practice in natural
+languages is to use quotation marks to indicate that a word or a sentence is
+to be treated literally as a string of characters.  For instance, the first
+letter of ``John'' is clearly ``J.''  If we tell somebody ``say your name
+aloud,'' we expect to hear that person's name.  However, if we tell somebody
+``say `your name' aloud,'' we expect to hear the words ``your name.''  Note
+that we are forced to nest quotation marks to describe what somebody else
+might say.@footnote{Allowing quotation in a language wreaks havoc with the
+ability to reason about the language in simple terms, because it destroys the
+notion that equals can be substituted for equals.  For example, three is one
+plus two, but the word ``three'' is not the phrase ``one plus two.''
+Quotation is powerful because it gives us a way to build expressions that
+manipulate other expressions (as we will see when we write an interpreter in
+@ref{Chapter 4}). But allowing statements in a language that talk about other
+statements in that language makes it very difficult to maintain any coherent
+principle of what ``equals can be substituted for equals'' should mean.  For
+example, if we know that the evening star is the morning star, then from the
+statement ``the evening star is Venus'' we can deduce ``the morning star is
+Venus.''  However, given that ``John knows that the evening star is Venus''
+we cannot infer that ``John knows that the morning star is Venus.''}
+
+We can follow this same practice to identify lists and symbols that are to be
+treated as data objects rather than as expressions to be evaluated.  Now we
+can distinguish between symbols and their values:
+
+@example kotlin
+val a = VInt(1)
+val b = VInt(2)
+
+vlist(a, b)
+// => (1 2)
+
+vlist(VSym("a"), VSym("b"))
+// => (a b)
+
+vlist(VSym("a"), b)
+// => (a 2)
+@end example
+
+@noindent
+The first call builds a list of the @newterm{values} bound to @code{a} and
+@code{b}; the second builds a list of the two symbols themselves, which share
+nothing with the variables above but their spelling; the third mixes a symbol
+with a bound value, exactly as freely as the first two, because @code{Value}
+is one dynamic union covering every kind of datum this language has.
+
+@noindent
+Quotation also allows the book to type in compound objects using the
+conventional printed representation for lists.@footnote{Strictly, the book's
+quotation mark violates the general rule that all compound expressions in
+Scheme should be delimited by parentheses and look like lists; a leading
+quote mark is a single-character abbreviation that a reader expands into
+@code{(quote @var{expression})} before the interpreter ever sees it.  This
+edition has no reader to do that expanding, so there was never a second,
+abbreviated spelling to reconcile with a first: @code{vlist(VSym("car"),
+vlist(VSym("quote"), vlist(VSym("a"), VSym("b"), VSym("c"))))} already is the
+direct, and only, way to build that nested list.  Exercise 2.55 works out
+what a reader's expansion rule would have built, by hand, for doubled
+quotation.}
+
+@example kotlin
+val abc = vlist(VSym("a"), VSym("b"), VSym("c"))
+(abc as VPair).car
+// => a
+
+abc.cdr
+// => (b c)
+@end example
+
+@noindent
+In keeping with this, the empty list is simply @code{VNil}, the runtime's own
+singleton, so there is no separate variable to dispense with the way the
+book's discussion of @code{nil} implies.
+
+One additional primitive used in manipulating symbols is @code{==} on
+@code{VSym}, which takes two symbols and tests whether they are the
+same.@footnote{Because a boxed @code{VSym} value's @code{equals} already
+compares its wrapped name, @code{==} is exactly the book's ``consist of the
+same characters in the same order'' definition of symbol sameness.  Such a
+definition skirts a deep issue that we are not yet ready to address: the
+meaning of ``sameness'' in a programming language more generally, for values
+that are not symbols.  We will return to this in @ref{Chapter 3}
+(@ref{3.1.3}).}  Using @code{==}, we can implement a useful procedure called
+@code{memq}.  This takes two arguments, an item and a @code{Value} chain.  If the
+item is not contained in the chain (i.e., is not @code{==} to any item in
+the chain), then @code{memq} returns @code{VBool(false)}.  Otherwise, it
+returns the sublist beginning with the first occurrence of the item:
+
+@example kotlin
+fun memq(item: Value, x: Value): Value =
+    when @{
+        x is VPair && x.car == item -> x
+        x is VPair -> memq(item, x.cdr)
+        else -> VBool(false)
+    @}
+@end example
+
+@noindent
+For example, the value of
+
+@example kotlin
+memq(VSym("apple"), vlist(VSym("pear"), VSym("banana"), VSym("prune")))
+@end example
+
+@noindent
+is @code{#f}, whereas the value of
+
+@example kotlin
+memq(
+    VSym("apple"),
+    vlist(VSym("x"), vlist(VSym("apple"), VSym("sauce")), VSym("y"), VSym("apple"), VSym("pear")),
+)
+@end example
+
+@noindent
+is @code{(apple pear)}: the first @code{apple} is buried inside a nested
+list, a different @code{Value} from the bare symbol @code{VSym("apple")} being
+searched for, so it is skipped exactly as the book's untagged sublist is
+skipped by @code{eq?}.
+
+@quotation
+@emph{SICP exercise 2.53 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.53}Exercise 2.53:} What value, or what
+printed form, does each of the following produce?  Answer from the types
+alone where you can, without running anything.
+
+@example kotlin
+vlist(VSym("a"), VSym("b"), VSym("c"))
+vlist(vlist(VSym("george")))
+
+val pairs = vlist(vlist(VSym("x1"), VSym("x2")), vlist(VSym("y1"), VSym("y2")))
+pairs.cdr
+(pairs.cdr as VPair).car
+
+val shortList = vlist(VSym("a"), VSym("short"), VSym("list"))
+(shortList as VPair).car is VPair
+
+memq(
+    VSym("red"),
+    vlist(vlist(VSym("red"), VSym("shoes")), vlist(VSym("blue"), VSym("socks"))),
+)
+memq(VSym("red"), vlist(VSym("red"), VSym("shoes"), VSym("blue"), VSym("socks")))
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.54}Exercise 2.54:} Two @code{Value} lists are said to
+be @code{myEqual} if they contain equal elements arranged in the same order.
+For example,
+
+@example kotlin
+myEqual(
+    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
+    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
+)
+@end example
+
+@noindent
+is true, but
+
+@example kotlin
+myEqual(
+    vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list")),
+    vlist(VSym("this"), vlist(VSym("is"), VSym("a")), VSym("list")),
+)
+@end example
+
+@noindent
+is false.  To be more precise, we can define @code{myEqual} recursively in
+terms of the basic @code{==} equality of symbols by saying that @code{a} and
+@code{b} are @code{myEqual} if they are both symbols and the symbols are
+@code{==}, or if they are both lists such that @code{a}'s car is
+@code{myEqual} to @code{b}'s car and @code{a}'s cdr is @code{myEqual} to
+@code{b}'s cdr.  Using this idea, implement @code{myEqual} as a
+function.@footnote{In practice, programmers use @code{myEqual} to compare
+lists that contain numbers as well as symbols.  Numbers are not considered to
+be symbols.  The question of whether two numerically equal numbers (as
+tested by @code{==} on @code{VInt}) are also identical is highly
+implementation-dependent.  A more thorough definition of @code{myEqual} would
+also stipulate that if @code{a} and @code{b} are both numbers, then @code{a}
+and @code{b} are @code{myEqual} if they are numerically equal.}
+@end quotation
+
+@quotation
+@emph{SICP exercise 2.55 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.55}Exercise 2.55:} SICP's Eva
+Lu Ator types to her interpreter the expression @code{(car ''abracadabra)},
+and to her surprise the interpreter prints back @code{quote}.  Kotlin has no
+reader, so @code{''abracadabra} is never something a running program types at
+a prompt, but the reader's expansion rule is simple enough to apply by hand:
+a single quote @code{'x} is sugar for the two-element list @code{(quote x)},
+so the doubled quote @code{''abracadabra} is sugar for @code{(quote (quote
+abracadabra))}.  Build the @code{Value} that @code{''abracadabra} would have read
+as, using only @code{vlist} and @code{VSym}, and give its car.  Explain, in
+terms of the value's own shape rather than by appealing to a reader, why that
+car is the symbol @code{quote} and not @code{abracadabra}.
+@end quotation
+
+@node	2.3.2, 2.3.3, 2.3.1, 2.3
+@subsection Example: Symbolic Differentiation
+
+As an illustration of symbol manipulation and a further illustration of data
+abstraction, consider the design of a procedure that performs symbolic
+differentiation of algebraic expressions.  We would like the procedure to take
+as arguments an algebraic expression and a variable and to return the
+derivative of the expression with respect to the variable.  For example, if the
+arguments to the procedure are @math{{ax^2 + bx + c}} and @math{x}, the
+procedure should return @math{{2ax + b}}.  Symbolic differentiation is of
+special historical significance in Lisp.  It was one of the motivating examples
+behind the development of a computer language for symbol manipulation.
+Furthermore, it marked the beginning of the line of research that led to the
+development of powerful systems for symbolic mathematical work, which are
+currently being used by a growing number of applied mathematicians and
+physicists.
+
+In developing the symbolic-differentiation program, we will follow the same
+strategy of data abstraction that we followed in developing the rational-number
+system of @ref{2.1.1}.  That is, we will first define a differentiation
+algorithm that operates on abstract objects such as ``sums,'' ``products,'' and
+``variables'' without worrying about how these are to be represented.  Only
+afterward will we address the representation problem.
+
+@subsubheading The differentiation program with abstract data
+
+In order to keep things simple, we will consider a very simple
+symbolic-differentiation program that handles expressions that are built up
+using only the operations of addition and multiplication with two arguments.
+Differentiation of any such expression can be carried out by applying the
+following reduction rules:
+@displaymath
+{{dc \over dx} \,=\, 0,} 
+  \quad {\hbox{for } c \hbox{ a constant }} {\hbox{or a variable }} {\hbox{different from } x,}
+@end displaymath
+@ifinfo
+
+@example
+dc
+-- = 0  for c a constant, or a variable different from x
+dx
+
+dx
+-- = 1
+dx
+
+d(u + v)   du   dv
+-------- = -- + --
+   dx      dx   dx
+
+d(uv)     / dv \     / du \
+----- = u | -- | + v | -- |
+ dx       \ dx /     \ dx /
+@end example
+
+@end ifinfo
+@displaymath
+\eqalign{
+{dx \over dx}         &=   1, \cr
+{d(u + v) \over dx}   &=   {du \over dx} + {dv \over dx}, \cr
+{d(uv) \over dx}      &=   u \kern0.1em {dv \over dx} + v \kern0.1em {du \over dx}.
+}
+@end displaymath
+@noindent
+Observe that the latter two rules are recursive in nature.  That is, to obtain
+the derivative of a sum we first find the derivatives of the terms and add
+them.  Each of the terms may in turn be an expression that needs to be
+decomposed.  Decomposing into smaller and smaller pieces will eventually
+produce pieces that are either constants or variables, whose derivatives will
+be either 0 or 1.
+
+To embody these rules we indulge in a little wishful thinking, as we did in
+designing the rational-number implementation.  If we had a means for
+representing algebraic expressions, we should be able to tell whether an
+expression is a sum, a product, a constant, or a variable.  We should be able
+to extract the parts of an expression.  For a sum, for example, we want to be
+able to extract the addend (first term) and the augend (second term).  Where
+the book assumes ten free-floating procedures for this (@code{variable?},
+@code{same-variable?}, @code{sum?}, @code{addend}, @code{augend},
+@code{make-sum}, @code{product?}, @code{multiplier}, @code{multiplicand},
+@code{make-product}), one sealed hierarchy grants all of them at once:
+
+@example kotlin
+sealed interface Expr @{
+    data class Num(val n: Long) : Expr
+    data class Var(val name: String) : Expr
+    data class Sum(val a1: Expr, val a2: Expr) : Expr
+    data class Product(val a1: Expr, val a2: Expr) : Expr
+@}
+@end example
+
+@noindent
+@code{sum?} and @code{product?} collapse into the @code{is Expr.Sum}/@code{is
+Expr.Product} branches below; @code{addend}/@code{augend} and
+@code{multiplier}/@code{multiplicand} become the two fields @code{a1}/@code{a2}
+those branches bind; @code{make-sum}/@code{make-product} survive as ordinary
+functions, unchanged in name.  @code{variable?} is absorbed into the
+@code{is Expr.Var} branch, and @code{same-variable?} is just @code{==} on
+the two variables' @code{name} fields.  Using pattern matching in place of
+the primitive predicate @code{number?}, we can express the differentiation
+rules as the following function:
+
+@example kotlin
+fun deriv(exp: Expr, variable: String): Expr =
+    when (exp) @{
+        is Expr.Num -> Expr.Num(0)
+        is Expr.Var -> Expr.Num(if (exp.name == variable) 1 else 0)
+        is Expr.Sum -> Expr.Sum(deriv(exp.a1, variable), deriv(exp.a2, variable))
+        is Expr.Product ->
+            Expr.Sum(
+                Expr.Product(exp.a1, deriv(exp.a2, variable)),
+                Expr.Product(deriv(exp.a1, variable), exp.a2),
+            )
+    @}
+@end example
+
+@noindent
+This @code{deriv} function incorporates the complete differentiation
+algorithm.  Since @code{Expr}'s four variants are exhaustive, the compiler
+proves every case is handled; the book's final @code{(else (error "unknown
+expression type: DERIV" exp))} clause has no counterpart here, because there
+is no fifth variant left for it to catch.
+
+@subsubheading Representing algebraic expressions
+
+Printing an expression back in the book's parenthesized prefix notation is
+a small recursive function over the same four variants:
+
+@example kotlin
+fun printExpr(e: Expr): String =
+    when (e) @{
+        is Expr.Num -> e.n.toString()
+        is Expr.Var -> e.name
+        is Expr.Sum -> "(+ $@{printExpr(e.a1)@} $@{printExpr(e.a2)@})"
+        is Expr.Product -> "(* $@{printExpr(e.a1)@} $@{printExpr(e.a2)@})"
+    @}
+@end example
+
+@noindent
+Let us look at some examples of @code{deriv}'s behavior, built with the
+naive constructors @code{Expr.Sum}/@code{Expr.Product} shown above:
+
+@example kotlin
+val sum = Expr.Sum(Expr.Var("x"), Expr.Num(3))
+printExpr(deriv(sum, "x"))
+// => (+ 1 0)
+
+val product = Expr.Product(Expr.Var("x"), Expr.Var("y"))
+printExpr(deriv(product, "x"))
+// => (+ (* x 0) (* 1 y))
+
+val nested = Expr.Product(Expr.Product(Expr.Var("x"), Expr.Var("y")), Expr.Sum(Expr.Var("x"), Expr.Num(3)))
+printExpr(deriv(nested, "x"))
+// => (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))
+@end example
+
+@noindent
+The program produces answers that are correct; however, they are unsimplified.
+It is true that
+@displaymath
+{d(xy) \over dx} \,=\, {x \cdot 0} + {1 \cdot y,}
+@end displaymath
+@ifinfo
+
+@example
+d(xy)
+----- = x * 0 + 1 * y
+ dx
+@end example
+
+@end ifinfo
+@noindent
+but we would like the program to know that @math{{x \cdot 0 = 0}}, @math{{1 \cdot y = y}},
+and @math{{0 + y = y}}.  The answer for the second example should have been
+simply @code{y}.  As the third example shows, this becomes a serious issue when
+the expressions are complex.
+
+Our difficulty is much like the one we encountered with the rational-number
+implementation: we haven't reduced answers to simplest form.  To accomplish the
+rational-number reduction, we needed to change only the constructors and the
+selectors of the implementation.  We can adopt a similar strategy here.  We
+won't change @code{deriv} at all.  Instead, we will change @code{makeSum} so
+that if both summands are numbers, @code{makeSum} will add them and return
+their sum.  Also, if one of the summands is 0, then @code{makeSum} will return
+the other summand:
+
+@example kotlin
+fun isNumber(e: Expr, n: Long): Boolean = e is Expr.Num && e.n == n
+
+fun makeSum(a1: Expr, a2: Expr): Expr =
+    when @{
+        isNumber(a1, 0) -> a2
+        isNumber(a2, 0) -> a1
+        a1 is Expr.Num && a2 is Expr.Num -> Expr.Num(a1.n + a2.n)
+        else -> Expr.Sum(a1, a2)
+    @}
+@end example
+
+@noindent
+This uses the function @code{isNumber}, which checks whether an expression is
+equal to a given number.  Similarly, we will change @code{makeProduct} to
+build in the rules that 0 times anything is 0 and 1 times anything is the
+thing itself:
+
+@example kotlin
+fun makeProduct(m1: Expr, m2: Expr): Expr =
+    when @{
+        isNumber(m1, 0) || isNumber(m2, 0) -> Expr.Num(0)
+        isNumber(m1, 1) -> m2
+        isNumber(m2, 1) -> m1
+        m1 is Expr.Num && m2 is Expr.Num -> Expr.Num(m1.n * m2.n)
+        else -> Expr.Product(m1, m2)
+    @}
+
+fun deriv(exp: Expr, variable: String): Expr =
+    when (exp) @{
+        is Expr.Num -> Expr.Num(0)
+        is Expr.Var -> Expr.Num(if (exp.name == variable) 1 else 0)
+        is Expr.Sum -> makeSum(deriv(exp.a1, variable), deriv(exp.a2, variable))
+        is Expr.Product ->
+            makeSum(
+                makeProduct(exp.a1, deriv(exp.a2, variable)),
+                makeProduct(deriv(exp.a1, variable), exp.a2),
+            )
+    @}
+@end example
+
+@noindent
+This edition's numbers are checked @code{Long}s, so a differentiation that
+overflows fails loudly rather than wrapping silently, exactly as
+@ref{2.1.3}'s exact-integer convention promises everywhere else in this book.
+Here is how this version works on our three examples:
+
+@example kotlin
+printExpr(deriv(sum, "x"))
+// => 1
+
+printExpr(deriv(product, "x"))
+// => y
+
+printExpr(deriv(nested, "x"))
+// => (+ (* x y) (* y (+ x 3)))
+@end example
+
+@noindent
+Although this is quite an improvement, the third example shows that there is
+still a long way to go before we get a program that puts expressions into a
+form that we might agree is ``simplest.''  The problem of algebraic
+simplification is complex because, among other reasons, a form that may be
+simplest for one purpose may not be for another.
+
+@quotation
+@strong{@anchor{Exercise 2.56}Exercise 2.56:} Show how to extend the basic
+differentiator to handle more kinds of expressions.  For instance, implement
+the differentiation rule
+@displaymath
+{d(u^{\kern0.1ex n}) \over dx} \,=\, {nu^{\kern0.1ex n-1} \, {du \over dx}}
+@end displaymath
+@ifinfo
+
+@example
+d(u^n)            du
+------ = nu^(n-1) --  
+  dx              dx
+@end example
+
+@end ifinfo
+@noindent
+by adding a fifth variant to a local copy of @code{Expr} named @code{PowExpr}
+(kept local to this exercise, per the section's one-representation-per-
+exercise convention, rather than editing the running prose's @code{Expr}) and
+a matching @code{Pow} branch to a local copy of @code{deriv}, plus a
+@code{makeExponentiation} constructor.  Print exponentiation as @code{(** base
+n)}.  Build in the rules that anything raised to the power 0 is 1 and
+anything raised to the power 1 is the thing itself.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.57}Exercise 2.57:} Extend the differentiation
+program to handle sums and products of arbitrary numbers of (two or more)
+terms.  Then the last example above could be expressed as
+
+@example kotlin
+deriv(
+    NaryExpr.Product(listOf(NaryExpr.Var("x"), NaryExpr.Var("y"), NaryExpr.Sum(listOf(NaryExpr.Var("x"), NaryExpr.Num(3))))),
+    "x",
+)
+@end example
+
+Try to do this by changing only the representation for sums and products
+(your own local @code{NaryExpr}, holding a @code{List} of terms or factors
+instead of a fixed pair), without changing @code{deriv}'s own shape at all.
+For example, the addend of a sum would be the first term, and the augend
+would be the sum of the rest of the terms.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.58}Exercise 2.58:} Suppose we want to modify the
+differentiation program so that it works with ordinary mathematical notation,
+in which @code{+} and @code{*} are infix rather than prefix operators.  Since
+the differentiation program is defined in terms of abstract data, we can
+modify it to work with different concrete syntax solely by changing what
+builds an @code{Expr} in the first place, leaving @code{deriv} itself
+untouched.
+
+@enumerate a
+
+@item
+Write a tokenizer and a recursive-descent parser from a @code{String} into
+this section's @code{Expr}, to differentiate algebraic expressions presented
+in infix form, such as @code{"(x + (3 * (x + (y + 2))))"}.  To simplify the
+task, assume that @code{+} and @code{*} always take two arguments and that
+expressions are fully parenthesized.
+
+@item
+The problem becomes substantially harder if we allow standard algebraic
+notation, such as @code{"x + 3 * (x + y + 2)"}, which drops unnecessary
+parentheses and assumes that multiplication is done before addition.  Extend
+your parser to handle operator precedence so that our derivative program
+still works.
+
+@end enumerate
+@end quotation
+
+@node	2.3.3, 2.3.4, 2.3.2, 2.3
+@subsection Example: Representing Sets
+
+In the previous examples we built representations for two kinds of compound
+data objects: rational numbers and algebraic expressions.  In one of these
+examples we had the choice of simplifying (reducing) the expressions at either
+construction time or selection time, but other than that the choice of a
+representation for these structures in terms of lists was straightforward. When
+we turn to the representation of sets, the choice of a representation is not so
+obvious.  Indeed, there are a number of possible representations, and they
+differ significantly from one another in several ways.
+
+Informally, a set is simply a collection of distinct objects.  To give a more
+precise definition we can employ the method of data abstraction.  That is, we
+define ``set'' by specifying the operations that are to be used on sets.  These
+are @code{unionSet}, @code{intersectionSet}, @code{elementOfSet}, and
+@code{adjoinSet}.  @code{elementOfSet} is a predicate that determines whether a
+given element is a member of a set.  @code{adjoinSet} takes an object and a
+set as arguments and returns a set that contains the elements of the original
+set and also the adjoined element.  @code{unionSet} computes the union of two
+sets, which is the set containing each element that appears in either
+argument.  @code{intersectionSet} computes the intersection of two sets, which
+is the set containing only elements that appear in both arguments.  From the
+viewpoint of data abstraction, we are free to design any representation that
+implements these operations in a way consistent with the interpretations
+given above.  This edition fixes the element type to @code{Long} across all
+three representations, unordered included, so that one consistent element
+type carries all the way to the ordered and tree representations, which need
+@code{<}/@code{>} anyway.@footnote{If we want to be more formal, we can
+specify ``consistent with the interpretations given above'' to mean that the
+operations satisfy a collection of rules such as these:
+
+@itemize @bullet
+
+@item
+For any set @code{s} and any object @code{x},
+@code{elementOfSet(x, adjoinSet(x, s))}
+is true (informally: ``Adjoining an object to a
+set produces a set that contains the object'').
+
+@item
+For any sets @code{s} and @code{t} and any object @code{x},
+@code{elementOfSet(x, unionSet(s, t))}
+is equal to
+@code{elementOfSet(x, s) || elementOfSet(x, t)}
+(informally: ``The elements of the union of @code{s} and @code{t} are the
+elements that are in @code{s} or in @code{t}'').
+
+@item
+For any object @code{x},
+@code{elementOfSet(x, emptyList())}
+is false (informally: ``No object is an element of the empty set'').
+
+@end itemize
+}
+
+@subsubheading Sets as unordered lists
+
+One way to represent a set is as a @code{List} of its elements in which no
+element appears more than once.  The empty set is represented by the empty
+list.  In this representation, @code{elementOfSet} is similar to the
+function @code{memq} of @ref{2.3.1}, except that it compares @code{Long}s
+with @code{==} directly, since this edition's sets are never nested:
+
+@example kotlin
+fun elementOfSet(x: Long, set: List<Long>): Boolean =
+    when @{
+        set.isEmpty() -> false
+        x == set[0] -> true
+        else -> elementOfSet(x, set.drop(1))
+    @}
+@end example
+
+@noindent
+Using this, we can write @code{adjoinSet}.  If the object to be adjoined is
+already in the set, we just return the set unchanged.  Otherwise, we build a
+new list with the object in front:
+
+@example kotlin
+fun adjoinSet(x: Long, set: List<Long>): List<Long> = if (elementOfSet(x, set)) set else listOf(x) + set
+@end example
+
+@noindent
+For @code{intersectionSet} we can use a recursive strategy.  If we know how to
+form the intersection of @code{set2} and the tail of @code{set1}, we only
+need to decide whether to include the head of @code{set1} in this.  But this
+depends on whether that head is also in @code{set2}.  Here is the resulting
+function:
+
+@example kotlin
+fun intersectionSet(set1: List<Long>, set2: List<Long>): List<Long> =
+    when @{
+        set1.isEmpty() || set2.isEmpty() -> emptyList()
+        elementOfSet(set1[0], set2) -> listOf(set1[0]) + intersectionSet(set1.drop(1), set2)
+        else -> intersectionSet(set1.drop(1), set2)
+    @}
+@end example
+
+@noindent
+In designing a representation, one of the issues we should be concerned with is
+efficiency.  Consider the number of steps required by our set operations.
+Since they all use @code{elementOfSet}, the speed of this operation has a
+major impact on the efficiency of the set implementation as a whole.  Now, in
+order to check whether an object is a member of a set, @code{elementOfSet}
+may have to scan the entire set. (In the worst case, the object turns out not
+to be in the set.)  Hence, if the set has @math{n} elements,
+@code{elementOfSet}  might take up to @math{n} steps.  Thus, the number of
+steps required grows as @math{{\Theta(n)}}.  The number of steps required by
+@code{adjoinSet}, which uses this operation, also grows as @math{{\Theta(n)}}.
+For @code{intersectionSet}, which does an @code{elementOfSet} check for
+each element of @code{set1}, the number of steps required grows as the product
+of the sizes of the sets involved, or @math{{\Theta(n^2)}} for two sets of size
+@math{n}.  The same will be true of @code{unionSet}.
+
+@quotation
+@strong{@anchor{Exercise 2.59}Exercise 2.59:} Implement the @code{unionSet}
+operation for the unordered-list representation of sets.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.60}Exercise 2.60:} We specified that a set would be
+represented as a list with no duplicates.  Now suppose we allow duplicates.
+For instance, the set @math{{\{1, 2, 3\}}} could be represented as the list @code{[2, 3, 2, 1,
+3, 2, 2]}.  Design functions @code{elementOfSetDup}, @code{adjoinSetDup},
+@code{unionSetDup}, and @code{intersectionSetDup} that operate on this
+representation.  How does the efficiency of each compare with the corresponding
+function for the non-duplicate representation?  Are there applications for
+which you would use this representation in preference to the non-duplicate one?
+@end quotation
+
+@subsubheading Sets as ordered lists
+
+One way to speed up our set operations is to change the representation so that
+the set elements are listed in increasing order.  Because this edition's sets
+are already the numeric type @code{Long}, we can compare elements directly
+with @code{<} and @code{>} without needing to agree on a way to order
+non-numeric objects first.  Whereas our first representation above allowed us
+to represent the set @math{{\{1, 3, 6, 10\}}} by listing the elements in any
+order, our new representation allows only the list @code{[1, 3, 6, 10]}.
+
+One advantage of ordering shows up in @code{elementOfSetOrdered}: In checking
+for the presence of an item, we no longer have to scan the entire set.  If we
+reach a set element that is larger than the item we are looking for, then we
+know that the item is not in the set:
+
+@example kotlin
+fun elementOfSetOrdered(x: Long, set: List<Long>): Boolean =
+    when @{
+        set.isEmpty() -> false
+        x == set[0] -> true
+        x < set[0] -> false
+        else -> elementOfSetOrdered(x, set.drop(1))
+    @}
+@end example
+
+How many steps does this save?  In the worst case, the item we are looking for
+may be the largest one in the set, so the number of steps is the same as for
+the unordered representation.  On the other hand, if we search for items of
+many different sizes we can expect that sometimes we will be able to stop
+searching at a point near the beginning of the list and that other times we
+will still need to examine most of the list.  On the average we should expect
+to have to examine about half of the items in the set.  Thus, the average
+number of steps required will be about @math{{n / 2}}.  This is still
+@math{{\Theta(n)}} growth, but it does save us, on the average, a factor of 2
+in number of steps over the previous implementation.
+
+We obtain a more impressive speedup with @code{intersectionSetOrdered}.  In
+the unordered representation this operation required @math{{\Theta(n^2)}}
+steps, because we performed a complete scan of @code{set2} for each element of
+@code{set1}.  But with the ordered representation, we can use a more clever
+method.  Begin by comparing the initial elements, @code{x1} and @code{x2}, of
+the two sets.  If @code{x1} equals @code{x2}, then that gives an element of the
+intersection, and the rest of the intersection is the intersection of the
+tails of the two sets.  Suppose, however, that @code{x1} is less than
+@code{x2}.  Since @code{x2} is the smallest element in @code{set2}, we can
+immediately conclude that @code{x1} cannot appear anywhere in @code{set2} and
+hence is not in the intersection.  Hence, the intersection is equal to the
+intersection of @code{set2} with the tail of @code{set1}.  Similarly, if
+@code{x2} is less than @code{x1}, then the intersection is given by the
+intersection of @code{set1} with the tail of @code{set2}.  Here is the
+function:
+
+@example kotlin
+fun intersectionSetOrdered(set1: List<Long>, set2: List<Long>): List<Long> @{
+    if (set1.isEmpty() || set2.isEmpty()) return emptyList()
+    val x1 = set1[0]
+    val x2 = set2[0]
+    return when @{
+        x1 == x2 -> listOf(x1) + intersectionSetOrdered(set1.drop(1), set2.drop(1))
+        x1 < x2 -> intersectionSetOrdered(set1.drop(1), set2)
+        else -> intersectionSetOrdered(set1, set2.drop(1))
+    @}
+@}
+@end example
+
+@noindent
+To estimate the number of steps required by this process, observe that at each
+step we reduce the intersection problem to computing intersections of smaller
+sets---removing the first element from @code{set1} or @code{set2} or both.
+Thus, the number of steps required is at most the sum of the sizes of
+@code{set1} and @code{set2}, rather than the product of the sizes as with the
+unordered representation.  This is @math{{\Theta(n)}} growth rather than
+@math{{\Theta(n^2)}}---a considerable speedup, even for sets of moderate size.
+
+@quotation
+@strong{@anchor{Exercise 2.61}Exercise 2.61:} Give an implementation of
+@code{adjoinSetOrdered} using the ordered representation.  By analogy with
+@code{elementOfSetOrdered} show how to take advantage of the ordering to
+produce a function that requires on the average about half as many steps as
+with the unordered representation.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.62}Exercise 2.62:} Give a @math{{\Theta(n)}}
+implementation of @code{unionSetOrdered} for sets represented as ordered
+lists.
+@end quotation
+
+@subsubheading Sets as binary trees
+
+We can do better than the ordered-list representation by arranging the set
+elements in the form of a tree.  Each node of the tree holds one element of the
+set, called the ``entry'' at that node, and a link to each of two other
+(possibly empty) nodes.  The ``left'' link points to elements smaller than the
+one at the node, and the ``right'' link to elements greater than the one at the
+node.  @ref{Figure 2.16} shows some trees that represent the set
+@math{{\{1, 3, 5, 7, 9, 11\}}}.  The same set may be represented by a tree in a number of
+different ways.  The only thing we require for a valid representation is that
+all elements in the left subtree be smaller than the node entry and that all
+elements in the right subtree be larger.
+
+@float
+@anchor{Figure 2.16}
+@ifinfo
+@quotation
+@strong{Figure 2.16:} Various binary trees that represent the set @math{{\{1, 3, 5, 7, 9, 11\}}}.
+
+@example
+   7          3             5
+   /\         /\            /\
+  3  9       1  7          3  9
+ /\   \         /\        /   /\
+1  5  11       5  9      1   7  11
+                   \
+                   11
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.16c,,120mm,Figure 2.16: Various binary trees that represent the set @{1@comma{} 3@comma{} 5@comma{} 7@comma{} 9@comma{} 11@}.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,,120mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.16:} Various binary trees that represent the set @math{{\{1, 3, 5, 7, 9, 11\}}}.}
+@end float
+
+The advantage of the tree representation is this: Suppose we want to check
+whether a number @math{x} is contained in a set.  We begin by comparing @math{x} with
+the entry in the top node.  If @math{x} is less than this, we know that we need
+only search the left subtree; if @math{x} is greater, we need only search the
+right subtree.  Now, if the tree is ``balanced,'' each of these subtrees will
+be about half the size of the original.  Thus, in one step we have reduced the
+problem of searching a tree of size @math{n} to searching a tree of size @math{{n / 2}}.
+Since the size of the tree is halved at each step, we should expect that the
+number of steps needed to search a tree of size @math{n} grows as
+@math{{\Theta(\log n)}}.@footnote{Halving the size of the problem at each
+step is the distinguishing characteristic of logarithmic growth, as we saw with
+the fast-exponentiation algorithm of @ref{1.2.4} and the half-interval
+search method of @ref{1.3.3}.} For large sets, this will be a
+significant speedup over the previous representations.
+
+Where the book represents trees as three-item lists (the entry, the left
+subtree, the right subtree), this edition closes the shape as a sealed
+hierarchy instead, so @code{entry}, @code{left}, and @code{right} are its own
+data-class fields rather than list positions read out by @code{car}/@code{cadr}/@code{caddr}:@footnote{We are representing sets in terms of trees, and trees directly as a Kotlin sealed interface---one data abstraction built on the host language's own sum types, rather than on a second, hand-rolled list encoding the way the book builds trees out of lists.  We can regard @code{entry}, @code{left}, @code{right}, and @code{makeTree} as isolating the abstraction of a ``binary tree'' from @code{SetTree}'s own representation, the same separation the book draws between a tree and the list structure that encodes it, one layer shorter since the data class already is the representation.}
+
+@example kotlin
+sealed interface SetTree @{
+    data object Empty : SetTree
+    data class Node(val entry: Long, val left: SetTree, val right: SetTree) : SetTree
+@}
+
+fun makeTree(entry: Long, left: SetTree, right: SetTree): SetTree = SetTree.Node(entry, left, right)
+@end example
+
+@noindent
+@code{entry}, @code{left}, and @code{right} are simple examples of
+@newterm{generic procedures} (procedures that can handle more than one kind of
+data), which we will have much more to say about in @ref{2.4} and @ref{2.5};
+here they are simply the fields of @code{SetTree.Node}, valid to read only once
+the sealed @code{when} branch below has confirmed the tree is not
+@code{SetTree.Empty}.  Now we can write the @code{elementOfSetTree} function
+using the strategy described above:
+
+@example kotlin
+fun elementOfSetTree(x: Long, tree: SetTree): Boolean =
+    when (tree) @{
+        is SetTree.Empty -> false
+        is SetTree.Node ->
+            when @{
+                x == tree.entry -> true
+                x < tree.entry -> elementOfSetTree(x, tree.left)
+                else -> elementOfSetTree(x, tree.right)
+            @}
+    @}
+@end example
+
+@noindent
+Adjoining an item to a set is implemented similarly and also requires
+@math{{\Theta(\log n)}} steps.  To adjoin an item @code{x}, we compare
+@code{x} with the node entry to determine whether @code{x} should be added to
+the right or to the left branch, and having adjoined @code{x} to the
+appropriate branch we piece this newly constructed branch together with the
+original entry and the other branch.  If @code{x} is equal to the entry, we
+just return the tree unchanged.  If we are asked to adjoin @code{x} to an
+empty tree, we generate a tree that has @code{x} as the entry and empty right
+and left branches.  Here is the function:
+
+@example kotlin
+fun adjoinSetTree(x: Long, tree: SetTree): SetTree =
+    when (tree) @{
+        is SetTree.Empty -> makeTree(x, SetTree.Empty, SetTree.Empty)
+        is SetTree.Node ->
+            when @{
+                x == tree.entry -> tree
+                x < tree.entry -> makeTree(tree.entry, adjoinSetTree(x, tree.left), tree.right)
+                else -> makeTree(tree.entry, tree.left, adjoinSetTree(x, tree.right))
+            @}
+    @}
+@end example
+
+@noindent
+The above claim that searching the tree can be performed in a logarithmic
+number of steps rests on the assumption that the tree is ``balanced,'' i.e.,
+that the left and the right subtree of every tree have approximately the same
+number of elements, so that each subtree contains about half the elements of
+its parent.  But how can we be certain that the trees we construct will be
+balanced?  Even if we start with a balanced tree, adding elements with
+@code{adjoinSetTree} may produce an unbalanced result.  Since the position of a
+newly adjoined element depends on how the element compares with the items
+already in the set, we can expect that if we add elements ``randomly'' the tree
+will tend to be balanced on the average.  But this is not a guarantee.  For
+example, if we start with @code{SetTree.Empty} and adjoin the numbers 1 through 7
+in sequence we end up with the highly unbalanced tree shown in @ref{Figure
+2.17}.  In this tree all the left subtrees are empty, so it has no advantage
+over a simple ordered list.  One way to solve this problem is to define an
+operation that transforms an arbitrary tree into a balanced tree with the
+same elements.  Then we can perform this transformation after every few
+@code{adjoinSetTree} operations to keep our set in balance.  There are also
+other ways to solve this problem, most of which involve designing new data
+structures for which searching and insertion both can be done in
+@math{{\Theta(\log n)}} steps.@footnote{Examples of such structures include
+@newterm{B-trees} and @newterm{red-black trees}.  There is a large literature
+on data structures devoted to this problem.  See @ref{Cormen et al. 1990}.}
+
+@float
+@anchor{Figure 2.17}
+@ifinfo
+@quotation
+@strong{Figure 2.17:} Unbalanced tree produced by adjoining 1 through 7 in sequence.
+
+@example
+1
+ \
+  2
+   \
+    4
+     \
+      5
+       \
+        6
+         \
+          7
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.17a,,68mm,Figure 2.17: Unbalanced tree produced by adjoining 1 through 7 in sequence.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.17a.std,,68mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.17:} Unbalanced tree produced by adjoining 1 through 7 in sequence.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 2.63}Exercise 2.63:} Each of the following two
+functions converts a binary tree to a list.
+
+@example kotlin
+fun treeToList1(tree: SetTree): List<Long> =
+    when (tree) @{
+        is SetTree.Empty -> emptyList()
+        is SetTree.Node -> treeToList1(tree.left) + listOf(tree.entry) + treeToList1(tree.right)
+    @}
+
+fun treeToList2(tree: SetTree): List<Long> @{
+    fun copyToList(tree: SetTree, result: List<Long>): List<Long> =
+        when (tree) @{
+            is SetTree.Empty -> result
+            is SetTree.Node -> copyToList(tree.left, listOf(tree.entry) + copyToList(tree.right, result))
+        @}
+    return copyToList(tree, emptyList())
+@}
+@end example
+
+@enumerate a
+
+@item
+Do the two functions produce the same result for every tree?  If not, how do
+the results differ?  What lists do the two functions produce for the trees in
+@ref{Figure 2.16}?
+
+@item
+Do the two functions have the same order of growth in the number of steps
+required to convert a balanced tree with @math{n} elements to a list?  If not,
+which one grows more slowly?  (Kotlin's persistent @code{List} has no
+built-in O(1) prepend the way Scheme's @code{cons} does; @code{treeToList2}
+above still costs the same as @code{treeToList1} once translated literally.
+Rewrite @code{treeToList2} using a single mutable @code{ArrayDeque} threaded
+through the whole recursion, with @code{addFirst} standing in for
+@code{cons}, and re-answer the question for that version.)
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.64}Exercise 2.64:} The following function
+@code{listToTree} converts an ordered list to a balanced binary tree.  The
+helper function @code{partialTree} takes as arguments a list of at least
+@math{n} elements and the count @math{n}, and constructs a balanced tree
+containing the first @math{n} elements of the list.  The result returned by
+@code{partialTree} is a @code{Pair} whose first component is the constructed
+tree and whose second component is the list of elements not included in the
+tree.
+
+@example kotlin
+fun listToTree(elements: List<Long>): SetTree = partialTree(elements, elements.size).first
+
+fun partialTree(elts: List<Long>, n: Int): Pair<SetTree, List<Long>> @{
+    if (n == 0) return SetTree.Empty to elts
+    val leftSize = (n - 1) / 2
+    val (leftTree, nonLeftElts) = partialTree(elts, leftSize)
+    val rightSize = n - (leftSize + 1)
+    val thisEntry = nonLeftElts[0]
+    val (rightTree, remainingElts) = partialTree(nonLeftElts.drop(1), rightSize)
+    return makeTree(thisEntry, leftTree, rightTree) to remainingElts
+@}
+@end example
+
+@enumerate a
+
+@item
+Write a short paragraph explaining as clearly as you can how
+@code{partialTree} works.  Draw the tree produced by @code{listToTree} for
+the list @code{[1, 3, 5, 7, 9, 11]}.
+
+@item
+What is the order of growth in the number of steps required by
+@code{listToTree} to convert a list of @math{n} elements?
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.65}Exercise 2.65:} Use the results of @ref{Exercise 2.63} 
+and @ref{Exercise 2.64} to give @math{{\Theta(n)}} implementations of
+@code{unionSetTree} and @code{intersectionSetTree} for sets implemented as (balanced)
+binary trees.@footnote{@ref{Exercise 2.63} through @ref{Exercise 2.65} are due
+to Paul Hilfinger.}
+@end quotation
+
+@quotation
+@emph{Exercise 2.65a is added by this edition and extends exercise 2.65; SICP numbers stop at 2.65.} @strong{@anchor{Exercise 2.65a}Exercise 2.65a:} Check
+@code{unionSetTree}/@code{intersectionSetTree} against a second,
+independently written balanced-tree set: the JDK's own
+@code{java.util.TreeSet<Long>}.  Write a function @code{treeOf} that builds
+this section's @code{SetTree} from a @code{Set<Long>}, then, for at least one
+worked example, compute the union and intersection both ways and check that
+the two representations agree, ignoring order.  Use Kotest's @code{checkAll}
+property runner to check the same claim for many generated pairs of
+@code{Long} sets.
+@end quotation
+
+@subsubheading Sets and information retrieval
+
+We have examined options for using lists to represent sets and have seen how
+the choice of representation for a data object can have a large impact on the
+performance of the programs that use the data.  Another reason for
+concentrating on sets is that the techniques discussed here appear again and
+again in applications involving information retrieval.
+
+Consider a data base containing a large number of individual records, such as
+the personnel files for a company or the transactions in an accounting system.
+A typical data-management system spends a large amount of time accessing or
+modifying the data in the records and therefore requires an efficient method
+for accessing records.  This is done by identifying a part of each record to
+serve as an identifying @newterm{key}.  A key can be anything that uniquely
+identifies the record.  For a personnel file, it might be an employee's ID
+number.  For an accounting system, it might be a transaction number.  Whatever
+the key is, a record type in this language should carry a @code{key} field
+that retrieves the key associated with a given record.
+
+Now we represent the data base as a set of records. To locate the record with a
+given key we use a function @code{lookup}, which takes as arguments a key and
+a data base and which returns the record that has that key, or @code{null} if
+there is no such record.  @code{lookup} is implemented in almost the same way as
+@code{elementOfSet}.  For example, if the set of records is implemented as
+an unordered list, we could use
+
+@example kotlin
+fun lookup(givenKey: Long, setOfRecords: List<Record>): Record? = setOfRecords.find @{ it.key == givenKey @}
+@end example
+
+@noindent
+Of course, there are better ways to represent large sets than as unordered
+lists.  Information-retrieval systems in which records have to be ``randomly
+accessed'' are typically implemented by a tree-based method, such as the
+binary-tree representation discussed previously.  In designing such a system
+the methodology of data abstraction can be a great help.  The designer can
+create an initial implementation using a simple, straightforward representation
+such as unordered lists.  This will be unsuitable for the eventual system, but
+it can be useful in providing a ``quick and dirty'' data base with which to
+test the rest of the system.  Later on, the data representation can be modified
+to be more sophisticated.  If the data base is accessed in terms of abstract
+selectors and constructors, this change in representation will not require any
+changes to the rest of the system.
+
+@quotation
+@strong{@anchor{Exercise 2.66}Exercise 2.66:} Implement the @code{lookup}
+function for the case where the set of records is structured as a binary
+tree of your own @code{RecordTree} type, ordered by the numerical value of
+each record's key.
+@end quotation
+
+@node	2.3.4, 2.4, 2.2, 2.3
+@subsection Example: Huffman Encoding Trees
+
+This section provides practice in the use of a sealed hierarchy and data
+abstraction to manipulate sets and trees.  The application is to methods for
+representing data as sequences of ones and zeros (bits).  For example, the
+ASCII standard code used to represent text in computers encodes each character
+as a sequence of seven bits.  Using seven bits allows us to distinguish @math{2^7},
+or 128, possible different characters.  In general, if we want to distinguish
+@math{n} different symbols, we will need to use @math{{\log_2n}} bits per
+symbol.  If all our messages are made up of the eight symbols A, B, C, D, E, F,
+G, and H, we can choose a code with three bits per character, for example
+
+@example
+A 000  C 010  E 100  G 110
+B 001  D 011  F 101  H 111
+@end example
+
+@noindent
+With this code, the message
+
+@example
+BACADAEAFABBAAAGAH
+@end example
+
+@noindent
+is encoded as the string of 54 bits
+
+@example
+001000010000011000100000101
+000001001000000000110000111
+@end example
+
+@noindent
+Codes such as ASCII and the A-through-H code above are known as
+@newterm{fixed-length} codes, because they represent each symbol in the message
+with the same number of bits.  It is sometimes advantageous to use
+@newterm{variable-length} codes, in which different symbols may be represented
+by different numbers of bits.  For example, Morse code does not use the same
+number of dots and dashes for each letter of the alphabet.  In particular, E,
+the most frequent letter, is represented by a single dot.  In general, if our
+messages are such that some symbols appear very frequently and some very
+rarely, we can encode data more efficiently (i.e., using fewer bits per
+message) if we assign shorter codes to the frequent symbols.  Consider the
+following alternative code for the letters A through H:
+
+@example
+A 0    C 1010  E 1100  G 1110
+B 100  D 1011  F 1101  H 1111
+@end example
+
+@noindent
+With this code, the same message as above is encoded as the string
+
+@example
+100010100101101100011
+010100100000111001111
+@end example
+
+@noindent
+This string contains 42 bits, so it saves more than 20% in space in comparison
+with the fixed-length code shown above.
+
+One of the difficulties of using a variable-length code is knowing when you
+have reached the end of a symbol in reading a sequence of zeros and ones.
+Morse code solves this problem by using a special @newterm{separator code} (in
+this case, a pause) after the sequence of dots and dashes for each letter.
+Another solution is to design the code in such a way that no complete code for
+any symbol is the beginning (or @newterm{prefix}) of the code for another
+symbol.  Such a code is called a @newterm{prefix code}.  In the example above,
+A is encoded by 0 and B is encoded by 100, so no other symbol can have a code
+that begins with 0 or with 100.
+
+In general, we can attain significant savings if we use variable-length prefix
+codes that take advantage of the relative frequencies of the symbols in the
+messages to be encoded.  One particular scheme for doing this is called the
+Huffman encoding method, after its discoverer, David Huffman.  A Huffman code
+can be represented as a binary tree whose leaves are the symbols that are
+encoded.  At each non-leaf node of the tree there is a set containing all the
+symbols in the leaves that lie below the node.  In addition, each symbol at a
+leaf is assigned a weight (which is its relative frequency), and each non-leaf
+node contains a weight that is the sum of all the weights of the leaves lying
+below it.  The weights are not used in the encoding or the decoding process.
+We will see below how they are used to help construct the tree.
+
+@ref{Figure 2.18} shows the Huffman tree for the A-through-H code given above.
+The weights at the leaves indicate that the tree was designed for messages in
+which A appears with relative frequency 8, B with relative frequency 3, and the
+other letters each with relative frequency 1.
+
+@float
+@anchor{Figure 2.18}
+@ifinfo
+@strong{Figure 2.18:} A Huffman encoding tree.
+
+@example
+           @{A B C D E F G H@} 17
+                    *
+                   / \
+                  /   \
+                A 8    * @{B C D E F G H@} 9
+            __________/ \_____________
+           /                          \
+@{B C D@} 5 *                            * @{E F G H@} 4
+         / \                       ___/ \___
+        /   \                     /         \
+      B 3    * @{C D@} 2   @{E F@} 2 *           * @{G H@} 2
+            / \                 / \         / \
+           /   \               /   \       /   \
+         C 1   D 1           E 1   F 1   G 1   H 1
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.18a,,135mm,Figure 2.18: A Huffman encoding tree.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,,135mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.18:} A Huffman encoding tree.}
+@end float
+
+Given a Huffman tree, we can find the encoding of any symbol by starting at the
+root and moving down until we reach the leaf that holds the symbol.  Each time
+we move down a left branch we add a 0 to the code, and each time we move down a
+right branch we add a 1.  (We decide which branch to follow by testing to see
+which branch either is the leaf node for the symbol or contains the symbol in
+its set.)  For example, starting from the root of the tree in @ref{Figure 2.18}, 
+we arrive at the leaf for D by following a right branch, then a left
+branch, then a right branch, then a right branch; hence, the code for D is
+1011.
+
+@noindent
+To decode a bit sequence using a Huffman tree, we begin at the root and use the
+successive zeros and ones of the bit sequence to determine whether to move down
+the left or the right branch.  Each time we come to a leaf, we have generated a
+new symbol in the message, at which point we start over from the root of the
+tree to find the next symbol.  For example, suppose we are given the tree above
+and the sequence 10001010.  Starting at the root, we move down the right
+branch, (since the first bit of the string is 1), then down the left branch
+(since the second bit is 0), then down the left branch (since the third bit is
+also 0).  This brings us to the leaf for B, so the first symbol of the decoded
+message is B.  Now we start again at the root, and we make a left move because
+the next bit in the string is 0.  This brings us to the leaf for A.  Then we
+start again at the root with the rest of the string 1010, so we move right,
+left, right, left and reach C.  Thus, the entire message is BAC.
+
+@subsubheading Generating Huffman trees
+
+Given an ``alphabet'' of symbols and their relative frequencies, how do we
+construct the ``best'' code?  (In other words, which tree will encode messages
+with the fewest bits?)  Huffman gave an algorithm for doing this and showed
+that the resulting code is indeed the best variable-length code for messages
+where the relative frequency of the symbols matches the frequencies with which
+the code was constructed.  We will not prove this optimality of Huffman codes
+here, but we will show how Huffman trees are constructed.@footnote{See @ref{Hamming 1980} 
+for a discussion of the mathematical properties of Huffman codes.}
+
+The algorithm for generating a Huffman tree is very simple. The idea is to
+arrange the tree so that the symbols with the lowest frequency appear farthest
+away from the root. Begin with the set of leaf nodes, containing symbols and
+their frequencies, as determined by the initial data from which the code is to
+be constructed. Now find two leaves with the lowest weights and merge them to
+produce a node that has these two nodes as its left and right branches. The
+weight of the new node is the sum of the two weights. Remove the two leaves
+from the original set and replace them by this new node. Now continue this
+process. At each step, merge two nodes with the smallest weights, removing them
+from the set and replacing them with a node that has these two as its left and
+right branches. The process stops when there is only one node left, which is
+the root of the entire tree.  Here is how the Huffman tree of @ref{Figure 2.18}
+was generated:
+
+@example
+Initial @{(A 8) (B 3) (C 1) (D 1) 
+leaves   (E 1) (F 1) (G 1) (H 1)@}
+
+Merge   @{(A 8) (B 3) (@{C D@} 2) 
+         (E 1) (F 1) (G 1) (H 1)@}
+
+Merge   @{(A 8) (B 3) (@{C D@} 2) 
+         (@{E F@} 2) (G 1) (H 1)@}
+
+Merge   @{(A 8) (B 3) (@{C D@} 2) 
+         (@{E F@} 2) (@{G H@} 2)@}
+
+Merge   @{(A 8) (B 3) (@{C D@} 2) 
+         (@{E F G H@} 4)@}
+
+Merge   @{(A 8) (@{B C D@} 5) 
+         (@{E F G H@} 4)@}
+
+Merge   @{(A 8) (@{B C D E F G H@} 9)@}
+
+Final   @{(@{A B C D E F G H@} 17)@}
+merge    
+@end example
+
+@noindent
+The algorithm does not always specify a unique tree, because there may not be
+unique smallest-weight nodes at each step.  Also, the choice of the order in
+which the two nodes are merged (i.e., which will be the right branch and which
+will be the left branch) is arbitrary.
+
+@subsubheading Representing Huffman trees
+
+In the exercises below we will work with a system that uses Huffman trees to
+encode and decode messages and generates Huffman trees according to the
+algorithm outlined above.  We will begin by discussing how trees are
+represented.
+
+Where the book tags a leaf as a three-item list headed by the symbol
+@code{leaf} and a general tree as a four-item list of its two branches plus a
+precomputed symbol set and weight, this edition closes both shapes as one
+sealed hierarchy: a leaf holds its symbol and weight directly, and a branch
+holds its two subtrees plus the aggregate symbol list and weight of
+everything below it, computed once at construction rather than walked on
+every query:
+
+@example kotlin
+sealed interface HuffmanTree @{
+    val weight: Long
+    data class Leaf(val sym: String, override val weight: Long) : HuffmanTree
+    data class Branch(val left: HuffmanTree, val right: HuffmanTree, override val weight: Long, val syms: List<String>) : HuffmanTree
+@}
+
+fun makeLeaf(sym: String, weight: Long): HuffmanTree = HuffmanTree.Leaf(sym, weight)
+
+fun symbols(t: HuffmanTree): List<String> =
+    when (t) @{
+        is HuffmanTree.Leaf -> listOf(t.sym)
+        is HuffmanTree.Branch -> t.syms
+    @}
+
+fun makeCodeTree(left: HuffmanTree, right: HuffmanTree): HuffmanTree =
+    HuffmanTree.Branch(left, right, left.weight + right.weight, symbols(left) + symbols(right))
+@end example
+
+@noindent
+The book's @code{symbols} and @code{weight} procedures dispatch on
+@code{leaf?} and then read @code{cadr}/@code{caddr}/@code{cadddr} by hand.
+Here @code{symbols} is the @code{when} above, and @code{weight} is simply
+@code{HuffmanTree.weight}, an abstract property every variant overrides; both
+are simple examples of @newterm{generic procedures} (procedures that can
+handle more than one kind of data), which we will have much more to say
+about in @ref{2.4} and @ref{2.5}.
+
+@subsubheading The decoding procedure
+
+The following function implements the decoding algorithm.  It takes as
+arguments a list of bits, together with a Huffman tree.  The book's
+@code{decode-1} is a second, inner recursive procedure only because Scheme
+has no loop construct of its own; this edition writes the same
+restart-at-the-root behavior as a single loop:
+
+@example kotlin
+fun chooseBranch(bit: Int, branch: HuffmanTree): HuffmanTree =
+    when @{
+        branch !is HuffmanTree.Branch -> throw IllegalArgumentException("choose-branch of a leaf")
+        bit == 0 -> branch.left
+        bit == 1 -> branch.right
+        else -> throw IllegalArgumentException("bad bit: $bit")
+    @}
+
+fun decode(bits: List<Int>, tree: HuffmanTree): List<String> @{
+    val result = mutableListOf<String>()
+    var current = tree
+    for (bit in bits) @{
+        val next = chooseBranch(bit, current)
+        if (next is HuffmanTree.Leaf) @{
+            result.add(next.sym)
+            current = tree
+        @} else @{
+            current = next
+        @}
+    @}
+    return result
+@}
+@end example
+
+@noindent
+@code{chooseBranch} takes two arguments: the bit and the current position in
+the tree.  It keeps moving ``down'' the tree, choosing a left or a right
+branch according to whether the next bit in the list is @code{0} or @code{1}.
+When @code{decode}'s loop reaches a leaf, it appends the symbol at that leaf
+to the result and restarts the walk at the root of the tree, exactly as the
+book's @code{cons}-onto-the-recursive-call does.
+
+@subsubheading Sets of weighted elements
+
+In our representation of trees, each non-leaf node contains a set of symbols,
+which we have represented as a plain @code{List}.  However, the
+tree-generating algorithm discussed above requires that we also work with
+sets of leaves and trees, successively merging the two smallest items.  Since
+we will be required to repeatedly find the smallest item in a set, it is
+convenient to use an ordered representation for this kind of set.
+
+We will represent a set of leaves and trees as a @code{List} of elements,
+arranged in increasing order of weight.  The following @code{adjoinHuffmanSet}
+function for constructing sets is similar to @code{adjoinSetOrdered} of
+@ref{Exercise 2.61}; however, items are compared by their weights, and the
+element being added to the set is never already in it:
+
+@example kotlin
+fun adjoinHuffmanSet(x: HuffmanTree, set: List<HuffmanTree>): List<HuffmanTree> =
+    when @{
+        set.isEmpty() -> listOf(x)
+        x.weight < set[0].weight -> listOf(x) + set
+        else -> listOf(set[0]) + adjoinHuffmanSet(x, set.drop(1))
+    @}
+@end example
+
+@noindent
+The following function takes a list of symbol-frequency pairs such as
+@code{[("A", 4), ("B", 2), ("C", 1), ("D", 1)]} and constructs an initial
+ordered set of leaves, ready to be merged according to the Huffman algorithm:
+
+@example kotlin
+fun makeLeafSet(pairs: List<Pair<String, Long>>): List<HuffmanTree> =
+    pairs.fold(emptyList()) @{ set, (sym, weight) -> adjoinHuffmanSet(makeLeaf(sym, weight), set) @}
+@end example
+
+@quotation
+@strong{@anchor{Exercise 2.67}Exercise 2.67:} Define an encoding tree and a
+sample message:
+
+@example kotlin
+val sampleTree =
+    makeCodeTree(
+        makeLeaf("A", 4L),
+        makeCodeTree(makeLeaf("B", 2L), makeCodeTree(makeLeaf("D", 1L), makeLeaf("C", 1L))),
+    )
+
+val sampleMessage = listOf(0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0)
+@end example
+
+Use the @code{decode} function to decode the message, and give the result.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.68}Exercise 2.68:} The @code{encode} function takes
+as arguments a message and a tree and produces the list of bits that gives the
+encoded message.
+
+@example kotlin
+fun encode(message: List<String>, tree: HuffmanTree): List<Int> = message.flatMap @{ encodeSymbol(it, tree) @}
+@end example
+
+Write your own @code{encodeSymbol}, a function that returns the bits that
+encode a given symbol according to a given tree.  You should design
+@code{encodeSymbol} so that it signals an error if the symbol is not in the
+tree at all.  Test your function by encoding the result you obtained in
+@ref{Exercise 2.67} with @code{sampleTree} and seeing whether it is the same
+as the original @code{sampleMessage}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.69}Exercise 2.69:} The following function takes as
+its argument a list of symbol-frequency pairs (where no symbol appears in more
+than one pair) and generates a Huffman encoding tree according to the Huffman
+algorithm.
+
+@example kotlin
+fun generateHuffmanTree(pairs: List<Pair<String, Long>>): HuffmanTree = successiveMerge(makeLeafSet(pairs))
+@end example
+
+@code{makeLeafSet} is the function given above that transforms the list of
+pairs into an ordered set of leaves.  @code{successiveMerge} is the function
+you must write, using @code{makeCodeTree} to successively merge the
+smallest-weight elements of the set until there is only one element left,
+which is the desired Huffman tree.  (This function is slightly tricky, but
+not really complicated.  If you find yourself designing a complex function,
+then you are almost certainly doing something wrong.  You can take
+significant advantage of the fact that we are using an ordered set
+representation.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.70}Exercise 2.70:} The following eight-symbol
+alphabet with associated relative frequencies was designed to efficiently
+encode the lyrics of 1950s rock songs.  (Note that the ``symbols'' of an
+``alphabet'' need not be individual letters.)
+
+@example
+
+A    2    NA  16
+BOOM 1    SHA  3
+GET  2    YIP  9
+JOB  2    WAH  1
+@end example
+
+Use @code{generateHuffmanTree} (@ref{Exercise 2.69}) to generate a
+corresponding Huffman tree, and use @code{encode} (@ref{Exercise 2.68}) to
+encode the following message:
+
+@example
+Get a job
+Sha na na na na na na na na
+
+Get a job
+Sha na na na na na na na na
+
+Wah yip yip yip yip 
+yip yip yip yip yip
+Sha boom
+@end example
+
+How many bits are required for the encoding?  What is the smallest number of
+bits that would be needed to encode this song if we used a fixed-length code
+for the eight-symbol alphabet?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.71}Exercise 2.71:} Suppose we have a Huffman tree
+for an alphabet of @math{n} symbols, and that the relative frequencies of the
+symbols are @math{{1, 2, 4, \dots, 2^{n-1}}}.  Sketch the tree for @math{{n=5}}; for
+@math{{n=10}}.  In such a tree (for general @math{n}) how many bits are required to
+encode the most frequent symbol?  The least frequent symbol?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.72}Exercise 2.72:} Consider the encoding procedure
+that you designed in @ref{Exercise 2.68}.  What is the order of growth in the
+number of steps needed to encode a symbol?  Be sure to include the number of
+steps needed to search the symbol list at each node encountered.  To answer
+this question in general is difficult.  Consider the special case where the
+relative frequencies of the @math{n} symbols are as described in @ref{Exercise 2.71}, 
+and give the order of growth (as a function of @math{n}) of the number of
+steps needed to encode the most frequent and least frequent symbol in the
+alphabet.
+@end quotation

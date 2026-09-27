@@ -1,0 +1,160 @@
+@node	0.4, 0.5, Chapter 0, Chapter 0
+@section Pattern matching and variants
+
+@noindent
+Scheme represents structured data with pairs and tags them by convention;
+OCaml has a dedicated construct for exactly this, the @newterm{variant}
+type, and a dedicated way to take one apart, @code{match}. A variant lists
+its possible shapes, each with a name (a @newterm{constructor}) and the data
+it carries:
+
+@example
+# type shape =
+    | Circle of float
+    | Rectangle of float * float;;
+type shape = Circle of float | Rectangle of float * float
+@end example
+
+@noindent
+A @code{shape} is either a @code{Circle} carrying one @code{float} (its
+radius) or a @code{Rectangle} carrying two (its width and height); nothing
+else is a @code{shape}. @code{match} dispatches on the constructor actually
+present, binding the data it carries:
+
+@example
+# let area = function
+    | Circle r -> Float.pi *. r *. r
+    | Rectangle (w, h) -> w *. h;;
+val area : shape -> float = <fun>
+# area (Circle 2.0);;
+- : float = 12.5663706143591725
+# area (Rectangle (3.0, 4.0));;
+- : float = 12.
+@end example
+
+@noindent
+(@code{function} is shorthand for @code{fun x -> match x with}, useful for a
+function whose whole body is one pattern match.) The compiler checks that a
+@code{match} covers every constructor of the type it matches on, under the
+warning that this edition's build treats as an error; add a constructor to
+@code{shape} without adding an arm to @code{area}, and the build stops,
+naming @code{area} as the site that no longer covers every case. Exercise
+0.3 makes this literal: it asks for a @code{Triangle} constructor added
+after the fact, and for the resulting compiler message read as a list of
+every site the change touched. In a codebase of any size, that list is the
+entire benefit of exhaustiveness checking: representing a new case correctly
+becomes a compile error to fix, not a bug to discover at runtime in whichever
+branch happens to run.
+
+@subsubheading Guards, and Scheme's @code{cond}
+
+A @code{match} arm may add a @code{when} clause, narrowing which values of a
+pattern it accepts; this is this edition's translation of Scheme's
+@code{cond}:
+
+@example
+# let abs_value n =
+    match n with
+    | n when n < 0 -> - n
+    | n -> n;;
+val abs_value : int -> int = <fun>
+# abs_value (-4);;
+- : int = 4
+# abs_value 7;;
+- : int = 7
+@end example
+
+@subsubheading @code{option}: no more, no less, than ``maybe nothing''
+
+The standard library's own most useful variant is @code{option}, with two
+constructors, @code{None} and @code{Some @var{value}}. It replaces every use
+in Scheme of a sentinel value (an out-of-band @code{#f}, or a specific
+number that ``really'' means absent) with a type the compiler forces the
+caller to handle:
+
+@example
+# let head = function
+    | [] -> None
+    | first :: _ -> Some first;;
+val head : 'a list -> 'a option = <fun>
+# head [ 3; 5 ];;
+- : int option = Some 3
+# head ([] : int list);;
+- : int option = None
+# let safe_divide n d = if d = 0 then None else Some (n / d);;
+val safe_divide : int -> int -> int option = <fun>
+# safe_divide 10 2;;
+- : int option = Some 5
+# safe_divide 10 0;;
+- : int option = None
+@end example
+
+@noindent
+@code{head}'s type, @code{'a list -> 'a option}, is @newterm{polymorphic}:
+the @code{'a} is a type variable, meaning @code{head} works on a list of any
+one element type and returns an option of that same type: the function never inspects what kind of value it holds, only whether the list is empty.
+A caller of @code{safe_divide} cannot forget to check for division by zero
+the way a caller ignoring a Scheme error condition can; the result is an
+@code{int option}, not an @code{int}, and getting an @code{int} back out
+requires a @code{match} (or one of the combinators section 0.8 introduces)
+that has a case for @code{None}.
+
+@subsubheading Building this book's own data with variants
+
+The rest of this book represents its own recursive data (lists, trees, symbolic expressions) with variants built from the same two pieces just
+shown: a constructor per shape, and recursion in the type itself where a
+shape contains more of the same type. A minimal integer list, reimplemented
+by hand as a warm-up for the library list type the next section introduces:
+
+@example
+# type int_list =
+    | Nil
+    | Cons of int * int_list;;
+type int_list = Nil | Cons of int * int_list
+# let rec total = function
+    | Nil -> 0
+    | Cons (head, tail) -> head + total tail;;
+val total : int_list -> int = <fun>
+# total (Cons (1, Cons (2, Nil)));;
+- : int = 3
+@end example
+
+@noindent
+and a small binary tree, in the same shape this book's later chapters use
+for symbolic expressions and register-machine instructions:
+
+@example
+# type tree =
+    | Leaf
+    | Node of tree * int * tree;;
+type tree = Leaf | Node of tree * int * tree
+# let rec tree_sum = function
+    | Leaf -> 0
+    | Node (left, label, right) -> tree_sum left + label + tree_sum right;;
+val tree_sum : tree -> int = <fun>
+# tree_sum (Node (Node (Leaf, 1, Leaf), 6, Node (Leaf, 4, Leaf)));;
+- : int = 11
+@end example
+
+@noindent
+Both @code{total} and @code{tree_sum} recurse on the same shape their type
+recurses on, and both are exhaustive: @code{Nil}/@code{Leaf} is the base
+case, and the other constructor is the recursive case. This is the pattern
+every recursive function over this book's own data structures follows, from
+chapter 2's hierarchical data onward.
+
+@subsubheading Exercises
+
+@quotation
+@strong{@anchor{Exercise 0.3}Exercise 0.3:} Define a @code{shape} variant
+whose @code{Circle} constructor carries a radius and whose @code{Rectangle}
+constructor carries a width and a height, together with an @code{area}
+function that dispatches on the constructor. Then add a @code{Triangle}
+constructor carrying a base and a height, and let the compiler list every
+site that breaks before you fix each one.
+@end quotation
+
+@noindent
+A scaffold for it lives in @file{ch0/exercises/ex_0_03.mli}; the reference
+solution is @file{ch0/solutions/ex_0_03.ml}, with the reasoning in
+@file{ch0/solutions/ex_0_03.md}.

@@ -1,0 +1,1076 @@
+\input texinfo
+@comment  To crop page margins:
+@comment  @input marginless
+@comment
+@comment             **********************************************************
+@setfilename         html
+@settitle            Structure and Interpretation of Computer Programs, 2e
+@comment             Unofficial Texinfo Format
+@comment
+@set utfversion      2.andresraba6.6
+@set utfversiondate  September 16, 2015
+@comment
+@comment             This file is licensed under a Creative Commons
+@comment             Attribution-ShareAlike 4.0 International License
+@comment             http://creativecommons.org/licenses/by-sa/4.0/
+@comment             
+@comment             This is a Texinfo file.  To convert it to Info hypertext
+@comment             format, you will need the `makeinfo' program from the GNU
+@comment             Texinfo package.  To produce a PDF, use texi2pdf.
+@comment             For more information about this file,
+@comment             see the text under `@node UTF' below.
+@comment             
+@comment             Various versions of sicp.texi and preformatted sicp.info
+@comment             can be found at the following Web pages:
+@comment             
+@comment                 http://www.neilvandyke.org/sicp-texi/
+@comment                 http://sicpebook.wordpress.com/
+@comment                 [add your own here]
+@comment             
+@comment             **********************************************************
+
+@comment HISTORY:
+@comment
+@comment * Version 1 (April, 2001) by Lytha Ayth.
+@comment
+@comment * Version 2 (April 20, 2001) by Lytha Ayth.
+@comment
+@comment * Version 2.nwv1 (March 11, 2002) by Neil W. Van Dyke.
+@comment   Cosmetic change to heading in Info format, and comment changes.
+@comment 
+@comment * Version 2.neilvandyke1 (February 10, 2003) by Neil W. Van Dyke
+@comment   Correction to Exercise 1.39 formula, spotted by Steve VanDevender.
+@comment   Added URL of Abelson and Sussman video lectures.
+@comment
+@comment * Version 2.neilvandyke2 (unreleased)
+@comment
+@comment * Version 2.neilvandyke3 (April 20, 2006) by Neil W. Van Dyke
+@comment   Pedro Kr@"oger patch to add missing Lisp example.
+@comment
+@comment * Version 2.neilvandyke4 (January 10, 2007) by Neil W. Van Dyke
+@comment   Brad Walker patch to add @code{@@dircategory} and @code{@@direntry}.
+@comment
+@comment * Version 2.andresraba1 (May 23, 2011) by Andres Raba.
+@comment   Mathematics typeset in TeX, figures redrawn in vector graphics,
+@comment   typeface changed, cross-references improved, hyperlinks added,
+@comment   known errors and typos corrected.
+@comment
+@comment * Version 2.andresraba2 (November 21, 2011) by Andres Raba.
+@comment   Minor change to the appearance of diagrams. Adjusted page layout.
+@comment   Fixed some typos. License changed from CC BY-NC to CC BY-SA.
+@comment
+@comment * Version 2.gavrie1 (November 21, 2011) by Gavrie Philipson.
+@comment   Added @kindle (defined in texinfo.tex), and removed page numbers.
+@comment   Page layout and text size adapted to Kindle-like devices.
+@comment
+@comment * Version 2.araba1p-a2.1 (March 19, 2012) by Andres Raba.
+@comment   Two chapters reformatted to pocket format. Page geometry
+@comment   defined by @pocket (previously @kindle) in texinfo.tex.
+@comment
+@comment * Version 2.andresraba4 (November 23, 2012) by Andres Raba.
+@comment   Conversion to pocket format completed. The whole book 
+@comment   is now typeset to be read on 6-inch e-reader screen (PDF).
+@comment
+@comment * (Version 2.andresraba5 is the LaTeX version, described in
+@comment   sicp-pdf repository.)
+@comment
+@comment * Version 2.andresraba6 (January 7, 2014) by Andres Raba.
+@comment   Book converted to HTML5 and EPUB3. Mathematics is typeset 
+@comment   with MathML and MathJax.
+@comment
+@comment * Version 2.andresraba6.1 (February 15, 2014) by Andres Raba.
+@comment   Raised the splitting threshold from subsection to section.
+@comment
+@comment * Version 2.andresraba6.2 (February 23, 2014) by Andres Raba.
+@comment   Fixed the SVG files to pass epubcheck validation.
+@comment
+@comment * Version 2.andresraba6.3 (June 9, 2014) by Andres Raba.
+@comment   Improved the pretty-printing of some Scheme code.
+@comment   Decreased the default font size of epub from 170% to 100%.
+@comment
+@comment * Version 2.andresraba6.4 (June 24, 2014) by Andres Raba.
+@comment   Switched on hyphenation for all viewports, made text column
+@comment   wider, re-arranged some Scheme code, changed Mathjax
+@comment   protocol from http to https.
+@comment
+@comment * Version 2.andresraba6.5 (January 29, 2015) by Andres Raba.
+@comment   Added noncommercial clause to license, fixed broken links,
+@comment   added more fulltext links, replaced monospace with roman in
+@comment   MathML (Android rendering bug), adjusted math typography.
+@comment
+@comment * Version 2.andresraba6.6 (September 16, 2015) by Andres Raba.
+@comment   Fixed broken links. Tinted chapter and section numbers.
+@comment   License updated to CC BY-SA 4.0.
+
+@documentencoding UTF-8
+
+@dircategory The Algorithmic Language Scheme
+@direntry
+* SICP: (sicp). Structure and Interpretation of Computer Programs
+@end direntry
+
+@macro newterm{term}
+@cindex \term\
+@dfn{\term\}
+@end macro
+
+
+@titlepage
+
+@titlefont{Structure and Interpretation@* of Computer Programs}
+
+@subtitle @abbr{Second Edition}@* Unofficial Texinfo Format @value{utfversion}
+
+@author Harold Abelson and Gerald Jay Sussman with Julie Sussman, foreword by Alan J. Perlis
+
+@page
+@vskip 0pt plus 1filll
+@noindent
+@copyright{}1996 by The Massachusetts Institute of Technology
+
+@noindent
+@ifhtml
+@image{../../text/original/figures/icons/cc, 6mm,,,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/icons/cc.std, 6mm,,,.pdf}
+@end iftex
+@ifhtml
+@image{../../text/original/figures/icons/by, 6mm,,,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/icons/by.std, 6mm,,,.pdf}
+@end iftex
+@ifhtml
+@image{../../text/original/figures/icons/sa, 6mm,,,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/icons/sa.std, 6mm,,,.pdf}
+@end iftex
+
+@noindent
+This work is licensed under a Creative Commons Attribution-ShareAlike 4.0
+International License (@url{http://creativecommons.org/licenses/by-sa/4.0/, @abbr{CC BY-SA 4.0}}).
+Based on a work at @url{http://mitpress.mit.edu/sicp/, mitpress.mit.edu}.
+
+@noindent
+The @abbr{MIT} Press@*
+Cambridge, Massachusetts@* 
+London, England
+
+@noindent
+McGraw-Hill Book Company@*
+New York, St. Louis, San Francisco,@*
+Montreal, Toronto
+
+@noindent
+This book is one of a series of texts written by faculty of the Electrical
+Engineering and Computer Science Department at the Massachusetts Institute of
+Technology.  It was edited and produced by The @abbr{MIT} Press under a
+joint production-distribution arrangement with the McGraw-Hill Book Company.
+
+@noindent
+@b{The Rust Edition}@*
+Adapted to Rust.  Every program re-expressed, every exercise kept at
+its @abbr{SICP} number.  The changes and the license terms for adapted
+material are stated in the Preface to the Rust Edition.
+
+@noindent
+Unofficial Texinfo Format @url{http://sicpebook.wordpress.com, @value{utfversion}} (@value{utfversiondate}),
+based on @url{http://www.neilvandyke.org/sicp-texi/, 2.neilvandyke4} (January 10, 2007).
+
+@end titlepage
+
+@shortcontents
+
+@contents
+
+@headings off
+
+@finalout
+
+@node Top, UTF, (dir), (dir)
+
+@ifinfo
+
+@heading Structure and Interpretation of Computer Programs
+
+@noindent
+Second Edition@*
+by Harold Abelson and Gerald Jay Sussman, with Julie Sussman@*
+foreword by Alan J. Perlis@*
+@copyright{} 1996 Massachusetts Institute of Technology
+
+@noindent
+Unofficial Texinfo Format version @value{utfversion} (@value{utfversiondate})
+
+@noindent
+The Rust Edition (@value{utfversion})
+
+@end ifinfo
+
+@menu
+* UTF::              Unofficial Texinfo Format
+* Dedication::       Dedication
+* Foreword::         Foreword
+* PrefaceRust:: Preface to the Rust Edition
+* Preface::          Preface to the Second Edition
+* Preface 1e::       Preface to the First Edition
+* Acknowledgments::  Acknowledgments
+* Chapter 0::        The language of this book
+* Chapter 1::        Building Abstractions with Procedures
+* Chapter 2::        Building Abstractions with Data
+* Chapter 3::        Modularity, Objects, and State
+* Chapter 4::        Metalinguistic Abstraction
+* Chapter 5::        Computing with Register Machines
+* References::       References
+* Exercises::        List of Exercises
+* Figures::          List of Figures
+* Term Index::       Term Index
+* Colophon::         Colophon
+
+@detailmenu
+ --- The Detailed Node Listing ---
+
+The language of this book
+
+* 0.1::              Running this book
+* 0.2::              Values, names, and functions
+* 0.3::              Recursion and the call stack
+* 0.4::              Data
+* 0.5::              Mutation and ownership
+* 0.6::              Errors as values
+* 0.7::              Testing
+* 0.8::              Reading this book
+
+Programming in Lisp
+
+* 1.1::              The Elements of Programming
+* 1.2::              Procedures and the Processes They Generate
+* 1.3::              Formulating Abstractions with Higher-Order Procedures
+
+The Elements of Programming
+
+* 1.1.1::            Expressions
+* 1.1.2::            Naming and the Environment
+* 1.1.3::            Evaluating Combinations
+* 1.1.4::            Compound Procedures
+* 1.1.5::            The Substitution Model for Procedure Application
+* 1.1.6::            Conditional Expressions and Predicates
+* 1.1.7::            Example: Square Roots by Newton's Method
+* 1.1.8::            Procedures as Black-Box Abstractions
+
+Procedures and the Processes They Generate
+
+* 1.2.1::            Linear Recursion and Iteration
+* 1.2.2::            Tree Recursion
+* 1.2.3::            Orders of Growth
+* 1.2.4::            Exponentiation
+* 1.2.5::            Greatest Common Divisors
+* 1.2.6::            Example: Testing for Primality
+
+Formulating Abstractions with Higher-Order Procedures
+
+* 1.3.1::            Procedures as Arguments
+* 1.3.2::            Constructing Procedures Using @code{Lambda}
+* 1.3.3::            Procedures as General Methods
+* 1.3.4::            Procedures as Returned Values
+
+Building Abstractions with Data
+
+* 2.1::              Introduction to Data Abstraction
+* 2.2::              Hierarchical Data and the Closure Property
+* 2.3::              Symbolic Data
+* 2.4::              Multiple Representations for Abstract Data
+* 2.5::              Systems with Generic Operations
+
+Introduction to Data Abstraction
+
+* 2.1.1::            Example: Arithmetic Operations for Rational Numbers
+* 2.1.2::            Abstraction Barriers
+* 2.1.3::            What Is Meant by Data?
+* 2.1.4::            Extended Exercise: Interval Arithmetic
+
+Hierarchical Data and the Closure Property
+
+* 2.2.1::            Representing Sequences
+* 2.2.2::            Hierarchical Structures
+* 2.2.3::            Sequences as Conventional Interfaces
+* 2.2.4::            Example: A Picture Language
+
+Symbolic Data
+
+* 2.3.1::            Quotation
+* 2.3.2::            Example: Symbolic Differentiation
+* 2.3.3::            Example: Representing Sets
+* 2.3.4::            Example: Huffman Encoding Trees
+
+Multiple Representations for Abstract Data
+
+* 2.4.1::            Representations for Complex Numbers
+* 2.4.2::            Tagged data
+* 2.4.3::            Data.Directed Programming and Additivity
+
+Systems with Generic Operations
+
+* 2.5.1::            Generic Arithmetic Operations
+* 2.5.2::            Combining Data of Different Types
+* 2.5.3::            Example: Symbolic Algebra
+
+Modularity, Objects, and State
+
+* 3.1::              Assignment and Local State
+* 3.2::              The Environment Model of Evaluation
+* 3.3::              Modeling with Mutable Data
+* 3.4::              Concurrency: Time Is of the Essence
+* 3.5::              Streams
+
+Assignment and Local State
+
+* 3.1.1::            Local State Variables
+* 3.1.2::            The Benefits of Introducing Assignment
+* 3.1.3::            The Costs of Introducing Assignment
+
+The Environment Model of Evaluation
+
+* 3.2.1::            The Rules for Evaluation
+* 3.2.2::            Applying Simple Procedures
+* 3.2.3::            Frames as the Repository of Local State
+* 3.2.4::            Internal Definitions
+
+Modeling with Mutable Data
+
+* 3.3.1::            Mutable List Structure
+* 3.3.2::            Representing Queues
+* 3.3.3::            Representing Tables
+* 3.3.4::            A Simulator for Digital Circuits
+* 3.3.5::            Propagation of Constraints
+
+Concurrency: Time Is of the Essence
+
+* 3.4.1::            The Nature of Time in Concurrent Systems
+* 3.4.2::            Mechanisms for Controlling Concurrency
+
+Streams
+
+* 3.5.1::            Streams Are Delayed Lists
+* 3.5.2::            Infinite Streams
+* 3.5.3::            Exploiting the Stream Paradigm
+* 3.5.4::            Streams and Delayed Evaluation
+* 3.5.5::            Modularity of Functional Programs and Modularity of
+                     Objects
+
+Metalinguistic Abstraction
+
+* 4.1::              The Metacircular Evaluator
+* 4.2::              Variations on a Scheme -- Lazy Evaluation
+* 4.3::              Variations on a Scheme -- Nondeterministic Computing
+* 4.4::              Logic Programming
+
+The Metacircular Evaluator
+
+* 4.1.1::            The Core of the Evaluator
+* 4.1.2::            Representing Expressions
+* 4.1.3::            Evaluator Data Structures
+* 4.1.4::            Running the Evaluator as a Program
+* 4.1.5::            Data as Programs
+* 4.1.6::            Internal Definitions
+* 4.1.7::            Separating Syntactic Analysis from Execution
+
+Variations on a Scheme -- Lazy Evaluation
+
+* 4.2.1::            Normal Order and Applicative Order
+* 4.2.2::            An Interpreter with Lazy Evaluation
+* 4.2.3::            Streams as Lazy Lists
+
+Variations on a Scheme -- Nondeterministic Computing
+
+* 4.3.1::            Amb and Search
+* 4.3.2::            Examples of Nondeterministic Programs
+* 4.3.3::            Implementing the @code{Amb} Evaluator
+
+Logic Programming
+
+* 4.4.1::            Deductive Information Retrieval
+* 4.4.2::            How the Query System Works
+* 4.4.3::            Is Logic Programming Mathematical Logic?
+* 4.4.4::            Implementing the Query System
+
+Implementing the Query System
+
+* 4.4.4.1::          The Driver Loop and Instantiation
+* 4.4.4.2::          The Evaluator
+* 4.4.4.3::          Finding Assertions by Pattern Matching
+* 4.4.4.4::          Rules and Unification
+* 4.4.4.5::          Maintaining the Data Base
+* 4.4.4.6::          Stream Operations
+* 4.4.4.7::          Query Syntax Procedures
+* 4.4.4.8::          Frames and Bindings
+
+Computing with Register Machines
+
+* 5.1::              Designing Register Machines
+* 5.2::              A Register.Machine Simulator
+* 5.3::              Storage Allocation and Garbage Collection
+* 5.4::              The Explicit-Control Evaluator
+* 5.5::              Compilation
+
+Designing Register Machines
+
+* 5.1.1::            A Language for Describing Register Machines
+* 5.1.2::            Abstraction in Machine Design
+* 5.1.3::            Subroutines
+* 5.1.4::            Using a Stack to Implement Recursion
+* 5.1.5::            Instruction Summary
+
+A Register.Machine Simulator
+
+* 5.2.1::            The Machine Model
+* 5.2.2::            The Assembler
+* 5.2.3::            Generating Execution Procedures for Instructions
+* 5.2.4::            Monitoring Machine Performance
+
+Storage Allocation and Garbage Collection
+
+* 5.3.1::            Memory as Vectors
+* 5.3.2::            Maintaining the Illusion of Infinite Memory
+
+Registers and operations
+
+* 5.4.1::            The Core of the Explicit.Control Evaluator
+* 5.4.2::            Sequence Evaluation and Tail Recursion
+* 5.4.3::            Conditionals, Assignments, and Definitions
+* 5.4.4::            Running the Evaluator
+
+An overview of the compiler
+
+* 5.5.1::            Structure of the Compiler
+* 5.5.2::            Compiling Expressions
+* 5.5.3::            Compiling Combinations
+* 5.5.4::            Combining Instruction Sequences
+* 5.5.5::            An Example of Compiled Code
+* 5.5.6::            Lexical Addressing
+* 5.5.7::            Interfacing Compiled Code to the Evaluator
+
+@end detailmenu
+@end menu
+
+@node    UTF, Dedication, Top, Top
+@unnumbered Unofficial Texinfo Format
+
+This is the second edition @abbr{SICP} book,@* from Unofficial Texinfo
+Format.
+
+You are probably reading it in an Info hypertext browser, such as the Info
+mode of Emacs.  You might alternatively be reading it @TeX{}-formatted on your
+screen or printer, though that would be silly.  And, if printed, expensive. 
+
+The freely-distributed official @abbr{HTML}-and-@abbr{GIF} format was
+first converted personally to Unofficial Texinfo Format (@abbr{UTF})
+version 1 by Lytha Ayth during a long Emacs lovefest weekend in April, 2001.
+
+The @abbr{UTF} is easier to search than the @abbr{HTML} format.  It is
+also much more accessible to people running on modest computers, such as
+donated '386-based PCs.  A 386 can, in theory, run Linux, Emacs, and a Scheme
+interpreter simultaneously, but most 386s probably can't also run both Netscape
+and the necessary X Window System without prematurely introducing budding young
+underfunded hackers to the concept of @newterm{thrashing}.  @abbr{UTF} can also fit
+uncompressed on a 1.44@abbr{MB} floppy diskette, which may come in handy for
+installing @abbr{UTF} on PCs that do not have Internet or @abbr{LAN} access.
+
+The Texinfo conversion has been a straight transliteration, to the extent
+possible.  Like the @TeX{}-to-@abbr{HTML} conversion, this was not without
+some introduction of breakage.  In the case of Unofficial Texinfo Format,
+figures have suffered an amateurish resurrection of the lost art of
+@abbr{ASCII}.  Also, it's quite possible that some errors of ambiguity
+were introduced during the conversion of some of the copious superscripts (`^')
+and subscripts (`_').  Divining @emph{which} has been left as an exercise to
+the reader. But at least we don't put our brave astronauts at risk by encoding
+the @emph{greater-than-or-equal} symbol as @code{<u>&gt;</u>}.
+
+If you modify @file{sicp.texi} to correct errors or improve the
+@abbr{ASCII} art, then update the @code{@@set utfversion @value{utfversion}}
+line to reflect your delta.  For example, if you started with Lytha's version
+@code{1}, and your name is Bob, then you could name your successive versions
+@code{1.bob1}, @code{1.bob2}, @dots{} @code{1.bob@i{n}}.  Also update
+@code{utfversiondate}.  If you want to distribute your version on the Web, then
+embedding the string ``sicp.texi'' somewhere in the file or Web page will make
+it easier for people to find with Web search engines.
+
+It is believed that the Unofficial Texinfo Format is in keeping with the
+spirit of the graciously freely-distributed @abbr{HTML} version.  But you
+never know when someone's armada of lawyers might need something to do, and get
+their shorts all in a knot over some benign little thing, so think twice before
+you use your full name or distribute Info, @abbr{DVI}, PostScript, or
+@abbr{PDF} formats that might embed your account or machine name.
+@i{Peath, Lytha Ayth}
+
+@b{Addendum:} See also the @abbr{SICP} video lectures by Abelson and Sussman:
+at @url{http://groups.csail.mit.edu/mac/classes/6.001/abelson-sussman-lectures/, @abbr{MIT CSAIL}} or 
+@url{http://ocw.mit.edu/courses/electrical-engineering-and-computer-science/6-001-structure-and-interpretation-of-computer-programs-spring-2005/video-lectures/, @abbr{MIT OCW}}.
+
+@b{Second Addendum:} Above is the original introduction to the @abbr{UTF} 
+from 2001. Ten years later, @abbr{UTF} has been transformed: mathematical 
+symbols and formulas are properly typeset, and figures drawn in 
+vector graphics. The original text formulas and @abbr{ASCII} art figures 
+are still there in the Texinfo source, but will display only when compiled 
+to Info output. At the dawn of e-book readers and tablets, reading a 
+@abbr{PDF} on screen is officially not silly anymore. Enjoy!
+@i{A.R, May, 2011}
+
+@b{Third Addendum:} Things go in spirals. We explored the powers of 
+Texinfo and LaTeX at typesetting the @abbr{PDF} book.
+Now it's time to come back to @abbr{HTML}. This turn it shall be
+@abbr{HTML5}. ``It can be a dangerous place, but it's our last, best hope
+for peace.'' (Sinclair, @cite{@w{Babylon 5}}.) Does the peace endure after the 
+browser wars? Anyway, the aim of the project is to approach the quality of LaTeX
+output by using the @abbr{HTML5} toolbox. JavaScript, @abbr{CSS3}, @abbr{SVG},
+MathJax, MathML, and web fonts are employed here. Due to the experimental
+nature of this undertaking, there will be glitches and errors in some browsers. 
+Technical and artistic help is appreciated. In the meantime, enjoy the book, and 
+fire up a @abbr{REPL}!
+@i{A.R, January, 2014}
+
+@node    Dedication, Foreword, UTF, Top
+@unnumbered Dedication
+
+This book is dedicated, in respect and admiration, to the spirit that lives in
+the computer.
+
+@quotation
+``I think that it's extraordinarily important that we in computer science keep
+fun in computing.  When it started out, it was an awful lot of fun.  Of course,
+the paying customers got shafted every now and then, and after a while we began
+to take their complaints seriously.  We began to feel as if we really were
+responsible for the successful, error-free perfect use of these machines.  I
+don't think we are.  I think we're responsible for stretching them, setting
+them off in new directions, and keeping fun in the house.  I hope the field of
+computer science never loses its sense of fun.  Above all, I hope we don't
+become missionaries.  Don't feel as if you're Bible salesmen.  The world has
+too many of those already.  What you know about computing other people will
+learn.  Don't feel as if the key to successful computing is only in your hands.
+What's in your hands, I think and hope, is intelligence: the ability to see the
+machine as more than when you were first led up to it, that you can make it
+more.''
+
+@noindent
+---Alan J. Perlis (April 1, 1922 -- February 7, 1990)
+@end quotation
+
+@node    Foreword, PrefaceRust, Dedication, Top
+@unnumbered Foreword
+
+Educators, generals, dieticians, psychologists, and parents program.  Armies,
+students, and some societies are programmed.  An assault on large problems
+employs a succession of programs, most of which spring into existence en route.
+These programs are rife with issues that appear to be particular to the problem
+at hand.  To appreciate programming as an intellectual activity in its own
+right you must turn to computer programming; you must read and write computer
+programs---many of them.  It doesn't matter much what the programs are about or
+what applications they serve.  What does matter is how well they perform and
+how smoothly they fit with other programs in the creation of still greater
+programs.  The programmer must seek both perfection of part and adequacy of
+collection.  In this book the use of ``program'' is focused on the creation,
+execution, and study of programs written in a dialect of Lisp for execution on
+a digital computer.  Using Lisp we restrict or limit not what we may program,
+but only the notation for our program descriptions.
+
+Our traffic with the subject matter of this book involves us with three foci of
+phenomena: the human mind, collections of computer programs, and the computer.
+Every computer program is a model, hatched in the mind, of a real or mental
+process.  These processes, arising from human experience and thought, are huge
+in number, intricate in detail, and at any time only partially understood.
+They are modeled to our permanent satisfaction rarely by our computer programs.
+Thus even though our programs are carefully handcrafted discrete collections of
+symbols, mosaics of interlocking functions, they continually evolve: we change
+them as our perception of the model deepens, enlarges, generalizes until the
+model ultimately attains a metastable place within still another model with
+which we struggle.  The source of the exhilaration associated with computer
+programming is the continual unfolding within the mind and on the computer of
+mechanisms expressed as programs and the explosion of perception they generate.
+If art interprets our dreams, the computer executes them in the guise of
+programs!
+
+For all its power, the computer is a harsh taskmaster.  Its programs must be
+correct, and what we wish to say must be said accurately in every detail.  As
+in every other symbolic activity, we become convinced of program truth through
+argument.  Lisp itself can be assigned a semantics (another model, by the way),
+and if a program's function can be specified, say, in the predicate calculus,
+the proof methods of logic can be used to make an acceptable correctness
+argument.  Unfortunately, as programs get large and complicated, as they almost
+always do, the adequacy, consistency, and correctness of the specifications
+themselves become open to doubt, so that complete formal arguments of
+correctness seldom accompany large programs.  Since large programs grow from
+small ones, it is crucial that we develop an arsenal of standard program
+structures of whose correctness we have become sure---we call them idioms---and
+learn to combine them into larger structures using organizational techniques of
+proven value.  These techniques are treated at length in this book, and
+understanding them is essential to participation in the Promethean enterprise
+called programming.  More than anything else, the uncovering and mastery of
+powerful organizational techniques accelerates our ability to create large,
+significant programs.  Conversely, since writing large programs is very taxing,
+we are stimulated to invent new methods of reducing the mass of function and
+detail to be fitted into large programs.
+
+Unlike programs, computers must obey the laws of physics.  If they wish to
+perform rapidly---a few nanoseconds per state change---they must transmit
+electrons only small distances (at most @math{{1 {1\over2}}} feet). The heat generated by
+the huge number of devices so concentrated in space has to be removed.  An
+exquisite engineering art has been developed balancing between multiplicity of
+function and density of devices.  In any event, hardware always operates at a
+level more primitive than that at which we care to program.  The processes that
+transform our Lisp programs to ``machine'' programs are themselves abstract
+models which we program.  Their study and creation give a great deal of insight
+into the organizational programs associated with programming arbitrary models.
+Of course the computer itself can be so modeled.  Think of it: the behavior of
+the smallest physical switching element is modeled by quantum mechanics
+described by differential equations whose detailed behavior is captured by
+numerical approximations represented in computer programs executing on
+computers composed of @dots{}!
+
+It is not merely a matter of tactical convenience to separately identify the
+three foci.  Even though, as they say, it's all in the head, this logical
+separation induces an acceleration of symbolic traffic between these foci whose
+richness, vitality, and potential is exceeded in human experience only by the
+evolution of life itself.  At best, relationships between the foci are
+metastable.  The computers are never large enough or fast enough.  Each
+breakthrough in hardware technology leads to more massive programming
+enterprises, new organizational principles, and an enrichment of abstract
+models.  Every reader should ask himself periodically ``Toward what end, toward
+what end?''---but do not ask it too often lest you pass up the fun of
+programming for the constipation of bittersweet philosophy.
+
+Among the programs we write, some (but never enough) perform a precise
+mathematical function such as sorting or finding the maximum of a sequence of
+numbers, determining primality, or finding the square root.  We call such
+programs algorithms, and a great deal is known of their optimal behavior,
+particularly with respect to the two important parameters of execution time and
+data storage requirements.  A programmer should acquire good algorithms and
+idioms.  Even though some programs resist precise specifications, it is the
+responsibility of the programmer to estimate, and always to attempt to improve,
+their performance.
+
+Lisp is a survivor, having been in use for about a quarter of a century.  Among
+the active programming languages only Fortran has had a longer life.  Both
+languages have supported the programming needs of important areas of
+application, Fortran for scientific and engineering computation and Lisp for
+artificial intelligence.  These two areas continue to be important, and their
+programmers are so devoted to these two languages that Lisp and Fortran may
+well continue in active use for at least another quarter-century.
+
+Lisp changes.  The Scheme dialect used in this text has evolved from the
+original Lisp and differs from the latter in several important ways, including
+static scoping for variable binding and permitting functions to yield functions
+as values.  In its semantic structure Scheme is as closely akin to Algol 60 as
+to early Lisps.  Algol 60, never to be an active language again, lives on in
+the genes of Scheme and Pascal.  It would be difficult to find two languages
+that are the communicating coin of two more different cultures than those
+gathered around these two languages.  Pascal is for building
+pyramids---imposing, breathtaking, static structures built by armies pushing
+heavy blocks into place.  Lisp is for building organisms---imposing,
+breathtaking, dynamic structures built by squads fitting fluctuating myriads of
+simpler organisms into place.  The organizing principles used are the same in
+both cases, except for one extraordinarily important difference: The
+discretionary exportable functionality entrusted to the individual Lisp
+programmer is more than an order of magnitude greater than that to be found
+within Pascal enterprises.  Lisp programs inflate libraries with functions
+whose utility transcends the application that produced them.  The list, Lisp's
+native data structure, is largely responsible for such growth of utility.  The
+simple structure and natural applicability of lists are reflected in functions
+that are amazingly nonidiosyncratic.  In Pascal the plethora of declarable data
+structures induces a specialization within functions that inhibits and
+penalizes casual cooperation.  It is better to have 100 functions operate on
+one data structure than to have 10 functions operate on 10 data structures.  As
+a result the pyramid must stand unchanged for a millennium; the organism must
+evolve or perish.
+
+To illustrate this difference, compare the treatment of material and exercises
+within this book with that in any first-course text using Pascal.  Do not labor
+under the illusion that this is a text digestible at @abbr{MIT} only,
+peculiar to the breed found there.  It is precisely what a serious book on
+programming Lisp must be, no matter who the student is or where it is used.
+
+Note that this is a text about programming, unlike most Lisp books, which are
+used as a preparation for work in artificial intelligence.  After all, the
+critical programming concerns of software engineering and artificial
+intelligence tend to coalesce as the systems under investigation become larger.
+This explains why there is such growing interest in Lisp outside of artificial
+intelligence.
+
+As one would expect from its goals, artificial intelligence research generates
+many significant programming problems.  In other programming cultures this
+spate of problems spawns new languages.  Indeed, in any very large programming
+task a useful organizing principle is to control and isolate traffic within the
+task modules via the invention of language.  These languages tend to become
+less primitive as one approaches the boundaries of the system where we humans
+interact most often.  As a result, such systems contain complex
+language-processing functions replicated many times.  Lisp has such a simple
+syntax and semantics that parsing can be treated as an elementary task.  Thus
+parsing technology plays almost no role in Lisp programs, and the construction
+of language processors is rarely an impediment to the rate of growth and change
+of large Lisp systems.  Finally, it is this very simplicity of syntax and
+semantics that is responsible for the burden and freedom borne by all Lisp
+programmers.  No Lisp program of any size beyond a few lines can be written
+without being saturated with discretionary functions.  Invent and fit; have
+fits and reinvent!  We toast the Lisp programmer who pens his thoughts within
+nests of parentheses.
+
+@noindent
+Alan J. Perlis@*
+New Haven, Connecticut
+
+
+@node    PrefaceRust, Preface, Foreword, Top
+@unnumbered Preface to the Rust Edition
+
+This is @i{Structure and Interpretation of Computer Programs}, Second
+Edition, adapted to Rust.
+
+What this edition keeps: every section and every exercise number of the
+original book, one to one.  All five chapters and all 356 exercises are
+here.
+
+What this edition changes:
+
+@itemize @bullet
+@item
+Every program is re-expressed in Rust.  A listing appears in an
+@@example rust block, and the printed result of each interaction
+follows the code as a comment line marked with @code{// =>}.
+@item
+Chapter 0 is new.  It teaches the parts of Rust this book uses, so
+the book reads without prior Rust knowledge.
+@item
+The prose is re-cut where the host language changes the lesson:
+closures and ownership (3.2), threads and shared state (3.4), and an explicit backtracking engine for nondeterministic computing (4.3).
+@item
+Each chapter closes with an ``In this language'' note that names the
+host mechanism the chapter relied on.
+@end itemize
+
+Toolchain: Rust 1.98.1, edition 2024.  The code in @file{examples/}, @file{exercises/}, and @file{solutions/} is the source of every listing; tests run with @code{cargo nextest}.
+
+@noindent
+@b{Notice}@*
+@i{Structure and Interpretation of Computer Programs}, second edition,
+by Harold Abelson and Gerald Jay Sussman with Julie Sussman.  The
+@abbr{MIT} Press, 1996.  Licensed by The @abbr{MIT} Press under the
+Creative Commons Attribution-ShareAlike 4.0 International License.
+
+@noindent
+Adapted by the Modern @abbr{SICP} editions from the Unofficial Texinfo
+Format and the @abbr{HTML}5 and @abbr{EPUB}3 edition (sarabander/sicp).
+Changes: the prose is rewritten in %NAME%; every program is re-expressed;
+section and exercise numbers are unchanged; a Chapter 0 primer is added.
+
+@noindent
+Prose, figures, and exercise statements: @abbr{CC BY-SA} 4.0.  Programs:
+@abbr{GPL}-3.0-only, applied as the @abbr{BY-SA} Compatible License that
+@abbr{CC BY-SA} 4.0 Section 3(b)(1) permits.  The two never mix in one
+file.
+
+How to read: section 0.8 explains the interaction convention and the
+layout of this edition.
+
+@node    Preface, Preface 1e, PrefaceRust, Top
+@unnumbered Preface to the Second Edition
+
+@quotation
+Is it possible that software is not like anything else, that it is meant to be
+discarded: that the whole point is to always see it as a soap bubble?
+
+---Alan J. Perlis
+@end quotation
+
+
+@noindent
+The material in this book has been the basis of @abbr{MIT}'s entry-level
+computer science subject since 1980.  We had been teaching this material for
+four years when the first edition was published, and twelve more years have
+elapsed until the appearance of this second edition.  We are pleased that our
+work has been widely adopted and incorporated into other texts.  We have seen
+our students take the ideas and programs in this book and build them in as the
+core of new computer systems and languages.  In literal realization of an
+ancient Talmudic pun, our students have become our builders.  We are lucky to
+have such capable students and such accomplished builders.
+
+In preparing this edition, we have incorporated hundreds of clarifications
+suggested by our own teaching experience and the comments of colleagues at
+@abbr{MIT} and elsewhere.  We have redesigned most of the major programming
+systems in the book, including the generic-arithmetic system, the interpreters,
+the register-machine simulator, and the compiler; and we have rewritten all the
+program examples to ensure that any Scheme implementation conforming to the
+@abbr{IEEE} Scheme standard (@ref{IEEE 1990}) will be able to run the
+code.
+
+This edition emphasizes several new themes.  The most important of these is the
+central role played by different approaches to dealing with time in
+computational models: objects with state, concurrent programming, functional
+programming, lazy evaluation, and nondeterministic programming.  We have
+included new sections on concurrency and nondeterminism, and we have tried to
+integrate this theme throughout the book.
+
+The first edition of the book closely followed the syllabus of our
+@abbr{MIT} one-semester subject.  With all the new material in the second
+edition, it will not be possible to cover everything in a single semester, so
+the instructor will have to pick and choose.  In our own teaching, we sometimes
+skip the section on logic programming (@ref{4.4}), we have students use
+the register-machine simulator but we do not cover its implementation (@ref{5.2}), 
+and we give only a cursory overview of the compiler (@ref{5.5}).  
+Even so, this is still an intense course.  Some instructors may
+wish to cover only the first three or four chapters, leaving the other material
+for subsequent courses.
+
+The World-Wide-Web site @url{http://mitpress.mit.edu/sicp} provides
+support for users of this book.  This includes programs from the book, sample
+programming assignments, supplementary materials, and downloadable
+implementations of the Scheme dialect of Lisp.
+
+@node    Preface 1e, Acknowledgments, Preface, Top
+@unnumbered Preface to the First Edition
+
+@quotation
+A computer is like a violin.  You can imagine a novice trying first a
+phonograph and then a violin.  The latter, he says, sounds terrible.  That is
+the argument we have heard from our humanists and most of our computer
+scientists.  Computer programs are good, they say, for particular purposes, but
+they aren't flexible.  Neither is a violin, or a typewriter, until you learn
+how to use it.
+
+---Marvin Minsky, @cite{Why Programming Is a Good Medium for Expressing
+Poorly-Understood and Sloppily-Formulated Ideas}
+@end quotation
+
+
+@noindent
+``The Structure and Interpretation of Computer Programs'' is the entry-level
+subject in computer science at the Massachusetts Institute of Technology.  It
+is required of all students at @abbr{MIT} who major in electrical
+engineering or in computer science, as one-fourth of the ``common core
+curriculum,'' which also includes two subjects on circuits and linear systems
+and a subject on the design of digital systems.  We have been involved in the
+development of this subject since 1978, and we have taught this material in its
+present form since the fall of 1980 to between 600 and 700 students each year.
+Most of these students have had little or no prior formal training in
+computation, although many have played with computers a bit and a few have had
+extensive programming or hardware-design experience.
+
+Our design of this introductory computer-science subject reflects two major
+concerns.  First, we want to establish the idea that a computer language is not
+just a way of getting a computer to perform operations but rather that it is a
+novel formal medium for expressing ideas about methodology.  Thus, programs
+must be written for people to read, and only incidentally for machines to
+execute.  Second, we believe that the essential material to be addressed by a
+subject at this level is not the syntax of particular programming-language
+constructs, nor clever algorithms for computing particular functions
+efficiently, nor even the mathematical analysis of algorithms and the
+foundations of computing, but rather the techniques used to control the
+intellectual complexity of large software systems.
+
+Our goal is that students who complete this subject should have a good feel for
+the elements of style and the aesthetics of programming.  They should have
+command of the major techniques for controlling complexity in a large
+system. They should be capable of reading a 50-page-long program, if it is
+written in an exemplary style. They should know what not to read, and what they
+need not understand at any moment.  They should feel secure about modifying a
+program, retaining the spirit and style of the original author.
+
+These skills are by no means unique to computer programming.  The techniques we
+teach and draw upon are common to all of engineering design.  We control
+complexity by building abstractions that hide details when appropriate.  We
+control complexity by establishing conventional interfaces that enable us to
+construct systems by combining standard, well-understood pieces in a ``mix and
+match'' way.  We control complexity by establishing new languages for
+describing a design, each of which emphasizes particular aspects of the design
+and deemphasizes others.
+
+Underlying our approach to this subject is our conviction that ``computer
+science'' is not a science and that its significance has little to do with
+computers.  The computer revolution is a revolution in the way we think and in
+the way we express what we think.  The essence of this change is the emergence
+of what might best be called @newterm{procedural epistemology}---the study of
+the structure of knowledge from an imperative point of view, as opposed to the
+more declarative point of view taken by classical mathematical subjects.
+Mathematics provides a framework for dealing precisely with notions of ``what
+is.''  Computation provides a framework for dealing precisely with notions of
+``how to.''
+
+In teaching our material we use a dialect of the programming language Lisp.  We
+never formally teach the language, because we don't have to.  We just use it,
+and students pick it up in a few days.  This is one great advantage of
+Lisp-like languages: They have very few ways of forming compound expressions,
+and almost no syntactic structure.  All of the formal properties can be covered
+in an hour, like the rules of chess.  After a short time we forget about
+syntactic details of the language (because there are none) and get on with the
+real issues---figuring out what we want to compute, how we will decompose
+problems into manageable parts, and how we will work on the parts.  Another
+advantage of Lisp is that it supports (but does not enforce) more of the
+large-scale strategies for modular decomposition of programs than any other
+language we know.  We can make procedural and data abstractions, we can use
+higher-order functions to capture common patterns of usage, we can model local
+state using assignment and data mutation, we can link parts of a program with
+streams and delayed evaluation, and we can easily implement embedded languages.
+All of this is embedded in an interactive environment with excellent support
+for incremental program design, construction, testing, and debugging.  We thank
+all the generations of Lisp wizards, starting with John McCarthy, who have
+fashioned a fine tool of unprecedented power and elegance.
+
+Scheme, the dialect of Lisp that we use, is an attempt to bring together the
+power and elegance of Lisp and Algol.  From Lisp we take the metalinguistic
+power that derives from the simple syntax, the uniform representation of
+programs as data objects, and the garbage-collected heap-allocated data.  From
+Algol we take lexical scoping and block structure, which are gifts from the
+pioneers of programming-language design who were on the Algol committee.  We
+wish to cite John Reynolds and Peter Landin for their insights into the
+relationship of Church's λ-calculus to the structure of programming
+languages.  We also recognize our debt to the mathematicians who scouted out
+this territory decades before computers appeared on the scene.  These pioneers
+include Alonzo Church, Barkley Rosser, Stephen Kleene, and Haskell Curry.
+
+@node       Acknowledgments, Chapter 0, Preface 1e, Top
+@unnumbered Acknowledgments
+
+We would like to thank the many people who have helped us develop this book and
+this curriculum.
+
+Our subject is a clear intellectual descendant of ``6.231,'' a wonderful
+subject on programming linguistics and the λ-calculus taught at
+@abbr{MIT} in the late 1960s by Jack Wozencraft and Arthur Evans, Jr.
+
+We owe a great debt to Robert Fano, who reorganized @abbr{MIT}'s
+introductory curriculum in electrical engineering and computer science to
+emphasize the principles of engineering design.  He led us in starting out on
+this enterprise and wrote the first set of subject notes from which this book
+evolved.
+
+Much of the style and aesthetics of programming that we try to teach were
+developed in conjunction with Guy Lewis Steele Jr., who collaborated with
+Gerald Jay Sussman in the initial development of the Scheme language.  In
+addition, David Turner, Peter Henderson, Dan Friedman, David Wise, and Will
+Clinger have taught us many of the techniques of the functional programming
+community that appear in this book.
+
+Joel Moses taught us about structuring large systems.  His experience with the
+Macsyma system for symbolic computation provided the insight that one should
+avoid complexities of control and concentrate on organizing the data to reflect
+the real structure of the world being modeled.
+
+Marvin Minsky and Seymour Papert formed many of our attitudes about programming
+and its place in our intellectual lives.  To them we owe the understanding that
+computation provides a means of expression for exploring ideas that would
+otherwise be too complex to deal with precisely.  They emphasize that a
+student's ability to write and modify programs provides a powerful medium in
+which exploring becomes a natural activity.
+
+We also strongly agree with Alan Perlis that programming is lots of fun and we
+had better be careful to support the joy of programming.  Part of this joy
+derives from observing great masters at work.  We are fortunate to have been
+apprentice programmers at the feet of Bill Gosper and Richard Greenblatt.
+
+It is difficult to identify all the people who have contributed to the
+development of our curriculum.  We thank all the lecturers, recitation
+instructors, and tutors who have worked with us over the past fifteen years and
+put in many extra hours on our subject, especially Bill Siebert, Albert Meyer,
+Joe Stoy, Randy Davis, Louis Braida, Eric Grimson, Rod Brooks, Lynn Stein, and
+Peter Szolovits.  We would like to specially acknowledge the outstanding
+teaching contributions of Franklyn Turbak, now at Wellesley; his work in
+undergraduate instruction set a standard that we can all aspire to.  We are
+grateful to Jerry Saltzer and Jim Miller for helping us grapple with the
+mysteries of concurrency, and to Peter Szolovits and David McAllester for their
+contributions to the exposition of nondeterministic evaluation in @ref{Chapter
+4,,Chapter 4}.
+
+Many people have put in significant effort presenting this material at other
+universities.  Some of the people we have worked closely with are Jacob
+Katzenelson at the Technion, Hardy Mayer at the University of California at
+Irvine, Joe Stoy at Oxford, Elisha Sacks at Purdue, and Jan Komorowski at the
+Norwegian University of Science and Technology.  We are exceptionally proud of
+our colleagues who have received major teaching awards for their adaptations of
+this subject at other universities, including Kenneth Yip at Yale, Brian Harvey
+at the University of California at Berkeley, and Dan Huttenlocher at Cornell.
+
+Al Moy@'e arranged for us to teach this material to engineers at
+Hewlett-Packard and for the production of videotapes of these lectures.  We
+would like to thank the talented instructors---in particular Jim Miller, Bill
+Siebert, and Mike Eisenberg---who have designed continuing education courses
+incorporating these tapes and taught them at universities and industry all over
+the world.
+
+Many educators in other countries have put in significant work translating the
+first edition.  Michel Briand, Pierre Chamard, and Andr@'e Pic produced a
+French edition; Susanne Daniels-Herold produced a German edition; and Fumio
+Motoyoshi produced a Japanese edition.  We do not know who produced the Chinese
+edition, but we consider it an honor to have been selected as the subject of an
+``unauthorized'' translation.
+
+It is hard to enumerate all the people who have made technical contributions to
+the development of the Scheme systems we use for instructional purposes.  In
+addition to Guy Steele, principal wizards have included Chris Hanson, Joe
+Bowbeer, Jim Miller, Guillermo Rozas, and Stephen Adams.  Others who have put
+in significant time are Richard Stallman, Alan Bawden, Kent Pitman, Jon Taft,
+Neil Mayle, John Lamping, Gwyn Osnos, Tracy Larrabee, George Carrette, Soma
+Chaudhuri, Bill Chiarchiaro, Steven Kirsch, Leigh Klotz, Wayne Noss, Todd Cass,
+Patrick O'Donnell, Kevin Theobald, Daniel Weise, Kenneth Sinclair, Anthony
+Courtemanche, Henry M. Wu, Andrew Berlin, and Ruth Shyu.
+
+Beyond the @abbr{MIT} implementation, we would like to thank the many people
+who worked on the @abbr{IEEE} Scheme standard, including William Clinger and
+Jonathan Rees, who edited the R⁴RS, and Chris Haynes, David Bartley,
+Chris Hanson, and Jim Miller, who prepared the @abbr{IEEE} standard.
+
+Dan Friedman has been a long-time leader of the Scheme community.  The
+community's broader work goes beyond issues of language design to encompass
+significant educational innovations, such as the high-school curriculum based
+on EdScheme by Schemer's Inc., and the wonderful books by Mike Eisenberg and by
+Brian Harvey and Matthew Wright.
+
+We appreciate the work of those who contributed to making this a real book,
+especially Terry Ehling, Larry Cohen, and Paul Bethge at the @abbr{MIT}
+Press.  Ella Mazel found the wonderful cover image.  For the second edition we
+are particularly grateful to Bernard and Ella Mazel for help with the book
+design, and to David Jones, @TeX{} wizard extraordinaire.  We also are indebted
+to those readers who made penetrating comments on the new draft: Jacob
+Katzenelson, Hardy Mayer, Jim Miller, and especially Brian Harvey, who did unto
+this book as Julie did unto his book @cite{Simply Scheme}.
+
+Finally, we would like to acknowledge the support of the organizations that
+have encouraged this work over the years, including support from
+Hewlett-Packard, made possible by Ira Goldstein and Joel Birnbaum, and support
+from @abbr{DARPA}, made possible by Bob Kahn.
+
+@node    Chapter 0, 0.1, Acknowledgments, Top
+@chapter The language of this book
+
+This edition assumes a reader who already knows how to program, and does
+not assume Rust. The chapters that follow adapt every listing, exercise,
+and design discussion in the original book into Rust, but they do not stop
+to explain Rust itself along the way; that explanation happens once, here,
+covering exactly the subset of the language the rest of the book uses and
+no more. Rust's full surface (macros beyond @code{println!}, unsafe code,
+async, generics beyond what a handful of standard-library types need) never
+appears in these pages, because the book never needs it.
+
+Two of this chapter's nine sections are unlike anything the original text
+has to teach. Scheme has automatic memory management and no static type
+checking to speak of; Rust has neither, by design, and @ref{0.3} and
+@ref{0.7} exist to give ownership, borrowing, and their escape hatches the
+same careful treatment the book gives every other idea it introduces before
+relying on it. Section @ref{0.9} closes the chapter with the one thing this
+book adds that the original never needed: how to run this edition's code,
+where its exercises live, and how a printed result in these pages relates to
+a passing test.
+
+@menu
+
+* 0.1::              Values, numbers, and bindings
+* 0.2::              Functions, recursion, and iteration
+* 0.3::              Ownership, moves, and borrowing
+* 0.4::              Product and sum data
+* 0.5::              Collections and iterators
+* 0.6::              Closures and trait objects
+* 0.7::              Shared ownership and interior mutability
+* 0.8::              Errors and tests
+* 0.9::              Modules, crates, and reading this book
+
+@end menu
+

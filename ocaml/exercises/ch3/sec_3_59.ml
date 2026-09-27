@@ -1,0 +1,12 @@
+(* SPDX-License-Identifier: GPL-3.0-only
+   Original exercise *)
+
+(* The pending scaffold of the solution with the same name under
+   solutions/ch3: every entry raises the pending marker until the
+   exercise is solved. *)
+
+let integrate_series = raise Sicp_common.Pending.Pending_solution
+let exp_series = raise Sicp_common.Pending.Pending_solution
+let cosine_series = raise Sicp_common.Pending.Pending_solution
+let sine_series = raise Sicp_common.Pending.Pending_solution
+let ex_3_59 = raise Sicp_common.Pending.Pending_solution

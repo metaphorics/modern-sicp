@@ -1,0 +1,8 @@
+;; SPDX-License-Identifier: GPL-3.0-only
+;; Adapted from SICP sections 4.1 to 5.2
+(job (Fect Cy D) (computer programmer))
+(job (Hacker Alyssa P) (computer programmer))
+(supervisor (Tweakit Lem E) (Bitdiddle Ben))
+(supervisor (Fect Cy D) (Bitdiddle Ben))
+(supervisor (Hacker Alyssa P) (Bitdiddle Ben))
+(job (Bitdiddle Ben) (computer wizard))

@@ -1,0 +1,152 @@
+opam-version: "2.0"
+name: "modern-sicp"
+version: "dev"
+synopsis: "Modern SICP, OCaml edition"
+description:
+  "An OCaml edition of SICP: five chapters and 356 exercises, with examples, exercise scaffolds, and reference solutions per section."
+depends: [
+  "alcotest" {= "1.9.1" & with-test}
+  "astring" {= "0.8.5" & with-test}
+  "base" {= "v0.17.3"}
+  "base-bigarray" {= "base"}
+  "base-domains" {= "base"}
+  "base-effects" {= "base"}
+  "base-nnp" {= "base"}
+  "base-threads" {= "base"}
+  "base-unix" {= "base"}
+  "base_bigstring" {= "v0.17.0"}
+  "base_quickcheck" {= "v0.17.1"}
+  "bin_prot" {= "v0.17.0-1"}
+  "camlp-streams" {= "5.0.1" & with-doc}
+  "capitalization" {= "v0.17.0"}
+  "chrome-trace" {= "3.24.2" & with-dev-setup}
+  "cmdliner" {= "2.1.1" & with-test}
+  "compiler-cloning" {= "enabled"}
+  "core" {= "v0.17.2"}
+  "cppo" {= "1.8.0" & with-doc}
+  "crunch" {= "4.1.0" & with-doc}
+  "csexp" {= "1.5.2"}
+  "dune" {= "3.24.2"}
+  "dune-build-info" {= "3.24.2" & with-dev-setup}
+  "dune-configurator" {= "3.24.2"}
+  "dune-rpc" {= "3.24.2" & with-dev-setup}
+  "dyn" {= "3.24.2" & with-dev-setup}
+  "either" {= "1.0.0" & with-dev-setup}
+  "fiber" {= "3.7.0" & with-dev-setup}
+  "fieldslib" {= "v0.17.0"}
+  "fix" {= "20250919" & with-dev-setup}
+  "fmt" {= "0.11.0" & with-test}
+  "fpath" {= "0.7.3" & with-doc}
+  "fs-io" {= "3.24.2" & with-dev-setup}
+  "gel" {= "v0.17.0"}
+  "int_repr" {= "v0.17.0"}
+  "jane-street-headers" {= "v0.17.0"}
+  "jsonrpc" {= "1.27.0" & with-dev-setup}
+  "jst-config" {= "v0.17.0"}
+  "lsp" {= "1.27.0" & with-dev-setup}
+  "menhir" {= "20260209" & with-dev-setup}
+  "menhirCST" {= "20260209" & with-dev-setup}
+  "menhirGLR" {= "20260209" & with-dev-setup}
+  "menhirLib" {= "20260209" & with-dev-setup}
+  "menhirSdk" {= "20260209" & with-dev-setup}
+  "merlin-lib" {= "5.8.1-505" & with-dev-setup}
+  "num" {= "1.6"}
+  "ocaml" {= "5.5.1"}
+  "ocaml-base-compiler" {= "5.5.1"}
+  "ocaml-compiler" {= "5.5.1"}
+  "ocaml-compiler-libs" {= "v0.17.0"}
+  "ocaml-index" {= "5.8.1-505" & with-dev-setup}
+  "ocaml-lsp-server" {= "1.27.0" & with-dev-setup}
+  "ocaml-options-vanilla" {= "1"}
+  "ocaml-syntax-shims" {= "1.0.0" & with-test}
+  "ocaml-version" {= "4.1.4" & with-dev-setup}
+  "ocaml_intrinsics_kernel" {= "v0.17.2"}
+  "ocamlbuild" {= "0.16.1" & with-test}
+  "ocamlc-loc" {= "3.24.2" & with-dev-setup}
+  "ocamlfind" {= "1.9.9~preview" & with-test}
+  "ocamlformat" {= "0.29.0" & with-dev-setup}
+  "ocamlformat-lib" {= "0.29.0" & with-dev-setup}
+  "ocamlformat-rpc-lib" {= "0.29.0" & with-dev-setup}
+  "ocp-indent" {= "1.10.0" & with-dev-setup}
+  "odoc" {= "3.2.1" & with-doc}
+  "odoc-parser" {= "3.2.1" & with-doc}
+  "ordering" {= "3.24.2" & with-dev-setup}
+  "parsexp" {= "v0.17.0"}
+  "pp" {= "2.0.0" & with-dev-setup}
+  "ppx_assert" {= "v0.17.0"}
+  "ppx_base" {= "v0.17.0"}
+  "ppx_bench" {= "v0.17.1"}
+  "ppx_bin_prot" {= "v0.17.1"}
+  "ppx_cold" {= "v0.17.0"}
+  "ppx_compare" {= "v0.17.0"}
+  "ppx_custom_printf" {= "v0.17.0"}
+  "ppx_derivers" {= "1.2.1"}
+  "ppx_diff" {= "v0.17.1"}
+  "ppx_disable_unused_warnings" {= "v0.17.0"}
+  "ppx_enumerate" {= "v0.17.0"}
+  "ppx_expect" {= "v0.17.3" & with-test & = "v0.17.3"}
+  "ppx_fields_conv" {= "v0.17.0"}
+  "ppx_fixed_literal" {= "v0.17.0"}
+  "ppx_globalize" {= "v0.17.2"}
+  "ppx_hash" {= "v0.17.0"}
+  "ppx_here" {= "v0.17.0"}
+  "ppx_ignore_instrumentation" {= "v0.17.0"}
+  "ppx_inline_test" {= "v0.17.1" & with-test & = "v0.17.1"}
+  "ppx_jane" {= "v0.17.0"}
+  "ppx_let" {= "v0.17.1"}
+  "ppx_log" {= "v0.17.0"}
+  "ppx_module_timer" {= "v0.17.0"}
+  "ppx_optcomp" {= "v0.17.1"}
+  "ppx_optional" {= "v0.17.0"}
+  "ppx_pipebang" {= "v0.17.0"}
+  "ppx_sexp_conv" {= "v0.17.1"}
+  "ppx_sexp_message" {= "v0.17.0"}
+  "ppx_sexp_value" {= "v0.17.0"}
+  "ppx_stable" {= "v0.17.1"}
+  "ppx_stable_witness" {= "v0.17.0"}
+  "ppx_string" {= "v0.17.0"}
+  "ppx_string_conv" {= "v0.17.0"}
+  "ppx_tydi" {= "v0.17.1"}
+  "ppx_typerep_conv" {= "v0.17.1"}
+  "ppx_variants_conv" {= "v0.17.1"}
+  "ppx_yojson_conv_lib" {= "v0.17.0" & with-dev-setup}
+  "ppxlib" {= "0.38.0"}
+  "ppxlib_jane" {= "v0.17.4"}
+  "ptime" {= "1.2.0" & with-doc}
+  "qcheck-core" {= "0.91" & with-test}
+  "re" {= "1.14.0" & with-test}
+  "seq" {= "base" & with-doc}
+  "sexplib" {= "v0.17.0"}
+  "sexplib0" {= "v0.17.0"}
+  "spawn" {= "v0.17.0" & with-dev-setup}
+  "splittable_random" {= "v0.17.0"}
+  "stdio" {= "v0.17.0"}
+  "stdlib-shims" {= "0.3.0"}
+  "stdune" {= "3.24.2" & with-dev-setup}
+  "time_now" {= "v0.17.0"}
+  "top-closure" {= "3.24.2" & with-dev-setup}
+  "topkg" {= "1.1.1" & with-test}
+  "typerep" {= "v0.17.1"}
+  "tyxml" {= "5.0.0" & with-doc}
+  "uucp" {= "18.0.0" & with-dev-setup}
+  "uuseg" {= "18.0.0" & with-dev-setup}
+  "uutf" {= "1.0.4" & with-test}
+  "variantslib" {= "v0.17.0"}
+  "xdg" {= "3.24.2" & with-dev-setup}
+  "yojson" {= "3.0.0" & with-dev-setup}
+]
+build: [
+  ["dune" "subst"] {dev}
+  [
+    "dune"
+    "build"
+    "-p"
+    name
+    "-j"
+    jobs
+    "@install"
+    "@runtest" {with-test}
+    "@doc" {with-doc}
+  ]
+]
+x-maintenance-intent: ["(latest)"]

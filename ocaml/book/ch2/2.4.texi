@@ -1,0 +1,1206 @@
+@node	2.4, 2.5, 2.3, Chapter 2
+@section Multiple Representations for Abstract Data
+
+We have introduced data abstraction, a methodology for structuring systems in
+such a way that much of a program can be specified independent of the choices
+involved in implementing the data objects that the program manipulates.  For
+example, we saw in @ref{2.1.1} how to separate the task of designing a
+program that uses rational numbers from the task of implementing rational
+numbers in terms of the computer language's primitive mechanisms for
+constructing compound data.  The key idea was to erect an abstraction barrier
+-- in this case, the selectors and constructors for rational numbers
+(@code{make_rat}, @code{numer}, @code{denom})---that isolates the way rational
+numbers are used from their underlying representation as an OCaml pair.
+A similar abstraction barrier isolates the details of the
+procedures that perform rational arithmetic (@code{add_rat}, @code{sub_rat},
+@code{mul_rat}, and @code{div_rat}) from the ``higher-level'' procedures that
+use rational numbers.  The resulting program has the structure shown in
+@ref{Figure 2.1}.
+
+These data-abstraction barriers are powerful tools for controlling complexity.
+By isolating the underlying representations of data objects, we can divide the
+task of designing a large program into smaller tasks that can be performed
+separately.  But this kind of data abstraction is not yet powerful enough,
+because it may not always make sense to speak of ``the underlying
+representation'' for a data object.
+
+For one thing, there might be more than one useful representation for a data
+object, and we might like to design systems that can deal with multiple
+representations.  To take a simple example, complex numbers may be represented
+in two almost equivalent ways: in rectangular form (real and imaginary parts)
+and in polar form (magnitude and angle).  Sometimes rectangular form is more
+appropriate and sometimes polar form is more appropriate.  Indeed, it is
+perfectly plausible to imagine a system in which complex numbers are
+represented in both ways, and in which the procedures for manipulating complex
+numbers work with either representation.
+
+More importantly, programming systems are often designed by many people working
+over extended periods of time, subject to requirements that change over time.
+In such an environment, it is simply not possible for everyone to agree in
+advance on choices of data representation.  So in addition to the
+data-abstraction barriers that isolate representation from use, we need
+abstraction barriers that isolate different design choices from each other and
+permit different choices to coexist in a single program.  Furthermore, since
+large programs are often created by combining pre-existing modules that were
+designed in isolation, we need conventions that permit programmers to
+incorporate modules into larger systems @newterm{additively}, that is, without
+having to redesign or reimplement these modules.
+
+In this section, we will learn how to cope with data that may be represented in
+different ways by different parts of a program.  This requires constructing
+@newterm{generic procedures}---procedures that can operate on data that may be
+represented in more than one way.  Our main technique for building generic
+procedures will be to work in terms of data objects that have @newterm{type tags}, 
+that is, data objects that include explicit information about how they
+are to be processed.  We will also discuss @newterm{data-directed} programming,
+a powerful and convenient implementation strategy for additively assembling
+systems with generic operations.
+
+We begin with the simple complex-number example. We will see how type tags and
+data-directed style enable us to design separate rectangular and polar
+representations for complex numbers while maintaining the notion of an abstract
+``complex-number'' data object.  We will accomplish this by defining arithmetic
+procedures for complex numbers (@code{add_complex}, @code{sub_complex},
+@code{mul_complex}, and @code{div_complex}) in terms of generic selectors that
+access parts of a complex number independent of how the number is represented.
+The resulting complex-number system, as shown in @ref{Figure 2.19}, contains
+two different kinds of abstraction barriers.  The ``horizontal'' abstraction
+barriers play the same role as the ones in @ref{Figure 2.1}.  They isolate
+``higher-level'' operations from ``lower-level'' rep@-re@-sen@-ta@-tions.  In addition,
+there is a ``vertical'' barrier that gives us the ability to separately design
+and install alternative representations.
+
+@float
+@anchor{Figure 2.19}
+@ifinfo
+@quotation
+@strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.
+
+@example
+           Programs that use complex numbers
+  +-------------------------------------------------+
+--| add_complex sub_complex mul_complex div_complex |--
+  +-------------------------------------------------+
+              Complex arithmetic package
+---------------------------+---------------------------
+          Rectangular      |         Polar
+        representation     |     representation
+---------------------------+---------------------------
+    List structure and primitive machine arithmetic
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.19a,,147mm,Figure 2.19: Data-abstraction barriers in the complex-number system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.}
+@end float
+
+@noindent
+In @ref{2.5} we will show how to use type tags and data-directed style
+to develop a generic arithmetic package.  This provides procedures (@code{add},
+@code{mul}, and so on) that can be used to manipulate all sorts of ``numbers''
+and can be easily extended when a new kind of number is needed.  In 
+@ref{2.5.3}, we'll show how to use generic arithmetic in a system that performs
+symbolic algebra.
+
+@menu
+* 2.4.1::            Representations for Complex Numbers
+* 2.4.2::            Tagged data
+* 2.4.3::            Data-Directed Programming and Additivity
+@end menu
+
+@node	2.4.1, 2.4.2, 2.4, 2.4
+@subsection Representations for Complex Numbers
+
+We will develop a system that performs arithmetic operations on complex numbers
+as a simple but unrealistic example of a program that uses generic operations.
+We begin by discussing two plausible representations for complex numbers as
+ordered pairs: rectangular form (real part and imaginary part) and polar form
+(magnitude and angle).@footnote{In actual computational systems, rectangular
+form is preferable to polar form most of the time because of roundoff errors in
+conversion between rectangular and polar form.  This is why the complex-number
+example is unrealistic.  Nevertheless, it provides a clear illustration of the
+design of a system using generic operations and a good introduction to the more
+substantial systems to be developed later in this chapter.}  
+Section @ref{2.4.2} will show how both representations can be made to coexist in a
+single system through the use of type tags and generic operations.
+
+Like rational numbers, complex numbers are naturally represented as ordered
+pairs.  The set of complex numbers can be thought of as a two-dimensional space
+with two orthogonal axes, the ``real'' axis and the ``imaginary'' axis. (See
+@ref{Figure 2.20}.)  From this point of view, the complex number 
+@math{{z = x + iy}} (where @math{{i^{\kern0.1em 2} = \hbox{−1}}}) can be thought of as the point in the plane
+whose real coordinate is @math{x} and whose imaginary coordinate is @math{y}.
+Addition of complex numbers reduces in this representation to addition of
+coordinates:
+@displaymath
+\eqalign{
+\hbox{Real-part} (z_1 + z_2) 	    &= \hbox{Real-part} (z_1) + \cr
+                                    & \hbox{Real-part} (z_2),  \cr
+\hbox{Imaginary-part} (z_1 + z_2)   &= \hbox{Imaginary-part} (z_1) + \cr
+                                    & \hbox{Imaginary-part} (z_2).
+}
+@end displaymath
+@ifinfo
+
+@example
+Real-part(z_1 + z_2) = Real-part(z_1) + Real-part(z_2)
+
+Imaginary-part(z_1 + z_2) = Imaginary-part(z_1) + Imaginary-part(z_2)
+@end example
+
+@end ifinfo
+
+@float
+@anchor{Figure 2.20}
+@ifinfo
+@strong{Figure 2.20:} Complex numbers as points in the plane.
+
+@example
+ Imaginary
+    ^
+    |
+  y |.........................* z = x + ?y = r e^(?A)
+    |                    __-- .
+    |                __--     .
+    |          r __--         .
+    |        __--             .
+    |    __-- \               .
+    |__--    A |              .
+----+----------+-------------------> Real
+                              x
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.20,,147mm,Figure 2.20: Complex numbers as points in the plane.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.20.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.20:} Complex numbers as points in the plane.}
+@end float
+
+@noindent
+When multiplying complex numbers, it is more natural to think in terms of
+representing a complex number in polar form, as a magnitude and an angle (@math{r}
+and @math{A} in @ref{Figure 2.20}).  The product of two complex numbers is the
+vector obtained by stretching one complex number by the length of the other and
+then rotating it through the angle of the other:
+@displaymath
+\eqalign{
+  \hbox{Magnitude} (z_1 \cdot z_2)  &= 
+    \hbox{Magnitude} (z_1) \cdot \hbox{Magnitude} (z_2), \cr
+  \hbox{Angle} (z_1 \cdot z_2)      &= 
+    \hbox{Angle} (z_1) + \hbox{Angle} (z_2).
+}
+@end displaymath
+@ifinfo
+
+@example
+Magnitude(z_1 * z_2) = Magnitude(z_1) * Magnitude(z_2)
+
+Angle(z_1 * z_2) = Angle(z_1) + Angle(z_2)
+@end example
+
+@end ifinfo
+
+@noindent
+Thus, there are two different representations for complex numbers, which are
+appropriate for different operations.  Yet, from the viewpoint of someone
+writing a program that uses complex numbers, the principle of data abstraction
+suggests that all the operations for manipulating complex numbers should be
+available regardless of which representation is used by the computer.  For
+example, it is often useful to be able to find the magnitude of a complex
+number that is specified by rectangular coordinates.  Similarly, it is often
+useful to be able to determine the real part of a complex number that is
+specified by polar coordinates.
+
+To design such a system, we can follow the same data-abstraction strategy we
+followed in designing the rational-number package in @ref{2.1.1}.
+Assume that the operations on complex numbers are implemented in terms of four
+selectors: @code{real_part}, @code{imag_part}, @code{magnitude}, and
+@code{angle}.  Also assume that we have two procedures for constructing complex
+numbers: @code{make_from_real_imag} returns a complex number with specified
+real and imaginary parts, and @code{make_from_mag_ang} returns a complex number
+with specified magnitude and angle.  These procedures have the property that,
+for any complex number @code{z}, both
+
+@example ocaml
+make_from_real_imag (real_part z) (imag_part z)
+@end example
+
+@noindent
+and
+
+@example ocaml
+make_from_mag_ang (magnitude z) (angle z)
+@end example
+
+@noindent
+produce complex numbers that are equal to @code{z}.
+
+Using these constructors and selectors, we can implement arithmetic on complex
+numbers using the ``abstract data'' specified by the constructors and
+selectors, just as we did for rational numbers in @ref{2.1.1}.  As
+shown in the formulas above, we can add and subtract complex numbers in terms
+of real and imaginary parts while multiplying and dividing complex numbers in
+terms of magnitudes and angles.  Scheme lets @code{add-complex} name
+@code{real-part} before any representation has defined it, trusting the
+discussion to supply a definition by the time @code{add-complex} is actually
+called.  OCaml resolves a name where it is written, not when it is called, so
+this edition states the assumption as an explicit parameter instead: a record
+bundling the four selectors and the two constructors a representation
+supplies.
+
+@example ocaml
+type 'a complex_ops =
+  @{ real_part : 'a -> float
+  ; imag_part : 'a -> float
+  ; magnitude : 'a -> float
+  ; angle : 'a -> float
+  ; make_from_real_imag : float -> float -> 'a
+  ; make_from_mag_ang : float -> float -> 'a
+  @}
+
+let add_complex ops z1 z2 =
+  ops.make_from_real_imag
+    (ops.real_part z1 +. ops.real_part z2)
+    (ops.imag_part z1 +. ops.imag_part z2)
+;;
+
+let sub_complex ops z1 z2 =
+  ops.make_from_real_imag
+    (ops.real_part z1 -. ops.real_part z2)
+    (ops.imag_part z1 -. ops.imag_part z2)
+;;
+
+let mul_complex ops z1 z2 =
+  ops.make_from_mag_ang
+    (ops.magnitude z1 *. ops.magnitude z2)
+    (ops.angle z1 +. ops.angle z2)
+;;
+
+let div_complex ops z1 z2 =
+  ops.make_from_mag_ang
+    (ops.magnitude z1 /. ops.magnitude z2)
+    (ops.angle z1 -. ops.angle z2)
+;;
+@end example
+
+@noindent
+To complete the complex-number package, we must choose a representation and we
+must implement the constructors and selectors in terms of primitive numbers and
+an OCaml pair.  There are two obvious ways to do this: We can
+represent a complex number in ``rectangular form'' as a pair (real part,
+imaginary part) or in ``polar form'' as a pair (magnitude, angle).  Which shall
+we choose?
+
+In order to make the different choices concrete, imagine that there are two
+programmers, Ben Bitdiddle and Alyssa P. Hacker, who are independently
+designing representations for the complex-number system.  Ben chooses to
+represent complex numbers in rectangular form.  With this choice, selecting the
+real and imaginary parts of a complex number is straightforward, as is
+constructing a complex number with given real and imaginary parts.  To find the
+magnitude and the angle, or to construct a complex number with a given
+magnitude and angle, he uses the trigonometric relations
+
+@displaymath
+\eqalign{
+  x &= r \cos A, \cr
+  y &= r \sin A, \cr
+  r &= \sqrt{x^2 + y^2,} \cr
+  A &= \arctan(y, x),
+}
+@end displaymath
+@ifinfo
+
+@example
+                      __________
+x = r cos A     r = ./ x^2 + y^2
+
+y = r sin A     A = arctan(y,x)
+@end example
+
+@end ifinfo
+
+@noindent
+which relate the real and imaginary parts @math{{(x, y)}} to the magnitude and
+the angle @math{{(r, A)}}.@footnote{The arctangent function referred to here,
+computed by OCaml's @code{atan2} function, is defined so as to take two
+arguments @math{y} and @math{x} and to return the angle whose tangent is @math{{y / x}}.
+The signs of the arguments determine the quadrant of the angle.}  Ben's
+representation is therefore given by the following selectors and constructors,
+gathered into a module because OCaml, unlike Scheme, cannot let a second
+representation reuse these same six names at the top level of one file:
+
+@example ocaml
+module Rectangular = struct
+  type t = float * float
+
+  let real_part (x, _) = x
+  let imag_part (_, y) = y
+  let magnitude (x, y) = sqrt ((x *. x) +. (y *. y))
+  let angle (x, y) = atan2 y x
+  let make_from_real_imag x y : t = x, y
+  let make_from_mag_ang r a : t = r *. cos a, r *. sin a
+end
+@end example
+
+@noindent
+Alyssa, in contrast, chooses to represent complex numbers in polar form.  For
+her, selecting the magnitude and angle is straightforward, but she has to use
+the trigonometric relations to obtain the real and imaginary parts.  Alyssa's
+representation is:
+
+@example ocaml
+module Polar = struct
+  type t = float * float
+
+  let magnitude (r, _) = r
+  let angle (_, a) = a
+  let real_part (r, a) = r *. cos a
+  let imag_part (r, a) = r *. sin a
+  let make_from_mag_ang r a : t = r, a
+  let make_from_real_imag x y : t = sqrt ((x *. x) +. (y *. y)), atan2 y x
+end
+@end example
+
+@noindent
+The discipline of data abstraction ensures that the same implementation of
+@code{add_complex}, @code{sub_complex}, @code{mul_complex}, and
+@code{div_complex} will work whether it is applied to a @code{complex_ops}
+value built from @code{Rectangular} or one built from @code{Polar}:
+
+@example ocaml
+let rectangular_ops =
+  @{ real_part = Rectangular.real_part
+  ; imag_part = Rectangular.imag_part
+  ; magnitude = Rectangular.magnitude
+  ; angle = Rectangular.angle
+  ; make_from_real_imag = Rectangular.make_from_real_imag
+  ; make_from_mag_ang = Rectangular.make_from_mag_ang
+  @}
+;;
+
+let polar_ops =
+  @{ real_part = Polar.real_part
+  ; imag_part = Polar.imag_part
+  ; magnitude = Polar.magnitude
+  ; angle = Polar.angle
+  ; make_from_real_imag = Polar.make_from_real_imag
+  ; make_from_mag_ang = Polar.make_from_mag_ang
+  @}
+;;
+@end example
+
+@noindent
+@code{add_complex rectangular_ops} and @code{add_complex polar_ops} are two
+uses of one function, not two functions -- the point the book is making,
+stated so that OCaml's type checker holds both representations to the same
+four-selector, two-constructor contract.
+
+@node	2.4.2, 2.4.3, 2.4.1, 2.4
+@subsection Tagged data
+
+One way to view data abstraction is as an application of the ``principle of
+least commitment.''  In implementing the complex-number system in 
+@ref{2.4.1}, we can use either Ben's rectangular representation or Alyssa's
+polar representation.  The abstraction barrier formed by the selectors and
+constructors permits us to defer to the last possible moment the choice of a
+concrete representation for our data objects and thus retain maximum
+flexibility in our system design.
+
+The principle of least commitment can be carried to even further extremes.  If
+we desire, we can maintain the ambiguity of representation even @emph{after} we
+have designed the selectors and constructors, and elect to use both Ben's
+representation @emph{and} Alyssa's representation.  If both representations are
+included in a single system, however, we will need some way to distinguish data
+in polar form from data in rectangular form.  Otherwise, if we were asked, for
+instance, to find the @code{magnitude} of the pair (3, 4), we wouldn't know
+whether to answer 5 (interpreting the number in rectangular form) or 3
+(interpreting the number in polar form).  A straightforward way to accomplish
+this distinction is to include a @newterm{type tag}---the string
+@code{"rectangular"} or @code{"polar"}---as part of each complex number.  Then
+when we need to manipulate a complex number we can use the tag to decide which
+selector to apply.
+
+In order to manipulate tagged data, we will assume that we have procedures
+@code{type_tag} and @code{contents_of} that extract from a data object the tag and
+the actual contents (the polar or rectangular coordinates, in the case of a
+complex number).  We will also postulate a procedure @code{attach_tag} that
+takes a tag and contents and produces a tagged data object.  A straightforward
+way to implement this in OCaml is with a record pairing a tag with its
+contents.  @code{contents} also needs one uniform type of its own: the book's
+untyped pair could hold a bare number, a raw (real, imaginary) pair, or (once
+2.4.3 keeps constructors in the same table as selectors) a fully tagged
+complex number, so this edition introduces the three-case @code{value} type
+now, ahead of when 2.4.3 needs the last case:
+
+@example ocaml
+type value =
+  | Num of float
+  | Pair of float * float
+  | Tagged of tagged
+
+and tagged =
+  @{ tag : string
+  ; contents : value
+  @}
+
+let attach_tag tag contents = @{ tag; contents @}
+let type_tag t = t.tag
+let contents_of t = t.contents
+@end example
+
+@noindent
+@code{type_tag} and @code{contents_of} cannot fail the way the book's
+@code{car}-based versions can: @code{tagged} is a record, not a pair that
+might hold anything, so a value with no tag has no way to reach these
+functions in the first place, and OCaml needs no ``Bad tagged datum'' error to
+say so.
+
+@noindent
+Using these procedures, we can define predicates @code{is_rectangular}  and
+@code{is_polar}, which recognize rectangular and polar numbers, respectively:
+
+@example ocaml
+let is_rectangular t = String.equal (type_tag t) "rectangular"
+let is_polar t = String.equal (type_tag t) "polar"
+@end example
+
+@noindent
+With type tags, Ben and Alyssa can now modify their code so that their two
+different representations can coexist in the same system.  Whenever Ben
+constructs a complex number, he tags it as rectangular.  Whenever Alyssa
+constructs a complex number, she tags it as polar.  In addition, Ben and Alyssa
+must make sure that the names of their procedures do not conflict.  One way to
+do this is for Ben to append the suffix @code{rectangular} to the name of each
+of his representation procedures and for Alyssa to append @code{polar} to the
+names of hers.  Here is Ben's revised rectangular representation from 
+@ref{2.4.1}, each procedure delegating to @code{Rectangular} -- the same
+procedures Ben wrote when he was working in isolation, unwrapping the
+@code{Pair} a tagged rectangular number carries:
+
+@example ocaml
+let real_part_rectangular = function
+  | Pair (x, y) -> Rectangular.real_part (x, y)
+  | Num _ | Tagged _ -> invalid_arg "real_part_rectangular: expected a pair"
+;;
+
+let imag_part_rectangular = function
+  | Pair (x, y) -> Rectangular.imag_part (x, y)
+  | Num _ | Tagged _ -> invalid_arg "imag_part_rectangular: expected a pair"
+;;
+
+let magnitude_rectangular = function
+  | Pair (x, y) -> Rectangular.magnitude (x, y)
+  | Num _ | Tagged _ -> invalid_arg "magnitude_rectangular: expected a pair"
+;;
+
+let angle_rectangular = function
+  | Pair (x, y) -> Rectangular.angle (x, y)
+  | Num _ | Tagged _ -> invalid_arg "angle_rectangular: expected a pair"
+;;
+
+let make_from_real_imag_rectangular x y =
+  let px, py = Rectangular.make_from_real_imag x y in
+  attach_tag "rectangular" (Pair (px, py))
+;;
+
+let make_from_mag_ang_rectangular r a =
+  let px, py = Rectangular.make_from_mag_ang r a in
+  attach_tag "rectangular" (Pair (px, py))
+;;
+@end example
+
+@noindent
+and here is Alyssa's revised polar representation:
+
+@example ocaml
+let real_part_polar = function
+  | Pair (r, a) -> Polar.real_part (r, a)
+  | Num _ | Tagged _ -> invalid_arg "real_part_polar: expected a pair"
+;;
+
+let imag_part_polar = function
+  | Pair (r, a) -> Polar.imag_part (r, a)
+  | Num _ | Tagged _ -> invalid_arg "imag_part_polar: expected a pair"
+;;
+
+let magnitude_polar = function
+  | Pair (r, _) -> r
+  | Num _ | Tagged _ -> invalid_arg "magnitude_polar: expected a pair"
+;;
+
+let angle_polar = function
+  | Pair (_, a) -> a
+  | Num _ | Tagged _ -> invalid_arg "angle_polar: expected a pair"
+;;
+
+let make_from_real_imag_polar x y =
+  let pr, pa = Polar.make_from_real_imag x y in
+  attach_tag "polar" (Pair (pr, pa))
+;;
+
+let make_from_mag_ang_polar r a = attach_tag "polar" (Pair (r, a))
+@end example
+
+@noindent
+Each generic selector is implemented as a procedure that checks the tag of its
+argument and calls the appropriate procedure for handling data of that type.
+For example, to obtain the real part of a complex number, @code{real_part}
+examines the tag to determine whether to use Ben's @code{real_part_rectangular}
+or Alyssa's @code{real_part_polar}.  In either case, we use @code{contents_of} to
+extract the bare, untagged datum and send this to the rectangular or polar
+procedure as required:
+
+@example ocaml
+let real_part z =
+  if is_rectangular z
+  then real_part_rectangular (contents_of z)
+  else if is_polar z
+  then real_part_polar (contents_of z)
+  else invalid_arg ("real_part: unknown type: " ^ type_tag z)
+;;
+
+let imag_part z =
+  if is_rectangular z
+  then imag_part_rectangular (contents_of z)
+  else if is_polar z
+  then imag_part_polar (contents_of z)
+  else invalid_arg ("imag_part: unknown type: " ^ type_tag z)
+;;
+
+let magnitude z =
+  if is_rectangular z
+  then magnitude_rectangular (contents_of z)
+  else if is_polar z
+  then magnitude_polar (contents_of z)
+  else invalid_arg ("magnitude: unknown type: " ^ type_tag z)
+;;
+
+let angle z =
+  if is_rectangular z
+  then angle_rectangular (contents_of z)
+  else if is_polar z
+  then angle_polar (contents_of z)
+  else invalid_arg ("angle: unknown type: " ^ type_tag z)
+;;
+@end example
+
+@noindent
+Finally, we must choose whether to construct complex numbers using Ben's
+representation or Alyssa's representation.  One reasonable choice is to
+construct rectangular numbers whenever we have real and imaginary parts and to
+construct polar numbers whenever we have magnitudes and angles.  This edition
+states the choice here, before @code{add_complex}, which calls it; Scheme's
+discussion can state the choice afterward, because Scheme resolves
+@code{make-from-real-imag} at the moment @code{add-complex} is called, not at
+the moment @code{add-complex} is defined.
+
+@example ocaml
+let make_from_real_imag x y = make_from_real_imag_rectangular x y
+let make_from_mag_ang r a = make_from_mag_ang_polar r a
+@end example
+
+@noindent
+To implement the complex-number arithmetic operations, we can use the same
+procedures @code{add_complex}, @code{sub_complex}, @code{mul_complex}, and
+@code{div_complex} from @ref{2.4.1}, because the selectors they call
+are generic, and so will work with either representation.  Textually these are
+the same four bodies @ref{2.4.1} gave @code{add_complex} and its three
+companions, now applicable with no @code{complex_ops} argument, because
+@code{real_part} and friends already work for either tag.  For example, the
+procedure @code{add_complex} is still
+
+@example ocaml
+let add_complex z1 z2 =
+  make_from_real_imag (real_part z1 +. real_part z2) (imag_part z1 +. imag_part z2)
+;;
+@end example
+
+@noindent
+The resulting complex-number system has the structure shown in @ref{Figure 2.21}.  
+The system has been decomposed into three relatively independent parts:
+the complex-number-arithmetic operations, Alyssa's polar implementation, and
+Ben's rectangular implementation.  The polar and rectangular implementations
+could have been written by Ben and Alyssa working separately, and both of these
+can be used as underlying representations by a third programmer implementing
+the complex-arithmetic procedures in terms of the abstract constructor/selector
+interface.
+
+@float
+@anchor{Figure 2.21}
+@ifinfo
+@quotation
+@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.
+
+@example
+    +-------------------------------------------------+
+----| add_complex sub_complex mul_complex div_complex |----
+    +-------------------------------------------------+
+                Complex arithmetic package
+                 +-----------------------+
+                 | real_part   imag_part |
+-----------------|                       |------------------
+                 | magnitude   angle     |
+                 +-----------+-----------+
+           Rectangular       |          Polar
+          representation     |     representation
+-----------------------------+------------------------------
+       List structure and primitive machine arithmetic
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.21a,,147mm,Figure 2.21: Structure of the generic complex-arithmetic system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.}
+@end float
+
+Since each data object is tagged with its type, the selectors operate on the
+data in a generic manner.  That is, each selector is defined to have a behavior
+that depends upon the particular type of data it is applied to.  Notice the
+general mechanism for interfacing the separate representations: Within a given
+representation implementation (say, Alyssa's polar package) a complex number is
+an untyped pair (magnitude, angle).  When a generic selector operates on a
+number of @code{polar} type, it strips off the tag and passes the contents on
+to Alyssa's code.  Conversely, when Alyssa constructs a number for general use,
+she tags it with a type so that it can be appropriately recognized by the
+higher-level procedures.  This discipline of stripping off and attaching tags
+as data objects are passed from level to level can be an important
+organizational strategy, as we shall see in @ref{2.5}.
+
+@node	2.4.3, 2.5, 2.3, 2.4
+@subsection Data-Directed Programming and Additivity
+
+The general strategy of checking the type of a datum and calling an appropriate
+procedure is called @newterm{dispatching on type}.  This is a powerful strategy
+for obtaining modularity in system design.  On the other hand, implementing the
+dispatch as in @ref{2.4.2} has two significant weaknesses.  One
+weakness is that the generic interface procedures (@code{real_part},
+@code{imag_part}, @code{magnitude}, and @code{angle}) must know about all the
+different representations.  For instance, suppose we wanted to incorporate a
+new representation for complex numbers into our complex-number system.  We
+would need to identify this new representation with a type, and then add a
+clause to each of the generic interface procedures to check for the new type
+and apply the appropriate selector for that representation.
+
+Another weakness of the technique is that even though the individual
+representations can be designed separately, we must guarantee that no two
+procedures in the entire system have the same name.  This is why Ben and Alyssa
+had to change the names of their original procedures from @ref{2.4.1}.
+
+The issue underlying both of these weaknesses is that the technique for
+implementing generic interfaces is not @newterm{additive}.  The person
+implementing the generic selector procedures must modify those procedures each
+time a new representation is installed, and the people interfacing the
+individual representations must modify their code to avoid name conflicts.  In
+each of these cases, the changes that must be made to the code are
+straightforward, but they must be made nonetheless, and this is a source of
+inconvenience and error.  This is not much of a problem for the complex-number
+system as it stands, but suppose there were not two but hundreds of different
+representations for complex numbers.  And suppose that there were many generic
+selectors to be maintained in the abstract-data interface.  Suppose, in fact,
+that no one programmer knew all the interface procedures or all the
+representations.  The problem is real and must be addressed in such programs as
+large-scale data-base-management systems.
+
+What we need is a means for modularizing the system design even further.  This
+is provided by the programming technique known as @newterm{data-directed programming}.  
+To understand how data-directed programming works, begin with
+the observation that whenever we deal with a set of generic operations that are
+common to a set of different types we are, in effect, dealing with a
+two-dimensional table that contains the possible operations on one axis and the
+possible types on the other axis.  The entries in the table are the procedures
+that implement each operation for each type of argument presented.  In the
+complex-number system developed in the previous section, the correspondence
+between operation name, data type, and actual procedure was spread out among
+the various conditional clauses in the generic interface procedures.  But the
+same information could have been organized in a table, as shown in @ref{Figure 2.22}.
+
+@float
+@anchor{Figure 2.22}
+@ifinfo
+@quotation
+@strong{Figure 2.22:} Table of operations for the complex-number system.
+
+@example
+           |               Types
+Operations | Polar           | Rectangular
+===========+=================+======================
+real_part  | real_part_polar | real_part_rectangular
+imag_part  | imag_part_polar | imag_part_rectangular
+magnitude  | magnitude_polar | magnitude_rectangular
+angle      | angle_polar     | angle_rectangular
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.22,,147mm,Figure 2.22: Table of operations for the complex-number system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.22.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.22:} Table of operations for the complex-number system.}
+@end float
+
+@noindent
+Data-directed programming is the technique of designing programs to work with
+such a table directly.  Previously, we implemented the mechanism that
+interfaces the complex-arithmetic code with the two representation packages as
+a set of procedures that each perform an explicit dispatch on type.  Here we
+will implement the interface as a single procedure that looks up the
+combination of the operation name and argument type in the table to find the
+correct procedure to apply, and then applies it to the contents of the
+argument.  If we do this, then to add a new representation package to the
+system we need not change any existing procedures; we need only add new entries
+to the table.
+
+To implement this plan, assume that we have two procedures, @code{put} and
+@code{get}, for manipulating the operation-and-type table:
+
+@itemize @bullet
+
+@item
+@code{put ⟨@var{op}⟩ ⟨@var{type}⟩ ⟨@var{item}⟩} installs the 
+@code{⟨}@var{item}@code{⟩} in the table, indexed by the 
+@code{⟨}@var{op}@code{⟩} and the @code{⟨}@var{type}@code{⟩}.
+
+@item
+@code{get ⟨@var{op}⟩ ⟨@var{type}⟩} looks up the @code{⟨}@var{op}@code{⟩}, 
+@code{⟨}@var{type}@code{⟩} entry in the table and returns the item found there.  
+If no item is found, @code{get} returns @code{None}.
+
+@end itemize
+
+@noindent
+For now, we can assume that @code{put} and @code{get} are included in our
+language, backed by an OCaml @code{Hashtbl}.  A @code{⟨}@var{type}@code{⟩} here
+is always a string list, even for a single-argument selector, because
+@code{Hashtbl} needs one key type for every entry: the book's own footnote
+below explains why a selector's key is a list and a constructor's a single
+symbol; this edition folds both into a one-element list so both kinds of
+entry share a table.  In @ref{Chapter 3} (@ref{3.3.3}) we
+will see how to implement these and other operations for manipulating tables.
+
+Here is how data-directed programming can be used in the complex-number system.
+Ben, who developed the rectangular representation, implements his code just as
+he did originally.  He defines a collection of procedures, or a
+@newterm{package}, and interfaces these to the rest of the system by adding
+entries to the table that tell the system how to operate on rectangular
+numbers.  This is accomplished by calling the following procedure, whose
+internal procedures reuse @code{Rectangular} from @ref{2.4.1} -- the same
+procedures Ben wrote when he was working in isolation:
+
+@example ocaml
+let install_rectangular_package () =
+  put "real_part" [ "rectangular" ] (function
+    | [ Pair (x, y) ] -> Num (Rectangular.real_part (x, y))
+    | _ -> invalid_arg "real_part: rectangular expects one pair");
+  put "imag_part" [ "rectangular" ] (function
+    | [ Pair (x, y) ] -> Num (Rectangular.imag_part (x, y))
+    | _ -> invalid_arg "imag_part: rectangular expects one pair");
+  put "magnitude" [ "rectangular" ] (function
+    | [ Pair (x, y) ] -> Num (Rectangular.magnitude (x, y))
+    | _ -> invalid_arg "magnitude: rectangular expects one pair");
+  put "angle" [ "rectangular" ] (function
+    | [ Pair (x, y) ] -> Num (Rectangular.angle (x, y))
+    | _ -> invalid_arg "angle: rectangular expects one pair");
+  put "make_from_real_imag" [ "rectangular" ] (function
+    | [ Num x; Num y ] -> Tagged (attach_tag "rectangular" (Pair (x, y)))
+    | _ -> invalid_arg "make_from_real_imag: rectangular expects two numbers");
+  put "make_from_mag_ang" [ "rectangular" ] (function
+    | [ Num r; Num a ] ->
+      let x, y = Rectangular.make_from_mag_ang r a in
+      Tagged (attach_tag "rectangular" (Pair (x, y)))
+    | _ -> invalid_arg "make_from_mag_ang: rectangular expects two numbers")
+;;
+@end example
+
+@noindent
+Notice that the internal procedures here are the same procedures from 
+@ref{2.4.1} that Ben wrote when he was working in isolation.  No changes are
+necessary to interface them to the rest of the system.  Moreover,
+since these procedure definitions are internal to the installation procedure,
+Ben needn't worry about name conflicts with other procedures outside the
+rectangular package.  To interface these to the rest of the system, Ben
+installs his @code{real_part} procedure under the operation name
+@code{real_part} and the type @code{["rectangular"]}, and similarly for the other
+selectors.@footnote{We use the list @code{["rectangular"]} rather than the bare
+string @code{"rectangular"} to allow for the possibility of operations with
+multiple arguments, not all of the same type.}  The interface also defines the
+constructors to be used by the external system.@footnote{In the book, the type a
+constructor is installed under needn't be a list, because a constructor is
+always used to make an object of one particular type; this edition still uses
+a one-element list, so @code{put} and @code{get} need only one shape of key.}  These are identical to
+Ben's internally defined constructors, except that they attach the tag.
+
+Alyssa's polar package is analogous:
+
+@example ocaml
+let install_polar_package () =
+  put "real_part" [ "polar" ] (function
+    | [ Pair (r, a) ] -> Num (Polar.real_part (r, a))
+    | _ -> invalid_arg "real_part: polar expects one pair");
+  put "imag_part" [ "polar" ] (function
+    | [ Pair (r, a) ] -> Num (Polar.imag_part (r, a))
+    | _ -> invalid_arg "imag_part: polar expects one pair");
+  put "magnitude" [ "polar" ] (function
+    | [ Pair (r, _) ] -> Num r
+    | _ -> invalid_arg "magnitude: polar expects one pair");
+  put "angle" [ "polar" ] (function
+    | [ Pair (_, a) ] -> Num a
+    | _ -> invalid_arg "angle: polar expects one pair");
+  put "make_from_mag_ang" [ "polar" ] (function
+    | [ Num r; Num a ] -> Tagged (attach_tag "polar" (Pair (r, a)))
+    | _ -> invalid_arg "make_from_mag_ang: polar expects two numbers");
+  put "make_from_real_imag" [ "polar" ] (function
+    | [ Num x; Num y ] ->
+      let r, a = Polar.make_from_real_imag x y in
+      Tagged (attach_tag "polar" (Pair (r, a)))
+    | _ -> invalid_arg "make_from_real_imag: polar expects two numbers")
+;;
+@end example
+
+@noindent
+Even though Ben and Alyssa both still use their original procedures defined
+with the same names as each other's (e.g., @code{real_part}), these definitions
+are now internal to different procedures (see @ref{1.1.8}), so there is
+no name conflict.
+
+The complex-arithmetic selectors access the table by means of a general
+``operation'' procedure called @code{apply_generic}, which applies a generic
+operation to some arguments.  @code{apply_generic} looks in the table under the
+name of the operation and the types of the arguments and applies the resulting
+procedure if one is present:@footnote{Scheme's @code{apply-generic} uses the
+dotted-tail notation described in @ref{Exercise 2.20}, because different
+generic operations may take different numbers of arguments, and calls the
+primitive procedure @code{apply} to spread the collected argument list back
+out over the retrieved procedure's parameters.  OCaml's @code{apply_generic}
+needs neither device: @code{args} is an ordinary @code{value list} parameter,
+already the list @code{apply} would have spread, and the procedures @code{put}
+stores are themselves single-argument functions over that list, so
+@code{apply_generic} calls the retrieved procedure directly.}
+
+@example ocaml
+let apply_generic op args =
+  let untag = function
+    | Tagged t -> t
+    | Num _ | Pair _ -> invalid_arg (op ^ ": apply_generic expects tagged arguments")
+  in
+  let tagged_args = List.map untag args in
+  let type_tags = List.map type_tag tagged_args in
+  match get op type_tags with
+  | Some proc -> proc (List.map contents_of tagged_args)
+  | None ->
+    invalid_arg
+      (Printf.sprintf
+         "apply_generic: no method for these types: %s (%s)"
+         op
+         (String.concat ", " type_tags))
+;;
+@end example
+
+@noindent
+Using @code{apply_generic}, we can define our generic selectors as follows,
+wrapping each result back out of the shared @code{value} type:
+
+@example ocaml
+let as_number = function
+  | Num n -> n
+  | Pair _ | Tagged _ -> invalid_arg "expected a number result"
+;;
+
+let real_part z = as_number (apply_generic "real_part" [ Tagged z ])
+let imag_part z = as_number (apply_generic "imag_part" [ Tagged z ])
+let magnitude z = as_number (apply_generic "magnitude" [ Tagged z ])
+let angle z = as_number (apply_generic "angle" [ Tagged z ])
+@end example
+
+@noindent
+Observe that these do not change at all if a new representation is added to the
+system.
+
+We can also extract from the table the constructors to be used by the programs
+external to the packages in making complex numbers from real and imaginary
+parts and from magnitudes and angles.  As in @ref{2.4.2}, we construct
+rectangular numbers whenever we have real and imaginary parts, and polar
+numbers whenever we have magnitudes and angles.  These are not generic
+selectors -- their arguments are plain numbers, not tagged data -- so they
+look their constructor up directly instead of going through
+@code{apply_generic}:
+
+@example ocaml
+let as_tagged = function
+  | Tagged t -> t
+  | Num _ | Pair _ -> invalid_arg "expected a tagged result"
+;;
+
+let make_from_real_imag x y =
+  match get "make_from_real_imag" [ "rectangular" ] with
+  | Some proc -> as_tagged (proc [ Num x; Num y ])
+  | None -> invalid_arg "make_from_real_imag: no rectangular constructor installed"
+;;
+
+let make_from_mag_ang r a =
+  match get "make_from_mag_ang" [ "polar" ] with
+  | Some proc -> as_tagged (proc [ Num r; Num a ])
+  | None -> invalid_arg "make_from_mag_ang: no polar constructor installed"
+;;
+@end example
+
+@quotation
+@strong{@anchor{Exercise 2.73}Exercise 2.73:} @ref{2.3.2} described a
+program that performs symbolic differentiation:
+
+@example ocaml
+let rec deriv exp var =
+  match exp with
+  | Const _ -> Const 0
+  | Var v -> if String.equal v var then Const 1 else Const 0
+  | Sum (a1, a2) -> make_sum (deriv a1 var) (deriv a2 var)
+  | Prod (m1, m2) ->
+    make_sum (make_product m1 (deriv m2 var)) (make_product (deriv m1 var) m2)
+;;
+@end example
+
+We can regard this program as performing a dispatch on the type of the
+expression to be differentiated.  In this situation the ``type tag'' of the
+datum is the algebraic operator (such as @code{+}) and the operation
+being performed is @code{deriv}.  We can transform this program into
+data-directed style by rewriting the basic derivative expression as a
+@code{Compound} of an operator string and its operand list instead of the
+book's untyped list, and dispatching @code{deriv} on the operator through a
+table:
+
+@example ocaml
+type expr =
+  | Const of int
+  | Var of string
+  | Compound of string * expr list
+
+let operator = function
+  | Compound (op, _) -> op
+  | Const _ | Var _ -> invalid_arg "operator: not a compound expression"
+;;
+
+let operands = function
+  | Compound (_, args) -> args
+  | Const _ | Var _ -> invalid_arg "operands: not a compound expression"
+;;
+
+let rec deriv table exp var =
+  match exp with
+  | Const _ -> Const 0
+  | Var v -> if String.equal v var then Const 1 else Const 0
+  | Compound (op, args) ->
+    (match Hashtbl.find_opt table op with
+     | Some rule -> rule (fun e v -> deriv table e v) args var
+     | None -> invalid_arg (Printf.sprintf "deriv: unknown expression type: %s" op))
+;;
+@end example
+
+@enumerate a
+
+@item
+Explain what was done above.  Why can't we assimilate the predicates that
+recognize @code{Const} and @code{Var} into the data-directed dispatch?
+
+@item
+Write the procedures for derivatives of sums and products, and the auxiliary
+code required to install them in the table used by the program above.
+
+@item
+Choose any additional differentiation rule that you like, such as the one for
+exponents (@ref{Exercise 2.56}), and install it in this data-directed
+system.
+
+@item
+In this simple algebraic manipulator the type of an expression is the algebraic
+operator that binds it together.  Suppose, however, we indexed the procedures
+in the opposite way, so that the dispatch line in @code{deriv} looked like
+
+@example ocaml
+(Hashtbl.find_opt (Hashtbl.find operator_tables (operator exp)) "deriv") args var
+@end example
+
+@noindent
+What corresponding changes to the derivative system are required?
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.74}Exercise 2.74:} Insatiable Enterprises, Inc., is
+a highly decentralized conglomerate company consisting of a large number of
+independent divisions located all over the world.  The company's computer
+facilities have just been interconnected by means of a clever
+network-interfacing scheme that makes the entire network appear to any user to
+be a single computer.  Insatiable's president, in her first attempt to exploit
+the ability of the network to extract administrative information from division
+files, is dismayed to discover that, although all the division files have been
+implemented as data structures in OCaml, the particular data structure used
+varies from division to division.  A meeting of division managers is hastily
+called to search for a strategy to integrate the files that will satisfy
+headquarters' needs while preserving the existing autonomy of the divisions.
+
+Show how such a strategy can be implemented with data-directed programming.  As
+an example, suppose that each division's personnel records consist of a single
+file, which contains a set of records keyed on employees' names.  The structure
+of the set varies from division to division.  Furthermore, each employee's
+record is itself a set (structured differently from division to division) that
+contains information keyed under identifiers such as @code{address} and
+@code{salary}.  In particular:
+
+@enumerate a
+
+@item
+Implement for headquarters a @code{get_record} procedure that retrieves a
+specified employee's record from a specified personnel file.  The procedure
+should be applicable to any division's file.  Explain how the individual
+divisions' files should be structured.  In particular, what type information
+must be supplied?
+
+@item
+Implement for headquarters a @code{get_salary} procedure that returns the
+salary information from a given employee's record from any division's personnel
+file.  How should the record be structured to make this operation
+work?
+
+@item
+Implement for headquarters a @code{find_employee_record} procedure.  This
+should search all the divisions' files for the record of a given employee and
+return the record.  Assume that this procedure takes as arguments an employee's
+name and a list of all the divisions' files.
+
+@item
+When Insatiable takes over a new company, what changes must be made to incorporate the new personnel information into the central system?
+
+@end enumerate
+@end quotation
+
+@quotation
+@emph{Exercise 2.74a is added by this edition and extends exercise 2.74; SICP numbers stop at 2.74.}
+
+@strong{@anchor{Exercise 2.74a}Exercise 2.74a:} Restate Exercise 2.74's
+@code{find_employee_record} so that a missing employee is data --
+@code{None} -- rather than a signal the caller must set up a handler for.
+@end quotation
+
+@subsubheading Message passing
+
+The key idea of data-directed programming is to handle generic operations in
+programs by dealing explicitly with operation-and-type tables, such as the
+table in @ref{Figure 2.22}.  The style of programming we used in 
+@ref{2.4.2} organized the required dispatching on type by having each operation
+take care of its own dispatching.  In effect, this decomposes the
+operation-and-type table into rows, with each generic operation procedure
+representing a row of the table.
+
+An alternative implementation strategy is to decompose the table into columns
+and, instead of using ``intelligent operations'' that dispatch on data types,
+to work with ``intelligent data objects'' that dispatch on operation names.  We
+can do this by arranging things so that a data object, such as a rectangular
+number, is represented as a procedure that takes as input the required
+operation name and performs the operation indicated.  OCaml states the finite
+set of operation names as a variant, @code{op}, so a message-passing complex
+number becomes @code{op -> float} instead of a procedure taking an unbounded
+symbol.  In such a discipline, @code{make_from_real_imag} could be written as
+
+@example ocaml
+type op =
+  | Real_part
+  | Imag_part
+  | Magnitude
+  | Angle
+
+type t = op -> float
+
+let make_from_real_imag x y : t = function
+  | Real_part -> x
+  | Imag_part -> y
+  | Magnitude -> sqrt ((x *. x) +. (y *. y))
+  | Angle -> atan2 y x
+;;
+@end example
+
+@noindent
+The corresponding @code{apply_generic} procedure, which applies a generic
+operation to an argument, now simply feeds the operation's name to the data
+object and lets the object do the work:@footnote{One limitation of this
+organization is it permits only generic procedures of one argument.}
+
+@example ocaml
+let apply_generic op (z : t) = z op
+@end example
+
+@noindent
+Note that the value returned by @code{make_from_real_imag} is a
+procedure -- the @code{function} expression inside its body.  This is
+the procedure that is invoked when
+@code{apply_generic} requests an operation to be performed.
+
+This style of programming is called @newterm{message passing}.  The name comes
+from the image that a data object is an entity that receives the requested
+operation name as a ``message.''  We have already seen an example of message
+passing in @ref{2.1.3}, where we saw how @code{cons}, @code{car}, and
+@code{cdr} could be defined with no data objects but only procedures.  Here we
+see that message passing is not a mathematical trick but a useful technique for
+organizing systems with generic operations.  In the remainder of this chapter
+we will continue to use data-directed programming, rather than message passing,
+to discuss generic arithmetic operations.  In @ref{Chapter 3} we will return to
+message passing, and we will see that it can be a powerful tool for structuring
+simulation programs.
+
+@quotation
+@strong{In this language: module signatures as a typed alternative.}
+
+A module signature can replace the dispatch table when every
+representation is known at compile time: a @code{Complex} signature
+names the selectors, and a functor over that signature builds
+@code{add_complex} once for whichever module the caller supplies.
+Nothing runs a string lookup at every call, and a forgotten
+@code{magnitude} function is a compiler error, not a missing-method
+failure at run time.
+
+@example ocaml
+module type Complex = sig
+  type t
+
+  val magnitude : t -> float
+end
+@end example
+
+The table still wins once representations arrive after the program
+is compiled and linked -- a plugin, say -- because a functor needs
+every implementation named in the source it is applied to.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.75}Exercise 2.75:} Implement the constructor
+@code{make_from_mag_ang} in mes@-sage-pass@-ing style.  This procedure should be
+analogous to the @code{make_from_real_imag} procedure given above.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.76}Exercise 2.76:} As a large system with generic
+operations evolves, new types of data objects or new operations may be needed.
+For each of the three strategies---generic operations with explicit dispatch,
+data-directed style, and message-passing-style---describe the changes that
+must be made to a system to add new types or new operations.  Which
+organization would be most appropriate for a system in which new types must
+often be added?  Which would be most appropriate for a system in which new
+operations must often be added?
+@end quotation

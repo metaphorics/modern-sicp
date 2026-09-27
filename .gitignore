@@ -1,8 +1,19 @@
-content.opf
-toc.xhtml
-*.png
-*.json
-*.vim
-*.swp
 *~
+*.swp
 \#*\#
+_build/
+.tools/
+!tasks/
+# texi2dvi --build=local auxiliaries
+*.aux
+*.cp
+*.cps
+*.fn
+*.fns
+*.ky
+*.log
+*.pg
+*.toc
+*.tp
+*.vr
+*.t2d/

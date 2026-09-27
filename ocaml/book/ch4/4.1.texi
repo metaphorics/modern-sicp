@@ -1,0 +1,2060 @@
+@node	4.1, 4.2, Chapter 4, Chapter 4
+@section The Metacircular Evaluator
+
+Our evaluator for the object language will be implemented as an OCaml
+program.  It may seem circular to think about evaluating a language with an
+evaluator that is itself a program.  However, evaluation is a process, so it is
+appropriate to describe the evaluation process as a program, which, after all,
+is our tool for describing processes.@footnote{Even so, there will remain
+important aspects of the evaluation process that are not elucidated by our
+evaluator.  The most important of these are the detailed mechanisms by which
+procedures call other procedures and return values to their callers.  We will
+address these issues in @ref{Chapter 5}, where we take a closer look at the
+evaluation process by implementing the evaluator as a simple register machine.}
+An evaluator that is written in the same language that it evaluates is said to
+be @newterm{metacircular}.
+
+The metacircular evaluator is essentially a Scheme formulation of the
+environment model of evaluation described in @ref{3.2}.  Recall that
+the model has two basic parts:
+
+@enumerate 1
+
+@item
+To evaluate a combination (a compound expression other than a special form),
+evaluate the subexpressions and then apply the value of the operator
+subexpression to the values of the operand subexpressions.
+
+@item
+To apply a compound procedure to a set of arguments, evaluate the body of the
+procedure in a new environment.  To construct this environment, extend the
+environment part of the procedure object by a frame in which the formal
+parameters of the procedure are bound to the arguments to which the procedure
+is applied.
+
+@end enumerate
+
+@noindent
+These two rules describe the essence of the evaluation process, a basic cycle
+in which expressions to be evaluated in environments are reduced to procedures
+to be applied to arguments, which in turn are reduced to new expressions to be
+evaluated in new environments, and so on, until we get down to symbols, whose
+values are looked up in the environment, and to primitive procedures, which are
+applied directly (see @ref{Figure 4.1}).@footnote{If we grant ourselves the
+ability to apply primitives, then what remains for us to implement in the
+evaluator?  The job of the evaluator is not to specify the primitives of the
+language, but rather to provide the connective tissue---the means of
+combination and the means of abstraction---that binds a collection of
+primitives to form a language. Specifically:
+
+@itemize @bullet
+
+@item
+The evaluator enables us to deal with nested expressions.  For example,
+although simply applying primitives would suffice for evaluating the expression
+@code{(+ 1 6)}, it is not adequate for handling @code{(+ 1 (* 2 3))}.  As far
+as the primitive procedure @code{+} is concerned, its arguments must be
+numbers, and it would choke if we passed it the expression @code{(* 2 3)} as an
+argument.  One important role of the evaluator is to choreograph procedure
+composition so that @code{(* 2 3)} is reduced to 6 before being passed as an
+argument to @code{+}.
+
+@item
+The evaluator allows us to use variables.  For example, the primitive procedure
+for addition has no way to deal with expressions such as @code{(+ x 1)}.  We
+need an evaluator to keep track of variables and obtain their values before
+invoking the primitive procedures.
+
+@item
+The evaluator allows us to define compound procedures.  This involves keeping
+track of procedure definitions, knowing how to use these definitions in
+evaluating expressions, and providing a mechanism that enables procedures to
+accept arguments.
+
+@item
+The evaluator provides the special forms, which must be evaluated differently
+from procedure calls.
+
+@end itemize
+} 
+This evaluation cycle will be embodied by the interaction between the two
+critical procedures in the evaluator, @code{eval} and @code{apply}, which are
+described in @ref{4.1.1} (see @ref{Figure 4.1}).
+
+@float
+@anchor{Figure 4.1}
+@ifinfo
+@strong{Figure 4.1:} The @code{eval}-@code{apply} cycle exposes the essence of a computer language.
+
+@example
+                           .,ad88888888baa,
+                  _    ,d8P"""        ""9888ba.      _
+                 /  .a8"          ,ad88888888888a   |\
+               /   aP'          ,88888888888888888a   \
+              /  ,8"           ,88888888888888888888,  \
+             |  ,8'            (888888888888888888888, |
+            /  ,8'             `8888888888888888888888  \
+            |  8)               `888888888888888888888, |
+Procedure,  |  8                  "88888 Apply 8888888) | Expression
+Arguments   |  8     Eval          `888888888888888888) | Environment
+            |  8)                    "8888888888888888  |
+            \  (b                     "88888888888888'  /
+             | `8,                     8888888888888)  |
+             \  "8a                   ,888888888888)  /
+              \   V8,                 d88888888888"  /
+              _\| `8b,             ,d8888888888P' _/
+                     `V8a,       ,ad8888888888P'
+                        ""88888888888888888P"
+                             """"""""""""
+
+                               [graphic by Normand Veillux, modified]
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap4/Fig4.1a,,147mm,Figure 4.1: The eval-apply cycle exposes the essence of a computer language.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap4/Fig4.1a.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 4.1:} The @code{eval}-@code{apply} cycle exposes the essence of a computer language.}
+@end float
+
+The implementation of the evaluator will depend upon procedures that define the
+@newterm{syntax} of the expressions to be evaluated.  We will use data
+abstraction to make the evaluator independent of the representation of the
+language.  For example, rather than committing to a choice that an assignment
+is to be represented by a list beginning with the symbol @code{set!} we
+classify an assignment by the constructor @code{Ast.Set} of its typed view, and
+the fields of that constructor give the parts of an assignment.  Implementation of expressions will be
+described in detail in @ref{4.1.2}.  There are also operations,
+described in @ref{4.1.3}, that specify the representation of procedures
+and environments.  For example, @code{Value.compound} constructs compound
+procedures, @code{lookup_variable_value} accesses the values of variables, and
+@code{apply_procedure} applies a primitive procedure to a given list
+of arguments.
+
+@menu
+* 4.1.1::            The Core of the Evaluator
+* 4.1.2::            Representing Expressions
+* 4.1.3::            Evaluator Data Structures
+* 4.1.4::            Running the Evaluator as a Program
+* 4.1.5::            Data as Programs
+* 4.1.6::            Internal Definitions
+* 4.1.7::            Separating Syntactic Analysis from Execution
+@end menu
+
+@node	4.1.1, 4.1.2, 4.1, 4.1
+@subsection The Core of the Evaluator
+
+The evaluation process can be described as the interaction between two
+procedures: @code{eval} and @code{apply}.
+
+@subsubheading Eval
+
+@code{Eval} takes as arguments an expression and an environment.  It classifies
+the expression and directs its evaluation.  @code{Eval} is structured as a case
+analysis of the syntactic type of the expression to be evaluated.  In order to
+keep the procedure general, we express the determination of the type of an
+expression abstractly, making no commitment to any particular representation
+for the various types of expressions.  Each type of expression is one constructor of the typed view @code{Ast.view},
+and the fields of the constructor are its parts.  This
+@newterm{abstract syntax} makes it easy to see how we can change the syntax of
+the language by using the same evaluator, but with a different collection of
+syntax procedures.
+
+@noindent
+@b{Primitive expressions}
+
+@itemize @bullet
+
+@item
+For self-evaluating expressions, such as numbers, @code{eval} returns the
+expression itself.
+
+@item
+@code{Eval} must look up variables in the environment to find their values.
+
+@end itemize
+
+@noindent
+@b{Special forms}
+
+@itemize @bullet
+
+@item
+For quoted expressions, @code{eval} returns the expression that was quoted.
+
+@item
+An assignment to (or a definition of) a variable must recursively call
+@code{eval} to compute the new value to be associated with the variable.  The
+environment must be modified to change (or create) the binding of the variable.
+
+@item
+An @code{if} expression requires special processing of its parts, so as to
+evaluate the consequent if the predicate is true, and otherwise to evaluate the
+alternative.
+
+@item
+A @code{lambda} expression must be transformed into an applicable procedure by
+packaging together the parameters and body specified by the @code{lambda}
+expression with the environment of the evaluation.
+
+@item
+A @code{begin} expression requires evaluating its sequence of expressions in
+the order in which they appear.
+
+@item
+A case analysis (@code{cond}) is transformed into a nest of @code{if}
+expressions and then evaluated.
+
+@end itemize
+
+@noindent
+@b{Combinations}
+
+@itemize @bullet
+
+@item
+For a procedure application, @code{eval} must recursively evaluate the operator
+part and the operands of the combination.  The resulting procedure and
+arguments are passed to @code{apply_procedure}, which handles the actual procedure
+application.
+
+@end itemize
+
+@noindent
+Here is the definition of @code{eval}:
+
+@example ocaml
+let ( >>= ) = Result.bind
+
+let rec eval exp env =
+  match Ast.view exp with
+  | Ast.Int n -> Ok (Value.int n)
+  | Ast.Float f -> Ok (Value.float f)
+  | Ast.Bool b -> Ok (Value.bool b)
+  | Ast.String s -> Ok (Value.string s)
+  | Ast.Variable name -> lookup_variable_value name env
+  | Ast.Quote datum -> Ok (datum_to_value datum)
+  | Ast.Definition d -> eval_definition d env
+  | Ast.Set (name, exp) -> eval_assignment name exp env
+  | Ast.If _ -> eval_if exp env
+  | Ast.Lambda (parameters, body) ->
+    Ok (Value.compound ~name:None ~parameters ~body ~env)
+  | Ast.Sequence body -> eval_sequence body env
+  | Ast.Cond _ -> cond_to_if exp >>= fun rewritten -> Eval.eval rewritten env
+  (* Eval is the evaluator the standard clauses recurse through *)
+  | Ast.Application (operator, operands) ->
+    Eval.eval operator env
+    >>= fun proc ->
+    list_of_values operands env >>= fun args -> apply_procedure proc args
+  | Ast.And _ | Ast.Or _ | Ast.Let _ ->
+    Error (Eval_error.Invalid_form "unknown expression type: EVAL")
+;;
+@end example
+
+@noindent
+For clarity, @code{eval} has been implemented as a case analysis using
+@code{match}.  The disadvantage of this is that our function handles only a few
+distinguishable types of expressions, and no new ones can be defined without
+editing the definition of @code{eval}.  In most Lisp implementations,
+dispatching on the type of an expression is done in a data-directed style.
+This allows a user to add new types of expressions that @code{eval} can
+distinguish, without modifying the definition of @code{eval} itself.  (See
+@ref{Exercise 4.3}.)
+
+@subsubheading Apply
+
+@code{Apply} takes two arguments, a procedure and a list of arguments to which
+the procedure should be applied.  @code{Apply} classifies procedures into two
+kinds: It looks up primitives in the section's primitive table and calls their
+OCaml functions; it
+applies compound procedures by sequentially evaluating the expressions that
+make up the body of the procedure.  The environment for the evaluation of the
+body of a compound procedure is constructed by extending the base environment
+carried by the procedure to include a frame that binds the parameters of the
+procedure to the arguments to which the procedure is to be applied.  Here is the definition of @code{apply_procedure}:
+
+@example ocaml
+let apply_procedure proc args =
+  match Value.view proc with
+  | Value.Primitive_procedure name ->
+    (match List.assoc_opt name primitive_table with
+     | Some f -> f args
+     | None ->
+       Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
+  | Value.Compound_procedure @{ parameters; body; env; _ @} ->
+    Env.extend parameters args env >>= fun extended -> eval_sequence body extended
+  | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
+;;
+@end example
+
+@subsubheading Procedure arguments
+
+When @code{eval} processes a procedure application, it uses
+@code{list_of_values} to produce the list of arguments to which the procedure
+is to be applied. @code{list_of_values} takes as an argument the operands of
+the combination.  It evaluates each operand and returns a list of the
+corresponding values:@footnote{We could have simplified the @code{Application}
+clause in @code{eval} by using @code{List.map} (the operands are already a
+list) rather than writing an explicit @code{list_of_values}
+function.  We chose not to use @code{map} here to emphasize the fact that the
+evaluator can be implemented without any use of higher-order procedures (and
+thus could be written in a language that doesn't have higher-order procedures),
+even though the language that it supports will include higher-order
+procedures.}
+
+@example ocaml
+let rec list_of_values exps env =
+  match exps with
+  | [] -> Ok []
+  | exp :: rest ->
+    Eval.eval exp env
+    >>= fun value ->
+    list_of_values rest env >>= fun values -> Ok (value :: values)
+;;
+@end example
+
+@subsubheading Conditionals
+
+@code{eval_if} evaluates the predicate part of an @code{if} expression in the
+given environment.  If the result is true, @code{eval_if} evaluates the
+consequent, otherwise it evaluates the alternative:
+
+@example ocaml
+let eval_if exp env =
+  match Ast.view exp with
+  | Ast.If (predicate, consequent, alternative) ->
+    Eval.eval predicate env >>= fun tested ->
+    if true_ tested
+    then Eval.eval consequent env
+    else (
+      match alternative with
+      | Some branch -> Eval.eval branch env
+      | None -> Ok (Value.bool false))
+  | _ -> Error (Eval_error.Invalid_form "eval_if: not an if")
+;;
+@end example
+
+@noindent
+The use of @code{true_} in @code{eval_if} highlights the issue of the
+connection between an implemented language and an implementation language.  The
+predicate is evaluated in the language being implemented and thus
+yields a value in that language.  The interpreter predicate @code{true_}
+translates that value into a value that can be tested by the @code{if} in the
+implementation language: The metacircular representation of truth might not be
+the same as that of the host, OCaml.@footnote{Here the language being
+implemented is the Scheme subset and the implementation language is OCaml.  Contemplation
+of the meaning of @code{true_} here yields expansion of consciousness without
+the abuse of substance.}
+
+@subsubheading Sequences
+
+@code{eval_sequence} is used by @code{apply_procedure} to evaluate the sequence of
+expressions in a procedure body and by @code{eval} to evaluate the sequence of
+expressions in a @code{begin} expression.  It takes as arguments a sequence of
+expressions and an environment, and evaluates the expressions in the order in
+which they occur.  The value returned is the value of the final expression.
+
+@example ocaml
+let rec eval_sequence exps env =
+  match exps with
+  | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
+  | [ exp ] -> Eval.eval exp env
+  | exp :: rest -> Eval.eval exp env >>= fun _ -> eval_sequence rest env
+;;
+@end example
+
+@subsubheading Assignments and definitions
+
+The following procedure handles assignments to variables.  It calls @code{eval}
+to find the value to be assigned and transmits the variable and the resulting
+value to @code{set_variable_value_} to be installed in the designated
+environment.
+
+@example ocaml
+let eval_assignment name exp env =
+  Eval.eval exp env
+  >>= fun value ->
+  set_variable_value_ name value env >>= fun () -> Ok (Value.symbol "ok")
+;;
+@end example
+
+@noindent
+Definitions of variables are handled in a similar manner.@footnote{This
+implementation of @code{define} ignores a subtle issue in the handling of
+internal definitions, although it works correctly in most cases.  We will see
+what the problem is and how to solve it in @ref{4.1.6}.}
+
+@example ocaml
+let eval_definition d env =
+  match Ast.view_definition d with
+  | Ast.Define_variable (name, exp) ->
+    Eval.eval exp env >>= fun value -> define_variable_ name value env
+  | Ast.Define_function @{ name; parameters; body @} ->
+    let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
+    define_variable_ name proc env
+;;
+@end example
+
+@noindent
+We have chosen here to return the symbol @code{ok} as the value of an
+assignment or a definition.@footnote{As we said when we introduced
+@code{define} and @code{set!}, these values are implementation-dependent in
+Scheme---that is, the implementor can choose what value to return.}
+
+@quotation
+@strong{@anchor{Exercise 4.1}Exercise 4.1:} Notice that we cannot tell from a
+call alone which way the metacircular evaluator evaluates its operands.  In
+this edition the order is not inherited from the host: @code{list_of_values}
+is an explicit recursion this book writes out, so the order it evaluates
+operands in is fixed by construction.  Write a version of
+@code{list_of_values} that evaluates operands from left to right by
+construction.  Also write a version of @code{list_of_values} that evaluates
+operands from right to left.
+@end quotation
+
+@node	4.1.2, 4.1.3, 4.1.1, 4.1
+@subsection Representing Expressions
+
+The evaluator is reminiscent of the symbolic differentiation program discussed
+in @ref{2.3.2}.  Both programs operate on symbolic expressions.  In
+both programs, the result of operating on a compound expression is determined
+by operating recursively on the pieces of the expression and combining the
+results in a way that depends on the type of the expression.  In both programs
+we used data abstraction to decouple the general rules of operation from the
+details of how expressions are represented.  In the differentiation program
+this meant that the same differentiation procedure could deal with algebraic
+expressions in prefix form, in infix form, or in some other form.  For the
+evaluator, this means that the syntax of the language being evaluated is
+determined solely by the typed view that classifies expressions and carries
+their pieces.
+
+Here is the specification of the syntax of our language:
+
+@itemize
+
+@item
+The only self-evaluating items are numbers and strings:
+
+@example ocaml
+(* the self-evaluating views: Int of int | Float of float
+   | Bool of bool | String of string *)
+@end example
+
+@item
+Variables are represented by symbols:
+
+@example ocaml
+(* the variable view: Variable of string *)
+@end example
+
+@item
+Quotations have the form @code{(quote ⟨@var{text-of-quotation}⟩)}:@footnote{As
+mentioned in @ref{2.3.1}, the reader sees a quoted expression as the
+@code{Quote} view, even if the expression is typed with the
+quotation mark.  For example, the expression @code{'a} is read as the
+quotation of the symbol @code{a}, the same view as @code{(quote a)}.  See @ref{Exercise 2.55}.}
+
+@example ocaml
+(* the quotation view: Quote of datum *)
+@end example
+
+@code{Quote} is one constructor of the typed view: the reader has already
+identified each list beginning with the symbol @code{quote}, and the evaluator
+matches on the constructor.
+
+@item
+Assignments have the form @code{(set! ⟨@var{var}⟩ ⟨@var{value}⟩)}:
+
+@example ocaml
+(* the assignment view: Set of string * expr *)
+@end example
+
+@item
+Definitions have the form
+
+@example
+(define ⟨@var{var}⟩ ⟨@var{value}⟩)
+@end example
+
+@noindent
+or the form
+
+@example
+(define (⟨@var{var}⟩ ⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
+  ⟨@var{body}⟩)
+@end example
+
+The latter form (standard procedure definition) is syntactic sugar for
+
+@example
+(define ⟨@var{var}⟩
+  (lambda (⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
+    ⟨@var{body}⟩))
+@end example
+
+The corresponding definition views are the following:
+
+@example ocaml
+(* Define_variable of string * expr
+   Define_function of @{ name : string; parameters : string list;
+                        body : expr list @} *)
+@end example
+
+@item
+@code{Lambda} expressions are the @code{Lambda} view of the typed syntax:
+
+@example ocaml
+(* the lambda view: Lambda of string list * expr list *)
+@end example
+
+We also provide a constructor for @code{lambda} expressions, @code{Ast.lambda},
+which the derived-expression transformations use.
+
+@item
+Conditionals begin with @code{if} and have a predicate, a consequent, and an
+(optional) alternative.  If the expression has no alternative part, we provide
+@code{false} as the alternative.@footnote{The value of an @code{if} expression
+when the predicate is false and there is no alternative is unspecified in
+Scheme; we have chosen here to make it false.  We will support the use of the
+variables @code{true} and @code{false} in expressions to be evaluated by
+binding them in the global environment.  See @ref{4.1.4}.}
+
+@example ocaml
+(* the if view: If of expr * expr * expr option *)
+@end example
+
+We also provide a constructor for @code{if} expressions, @code{Ast.if_}, to be
+used by @code{cond_to_if} to transform @code{cond} expressions into @code{if}
+expressions.
+
+@item
+@code{Begin} packages a sequence of expressions into a single expression.  The @code{Sequence} view of a @code{begin} expression carries the actual
+sequence, and list patterns give the first expression and the rest of the
+expressions in the sequence.@footnote{These selectors for a list of expressions---and the
+corresponding ones for a list of operands---are not intended as a data
+abstraction.  They are introduced as mnemonic names for the basic list
+operations to make it easier to understand the explicit-control
+evaluator in @ref{5.4}.}
+
+@example ocaml
+(* the sequence view: Sequence of expr list *)
+@end example
+
+We also include a constructor @code{sequence_to_exp} (for use by @code{cond_to_if})
+that transforms a sequence into a single expression, using @code{begin} if
+necessary:
+
+@example ocaml
+let sequence_to_exp exps =
+  match exps with
+  | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
+  | [ exp ] -> Ok exp
+  | exps -> Ast.sequence exps
+;;
+@end example
+
+@item
+A procedure application is any compound expression that is not one of the above
+expression types.  The @code{Application} view carries the operator and the list of
+operands:
+
+@example ocaml
+(* the application view: Application of expr * expr list *)
+@end example
+
+@end itemize
+
+@subsubheading Derived expressions
+
+Some special forms in our language can be defined in terms of expressions
+involving other special forms, rather than being implemented directly.  One
+example is @code{cond}, which can be implemented as a nest of @code{if}
+expressions.  For example, we can reduce the problem of evaluating the
+expression
+
+@example
+(cond ((> x 0) x)
+      ((= x 0) (display 'zero) 0)
+      (else (- x)))
+@end example
+
+@noindent
+to the problem of evaluating the following expression involving @code{if} and
+@code{begin} expressions:
+
+@example
+(if (> x 0)
+    x
+    (if (= x 0)
+        (begin (display 'zero) 0)
+        (- x)))
+@end example
+
+@noindent
+Implementing the evaluation of @code{cond} in this way simplifies the evaluator
+because it reduces the number of special forms for which the evaluation process
+must be explicitly specified.
+
+The @code{Cond} view carries the parts of a @code{cond}
+expression, and the function @code{cond_to_if} transforms @code{cond}
+expressions into @code{if} expressions.  A case analysis begins with
+@code{cond} and has a list of predicate-action clauses.  A clause is an
+@code{else} clause if its predicate is the symbol @code{else}.@footnote{The
+value of a @code{cond} expression when all the predicates are false and there
+is no @code{else} clause is unspecified in Scheme; we have chosen here to make
+it false.}
+
+@example ocaml
+(* (cond ((> x 0) x)
+         ((= x 0) (display 'zero) 0)
+         (else (- x)))
+   lowers to: *)
+(* (if (> x 0) x (if (= x 0) (begin (display 'zero) 0) (- x)))) *)
+let rec expand = function
+  | [] ->
+    (match else_body with
+     | Some body -> sequence_to_exp body
+     | None -> Ok (Ast.bool false))
+  | (test, actions) :: rest ->
+    expand rest
+    >>= fun alternative ->
+    sequence_to_exp actions
+    >>= fun consequent -> Ok (Ast.if_ test consequent (Some alternative))
+;;
+@end example
+
+@noindent
+Expressions (such as @code{cond}) that we choose to implement as syntactic
+transformations are called @newterm{derived expressions}.  @code{Let}
+expressions are also derived expressions (see 
+@ref{Exercise 4.6}).@footnote{Practical Lisp systems provide a mechanism that allows a user
+to add new derived expressions and specify their implementation as syntactic
+transformations without modifying the evaluator.  Such a user-defined
+transformation is called a @newterm{macro}.  Although it is easy to add an
+elementary mechanism for defining macros, the resulting language has subtle
+name-conflict problems.  There has been much research on mechanisms for macro
+definition that do not cause these difficulties.  See, for example, @ref{Kohlbecker 1986}, 
+@ref{Clinger and Rees 1991}, and @ref{Hanson 1991}.}
+
+@quotation
+@strong{@anchor{Exercise 4.2}Exercise 4.2:} Louis Reasoner plans to reorder the
+@code{cond} clauses in @code{eval} so that the clause for procedure
+applications appears before the clause for assignments.  He argues that this
+will make the interpreter more efficient: Since programs usually contain more
+applications than assignments, definitions, and so on, his modified @code{eval}
+will usually check fewer clauses than the original @code{eval} before
+identifying the type of an expression.
+
+@enumerate a
+
+@item
+What is wrong with Louis's plan?  (Hint: What will Louis's evaluator do with
+the expression @code{(define x 3)}?)
+
+@item
+Louis is upset that his plan didn't work.  He is willing to go to any lengths
+to make his evaluator recognize procedure applications before it checks for
+most other kinds of expressions.  Help him by changing the syntax of the
+evaluated language so that procedure applications start with @code{call}.  For
+example, instead of @code{(factorial 3)} we will now have to write @code{(call
+factorial 3)} and instead of @code{(+ 1 2)} we will have to write @code{(call +
+1 2)}.
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.3}Exercise 4.3:} Rewrite @code{eval} so that the
+dispatch is done in data-directed style.  Compare this with the data-directed
+differentiation procedure of @ref{Exercise 2.73}.  (You may use the @code{car}
+of a compound expression as the type of the expression, as is appropriate for
+the syntax implemented in this section.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.4}Exercise 4.4:} Recall the definitions of the
+special forms @code{and} and @code{or} from @ref{Chapter 1}:
+
+@itemize @bullet
+
+@item
+@code{and}: The expressions are evaluated from left to right.  If any
+expression evaluates to false, false is returned; any remaining expressions are
+not evaluated.  If all the expressions evaluate to true values, the value of
+the last expression is returned.  If there are no expressions then true is
+returned.
+
+@item
+@code{or}: The expressions are evaluated from left to right.  If any expression
+evaluates to a true value, that value is returned; any remaining expressions
+are not evaluated.  If all expressions evaluate to false, or if there are no
+expressions, then false is returned.
+
+@end itemize
+
+Install @code{and} and @code{or} as new special forms for the evaluator by
+defining appropriate syntax procedures and evaluation procedures
+@code{eval_and} and @code{eval_or}.  Alternatively, show how to implement
+@code{and} and @code{or} as derived expressions.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.5}Exercise 4.5:} Scheme allows an additional syntax
+for @code{cond} clauses, @code{(⟨@var{test}⟩ => ⟨@var{recipient}⟩)}.  If
+@code{⟨}@var{test}@code{⟩} evaluates to a true value, then @code{⟨}@var{recipient}@code{⟩} is evaluated.
+Its value must be a procedure of one argument; this procedure is then invoked
+on the value of the @code{⟨}@var{test}@code{⟩}, and the result is returned as the value of
+the @code{cond} expression.  For example
+
+@example
+(cond ((assoc 'b '((a 1) (b 2))) => cadr)
+      (else false))
+@end example
+
+@noindent
+returns 2.  Modify the handling of @code{cond} so that it supports this
+extended syntax.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.6}Exercise 4.6:} @code{Let} expressions are derived
+expressions, because
+
+@example
+(let ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
+  ⟨@var{body}⟩)
+@end example
+
+@noindent
+is equivalent to
+
+@example
+((lambda (⟨@var{var₁}⟩ @r{…} ⟨@var{varₙ}⟩)
+   ⟨@var{body}⟩)
+ ⟨@var{exp₁}⟩
+ @r{…}
+ ⟨@var{expₙ}⟩)
+@end example
+
+Implement a syntactic transformation @code{let_to_combination} that reduces
+evaluating @code{let} expressions to evaluating combinations of the type shown
+above, and add the appropriate clause to @code{eval} to handle @code{let}
+expressions.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.7}Exercise 4.7:} @code{Let*} is similar to
+@code{let}, except that the bindings of the @code{let*} variables are performed
+sequentially from left to right, and each binding is made in an environment in
+which all of the preceding bindings are visible.  For example
+
+@example
+(let* ((x 3)
+       (y (+ x 2))
+       (z (+ x y 5)))
+  (* x z))
+@end example
+
+@noindent
+returns 39.  Explain how a @code{let*} expression can be rewritten as a set of
+nested @code{let} expressions, and write a procedure
+@code{let_star_to_nested_lets} that performs this transformation.  If we have
+already implemented @code{let} (@ref{Exercise 4.6}) and we want to extend the
+evaluator to handle @code{let*}, is it sufficient to add a clause to
+@code{eval} whose action is
+
+@example ocaml
+let_star_to_nested_lets shape >>= fun rewritten -> eval rewritten env
+@end example
+
+@noindent
+or must we explicitly expand @code{let*} in terms of non-derived expressions?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.8}Exercise 4.8:} ``Named @code{let}'' is a variant
+of @code{let} that has the form 
+
+@example
+(let ⟨@var{var}⟩ ⟨@var{bindings}⟩ ⟨@var{body}⟩)
+@end example
+
+The @code{⟨}@var{bindings}@code{⟩} and @code{⟨}@var{body}@code{⟩} are just as in ordinary @code{let},
+except that @code{⟨}@var{var}@code{⟩} is bound within @code{⟨}@var{body}@code{⟩} to a procedure whose body
+is @code{⟨}@var{body}@code{⟩} and whose parameters are the variables in the @code{⟨}@var{bindings}@code{⟩}.
+Thus, one can repeatedly execute the @code{⟨}@var{body}@code{⟩} by invoking the procedure
+named @code{⟨}@var{var}@code{⟩}.  For example, the iterative Fibonacci procedure 
+(@ref{1.2.2}) can be rewritten using named @code{let} as follows:
+
+@example
+(define (fib n)
+  (let fib-iter ((a 1) (b 0) (count n))
+    (if (= count 0)
+        b
+        (fib-iter (+ a b) a (- count 1)))))
+@end example
+
+Modify @code{let_to_combination} of @ref{Exercise 4.6} to also support named
+@code{let}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.9}Exercise 4.9:} Many languages support a variety of
+iteration constructs, such as @code{do}, @code{for}, @code{while}, and
+@code{until}.  In Scheme, iterative processes can be expressed in terms of
+ordinary procedure calls, so special iteration constructs provide no essential
+gain in computational power.  On the other hand, such constructs are often
+convenient.  Design some iteration constructs, give examples of their use, and
+show how to implement them as derived expressions.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.10}Exercise 4.10:} By using data abstraction, we
+were able to write an @code{eval} procedure that is independent of the
+particular syntax of the language to be evaluated.  To illustrate this, design
+and implement a new syntax for Scheme by modifying the procedures in this
+section, without changing @code{eval} or @code{apply}.
+@end quotation
+
+@node	4.1.3, 4.1.4, 4.1.2, 4.1
+@subsection Evaluator Data Structures
+
+In addition to defining the external syntax of expressions, the evaluator
+implementation must also define the data structures that the evaluator
+manipulates internally, as part of the execution of a program, such as the
+representation of procedures and environments and the representation of true
+and false.
+
+@subsubheading Testing of predicates
+
+For conditionals, we accept anything to be true that is not the explicit
+@code{false} object.
+
+@example ocaml
+(* true_ v holds for every value except the false object. *)
+let true_ v = not (Value.physical_equal v (Value.bool false))
+let false_ v = Value.physical_equal v (Value.bool false)
+@end example
+
+@subsubheading Representing procedures
+
+To handle primitives, we assume that we have available the following
+procedures:
+
+@itemize @bullet
+
+@item
+@code{apply_procedure ⟨@var{proc}⟩ ⟨@var{args}⟩}
+
+@noindent
+applies the given primitive procedure to the argument values in the list
+@code{⟨}@var{args}@code{⟩} and returns the result of the application.
+
+@item
+@code{Value.view ⟨@var{proc}⟩}
+
+@noindent
+tests whether @code{⟨}@var{proc}@code{⟩} is a primitive procedure: its view is
+@code{Primitive_procedure}.
+
+@end itemize
+
+@noindent
+These mechanisms for handling primitives are further described in 
+@ref{4.1.4}.
+
+Compound procedures are constructed from parameters, procedure bodies, and
+environments using the constructor @code{Value.compound}:
+
+@example ocaml
+(* A compound procedure packages parameters, body, and the
+   environment of evaluation; the printer prints it as
+   #[compound-procedure name]. *)
+Value.compound ~name ~parameters ~body ~env
+@end example
+
+@subsubheading Operations on Environments
+
+The evaluator needs operations for manipulating environments.  As explained in
+@ref{3.2}, an environment is a sequence of frames, where each frame is
+a table of bindings that associate variables with their corresponding values.
+We use the following operations for manipulating environments:
+
+@itemize @bullet
+
+@item
+@code{lookup_variable_value ⟨@var{var}⟩ ⟨@var{env}⟩}
+
+returns the value that is bound to the symbol @code{⟨}@var{var}@code{⟩} in the environment
+@code{⟨}@var{env}@code{⟩}, or signals an error if the variable is unbound.
+
+@item
+@code{extend_environment ⟨@var{variables}⟩ ⟨@var{values}⟩ ⟨@var{base-env}⟩}
+
+returns a new environment, consisting of a new frame in which the symbols in
+the list @code{⟨}@var{variables}@code{⟩} are bound to the corresponding elements in the list
+@code{⟨}@var{values}@code{⟩}, where the enclosing environment is the environment
+@code{⟨}@var{base-env}@code{⟩}.
+
+@item
+@code{define_variable_ ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩}
+
+adds to the first frame in the environment @code{⟨}@var{env}@code{⟩} a new binding that
+associates the variable @code{⟨}@var{var}@code{⟩} with the value @code{⟨}@var{value}@code{⟩}.
+
+@item
+@code{set_variable_value_ ⟨@var{var}⟩ ⟨@var{value}⟩ ⟨@var{env}⟩}
+
+changes the binding of the variable @code{⟨}@var{var}@code{⟩} in the environment @code{⟨}@var{env}@code{⟩}
+so that the variable is now bound to the value @code{⟨}@var{value}@code{⟩}, or signals an
+error if the variable is unbound.
+
+@end itemize
+
+@noindent
+To implement these operations we use the environments of @ref{3.2}: an
+environment is a chain of frames, and the enclosing environment of an
+environment is the rest of the chain.  The four operations are thin wrappers
+over @code{Env}: each one is a single call into that representation.
+
+@example ocaml
+let lookup_variable_value name env =
+  match Env.find_binding env name with
+  | Some value -> Ok value
+  | None -> Error (Eval_error.Unbound_variable name)
+;;
+
+let extend_environment names values base_env = Env.extend names values base_env
+
+let set_variable_value_ name value env = Env.set env name value
+
+let define_variable_ name value env =
+  Env.define env name value;
+  Ok (Value.symbol "ok")
+;;
+@end example
+
+@noindent
+Each frame is a mutable table from names to values, searched newest
+first.@footnote{Frames are not really a data abstraction in this
+code: the mutation lives behind @code{Env}'s operations, which
+@code{set_variable_value_} and @code{define_variable_} call to modify the
+values in a frame.  The purpose of the @code{Env} operations is to make the
+environment-manipulation procedures easy to read.}
+
+@noindent
+To extend an environment by a new frame that associates variables with values,
+we make a frame binding each variable to the value at the same position, and
+we adjoin this to the environment.  We signal an error if the number of
+variables does not match the number of values.
+
+@noindent
+To look up a variable in an environment, we search the table of the first
+frame.  If we find the desired variable, we return its value.  If we do not find the variable in the current
+frame, we search the enclosing environment, and so on.  If no frame
+binds the variable, we signal an ``unbound variable'' error.
+
+@noindent
+To set a variable to a new value in a specified environment, we search for the
+variable, just as in @code{lookup_variable_value}, and change the corresponding
+value when we find it.
+
+@noindent
+To define a variable, we search the first frame for a binding for the variable,
+and change the binding if it exists (just as in @code{set_variable_value_}).
+If no such binding exists, we adjoin one to the first frame.
+
+@noindent
+The method described here is only one of many plausible ways to represent
+environments.  Since we used data abstraction to isolate the rest of the
+evaluator from the detailed choice of representation, we could change the
+environment representation if we wanted to.  (See @ref{Exercise 4.11}.)  In a
+production-quality Lisp system, the speed of the evaluator's environment
+operations---especially that of variable lookup---has a major impact on the
+performance of the system.  The representation described here, although
+conceptually simple, is not efficient and would not ordinarily be used in a
+production system.@footnote{The drawback of this representation (as well as the
+variant in @ref{Exercise 4.11}) is that the evaluator may have to search
+through many frames to find the binding for a given variable.  (Such
+an approach is referred to as @newterm{deep binding}.)  One way to avoid this
+inefficiency is to make use of a strategy called @newterm{lexical addressing},
+which will be discussed in @ref{5.5.6}.}
+
+@quotation
+@strong{@anchor{Exercise 4.11}Exercise 4.11:} Instead of representing a frame
+as a pair of lists, we can represent a frame as a list of bindings, where each
+binding is a name-value pair.  Rewrite the environment operations to use this
+alternative representation.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.12}Exercise 4.12:} The procedures
+@code{define_variable_}, @code{set_variable_value_} and
+@code{lookup_variable_value} can be expressed in terms of more abstract
+procedures for traversing the environment structure.  Define abstractions that
+capture the common patterns and redefine the three procedures in terms of these
+abstractions.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.13}Exercise 4.13:} Scheme allows us to create new
+bindings for variables by means of @code{define}, but provides no way to get
+rid of bindings.  Implement for the evaluator a special form
+@code{make-unbound!} that removes the binding of a given symbol from the
+environment in which the @code{make-unbound!} expression is evaluated.  This
+problem is not completely specified.  For example, should we remove only the
+binding in the first frame of the environment?  Complete the specification and
+justify any choices you make.
+@end quotation
+
+@node	4.1.4, 4.1.5, 4.1.3, 4.1
+@subsection Running the Evaluator as a Program
+
+Given the evaluator, we have in our hands a description (expressed in OCaml) of
+the process by which Lisp expressions are evaluated.  One advantage of
+expressing the evaluator as a program is that we can run the program.  This
+gives us, running within OCaml, a working model of how Lisp evaluates
+expressions.  This can serve as a framework for experimenting with evaluation
+rules, as we shall do later in this chapter.
+
+Our evaluator program reduces expressions ultimately to the application of
+primitive procedures.  Therefore, all that we need to run the evaluator is to
+create a mechanism that calls on the OCaml runtime to model the
+application of primitive procedures.
+
+There must be a binding for each primitive procedure name, so that when
+@code{eval} evaluates the operator of an application of a primitive, it will
+find an object to pass to @code{apply}.  We thus set up a global environment
+that associates unique objects with the names of the primitive procedures that
+can appear in the expressions we will be evaluating.  The global environment
+also includes bindings for the symbols @code{true} and @code{false}, so that
+they can be used as variables in expressions to be evaluated.
+
+@example ocaml
+let setup_environment () =
+  let env = Env.empty () in
+  Env.define env "true" (Value.bool true);
+  Env.define env "false" (Value.bool false);
+  List.iter
+    (fun (name, f) -> Env.define env name (Value.primitive ~name f))
+    primitive_table;
+  env
+;;
+
+let the_global_environment = setup_environment
+@end example
+
+@noindent
+It does not matter how we represent the primitive procedure objects, so long as
+@code{apply_procedure} can identify and apply them by their view and the
+primitive table.  We have chosen to represent a primitive procedure as a value
+carrying its name and an OCaml function that implements that primitive.
+
+@example ocaml
+(* the primitive-procedure view: Primitive_procedure of string,
+   the name under which the table stores the OCaml implementation *)
+@end example
+
+@noindent
+@code{setup_environment} will get the primitive names and implementation
+functions from a table:@footnote{Any function written in OCaml
+can be used as a primitive for the metacircular evaluator.  The name of a
+primitive installed in the evaluator need not be the same as the name of its
+implementation in OCaml; the names are the same here because the
+metacircular evaluator implements Scheme itself.  Thus, for example, we could
+put an entry named @code{first} for the function of @code{car}, or an entry named
+@code{square} for a squaring function, in @code{primitive_table}.}
+
+@example ocaml
+let primitive_table : (string * Value.primitive) list =
+  [ "car", ...; "cdr", ...; "cons", ...; "list", ...; "null?", ...
+  ; "assoc", ...; "memq", ...; "+", ...; "-", ...; "*", ...
+  ; "=", ...; "display", ...; "error", ... ]
+;;
+@end example
+
+@noindent
+To apply a primitive procedure, we simply apply the implementation function to
+the arguments, an ordinary OCaml call of the function the table
+stores:@footnote{The metacircular evaluator's @code{apply_procedure}
+(@ref{4.1.1}) models the working of the host's application.  In OCaml the two
+never share a name, so defining the metacircular @code{apply_procedure} masks
+nothing: its primitive arm finds the function in @code{primitive_table} and
+calls it as @code{f args}.}
+
+@noindent
+For convenience in running the metacircular evaluator, we provide a
+@newterm{driver loop} that models the read-eval-print loop of a Lisp
+system.  It prints a @newterm{prompt}, reads an input expression,
+evaluates this expression in the global environment, and prints the result.  We
+precede each printed result by an @newterm{output prompt} so as to distinguish
+the value of the expression from other output that may be printed.@footnote{The shared
+@code{Reader} takes the input the user types and returns the next complete
+expression as a typed form.  For example, if the user types @code{(+ 23 x)},
+the reader returns an application whose operator is the symbol @code{+} and
+whose operands are the number 23 and the symbol @code{x}.  If the user types
+@code{'x}, the reader returns the quotation of the symbol @code{x}.}
+
+@example ocaml
+let input_prompt = ";;; M-Eval input:"
+let output_prompt = ";;; M-Eval value:"
+
+(* The read-eval-print loop of the driver: read one form, evaluate it
+   in the global environment, announce the value, repeat. The book's
+   [read] is the shared Reader, parsing lives only here at the
+   surface. *)
+let rec driver_loop env =
+  print_string (input_prompt ^ " ");
+  let line = read_line () in
+  (match Eval.run env line with
+   | Ok value ->
+     print_string (output_prompt ^ " ");
+     print_endline (Value.to_string value)
+   | Error e -> print_endline ("Error: " ^ Eval_error.to_string e));
+  driver_loop env
+;;
+@end example
+
+@noindent
+We use the shared printer, @code{Value.to_string}, to avoid printing the
+environment part of a compound procedure, which may be a very long structure (or may
+even contain cycles).
+
+@example ocaml
+(* The shared printer keeps the environment part of a compound
+   procedure out of sight: a procedure value prints as
+   #[compound-procedure name], and a primitive as
+   #[primitive-procedure name]. *)
+Value.to_string (Value.compound ~name:(Some "f") ~parameters:[ "x" ] ~body:[] ~env:(Env.empty ()))
+(* => #[compound-procedure f] *)
+@end example
+
+@noindent
+Now all we need to do to run the evaluator is to create the global
+environment and run forms in it.  Here is a sample interaction:
+
+@example ocaml
+let env = Eval.the_global_environment () in
+Eval.run env "(define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))"
+(* ;;; M-Eval value: *)
+(* => ok *)
+Eval.run env "(append '(a b c) '(d e f))"
+(* ;;; M-Eval value: *)
+(* => (a b c d e f) *)
+@end example
+
+@quotation
+@strong{@anchor{Exercise 4.14}Exercise 4.14:} Eva Lu Ator and Louis Reasoner
+are each experimenting with the metacircular evaluator.  Eva types in the
+definition of @code{map}, and runs some test programs that use it.  They work
+fine.  Louis, in contrast, has installed the system version of @code{map} as a
+primitive for the metacircular evaluator.  When he tries it, things go terribly
+wrong.  Explain why Louis's @code{map} fails even though Eva's works.
+@end quotation
+
+@quotation
+@emph{Exercise 4.14a is added by this edition and extends exercise
+4.14; SICP numbers stop at 4.14.} @strong{@anchor{Exercise 4.14a}Exercise 4.14a:} Eva answers Louis by writing her own
+@code{sort} in the object language and sorting the same test data
+with a compound comparison procedure. Louis installs the host's
+list-sorting procedure as the primitive @code{sort}: sorting data
+with a primitive comparison such as @code{<} works, but sorting with
+a compound procedure goes badly wrong. Explain why Louis's
+@code{sort} fails on the compound comparison even though Eva's works.
+@end quotation
+
+@node	4.1.5, 4.1.6, 4.1.4, 4.1
+@subsection Data as Programs
+
+In thinking about an OCaml program that evaluates Lisp expressions, an analogy
+might be helpful.  One operational view of the meaning of a program is that a
+program is a description of an abstract (perhaps infinitely large) machine.
+For example, consider the familiar program to compute factorials:
+
+@example ocaml
+Eval.run env "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))"
+(* ;;; M-Eval value: *)
+(* => ok *)
+Eval.run env "(factorial 5)"
+(* ;;; M-Eval value: *)
+(* => 120 *)
+@end example
+
+@noindent
+We may regard this program as the description of a machine containing parts
+that decrement, multiply, and test for equality, together with a two-position
+switch and another factorial machine. (The factorial machine is infinite
+because it contains another factorial machine within it.)  @ref{Figure 4.2} is
+a flow diagram for the factorial machine, showing how the parts are wired
+together.
+
+@float
+@anchor{Figure 4.2}
+@ifinfo
+@strong{Figure 4.2:} The factorial program, viewed as an abstract machine.
+
+@example
+    +-----------------------------------+
+    | factorial                   |1    |
+    |              |1             V     |
+    |              |           +-----+  |
+    |              V           | #   |  |
+    |           +-----+        |     |  |
+6 --------*-----|  =  |------->|   #-+-----> 720
+    |     |     +-----+        |  /  |  |
+    |     |                    | #   |  |
+    |     |                    +-----+  |
+    |     |                       ^     |
+    |     |                       |     |
+    |     |                    +--+--+  |
+    |     *------------------->|  *  |  |
+    |     |                    +-----+  |
+    |     V                       ^     |
+    |  +-----+    +-----------+   |     |
+    |  |  -  +--->| factorial +---+     |
+    |  +-----+    +-----------+         |
+    |     ^                             |
+    |     |1                            |
+    +-----------------------------------+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap4/Fig4.2a,,143mm,Figure 4.2: The factorial program@comma{} viewed as an abstract machine.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap4/Fig4.2a.std,,143mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 4.2:} The factorial program, viewed as an abstract machine.}
+@end float
+
+In a similar way, we can regard the evaluator as a very special machine that
+takes as input a description of a machine.  Given this input, the evaluator
+configures itself to emulate the machine described.  For example, if we feed
+our evaluator the definition of @code{factorial}, as shown in @ref{Figure 4.3},
+the evaluator will be able to compute factorials.
+
+@float
+@anchor{Figure 4.3}
+@ifinfo
+@strong{Figure 4.3:} The evaluator emulating a factorial machine.
+
+@example
+                   +--------+
+            6 ---->|  eval  |----> 720
+                   +--------+
+                       /
+             . . .    /  . . .
+       . . .       ../. .      .
+     .                           ..
+    .   (define (factorial n)      . . .
+   .      (if (= n 1)                   . .
+    .         1                            .
+    .         (* (factorial (- n 1)) n)))   .
+      . .                       . .        .
+          . .  . .      . . . .     . . . .
+                   . ..
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap4/Fig4.3,,117mm,Figure 4.3: The evaluator emulating a factorial machine.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap4/Fig4.3.std,,117mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 4.3:} The evaluator emulating a factorial machine.}
+@end float
+
+From this perspective, our evaluator is seen to be a @newterm{universal machine}.  
+It mimics other machines when these are described as Lisp
+programs.@footnote{The fact that the machines are described in Lisp is
+inessential.  If we give our evaluator a Lisp program that behaves as an
+evaluator for some other language, say C, the Lisp evaluator will emulate the C
+evaluator, which in turn can emulate any machine described as a C program.
+Similarly, writing a Lisp evaluator in C produces a C program that can execute
+any Lisp program.  The deep idea here is that any evaluator can emulate any
+other.  Thus, the notion of ``what can in principle be computed'' (ignoring
+practicalities of time and memory required) is independent of the language or
+the computer, and instead reflects an underlying notion of
+@newterm{computability}.  This was first demonstrated in a clear way by Alan
+M. Turing (1912-1954), whose 1936 paper laid the foundations for theoretical
+computer science.  In the paper, Turing presented a simple computational
+model---now known as a @newterm{Turing machine}---and argued that any
+``effective process'' can be formulated as a program for such a machine.  (This
+argument is known as the @newterm{Church-Turing thesis}.)  Turing then
+implemented a universal machine, i.e., a Turing machine that behaves as an
+evaluator for Turing-machine programs.  He used this framework to demonstrate
+that there are well-posed problems that cannot be computed by Turing machines
+(see @ref{Exercise 4.15}), and so by implication cannot be formulated as
+``effective processes.''  Turing went on to make fundamental contributions to
+practical computer science as well.  For example, he invented the idea of
+structuring programs using general-purpose subroutines.  See @ref{Hodges 1983} for a
+biography of Turing.} This is striking. Try to imagine an analogous evaluator
+for electrical circuits.  This would be a circuit that takes as input a signal
+encoding the plans for some other circuit, such as a filter.  Given this input,
+the circuit evaluator would then behave like a filter with the same
+description.  Such a universal electrical circuit is almost unimaginably
+complex.  It is remarkable that the program evaluator is a rather simple
+program.@footnote{Some people find it counterintuitive that an evaluator, which
+is implemented by a relatively simple procedure, can emulate programs that are
+more complex than the evaluator itself.  The existence of a universal evaluator
+machine is a deep and wonderful property of computation.  @newterm{Recursion theory}, 
+a branch of mathematical logic, is concerned with logical limits of
+computation.  Douglas Hofstadter's beautiful book @cite{G@"odel, Escher, Bach}
+explores some of these ideas (@ref{Hofstadter 1979}).}
+
+@noindent
+Another striking aspect of the evaluator is that it acts as a bridge between
+the data objects that are manipulated by our programming language and the
+programming language itself.  Imagine that the evaluator program (implemented
+in OCaml) is running, and that a user is typing expressions to the evaluator and
+observing the results.  From the perspective of the user, an input expression
+such as @code{(* x x)} is an expression in the programming language, which the
+evaluator should execute.  From the perspective of the evaluator, however, the
+expression is simply data (in this case, an application of the symbol @code{*} to
+the symbols @code{x} and @code{x}) that is to be manipulated according to a well-defined
+set of rules.
+
+That the user's programs are the evaluator's data need not be a source of
+confusion.  In fact, it is sometimes convenient to ignore this distinction, and
+to give the user the ability to explicitly evaluate a data object as a Lisp
+expression, by making @code{eval} available for use in programs.  Many Lisp
+dialects provide a primitive @code{eval} procedure that takes as arguments an
+expression and an environment and evaluates the expression relative to the
+environment.@footnote{Warning: This @code{eval} primitive is not identical to
+the @code{eval} procedure we implemented in @ref{4.1.1}, because it
+uses @emph{actual} Scheme environments rather than the sample environment
+structures we built in @ref{4.1.3}.  These actual environments cannot
+be manipulated by the user as ordinary lists; they must be accessed via
+@code{eval} or other special operations.  Similarly, the @code{apply} primitive
+we saw earlier is not identical to the metacircular @code{apply}, because it
+uses actual Scheme procedures rather than the procedure objects we constructed
+in @ref{4.1.3} and @ref{4.1.4}.} Thus,
+
+@example ocaml
+Eval.run env "(* 5 5)"
+@end example
+
+@noindent
+and
+
+@example ocaml
+Eval.eval (Ast.application (Ast.variable "*") [ Ast.int 5; Ast.int 5 ]) env
+@end example
+
+@noindent
+will both return 25.@footnote{This edition's driver offers the same two
+routes: @code{Eval.run} reads an expression from text and evaluates it in an
+environment, and @code{Eval.eval} evaluates an expression built from the typed
+syntax, here in the global environment @code{env}.}
+
+@quotation
+@strong{@anchor{Exercise 4.15}Exercise 4.15:} Given a one-argument procedure
+@code{p} and an object @code{a}, @code{p} is said to ``halt'' on @code{a} if
+evaluating the expression @code{(p a)} returns a value (as opposed to
+terminating with an error message or running forever).  Show that it is
+impossible to write a procedure @code{halts?} that correctly determines whether
+@code{p} halts on @code{a} for any procedure @code{p} and object @code{a}.  Use
+the following reasoning: If you had such a procedure @code{halts?}, you could
+implement the following program:
+
+@example
+(define (run-forever)
+  (run-forever))
+
+(define (try p)
+  (if (halts? p p)
+      (run-forever)
+      'halted))
+@end example
+
+Now consider evaluating the expression @code{(try try)} and show that any
+possible outcome (either halting or running forever) violates the intended
+behavior of @code{halts?}.@footnote{Although we stipulated that @code{halts?}
+is given a procedure object, notice that this reasoning still applies even if
+@code{halts?} can gain access to the procedure's text and its environment.
+This is Turing's celebrated @newterm{Halting Theorem}, which gave the first
+clear example of a @newterm{non-computable} problem, i.e., a well-posed task
+that cannot be carried out as a computational procedure.}
+@end quotation
+
+@node	4.1.6, 4.1.7, 4.1.5, 4.1
+@subsection Internal Definitions
+
+Our environment model of evaluation and our metacircular evaluator execute
+definitions in sequence, extending the environment frame one definition at a
+time.  This is particularly convenient for interactive program development, in
+which the programmer needs to freely mix the application of procedures with the
+definition of new procedures.  However, if we think carefully about the
+internal definitions used to implement block structure (introduced in 
+@ref{1.1.8}), we will find that name-by-name extension of the environment may
+not be the best way to define local variables.
+
+Consider a procedure with internal definitions, such as
+
+@example
+(define (f x)
+  (define (even? n)
+    (if (= n 0)
+        true
+        (odd? (- n 1))))
+  (define (odd? n)
+    (if (= n 0)
+        false
+        (even? (- n 1))))
+  ⟨@var{rest of body of @code{f}}⟩)
+@end example
+
+@noindent
+Our intention here is that the name @code{odd?} in the body of the procedure
+@code{even?} should refer to the procedure @code{odd?} that is defined after
+@code{even?}.  The scope of the name @code{odd?} is the entire body of
+@code{f}, not just the portion of the body of @code{f} starting at the point
+where the @code{define} for @code{odd?} occurs.  Indeed, when we consider that
+@code{odd?} is itself defined in terms of @code{even?}---so that @code{even?}
+and @code{odd?} are mutually recursive procedures---we see that the only
+satisfactory interpretation of the two @code{define}s is to regard them as if
+the names @code{even?} and @code{odd?} were being added to the environment
+simultaneously.  More generally, in block structure, the scope of a local name
+is the entire procedure body in which the @code{define} is evaluated.
+
+As it happens, our interpreter will evaluate calls to @code{f} correctly, but
+for an ``accidental'' reason: Since the definitions of the internal procedures
+come first, no calls to these procedures will be evaluated until all of them
+have been defined.  Hence, @code{odd?}  will have been defined by the time
+@code{even?} is executed.  In fact, our sequential evaluation mechanism will
+give the same result as a mechanism that directly implements simultaneous
+definition for any procedure in which the internal definitions come first in a
+body and evaluation of the value expressions for the defined variables doesn't
+actually use any of the defined variables.  (For an example of a procedure that
+doesn't obey these restrictions, so that sequential definition isn't equivalent
+to simultaneous definition, see @ref{Exercise 4.19}.)@footnote{Wanting programs
+to not depend on this evaluation mechanism is the reason for the ``management
+is not responsible'' remark in @ref{Footnote 28} of @ref{Chapter 1}.  By
+insisting that internal definitions come first and do not use each other while
+the definitions are being evaluated, the @abbr{IEEE} standard for Scheme
+leaves implementors some choice in the mechanism used to evaluate these
+definitions.  The choice of one evaluation rule rather than another here may
+seem like a small issue, affecting only the interpretation of ``badly formed''
+programs.  However, we will see in @ref{5.5.6} that moving to a model
+of simultaneous scoping for internal definitions avoids some nasty difficulties
+that would otherwise arise in implementing a compiler.}
+
+There is, however, a simple way to treat definitions so that internally defined
+names have truly simultaneous scope---just create all local variables that will
+be in the current environment before evaluating any of the value expressions.
+One way to do this is by a syntax transformation on @code{lambda} expressions.
+Before evaluating the body of a @code{lambda} expression, we ``scan out'' and
+eliminate all the internal definitions in the body.  The internally defined
+variables will be created with a @code{let} and then set to their values by
+assignment.  For example, the procedure
+
+@example
+(lambda ⟨@var{vars}⟩
+  (define u ⟨@var{e1}⟩)
+  (define v ⟨@var{e2}⟩)
+  ⟨@var{e3}⟩)
+@end example
+
+@noindent
+would be transformed into
+
+@example
+(lambda ⟨@var{vars}⟩
+  (let ((u '*unassigned*)
+        (v '*unassigned*))
+    (set! u ⟨@var{e1}⟩)
+    (set! v ⟨@var{e2}⟩)
+    ⟨@var{e3}⟩))
+@end example
+
+@noindent
+where @code{*unassigned*} is a special symbol that causes looking up a variable
+to signal an error if an attempt is made to use the value of the
+not-yet-assigned variable.
+
+An alternative strategy for scanning out internal definitions is shown in
+@ref{Exercise 4.18}.  Unlike the transformation shown above, this enforces the
+restriction that the defined variables' values can be evaluated without using
+any of the variables' values.@footnote{The @abbr{IEEE} standard for Scheme
+allows for different implementation strategies by specifying that it is up to
+the programmer to obey this restriction, not up to the implementation to
+enforce it.  Some Scheme implementations, including @abbr{MIT} Scheme, use
+the transformation shown above.  Thus, some programs that don't obey this
+restriction will in fact run in such implementations.}
+
+@quotation
+@strong{In this language: a typed abstract syntax and pattern-matched dispatch.}
+
+The book's evaluator classifies an expression by asking it
+predicates; this edition's @code{Ast} hands @code{eval} one
+@code{Ast.view} value whose constructor @emph{is} the expression
+type, so the dispatch of @ref{4.1.1} is a @code{match} with one arm
+per syntactic form, and the compiler counts the arms.
+
+@example ocaml
+let rec eval exp env =
+  match Ast.view exp with
+  | Ast.Int n -> Ok (Value.int n)
+  | Ast.Variable name -> lookup_variable_value name env
+  | Ast.Application (operator, operands) -> ...
+@end example
+
+The book's mechanism still wins when the set of forms must grow
+while the program runs: exercise 4.3's table accepts a handler for a
+new type at runtime, where a @code{match} must be edited and
+recompiled.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.16}Exercise 4.16:} In this exercise we implement the
+method just described for interpreting internal definitions.  We assume that
+the evaluator supports @code{let} (see @ref{Exercise 4.6}).
+
+@enumerate a
+
+@item
+Change @code{lookup_variable_value} (@ref{4.1.3}) to signal an error if
+the value it finds is the symbol @code{*unassigned*}.
+
+@item
+Write a procedure @code{scan_out_defines} that takes a procedure body and
+returns an equivalent one that has no internal definitions, by making the
+transformation described above.
+
+@item
+Install @code{scan_out_defines} in the interpreter, either where compound
+procedures are constructed---the @code{Lambda} clause of @code{eval} and the
+@code{Define_function} clause of @code{eval_definition}, each building the
+procedure with @code{Value.compound}---or where the body is taken for
+evaluation, in the @code{Compound_procedure} branch of @code{apply_procedure}
+(see @ref{4.1.3}).  Which place is better?  Why?
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.17}Exercise 4.17:} Draw diagrams of the environment
+in effect when evaluating the expression @code{⟨}@var{e3}@code{⟩} in the procedure in the
+text, comparing how this will be structured when definitions are interpreted
+sequentially with how it will be structured if definitions are scanned out as
+described.  Why is there an extra frame in the transformed program?  Explain
+why this difference in environment structure can never make a difference in the
+behavior of a correct program.  Design a way to make the interpreter implement
+the ``simultaneous'' scope rule for internal definitions without constructing
+the extra frame.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.18}Exercise 4.18:} Consider an alternative strategy
+for scanning out definitions that translates the example in the text to
+
+@example
+(lambda ⟨@var{vars}⟩
+  (let ((u '*unassigned*)
+        (v '*unassigned*))
+    (let ((a ⟨@var{e1}⟩)
+          (b ⟨@var{e2}⟩))
+      (set! u a)
+      (set! v b))
+    ⟨@var{e3}⟩))
+@end example
+
+Here @code{a} and @code{b} are meant to represent new variable names, created
+by the interpreter, that do not appear in the user's program.  Consider the
+@code{solve} procedure from @ref{3.5.4}:
+
+@example
+(define (solve f y0 dt)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (stream-map f y))
+  y)
+@end example
+
+Will this procedure work if internal definitions are scanned out as shown in
+this exercise?  What if they are scanned out as shown in the text?  Explain.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.19}Exercise 4.19:} Ben Bitdiddle, Alyssa P. Hacker,
+and Eva Lu Ator are arguing about the desired result of evaluating the
+expression
+
+@example
+(let ((a 1))
+  (define (f x)
+    (define b (+ a x))
+    (define a 5)
+    (+ a b))
+  (f 10))
+@end example
+
+Ben asserts that the result should be obtained using the sequential rule for
+@code{define}: @code{b} is defined to be 11, then @code{a} is defined to be 5,
+so the result is 16.  Alyssa objects that mutual recursion requires the
+simultaneous scope rule for internal procedure definitions, and that it is
+unreasonable to treat procedure names differently from other names.  Thus, she
+argues for the mechanism implemented in @ref{Exercise 4.16}.  This would lead
+to @code{a} being unassigned at the time that the value for @code{b} is to be
+computed.  Hence, in Alyssa's view the procedure should produce an error.  Eva
+has a third opinion.  She says that if the definitions of @code{a} and @code{b}
+are truly meant to be simultaneous, then the value 5 for @code{a} should be
+used in evaluating @code{b}.  Hence, in Eva's view @code{a} should be 5,
+@code{b} should be 15, and the result should be 20.  Which (if any) of these
+viewpoints do you support?  Can you devise a way to implement internal
+definitions so that they behave as Eva prefers?@footnote{The @abbr{MIT}
+implementors of Scheme support Alyssa on the following grounds: Eva is in
+principle correct---the definitions should be regarded as simultaneous.  But
+it seems difficult to implement a general, efficient mechanism that does what
+Eva requires.  In the absence of such a mechanism, it is better to generate an
+error in the difficult cases of simultaneous definitions (Alyssa's notion) than
+to produce an incorrect answer (as Ben would have it).}
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.20}Exercise 4.20:} Because internal definitions look
+sequential but are actually simultaneous, some people prefer to avoid them
+entirely, and use the special form @code{letrec} instead.  @code{Letrec} looks
+like @code{let}, so it is not surprising that the variables it binds are bound
+simultaneously and have the same scope as each other.  The sample procedure
+@code{f} above can be written without internal definitions, but with exactly
+the same meaning, as
+
+@example
+(define (f x)
+  (letrec
+      ((even?
+        (lambda (n)
+          (if (= n 0)
+              true
+              (odd? (- n 1)))))
+       (odd?
+        (lambda (n)
+          (if (= n 0)
+              false
+              (even? (- n 1))))))
+    ⟨@var{rest of body of @code{f}}⟩))
+@end example
+
+@code{Letrec} expressions, which have the form
+
+@example
+(letrec ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
+  ⟨@var{body}⟩)
+@end example
+
+@noindent
+are a variation on @code{let} in which the expressions
+@math{{⟨\kern0.1em exp_k⟩}} that provide the initial values for the
+variables @math{{⟨\kern0.06em var_k⟩}} are evaluated in an environment
+that includes all the @code{letrec} bindings.  This permits recursion in the
+bindings, such as the mutual recursion of @code{even?} and @code{odd?} in the
+example above, or the evaluation of 10 factorial with
+
+@example
+(letrec
+    ((fact
+      (lambda (n)
+        (if (= n 1)
+            1
+            (* n (fact (- n 1)))))))
+  (fact 10))
+@end example
+
+@enumerate a
+
+@item
+Implement @code{letrec} as a derived expression, by transforming a
+@code{letrec} expression into a @code{let} expression as shown in the text
+above or in @ref{Exercise 4.18}.  That is, the @code{letrec} variables should
+be created with a @code{let} and then be assigned their values with
+@code{set!}.
+
+@item
+Louis Reasoner is confused by all this fuss about internal definitions.  The
+way he sees it, if you don't like to use @code{define} inside a procedure, you
+can just use @code{let}.  Illustrate what is loose about his reasoning by
+drawing an environment diagram that shows the environment in which the
+@code{⟨}@var{rest of body of @code{f}}@code{⟩} is evaluated during evaluation of the
+expression @code{(f 5)}, with @code{f} defined as in this exercise.  Draw an
+environment diagram for the same evaluation, but with @code{let} in place of
+@code{letrec} in the definition of @code{f}.
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.21}Exercise 4.21:} Amazingly, Louis's intuition in
+@ref{Exercise 4.20} is correct.  It is indeed possible to specify recursive
+procedures without using @code{letrec} (or even @code{define}), although the
+method for accomplishing this is much more subtle than Louis imagined.  The
+following expression computes 10 factorial by applying a recursive factorial
+procedure:@footnote{This example illustrates a programming trick for
+formulating recursive procedures without using @code{define}.  The most general
+trick of this sort is the @math{Y} @newterm{operator}, which can be used to give a
+``pure λ-calculus'' implementation of recursion.  (See @ref{Stoy 1977} for
+details on the λ-calculus, and @ref{Gabriel 1988} for an exposition of the
+@math{Y} operator in Scheme.)}
+
+@example ocaml
+Eval.run env "((lambda (n) ((lambda (fact) (fact fact n)) (lambda (ft k) (if (= k 1) 1 (* k (ft ft (- k 1))))))) 10)"
+@end example
+
+@enumerate a
+
+@item
+Check (by evaluating the expression) that this really does compute factorials.
+Devise an analogous expression for computing Fibonacci numbers.
+
+@item
+Consider the following procedure, which includes mutually recursive internal
+definitions:
+
+@example
+(define (f x)
+  (define (even? n)
+    (if (= n 0)
+        true
+        (odd? (- n 1))))
+  (define (odd? n)
+    (if (= n 0)
+        false
+        (even? (- n 1))))
+  (even? x))
+@end example
+
+Fill in the missing expressions to complete an alternative definition of
+@code{f}, which uses neither internal definitions nor @code{letrec}:
+
+@example
+(define (f x)
+  ((lambda (even? odd?)
+     (even? even? odd? x))
+   (lambda (ev? od? n)
+     (if (= n 0) 
+         true 
+         (od? ⟨??⟩ ⟨??⟩ ⟨??⟩)))
+   (lambda (ev? od? n)
+     (if (= n 0) 
+         false 
+         (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
+@end example
+@end enumerate
+@end quotation
+
+@node	4.1.7, 4.2, Chapter 4, 4.1
+@subsection Separating Syntactic Analysis from Execution
+
+The evaluator implemented above is simple, but it is very inefficient, because
+the syntactic analysis of expressions is interleaved with their execution.
+Thus if a program is executed many times, its syntax is analyzed many times.
+Consider, for example, evaluating @code{(factorial 4)} using the following
+definition of @code{factorial}:
+
+@example ocaml
+Eval.run env "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))"
+(* ;;; M-Eval value: *)
+(* => ok *)
+@end example
+
+@noindent
+Each time @code{factorial} is called, the evaluator must determine that the
+body is an @code{if} expression and extract the predicate.  Only then can it
+evaluate the predicate and dispatch on its value.  Each time it evaluates the
+expression @code{(* (factorial (- n 1)) n)}, or the subexpressions
+@code{(factorial (- n 1))} and @code{(- n 1)}, the evaluator must perform the
+case analysis in @code{eval} to determine that the expression is an
+application, and must extract its operator and operands.  This analysis is
+expensive.  Performing it repeatedly is wasteful.
+
+We can transform the evaluator to be significantly more efficient by arranging
+things so that syntactic analysis is performed only once.@footnote{This
+technique is an integral part of the compilation process, which we shall
+discuss in @ref{Chapter 5}.  Jonathan Rees wrote a Scheme interpreter like this
+in about 1982 for the T project (@ref{Rees and Adams 1982}).  Marc @ref{Feeley (1986)} (see
+also @ref{Feeley and Lapalme 1987}) independently invented this technique in his
+master's thesis.} We split @code{eval}, which takes an expression and an
+environment, into two parts.  The procedure @code{analyze} takes only the
+expression.  It performs the syntactic analysis and returns a new procedure,
+the @newterm{execution procedure}, that encapsulates the work to be done in
+executing the analyzed expression.  The execution procedure takes an
+environment as its argument and completes the evaluation.  This saves work
+because @code{analyze} will be called only once on an expression, while the
+execution procedure may be called many times.
+
+@example ocaml
+(* One execution procedure: the analyzed form of one expression, an
+   environment-to-result closure with every dispatch decision already
+   made. *)
+type execution = Value.env -> (Value.t, Eval_error.t) result
+@end example
+
+With the separation into analysis and execution, @code{eval} now analyzes the
+expression and applies the resulting execution procedure to the environment.
+
+@noindent
+The result of calling @code{analyze} is the execution procedure to be applied
+to the environment.  The @code{analyze} procedure is the same case analysis as
+performed by the original @code{eval} of @ref{4.1.1}, except that the
+procedures to which we dispatch perform only analysis, not full evaluation:
+
+@example ocaml
+let rec analyze exp =
+  match Ast.view exp with
+  | Ast.Int n -> ok_constant (Value.int n)
+  | Ast.Variable name -> Ok (fun env -> lookup_variable_value name env)
+  | Ast.Quote datum -> ok_constant (datum_to_value datum)
+  | Ast.Definition d -> analyze_definition d
+  | Ast.Set (name, exp) -> analyze_assignment name exp
+  | Ast.If (predicate, consequent, alternative) ->
+    analyze_if predicate consequent alternative
+  | Ast.Lambda (parameters, body) -> analyze_lambda parameters body
+  | Ast.Sequence body -> analyze_sequence body
+  | Ast.Cond _ -> cond_to_if exp >>= analyze
+  | Ast.Application (operator, operands) -> analyze_application operator operands
+  | Ast.And _ | Ast.Or _ | Ast.Let _ ->
+    Ok (constant_error (Eval_error.Invalid_form "unknown expression type: ANALYZE"))
+;;
+@end example
+
+@noindent
+Here is the simplest syntactic analysis, which handles
+self-evaluating expressions.  It returns an execution procedure that ignores
+its environment argument and just returns the value:
+
+@example ocaml
+let constant value = fun _ -> Ok value
+let ok_constant value = Ok (constant value)
+@end example
+
+@noindent
+For a quoted expression, we can gain a little efficiency by extracting the text
+of the quotation only once, in the analysis phase, rather than in the execution
+phase: the @code{Quote} clause of @code{analyze} converts the datum before it
+builds the constant.
+
+@noindent
+Looking up a variable value must still be done in the execution phase, since
+this depends upon knowing the environment.@footnote{There is, however, an
+important part of the variable search that @emph{can} be done as part of the
+syntactic analysis.  As we will show in @ref{5.5.6}, one can determine
+the position in the environment structure where the value of the variable will
+be found, thus obviating the need to scan the environment for the entry that
+matches the variable.}  The @code{Variable} clause of @code{analyze}
+therefore returns an execution procedure that looks the variable up.
+
+@noindent
+@code{analyze_assignment} also must defer actually setting the variable until
+the execution, when the environment has been supplied.  However, the fact that
+the assigned expression can be analyzed (recursively) during
+analysis is a major gain in efficiency, because the assigned
+expression will now be analyzed only once.  The same holds true for
+definitions.
+
+@example ocaml
+and analyze_definition d =
+  match Ast.view_definition d with
+  | Ast.Define_variable (name, exp) ->
+    analyze exp
+    >>= fun get ->
+    Ok (fun env -> get env >>= fun value -> define_variable_ name value env)
+  | Ast.Define_function @{ name; parameters; body @} ->
+    analyze_sequence body
+    >>= fun body_exec ->
+    Ok
+      (fun env ->
+        let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
+        register proc body_exec;
+        define_variable_ name proc env)
+
+and analyze_assignment name exp =
+  analyze exp
+  >>= fun get ->
+  Ok
+    (fun env ->
+      get env
+      >>= fun value ->
+      set_variable_value_ name value env >>= fun () -> Ok (Value.symbol "ok"))
+@end example
+
+@noindent
+For @code{if} expressions, we extract and analyze the predicate, consequent,
+and alternative at analysis time.
+
+@example ocaml
+and analyze_if predicate consequent alternative =
+  analyze predicate
+  >>= fun get ->
+  analyze consequent
+  >>= fun when_true ->
+  let when_false =
+    match alternative with
+    | Some branch -> analyze branch
+    | None -> ok_constant (Value.bool false)
+  in
+  when_false
+  >>= fun otherwise ->
+  Ok
+    (fun env ->
+      get env >>= fun tested -> if true_ tested then when_true env else otherwise env)
+@end example
+
+@noindent
+Analyzing a @code{lambda} expression also achieves a major gain in efficiency:
+We analyze the @code{lambda} body only once, even though procedures resulting
+from evaluation of the @code{lambda} may be applied many times.  The analyzed
+body is registered beside the procedure value once, at creation, so repeated
+calls execute the already-analyzed body (this is what @ref{Exercise 4.24}
+measures).
+
+@example ocaml
+and analyze_lambda parameters body =
+  analyze_sequence body
+  >>= fun body_exec ->
+  Ok
+    (fun env ->
+      let proc = Value.compound ~name:None ~parameters ~body ~env in
+      register proc body_exec;
+      Ok proc)
+@end example
+
+@noindent
+Analysis of a sequence of expressions (as in a @code{begin} or the body of a
+@code{lambda} expression) is more involved.@footnote{See @ref{Exercise 4.23}
+for some insight into the processing of sequences.} Each expression in the
+sequence is analyzed, yielding an execution procedure.  These execution
+procedures are combined to produce an execution procedure that takes an
+environment as argument and sequentially calls each individual execution
+procedure with the environment as argument.
+
+@example ocaml
+and analyze_sequence body =
+  let rec go = function
+    | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
+    | [ exp ] -> analyze exp
+    | exp :: rest ->
+      analyze exp
+      >>= fun first ->
+      go rest >>= fun others -> Ok (fun env -> first env >>= fun _ -> others env)
+  in
+  go body
+@end example
+
+@noindent
+To analyze an application, we analyze the operator and operands and construct
+an execution procedure that calls the operator execution procedure (to obtain
+the actual procedure to be applied) and the operand execution procedures (to
+obtain the actual arguments).  We then pass these to
+@code{apply}, which is the analog of @code{apply_procedure} in 
+@ref{4.1.1}.  This @code{apply} differs from @code{apply_procedure} in that the
+procedure body for a compound procedure has already been analyzed and
+registered beside the procedure value, so there is no need to do further
+analysis.  Instead, we just call the registered execution procedure for the
+body on the extended environment.
+
+@example ocaml
+and analyze_application operator operands =
+  analyze operator
+  >>= fun get_proc ->
+  let rec collect = function
+    | [] -> Ok []
+    | exp :: rest ->
+      analyze exp >>= fun get -> collect rest >>= fun gets -> Ok (get :: gets)
+  in
+  collect operands
+  >>= fun gets ->
+  Ok
+    (fun env ->
+      get_proc env
+      >>= fun proc ->
+      let rec evaluate acc = function
+        | [] -> Ok (List.rev acc)
+        | get :: rest -> get env >>= fun value -> evaluate (value :: acc) rest
+      in
+      evaluate [] gets >>= fun args -> apply proc args)
+
+and apply proc args =
+  match Value.view proc with
+  | Value.Primitive_procedure name ->
+    (match List.assoc_opt name primitive_table with
+     | Some f -> f args
+     | None ->
+       Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
+  | Value.Compound_procedure @{ parameters; env; _ @} ->
+    Env.extend parameters args env
+    >>= fun extended ->
+    (match registered proc with
+     | Some body_exec -> body_exec extended
+     | None -> Error (Eval_error.Invalid_form "the analyzed body is missing"))
+  | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
+@end example
+
+@example ocaml
+(* [Analyze.eval] analyzes once and runs, the book's
+   [(define (eval exp env) ((analyze exp) env))]. *)
+let eval exp env = analyze exp >>= fun proc -> proc env
+@end example
+
+@noindent
+Our new evaluator uses the same data structures, syntax procedures, and
+run-time support procedures as in @ref{4.1.2}, @ref{4.1.3}, and
+@ref{4.1.4}.
+
+@quotation
+@strong{@anchor{Exercise 4.22}Exercise 4.22:} Extend the evaluator in this
+section to support the special form @code{let}.  (See @ref{Exercise 4.6}.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.23}Exercise 4.23:} Alyssa P. Hacker doesn't
+understand why @code{analyze_sequence} needs to be so complicated.  All the
+other analysis procedures are straightforward transformations of the
+corresponding evaluation procedures (or @code{eval} clauses) in
+@ref{4.1.1}.  She expected @code{analyze_sequence} to look like this:
+
+@example ocaml
+let analyze_sequence exps =
+  let rec execute_sequence procs env =
+    match procs with
+    | [ proc ] -> proc env
+    | proc :: rest -> proc env >>= fun _ -> execute_sequence rest env
+  in
+  let rec collect = function
+    | [] -> Ok []
+    | exp :: rest ->
+      analyze exp >>= fun proc ->
+      collect rest >>= fun procs -> Ok (proc :: procs)
+  in
+  collect exps
+  >>= fun procs ->
+  if procs = []
+  then Error (Eval_error.Invalid_form "the body of the sequence is empty")
+  else Ok (fun env -> execute_sequence procs env)
+@end example
+
+Eva Lu Ator explains to Alyssa that the version in the text does more of the
+work of evaluating a sequence at analysis time.  Alyssa's sequence-execution
+procedure, rather than having the calls to the individual execution procedures
+built in, loops through the procedures to call them: In effect,
+although the individual expressions in the sequence have been analyzed, the
+sequence itself has not been.
+
+Compare the two versions of @code{analyze_sequence}.  For example, consider the
+common case (typical of procedure bodies) where the sequence has just one
+expression.  What work will the execution procedure produced by Alyssa's
+program do?  What about the execution procedure produced by the program in the
+text above?  How do the two versions compare for a sequence with two
+expressions?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 4.24}Exercise 4.24:} Design and carry out some
+experiments to compare the speed of the original metacircular evaluator with
+the version in this section.  Use your results to estimate the fraction of time
+that is spent in analysis versus execution for various procedures.
+@end quotation
+

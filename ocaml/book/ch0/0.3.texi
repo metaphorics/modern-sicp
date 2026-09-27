@@ -1,0 +1,147 @@
+@node	0.3, 0.4, Chapter 0, Chapter 0
+@section Bindings, functions, and modules
+
+@noindent
+@code{let} inside an expression names a value for the rest of that
+expression, exactly as Scheme's @code{let} does:
+
+@example
+# let size = 2 in 5 + 3 + size;;
+- : int = 10
+@end example
+
+@noindent
+At the top level, the @code{in} is dropped, and the binding stays in scope
+for whatever comes after it:
+
+@example
+# let x = 5;;
+val x : int = 5
+# let x = x + 1;;
+val x : int = 6
+# x;;
+- : int = 6
+@end example
+
+@noindent
+The second @code{let x} does not mutate the first: it @newterm{shadows} it,
+introducing a new binding that happens to reuse the name. The old @code{x}
+still exists, invisibly, to anyone holding a closure built before the
+shadowing binding took effect; nothing about @code{x} itself changed. This
+matters once section 0.7 covers closures: shadowing a name in an outer scope
+never reaches back to change what an already-built closure sees.
+
+@subsubheading Functions
+
+@code{let f @var{params} = @var{body}} defines a function exactly the way
+Scheme's @code{(define (f @var{params}) @var{body})} does, translated to
+prefix-free syntax:
+
+@example
+# let square x = x * x;;
+val square : int -> int = <fun>
+# let sum_of_squares x y = square x + square y;;
+val sum_of_squares : int -> int -> int = <fun>
+# sum_of_squares 3 4;;
+- : int = 25
+@end example
+
+@noindent
+The inferred type @code{int -> int -> int} reads as ``a function from
+@code{int} to a function from @code{int} to @code{int}'': every OCaml
+function of more than one argument is really a chain of one-argument
+functions, a fact section 0.7 puts to direct use. A function body can bind
+its own local names before producing a result, the way Scheme's internal
+@code{define} or @code{let} does:
+
+@example
+# let f x =
+    let a = x + 1 in
+    a + square a;;
+val f : int -> int = <fun>
+# f 3;;
+- : int = 20
+@end example
+
+@noindent
+Recursion needs one extra word: @code{let rec}, not plain @code{let}. Without
+@code{rec}, the name being defined is not yet in scope inside its own body,
+so a recursive call inside a plain @code{let} would refer to some outer
+binding of the same name (or fail to compile, if there is none) rather than
+recurse:
+
+@example
+# let rec factorial n = if n = 0 then 1 else n * factorial (n - 1);;
+val factorial : int -> int = <fun>
+# factorial 6;;
+- : int = 720
+@end example
+
+@subsubheading Partial application
+
+Every OCaml function takes its arguments one at a time. Supplying fewer than
+all of them returns a new function waiting for the rest. No special syntax, just an application that stops early:
+
+@example
+# let inc = ( + ) 1;;
+val inc : int -> int = <fun>
+# inc 41;;
+- : int = 42
+# let double = ( * ) 2;;
+val double : int -> int = <fun>
+# double 8;;
+- : int = 16
+@end example
+
+@noindent
+@code{( + )} is the addition operator written as an ordinary value (parens
+around an infix operator turn it into a prefix one), so @code{( + ) 1} is
+addition with its first argument already fixed at @code{1}: the successor
+function. This is the same mechanism as any partial application; it works
+because a function of two arguments genuinely is a function returning a
+function, not two-argument application syntax bolted onto something else.
+
+@subsubheading Labeled arguments
+
+A parameter name prefixed with @code{~} becomes a label the caller writes at
+the call site, useful when a function's arguments could otherwise be
+confused for each other:
+
+@example
+# let pad_to ~width s = String.make (max 0 (width - String.length s)) '.' ^ s;;
+val pad_to : width:int -> string -> string = <fun>
+# pad_to ~width:8 "sicp";;
+- : string = "....sicp"
+@end example
+
+@noindent
+This book uses labeled arguments sparingly, only where a call site would
+otherwise read as an ambiguous pair of numbers or strings; most functions in
+this edition take plain positional arguments, matching Scheme's own
+convention of naming clarity through good parameter names rather than
+call-site labels.
+
+@subsubheading Modules and dotted names
+
+A name from another module is reached by a dot, the way @code{List.length}
+reaches the @code{length} function of the standard library's @code{List}
+module:
+
+@example
+# List.length [ 1; 2; 3 ];;
+- : int = 3
+@end example
+
+@noindent
+Every module in this book's own code is split into two files: an
+implementation, @file{@var{name}.ml}, and an interface,
+@file{@var{name}.mli}, that states exactly which of the implementation's
+definitions are visible outside it, and at what type. @file{sec_0_3.mli}
+alongside this section's @file{sec_0_3.ml} is a first example: it lists
+@code{square}, @code{sum_of_squares}, @code{f}, @code{factorial},
+@code{inc}, @code{double}, and @code{pad_to}, each with a one-line comment in
+the interface describing what it computes and how it corresponds to a
+Scheme form from the original book. An @file{.mli} is this edition's
+substitute for the comments that would otherwise sit next to a Scheme
+@code{define}: every module in this book carries one, and the interface is
+where its documentation lives.

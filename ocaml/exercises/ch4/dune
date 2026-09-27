@@ -1,0 +1,93 @@
+(library
+ (name sicp_ch4_exercises)
+ (libraries sicp_common sicp_ch4)
+ (modules
+  sec_4_1
+  sec_4_2
+  sec_4_3
+  sec_4_4
+  sec_4_5
+  sec_4_6
+  sec_4_7
+  sec_4_8
+  sec_4_9
+  sec_4_10
+  sec_4_11
+  sec_4_12
+  sec_4_13
+  sec_4_14
+  sec_4_15
+  sec_4_16
+  sec_4_17
+  sec_4_18
+  sec_4_19
+  sec_4_20
+  sec_4_21
+  sec_4_22
+  sec_4_23
+  sec_4_24
+  sec_4_25
+  sec_4_26
+  sec_4_27
+  sec_4_28
+  sec_4_29
+  sec_4_30
+  sec_4_31
+  sec_4_32
+  sec_4_33
+  sec_4_34
+  sec_4_35
+  sec_4_36
+  sec_4_37
+  sec_4_38
+  sec_4_39
+  sec_4_40
+  sec_4_41
+  sec_4_42
+  sec_4_43
+  sec_4_44
+  sec_4_45
+  sec_4_46
+  sec_4_47
+  sec_4_48
+  sec_4_49
+  sec_4_50
+  sec_4_51
+  sec_4_52
+  sec_4_53
+  sec_4_54
+  sec_4_55
+  sec_4_56
+  sec_4_57
+  sec_4_58
+  sec_4_59
+  sec_4_60
+  sec_4_61
+  sec_4_62
+  sec_4_63
+  sec_4_64
+  sec_4_65
+  sec_4_66
+  sec_4_67
+  sec_4_68
+  sec_4_69
+  sec_4_70
+  sec_4_71
+  sec_4_72
+  sec_4_73
+  sec_4_74
+  sec_4_75
+  sec_4_76
+  sec_4_77
+  sec_4_78
+  sec_4_79))
+
+(executable
+ (name scaffold_sec_4_1)
+ (modules scaffold_sec_4_1)
+ (libraries sicp_ch4_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_4_1.exe)))

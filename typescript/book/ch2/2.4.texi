@@ -1,0 +1,1252 @@
+@node	2.4, 2.5, 2.3, Chapter 2
+@section Multiple Representations for Abstract Data
+
+We have introduced data abstraction, a methodology for structuring systems in
+such a way that much of a program can be specified independent of the choices
+involved in implementing the data objects that the program manipulates.  For
+example, we saw in @ref{2.1.1} how to separate the task of designing a
+program that uses rational numbers from the task of implementing rational
+numbers in terms of the computer language's primitive mechanisms for
+constructing compound data.  The key idea was to erect an abstraction barrier
+--- in this case, the selectors and constructors for rational numbers
+(@code{makeRat}, @code{numer}, @code{denom}) --- that isolates the way rational
+numbers are used from their underlying representation in terms of tuples.  A
+similar abstraction barrier isolates the details of the procedures that
+perform rational arithmetic (@code{addRat}, @code{subRat}, @code{mulRat}, and
+@code{divRat}) from the ``higher-level'' procedures that use rational numbers.
+The resulting program has the structure shown in @ref{Figure 2.1}.
+
+These data-abstraction barriers are powerful tools for controlling complexity.
+By isolating the underlying representations of data objects, we can divide the
+task of designing a large program into smaller tasks that can be performed
+separately.  But this kind of data abstraction is not yet powerful enough,
+because it may not always make sense to speak of ``the underlying
+representation'' for a data object.
+
+For one thing, there might be more than one useful representation for a data
+object, and we might like to design systems that can deal with multiple
+representations.  To take a simple example, complex numbers may be represented
+in two almost equivalent ways: in rectangular form (real and imaginary parts)
+and in polar form (magnitude and angle).  Sometimes rectangular form is more
+appropriate and sometimes polar form is more appropriate.  Indeed, it is
+perfectly plausible to imagine a system in which complex numbers are
+represented in both ways, and in which the procedures for manipulating complex
+numbers work with either representation.
+
+More importantly, programming systems are often designed by many people working
+over extended periods of time, subject to requirements that change over time.
+In such an environment, it is simply not possible for everyone to agree in
+advance on choices of data representation.  So in addition to the
+data-abstraction barriers that isolate representation from use, we need
+abstraction barriers that isolate different design choices from each other and
+permit different choices to coexist in a single program.  Furthermore, since
+large programs are often created by combining pre-existing modules that were
+designed in isolation, we need conventions that permit programmers to
+incorporate modules into larger systems @newterm{additively}, that is, without
+having to redesign or reimplement these modules.
+
+In this section, we will learn how to cope with data that may be represented in
+different ways by different parts of a program.  This requires constructing
+@newterm{generic procedures} --- procedures that can operate on data that may be
+represented in more than one way.  Our main technique for building generic
+procedures will be to work in terms of data objects that have
+@newterm{type tags}, that is, data objects that include explicit information
+about how they are to be processed.  We will also discuss
+@newterm{data-directed} programming, a powerful and convenient implementation
+strategy for additively assembling systems with generic operations.
+
+We begin with the simple complex-number example. We will see how type tags and
+data-directed style enable us to design separate rectangular and polar
+representations for complex numbers while maintaining the notion of an abstract
+``complex-number'' data object.  We will accomplish this by defining arithmetic
+procedures for complex numbers (@code{addComplex}, @code{subComplex},
+@code{mulComplex}, and @code{divComplex}) in terms of generic selectors that
+access parts of a complex number independent of how the number is represented.
+The resulting complex-number system, as shown in @ref{Figure 2.19}, contains
+two different kinds of abstraction barriers.  The ``horizontal'' abstraction
+barriers play the same role as the ones in @ref{Figure 2.1}.  They isolate
+``higher-level'' operations from ``lower-level'' rep@-re@-sen@-ta@-tions.  In addition,
+there is a ``vertical'' barrier that gives us the ability to separately design
+and install alternative representations.
+
+@float
+@anchor{Figure 2.19}
+@ifinfo
+@quotation
+@strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.
+
+@example
+           Programs that use complex numbers
+  +-------------------------------------------------+
+--| add-complex sub-complex mul-complex div-complex |--
+  +-------------------------------------------------+
+              Complex arithmetic package
+---------------------------+---------------------------
+          Rectangular      |         Polar
+        representation     |     representation
+---------------------------+---------------------------
+    List structure and primitive machine arithmetic
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.19a,,147mm,Figure 2.19: Data-abstraction barriers in the complex-number system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.}
+@end float
+
+@noindent
+In @ref{2.5} we will show how to use type tags and data-directed style
+to develop a generic arithmetic package.  This provides procedures (@code{add},
+@code{mul}, and so on) that can be used to manipulate all sorts of ``numbers''
+and can be easily extended when a new kind of number is needed.  In
+@ref{2.5.3}, we'll show how to use generic arithmetic in a system that performs
+symbolic algebra.
+
+@menu
+* 2.4.1::            Representations for Complex Numbers
+* 2.4.2::            Tagged data
+* 2.4.3::            Data-Directed Programming and Additivity
+@end menu
+
+@node	2.4.1, 2.4.2, 2.4, 2.4
+@subsection Representations for Complex Numbers
+
+We will develop a system that performs arithmetic operations on complex numbers
+as a simple but unrealistic example of a program that uses generic operations.
+We begin by discussing two plausible representations for complex numbers as
+ordered pairs: rectangular form (real part and imaginary part) and polar form
+(magnitude and angle).@footnote{In actual computational systems, rectangular
+form is preferable to polar form most of the time because of roundoff errors in
+conversion between rectangular and polar form.  This is why the complex-number
+example is unrealistic.  Nevertheless, it provides a clear illustration of the
+design of a system using generic operations and a good introduction to the more
+substantial systems to be developed later in this chapter.}
+Section @ref{2.4.2} will show how both representations can be made to coexist in a
+single system through the use of type tags and generic operations.
+
+Like rational numbers, complex numbers are naturally represented as ordered
+pairs.  The set of complex numbers can be thought of as a two-dimensional space
+with two orthogonal axes, the ``real'' axis and the ``imaginary'' axis. (See
+@ref{Figure 2.20}.)  From this point of view, the complex number
+@math{{z = x + iy}} (where @math{{i^{\kern0.1em 2} = \hbox{−1}}}) can be thought of as the point in the plane
+whose real coordinate is @math{x} and whose imaginary coordinate is @math{y}.
+Addition of complex numbers reduces in this representation to addition of
+coordinates:
+@displaymath
+\eqalign{
+\hbox{Real-part} (z_1 + z_2) 	    &= \hbox{Real-part} (z_1) + \cr
+                                    & \hbox{Real-part} (z_2),  \cr
+\hbox{Imaginary-part} (z_1 + z_2)   &= \hbox{Imaginary-part} (z_1) + \cr
+                                    & \hbox{Imaginary-part} (z_2).
+}
+@end displaymath
+@ifinfo
+
+@example
+Real-part(z_1 + z_2) = Real-part(z_1) + Real-part(z_2)
+
+Imaginary-part(z_1 + z_2) = Imaginary-part(z_1) + Imaginary-part(z_2)
+@end example
+
+@end ifinfo
+
+@float
+@anchor{Figure 2.20}
+@ifinfo
+@strong{Figure 2.20:} Complex numbers as points in the plane.
+
+@example
+ Imaginary
+    ^
+    |
+  y |.........................* z = x + ?y = r e^(?A)
+    |                    __-- .
+    |                __--     .
+    |          r __--         .
+    |        __--             .
+    |    __-- \               .
+    |__--    A |              .
+----+----------+-------------------> Real
+                              x
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.20,,147mm,Figure 2.20: Complex numbers as points in the plane.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.20.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.20:} Complex numbers as points in the plane.}
+@end float
+
+@noindent
+When multiplying complex numbers, it is more natural to think in terms of
+representing a complex number in polar form, as a magnitude and an angle (@math{r}
+and @math{A} in @ref{Figure 2.20}).  The product of two complex numbers is the
+vector obtained by stretching one complex number by the length of the other and
+then rotating it through the angle of the other:
+@displaymath
+\eqalign{
+  \hbox{Magnitude} (z_1 \cdot z_2)  &=
+    \hbox{Magnitude} (z_1) \cdot \hbox{Magnitude} (z_2), \cr
+  \hbox{Angle} (z_1 \cdot z_2)      &=
+    \hbox{Angle} (z_1) + \hbox{Angle} (z_2).
+}
+@end displaymath
+@ifinfo
+
+@example
+Magnitude(z_1 * z_2) = Magnitude(z_1) * Magnitude(z_2)
+
+Angle(z_1 * z_2) = Angle(z_1) + Angle(z_2)
+@end example
+
+@end ifinfo
+
+@noindent
+Thus, there are two different representations for complex numbers, which are
+appropriate for different operations.  Yet, from the viewpoint of someone
+writing a program that uses complex numbers, the principle of data abstraction
+suggests that all the operations for manipulating complex numbers should be
+available regardless of which representation is used by the computer.  For
+example, it is often useful to be able to find the magnitude of a complex
+number that is specified by rectangular coordinates.  Similarly, it is often
+useful to be able to determine the real part of a complex number that is
+specified by polar coordinates.
+
+To design such a system, we can follow the same data-abstraction strategy we
+followed in designing the rational-number package in @ref{2.1.1}.
+Assume that the operations on complex numbers are implemented in terms of four
+selectors: @code{realPart}, @code{imagPart}, @code{magnitude}, and
+@code{angle}.  Also assume that we have two procedures for constructing complex
+numbers: @code{makeFromRealImag} returns a complex number with specified
+real and imaginary parts, and @code{makeFromMagAng} returns a complex number
+with specified magnitude and angle.  These procedures have the property that,
+for any complex number @code{z}, both
+
+@example typescript
+benRectangular.makeFromRealImag(benRectangular.realPart(z), benRectangular.imagPart(z));
+benRectangular.makeFromMagAng(benRectangular.magnitude(z), benRectangular.angle(z));
+@end example
+
+@noindent
+produce complex numbers that are equal to @code{z}.
+
+This edition spells the assumption of four selectors and two constructors as
+one interface type: a complex-number package is a value with a @code{realPart},
+an @code{imagPart}, a @code{magnitude}, an @code{angle}, a
+@code{makeFromRealImag}, and a @code{makeFromMagAng}.  There is no wishful
+naming here, as there was in @ref{2.1.1}: the interface is a contract the
+compiler holds every package to, and the arithmetic below is written once
+against it.  Using the constructors and selectors, we can implement arithmetic
+on complex numbers using the ``abstract data'' specified by the interface,
+just as we did for rational numbers in @ref{2.1.1}.  As
+shown in the formulas above, we can add and subtract complex numbers in terms
+of real and imaginary parts while multiplying and dividing complex numbers in
+terms of magnitudes and angles:
+
+@example typescript
+export const addComplex = <Z>(arith: ComplexArith<Z>, z1: Z, z2: Z): Z =>
+  arith.makeFromRealImag(
+    arith.realPart(z1) + arith.realPart(z2),
+    arith.imagPart(z1) + arith.imagPart(z2),
+  );
+
+export const subComplex = <Z>(arith: ComplexArith<Z>, z1: Z, z2: Z): Z =>
+  arith.makeFromRealImag(
+    arith.realPart(z1) - arith.realPart(z2),
+    arith.imagPart(z1) - arith.imagPart(z2),
+  );
+
+export const mulComplex = <Z>(arith: ComplexArith<Z>, z1: Z, z2: Z): Z =>
+  arith.makeFromMagAng(
+    arith.magnitude(z1) * arith.magnitude(z2),
+    arith.angle(z1) + arith.angle(z2),
+  );
+
+export const divComplex = <Z>(arith: ComplexArith<Z>, z1: Z, z2: Z): Z =>
+  arith.makeFromMagAng(
+    arith.magnitude(z1) / arith.magnitude(z2),
+    arith.angle(z1) - arith.angle(z2),
+  );
+@end example
+
+@noindent
+To complete the complex-number package, we must choose a representation and we
+must implement the constructors and selectors in terms of primitive numbers and
+primitive pairs.  There are two obvious ways to do this: We can
+represent a complex number in ``rectangular form'' as a pair (real part,
+imaginary part) or in ``polar form'' as a pair (magnitude, angle).  Which shall
+we choose?
+
+In order to make the different choices concrete, imagine that there are two
+programmers, Ben Bitdiddle and Alyssa P. Hacker, who are independently
+designing representations for the complex-number system.  Ben chooses to
+represent complex numbers in rectangular form.  With this choice, selecting the
+real and imaginary parts of a complex number is straightforward, as is
+constructing a complex number with given real and imaginary parts.  To find the
+magnitude and the angle, or to construct a complex number with a given
+magnitude and angle, he uses the trigonometric relations
+
+@displaymath
+\eqalign{
+  x &= r \cos A, \cr
+  y &= r \sin A, \cr
+  r &= \sqrt{x^2 + y^2,} \cr
+  A &= \arctan(y, x),
+}
+@end displaymath
+@ifinfo
+
+@example
+                      __________
+x = r cos A     r = ./ x^2 + y^2
+
+y = r sin A     A = arctan(y,x)
+@end example
+
+@end ifinfo
+
+@noindent
+which relate the real and imaginary parts @math{{(x, y)}} to the magnitude and
+the angle @math{{(r, A)}}.@footnote{The arctangent function referred to here,
+computed by @code{Math.atan2}, is defined so as to take the two
+arguments @math{y} and @math{x} and to return the angle whose tangent is
+@math{{y / x}}.  The signs of the arguments determine the quadrant of the
+angle.}  Ben's representation is therefore given by the following selectors and
+constructors:
+
+@example typescript
+export const benRectangular: ComplexArith<ComplexPair> = @{
+  realPart: (z) => z[0],
+  imagPart: (z) => z[1],
+  magnitude: (z) => Math.sqrt(z[0] * z[0] + z[1] * z[1]),
+  angle: (z) => Math.atan2(z[1], z[0]),
+  makeFromRealImag: (x, y) => [x, y],
+  makeFromMagAng: (r, a) => [r * Math.cos(a), r * Math.sin(a)],
+@};
+@end example
+
+@noindent
+Alyssa, in contrast, chooses to represent complex numbers in polar form.  For
+her, selecting the magnitude and angle is straightforward, but she has to use
+the trigonometric relations to obtain the real and imaginary parts.  Alyssa's
+representation is:
+
+@example typescript
+export const alyssaPolar: ComplexArith<ComplexPair> = @{
+  realPart: (z) => z[0] * Math.cos(z[1]),
+  imagPart: (z) => z[0] * Math.sin(z[1]),
+  magnitude: (z) => z[0],
+  angle: (z) => z[1],
+  makeFromRealImag: (x, y) => [Math.sqrt(x * x + y * y), Math.atan2(y, x)],
+  makeFromMagAng: (r, a) => [r, a],
+@};
+@end example
+
+@noindent
+Each package is one value of the interface type, so the compiler checks both
+against the same contract, and the two bare pairs are indistinguishable in
+structure --- rectangular (3, 4) and polar (3, 4) are both just two numbers,
+which is exactly the ambiguity the next subsection resolves.  The selectors
+answer for their own representation:
+
+@example typescript
+const z = makeFromRealImag(benRectangular, 3, 4);
+benRectangular.realPart(z);
+// => 3
+benRectangular.imagPart(z);
+// => 4
+benRectangular.magnitude(z);
+// => 5
+benRectangular.angle(z);
+// => 0.9272952180016122
+
+const w = makeFromMagAng(alyssaPolar, 5, 0.9272952180016122);
+alyssaPolar.magnitude(w);
+// => 5
+alyssaPolar.angle(w);
+// => 0.9272952180016122
+@end example
+
+@noindent
+The discipline of data abstraction ensures that the same implementation of
+@code{addComplex}, @code{subComplex}, @code{mulComplex}, and
+@code{divComplex} will work with either Ben's representation or Alyssa's
+representation.  Each procedure receives the package it operates on as its
+first argument, because a TypeScript procedure cannot see which representation
+a bare pair carries; the arithmetic reads the selectors through it.  Addition
+and subtraction run on Ben's pairs, multiplication and division on Alyssa's:
+
+@example typescript
+const z1 = makeFromRealImag(benRectangular, 1, 2);
+const z2 = makeFromRealImag(benRectangular, 3, 4);
+benRectangular.realPart(addComplex(benRectangular, z1, z2));
+// => 4
+benRectangular.imagPart(addComplex(benRectangular, z1, z2));
+// => 6
+
+const p1 = makeFromMagAng(alyssaPolar, 2, Math.PI / 4);
+const p2 = makeFromMagAng(alyssaPolar, 3, Math.PI / 4);
+alyssaPolar.magnitude(mulComplex(alyssaPolar, p1, p2));
+// => 6
+alyssaPolar.angle(mulComplex(alyssaPolar, p1, p2));
+// => 1.5707963267948966
+alyssaPolar.magnitude(divComplex(alyssaPolar, mulComplex(alyssaPolar, p1, p2), p2));
+// => 2
+alyssaPolar.angle(divComplex(alyssaPolar, mulComplex(alyssaPolar, p1, p2), p2));
+// => 0.7853981633974483
+@end example
+
+@node	2.4.2, 2.4.3, 2.4.1, 2.4
+@subsection Tagged data
+
+One way to view data abstraction is as an application of the ``principle of
+least commitment.''  In implementing the complex-number system in
+@ref{2.4.1}, we can use either Ben's rectangular representation or Alyssa's
+polar representation.  The abstraction barrier formed by the selectors and
+constructors permits us to defer to the last possible moment the choice of a
+concrete representation for our data objects and thus retain maximum
+flexibility in our system design.
+
+The principle of least commitment can be carried to even further extremes.  If
+we desire, we can maintain the ambiguity of representation even @emph{after} we
+have designed the selectors and constructors, and elect to use both Ben's
+representation @emph{and} Alyssa's representation.  If both representations are
+included in a single system, however, we will need some way to distinguish data
+in polar form from data in rectangular form.  Otherwise, if we were asked, for
+instance, to find the @code{magnitude} of the pair (3, 4), we wouldn't know
+whether to answer 5 (interpreting the number in rectangular form) or 3
+(interpreting the number in polar form).  A straightforward way to accomplish
+this distinction is to include a @newterm{type tag} --- the tag
+@code{"rectangular"} or @code{"polar"} --- as part of each complex number.
+Then when we need to manipulate a complex number we can use the tag to decide
+which selector to apply.
+
+In order to manipulate tagged data, we will assume that we have procedures that
+extract from a data object the tag and the actual contents (the polar or
+rectangular coordinates, in the case of a complex number).  We will also
+postulate a procedure @code{attachTag} that takes a tag and contents and
+produces a tagged data object.  The book builds such an object by consing the
+tag onto the contents and then checking, at every extraction, that the datum
+really is a pair, raising ``Bad tagged datum'' if it is not.  This edition's
+tagged datum is one member of a closed union, so the tag and the contents are
+the datum's two fields, and the bad-datum check is unrepresentable --- there is
+no tagged datum that is not tagged:
+
+@example typescript
+export type Tagged<T extends string, A> = @{ readonly _tag: T; readonly contents: A @};
+
+export const attachTag = <T extends string, A>(tag: T, contents: A): Tagged<T, A> => (@{
+  _tag: tag,
+  contents,
+@});
+@end example
+
+@noindent
+A complex number is the union of the two tagged shapes. The type tags of the
+book become the union's discriminant:
+
+@example typescript
+export type TaggedComplex =
+  | Tagged<"rectangular", ComplexPair>
+  | Tagged<"polar", ComplexPair>;
+@end example
+
+@noindent
+Using the discriminant, we can define the predicates @code{isRectangular} and
+@code{isPolar}, which recognize rectangular and polar numbers, respectively:
+
+@example typescript
+export const isRectangular = (z: TaggedComplex): boolean => z._tag === "rectangular";
+
+export const isPolar = (z: TaggedComplex): boolean => z._tag === "polar";
+@end example
+
+@noindent
+With type tags, Ben and Alyssa can now modify their code so that their two
+different representations can coexist in the same system.  Whenever Ben
+constructs a complex number, he tags it as rectangular.  Whenever Alyssa
+constructs a complex number, she tags it as polar.  In addition, Ben and Alyssa
+must make sure that the names of their procedures do not conflict.  One way to
+do this is for Ben to append the suffix @code{Rectangular} to the name of each
+of his representation procedures and for Alyssa to append @code{Polar} to the
+names of hers.  The suffixes are a concession to one shared namespace that
+@ref{2.4.3} will remove; here they keep the two packages' procedures
+distinguishable at the module's top level.  Here is Ben's revised rectangular
+representation from @ref{2.4.1}:
+
+@example typescript
+export const realPartRectangular = (z: ComplexPair): number => z[0];
+export const imagPartRectangular = (z: ComplexPair): number => z[1];
+
+export const magnitudeRectangular = (z: ComplexPair): number =>
+  Math.sqrt(z[0] * z[0] + z[1] * z[1]);
+export const angleRectangular = (z: ComplexPair): number => Math.atan2(z[1], z[0]);
+
+export const makeFromRealImagRectangular = (
+  x: number,
+  y: number,
+): Tagged<"rectangular", ComplexPair> => (@{
+  _tag: "rectangular",
+  contents: [x, y],
+@});
+
+export const makeFromMagAngRectangular = (
+  r: number,
+  a: number,
+): Tagged<"rectangular", ComplexPair> => (@{
+  _tag: "rectangular",
+  contents: [r * Math.cos(a), r * Math.sin(a)],
+@});
+@end example
+
+@noindent
+and here is Alyssa's revised polar representation:
+
+@example typescript
+export const realPartPolar = (z: ComplexPair): number => z[0] * Math.cos(z[1]);
+export const imagPartPolar = (z: ComplexPair): number => z[0] * Math.sin(z[1]);
+
+export const magnitudePolar = (z: ComplexPair): number => z[0];
+export const anglePolar = (z: ComplexPair): number => z[1];
+
+export const makeFromRealImagPolar = (x: number, y: number): Tagged<"polar", ComplexPair> => (@{
+  _tag: "polar",
+  contents: [Math.sqrt(x * x + y * y), Math.atan2(y, x)],
+@});
+
+export const makeFromMagAngPolar = (r: number, a: number): Tagged<"polar", ComplexPair> => (@{
+  _tag: "polar",
+  contents: [r, a],
+@});
+@end example
+
+@noindent
+Each generic selector is implemented as a procedure that checks the tag of its
+argument and calls the appropriate procedure for handling data of that type.
+For example, to obtain the real part of a complex number, @code{realPartExplicit}
+examines the tag to determine whether to use Ben's @code{realPartRectangular}
+or Alyssa's @code{realPartPolar}.  In either case, we read @code{contents} to
+extract the bare, untagged datum and send this to the rectangular or polar
+procedure as required:
+
+@example typescript
+export const realPartExplicit = (z: TaggedComplex): number =>
+  z._tag === "rectangular" ? realPartRectangular(z.contents) : realPartPolar(z.contents);
+
+export const imagPartExplicit = (z: TaggedComplex): number =>
+  z._tag === "rectangular" ? imagPartRectangular(z.contents) : imagPartPolar(z.contents);
+
+export const magnitudeExplicit = (z: TaggedComplex): number =>
+  z._tag === "rectangular" ? magnitudeRectangular(z.contents) : magnitudePolar(z.contents);
+
+export const angleExplicit = (z: TaggedComplex): number =>
+  z._tag === "rectangular" ? angleRectangular(z.contents) : anglePolar(z.contents);
+@end example
+
+@noindent
+The book's version of each selector ends with an else clause raising ``Unknown
+type'' for an unrecognized tag.  The union has only two shapes, so the switch
+of cases is exhaustive and the compiler enforces what the else clause
+stipulated at run time: there is no third tag to dispatch on, and a
+representation the selectors forget is a failed compile, not a failed lookup.
+
+To implement the complex-number arithmetic operations, we can use the same
+procedures @code{addComplex}, @code{subComplex}, @code{mulComplex}, and
+@code{divComplex} from @ref{2.4.1}, because the selectors they call
+are generic, and so will work with either representation.  The arithmetic
+reads the generic selectors through one package value assembled from the
+generic selectors and the two default constructors --- rectangular numbers
+whenever we have real and imaginary parts, polar numbers whenever we have
+magnitudes and angles:
+
+@example typescript
+export const taggedArith: ComplexArith<TaggedComplex> = @{
+  realPart: realPartExplicit,
+  imagPart: imagPartExplicit,
+  magnitude: magnitudeExplicit,
+  angle: angleExplicit,
+  makeFromRealImag: makeFromRealImagRectangular,
+  makeFromMagAng: makeFromMagAngPolar,
+@};
+
+export const addComplexTagged = (z1: TaggedComplex, z2: TaggedComplex): TaggedComplex =>
+  addComplex(taggedArith, z1, z2);
+@end example
+
+@noindent
+For example, the procedure @code{addComplexTagged} is the book's
+@code{add-complex} verbatim, reading the generic selectors:
+
+@example typescript
+const u = makeFromRealImagRectangular(1, 2);
+const v = makeFromRealImagRectangular(3, 4);
+const sum = addComplexTagged(u, v);
+realPartExplicit(sum);
+// => 4
+imagPartExplicit(sum);
+// => 6
+angleExplicit(makeFromMagAngPolar(2, Math.PI / 2));
+// => 1.5707963267948966
+@end example
+
+@noindent
+The resulting complex-number system has the structure shown in @ref{Figure 2.21}.
+The system has been decomposed into three relatively independent parts:
+the complex-number-arithmetic operations, Alyssa's polar implementation, and
+Ben's rectangular implementation.  The polar and rectangular implementations
+could have been written by Ben and Alyssa working separately, and both of these
+can be used as underlying representations by a third programmer implementing
+the complex-arithmetic procedures in terms of the abstract constructor/selector
+interface.
+
+@float
+@anchor{Figure 2.21}
+@ifinfo
+@quotation
+@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.
+
+@example
+    +-------------------------------------------------+
+----| add-complex sub-complex mul-complex div-complex |----
+    +-------------------------------------------------+
+                Complex arithmetic package
+                 +-----------------------+
+                 | real-part   imag-part |
+-----------------|                       |------------------
+                 | magnitude   angle     |
+                 +-----------+-----------+
+           Rectangular       |          Polar
+          representation     |     representation
+-----------------------------+------------------------------
+       List structure and primitive machine arithmetic
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.21a,,147mm,Figure 2.21: Structure of the generic complex-arithmetic system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.}
+@end float
+
+@noindent
+Since each data object is tagged with its type, the selectors operate on the
+data in a generic manner.  That is, each selector is defined to have a behavior
+that depends upon the particular type of data it is applied to.  Notice the
+general mechanism for interfacing the separate representations: Within a given
+representation implementation (say, Alyssa's polar package) a complex number is
+an untyped pair (magnitude, angle).  When a generic selector operates on a
+number of @code{polar} type, it strips off the tag and passes the contents on
+to Alyssa's code.  Conversely, when Alyssa constructs a number for general use,
+she tags it with a type so that it can be appropriately recognized by the
+higher-level procedures.  This discipline of stripping off and attaching tags
+as data objects are passed from level to level can be an important
+organizational strategy, as we shall see in @ref{2.5}.
+
+@node	2.4.3, 2.5, 2.3, 2.4
+@subsection Data-Directed Programming and Additivity
+
+The general strategy of checking the type of a datum and calling an appropriate
+procedure is called @newterm{dispatching on type}.  This is a powerful strategy
+for obtaining modularity in system design.  On the other hand, implementing the
+dispatch as in @ref{2.4.2} has two significant weaknesses.  One
+weakness is that the generic interface procedures (@code{realPartExplicit},
+@code{imagPartExplicit}, @code{magnitudeExplicit}, and @code{angleExplicit}) must
+know about all the different representations.  For instance, suppose we wanted
+to incorporate a new representation for complex numbers into our complex-number
+system.  We would need to identify this new representation with a type, and
+then add a case to each of the generic interface procedures to check for the
+new type and apply the appropriate selector for that representation.
+
+Another weakness of the technique is that even though the individual
+representations can be designed separately, we must guarantee that no two
+procedures in the entire system have the same name.  This is why Ben and Alyssa
+had to change the names of their original procedures from @ref{2.4.1}.
+
+The issue underlying both of these weaknesses is that the technique for
+implementing generic interfaces is not @newterm{additive}.  The person
+implementing the generic selector procedures must modify those procedures each
+time a new representation is installed, and the people interfacing the
+individual representations must modify their code to avoid name conflicts.  In
+each of these cases, the changes that must be made to the code are
+straightforward, but they must be made nonetheless, and this is a source of
+inconvenience and error.  This is not much of a problem for the complex-number
+system as it stands, but suppose there were not two but hundreds of different
+representations for complex numbers.  And suppose that there were many generic
+selectors to be maintained in the abstract-data interface.  Suppose, in fact,
+that no one programmer knew all the interface procedures or all the
+representations.  The problem is real and must be addressed in such programs as
+large-scale data-base-management systems.
+
+What we need is a means for modularizing the system design even further.  This
+is provided by the programming technique known as
+@newterm{data-directed programming}.
+To understand how data-directed programming works, begin with
+the observation that whenever we deal with a set of generic operations that are
+common to a set of different types we are, in effect, dealing with a
+two-dimensional table that contains the possible operations on one axis and the
+possible types on the other axis.  The entries in the table are the procedures
+that implement each operation for each type of argument presented.  In the
+complex-number system developed in the previous section, the correspondence
+between operation name, data type, and actual procedure was spread out among
+the various conditional clauses in the generic interface procedures.  But the
+same information could have been organized in a table, as shown in
+@ref{Figure 2.22}.
+
+@float
+@anchor{Figure 2.22}
+@ifinfo
+@quotation
+@strong{Figure 2.22:} Table of operations for the complex-number system.
+
+@example
+           |               Types
+Operations | Polar           | Rectangular
+===========+=================+======================
+real-part  | real-part-polar | real-part-rectangular
+imag-part  | imag-part-polar | imag-part-rectangular
+magnitude  | magnitude-polar | magnitude-rectangular
+angle      | angle-polar     | angle-rectangular
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap2/Fig2.22,,147mm,Figure 2.22: Table of operations for the complex-number system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap2/Fig2.22.std,,147mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 2.22:} Table of operations for the complex-number system.}
+@end float
+
+@noindent
+Data-directed programming is the technique of designing programs to work with
+such a table directly.  Previously, we implemented the mechanism that
+interfaces the complex-arithmetic code with the two representation packages as
+a set of procedures that each perform an explicit dispatch on type.  Here we
+will implement the interface as a single procedure that looks up the
+combination of the operation name and argument type in the table to find the
+correct procedure to apply, and then applies it to the contents of the
+argument.  If we do this, then to add a new representation package to the
+system we need not change any existing procedures; we need only add new entries
+to the table.
+
+To implement this plan, assume that we have two procedures, @code{put} and
+@code{get}, for manipulating the operation-and-type table:
+
+@itemize @bullet
+
+@item
+@code{put(}@var{table}@code{, }@code{⟨@var{op}⟩, ⟨@var{tags}⟩, ⟨@var{item}⟩)} installs the
+@code{⟨}@var{item}@code{⟩} in the table, indexed by the
+@code{⟨}@var{op}@code{⟩} and the ordered tag list @code{⟨}@var{tags}@code{⟩}.  Installing again over the
+same keys overwrites.
+
+@item
+@code{get(}@var{table}@code{, }@code{⟨@var{op}⟩, ⟨@var{tags}⟩)} looks up the @code{⟨}@var{op}@code{⟩},
+@code{⟨}@var{tags}@code{⟩} entry in the table and returns the item found there.
+If no item is found, @code{get} answers nothing.
+
+@end itemize
+
+@noindent
+The table is a @code{Map} of @code{Map}s, the outer keyed by operation name and
+the inner by the tag list joined in order; @code{get} answers the absence
+option @code{none} for a missing key, never a falsy stand-in for an entry:
+
+@example typescript
+export type OpTable<H> = Map<string, Map<string, H>>;
+
+export const put = <H>(
+  table: OpTable<H>,
+  op: string,
+  tags: ReadonlyArray<string>,
+  item: H,
+): void => @{
+  const inner = table.get(op) ?? new Map<string, H>();
+  inner.set(tags.join(","), item);
+  table.set(op, inner);
+@};
+
+export const get = <H>(
+  table: OpTable<H>,
+  op: string,
+  tags: ReadonlyArray<string>,
+): Option<H> => @{
+  const inner = table.get(op);
+  if (inner === undefined) @{
+    return none;
+  @}
+  const item = inner.get(tags.join(","));
+  return item === undefined ? none : some(item);
+@};
+@end example
+
+@noindent
+For now, we can assume that @code{put} and @code{get} are defined once in the
+section's module and shared by every package in the system.  In
+@ref{Chapter 3} (@ref{3.3.3}) we
+will see how to implement these and other operations for manipulating tables.
+
+Here is how data-directed programming can be used in the complex-number system.
+Ben, who developed the rectangular representation, implements his code just as
+he did originally.  He defines a collection of procedures, or a
+@newterm{package}, and interfaces these to the rest of the system by adding
+entries to the table that tell the system how to operate on rectangular
+numbers.  This is accomplished by calling the following procedure:
+
+@example typescript
+export const installRectangularPackage = (table: OpTable<ComplexHandler>): void => @{
+  // internal procedures
+  const realPart = (z: ComplexPair): number => z[0];
+  const imagPart = (z: ComplexPair): number => z[1];
+  const makeFromRealImag = (x: number, y: number): ComplexPair => [x, y];
+  const magnitude = (z: ComplexPair): number => Math.sqrt(z[0] * z[0] + z[1] * z[1]);
+  const angle = (z: ComplexPair): number => Math.atan2(z[1], z[0]);
+  const makeFromMagAng = (r: number, a: number): ComplexPair => [
+    r * Math.cos(a),
+    r * Math.sin(a),
+  ];
+  // interface to the rest of the system
+  const tag = (x: ComplexPair): TaggedComplex => attachTag("rectangular", x);
+  put(table, "real-part", ["rectangular"], @{ _tag: "Selector", fn: realPart @});
+  put(table, "imag-part", ["rectangular"], @{ _tag: "Selector", fn: imagPart @});
+  put(table, "magnitude", ["rectangular"], @{ _tag: "Selector", fn: magnitude @});
+  put(table, "angle", ["rectangular"], @{ _tag: "Selector", fn: angle @});
+  put(table, "make-from-real-imag", ["rectangular"], @{
+    _tag: "Constructor",
+    fn: (x, y) => tag(makeFromRealImag(x, y)),
+  @});
+  put(table, "make-from-mag-ang", ["rectangular"], @{
+    _tag: "Constructor",
+    fn: (r, a) => tag(makeFromMagAng(r, a)),
+  @});
+@};
+@end example
+
+@noindent
+The entries are wrapped as one of two shapes, @code{Selector} or
+@code{Constructor}, because one table holds both: the selectors are unary and
+answer a number, the constructors binary and answer a tagged pair, and each
+fetcher below narrows the entry it fetched to the shape it asked for.  Notice
+that the internal procedures here are the same procedures from
+@ref{2.4.1} that Ben wrote when he was working in isolation.  No changes are
+necessary in order to interface them to the rest of the system.  Moreover,
+since these procedure definitions are internal to the installation procedure,
+Ben needn't worry about name conflicts with other procedures outside the
+rectangular package.  To interface these to the rest of the system, Ben
+installs his @code{realPart} procedure under the operation name
+@code{"real-part"} and the tag list @code{["rectangular"]}, and similarly for the other
+selectors.@footnote{We use the tag list @code{["rectangular"]} rather than the bare tag
+@code{"rectangular"} to allow for the possibility of operations with multiple
+arguments, not all of the same type.}  The interface also defines the
+constructors to be used by the external system.@footnote{The tag the
+constructors are installed under needn't be a list because a constructor is
+always used to make an object of one particular type.}  These are identical to
+Ben's internally defined constructors, except that they attach the tag.
+
+Alyssa's polar package is analogous:
+
+@example typescript
+export const installPolarPackage = (table: OpTable<ComplexHandler>): void => @{
+  // internal procedures
+  const magnitude = (z: ComplexPair): number => z[0];
+  const angle = (z: ComplexPair): number => z[1];
+  const makeFromMagAng = (r: number, a: number): ComplexPair => [r, a];
+  const realPart = (z: ComplexPair): number => z[0] * Math.cos(z[1]);
+  const imagPart = (z: ComplexPair): number => z[0] * Math.sin(z[1]);
+  const makeFromRealImag = (x: number, y: number): ComplexPair => [
+    Math.sqrt(x * x + y * y),
+    Math.atan2(y, x),
+  ];
+  // interface to the rest of the system
+  const tag = (x: ComplexPair): TaggedComplex => attachTag("polar", x);
+  put(table, "real-part", ["polar"], @{ _tag: "Selector", fn: realPart @});
+  put(table, "imag-part", ["polar"], @{ _tag: "Selector", fn: imagPart @});
+  put(table, "magnitude", ["polar"], @{ _tag: "Selector", fn: magnitude @});
+  put(table, "angle", ["polar"], @{ _tag: "Selector", fn: angle @});
+  put(table, "make-from-real-imag", ["polar"], @{
+    _tag: "Constructor",
+    fn: (x, y) => tag(makeFromRealImag(x, y)),
+  @});
+  put(table, "make-from-mag-ang", ["polar"], @{
+    _tag: "Constructor",
+    fn: (r, a) => tag(makeFromMagAng(r, a)),
+  @});
+@};
+@end example
+
+@noindent
+Even though Ben and Alyssa both still use their original procedures defined
+with the same names as each other's (e.g., @code{realPart}), these definitions
+are now internal to different procedures (see @ref{1.1.8}), so there is
+no name conflict.
+
+The complex-arithmetic selectors access the table by means of a general
+``operation'' procedure called @code{applyGeneric}, which applies a generic
+operation to some arguments.  @code{ApplyGeneric} looks in the table under the
+name of the operation and the types of the arguments and applies the resulting
+procedure if one is present:@footnote{@code{applyGeneric} uses the rest
+parameter described in @ref{Exercise 2.20}, because different generic operations
+may take different numbers of arguments.  In @code{applyGeneric}, @code{op}
+has as its value the first argument to @code{applyGeneric} and @code{args} has
+as its value an array of the remaining arguments.  The handler is called with
+the bare contents of the arguments in order --- one array spread into the
+call's parameter list --- which is the work the book's primitive @code{apply}
+does on a list.  For example, @code{[1, 2, 3, 4].reduce((sum, n) => sum + n, 0)}
+folds the list @code{(1 2 3 4)} of additions into 10.}
+
+@example typescript
+export const applyGeneric = (
+  op: string,
+  ...args: ReadonlyArray<Tagged<string, ComplexPair>>
+): Result<number, ApplyGenericError> => @{
+  const tags = args.map((a) => a._tag);
+  const proc = getSelector(complexTable, op, tags);
+  if (proc._tag === "None") @{
+    return err(@{ _tag: "NoMethod", op, tags @});
+  @}
+  const [z] = args;
+  return z === undefined ? err(@{ _tag: "NoMethod", op, tags @}) : ok(proc.value(z.contents));
+@};
+@end example
+
+@noindent
+The fetchers narrow what the table returns: @code{getSelector} answers the
+unary procedure under @code{op} and @code{tags}, and @code{getConstructor} the
+binary one under @code{op} and a single tag, each answering nothing when the
+keys are absent or name the other shape.  A miss is not a value the caller must
+guess at but the typed error @code{ApplyGenericError}, carrying the operation
+and the tag list that had no method.  Using @code{applyGeneric}, we can define
+our generic selectors as follows:
+
+@example typescript
+export const realPart = (z: TaggedComplex): Result<number, ApplyGenericError> =>
+  applyGeneric("real-part", z);
+
+export const imagPart = (z: TaggedComplex): Result<number, ApplyGenericError> =>
+  applyGeneric("imag-part", z);
+
+export const magnitude = (z: TaggedComplex): Result<number, ApplyGenericError> =>
+  applyGeneric("magnitude", z);
+
+export const angle = (z: TaggedComplex): Result<number, ApplyGenericError> =>
+  applyGeneric("angle", z);
+@end example
+
+@noindent
+The generic selectors answer the edition's @code{Result}; @code{valueOr}
+unwraps a success and answers its fallback only when the table had no method:
+
+@example typescript
+const z = valueOr(makeFromRealImag(3, 4), makeFromRealImagRectangular(0, 0));
+valueOr(realPart(z), 0);
+// => 3
+valueOr(imagPart(z), 0);
+// => 4
+
+const p = valueOr(makeFromMagAng(2, Math.PI / 2), makeFromMagAngPolar(0, 0));
+valueOr(magnitude(p), 0);
+// => 2
+valueOr(angle(p), 0);
+// => 1.5707963267948966
+@end example
+
+@noindent
+Observe that these do not change at all if a new representation is added to the
+system.  A datum the table knows nothing about is the one way the lookup can
+miss, and the miss names itself:
+
+@example typescript
+const unknownShape: Tagged<string, ComplexPair> = @{ _tag: "oblique", contents: [3, 4] @};
+applyGeneric("real-part", unknownShape);
+// => Error: No method for these types: APPLY-GENERIC (real-part (oblique))
+@end example
+
+@noindent
+We can also extract from the table the constructors to be used by the programs
+external to the packages in making complex numbers from real and imaginary
+parts and from magnitudes and angles.  As in @ref{2.4.2}, we construct
+rectangular numbers whenever we have real and imaginary parts, and polar
+numbers whenever we have magnitudes and angles:
+
+@example typescript
+export const makeFromRealImag = (
+  x: number,
+  y: number,
+): Result<TaggedComplex, ApplyGenericError> => @{
+  const ctor = getConstructor(complexTable, "make-from-real-imag", "rectangular");
+  return ctor._tag === "None"
+    ? err(@{ _tag: "NoMethod", op: "make-from-real-imag", tags: ["rectangular"] @})
+    : ok(ctor.value(x, y));
+@};
+
+export const makeFromMagAng = (
+  r: number,
+  a: number,
+): Result<TaggedComplex, ApplyGenericError> => @{
+  const ctor = getConstructor(complexTable, "make-from-mag-ang", "polar");
+  return ctor._tag === "None"
+    ? err(@{ _tag: "NoMethod", op: "make-from-mag-ang", tags: ["polar"] @})
+    : ok(ctor.value(r, a));
+@};
+@end example
+
+@quotation
+@strong{@anchor{Exercise 2.73}Exercise 2.73:} @ref{2.3.2} described a
+program that performs symbolic differentiation:
+
+@example typescript
+export const deriv = (exp: Expr, v: Symb): Expr => @{
+  switch (exp._tag) @{
+    case "Num":
+      return constant(0);
+    case "Var":
+      return sameVariableQ(exp, v) ? constant(1) : constant(0);
+    case "Sum":
+      return makeSum(deriv(exp.addend, v), deriv(exp.augend, v));
+    case "Prod":
+      return makeSum(
+        makeProduct(exp.multiplier, deriv(exp.multiplicand, v)),
+        makeProduct(deriv(exp.multiplier, v), exp.multiplicand),
+      );
+    // ⟨@var{more rules can be added here}⟩
+  @}
+@};
+@end example
+
+We can regard this program as performing a dispatch on the type of
+the expression to be differentiated.  In this situation the ``type tag'' of the
+datum is the algebraic operator symbol (such as @code{"+"}) and the operation
+being performed is @code{deriv}.  We can transform this program into
+data-directed style by rewriting the basic derivative procedure as
+
+@example typescript
+export const derivDataDirected = (exp: Expr, v: Symb): Result<Expr, DerivError> => @{
+  if (exp._tag === "Num") @{
+    return ok(constant(0));
+  @}
+  if (exp._tag === "Var") @{
+    return ok(sameVariableQ(exp, v) ? constant(1) : constant(0));
+  @}
+  const rule = get(derivTable, "deriv", [operatorOf(exp)]);
+  if (rule._tag === "None") @{
+    return err(@{ _tag: "UnknownExpressionType", op: operatorOf(exp) @});
+  @}
+  return rule.value(operandsOf(exp), v);
+@};
+
+export const operatorOf = (exp: CompoundExpr): string =>
+  exp._tag === "Sum" ? "+" : exp._tag === "Prod" ? "*" : "**";
+
+export const operandsOf = (exp: CompoundExpr): ReadonlyArray<Expr> => @{
+  switch (exp._tag) @{
+    case "Sum":
+      return [exp.addend, exp.augend];
+    case "Prod":
+      return [exp.multiplier, exp.multiplicand];
+    case "Pow":
+      return [exp.base, exp.exp];
+  @}
+@};
+@end example
+
+@enumerate a
+
+@item
+Explain what was done above.  Why can't the constant and variable cases be
+assimilated into the data-directed dispatch?
+
+@item
+Write the procedures for derivatives of sums and products, and the auxiliary
+code required to install them in the table used by the program above.
+
+@item
+Choose any additional differentiation rule that you like, such as the one for
+exponents (@ref{Exercise 2.56}), and install it in this data-directed
+system.
+
+@item
+In this simple algebraic manipulator the type of an expression is the algebraic
+operator that binds it together.  Suppose, however, we indexed the procedures
+in the opposite way, so that the dispatch line in @code{deriv} looked like
+
+@example typescript
+const rule = get(derivTableFlipped, operatorOf(exp), ["deriv"]);
+@end example
+
+@noindent
+What corresponding changes to the derivative system are required?
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.74}Exercise 2.74:} Insatiable Enterprises, Inc., is
+a highly decentralized conglomerate company consisting of a large number of
+independent divisions located all over the world.  The company's computer
+facilities have just been interconnected by means of a clever
+network-interfacing scheme that makes the entire network appear to any user to
+be a single computer.  Insatiable's president, in her first attempt to exploit
+the ability of the network to extract administrative information from division
+files, is dismayed to discover that, although all the division files have been
+implemented as data structures in TypeScript, the particular data structure used
+varies from division to division.  A meeting of division managers is hastily
+called to search for a strategy to integrate the files that will satisfy
+headquarters' needs while preserving the existing autonomy of the divisions.
+
+Show how such a strategy can be implemented with data-directed programming.  As
+an example, suppose that each division's personnel records consist of a single
+file, which contains a set of records keyed on employees' names.  The structure
+of the set varies from division to division.  Furthermore, each employee's
+record is itself a set (structured differently from division to division) that
+contains information keyed under identifiers such as @code{"address"} and
+@code{"salary"}.  In particular:
+
+@enumerate a
+
+@item
+Implement for headquarters a @code{getRecord} procedure that retrieves a
+specified employee's record from a specified personnel file.  The procedure
+should be applicable to any division's file.  Explain how the individual
+divisions' files should be structured.  In particular, what type information
+must be supplied?
+
+@item
+Implement for headquarters a @code{getSalary} procedure that returns the
+salary information from a given employee's record from any division's personnel
+file.  How should the record be structured in order to make this operation
+work?
+
+@item
+Implement for headquarters a @code{findEmployeeRecord} procedure.  This
+should search all the divisions' files for the record of a given employee and
+return the record.  Assume that this procedure takes as arguments an employee's
+name and a list of all the divisions' files.
+
+@item
+When Insatiable takes over a new company, what changes must be made in order to
+incorporate the new personnel information into the central system?
+
+@end enumerate
+@end quotation
+
+@subsubheading Message passing
+
+The key idea of data-directed programming is to handle generic operations in
+programs by dealing explicitly with operation-and-type tables, such as the
+table in @ref{Figure 2.22}.  The style of programming we used in
+@ref{2.4.2} organized the required dispatching on type by having each operation
+take care of its own dispatching.  In effect, this decomposes the
+operation-and-type table into rows, with each generic operation procedure
+representing a row of the table.
+
+An alternative implementation strategy is to decompose the table into columns
+and, instead of using ``intelligent operations'' that dispatch on data types,
+to work with ``intelligent data objects'' that dispatch on operation names.  We
+can do this by arranging things so that a data object, such as a rectangular
+number, is represented as a procedure that takes as input the required
+operation name and performs the operation indicated.  In such a discipline,
+@code{makeFromRealImag} could be written as
+
+@example typescript
+export const makeFromRealImagMessage = (x: number, y: number): MessageObject => @{
+  const dispatch = (op: string): Result<number, MessageError> => @{
+    switch (op) @{
+      case "real-part":
+        return ok(x);
+      case "imag-part":
+        return ok(y);
+      case "magnitude":
+        return ok(Math.sqrt(x * x + y * y));
+      case "angle":
+        return ok(Math.atan2(y, x));
+      default:
+        return err(@{ _tag: "UnknownMessage", op, source: "MAKE-FROM-REAL-IMAG" @});
+    @}
+  @};
+  return dispatch;
+@};
+@end example
+
+@noindent
+The corresponding @code{applyGeneric} procedure, which applies a generic
+operation to an argument, now simply feeds the operation's name to the data
+object and lets the object do the work:@footnote{One limitation of this
+organization is it permits only generic procedures of one argument.}
+
+@example typescript
+export const applyGenericMessage = (
+  object: MessageObject,
+  op: ComplexMessage,
+): Result<number, MessageError> => object(op);
+@end example
+
+@noindent
+Note that the value returned by @code{makeFromRealImagMessage} is a procedure
+--- the internal @code{dispatch} procedure.  This is the procedure that is
+invoked when @code{applyGenericMessage} requests an operation to be performed.
+Because the message names are strings at the object's boundary, the dispatch
+keeps the book's default arm: a message the object does not answer names
+itself in the typed error.
+
+@example typescript
+valueOr(applyGenericMessage(makeFromRealImagMessage(3, 4), "real-part"), 0);
+// => 3
+valueOr(applyGenericMessage(makeFromRealImagMessage(3, 4), "magnitude"), 0);
+// => 5
+@end example
+
+@noindent
+This style of programming is called @newterm{message passing}.  The name comes
+from the image that a data object is an entity that receives the requested
+operation name as a ``message.''  We have already seen an example of message
+passing in @ref{2.1.3}, where we saw how @code{cons}, @code{car}, and
+@code{cdr} could be defined with no data objects but only procedures.  Here we
+see that message passing is not a mathematical trick but a useful technique for
+organizing systems with generic operations.  In the remainder of this chapter
+we will continue to use data-directed programming, rather than message passing,
+to discuss generic arithmetic operations.  In @ref{Chapter 3} we will return to
+message passing, and we will see that it can be a powerful tool for structuring
+simulation programs.
+
+@quotation
+@strong{@anchor{Exercise 2.75}Exercise 2.75:} Implement the constructor
+@code{makeFromMagAng} in mes@-sage-pass@-ing style.  This procedure should be
+analogous to the @code{makeFromRealImagMessage} procedure given above.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 2.76}Exercise 2.76:} As a large system with generic
+operations evolves, new types of data objects or new operations may be needed.
+This edition's three spellings of the strategies are a closed union whose
+generic operations dispatch by exhaustive switch, the data-directed
+operation-and-type table of this section, and the message-passing closures
+just introduced.  For each of the three strategies, describe the changes that
+must be made to a system in order to add new types or new operations.  Which
+organization would be most appropriate for a system in which new types must
+often be added?  Which would be most appropriate for a system in which new
+operations must often be added?
+@end quotation
+
+@quotation
+@strong{In this language: open data-directed arithmetic.}
+
+TypeScript makes each value's shape explicit, but the section's open extension
+point is the operation table.  Packages install handlers by operation and
+type, and @code{applyGeneric} finds the matching function at run time.  A new
+representation therefore adds its own package and table entries without
+changing the generic operations that use it.
+@end quotation

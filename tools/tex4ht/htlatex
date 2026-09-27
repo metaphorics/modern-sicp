@@ -1,0 +1,37 @@
+#!/bin/sh
+# tex4ht option wrapper for the book builds.
+#
+# Why this exists: texi2any's bundled tex4ht extension runs the converter as
+# `htlatex <file> <options> ...` with an empty options string (see
+# share/texi2any/ext/tex4ht.pm, `my $options = '';`). tex4ht's default mode
+# renders math as PNG images, and the `mathml` option reaches it only through
+# that argument. The extension exposes no customization variable for it, so the
+# option is supplied here.
+#
+# This wrapper sets argument 2 and passes every other argument through
+# unchanged. It never reads, rewrites, or inspects the TeX document: tex4ht
+# receives the file texi2any generated, byte for byte. Put this directory first
+# on PATH for the book recipes.
+set -e
+
+self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+real=""
+IFS=:
+for dir in $PATH; do
+    [ -n "$dir" ] || dir=.
+    case $(CDPATH= cd -- "$dir" 2>/dev/null && pwd) in
+        "$self_dir") continue ;;
+    esac
+    if [ -x "$dir/htlatex" ]; then
+        real="$dir/htlatex"
+        break
+    fi
+done
+unset IFS
+
+if [ -z "$real" ]; then
+    echo "htlatex wrapper: no htlatex found on PATH outside $self_dir" >&2
+    exit 1
+fi
+
+exec "$real" "$1" "${2:-xhtml,mathml}" "$3" "$4" "$5"

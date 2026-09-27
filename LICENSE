@@ -1,6 +1,46 @@
-LICENSING TERMS
+LICENSE MAP
 
-The HTML files of the book and illustrations in
-directory 'html/fig' are licensed under Creative Commons
-Attribution-ShareAlike 4.0 International License
-(http://creativecommons.org/licenses/by-sa/4.0/).
+This repository holds four editions of "Structure and Interpretation
+of Computer Programs" (Abelson, Sussman, and Sussman), adapted to
+Rust, OCaml, TypeScript, and Kotlin. The files fall under one of four
+licenses by path. The full texts are in the LICENSES/ directory.
+
+Text, figures, and exercise statements: CC BY-SA 4.0
+  text/                      the provenance source and the split text
+  */book/                    the adapted prose of each edition
+  text/original/figures/     the SVG figures and their PDF renderings
+  LICENSES/CC-BY-SA-4.0.txt
+  https://creativecommons.org/licenses/by-sa/4.0/
+
+Programs: GPL-3.0-only
+  */examples/                every listing that appears in the text
+  */exercises/               the pending scaffolds
+  */solutions/               the reference solutions
+  */appendix/                the OCaml Base and Core appendix code
+  spec/scheme-subset/        the conformance corpus
+  LICENSES/GPL-3.0-only.txt
+  Listings that correspond to programs printed in the book are Adapted
+  Material under CC BY-SA 4.0 Section 1(a). GPLv3 is the BY-SA
+  Compatible License that Section 3(b)(1) permits for Adapted Material
+  (declared by Creative Commons on 2015-10-08, version 3 only), and it
+  is chosen for the original code in the same trees so that each tree
+  has one license.
+
+Tooling and site: MIT
+  tools/                     the Python build scripts
+  site/                      the landing page
+  justfile, */justfile, .github/
+  LICENSES/MIT.txt
+
+Fonts: SIL Open Font License 1.1
+  text/assets/css/fonts/     Linux Libertine, Linux Biolinum,
+                             Inconsolata LGC, DejaVu, STIX
+  text/assets/css/fonts/OFL-1.1.txt and LICENCE.txt
+
+Prior modification record
+  LICENSE.src                the GPL-3.0 notice of the upstream build
+                             scripts, retained unchanged
+
+The prose may be reused under CC BY-SA 4.0 and the code under
+GPL-3.0-only; the two never mix in one file. Attribution and the
+modification statement are in NOTICE.md.

@@ -1,0 +1,2766 @@
+@node	3.3, 3.4, 3.2, Chapter 3
+@section Modeling with Mutable Data
+
+@ref{Chapter 2} dealt with compound data as a means for constructing computational
+objects that have several parts, to model real-world objects that have
+several aspects.  In that chapter we introduced the discipline of data
+abstraction, according to which data structures are specified in terms of
+constructors, which create data objects, and selectors, which access the parts
+of compound data objects.  But we now know that there is another aspect of data
+that chapter 2 did not address.  The desire to model systems composed of
+objects that have changing state leads us to the need to modify compound data
+objects, as well as to construct and select from them.  In order to model
+compound objects with changing state, we will design data abstractions to
+include, in addition to selectors and constructors, operations called
+@newterm{mutators}, which modify data objects.  For instance, modeling a
+banking system requires us to change account balances.  Thus, a data structure
+for representing bank accounts might admit an operation
+
+@example ocaml
+set_balance account new_value
+@end example
+
+@noindent
+that changes the balance of the designated account to the designated new value.
+Data objects for which mutators are defined are known as @newterm{mutable data objects}.
+
+Chapter 2 introduced pairs as a general-purpose ``glue'' for synthesizing
+compound data.  We begin this section by defining basic mutators for pairs, so
+that pairs can serve as building blocks for constructing mutable data objects.
+These mutators extend the representational power of pairs, enabling us
+to build data structures other than the sequences and trees that we worked with
+in @ref{2.2}.  We also present some examples of simulations in which
+complex systems are modeled as collections of objects with local state.
+
+@menu
+* 3.3.1::            Mutable List Structure
+* 3.3.2::            Representing Queues
+* 3.3.3::            Representing Tables
+* 3.3.4::            A Simulator for Digital Circuits
+* 3.3.5::            Propagation of Constraints
+@end menu
+
+@node	3.3.1, 3.3.2, 3.3, 3.3
+@subsection Mutable List Structure
+
+OCaml's own pairs and lists are immutable: the basic operations
+@code{cons} (written @code{::} for lists), @code{car}, and @code{cdr} (the
+pattern-matched head and tail) can be used to construct list structure and to
+select parts from list structure, but there is no way to modify list
+structure built from them, and the same is true of list operations such as
+@code{append} and @code{List.map}, since these can all be defined in terms of
+@code{cons}, @code{car}, and @code{cdr} alone.  To model compound objects with
+changing state we need a genuinely mutable pair, so this section defines one:
+a record @code{mpair} of two mutable fields, wrapped in a variant @code{mobj}
+that also names the empty list, numbers, symbols, and the zero-argument
+procedures that only the agenda of @ref{3.3.4} will schedule, so a list built
+from these pairs stays close to the book's own untyped pointers.
+
+@example ocaml
+type mobj =
+  | Int of int
+  | Sym of string
+  | Pair of mpair
+  | Nil
+  | Proc of (unit -> unit)
+
+and mpair =
+  @{ mutable car : mobj
+  ; mutable cdr : mobj
+  @}
+@end example
+
+The primitive mutators for these pairs are @code{set_car} and
+@code{set_cdr}. @code{set_car} takes two arguments, the first of which must
+be a pair.  It modifies this pair, replacing the @code{car} field by the
+second argument of @code{set_car}.@footnote{@code{set_car} and @code{set_cdr}
+return @code{unit}, and OCaml's type checker enforces that they are used
+only for their effect: there is no value to bind and nothing useful to do
+with the result besides ignore it.}
+
+@noindent
+As an example, suppose that @code{x} is bound to the list @code{((a b) c d)}
+and @code{y} to the list @code{(e f)} as illustrated in @ref{Figure 3.12}.
+Evaluating @code{set_car x y} modifies the pair to which
+@code{x} is bound, replacing its @code{car} by the value of @code{y}.  The
+result of the operation is shown in @ref{Figure 3.13}.  The structure @code{x}
+has been modified and would now be printed as @code{((e f) c d)}.  The pairs
+representing the list @code{(a b)}, identified by the pointer that was
+replaced, are now detached from the original structure.@footnote{We see from
+this that mutation operations on lists can create ``garbage'' that is not
+part of any accessible structure.  OCaml's own runtime already includes
+exactly the @ref{5.3.2} @newterm{garbage collector}: it identifies and
+recycles the memory used by unneeded pairs automatically, tracing from the
+live roots the same way this section's diagrams trace pointers.}
+
+@float
+@anchor{Figure 3.12}
+@ifinfo
+@quotation
+@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.
+
+@example
+     +---+---+     +---+---+     +---+---+
+x -->| * | *-+---->| * | *-+---->| * | / |
+     +-|-+---+     +-|-+---+     +-|-+---+
+       |             V             V
+       |           +---+         +---+
+       |           | c |         | d |
+       |           +---+         +---+
+       |           +---+---+     +---+---+
+       +---------->| * | *-+---->| * | / |
+                   +-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | a |         | b |
+                   +---+         +---+
+                   +---+---+     +---+---+
+              y -->| * | *-+---->| * | / |
+                   +-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | e |         | f |
+                   +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.12b,,123mm,Figure 3.12: Lists x: ((a b) c d) and y: (e f).,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,,123mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.}
+@end float
+
+@float
+@anchor{Figure 3.13}
+@ifinfo
+@quotation
+@strong{Figure 3.13:} Effect of @code{set_car x y} on the lists in @ref{Figure 3.12}.
+
+@example
+     +---+---+     +---+---+     +---+---+
+x -->| * | *-+---->| * | *-+---->| * | / |
+     +-|-+---+     +-|-+---+     +-|-+---+
+       |             V             V
+       |           +---+         +---+
+       |           | c |         | d |
+       |           +---+         +---+
+       |           +---+---+     +---+---+
+       |           | * | *-+---->| * | / |
+       |           +-|-+---+     +-|-+---+
+       |             V             V
+       |           +---+         +---+
+       |           | a |         | b |
+       |           +---+         +---+
+       +---------->+---+---+     +---+---+
+                   | * | *-+---->| * | / |
+              y -->+-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | e |         | f |
+                   +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of set_car x y on the lists in Figure 3.12.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,,123mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.13:} Effect of @code{set_car x y} on the lists in @ref{Figure 3.12}.}
+@end float
+
+Compare @ref{Figure 3.13} with @ref{Figure 3.14}, which illustrates the result
+of executing @code{let z = mcons y (cdr x)} with @code{x} and @code{y}
+bound to the original lists of @ref{Figure 3.12}.  The variable @code{z} is now
+bound to a new pair created by @code{mcons}; the list to which
+@code{x} is bound is unchanged.
+
+@float
+@anchor{Figure 3.14}
+@ifinfo
+@quotation
+@strong{Figure 3.14:} Effect of @code{let z = mcons y (cdr x)} on the lists in @ref{Figure 3.12}.
+
+@example
+     +---+---+     +---+---+     +---+---+
+x -->| * | *-+---->| * | *-+---->| * | / |
+     +-|-+---+ +-->+-|-+---+     +-|-+---+
+       |       |     V             V
+       |       |   +---+         +---+
+       |       |   | c |         | d |
+       |       |   +---+         +---+
+       |       |   +---+---+     +---+---+
+       +-------+-->| * | *-+---->| * | / |
+               |   +-|-+---+     +-|-+---+
+     +---+---+ |     V             V
+z -->| * | *-+-+   +---+         +---+
+     +-|-+---+     | a |         | b |
+       |           +---+         +---+
+       +---------->+---+---+     +---+---+
+                   | * | *-+---->| * | / |
+              y -->+-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | e |         | f |
+                   +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of let z = mcons y (cdr x) on the lists in Figure 3.12.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,,123mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.14:} Effect of @code{let z = mcons y (cdr x)} on the lists in @ref{Figure 3.12}.}
+@end float
+
+The @code{set_cdr} operation is similar to @code{set_car}.  The only
+difference is that the @code{cdr} field of the pair, rather than the
+@code{car} field, is replaced.  The effect of executing @code{set_cdr x y}
+on the lists of @ref{Figure 3.12} is shown in @ref{Figure 3.15}.  Here the
+@code{cdr} field of @code{x} has been replaced by the pointer to @code{(e
+f)}.  Also, the list @code{(c d)}, which used to be the @code{cdr} of @code{x},
+is now detached from the structure.
+
+@float
+@anchor{Figure 3.15}
+@ifinfo
+@quotation
+@strong{Figure 3.15:} Effect of @code{set_cdr x y} on the lists in @ref{Figure 3.12}.
+
+@example
+     +---+---+     +---+---+     +---+---+
+x -->| * | * |     | * | *-+---->| * | / |
+     +-|-+-|-+     +-|-+---+     +-|-+---+
+       |   |         V             V
+       |   |       +---+         +---+
+       |   |       | c |         | d |
+       |   |       +---+         +---+
+       |   |       +---+---+     +---+---+
+       +---+------>| * | *-+---->| * | / |
+           |       +-|-+---+     +-|-+---+
+           |         V             V
+           |       +---+         +---+
+           |       | a |         | b |
+           |       +---+         +---+
+           +------>+---+---+     +---+---+
+                   | * | *-+---->| * | / |
+              y -->+-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | e |         | f |
+                   +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of set_cdr x y on the lists in Figure 3.12.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,,123mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.15:} Effect of @code{set_cdr x y} on the lists in @ref{Figure 3.12}.}
+@end float
+
+@noindent
+@code{mcons} builds new list structure by creating new pairs, while
+@code{set_car} and @code{set_cdr} modify existing pairs.  Indeed, we could
+implement @code{mcons} in terms of the two mutators, together with a
+procedure @code{get_new_pair}, which returns a new pair that is not part of
+any existing list structure.  We obtain the new pair, set its @code{car} and
+@code{cdr} fields to the designated objects, and return the new pair as the
+result of @code{mcons}.@footnote{@code{get_new_pair} would be one of the
+operations implemented as part of a Lisp's memory management, discussed in
+@ref{5.3.1}; here OCaml's own allocator plays that role, and the record
+literal below is the request for a fresh block.}
+
+@example ocaml
+let cons_from_mutators x y =
+  let new_pair = @{ car = mnil; cdr = mnil @} in
+  set_car (Pair new_pair) x;
+  set_cdr (Pair new_pair) y;
+  Pair new_pair
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.12}Exercise 3.12:} The following procedure for
+appending lists was introduced in @ref{2.2.1}:
+
+@example ocaml
+let rec append x y =
+  match x with
+  | Nil -> y
+  | Pair _ -> mcons (car x) (append (cdr x) y)
+  | _ -> invalid_arg "append: not a list"
+@end example
+
+@code{append} forms a new list by successively @code{mcons}ing the elements
+of @code{x} onto @code{y}.  The procedure @code{append_bang} is similar to
+@code{append}, but it is a mutator rather than a constructor.  It appends the
+lists by splicing them together, modifying the final pair of @code{x} so that
+its @code{cdr} is now @code{y}.  (It is an error to call @code{append_bang}
+with an empty @code{x}.)
+
+@example ocaml
+let append_bang x y =
+  match x with
+  | Nil -> invalid_arg "append!: the first list is empty"
+  | _ ->
+    set_cdr (last_pair x) y;
+    x
+@end example
+
+Here @code{last_pair} is a procedure that returns the last pair in its
+argument:
+
+@example ocaml
+let rec last_pair x = if is_pair (cdr x) then last_pair (cdr x) else x
+@end example
+
+Consider the interaction
+
+@example ocaml
+let x = from_symbols [ "a"; "b" ]
+let y = from_symbols [ "c"; "d" ]
+let z = append x y
+
+show z
+(* "(a b c d)" *)
+
+show (cdr x)
+⟨@var{response}⟩
+
+let w = append_bang x y
+
+show w
+(* "(a b c d)" *)
+
+show (cdr x)
+⟨@var{response}⟩
+@end example
+
+What are the missing @code{⟨}@var{response}@code{⟩}s?  Draw box-and-pointer diagrams to
+explain your answer.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.13}Exercise 3.13:} Consider the following
+@code{make_cycle} procedure, which uses the @code{last_pair} procedure defined
+in @ref{Exercise 3.12}:
+
+@example ocaml
+let make_cycle x =
+  set_cdr (last_pair x) x;
+  x
+@end example
+
+Draw a box-and-pointer diagram that shows the structure @code{z} created by
+
+@example ocaml
+let z = make_cycle (from_symbols [ "a"; "b"; "c" ])
+@end example
+
+What happens if we try to compute @code{last_pair z}?
+@end quotation
+
+@quotation
+@emph{Exercise 3.13a is added by this edition and extends exercise 3.13; SICP
+numbers stop at 3.13.} @strong{@anchor{Exercise 3.13a}Exercise 3.13a:}
+Exercise 3.13 asks what happens when @code{last_pair} meets a cycle: the walk
+never reaches an empty @code{cdr}, so the call never returns.  The same fate
+awaits @code{show} from @ref{3.3.1}, which also walks @code{cdr} chains to
+build its printed string.  Write @code{show_cycle}, a variant of @code{show}
+that never diverges: it remembers every pair it has visited, by physical
+identity, and prints @code{#cycle} the moment it revisits one instead of
+walking it again.  A structure that is merely large rather than cyclic should
+still print normally, so give @code{show_cycle} a @code{fuel} budget that
+raises rather than hangs once exhausted.  Check your printer against
+@code{make_cycle (from_symbols [ "a"; "b"; "c" ])} and against a plain,
+acyclic list.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.14}Exercise 3.14:} The following procedure is quite
+useful, although obscure:
+
+@example ocaml
+let mystery x =
+  let rec loop x y =
+    if not (is_pair x)
+    then y
+    else (
+      let temp = cdr x in
+      set_cdr x y;
+      loop temp x)
+  in
+  loop x mnil
+@end example
+
+@code{loop} uses the ``temporary'' variable @code{temp} to hold the old value
+of the @code{cdr} of @code{x}, since the @code{set_cdr} on the next line
+destroys the @code{cdr}.  Explain what @code{mystery} does in general.  Suppose
+@code{v} is bound to @code{from_symbols [ "a"; "b"; "c"; "d" ]}. Draw the
+box-and-pointer diagram that represents the list to which @code{v} is bound.
+Suppose that we now evaluate @code{let w = mystery v}. Draw
+box-and-pointer diagrams that show the structures @code{v} and @code{w} after
+evaluating this expression.  What would @code{show} print for @code{v}
+and @code{w}?
+@end quotation
+
+@subsubheading Sharing and identity
+
+We mentioned in @ref{3.1.3} the theoretical issues of ``sameness'' and
+``change'' raised by the introduction of assignment.  These issues arise in
+practice when individual pairs are @newterm{shared} among different data
+objects.  For example, consider the structure formed by
+
+@example ocaml
+let x = from_symbols [ "a"; "b" ]
+let z1 = mcons x x
+@end example
+
+@noindent
+As shown in @ref{Figure 3.16}, @code{z1} is a pair whose @code{car} and
+@code{cdr} both point to the same pair @code{x}.  This sharing of @code{x} by
+the @code{car} and @code{cdr} of @code{z1} is a consequence of the
+straightforward way in which @code{mcons} is implemented: it stores whatever
+value @code{x} already designates in both fields, so referring to the one
+bound name twice hands both fields the very same pointer.  In general, using
+@code{mcons} to construct lists will result in an interlinked structure of
+pairs in which many individual pairs are shared by many different structures.
+
+@float
+@anchor{Figure 3.16}
+@ifinfo
+@quotation
+@strong{Figure 3.16:} The list @code{z1} formed by @code{mcons x x}.
+
+@example
+      +---+---+
+z1 -->| * | * |
+      +-|-+-|-+
+        V   V
+      +---+---+     +---+---+
+ x -->| * | *-+---->| * | / |
+      +-|-+---+     +-|-+---+
+        V             V
+      +---+         +---+
+      | a |         | b |
+      +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by (cons x x).,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.16b.std,,78mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.16:} The list @code{z1} formed by @code{mcons x x}.}
+@end float
+
+In contrast to @ref{Figure 3.16}, @ref{Figure 3.17} shows the structure created
+by
+
+@example ocaml
+let z2 = mcons (from_symbols [ "a"; "b" ]) (from_symbols [ "a"; "b" ])
+@end example
+
+@float
+@anchor{Figure 3.17}
+@ifinfo
+@quotation
+@strong{Figure 3.17:} The list @code{z2} formed by @code{mcons (from_symbols ["a";"b"]) (from_symbols ["a";"b"])}.
+
+@example
+      +---+---+     +---+---+     +---+---+
+z2 -->| * | *-+---->| * | *-+---->| * | / |
+      +-|-+---+     +-|-+---+     +-|-+---+
+        |             V             V
+        |           +---+         +---+
+        |           | a |         | b |
+        |           +---+         +---+
+        |             ^             ^
+        |             |             |
+        |           +-|-+---+     +-|-+---+
+        +---------->| * | *-+---->| * | / |
+                    +---+---+     +---+---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by (cons (list 'a 'b) (list 'a 'b)).,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,,121mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.17:} The list @code{z2} formed by @code{mcons (from_symbols ["a";"b"]) (from_symbols ["a";"b"])}.}
+@end float
+
+@noindent
+In this structure, the pairs in the two @code{(a b)} lists are distinct,
+although the actual symbols are shared.@footnote{The two pairs are distinct
+because each call to @code{from_symbols} builds fresh pairs.  The symbols are
+shared; @code{Sym "a"} built in one call and @code{Sym "a"} built in another
+are structurally equal strings, and OCaml provides no way to mutate a string
+literal built this way, so the sharing is undetectable through @code{show} or
+@code{=}.  In Lisp there is a unique symbol object with any given name, which
+is what makes @code{eq?} usable as a fast equality test for symbols; OCaml's
+strings have no such uniquing, so this edition compares symbol payloads with
+structural @code{=} instead.}
+
+@noindent
+When thought of as a list, @code{z1} and @code{z2} both represent ``the same''
+list, @code{((a b) a b)}.  In general, sharing is completely undetectable if
+we operate on lists using only @code{mcons}, @code{car}, and @code{cdr}.
+However, if we allow mutators on list structure, sharing becomes significant.
+As an example of the difference that sharing can make, consider the following
+procedure, which modifies the @code{car} of the structure to which it is
+applied:
+
+@example ocaml
+let set_to_wow x =
+  set_car (car x) (Sym "wow");
+  x
+@end example
+
+@noindent
+Even though @code{z1} and @code{z2} are ``the same'' structure, applying
+@code{set_to_wow} to them yields different results.  With @code{z1}, altering
+the @code{car} also changes the @code{cdr}, because in @code{z1} the @code{car}
+and the @code{cdr} are the same pair.  With @code{z2}, the @code{car} and
+@code{cdr} are distinct, so @code{set_to_wow} modifies only the @code{car}:
+
+@example ocaml
+show z1
+(* "((a b) a b)" *)
+
+show (set_to_wow z1)
+(* "((wow b) wow b)" *)
+
+show z2
+(* "((a b) a b)" *)
+
+show (set_to_wow z2)
+(* "((wow b) a b)" *)
+@end example
+
+@noindent
+One way to detect sharing in list structures is to use OCaml's physical
+equality operator @code{==}, the analogue of the predicate @code{eq?}
+discussed in @ref{2.3.1}.  More generally, @code{x == y} tests whether
+@code{x} and @code{y} are the same object (that is, whether they are equal as
+pointers).  Thus, with @code{z1} and @code{z2} as defined
+in @ref{Figure 3.16} and @ref{Figure 3.17}, @code{car z1 == cdr z1} is true
+and @code{car z2 == cdr z2} is false.
+
+As will be seen in the following sections, we can exploit sharing to greatly
+extend the repertoire of data structures that can be represented by pairs.  On
+the other hand, sharing can also be dangerous, since modifications made to
+structures will also affect other structures that happen to share the modified
+parts.  The mutation operations @code{set_car} and @code{set_cdr} should be
+used with care; unless we have a good understanding of how our data objects are
+shared, mutation can have unanticipated results.@footnote{The subtleties of
+dealing with sharing of mutable data objects reflect the underlying issues of
+``sameness'' and ``change'' that were raised in @ref{3.1.3}.  We
+mentioned there that admitting change to our language requires that a compound
+object must have an ``identity'' that is something different from the pieces
+from which it is composed.  In Lisp, we consider this ``identity'' to be the
+quality that is tested by @code{eq?}, i.e., by equality of pointers; this
+edition's analogue is OCaml's physical equality @code{==}.  Since in
+most Lisp implementations a pointer is essentially a memory address, we are
+``solving the problem'' of defining the identity of objects by stipulating that
+a data object ``itself'' is the information stored in some particular set of
+memory locations in the computer.  This suffices for simple Lisp programs, but
+is hardly a general way to resolve the issue of ``sameness'' in computational
+models.}
+
+@quotation
+@strong{@anchor{Exercise 3.15}Exercise 3.15:} Draw box-and-pointer diagrams to
+explain the effect of @code{set_to_wow} on the structures @code{z1} and
+@code{z2} above.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.16}Exercise 3.16:} Ben Bitdiddle decides to write a
+procedure to count the number of pairs in any list structure.  ``It's easy,''
+he reasons.  ``The number of pairs in any structure is the number in the
+@code{car} plus the number in the @code{cdr} plus one more to count the current
+pair.''  So Ben writes the following procedure:
+
+@example ocaml
+let rec count_pairs x =
+  if is_pair x then count_pairs (car x) + count_pairs (cdr x) + 1 else 0
+@end example
+
+Show that this procedure is not correct.  In particular, draw box-and-pointer
+diagrams representing list structures made up of exactly three pairs for which
+Ben's procedure would return 3; return 4; return 7; never return at all.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.17}Exercise 3.17:} Devise a correct version of the
+@code{count_pairs} procedure of @ref{Exercise 3.16} that returns the number of
+distinct pairs in any structure.  (Hint: Traverse the structure, maintaining an
+auxiliary data structure that is used to keep track of which pairs have already
+been counted.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.18}Exercise 3.18:} Write a procedure that examines a
+list and determines whether it contains a cycle, that is, whether a program
+that tried to find the end of the list by taking successive @code{cdr}s would
+go into an infinite loop.  @ref{Exercise 3.13} constructed such lists.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.19}Exercise 3.19:} Redo @ref{Exercise 3.18} using an
+algorithm that takes only a constant amount of space.  (This requires a very
+clever idea.)
+@end quotation
+
+@subsubheading Mutation is just assignment
+
+When we introduced compound data, we observed in @ref{2.1.3} that pairs
+can be represented purely in terms of procedures.  Read
+@code{p.pcar} and @code{p.pcdr} as the @code{car} and @code{cdr} of the
+procedural pair @code{p}: the pair is a record of closures over two cells.
+
+@example ocaml
+let proc_cons x y =
+  let x = ref x in
+  let y = ref y in
+  @{ pcar = (fun () -> !x); pcdr = (fun () -> !y) @}
+@end example
+
+@noindent
+The same observation is true for mutable data.  We can implement mutable data
+objects as procedures using assignment and local state.  For instance, we can
+extend the above pair implementation to handle @code{set_car} and
+@code{set_cdr} in a manner analogous to the way we implemented bank accounts
+using @code{make_account} in @ref{3.1.1}:
+
+@example ocaml
+let proc_cons x y =
+  let x = ref x in
+  let y = ref y in
+  @{ pcar = (fun () -> !x); pcdr = (fun () -> !y)
+  ; set_pcar = (fun v -> x := v); set_pcdr = (fun v -> y := v) @}
+@end example
+
+@noindent
+Assignment is all that is needed, theoretically, to account for the behavior of
+mutable data.  As soon as we admit assignment to our language, we raise all
+the issues, not only of assignment, but of mutable data in general.@footnote{On
+the other hand, from the viewpoint of implementation, assignment requires us to
+modify the environment, which is itself a mutable data structure.  Thus,
+assignment and mutation are equipotent: Each can be implemented in terms of the
+other.}
+
+@quotation
+@emph{SICP exercise 3.20 is about Scheme itself, so this edition replaces it;
+the exercise below keeps the number and teaches the same section material.}
+@strong{@anchor{Exercise 3.20}Exercise 3.20:}
+Suppose we evaluate
+
+@example ocaml
+let x = proc_cons (Int 1) (Int 2)
+let z = proc_cons x x
+
+(z.pcdr ()).set_pcar (Int 17)
+@end example
+
+@noindent
+Trace this sequence through the closures above.  In particular: what does
+@code{x.pcar ()} return afterwards, and are @code{z.pcar ()} and
+@code{z.pcdr ()} physically the same object as @code{x}?  (Compare
+@ref{Exercise 3.11}.)
+@end quotation
+
+@node	3.3.2, 3.3.3, 3.3.1, 3.3
+@subsection Representing Queues
+
+The mutators @code{set_car} and @code{set_cdr} enable us to use pairs to
+construct data structures that cannot be built with @code{mcons}, @code{car},
+and @code{cdr} alone.  This section shows how to use pairs to represent a data
+structure called a queue.  Section @ref{3.3.3} will show how to represent data
+structures called tables.
+
+A @newterm{queue} is a sequence in which items are inserted at one end (called
+the @newterm{rear} of the queue) and deleted from the other end (the
+@newterm{front}).  @ref{Figure 3.18} shows an initially empty queue in which
+the items @code{a} and @code{b} are inserted.  Then @code{a} is removed,
+@code{c} and @code{d} are inserted, and @code{b} is removed.  Because items are
+always removed in the order in which they are inserted, a queue is sometimes
+called a @newterm{FIFO} (first in, first out) buffer.
+
+@float
+@anchor{Figure 3.18}
+@ifinfo
+@quotation
+@strong{Figure 3.18:} Queue operations.
+
+@example
+Operation                    Resulting Queue
+let q = make_queue ()
+insert_queue q (Sym "a")     a
+insert_queue q (Sym "b")     a b
+delete_queue q               b
+insert_queue q (Sym "c")     b c
+insert_queue q (Sym "d")     b c d
+delete_queue q               c d
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.18,,119mm,Figure 3.18: Queue operations.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.18.std,,119mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.18:} Queue operations.}
+@end float
+
+@noindent
+In terms of data abstraction, we can regard a queue as defined by the following
+set of operations:
+
+@itemize @bullet
+
+@item
+a constructor: @code{make_queue ()} returns an empty queue (a queue containing
+no items).
+
+@item
+two selectors:
+
+@example ocaml
+empty_queue ⟨@var{queue}⟩
+@end example
+
+@noindent
+tests if the queue is empty.
+
+@example ocaml
+front_queue ⟨@var{queue}⟩
+@end example
+
+@noindent
+returns the object at the front of the queue, signaling an error if the queue
+is empty; it does not modify the queue.
+
+@item
+two mutators:
+
+@example ocaml
+insert_queue ⟨@var{queue}⟩ ⟨@var{item}⟩
+@end example
+
+@noindent
+inserts the item at the rear of the queue and returns the modified queue as its
+value.
+
+@example ocaml
+delete_queue ⟨@var{queue}⟩
+@end example
+
+@noindent
+removes the item at the front of the queue and returns the modified queue as
+its value, signaling an error if the queue is empty before the deletion.
+
+@end itemize
+
+@noindent
+Because a queue is a sequence of items, we could certainly represent it as an
+ordinary list; the front of the queue would be the @code{car} of the list,
+inserting an item in the queue would amount to appending a new element at the
+end of the list, and deleting an item from the queue would just be taking the
+rest of the list.  However, this representation is inefficient, because inserting an item requires scanning the list until we reach the end.  Since
+the only method we have for scanning a list is by successive @code{cdr} field
+reads, this scanning requires @math{{\Theta(n)}} steps for a list of @math{n}
+items.  A simple modification to the list representation overcomes this
+disadvantage by allowing the queue operations to be implemented so that they
+require @math{{\Theta(1)}} steps; that is, so that the number of steps needed is
+independent of the length of the queue.
+
+The difficulty with the list representation arises from the need to scan to
+find the end of the list.  The reason we need to scan is that, although the
+standard way of representing a list as a chain of pairs readily provides us
+with a pointer to the beginning of the list, it gives us no easily accessible
+pointer to the end.  The modification that avoids the drawback is to represent
+the queue as a list, together with an additional pointer that indicates the
+final pair in the list.  That way, when we go to insert an item, we can consult
+the rear pointer and so avoid scanning the list.
+
+@noindent
+A queue is represented, then, as a pair of pointers, @code{front_ptr} and
+@code{rear_ptr}, which indicate, respectively, the first and last pairs in an
+ordinary list.  Since we would like the queue to be an identifiable object, we
+make the queue itself one mutable pair whose @code{car} is the front pointer
+and whose @code{cdr} is the rear pointer.  @ref{Figure 3.19} illustrates this
+representation.
+
+@float
+@anchor{Figure 3.19}
+@ifinfo
+@quotation
+@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.
+
+@example
+       +---+---+
+  q -->| * | *-+-------------------+
+       +-|-+---+                   |
+         |                         |
+         | front-ptr               | rear-ptr
+         V                         V
+     +---+---+    +---+---+    +---+---+
+     | * | *-+--->| * | *-+--->| * | / |
+     +-|-+---+    +-|-+---+    +-|-+---+
+       V            V            V
+     +---+        +---+        +---+
+     | a |        | b |        | c |
+     +---+        +---+        +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.19b,,118mm,Figure 3.19: Implementation of a queue as a list with front and rear pointers.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,,118mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.}
+@end float
+
+To define the queue operations we use the following procedures, which enable us
+to select and to modify the front and rear pointers of a queue:
+
+@example ocaml
+let front_ptr (q : t) = q.Mpairs.car
+let rear_ptr (q : t) = q.Mpairs.cdr
+
+let set_front_ptr (q : t) item = q.Mpairs.car <- item
+let set_rear_ptr (q : t) item = q.Mpairs.cdr <- item
+@end example
+
+@noindent
+Now we can implement the actual queue operations.  We will consider a queue to
+be empty if its front pointer is the empty list:
+
+@example ocaml
+let empty_queue (q : t) = Mpairs.Nil = front_ptr q
+@end example
+
+@noindent
+The @code{make_queue} constructor returns, as an initially empty queue, a pair
+whose @code{car} and @code{cdr} are both the empty list:
+
+@example ocaml
+let make_queue () : t = @{ Mpairs.car = Mpairs.Nil; cdr = Mpairs.Nil @}
+@end example
+
+@noindent
+To select the item at the front of the queue, we return the @code{car} of the
+pair indicated by the front pointer:
+
+@example ocaml
+let front_queue q =
+  if empty_queue q
+  then invalid_arg "FRONT called with an empty queue"
+  else Mpairs.car (front_ptr q)
+@end example
+
+@noindent
+To insert an item in a queue, we follow the method whose result is indicated in
+@ref{Figure 3.20}.  We first create a new pair whose @code{car} is the item to
+be inserted and whose @code{cdr} is the empty list.  If the queue was initially
+empty, we set the front and rear pointers of the queue to this new pair.
+Otherwise, we modify the final pair in the queue to point to the new pair, and
+also set the rear pointer to the new pair.
+
+@float
+@anchor{Figure 3.20}
+@ifinfo
+@strong{Figure 3.20:} Result of using @code{insert_queue q (Sym "d")} on the queue of @ref{Figure 3.19}.
+
+@example
+       +---+---+
+  q -->| * | *-+--------------------------------+
+       +-|-+---+                                |
+         |                                      |
+         | front-ptr                            | rear-ptr
+         V                                      V
+     +---+---+    +---+---+    +---+---+    +---+---+
+     | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
+     +-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+       V            V            V            V
+     +---+        +---+        +---+        +---+
+     | a |        | b |        | c |        | d |
+     +---+        +---+        +---+        +---+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.20c,,141mm,Figure 3.20: Result of using insert_queue q (Sym "d") on the queue of Figure 3.19.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,,141mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.20:} Result of using @code{insert_queue q (Sym "d")} on the queue of @ref{Figure 3.19}.}
+@end float
+
+@example ocaml
+let insert_queue q item =
+  let new_pair = @{ Mpairs.car = item; cdr = Mpairs.Nil @} in
+  if empty_queue q
+  then (
+    set_front_ptr q (Mpairs.Pair new_pair);
+    set_rear_ptr q (Mpairs.Pair new_pair))
+  else (
+    Mpairs.set_cdr (rear_ptr q) (Mpairs.Pair new_pair);
+    set_rear_ptr q (Mpairs.Pair new_pair));
+  q
+@end example
+
+@noindent
+To delete the item at the front of the queue, we merely modify the front
+pointer so that it now points at the second item in the queue, which can be
+found by following the @code{cdr} pointer of the first item (see
+@ref{Figure 3.21}):@footnote{If the first item is the final item in the queue, the front
+pointer will be the empty list after the deletion, which will mark the queue as
+empty; we needn't worry about updating the rear pointer, which will still point
+to the deleted item, because @code{empty_queue} looks only at the front
+pointer.}
+
+@example ocaml
+let delete_queue q =
+  if empty_queue q
+  then invalid_arg "DELETE called with an empty queue"
+  else (
+    set_front_ptr q (Mpairs.cdr (front_ptr q));
+    q)
+@end example
+
+@float
+@anchor{Figure 3.21}
+@ifinfo
+@strong{Figure 3.21:} Result of using @code{delete_queue q} on the queue of @ref{Figure 3.20}.
+
+@example
+       +---+---+
+  q -->| * | *-+--------------------------------+
+       +-|-+---+                                |
+         +------------+                         |
+            front-ptr |                         | rear-ptr
+                      V                         V
+     +---+---+    +---+---+    +---+---+    +---+---+
+     | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
+     +-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+       V            V            V            V
+     +---+        +---+        +---+        +---+
+     | a |        | b |        | c |        | d |
+     +---+        +---+        +---+        +---+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.21c,,141mm,Figure 3.21: Result of using delete_queue q on the queue of Figure 3.20.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,,141mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.21:} Result of using @code{delete_queue q} on the queue of @ref{Figure 3.20}.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 3.21}Exercise 3.21:} Ben Bitdiddle decides to test the
+queue implementation described above.  He loads the procedures and tries them
+out, examining the queue with the section's pair printer after each operation:
+
+@example ocaml
+let q1 = make_queue ()
+
+show (Pair (insert_queue q1 (Sym "a")))
+(* "((a) a)" *)
+
+show (Pair (insert_queue q1 (Sym "b")))
+(* "((a b) b)" *)
+
+show (Pair (delete_queue q1))
+(* "((b) b)" *)
+
+show (Pair (delete_queue q1))
+(* "(() b)" *)
+@end example
+
+``It's all wrong!'' he complains.  ``The printer's response shows that the
+last item is inserted into the queue twice.  And when I delete both items, the
+second @code{b} is still there, so the queue isn't empty, even though it's
+supposed to be.''  Eva Lu Ator suggests that Ben has misunderstood what is
+happening.  ``It's not that the items are going into the queue twice,'' she
+explains.  ``It's just that the plain pair printer doesn't know how to make
+sense of the queue representation.  If you want to see the queue printed
+correctly, you'll have to define your own print procedure for queues.'' Explain
+what Eva Lu is talking about.  In particular, show why Ben's examples produce
+the printed results that they do.  Define a procedure @code{print_queue} that
+takes a queue as input and prints the sequence of items in the queue.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.22}Exercise 3.22:} Instead of representing a queue
+as a pair of pointers, we can build a queue as an object with local state.
+The local state will consist of pointers to the beginning and the end of an
+ordinary list.  Thus, the @code{make_queue} constructor will have the form
+
+@example ocaml
+let make_queue () =
+  let front_ptr = ⟨@r{…}⟩ in
+  let rear_ptr = ⟨@r{…}⟩ in
+  (* ⟨@var{definitions of internal procedures}⟩ *)
+  @{ q_empty = ⟨@r{…}⟩
+  ; q_front = ⟨@r{…}⟩
+  ; q_insert = ⟨@r{…}⟩
+  ; q_delete = ⟨@r{…}⟩
+  @}
+@end example
+
+Complete the definition of @code{make_queue} and provide implementations of the
+queue operations using this representation.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.23}Exercise 3.23:} A @newterm{deque} (``double-ended
+                                                                 queue'') is a sequence in which items can be inserted and deleted at either the
+front or the rear.  Operations on deques are the constructor @code{make_deque},
+the predicate @code{empty_deque}, selectors @code{front_deque} and
+@code{rear_deque}, and mutators @code{front_insert_deque},
+@code{rear_insert_deque}, @code{front_delete_deque},
+@code{rear_delete_deque}.  Show how to represent deques using pairs, and give
+implementations of the operations.@footnote{Be careful not to make the
+printer try to walk a structure that contains cycles.  (See @ref{Exercise 3.13}.)}
+All operations should be accomplished in @math{{\Theta(1)}} steps.
+@end quotation
+
+@node	3.3.3, 3.3.4, 3.3.2, 3.3
+@subsection Representing Tables
+
+When we studied various ways of representing sets in @ref{Chapter 2}, we
+mentioned in @ref{2.3.3} the task of maintaining a table of records
+indexed by identifying keys.  In the implementation of data-directed
+programming in @ref{2.4.3}, we made extensive use of two-dimensional
+tables, in which information is stored and retrieved using two keys.  Here we
+see how to build tables as mutable list structures.
+
+We first consider a one-dimensional table, in which each value is stored under
+a single key.  We implement the table as a list of records, each of which is
+implemented as a pair consisting of a key and the associated value. The records
+are glued together to form a list by pairs whose @code{car}s point to
+successive records.  These gluing pairs are called the @newterm{backbone} of
+the table.  In order to have a place that we can change when we add a new
+record to the table, we build the table as a @newterm{headed list}.  A headed
+list has a special backbone pair at the beginning, which holds a dummy
+``record''---in this case the arbitrarily chosen symbol @code{"*table*"}.
+@ref{Figure 3.22} shows the box-and-pointer diagram for the table
+
+@example
+a:  1
+b:  2
+c:  3
+@end example
+
+@float
+@anchor{Figure 3.22}
+@ifinfo
+@strong{Figure 3.22:} A table represented as a headed list.
+
+@example
++---+---+    +---+---+    +---+---+    +---+---+
+| * | *-+--->| * | *-+--->| * | *-+--->| * | / |
++-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+|            |            |            |
+V            V            V            V
++---------+   +---+---+   +---+---+   +---+---+
+| *table* |   | * | * |   | * | * |   | * | * |
++---------+   +-|-+-|-+   +-|-+-|-+   +-|-+-|-+
+|   |       |   |       |   |
+V   V       V   V       V   V
++---+ +---+ +---+ +---+ +---+ +---+
+| a | | 1 | | b | | 2 | | c | | 3 |
++---+ +---+ +---+ +---+ +---+ +---+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.22c,,138mm,Figure 3.22: A table represented as a headed list.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,,138mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.22:} A table represented as a headed list.}
+@end float
+
+@noindent
+To extract information from a table we use the @code{lookup} procedure, which
+takes a key as argument and returns the associated value (or @code{None} if
+there is no value stored under that key).  @code{Lookup} is defined in terms of
+the @code{assoc} operation, which expects a key and a list of records as
+arguments.  Note that @code{assoc} never sees the dummy record.
+@code{Assoc} returns the record that has the given key as its
+@code{car}, or @code{None} if there is no such record.@footnote{Because
+keys are compared structurally, @code{assoc} can recognize keys that are
+symbols or numbers, as the book's @code{equal?}-based test does.}
+@code{Lookup} then matches on the @code{option} returned by
+@code{assoc} and yields the value (the @code{cdr}) of the record when
+there is one.
+
+@example ocaml
+let lookup key table =
+  match assoc key (cdr table) with
+  | Some record -> Some (cdr record)
+  | None -> None
+
+let rec assoc key = function
+  | Pair p when key_equal (car p.car) key -> Some p.car
+  | Pair p -> assoc key p.cdr
+  | _ -> None
+
+and key_equal a b =
+  match a, b with
+  | Int x, Int y -> Int.compare x y = 0
+  | Sym x, Sym y -> String.equal x y
+  | _ -> false
+@end example
+
+@noindent
+To insert a value in a table under a specified key, we first use @code{assoc}
+to see if there is already a record in the table with this key.  If not, we
+form a new record by pairing the key with the value, and insert this at
+the head of the table's list of records, after the dummy record.  If there
+already is a record with this key, we set the @code{cdr} of this record to the
+designated new value.  The header of the table provides us with a fixed
+location to modify to insert the new record.@footnote{Thus, the first
+backbone pair is the object that represents the table ``itself''; that is, a
+pointer to the table is a pointer to this pair.  This same backbone pair always
+starts the table.  If we did not arrange things in this way, @code{insert}
+would have to return a new value for the start of the table when it added a new
+record.}
+
+@example ocaml
+let insert key value table =
+  match assoc key (cdr table) with
+  | Some record -> set_cdr record value
+  | None -> set_cdr table (mcons (mcons key value) (cdr table))
+@end example
+
+@noindent
+To construct a new table, we simply create a headed pair whose @code{car} is
+the symbol @code{"*table*"} and whose @code{cdr} is the empty record chain:
+
+@example ocaml
+let make_table () = mcons (Sym "*table*") mnil
+@end example
+
+@subsubheading Two-dimensional tables
+
+In a two-dimensional table, each value is indexed by two keys.  We can
+construct such a table as a one-dimensional table in which each key identifies
+a subtable.  @ref{Figure 3.23} shows the box-and-pointer diagram for the table
+
+@example
+math:  +: 43    letters:  a: 97
+       -: 45              b: 98
+       *: 42
+@end example
+
+@noindent
+which has two subtables.  (The subtables don't need a special header symbol,
+since the key that identifies the subtable serves this purpose.)
+
+@float
+@anchor{Figure 3.23}
+@ifinfo
+@strong{Figure 3.23:} A two-dimensional table.
+
+@example
+table
+  |
+  V
++---+---+   +---+---+   +---+---+
+| * | *-+-->| * | *-+-->| * | / |
++-|-+---+   +-|-+---+   +-|-+---+
+  V           |           V
++-------+     |         +---+---+   +---+---+   +---+---+
+|*table*|     |         | * | *-+-->| * | *-+-->| * | / |
++-------+     |         +-|-+---+   +-|-+---+   +-|-+---+
+              |           V           V           V
+              |       +-------+     +---+---+   +---+---+
+              |       |letters|     | * | * |   | * | * |
+              |       +-------+     +-|-+-|-+   +-|-+-|-+
+              |                       V   V       V   V
+              |                    +---+ +---+ +---+ +---+
+              |                    | a | | 97| | b | | 98|
+              |                    +---+ +---+ +---+ +---+
+              V
+            +---+---+   +---+---+   +---+---+   +---+---+
+            | * | *-+-->| * | *-+-->| * | *-+-->| * | / |
+            +-|-+---+   +-|-+---+   +-|-+---+   +-|-+---+
+              V           V           V           V
+          +------+      +---+---+   +---+---+   +---+---+
+          | math |      | * | * |   | * | * |   | * | * |
+          +------+      +-|-+-|-+   +-|-+-|-+   +-|-+-|-+
+                          V   V       V   V       V   V
+                       +---+ +---+ +---+ +---+ +---+ +---+
+                       | + | | 43| | - | | 45| | * | | 42|
+                       +---+ +---+ +---+ +---+ +---+ +---+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.23b,,143mm,Figure 3.23: A two-dimensional table.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.23b.std,,143mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.23:} A two-dimensional table.}
+@end float
+
+@noindent
+When we look up an item, we use the first key to identify the correct subtable.
+Then we use the second key to identify the record within the subtable.
+
+@example ocaml
+let lookup2 key1 key2 table =
+  match assoc key1 (cdr table) with
+  | None -> None
+  | Some subtable ->
+    (match assoc key2 (cdr subtable) with
+     | Some record -> Some (cdr record)
+     | None -> None)
+@end example
+
+@noindent
+To insert a new item under a pair of keys, we use @code{assoc} to see if there
+is a subtable stored under the first key.  If not, we build a new subtable
+containing the single record (@code{key2}, @code{value}) and insert it into
+the table under the first key.  If a subtable already exists for the first key,
+we insert the new record into this subtable, using the insertion method for
+one-dimensional tables described above:
+
+@example ocaml
+let insert2 key1 key2 value table =
+  match assoc key1 (cdr table) with
+  | Some subtable ->
+    (match assoc key2 (cdr subtable) with
+     | Some record -> set_cdr record value
+     | None -> set_cdr subtable (mcons (mcons key2 value) (cdr subtable)))
+  | None ->
+    set_cdr table (mcons (mcons key1 (mcons (mcons key2 value) mnil)) (cdr table))
+@end example
+
+@subsubheading Creating local tables
+
+The @code{lookup} and @code{insert} operations defined above take the table as
+an argument.  This enables us to use programs that access more than one table.
+Another way to deal with multiple tables is to have separate @code{lookup} and
+@code{insert} procedures for each table.  We can do this by representing a
+table as an object that maintains an internal table as part of its local
+state.  The ``table object'' is a record of closures over the internal table;
+selecting a field supplies the operation to run.  Here is a generator for
+two-dimensional tables represented in this fashion:
+
+@example ocaml
+type table_object =
+  @{ lookup_proc : mobj -> mobj -> mobj option
+  ; insert_proc : mobj -> mobj -> mobj -> unit
+  @}
+
+let make_table_object () =
+  let local_table = make_table () in
+  @{ lookup_proc = (fun k1 k2 -> lookup2 local_table k1 k2)
+  ; insert_proc = (fun k1 k2 v -> insert2 local_table k1 k2 v)
+  @}
+@end example
+
+@noindent
+Using @code{make_table_object}, we could implement the @code{get} and
+@code{put} operations used in @ref{2.4.3} for data-directed programming, as
+follows:
+
+@example ocaml
+let operation_table = make_table_object ()
+let get = operation_table.lookup_proc
+let put = operation_table.insert_proc
+@end example
+
+@noindent
+@code{Get} takes as arguments two keys, and @code{put} takes as arguments two
+keys and a value.  Both operations access the same local table, which is
+encapsulated within the object created by the call to
+@code{make_table_object}.
+
+@quotation
+@strong{@anchor{Exercise 3.24}Exercise 3.24:} In the table implementations
+above, the keys are tested for equality with the structural @code{key_equal}
+(called by @code{assoc}).  This is not always the appropriate test.  For
+instance, we might have a table with numeric keys in which we don't need an
+exact match to the number we're looking up, but only a number within some
+tolerance of it.  Design a table constructor @code{make_table} that takes as an
+argument a @code{same_key} procedure that will be used to test ``equality'' of
+keys.  @code{Make_table} should return a table object whose @code{lookup} and
+@code{insert} operations use that test for a local table.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.25}Exercise 3.25:} Generalizing one- and
+two-dimensional tables, show how to implement a table in which values are
+stored under an arbitrary number of keys and different values may be stored
+under different numbers of keys.  The @code{lookup} and @code{insert}
+procedures should take as input a list of keys used to access the table.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.26}Exercise 3.26:} To search a table as implemented
+above, one needs to scan through the list of records.  This is basically the
+unordered list representation of @ref{2.3.3}.  For large tables, it may
+be more efficient to structure the table in a different manner.  Describe a
+table implementation where the (key, value) records are organized using a
+binary tree, assuming that keys can be ordered in some way (e.g., numerically
+or alphabetically).  (Compare @ref{Exercise 2.66} of @ref{Chapter 2}.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.27}Exercise 3.27:} @newterm{Memoization} (also
+called @newterm{tabulation}) is a technique that enables a procedure to record,
+in a local table, values that have previously been computed.  This technique
+can make a vast difference in the performance of a program.  A memoized
+procedure maintains a table in which values of previous calls are stored using
+as keys the arguments that produced the values.  When the memoized procedure is
+asked to compute a value, it first checks the table to see if the value is
+already there and, if so, just returns that value.  Otherwise, it computes the
+new value in the ordinary way and stores this in the table.  As an example of
+memoization, recall from @ref{1.2.2} the exponential process for
+computing Fibonacci numbers:
+
+@example ocaml
+let rec fib n =
+  match n with
+  | 0 -> 0
+  | 1 -> 1
+  | n -> fib (n - 1) + fib (n - 2)
+@end example
+
+The memoized version of the same procedure is
+
+@example ocaml
+let rec memo_fib =
+  memoize (fun n ->
+      match n with
+      | 0 -> 0
+      | 1 -> 1
+      | n -> memo_fib (n - 1) + memo_fib (n - 2))
+@end example
+
+@noindent
+where the memoizer is defined as (the table here is the standard-library
+@code{Hashtbl}, keyed on the argument)
+
+@example ocaml
+let memoize f =
+  let table = Hashtbl.create 16 in
+  fun x ->
+    match Hashtbl.find_opt table x with
+    | Some previously_computed_result -> previously_computed_result
+    | None ->
+      let result = f x in
+      Hashtbl.add table x result;
+      result
+@end example
+
+Trace the computation of @code{memo_fib 3}, noting each table lookup and each
+insert.  Explain why @code{memo_fib} computes the @math{n^{\hbox{th}}} Fibonacci number in a
+number of steps proportional to @math{n}.  Would the scheme still work if we had simply
+defined @code{memo_fib} to be @code{memoize fib}?
+@end quotation
+
+@node	3.3.4, 3.3.5, 3.3.3, 3.3
+@subsection A Simulator for Digital Circuits
+
+Designing complex digital systems, such as computers, is an important
+engineering activity.  Digital systems are constructed by interconnecting
+simple elements.  Although the behavior of these individual elements is simple,
+networks of them can have very complex behavior.  Computer simulation of
+proposed circuit designs is an important tool used by digital systems
+engineers.  In this section we design a system for performing digital logic
+simulations.  This system typifies a kind of program called an
+@newterm{event-driven simulation}, in which actions (``events'') trigger
+further events that happen at a later time, which in turn trigger more events,
+and so on.
+
+Our computational model of a circuit will be composed of objects that
+correspond to the elementary components from which the circuit is constructed.
+There are @newterm{wires}, which carry @newterm{digital signals}.  A digital
+signal may at any moment have only one of two possible values, 0 and 1.  There
+are also various types of digital @newterm{function boxes}, which connect wires
+carrying input signals to other output wires.  Such boxes produce output
+signals computed from their input signals.  The output signal is delayed by a
+time that depends on the type of the function box.  For example, an
+@newterm{inverter} is a primitive function box that inverts its input.  If the
+input signal to an inverter changes to 0, then one inverter-delay later the
+inverter will change its output signal to 1.  If the input signal to an
+inverter changes to 1, then one inverter-delay later the inverter will change
+its output signal to 0.  We draw an inverter symbolically as in @ref{Figure 3.24}.
+An @newterm{and-gate}, also shown in figure 3.24, is a primitive
+function box with two inputs and one output.  It drives its output signal to a
+value that is the @newterm{logical and} of the inputs.  That is, if both of its
+input signals become 1, then one and-gate-delay time later the and-gate will
+force its output signal to be 1; otherwise the output will be 0.  An
+@newterm{or-gate} is a similar two-input primitive function box that drives its
+output signal to a value that is the @newterm{logical or} of the inputs.  That
+is, the output will become 1 if at least one of the input signals is 1;
+otherwise the output will become 0.
+
+@float
+@anchor{Figure 3.24}
+@ifinfo
+@quotation
+@strong{Figure 3.24:} Primitive functions in the digital logic simulator.
+
+@example
+               __          ___
+  |\        --|  \       --\  \
+--| >o--      |   )--       )  >--
+  |/        --|__/       --/__/
+
+Inverter    And-gate     Or-gate
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.24a,,110mm,Figure 3.24: Primitive functions in the digital logic simulator.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,,110mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.24:} Primitive functions in the digital logic simulator.}
+@end float
+
+@noindent
+We can connect primitive functions together to construct more complex
+functions.  To accomplish this we wire the outputs of some function boxes to
+the inputs of other function boxes.  For example, the @newterm{half-adder}
+circuit shown in @ref{Figure 3.25} consists of an or-gate, two and-gates, and
+an inverter.  It takes two input signals, A and B, and has two output signals,
+S and C.  S will become 1 whenever precisely one of A and B is 1, and C will
+become 1 whenever A and B are both 1.  We can see from the figure that, because
+of the delays involved, the outputs may be generated at different times.  Many
+of the difficulties in the design of digital circuits arise from this fact.
+
+@float
+@anchor{Figure 3.25}
+@ifinfo
+@quotation
+@strong{Figure 3.25:} A half-adder circuit.
+
+@example
+    +--------------------------------------+
+    |         ____                         |
+A --------*---\   \ D               ___    |
+    |     |    >   >---------------|   \   |
+    |  +--|---/___/                |    )----- S
+    |  |  |              |\  E  +--|___/   |
+    |  |  |           +--| >o---+          |
+    |  |  |    ___    |  |/                |
+    |  |  +---|   \   |                    |
+    |  |      |    )--*----------------------- C
+B -----*------|___/                        |
+    |                                      |
+    +--------------------------------------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.25c,,122mm,Figure 3.25: A half-adder circuit.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,,122mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.25:} A half-adder circuit.}
+@end float
+
+@noindent
+We will now build a program for modeling the digital logic circuits we wish to
+study.  The program will construct computational objects modeling the wires,
+which will ``hold'' the signals.  Function boxes will be modeled by procedures
+that enforce the correct relationships among the signals.
+
+One basic element of our simulation will be a procedure @code{make_wire}, which
+constructs wires.  For example, we can construct six wires as follows:
+
+@example ocaml
+let a = make_wire ()
+let b = make_wire ()
+let c = make_wire ()
+let d = make_wire ()
+let e = make_wire ()
+let s = make_wire ()
+@end example
+
+@noindent
+We attach a function box to a set of wires by calling a procedure that
+constructs that kind of box.  The arguments to the constructor procedure are
+the simulator the box reports to, the record of agenda and gate delays
+described below, followed by the wires to be attached to the box.  For
+example, given that we can construct and-gates, or-gates, and inverters, we can
+wire together the half-adder shown in @ref{Figure 3.25}:
+
+@example ocaml
+or_gate sim a b d
+(* => ok *)
+
+and_gate sim a b c
+(* => ok *)
+
+inverter sim c e
+(* => ok *)
+
+and_gate sim d e s
+(* => ok *)
+@end example
+
+@noindent
+Better yet, we can explicitly name this operation by defining a procedure
+@code{half_adder} that constructs this circuit, given the simulator and the
+four external wires to be attached to the half-adder:
+
+@example ocaml
+let half_adder sim a b s c =
+  let d = make_wire () in
+  let e = make_wire () in
+  or_gate sim a b d;
+  and_gate sim a b c;
+  inverter sim c e;
+  and_gate sim d e s
+@end example
+
+@noindent
+The advantage of making this definition is that we can use @code{half_adder}
+itself as a building block in creating more complex circuits.  @ref{Figure 3.26},
+for example, shows a @newterm{full-adder} composed of two half-adders
+and an or-gate.@footnote{A full-adder is a basic circuit element used in adding
+two binary numbers.  Here A and B are the bits at corresponding positions in
+the two numbers to be added, and @math{\rm C_{in}} is the carry bit from the
+addition one place to the right.  The circuit generates SUM, which is the sum
+bit in the corresponding position, and @math{\rm C_{out}}, which is the carry
+bit to be propagated to the left.} We can construct a full-adder as follows:
+
+@example ocaml
+let full_adder sim a b c_in sum c_out =
+  let c1 = make_wire () in
+  let c2 = make_wire () in
+  let s = make_wire () in
+  half_adder sim b c_in s c1;
+  half_adder sim a s sum c2;
+  or_gate sim c1 c2 c_out
+@end example
+
+@float
+@anchor{Figure 3.26}
+@ifinfo
+@quotation
+@strong{Figure 3.26:} A full-adder circuit.
+
+@example
+    +----------------------------------+
+    |              +-------+           |
+A -----------------+ half- +-------------- SUM
+    |  +-------+   | adder |   ____    |
+B -----+ half- +---+       +---\   \   |
+    |  | adder |   +-------+    >or >----- Cout
+C -----+       +---------------/___/   |
+    |  +-------+                       |
+    +----------------------------------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.26,,129mm,Figure 3.26: A full-adder circuit.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.26.std,,129mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.26:} A full-adder circuit.}
+@end float
+
+@noindent
+Having defined @code{full_adder} as a procedure, we can now use it as a
+building block for creating still more complex circuits.  (For example, see
+@ref{Exercise 3.30}.)
+
+In essence, our simulator provides us with the tools to construct a language of
+circuits.  If we adopt the general perspective on languages with which we
+approached the study of programming in @ref{1.1}, we can say that the
+primitive function boxes form the primitive elements of the language, that
+wiring boxes together provides a means of combination, and that specifying
+wiring patterns as procedures serves as a means of abstraction.
+
+@subsubheading Primitive function boxes
+
+The primitive function boxes implement the ``forces'' by which a change in the
+signal on one wire influences the signals on other wires.  To build function
+boxes, we use the following operations on wires:
+
+@itemize @bullet
+
+@item @code{⟨@var{wire}⟩.get_signal ()}
+
+@noindent
+returns the current value of the signal on the wire.
+
+@item @code{⟨@var{wire}⟩.set_signal ⟨@var{new value}⟩}
+
+@noindent
+changes the value of the signal on the wire to the new value.
+
+@item @code{⟨@var{wire}⟩.add_action ⟨@var{procedure of no arguments}⟩}
+
+@noindent
+asserts that the designated procedure should be run whenever the signal on the
+wire changes value.  Such procedures are the vehicles by which changes in the
+signal value on the wire are communicated to other wires.
+
+@end itemize
+
+@noindent
+In addition, we will make use of a procedure @code{after_delay} that takes a
+simulator, a time delay, and a procedure to be run, and schedules the given
+procedure to run after the given delay.
+
+Using these procedures, we can define the primitive digital logic functions.
+To connect an input to an output through an inverter, we use
+@code{add_action}
+to associate with the input wire a procedure that will be run whenever the
+signal on the input wire changes value.  The procedure computes the
+@code{logical_not} of the input signal, and then, after one
+@code{inverter_delay}, sets the output signal to be this new value:
+
+@example ocaml
+let logical_not = function
+  | 0 -> 1
+  | 1 -> 0
+  | s -> invalid_arg (Printf.sprintf "Invalid signal %d" s)
+
+let inverter sim input output =
+  let invert_input () =
+    let new_value = logical_not (input.get_signal ()) in
+    after_delay sim sim.inverter_delay (fun () -> output.set_signal new_value)
+  in
+  input.add_action invert_input
+@end example
+
+@noindent
+An and-gate is a little more complex.  The action procedure must be run if
+either of the inputs to the gate changes.  It computes the @code{logical_and}
+(using a procedure analogous to @code{logical_not}) of the values of the
+signals on the input wires and sets up a change to the new value to occur on
+the output wire after one @code{and_gate_delay}.
+
+@example ocaml
+let logical_and a b = if a = 1 && b = 1 then 1 else 0
+
+let and_gate sim a1 a2 output =
+  let and_action_procedure () =
+    let new_value = logical_and (a1.get_signal ()) (a2.get_signal ()) in
+    after_delay sim sim.and_gate_delay (fun () -> output.set_signal new_value)
+  in
+  a1.add_action and_action_procedure;
+  a2.add_action and_action_procedure
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.28}Exercise 3.28:} Define an or-gate as a primitive
+function box.  Your @code{or_gate} constructor should be similar to
+@code{and_gate}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.29}Exercise 3.29:} Another way to construct an
+or-gate is as a compound digital logic device, built from and-gates and
+inverters.  Define a procedure @code{or_gate} that accomplishes this.  What is
+the delay time of the or-gate in terms of @code{and_gate_delay} and
+@code{inverter_delay}?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.30}Exercise 3.30:} @ref{Figure 3.27} shows a
+@newterm{ripple-carry adder} formed by stringing together @math{n} full-adders.
+This is the simplest form of parallel adder for adding two @math{n}-bit binary
+numbers.  The inputs @math{A_1}, @math{A_2}, @math{A_3}, @dots{}, @math{A_n} and
+@math{B_1}, @math{B_2}, @math{B_3},
+@dots{}, @math{B_n} are the two binary numbers to be added (each @math{A_k} and
+@math{B_k} is a 0 or a 1).  The circuit generates @math{S_1}, @math{S_2},
+@math{S_3}, @dots{}, @math{S_n},
+the @math{n} bits of the sum, and @math{C}, the carry from the addition.  Write a
+procedure @code{ripple_carry_adder} that generates this circuit.  The procedure
+should take as arguments a simulator and three lists of @math{n} wires
+each---the @math{A_k}, the
+@math{B_k}, and the @math{S_k}---and also another wire @math{C}.  The major drawback of the
+ripple-carry adder is the need to wait for the carry signals to propagate.
+What is the delay needed to obtain the complete output from an @math{n}-bit
+ripple-carry adder, expressed in terms of the delays for and-gates, or-gates,
+and inverters?
+@end quotation
+
+@float
+@anchor{Figure 3.27}
+@ifinfo
+@quotation
+@strong{Figure 3.27:} A ripple-carry adder for @math{n}-bit numbers.
+
+@example
+   :                                              :   :
+   : A_1 B_1   C_1   A_2 B_2   C_2   A_3 B_3   C_3:   : A_n B_n C_n=0
+   :  |   |   +---+   |   |   +---+   |   |   +-----  :  |   |   +-
+   |  |   |   |   |   |   |   |   |   |   |   |   :   :  |   |   |
+   : ++---+---++  |  ++---+---++  |  ++---+---++  :   : ++---+---++
+   : |   FA    |  |  |   FA    |  |  |   FA    |  :   : |   FA    |
+   : +--+---+--+  |  +--+---+--+  |  +--+---+--+  :   : +--+---+--+
+   :    |   |     |     |   |     |     |   |     :   :    |   |
+C ------+   |     +-----+   |     +-----+   |     :  ------+   |
+   :        |       C_1     |       C_2     |     :   :C_(n-1) |
+   :        |               |               |     :   :        |
+           S_1             S_2             S_3                S_n
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.27b,,132mm,Figure 3.27: A ripple-carry adder for n-bit numbers.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,,132mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.27:} A ripple-carry adder for @math{n}-bit numbers.}
+@end float
+
+@subsubheading Representing wires
+
+A wire in our simulation will be a computational object with two local state
+variables: a @code{signal_value} (initially taken to be 0) and a collection of
+@code{action_procedures} to be run when the signal changes value.  We implement
+the wire in message-passing style, as a record of local closures, just as we
+did with the simple bank-account object in @ref{3.1.1}:
+
+@example ocaml
+type wire =
+  @{ get_signal : unit -> int
+  ; set_signal : int -> unit
+  ; add_action : (unit -> unit) -> unit
+  @}
+
+let make_wire () =
+  let signal_value = ref 0 in
+  let action_procedures = ref [] in
+  let set_my_signal new_value =
+    if !signal_value <> new_value
+    then (
+      signal_value := new_value;
+      List.iter (fun p -> p ()) !action_procedures)
+  in
+  let accept_action_procedure proc =
+    action_procedures := proc :: !action_procedures;
+    proc ()
+  in
+  @{ get_signal = (fun () -> !signal_value)
+  ; set_signal = set_my_signal
+  ; add_action = accept_action_procedure
+  @}
+@end example
+
+@noindent
+The local procedure @code{set_my_signal} tests whether the new signal value
+changes the signal on the wire.  If so, it runs each of the action procedures
+with @code{List.iter}, which calls each of the procedures in the list in
+turn.  The local procedure @code{accept_action_procedure} adds the given
+procedure to the list of procedures to be run, and then runs the new procedure
+once.  (See @ref{Exercise 3.31}.)
+
+The wire record exposes the three local operations directly as its
+fields.@footnote{@anchor{Footnote 155} These fields are simply the local
+closures of the wire, exposed under stable names so that we can use ordinary
+function-call syntax to reach the wire's local operations.  It is striking
+that we can interchange the role of ``procedures'' and ``data'' in such a
+simple way.  For example, writing @code{wire.get_signal} names the closure as
+a piece of data stored in the wire, a value we can pass to another procedure;
+calling @code{wire.get_signal ()} runs it.  The truth of the matter is that,
+in a language in which we can deal with procedures as objects, there is no
+fundamental difference between ``procedures'' and ``data,'' and we can choose
+our names to allow us to program in whatever style we choose.}
+
+@noindent
+Wires, which have time-varying signals and may be incrementally attached to
+devices, are typical of mutable objects.  We have modeled them as closures
+with local state variables that are modified by assignment.  When a new wire
+is created, a new set of state variables is allocated (by the @code{let}
+bindings in @code{make_wire}) and a record of fresh closures over them is
+built and returned.
+
+The wires are shared among the various devices that have been connected to
+them.  Thus, a change made by an interaction with one device will affect all
+the other devices attached to the wire.  The wire communicates the change to
+its neighbors by calling the action procedures provided to it when the
+connections were established.
+
+@subsubheading The agenda
+
+The only thing needed to complete the simulator is @code{after_delay}.  The
+idea here is that we maintain a data structure, called an @newterm{agenda},
+that contains a schedule of things to do.  The agenda travels with the current
+time and the three gate delays in one simulator record; the following
+operations are defined for it:
+
+@itemize @bullet
+
+@item
+@code{make_sim} returns a new empty simulator, given the three gate delays.
+
+@item
+@code{empty_agenda ⟨@var{sim}⟩} is true if the specified agenda is
+empty.
+
+@item
+@code{first_agenda_item ⟨@var{sim}⟩} returns the first item on the
+agenda.
+
+@item
+@code{remove_first_agenda_item ⟨@var{sim}⟩} modifies the agenda by
+removing the first item.
+
+@item
+@code{add_to_agenda ⟨@var{sim}⟩ ⟨@var{time}⟩ ⟨@var{action}⟩}
+modifies the agenda by adding the given action procedure to be run at the
+specified time.
+
+@item
+@code{⟨@var{sim}⟩.current_time} returns the current simulation time.
+
+@end itemize
+
+@noindent
+The procedure @code{after_delay} adds new elements to the simulator's agenda:
+
+@example ocaml
+let after_delay sim delay action = add_to_agenda sim (delay + sim.current_time) action
+@end example
+
+@noindent
+The simulation is driven by the procedure @code{propagate}, which operates on
+the simulator's agenda, executing each procedure on the agenda in sequence.
+In general, as the simulation runs, new items will be added to the agenda, and
+@code{propagate} will continue the simulation as long as there are items on
+the agenda:
+
+@example ocaml
+let rec propagate sim =
+  if empty_agenda sim
+  then ()
+  else (
+    let action = first_agenda_item sim in
+    action ();
+    remove_first_agenda_item sim;
+    propagate sim)
+@end example
+
+@subsubheading A sample simulation
+
+The following procedure, which places a ``probe'' on a wire, shows the
+simulator in action.  The probe tells the wire that, whenever its signal
+changes value, it should record the new signal value, together with the
+current time and a name that identifies the wire, on the simulator's
+transcript; the transcript lines below appear in the order they were
+recorded:
+
+@example ocaml
+let probe sim name wire =
+  wire.add_action (fun () ->
+      sim.trace
+      := Printf.sprintf "%s %d  New-value = %d"
+           name sim.current_time (wire.get_signal ())
+           :: !(sim.trace))
+@end example
+
+@noindent
+We begin by creating the simulator, specifying delays for the primitive
+function boxes:
+
+@example ocaml
+let sim = make_sim ~inverter_delay:2 ~and_gate_delay:3 ~or_gate_delay:5 ()
+@end example
+
+@noindent
+Now we define four wires, placing probes on two of them:
+
+@example ocaml
+let input_1 = make_wire ()
+let input_2 = make_wire ()
+let sum = make_wire ()
+let carry = make_wire ()
+
+probe sim "sum" sum
+(* sum 0  New-value = 0 *)
+
+probe sim "carry" carry
+(* carry 0  New-value = 0 *)
+@end example
+
+@noindent
+Next we connect the wires in a half-adder circuit (as in @ref{Figure 3.25}),
+set the signal on @code{input_1} to 1, and run the simulation:
+
+@example ocaml
+half_adder sim input_1 input_2 sum carry
+(* => ok *)
+
+input_1.set_signal 1
+(* => ok *)
+
+propagate sim
+(* sum 8  New-value = 1 *)
+(* => ok *)
+@end example
+
+@noindent
+The @code{sum} signal changes to 1 at time 8.  We are now eight time units from
+the beginning of the simulation.  At this point, we can set the signal on
+@code{input_2} to 1 and allow the values to propagate:
+
+@example ocaml
+input_2.set_signal 1
+(* => ok *)
+
+propagate sim
+(* carry 11  New-value = 1 *)
+(* sum 16  New-value = 0 *)
+(* => ok *)
+@end example
+
+@noindent
+The @code{carry} changes to 1 at time 11 and the @code{sum} changes to 0 at
+time 16.
+
+@quotation
+@strong{@anchor{Exercise 3.31}Exercise 3.31:} The internal procedure
+@code{accept_action_procedure} defined in @code{make_wire} specifies that when
+a new action procedure is added to a wire, the procedure is immediately run.
+Explain why this initialization is necessary.  In particular, trace through the
+half-adder example in the paragraphs above and say how the system's response
+would differ if we had defined @code{accept_action_procedure} as
+
+@example ocaml
+let accept_action_procedure proc =
+  action_procedures := proc :: !action_procedures
+@end example
+@end quotation
+
+@subsubheading Implementing the agenda
+
+Finally, we give details of the agenda data structure, which holds the
+procedures that are scheduled for future execution.@footnote{OCaml 5.4 added
+the @code{Pqueue} module, heap-backed priority queues via
+@code{Pqueue.MakeMin}, with @code{pop_min} and @code{min_elt}; equal
+priorities pop in unspecified order.  A priority queue could serve as an
+alternative to the hand-built agenda below, but the main text keeps the
+hand-built agenda because the book's deterministic time-order story is the
+lesson.}
+
+The agenda is made up of @newterm{time segments}.  Each time segment is a pair
+consisting of a number (the time) and a queue (see @ref{Exercise 3.32}) that
+holds the procedures that are scheduled to be run during that time segment.
+
+@example ocaml
+let make_time_segment time queue = mcons (Int time) (Pair queue)
+let segment_time s = car s
+let segment_queue s = pair_of (cdr s)
+@end example
+
+@noindent
+A scheduled procedure travels as the @code{Proc} variant of the mutable-list
+object, the variant the section set aside for the agenda alone.  We will
+operate on the time-segment queues using the queue operations described
+in @ref{3.3.2}.
+
+The agenda itself is a one-dimensional table of time segments.  It differs from
+the tables described in @ref{3.3.3} in that the segments will be sorted
+in order of increasing time.  In addition, we keep the @newterm{current time}
+(i.e., the time of the last action that was processed) in a mutable field of
+the simulator record.  A newly constructed simulator has no time segments and
+has a current time of 0:@footnote{The book's agenda is a headed list, like the
+tables in @ref{3.3.3}; since this edition keeps the current time in its own
+mutable field, the segment list needs no dummy header at all.}
+
+@example ocaml
+let empty_agenda sim = Nil = sim.segments
+let first_segment sim = car sim.segments
+let rest_segments sim = cdr sim.segments
+@end example
+
+@noindent
+An agenda is empty if it has no time segments, which is exactly what
+@code{empty_agenda} above tests.
+
+To add an action to an agenda, we first check if the agenda is empty.  If so,
+we create a time segment for the action and install this in the agenda.
+Otherwise, we scan the agenda, examining the time of each segment.  If we find
+a segment for our appointed time, we add the action to the associated queue.
+If we reach a time later than the one to which we are appointed, we insert a
+new time segment into the agenda just before it.  If we reach the end of the
+agenda, we must create a new time segment at the end.
+
+@example ocaml
+let add_to_agenda sim time action =
+  let cell_time segments =
+    match segment_time (car segments) with
+    | Int t -> t
+    | _ -> invalid_arg "corrupt agenda segment"
+  in
+  let belongs_before segments =
+    match segments with
+    | Nil -> true
+    | Pair _ -> time < cell_time segments
+    | _ -> invalid_arg "corrupt agenda"
+  in
+  let make_new_time_segment time action =
+    let q = Queue.make_queue () in
+    ignore (Queue.insert_queue q (Proc action));
+    make_time_segment time q
+  in
+  let rec add_to_segments segments =
+    if cell_time segments = time
+    then ignore (Queue.insert_queue (segment_queue (car segments)) (Proc action))
+    else (
+      let rest = cdr segments in
+      if belongs_before rest
+      then set_cdr segments (mcons (make_new_time_segment time action) rest)
+      else add_to_segments rest)
+  in
+  if belongs_before sim.segments
+  then sim.segments <- mcons (make_new_time_segment time action) sim.segments
+  else add_to_segments sim.segments
+@end example
+
+@noindent
+The procedure that removes the first item from the agenda deletes the item at
+the front of the queue in the first time segment.  If this deletion makes the
+time segment empty, we remove it from the list of segments:@footnote{Observe
+that the @code{if} expression in this procedure has no @code{else} branch.
+Such an ``@code{if} without an @code{else}'' is used to decide whether
+to do something, rather than to select between two expressions.  In OCaml an
+@code{if} with no @code{else} has type @code{unit}, the value it yields when
+the predicate is false.}
+
+@example ocaml
+let remove_first_agenda_item sim =
+  let q = segment_queue (first_segment sim) in
+  ignore (Queue.delete_queue q);
+  if Queue.empty_queue q then sim.segments <- cdr sim.segments
+@end example
+
+@noindent
+The first agenda item is found at the head of the queue in the first time
+segment.  Whenever we extract an item, we also update the current
+time:@footnote{In this way, the current time will always be the time of the
+action most recently processed.  Storing this time in its own field of the
+simulator ensures that it will still be available even if the associated time
+segment has been deleted.}
+
+@example ocaml
+let first_agenda_item sim =
+  if empty_agenda sim
+  then invalid_arg "Agenda is empty: FIRST-AGENDA-ITEM"
+  else (
+    let first_seg = first_segment sim in
+    sim.current_time
+    <- (match segment_time first_seg with
+        | Int t -> t
+        | _ -> assert false);
+    match Queue.front_queue (segment_queue first_seg) with
+    | Proc action -> action
+    | _ -> invalid_arg "agenda item is not a procedure")
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.32}Exercise 3.32:} The procedures to be run during
+each time segment of the agenda are kept in a queue.  Thus, the procedures for
+each segment are called in the order in which they were added to the agenda
+(first in, first out).  Explain why this order must be used.  In particular,
+trace the behavior of an and-gate whose inputs change from 0, 1 to 1, 0 in the
+same segment and say how the behavior would differ if we stored a segment's
+procedures in an ordinary list, adding and removing procedures only at the
+front (last in, first out).
+@end quotation
+
+@node	3.3.5, 3.4, 3.2, 3.3
+@subsection Propagation of Constraints
+
+Computer programs are traditionally organized as one-directional computations,
+which perform operations on prespecified arguments to produce desired outputs.
+On the other hand, we often model systems in terms of relations among
+quantities.  For example, a mathematical model of a mechanical structure might
+include the information that the deflection @math{d} of a metal rod is related to
+the force @math{F} on the rod, the length @math{L} of the rod, the cross-sectional
+area @math{A}, and the elastic modulus @math{E} via the equation
+@displaymath
+{dAE} \,=\, {FL.}
+@end displaymath
+@ifinfo
+
+@example
+dAE = FL
+@end example
+
+@end ifinfo
+Such an equation is not one-directional.  Given any four of the quantities, we
+can use it to compute the fifth.  Yet translating the equation into a
+traditional computer language would force us to choose one of the quantities to
+be computed in terms of the other four.  Thus, a procedure for computing the
+area @math{A} could not be used to compute the deflection @math{d}, even though the
+computations of @math{A} and @math{d} arise from the same
+equation.@footnote{Constraint propagation first appeared in the incredibly
+forward-looking @abbr{SKETCHPAD} system of Ivan @ref{Sutherland (1963)}.  A
+beautiful constraint-propagation system based on the Smalltalk language was
+developed by Alan @ref{Borning (1977)} at Xerox Palo Alto Research Center.  Sussman,
+Stallman, and Steele applied constraint propagation to electrical circuit
+analysis (@ref{Sussman and Stallman 1975}; @ref{Sussman and Steele 1980}). TK!Solver
+(@ref{Konopasek and Jayaraman 1984}) is an extensive modeling environment based on
+constraints.}
+
+In this section, we sketch the design of a language that enables us to work in
+terms of relations themselves.  The primitive elements of the language are
+@newterm{primitive constraints}, which state that certain relations hold
+between quantities.  For example, @code{adder a b c} specifies that the
+quantities @math{a}, @math{b}, and @math{c} must be related by the equation
+@math{{a + b = c}}, @code{multiplier x y z} expresses the constraint
+@math{{xy = z}}, and @code{constant 32 y} says that the value of @math{y} must be 32.
+
+Our language provides a means of combining primitive constraints to
+express more complex relations.  We combine constraints by constructing
+@newterm{constraint networks}, in which constraints are joined by
+@newterm{connectors}.  A connector is an object that ``holds'' a value that may
+participate in one or more constraints.  For example, we know that the
+relationship between Fahrenheit and Celsius temperatures is
+@displaymath
+{9C} \,=\, {5(F - 32).}
+@end displaymath
+@ifinfo
+
+@example
+9C = 5(F - 32)
+@end example
+
+@end ifinfo
+Such a constraint can be thought of as a network consisting of primitive adder,
+multiplier, and constant constraints (@ref{Figure 3.28}).  In the figure, we
+see on the left a multiplier box with three terminals, labeled @math{{m1}}, @math{{m2}},
+and @math{p}.  These connect the multiplier to the rest of the network as follows:
+The @math{{m1}} terminal is linked to a connector @math{C}, which will hold the Celsius
+temperature.  The @math{{m2}} terminal is linked to a connector @math{w}, which is also
+linked to a constant box that holds 9.  The @math{p} terminal, which the
+multiplier box constrains to be the product of @math{{m1}} and @math{{m2}}, is linked to
+the @math{p} terminal of another multiplier box, whose @math{{m2}} is connected to a
+constant 5 and whose @math{{m1}} is connected to one of the terms in a sum.
+
+@float
+@anchor{Figure 3.28}
+@ifinfo
+@strong{Figure 3.28:} The relation @math{9C = 5(F - 32)} expressed as a constraint network.
+
+@example
+       +---------+     +---------+   v   +---------+
+C -----+ m1      |  u  |      m1 +-------+ a1      |
+       |    *  p +-----+ p  *    |       |    *  s +---- F
+    +--+ m2      |     |      m2 +--+ +--+ a2      |
+    |  +---------+     +---------+  | |  +---------+
+  w |                              x| |y
+    |    +-----+        +-----+     | |     +-----+
+    +----+  9  |        |  5  +-----+ +-----+  32 |
+         +-----+        +-----+             +-----+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.28,,142mm,Figure 3.28: The relation 9C = 5(F - 32) expressed as a constraint network.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.28.std,,142mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.28:} The relation @math{{9C = 5(F - 32)}} expressed as a constraint network.}
+@end float
+
+@noindent
+Computation by such a network proceeds as follows: When a connector is given a
+value (by the user or by a constraint box to which it is linked), it awakens
+all of its associated constraints (except for the constraint that just awakened
+it) to inform them that it has a value.  Each awakened constraint box then
+polls its connectors to see if there is enough information to determine a value
+for a connector.  If so, the box sets that connector, which then awakens all of
+its associated constraints, and so on.  For instance, in conversion between
+Celsius and Fahrenheit, @math{w}, @math{x}, and @math{y} are immediately set by the
+constant boxes to 9, 5, and 32, respectively.  The connectors awaken the
+multipliers and the adder, which determine that there is not enough information
+to proceed.  If the user (or some other part of the network) sets @math{C} to a
+value (say 25), the leftmost multiplier will be awakened, and it will set @math{u}
+to @math{{25 \cdot 9 = 225}}.  Then @math{u} awakens the second multiplier, which sets @math{v} to
+45, and @math{v} awakens the adder, which sets @math{f} to 77.
+
+@subsubheading Using the constraint system
+
+To use the constraint system to carry out the temperature computation outlined
+above, we first create two connectors, @code{c} and @code{f}, by calling the
+constructor @code{make_connector}, and link @code{c} and @code{f} in an
+appropriate network:
+
+@example ocaml
+let c = make_connector ()
+let f = make_connector ()
+
+celsius_fahrenheit_converter c f
+(* => ok *)
+@end example
+
+@noindent
+The procedure that creates the network is defined as follows:
+
+@example ocaml
+let celsius_fahrenheit_converter c f =
+  let u = make_connector () in
+  let v = make_connector () in
+  let w = make_connector () in
+  let x = make_connector () in
+  let y = make_connector () in
+  ignore (multiplier c w u);
+  ignore (multiplier v x u);
+  ignore (adder v y f);
+  ignore (constant 9 w);
+  ignore (constant 5 x);
+  ignore (constant 32 y)
+@end example
+
+@noindent
+This procedure creates the internal connectors @code{u}, @code{v}, @code{w},
+@code{x}, and @code{y}, and links them as shown in @ref{Figure 3.28} using the
+primitive constraint constructors @code{adder}, @code{multiplier}, and
+@code{constant}.  Just as with the digital-circuit simulator of
+@ref{3.3.4}, expressing these combinations of primitive elements in terms of
+procedures automatically provides our language with a means of abstraction for
+compound objects.
+
+To watch the network in action, we can place probes on the connectors @code{c}
+and @code{f}, using a @code{probe} procedure similar to the one we used to
+monitor wires in @ref{3.3.4}.  Placing a probe on a connector will
+record a transcript line whenever the connector is given a value; the lines
+below appear in the order they were recorded:
+
+@example ocaml
+let log = ref []
+
+probe log "Celsius temp" c
+probe log "Fahrenheit temp" f
+@end example
+
+@noindent
+Next we set the value of @code{c} to 25.  (The informant argument to
+@code{set_value} tells @code{c} that this directive comes from
+@code{User}, a name reserved for directives from outside the network.)
+
+@example ocaml
+c.set_value 25 User
+(* Probe: Celsius temp = 25 *)
+(* Probe: Fahrenheit temp = 77 *)
+(* => ok *)
+@end example
+
+@noindent
+The probe on @code{c} awakens and reports the value.  @code{c} also propagates
+its value through the network as described above.  This sets @code{f} to 77,
+which is reported by the probe on @code{f}.
+
+Now we can try to set @code{f} to a new value, say 212:
+
+@example ocaml
+f.set_value 212 User
+(* => Error: Contradiction (77 212) *)
+@end example
+
+@noindent
+The connector complains that it has sensed a contradiction: Its value is 77,
+and someone is trying to set it to 212.  If we really want to reuse the network
+with new values, we can tell @code{c} to forget its old value:
+
+@example ocaml
+c.forget_value User
+(* Probe: Celsius temp = ? *)
+(* Probe: Fahrenheit temp = ? *)
+(* => ok *)
+@end example
+
+@noindent
+@code{c} finds that the @code{User}, who set its value originally, is now
+retracting that value, so @code{c} agrees to lose its value, as shown by the
+probe, and informs the rest of the network of this fact.  This information
+eventually propagates to @code{f}, which now finds that it has no reason for
+continuing to believe that its own value is 77.  Thus, @code{f} also gives up
+its value, as shown by the probe.
+
+Now that @code{f} has no value, we are free to set it to 212:
+
+@example ocaml
+f.set_value 212 User
+(* Probe: Fahrenheit temp = 212 *)
+(* Probe: Celsius temp = 100 *)
+(* => ok *)
+@end example
+
+@noindent
+This new value, when propagated through the network, forces @code{c} to have a
+value of 100, and this is registered by the probe on @code{c}.  Notice that the
+very same network is being used to compute @code{c} given @code{f} and to
+compute @code{f} given @code{c}.  This nondirectionality of computation is the
+distinguishing feature of constraint-based systems.
+
+@subsubheading Implementing the constraint system
+
+The constraint system is implemented via procedural objects with local state,
+in a manner very similar to the digital-circuit simulator of
+@ref{3.3.4}.  Although the primitive objects of the constraint system are
+somewhat more complex, the overall system is simpler, since there is no concern
+about agendas and logic delays.
+
+The basic operations on connectors are the following:
+
+@itemize @bullet
+
+@item
+@code{⟨@var{connector}⟩.has_value ()} tells whether the connector has a value.
+
+@item
+@code{⟨@var{connector}⟩.get_value ()} returns the connector's current value.
+
+@item
+@code{⟨@var{connector}⟩.set_value ⟨@var{new-value}⟩ ⟨@var{informant}⟩}
+indicates that the informant is requesting the connector to set its value to
+the new value.
+
+@item
+@code{⟨@var{connector}⟩.forget_value ⟨@var{retractor}⟩} tells the connector
+that the retractor is requesting it to forget its value.
+
+@item
+@code{⟨@var{connector}⟩.connect ⟨@var{new-constraint}⟩} tells the connector
+to participate in the new constraint.
+
+@end itemize
+
+@noindent
+@code{Adder} constructs an adder constraint among summand connectors @code{a1}
+and @code{a2} and a @code{sum} connector.  An adder is implemented as a
+procedure with local state (the @code{me} record below):
+
+@example ocaml
+let adder a1 a2 sum =
+  let rec me =
+    @{ me =
+        (function
+          | I_have_a_value -> process_new_value ()
+          | I_lost_my_value -> process_forget_value ())
+    @}
+  and process_new_value () =
+    if a1.has_value () && a2.has_value ()
+    then sum.set_value (a1.get_value () + a2.get_value ()) (Of_constraint me)
+    else if a1.has_value () && sum.has_value ()
+    then a2.set_value (sum.get_value () - a1.get_value ()) (Of_constraint me)
+    else if a2.has_value () && sum.has_value ()
+    then a1.set_value (sum.get_value () - a2.get_value ()) (Of_constraint me)
+  and process_forget_value () =
+    sum.forget_value (Of_constraint me);
+    a1.forget_value (Of_constraint me);
+    a2.forget_value (Of_constraint me);
+    process_new_value ()
+  in
+  a1.connect me;
+  a2.connect me;
+  sum.connect me;
+  me
+@end example
+
+@noindent
+@code{Adder} connects the new adder to the designated connectors and returns it
+as its value.  The @code{me} field of the record represents the adder; applying
+it with a request is this edition's version of the book's message dispatch
+(see @ref{Footnote 155} in @ref{3.3.4}).  The connectors communicate with the
+constraints by means of the procedures
+@code{inform_about_value}, which tells the given constraint that the connector
+has a value, and @code{inform_about_no_value}, which tells the constraint that
+the connector has lost its value:
+
+@example ocaml
+let inform_about_value constraint_ = constraint_.me I_have_a_value
+
+let inform_about_no_value constraint_ = constraint_.me I_lost_my_value
+@end example
+
+@noindent
+The adder's local procedure @code{process_new_value} is called when the adder
+is informed that one of its connectors has a value. The adder first checks to
+see if both @code{a1} and @code{a2} have values. If so, it tells @code{sum} to
+set its value to the sum of the two addends.  The @code{informant} argument to
+@code{set_value} is @code{Of_constraint me}, which tags the adder object
+itself.  If @code{a1}
+and @code{a2} do not both have values, then the adder checks to see if perhaps
+@code{a1} and @code{sum} have values.  If so, it sets @code{a2} to the
+difference of these two.  Finally, if @code{a2} and @code{sum} have values,
+this gives the adder enough information to set @code{a1}.  If the adder is told
+that one of its connectors has lost a value, it requests that all of its
+connectors now lose their values.  (Only those values that were set by this
+adder are actually lost.)  Then it runs @code{process_new_value}.  The reason
+for this last step is that one or more connectors may still have a value (that
+is, a connector may have had a value that was not originally set by the adder),
+and these values may need to be propagated back through the adder.
+
+A multiplier is very similar to an adder. It will set its @code{product} to 0
+if either of the factors is 0, even if the other factor is not known.
+
+@example ocaml
+let multiplier m1 m2 product =
+  let rec me =
+    @{ me =
+        (function
+          | I_have_a_value -> process_new_value ()
+          | I_lost_my_value -> process_forget_value ())
+    @}
+  and process_new_value () =
+    if
+      (m1.has_value () && m1.get_value () = 0)
+      || (m2.has_value () && m2.get_value () = 0)
+    then product.set_value 0 (Of_constraint me)
+    else if m1.has_value () && m2.has_value ()
+    then product.set_value (m1.get_value () * m2.get_value ()) (Of_constraint me)
+    else if product.has_value () && m1.has_value ()
+    then m2.set_value (product.get_value () / m1.get_value ()) (Of_constraint me)
+    else if product.has_value () && m2.has_value ()
+    then m1.set_value (product.get_value () / m2.get_value ()) (Of_constraint me)
+  and process_forget_value () =
+    product.forget_value (Of_constraint me);
+    m1.forget_value (Of_constraint me);
+    m2.forget_value (Of_constraint me);
+    process_new_value ()
+  in
+  m1.connect me;
+  m2.connect me;
+  product.connect me;
+  me
+@end example
+
+@noindent
+A @code{constant} constructor simply sets the value of the designated
+connector.  Any @code{I_have_a_value} or @code{I_lost_my_value} request sent to
+the constant box will produce an error.
+
+@example ocaml
+let constant value connector =
+  let handle = @{ me = (fun _ -> invalid_arg "Unknown request: CONSTANT") @} in
+  connector.connect handle;
+  connector.set_value value (Of_constraint handle);
+  handle
+@end example
+
+@noindent
+Finally, a probe records a transcript line about the setting or unsetting of
+the designated connector:
+
+@example ocaml
+let probe log name connector =
+  connector.connect
+    @{ me =
+        (function
+          | I_have_a_value ->
+            log
+            := Printf.sprintf "Probe: %s = %d" name (connector.get_value ())
+               :: !log
+          | I_lost_my_value ->
+            log := Printf.sprintf "Probe: %s = ?" name :: !log)
+    @}
+@end example
+
+@subsubheading Representing connectors
+
+A connector is represented as a procedural object with local state variables
+@code{value}, the current value of the connector; @code{informant}, the
+informant that set the connector's value (@code{None} until then); and
+@code{constraints}, a list of the
+constraints in which the connector participates.
+
+@example ocaml
+let rec make_connector () =
+  let value = ref 0 in
+  let informant = ref None in
+  let constraints = ref [] in
+  let has_value () =
+    match !informant with
+    | Some _ -> true
+    | None -> false
+  in
+  let set_my_value newval setter =
+    match !informant with
+    | None ->
+      value := newval;
+      informant := Some setter;
+      for_each_except setter inform_about_value !constraints
+    | Some _ when !value <> newval ->
+      invalid_arg (Printf.sprintf "Contradiction (%d %d)" !value newval)
+    | _ -> ()
+  in
+  let forget_my_value retractor =
+    match !informant with
+    | Some who when same_informant who retractor ->
+      informant := None;
+      for_each_except retractor inform_about_no_value !constraints
+    | _ -> ()
+  in
+  let connect new_constraint =
+    if not (List.exists (fun c -> c == new_constraint) !constraints)
+    then constraints := new_constraint :: !constraints;
+    if has_value () then new_constraint.me I_have_a_value
+  in
+  @{ has_value
+  ; get_value = (fun () -> !value)
+  ; set_value = set_my_value
+  ; forget_value = forget_my_value
+  ; connect
+  @}
+@end example
+
+@noindent
+The connector's local procedure @code{set_my_value} is called when there is a
+request to set the connector's value.  If the connector does not currently have
+a value, it will set its value and remember as @code{informant} the constraint
+that requested the value to be set.@footnote{The @code{setter} might not be a
+constraint.  In our temperature example, we used @code{User} as the
+@code{setter}.}  Then the connector will notify all of its participating
+constraints except the constraint that requested the value to be set.  This is
+accomplished using the following iterator, which applies a designated procedure
+to all items in a list except a given one:
+
+@example ocaml
+let for_each_except exception_ inform constraints =
+  match exception_ with
+  | User -> List.iter inform constraints
+  | Of_constraint me ->
+    List.iter (fun item -> if not (item == me) then inform item) constraints
+@end example
+
+@noindent
+When the exception is a constraint, it is compared physically with
+@code{==}, so skipping works by identity, not by structure.  If a connector is
+asked to forget its value, it runs the local procedure
+@code{forget_my_value}, which first checks to make sure that the request is
+coming from the same object that set the value originally (the
+@code{same_informant} test is again a physical comparison).  If so, the
+connector informs its associated constraints about the loss of the value.
+
+The local procedure @code{connect} adds the designated new constraint to the
+list of constraints if it is not already in that list, again recognizing
+membership physically.  Then, if the connector has a value, it informs the new
+constraint of this fact.
+
+The connector record exposes the local procedures as its five fields, so the
+book's syntax interface needs no extra layer:
+@code{c.has_value ()}, @code{c.get_value ()},
+@code{c.set_value new_value informant}, @code{c.forget_value retractor}, and
+@code{c.connect new_constraint} are calls on those closures.
+
+@quotation
+@strong{In this language: mutable data.}
+OCaml makes mutation visible in the types.  A record field must be declared
+@code{mutable} before anything can assign into it, a @code{ref} cell is read
+and written only through @code{!} and @code{:=}, and the section's queues,
+tables, wires, and connectors are records of closures over such cells, so an
+object's state is exactly the cells its closures capture.  Aliasing, two
+names for one record, shows up as physical equality with @code{==}.
+
+@example ocaml
+type cell = @{ mutable v : int @}
+
+let bump c = c.v <- c.v + 1
+@end example
+
+The book's mechanism still wins when identity must travel with the data: the
+typed records make every mutable field visible at the call sites, but which
+names share which cells is a property of the pointers, and only @code{==}
+settles it.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.33}Exercise 3.33:} Using primitive multiplier,
+adder, and constant constraints, define a procedure @code{averager} that takes
+three connectors @code{a}, @code{b}, and @code{c} as inputs and establishes the
+constraint that the value of @code{c} is the average of the values of @code{a}
+and @code{b}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.34}Exercise 3.34:} Louis Reasoner wants to build a
+squarer, a constraint device with two terminals such that the value of
+connector @code{b} on the second terminal will always be the square of the
+value @code{a} on the first terminal.  He proposes the following simple device
+made from a multiplier:
+
+@example ocaml
+let squarer a b = ignore (multiplier a a b)
+@end example
+
+There is a serious flaw in this idea.  Explain.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.35}Exercise 3.35:} Ben Bitdiddle tells Louis that
+one way to avoid the trouble in @ref{Exercise 3.34} is to define a squarer as a
+new primitive constraint.  Fill in the missing portions in Ben's outline for a
+procedure to implement such a constraint:
+
+@example ocaml
+let squarer a b =
+  let rec me =
+    @{ me =
+        (function
+          | I_have_a_value -> process_new_value ()
+          | I_lost_my_value -> process_forget_value ())
+    @}
+  and process_new_value () =
+    if b.has_value ()
+    then
+      if b.get_value () < 0
+      then invalid_arg "square less than 0: SQUARER"
+      else ⟨@var{alternative1}⟩
+    else ⟨@var{alternative2}⟩
+  and process_forget_value () = ⟨@var{body1}⟩ in
+  ⟨@var{rest of definition}⟩;
+  me
+@end example
+@end quotation
+
+@quotation
+@emph{SICP exercise 3.36 is about Scheme itself, so this edition replaces it;
+the exercise below keeps the number and teaches the same section material.}
+@strong{@anchor{Exercise 3.36}Exercise 3.36:}
+Suppose we evaluate
+
+@example ocaml
+let a = make_connector ()
+let b = make_connector ()
+
+a.set_value 10 User
+@end example
+
+and that a logging constraint was connected to @code{a} before the last line,
+one that appends a line to a transcript each time its @code{me} field
+dispatches and each time one of its internal procedures runs.  At some moment
+during the evaluation of @code{a.set_value 10 User}, the connector's local
+@code{set_my_value} closure evaluates
+
+@example ocaml
+for_each_except setter inform_about_value !constraints
+@end example
+
+Trace the calls, in order: name each dispatch of the logging constraint's
+@code{me}, the internal procedure each dispatch runs, and the closures over
+@code{a}'s local state that hand the requests along.  Do the same for the
+matching @code{a.forget_value User}.  Explain why the constraint is consulted
+even though the setter, @code{User}, never is.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.37}Exercise 3.37:} The
+@code{celsius_fahrenheit_converter} procedure is cumbersome when compared with
+a more expression-oriented style of definition, such as
+
+@example ocaml
+let celsius_fahrenheit_converter x =
+  c_add (c_div (c_mul (cv 9) x) (cv 5)) (cv 32)
+
+let c = make_connector ()
+let f = celsius_fahrenheit_converter c
+@end example
+
+Here @code{c_add}, @code{c_mul}, etc. are the ``constraint'' versions of the
+arithmetic operations.  This edition's integer connectors reassociate the
+book's @code{(c_mul (c_div (cv 9) (cv 5)) x)} into
+@code{c_mul (cv 9) x} divided by @code{cv 5}, because the factor 9/5 has no
+integer value; the network still computes in both directions.  For example,
+@code{c_add} takes two connectors as
+arguments and returns a connector that is related to these by an adder
+constraint:
+
+@example ocaml
+let c_add x y =
+  let z = make_connector () in
+  ignore (adder x y z);
+  z
+@end example
+
+Define analogous procedures @code{c_sub}, @code{c_mul}, @code{c_div}, and
+@code{cv}
+(constant value) that enable us to define compound constraints as in the
+converter example above.@footnote{The expression-oriented format is convenient
+because it avoids the need to name the intermediate expressions in a
+computation.  Our original formulation of the constraint language is cumbersome
+in the same way that many languages are cumbersome when dealing with operations
+on compound data.  For example, if we wanted to compute the product
+@math{{(a + b) \cdot (c + d)}}, where the variables represent vectors, we could work
+in ``imperative style,'' using procedures that set the values of designated
+vector arguments but do not themselves return vectors as values:
+
+@example ocaml
+v_sum a b temp1;
+v_sum c d temp2;
+v_prod temp1 temp2 answer
+@end example
+
+Alternatively, we could deal with expressions, using procedures that return
+vectors as values, and thus avoid explicitly mentioning @code{temp1} and
+@code{temp2}:
+
+@example ocaml
+let answer = v_prod (v_sum a b) (v_sum c d)
+@end example
+
+Since OCaml functions can return compound values, we can
+transform our imperative-style constraint language into an expression-oriented
+style as shown in this exercise.  In languages that are impoverished in
+handling compound objects, such as Algol, Basic, and Pascal (unless one
+explicitly uses Pascal pointer variables), one is usually stuck with the
+imperative style when manipulating compound objects.  Given the advantage of
+the expression-oriented format, one might ask if there is any reason to have
+implemented the system in imperative style, as we did in this section.  One
+reason is that the non-expression-oriented constraint language provides a
+handle on constraint objects (e.g., the value of the @code{adder} procedure) as
+well as on connector objects.  This is useful if we wish to extend the system
+with new operations that communicate with constraints directly rather than only
+indirectly via operations on connectors.  Although it is easy to implement the
+expression-oriented style in terms of the imperative implementation, it is very
+difficult to do the converse.}
+@end quotation

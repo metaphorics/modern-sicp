@@ -1,0 +1,54 @@
+(library
+ (name sicp_ch3)
+ (libraries sicp_common sicp_ch1)
+ (modules sec_3_1 sec_3_2 sec_3_3 sec_3_4 sec_3_5))
+
+(executable
+ (name run_sec_3_5)
+ (modules run_sec_3_5)
+ (libraries sicp_ch3 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_3_5.exe)))
+
+(executable
+ (name run_sec_3_4)
+ (modules run_sec_3_4)
+ (libraries sicp_ch3 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_3_4.exe)))
+
+(executable
+ (name run_sec_3_1)
+ (modules run_sec_3_1)
+ (libraries sicp_ch3 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_3_1.exe)))
+
+(executable
+ (name run_sec_3_2)
+ (modules run_sec_3_2)
+ (libraries sicp_ch3 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_3_2.exe)))
+
+(executable
+ (name run_sec_3_3)
+ (modules run_sec_3_3)
+ (libraries sicp_ch3 sicp_ch1))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_3_3.exe)))

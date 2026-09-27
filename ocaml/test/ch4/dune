@@ -1,0 +1,49 @@
+(executable
+ (name test_sec_4_1)
+ (modules test_sec_4_1)
+ (libraries sicp_ch4_solutions sicp_ch4 sicp_common alcotest))
+
+(executable
+ (name prop_sec_4_1)
+ (modules prop_sec_4_1)
+ (libraries
+  sicp_ch4_solutions
+  sicp_ch4
+  sicp_common
+  qcheck-core
+  qcheck-core.runner))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_4_1.exe)))
+
+(executable
+ (name test_sec_4_2)
+ (modules test_sec_4_2)
+ (libraries sicp_ch4_solutions sicp_ch4 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_4_2.exe)))
+
+(executable
+ (name test_sec_4_3)
+ (modules test_sec_4_3)
+ (libraries sicp_ch4_solutions sicp_ch4 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_4_3.exe)))
+
+(executable
+ (name test_sec_4_4)
+ (modules test_sec_4_4)
+ (libraries sicp_ch4_solutions sicp_ch4 sicp_common alcotest))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./test_sec_4_4.exe)))

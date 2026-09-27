@@ -1,0 +1,89 @@
+(library
+ (name sicp_ch0)
+ (modules
+  replay
+  sec_0_1
+  sec_0_2
+  sec_0_3
+  sec_0_4
+  sec_0_5
+  sec_0_6
+  sec_0_7
+  sec_0_8
+  sec_0_9
+  sec_0_10))
+
+(executables
+ (names
+  run_sec_0_1
+  run_sec_0_2
+  run_sec_0_3
+  run_sec_0_4
+  run_sec_0_5
+  run_sec_0_6
+  run_sec_0_7
+  run_sec_0_8
+  run_sec_0_9
+  run_sec_0_10)
+ (modules
+  run_sec_0_1
+  run_sec_0_2
+  run_sec_0_3
+  run_sec_0_4
+  run_sec_0_5
+  run_sec_0_6
+  run_sec_0_7
+  run_sec_0_8
+  run_sec_0_9
+  run_sec_0_10)
+ (libraries sicp_ch0))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_1.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_2.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_3.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_4.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_5.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_6.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_7.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_8.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_9.exe)))
+
+(rule
+ (alias runtest)
+ (action
+  (run ./run_sec_0_10.exe)))

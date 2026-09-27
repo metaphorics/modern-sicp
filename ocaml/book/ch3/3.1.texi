@@ -1,0 +1,1022 @@
+@node	3.1, 3.2, Chapter 3, Chapter 3
+@section Assignment and Local State
+
+We ordinarily view the world as populated by independent objects, each of which
+has a state that changes over time.  An object is said to ``have state'' if its
+behavior is influenced by its history.  A bank account, for example, has state
+in that the answer to the question ``Can I withdraw $100?''  depends upon the
+history of deposit and withdrawal transactions.  We can characterize an
+object's state by one or more @newterm{state variables}, which among them
+maintain enough information about history to determine the object's current
+behavior.  In a simple banking system, we could characterize the state of an
+account by a current balance rather than by remembering the entire history of
+account transactions.
+
+In a system composed of many objects, the objects are rarely completely
+independent.  Each may influence the states of others through interactions,
+which serve to couple the state variables of one object to those of other
+objects.  Indeed, the view that a system is composed of separate objects is
+most useful when the state variables of the system can be grouped into closely
+coupled subsystems that are only loosely coupled to other subsystems.
+
+This view of a system can be a powerful framework for organizing computational
+models of the system.  For such a model to be modular, it should be decomposed
+into computational objects that model the actual objects in the system.  Each
+computational object must have its own @newterm{local state variables}
+describing the actual object's state.  Since the states of objects in the
+system being modeled change over time, the state variables of the corresponding
+computational objects must also change.  If we choose to model the flow of time
+in the system by the elapsed time in the computer, then we must have a way to
+construct computational objects whose behaviors change as our programs run.  In
+particular, if we wish to model state variables by ordinary symbolic names in
+the programming language, then the language must provide an @newterm{assignment operator} 
+to enable us to change the value associated with a name.
+
+@menu
+* 3.1.1::            Local State Variables
+* 3.1.2::            The Benefits of Introducing Assignment
+* 3.1.3::            The Costs of Introducing Assignment
+@end menu
+
+@node	3.1.1, 3.1.2, 3.1, 3.1
+@subsection Local State Variables
+
+To illustrate what we mean by having a computational object with time-varying
+state, let us model the situation of withdrawing money from a bank account.  We
+will do this using a procedure @code{withdraw}, which takes as argument an
+@code{amount} to be withdrawn.  If there is enough money in the account to
+accommodate the withdrawal, then @code{withdraw} should return the balance
+remaining after the withdrawal.  Otherwise, @code{withdraw} should return
+@code{Insufficient_funds}. For example, if we begin with $100 in the
+account, we should obtain the following sequence of responses using
+@code{withdraw}:
+
+@example ocaml
+withdraw 25;;
+(* => Balance 75 *)
+
+withdraw 25;;
+(* => Balance 50 *)
+
+withdraw 60;;
+(* => Insufficient_funds *)
+
+withdraw 15;;
+(* => Balance 35 *)
+@end example
+
+@noindent
+Observe that the expression @code{withdraw 25}, evaluated twice, yields
+different values.  This is a new kind of behavior for a procedure.  Until now,
+all our procedures could be viewed as specifications for computing mathematical
+functions.  A call to a procedure computed the value of the function applied to
+the given arguments, and two calls to the same procedure with the same
+arguments always produced the same result.@footnote{Actually, this is not quite
+true.  One exception was the random-number generator in @ref{1.2.6}.
+Another exception involved the operation/type tables we introduced in 
+@ref{2.4.3}, where the values of two calls to @code{get} with the same
+arguments depended on intervening calls to @code{put}.  On the other hand,
+until we introduce mutable state, we have no way to create such procedures
+ourselves.}
+
+To implement @code{withdraw}, we use an @code{int ref} named @code{balance} to
+hold the balance of money in the account, and define @code{withdraw} as a
+procedure that accesses @code{balance}.  The @code{withdraw} procedure checks
+to see if @code{balance} is at least as large as the requested @code{amount}.
+If so, @code{withdraw} decrements @code{balance} by @code{amount} and returns
+the new contents of @code{balance}, wrapped in @code{Balance}.  Otherwise,
+@code{withdraw} returns @code{Insufficient_funds}.  Here are the definitions
+of the result type, @code{balance}, and @code{withdraw}:
+
+@example ocaml
+type withdraw_result =
+  | Balance of int
+  | Insufficient_funds
+
+let balance = ref 100
+
+let withdraw amount =
+  if !balance >= amount
+  then (
+    balance := !balance - amount;
+    Balance !balance)
+  else Insufficient_funds
+;;
+@end example
+
+@noindent
+Decrementing @code{balance} is accomplished by the expression
+
+@example ocaml
+balance := !balance - amount
+@end example
+
+@noindent
+This uses OCaml's @code{:=} operator, whose syntax is
+
+@example ocaml
+name := new_value
+@end example
+
+@noindent
+Here @code{name} is bound to a ref cell and @code{new_value} is any expression
+of the cell's element type.  @code{:=} changes the cell @code{name} refers to
+so that its contents becomes the result obtained by evaluating
+@code{new_value}; reading a cell's current contents back out uses the
+@code{!} prefix operator, as @code{!balance} does above.  In the case at hand,
+we are changing @code{balance}'s cell so that its new contents will be the
+result of subtracting @code{amount} from the cell's previous
+contents.@footnote{The value of @code{name := new_value} is always @code{()},
+the unit value, so @code{:=} is used only for its effect, never for a value.
+
+Scheme marks a mutating operation by a naming convention: a procedure that
+changes the value of a variable (or that changes a data structure, as we will
+see in @ref{3.3}) is given a name that ends with an exclamation point, matching
+the convention of designating predicates by names that end with a question
+mark.  OCaml carries no such naming convention; its type system marks the same
+fact structurally instead, since only a @code{ref} cell's contents can be
+reassigned at all, and every @code{:=} expression has type @code{unit}.}
+
+@code{Withdraw} also uses OCaml's @code{;} sequencing to cause two expressions
+to be evaluated in the case where the @code{if} test is true: first
+decrementing @code{balance} and then returning its new contents.  In general,
+evaluating the sequence
+
+@example ocaml
+exp₁; exp₂; …; expₖ
+@end example
+
+@noindent
+causes the expressions @math{{⟨exp_1⟩}} through @math{{⟨exp_k⟩}} to be evaluated
+in order, each but the last for its side effect alone, and the value of the
+final expression @math{{⟨exp_k⟩}} to be returned as the value of the entire
+sequence.@footnote{We have already used this kind of sequencing implicitly in
+our programs, because an OCaml procedure body, and the right-hand side of an
+@code{if} or @code{match} branch, can already be a sequence of expressions
+joined by @code{;}.}
+
+Although @code{withdraw} works as desired, the ref cell @code{balance}
+presents a problem.  As specified above, @code{balance} is a name defined at
+the top level of the module and is freely accessible to be examined or, worse,
+mutated by any other code in the module.  It would be much better if we could
+somehow make @code{balance} internal to @code{withdraw}, so that
+@code{withdraw} would be the only procedure that could reach @code{balance}
+directly and any other procedure could change the account's balance only
+indirectly (through calls to @code{withdraw}).  This would more accurately
+model the notion that @code{balance} is a local state variable used by
+@code{withdraw} to keep track of the state of the account.
+
+We can make @code{balance} internal to @code{withdraw} by rewriting the
+definition as follows:
+
+@example ocaml
+let new_withdraw =
+  let balance = ref 100 in
+  fun amount ->
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+;;
+@end example
+
+@noindent
+What we have done here is use a @code{let @dots{} in} binding to establish a
+local scope with a ref cell @code{balance}, bound to the initial value 100.
+Within this local scope, a @code{fun} expression builds a procedure that takes
+@code{amount} as an argument and behaves like our previous @code{withdraw}
+procedure.  This procedure---returned as the result of evaluating the
+@code{let @dots{} in} expression---is @code{new_withdraw}, which behaves in
+precisely the same way as @code{withdraw} but whose cell @code{balance} is not
+reachable by any other procedure.@footnote{In programming-language jargon, the
+ref cell @code{balance} is said to be @newterm{encapsulated} within the
+@code{new_withdraw} procedure.  Encapsulation reflects the general
+system-design principle known as the @newterm{hiding principle}: One can make a
+system more modular and robust by protecting parts of the system from each
+other; that is, by providing information access only to those parts of the
+system that have a ``need to know.''}
+
+Combining @code{:=} with locally bound ref cells is the general programming
+technique we will use for constructing computational objects with local state.
+Unfortunately, using this technique raises a serious problem: When we first
+introduced procedures, we also introduced the substitution model of evaluation
+(@ref{1.1.5}) to provide an interpretation of what procedure
+application means.  We said that applying a procedure should be interpreted as
+evaluating the body of the procedure with the formal parameters replaced by
+their values.  The trouble is that, as soon as we introduce a mutable
+@code{ref} into our language, substitution is no longer an adequate model of
+procedure application.  (We will see why this is so in
+@ref{3.1.3}.)  As a consequence, we technically have at this point no
+way to understand why the @code{new_withdraw} procedure behaves as claimed
+above.  In order to really understand a procedure such as @code{new_withdraw},
+we will need to develop a new model of procedure application.  In
+@ref{3.2} we will introduce such a model, together with an explanation
+of @code{:=} and local ref cells.  First, however, we examine some variations
+on the theme established by @code{new_withdraw}.
+
+The following procedure, @code{make_withdraw}, creates ``withdrawal
+processors.''  The formal parameter @code{balance} in @code{make_withdraw}
+specifies the initial amount of money in the account.@footnote{In contrast with
+@code{new_withdraw} above, we do not need an extra @code{let @dots{} in} just to make
+@code{balance} a local ref cell: shadowing the formal parameter with a fresh
+cell of the same name does the job in one step, since the parameter itself is
+already local.  This will be clearer after the discussion of the environment
+model of evaluation in @ref{3.2}.  (See also @ref{Exercise 3.10}.)}
+
+@example ocaml
+let make_withdraw balance =
+  let balance = ref balance in
+  fun amount ->
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+;;
+@end example
+
+@noindent
+@code{Make_withdraw} can be used as follows to create two objects @code{w1} and
+@code{w2}:
+
+@example ocaml
+let w1 = make_withdraw 100;;
+let w2 = make_withdraw 100;;
+
+w1 50;;
+(* => Balance 50 *)
+
+w2 70;;
+(* => Balance 30 *)
+
+w2 40;;
+(* => Insufficient_funds *)
+
+w1 40;;
+(* => Balance 10 *)
+@end example
+
+@noindent
+Observe that @code{w1} and @code{w2} are completely independent objects, each
+with its own local ref cell @code{balance}.  Withdrawals from one do not
+affect the other.
+
+We can also create objects that handle deposits as well as withdrawals, and
+thus we can represent simple bank accounts.  Here is a procedure that returns a
+bank-account object with a specified initial balance, as a record of the
+closures that operate on it:
+
+@example ocaml
+type account =
+  @{ withdraw : int -> withdraw_result
+  ; deposit : int -> int
+  @}
+
+let make_account balance =
+  let balance = ref balance in
+  let withdraw amount =
+    if !balance >= amount
+    then (
+      balance := !balance - amount;
+      Balance !balance)
+    else Insufficient_funds
+  in
+  let deposit amount =
+    balance := !balance + amount;
+    !balance
+  in
+  @{ withdraw; deposit @}
+;;
+@end example
+
+@noindent
+Each call to @code{make_account} sets up a local scope with a ref cell
+@code{balance}.  Within this scope, @code{make_account} defines closures
+@code{deposit} and @code{withdraw} that access @code{balance}, and packages the
+two together in an @code{account} record instead of Scheme's
+message-dispatching @code{dispatch} procedure.  The record itself, rather than
+a procedure that answers a quoted message, is returned as the value that
+represents the bank-account object; @code{acc.withdraw} and @code{acc.deposit}
+replace Scheme's @code{(acc 'withdraw)} and @code{(acc 'deposit)}, projecting a
+field instead of dispatching on a symbol.  Both fields still close over the
+very same @code{balance} cell, so the @newterm{message-passing} lesson of
+@ref{2.4.3} survives in a new shape: two field projections reaching one
+bundle of closures over one mutable cell.
+
+@code{Make_account} can be used as follows:
+
+@example ocaml
+let acc = make_account 100;;
+
+acc.withdraw 50;;
+(* => Balance 50 *)
+
+acc.withdraw 60;;
+(* => Insufficient_funds *)
+
+acc.deposit 40;;
+(* => 90 *)
+
+acc.withdraw 60;;
+(* => Balance 30 *)
+@end example
+
+@noindent
+Each call to @code{acc.withdraw} or @code{acc.deposit} runs the closure
+recorded under that field, applying it to the specified @code{amount}.  As was
+the case with @code{make_withdraw}, another call to @code{make_account}
+
+@example ocaml
+let acc2 = make_account 100;;
+@end example
+
+@noindent
+will produce a completely separate account object, which maintains its own
+local @code{balance}.
+
+@quotation
+@strong{@anchor{Exercise 3.1}Exercise 3.1:} An @newterm{accumulator} is a
+procedure that is called repeatedly with a single numeric argument and
+accumulates its arguments into a sum.  Each time it is called, it returns the
+currently accumulated sum.  Write a procedure @code{make_accumulator} that
+generates accumulators, each maintaining an independent sum.  The input to
+@code{make_accumulator} should specify the initial value of the sum; for
+example
+
+@example ocaml
+let a = make_accumulator 5;;
+
+a 10;;
+(* => 15 *)
+
+a 10;;
+(* => 25 *)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.2}Exercise 3.2:} In software-testing applications,
+it is useful to be able to count the number of times a given procedure is
+called during the course of a computation.  Write a procedure
+@code{make_monitored} that takes as input a procedure, @code{f}, that itself
+takes one input.  The result returned by @code{make_monitored} is a third
+procedure, say @code{mf}, that keeps track of the number of times it has been
+called by maintaining an internal counter.  If the input to @code{mf} is the
+special value @code{How_many_calls}, then @code{mf} returns the value of the
+counter.  If the input is the special value @code{Reset_count}, then @code{mf}
+resets the counter to zero.  For any other input, wrapped in @code{Input},
+@code{mf} returns the result of calling @code{f} on that input and increments
+the counter.  For instance, we could make a monitored version of the
+@code{sqrt} procedure:
+
+@example ocaml
+let s = make_monitored sqrt;;
+
+s (Input 100.);;
+(* => Value 10. *)
+
+s How_many_calls;;
+(* => Count 1 *)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.3}Exercise 3.3:} Modify the @code{make_account}
+procedure so that it creates password-protected accounts.  That is,
+@code{make_account} should take a string as an additional argument, as in
+
+@example ocaml
+let acc = make_account 100 "secret-password";;
+@end example
+
+The resulting account object should process a request only if it is accompanied
+by the password with which the account was created, and should otherwise return
+a complaint:
+
+@example ocaml
+acc "secret-password" (Withdraw 40);;
+(* => Balance_response (Balance 60) *)
+
+acc "some-other-password" (Deposit 50);;
+(* => Incorrect_password *)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.4}Exercise 3.4:} Modify the @code{make_account}
+procedure of @ref{Exercise 3.3} by adding another local state variable so that,
+if an account is accessed more than seven consecutive times with an incorrect
+password, it answers @code{Police_called}.
+@end quotation
+
+@node	3.1.2, 3.1.3, 3.1.1, 3.1
+@subsection The Benefits of Introducing Assignment
+
+As we shall see, introducing assignment into our programming language leads us
+into a thicket of difficult conceptual issues.  Nevertheless, viewing systems
+as collections of objects with local state is a powerful technique for
+maintaining a modular design.  As a simple example, consider the design of a
+procedure @code{rand} that, whenever it is called, returns an integer chosen at
+random.
+
+It is not at all clear what is meant by ``chosen at random.''  What we
+presumably want is for successive calls to @code{rand} to produce a sequence of
+numbers that has statistical properties of uniform distribution.  We will not
+discuss methods for generating suitable sequences here.  Rather, let us assume
+that we have a procedure @code{rand_update} that has the property that if we
+start with a given number @math{x_1} and form
+
+@example ocaml
+x₂ = rand_update x₁
+x₃ = rand_update x₂
+@end example
+
+@noindent
+then the sequence of values @math{x_1}, @math{x_2}, @math{x_3}, @dots{} will have the
+desired statistical properties.@footnote{One common way to implement
+@code{rand_update} is to use the rule that @math{x} is updated to @math{{ax + b}} 
+modulo @math{m}, where @math{a}, @math{b}, and @math{m} are appropriately chosen
+integers.  Chapter 3 of @ref{Knuth 1981} includes an extensive discussion of
+techniques for generating sequences of random numbers and establishing their
+statistical properties.  This edition's actual @code{rand}, defined below,
+draws from a @code{Sicp_common.Random.t} generator: a mutable cell advanced by
+@code{Sicp_common.Random.next_u64}, so two calls to that function on the very
+same generator do not, in general, produce the same word twice.  What stays
+deterministic is the generator's whole trajectory from a given seed, not any
+single step viewed as a pure function of its input.  The relation between
+``real randomness'' and so-called @newterm{pseudo-random} sequences, which are
+produced by well-determined computations and yet have suitable statistical
+properties, is a complex question involving difficult issues in mathematics and
+philosophy.  Kolmogorov, Solomonoff, and Chaitin have made great progress in
+clarifying these issues; a discussion can be found in @ref{Chaitin 1975}.}
+
+We can implement @code{rand} as a procedure with local state: a
+@code{Sicp_common.Random.t} generator, seeded from a fixed value
+@code{random_init}, captured inside the closure.  A separately captured
+@code{ref} is not needed here, since the generator record is already
+mutable.  Each call to @code{rand} draws the next value from the generator and
+returns it, the generator's own mutable field recording the new state.
+
+@example ocaml
+let random_init = 42L
+let bound = 1_000_000_000
+
+let rand =
+  let generator =
+    match Sicp_common.Random.create random_init with
+    | Ok generator -> generator
+    | Error Sicp_common.Error.Zero_seed -> failwith "the fixed seed is nonzero"
+  in
+  fun () -> Sicp_common.Random.random generator bound
+;;
+@end example
+
+@noindent
+Of course, we could generate the same sequence of random numbers without
+hiding any state, by threading a @code{Sicp_common.Random.t} generator through
+our program explicitly.  However, this would mean that any part of our program
+that used random numbers would have to explicitly carry the current generator
+and pass it along to every draw.  To realize what an annoyance this would be,
+consider using random numbers to implement a technique called @newterm{Monte Carlo simulation}.
+
+The Monte Carlo method consists of choosing sample experiments at random from a
+large set and then making deductions on the basis of the probabilities
+estimated from tabulating the results of those experiments.  For example, we
+can approximate @math{\pi} using the fact that @math{{6/\pi^2}} is the probability
+that two integers chosen at random will have no factors in common; that is,
+that their greatest common divisor will be 1.@footnote{This theorem is due to
+E. Ces@`aro.  See section 4.5.2 of @ref{Knuth 1981} for a discussion and a proof.} To
+obtain the approximation to @math{\pi}, we perform a large number of experiments.
+In each experiment we choose two integers at random and perform a test to see
+if their @abbr{GCD} is 1.  The fraction of times that the test is passed
+gives us our estimate of @math{{6/\pi^2}}, and from this we obtain our
+approximation to @math{\pi}.
+
+The heart of our program is a procedure @code{monte_carlo}, which takes as
+arguments the number of times to try an experiment, together with the
+experiment, represented as a no-argument procedure that will return either true
+or false each time it is run.  @code{Monte_carlo} runs the experiment for the
+designated number of trials and returns the fraction of the trials in which the
+experiment was found to be true.  Scheme's body can name @code{cesaro-test}
+inside @code{estimate-pi} before @code{cesaro-test} itself is defined, because
+nothing calls @code{estimate-pi} until every top-level @code{define} in the
+file has already run; OCaml resolves each name where it is written, so this
+edition states @code{cesaro_test} and @code{monte_carlo} before
+@code{estimate_pi}, the order they appear in below:
+
+@example ocaml
+let cesaro_test () = Sicp_ch1.Sec_1_2.Gcd.gcd (rand ()) (rand ()) = 1
+
+let monte_carlo trials experiment =
+  let rec iter trials_remaining trials_passed =
+    if trials_remaining = 0
+    then float_of_int trials_passed /. float_of_int trials
+    else if experiment ()
+    then iter (trials_remaining - 1) (trials_passed + 1)
+    else iter (trials_remaining - 1) trials_passed
+  in
+  iter trials 0
+;;
+
+let estimate_pi trials = sqrt (6.0 /. monte_carlo trials cesaro_test)
+@end example
+
+@noindent
+Now let us try the same computation drawing from an explicit generator
+argument rather than through @code{rand}, the way we would be forced to
+proceed if we did not encapsulate the generator's state inside a closure:
+
+@example ocaml
+let random_gcd_test trials generator =
+  let rec iter trials_remaining trials_passed =
+    if trials_remaining = 0
+    then float_of_int trials_passed /. float_of_int trials
+    else (
+      let x1 = Sicp_common.Random.random generator bound in
+      let x2 = Sicp_common.Random.random generator bound in
+      if Sicp_ch1.Sec_1_2.Gcd.gcd x1 x2 = 1
+      then iter (trials_remaining - 1) (trials_passed + 1)
+      else iter (trials_remaining - 1) trials_passed)
+  in
+  iter trials 0
+;;
+
+let estimate_pi trials generator = sqrt (6.0 /. random_gcd_test trials generator)
+@end example
+
+@noindent
+While the program is still simple, it betrays some painful breaches of
+modularity.  In our first version of the program, using @code{rand}, we can
+express the Monte Carlo method directly as a general @code{monte_carlo}
+procedure that takes as an argument an arbitrary @code{experiment} procedure.
+In our second version of the program, with no encapsulated state for the
+random-number generator, @code{random_gcd_test} must explicitly draw
+@code{x1} and @code{x2} from the generator argument and carry that same
+generator down through the iterative loop for every later draw.  This explicit
+handling of the generator intertwines the structure of accumulating test
+results with the fact that our particular experiment uses two random numbers,
+whereas other Monte Carlo experiments might use one random number or three.
+Even the top-level procedure @code{estimate_pi} has to be concerned with
+supplying a generator.  The fact that the random-number generator's insides are
+leaking out into other parts of the program makes it difficult for us to
+isolate the Monte Carlo idea so that it can be applied to other tasks.  In the
+first version of the program, encapsulating the generator inside the
+@code{rand} closure keeps the details of random-number generation independent
+of the rest of the program.
+
+The general phenomenon illustrated by the Monte Carlo example is this: From the
+point of view of one part of a complex process, the other parts appear to
+change with time.  They have hidden time-varying local state.  If we wish to
+write computer programs whose structure reflects this decomposition, we make
+computational objects (such as bank accounts and random-number generators)
+whose behavior changes with time.  We model state with local state variables,
+and we model the changes of state with assignments to those variables.
+
+It is tempting to conclude this discussion by saying that, by introducing
+assignment and the technique of hiding state in local variables, we are able to
+structure systems in a more modular fashion than if all state had to be
+manipulated explicitly, by passing additional parameters.  Unfortunately, as we
+shall see, the story is not so simple.
+
+@quotation
+@strong{@anchor{Exercise 3.5}Exercise 3.5:} @newterm{Monte Carlo integration}
+is a method of estimating definite integrals by means of Monte Carlo
+simulation.  Consider computing the area of a region of space described by a
+predicate @math{{P(x, y)}} that is true for points @math{{(x, y)}} in the
+region and false for points not in the region.  For example, the region
+contained within a circle of radius 3 centered at (5, 7) is described by the
+predicate that tests whether @math{{(x - 5)^2} + {(y - 7)^2 \le 3^2}}.  To estimate
+the area of the region described by such a predicate, begin by choosing a
+rectangle that contains the region.  For example, a rectangle with diagonally
+opposite corners at (2, 4) and (8, 10) contains the circle above.  The desired
+integral is the area of that portion of the rectangle that lies in the region.
+We can estimate the integral by picking, at random, points @math{{(x, y)}} that
+lie in the rectangle, and testing @math{{P(x, y)}} for each point to
+determine whether the point lies in the region.  If we try this with many
+points, then the fraction of points that fall in the region should give an
+estimate of the proportion of the rectangle that lies in the region.  Hence,
+multiplying this fraction by the area of the entire rectangle should produce an
+estimate of the integral.
+
+Implement Monte Carlo integration as a procedure @code{estimate_integral} that
+takes as arguments a predicate @code{p}, upper and lower bounds @code{x1},
+@code{x2}, @code{y1}, and @code{y2} for the rectangle, and the number of trials
+to perform to produce the estimate.  Your procedure should use the
+same @code{monte_carlo} procedure that was used above to estimate @math{\pi}.
+Use your @code{estimate_integral} to produce an estimate of @math{\pi} by
+measuring the area of a unit circle.
+
+You will find it useful to have a procedure that returns a number chosen at
+random from a given range.  Following @ref{1.2.6}'s explicit-generator
+convention, @code{random_in_range} takes the generator as an argument:
+
+@example ocaml
+let random_in_range generator low high =
+  let range = high -. low in
+  let scale = 1_000_000 in
+  let fraction = float_of_int (Sicp_common.Random.random generator scale) /. float_of_int scale in
+  low +. (range *. fraction)
+;;
+@end example
+@footnote{@abbr{MIT} Scheme provides a @code{random} procedure that returns a
+decimal value directly when given one.  @code{Sicp_common.Random.random} only
+draws a nonnegative @code{int} below a positive bound, so
+@code{random_in_range} above scales such a draw down to a fraction in
+@code{[0, 1)} and stretches it across @code{[low, high)} by hand.}
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.6}Exercise 3.6:} It is useful to be able to reset a
+random-number generator to produce a sequence starting from a given value.
+Design a new @code{rand} procedure that is called with an argument that is
+either @code{Generate} or @code{Reset new_value}, and behaves as follows:
+@code{rand Generate} produces a new random number; @code{rand (Reset
+new_value)} resets the internal generator to the seed @code{new_value}.  Thus,
+by resetting the state, one can generate repeatable sequences.  These are very
+handy to have when testing and debugging programs that use random numbers.
+@end quotation
+
+@node	3.1.3, 3.2, Chapter 3, 3.1
+@subsection The Costs of Introducing Assignment
+
+As we have seen, the @code{:=} operator enables us to model objects that
+have local state.  However, this advantage comes at a price.  Our programming
+language can no longer be interpreted in terms of the substitution model of
+procedure application that we introduced in @ref{1.1.5}.  Moreover, no
+simple model with ``nice'' mathematical properties can be an adequate framework
+for dealing with objects and assignment in programming languages.
+
+So long as we do not use mutation, two evaluations of the same procedure
+with the same arguments will produce the same result, so that procedures can be
+viewed as computing mathematical functions.  Programming without any use of
+mutable state, as we did throughout the first two chapters of this book, is
+accordingly known as @newterm{functional programming}.
+
+To understand how assignment complicates matters, consider a simplified version
+of the @code{make_withdraw} procedure of @ref{3.1.1} that does not
+bother to check for an insufficient amount:
+
+@example ocaml
+let make_simplified_withdraw balance =
+  let balance = ref balance in
+  fun amount ->
+    balance := !balance - amount;
+    !balance
+;;
+
+let w = make_simplified_withdraw 25;;
+
+w 20;;
+(* => 5 *)
+
+w 10;;
+(* => -5 *)
+@end example
+
+@noindent
+Compare this procedure with the following @code{make_decrementer} procedure,
+which does not use @code{:=}:
+
+@example ocaml
+let make_decrementer balance amount = balance - amount
+@end example
+
+@noindent
+@code{Make_decrementer} returns a procedure that subtracts its input from a
+designated amount @code{balance}, but there is no accumulated effect over
+successive calls, as with @code{make_simplified_withdraw}:
+
+@example ocaml
+let d = make_decrementer 25;;
+
+d 20;;
+(* => 5 *)
+
+d 10;;
+(* => 15 *)
+@end example
+
+@noindent
+We can use the substitution model to explain how @code{make_decrementer} works.
+For instance, let us analyze the evaluation of the expression
+
+@example ocaml
+(make_decrementer 25) 20
+@end example
+
+@noindent
+We first simplify the operator of the combination by substituting 25 for
+@code{balance} in the body of @code{make_decrementer}.  This reduces the
+expression to
+
+@example ocaml
+(fun amount -> 25 - amount) 20
+@end example
+
+@noindent
+Now we apply the operator by substituting 20 for @code{amount} in the body of
+the @code{fun} expression:
+
+@example ocaml
+25 - 20
+@end example
+
+@noindent
+The final answer is 5.
+
+Observe, however, what happens if we attempt a similar substitution analysis
+with @code{make_simplified_withdraw}.  We first simplify by substituting 25
+for the parameter @code{balance} in the body of @code{make_simplified_withdraw}.
+Because OCaml requires an explicit @code{ref} cell for a mutable variable, this
+substitution reaches only the ref cell's initial contents, not the cell
+itself, giving a perfectly ordinary reduction step:
+
+@example ocaml
+let balance = ref 25 in
+fun amount ->
+  balance := !balance - amount;
+  !balance
+@end example
+
+@noindent
+So far the substitution model still works, exactly as it does for
+@code{make_decrementer}.  The trouble starts at the @emph{next} step, applying
+this @code{fun} expression to 20: substituting 20 for @code{amount} inside the
+body would have to reach inside @code{!balance} and @code{balance := @dots{}} too,
+but there is no expression to substitute @code{balance}
+with.@footnote{Unlike an ordinary @code{let}-bound name, which just abbreviates
+a value, @code{balance} here names a mutable cell allocated once by
+@code{ref 25}; further uses of its name must keep referring to that same cell,
+not to a value frozen at the moment of substitution.  A naive attempt to
+replace @code{balance} by @code{25} everywhere would try to rewrite
+@code{!balance} as @code{!25}, which does not even type-check, since
+@code{25} is an @code{int}, not an @code{int ref}.} Reasoning about
+@code{w 20}'s result, then @code{w 10}'s different result from the very same
+@code{w}, needs a model that tracks the cell's contents changing over time,
+which no substitution of names for values can express.
+
+The trouble here is that substitution is based ultimately on the notion that
+names in our language are essentially abbreviations for values.  But as soon as
+we introduce mutable @code{ref} cells and the idea that a cell's contents can
+change, a name bound to a @code{ref} can no longer be simply an abbreviation
+for a value.  Now such a name refers to a place where a value can be stored,
+and the value stored at this place can change.  In @ref{3.2} we will
+see how environments play this role of ``place'' in our computational model.
+
+@subsubheading Sameness and change
+
+The issue surfacing here is more profound than the mere breakdown of a
+particular model of computation.  As soon as we introduce change into our
+computational models, many notions that were previously straightforward become
+problematical.  Consider the concept of two things being ``the same.''
+
+Suppose we call @code{make_decrementer} twice with the same argument to create
+two procedures:
+
+@example ocaml
+let d1 = make_decrementer 25;;
+let d2 = make_decrementer 25;;
+@end example
+
+@noindent
+Are @code{d1} and @code{d2} the same?  An acceptable answer is yes, because
+@code{d1} and @code{d2} have the same computational behavior---each is a
+procedure that subtracts its input from 25.  In fact, @code{d1} could be
+substituted for @code{d2} in any computation without changing the result.
+
+Contrast this with making two calls to @code{make_simplified_withdraw}:
+
+@example ocaml
+let w1 = make_simplified_withdraw 25;;
+let w2 = make_simplified_withdraw 25;;
+@end example
+
+@noindent
+Are @code{w1} and @code{w2} the same?  Surely not, because calls to @code{w1}
+and @code{w2} have distinct effects, as shown by the following sequence of
+interactions:
+
+@example ocaml
+w1 20;;
+(* => 5 *)
+
+w1 20;;
+(* => -15 *)
+
+w2 20;;
+(* => 5 *)
+@end example
+
+@noindent
+Even though @code{w1} and @code{w2} are ``equal'' in the sense that they are
+both created by evaluating the same expression,
+@code{make_simplified_withdraw 25}, it is not true that @code{w1} could be
+substituted for @code{w2} in any expression without changing the result of
+evaluating the expression.
+
+A language that supports the concept that ``equals can be substituted for
+equals'' in an expression without changing the value of the expression is said
+to be @newterm{referentially transparent}.  Referential transparency is
+violated when we include mutable @code{ref} cells in our computer language.
+This makes it tricky to determine when we can simplify expressions by
+substituting equivalent expressions.  Consequently, reasoning about programs
+that use assignment becomes drastically more difficult.
+
+Once we forgo referential transparency, the notion of what it means for
+computational objects to be ``the same'' becomes difficult to capture in a
+formal way.  Indeed, the meaning of ``same'' in the real world that our
+programs model is hardly clear in itself.  In general, we can determine that
+two apparently identical objects are indeed ``the same one'' only by modifying
+one object and then observing whether the other object has changed in the same
+way.  But how can we tell if an object has ``changed'' other than by observing
+the ``same'' object twice and seeing whether some property of the object
+differs from one observation to the next?  Thus, we cannot determine ``change''
+without some @emph{a priori} notion of ``sameness,'' and we cannot determine
+sameness without observing the effects of change.
+
+As an example of how this issue arises in programming, consider the situation
+where Peter and Paul have a bank account with $100 in it.  There is a
+substantial difference between modeling this as
+
+@example ocaml
+let peter_acc = make_account 100;;
+let paul_acc = make_account 100;;
+@end example
+
+@noindent
+and modeling it as
+
+@example ocaml
+let peter_acc = make_account 100;;
+let paul_acc = peter_acc;;
+@end example
+
+@noindent
+In the first situation, the two bank accounts are distinct.  Transactions made
+by Peter will not affect Paul's account, and vice versa.  In the second
+situation, however, we have defined @code{paul_acc} to be @emph{the same thing}
+as @code{peter_acc}.  In effect, Peter and Paul now have a joint bank account,
+and if Peter makes a withdrawal from @code{peter_acc} Paul will observe less
+money in @code{paul_acc}.  These two similar but distinct situations can cause
+confusion in building computational models.  With the shared account, in
+particular, it can be especially confusing that there is one object (the bank
+account) that has two different names (@code{peter_acc} and @code{paul_acc});
+if we are searching for all the places in our program where @code{paul_acc} can
+be changed, we must remember to look also at things that change
+@code{peter_acc}.@footnote{The phenomenon of a single computational object
+being accessed by more than one name is known as @newterm{aliasing}.  The joint
+bank account situation illustrates a very simple example of an alias.  In
+@ref{3.3} we will see much more complex examples, such as ``distinct''
+compound data structures that share parts.  Bugs can occur in our programs if
+we forget that a change to an object may also, as a ``side effect,'' change a
+``different'' object because the two ``different'' objects are actually a
+single object appearing under different aliases.  These so-called
+@newterm{side-effect bugs} are so difficult to locate and to analyze that some
+people have proposed that programming languages be designed in such a way as to
+not allow side effects or aliasing (@ref{Lampson et al. 1981}; 
+@ref{Morris et al. 1980}).}
+
+With reference to the above remarks on ``sameness'' and ``change,'' observe
+that if Peter and Paul could only examine their bank balances, and could not
+perform operations that changed the balance, then the issue of whether the two
+accounts are distinct would be moot.  In general, so long as we never modify
+data objects, we can regard a compound data object to be precisely the totality
+of its pieces.  For example, a rational number is determined by giving its
+numerator and its denominator.  But this view is no longer valid in the
+presence of change, where a compound data object has an ``identity'' that is
+something different from the pieces of which it is composed.  A bank account is
+still ``the same'' bank account even if we change the balance by making a
+withdrawal; conversely, we could have two different bank accounts with the same
+state information.  This complication is a consequence, not of our programming
+language, but of our perception of a bank account as an object.  We do not, for
+example, ordinarily regard a rational number as a changeable object with
+identity, such that we could change the numerator and still have ``the same''
+rational number.
+
+@subsubheading Pitfalls of imperative programming
+
+In contrast to functional programming, programming that makes extensive use of
+assignment is known as @newterm{imperative programming}.  In addition to
+raising complications about computational models, programs written in
+imperative style are susceptible to bugs that cannot occur in functional
+programs.  For example, recall the iterative factorial program from 
+@ref{1.2.1}:
+
+@example ocaml
+let factorial n =
+  let rec iter product counter =
+    if counter > n then product else iter (counter * product) (counter + 1)
+  in
+  iter 1 1
+;;
+@end example
+
+@noindent
+Instead of passing arguments in the internal iterative loop, we could adopt a
+more imperative style by using explicit assignment to update the values of the
+variables @code{product} and @code{counter}:
+
+@example ocaml
+let factorial n =
+  let product = ref 1 in
+  let counter = ref 1 in
+  let rec iter () =
+    if !counter > n
+    then !product
+    else (
+      product := !counter * !product;
+      counter := !counter + 1;
+      iter ())
+  in
+  iter ()
+;;
+@end example
+
+@noindent
+This does not change the results produced by the program, but it does introduce
+a subtle trap.  How do we decide the order of the assignments?  As it happens,
+the program is correct as written.  But writing the assignments in the opposite
+order
+
+@example ocaml
+counter := !counter + 1;
+product := !counter * !product
+@end example
+
+@noindent
+would have produced a different, incorrect result.  In general, programming
+with assignment forces us to carefully consider the relative orders of the
+assignments to make sure that each statement is using the correct version of
+the variables that have been changed.  This issue simply does not arise in
+functional programs.@footnote{In view of this, it is ironic that introductory
+programming is most often taught in a highly imperative style.  This may be a
+vestige of a belief, common throughout the 1960s and 1970s, that programs that
+call procedures must inherently be less efficient than programs that perform
+assignments.  (@ref{Steele 1977} debunks this argument.)  Alternatively it may
+reflect a view that step-by-step assignment is easier for beginners to
+visualize than procedure call.  Whatever the reason, it often saddles beginning
+programmers with ``should I set this variable before or after that one''
+concerns that can complicate programming and obscure the important ideas.}
+
+The complexity of imperative programs becomes even worse if we consider
+applications in which several processes execute concurrently.  We will return
+to this in @ref{3.4}.  First, however, we will address the issue of
+providing a computational model for expressions that involve assignment, and
+explore the uses of objects with local state in designing simulations.
+
+@quotation
+@strong{@anchor{Exercise 3.7}Exercise 3.7:} Consider the bank account objects
+created by @code{make_account}, with the password modification described in
+@ref{Exercise 3.3}.  Suppose that our banking system requires the ability to
+make joint accounts.  Define a procedure @code{make_joint} that accomplishes
+this.  @code{Make_joint} should take three arguments.  The first is a
+password-protected account.  The second argument must match the password with
+which the account was defined for the @code{make_joint} operation to
+proceed.  The third argument is a new password.  @code{Make_joint} is to create
+an additional access to the original account using the new password.  For
+example, if @code{peter_acc} is a bank account with password
+@code{"open-sesame"}, then
+
+@example ocaml
+let paul_acc = make_joint peter_acc "open-sesame" "rosebud";;
+@end example
+
+@noindent
+will allow one to make transactions on @code{peter_acc} using the name
+@code{paul_acc} and the password @code{"rosebud"}.  You may wish to modify your
+solution to @ref{Exercise 3.3} to accommodate this new feature.
+@end quotation
+
+@quotation
+@emph{Exercise 3.7a is added by this edition and extends exercise 3.7; SICP
+numbers stop at 3.7.} @strong{@anchor{Exercise 3.7a}Exercise 3.7a:} The
+unpassworded account of @ref{3.1.1} bundles @code{withdraw}, @code{deposit},
+and now a @code{balance} query into one @code{account} record.  Define a
+procedure @code{read_only_capability} that, given an @code{account}, returns a
+smaller record exposing only its @code{balance} field: no way to call
+@code{withdraw} or @code{deposit} through the result.  The read-only view
+should still see the account's current balance, including changes made
+afterward through the original account.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.8}Exercise 3.8:} When we defined the evaluation
+model in @ref{1.1.3}, we said that the first step in evaluating an
+expression is to evaluate its subexpressions.  But we never specified the order
+in which the subexpressions should be evaluated (e.g., left to right or right
+to left).  OCaml leaves this order unspecified too, for the arguments of a
+procedure call and for operators such as @code{+}.  When we introduce
+assignment, the order in which the arguments to a procedure are evaluated can
+make a difference to the result.  Define a simple procedure @code{f} such that
+evaluating
+
+@example ocaml
+f 0 + f 1
+@end example
+
+@noindent
+will return 0 if
+the arguments to @code{+} are evaluated from left to right but will return 1 if
+the arguments are evaluated from right to left.
+@end quotation

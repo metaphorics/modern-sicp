@@ -1,0 +1,86 @@
+@node	0.6, 0.7, 0.5, Chapter 0
+@section Closures and trait objects
+
+A @newterm{closure} is an anonymous function that can capture bindings from
+the scope around it, Rust's equivalent of the book's @code{lambda}. Closures
+are first-class from section 1.3 on, the same way procedures are in the book.
+
+@example rust
+fn make_multiplier(factor: i64) -> impl Fn(i64) -> i64 @{
+    move |x| x * factor
+@}
+
+let triple = make_multiplier(3);
+let result = triple(7);
+println!("@{result@}");
+// => 21
+@end example
+
+@code{make_multiplier} returns a closure, so it needs to say what kind of
+callable it returns; @code{impl Fn(i64) -> i64} means ``some concrete type
+that can be called like this,'' without naming the closure's actual
+(compiler-generated, unnameable) type. The @code{move} keyword forces the
+closure to capture @code{factor} by value rather than by reference, which
+matters once the closure needs to outlive the function that created it, as
+this one does.
+
+Three traits distinguish closures by what they do with their captures.
+@code{Fn} borrows its captures and can be called any number of times;
+@code{FnMut} borrows them mutably and can also be called repeatedly, but only
+through a mutable reference to the closure itself; @code{FnOnce} may consume
+its captures and so can be called at most once. Every closure implements at
+least @code{FnOnce}; a closure that only reads its captures implements
+@code{Fn} too, and one that mutates a captured binding without consuming it
+implements @code{FnMut} but not @code{Fn}.
+
+@example rust
+fn call_three_times(mut f: impl FnMut() -> i32) -> Vec<i32> @{
+    vec![f(), f(), f()]
+@}
+
+let mut count = 0;
+let results = call_three_times(|| @{
+    count += 1;
+    count
+@});
+println!("@{results:?@}");
+// => [1, 2, 3]
+@end example
+
+The closure above mutates @code{count} on every call, so it needs
+@code{FnMut}; @code{call_three_times} takes its parameter as @code{mut f} so
+it can call @code{f} through a mutable reference to itself, which is exactly
+what @code{FnMut} requires. Passing this same closure where a plain
+@code{Fn} was expected would not compile: mutating a capture is precisely
+what @code{Fn} forbids.
+
+@code{impl Fn(i64) -> i64} and @code{impl FnMut() -> i32} work as return or
+parameter types only because every path through the function agrees on one
+concrete (if unnameable) closure type. A function that might hand back one of
+several different closures depending on a runtime condition needs a
+different mechanism, since @code{impl Trait} cannot describe ``one of these
+two different types'':
+
+@example rust
+fn apply_all(ops: &[Box<dyn Fn(i64) -> i64>], x: i64) -> Vec<i64> @{
+    ops.iter().map(|op| op(x)).collect()
+@}
+
+let ops: Vec<Box<dyn Fn(i64) -> i64>> =
+    vec![Box::new(make_multiplier(2)), Box::new(|x| x + 100)];
+let results = apply_all(&ops, 5);
+println!("@{results:?@}");
+// => [10, 105]
+@end example
+
+@code{dyn Fn(i64) -> i64} is a @newterm{trait object}: a value known only by
+which trait it implements, stored behind a pointer (@code{Box} here) because
+its concrete size is not known at compile time. A @code{Vec} or slice of
+@code{Box<dyn Fn(...)>} can hold closures of different concrete types side by
+side, the way this book's dispatch tables (@ref{2.4}) hold procedures of
+different shapes under one type, and its evaluators (@ref{4.1}) represent
+every primitive and compound procedure as one @code{Value} variant wrapping
+exactly this kind of boxed closure.
+
+The runnable listings above are @code{examples/sec_0_6_closures.rs} and
+@code{examples/sec_0_6_fn_mut.rs}.

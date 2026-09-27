@@ -1,0 +1,154 @@
+@node	0.6, 0.7, Chapter 0, Chapter 0
+@section Records, mutable fields, and refs
+
+@noindent
+A record groups named fields into one value, the way this book otherwise
+uses a list of two elements or a small variant, but with each field
+addressed by name rather than by position:
+
+@example
+# type point = @{ x : float; y : float @};;
+type point = @{ x : float; y : float; @}
+# let origin = @{ x = 0.0; y = 0.0 @};;
+val origin : point = @{x = 0.; y = 0.@}
+@end example
+
+@noindent
+By default every field of a record is immutable: once built, a @code{point}
+cannot change. ``Changing'' one field of an immutable record means building
+a new record that copies every other field, which the @code{with} syntax
+does directly:
+
+@example
+# let right_three = @{ origin with x = 3.0 @};;
+val right_three : point = @{x = 3.; y = 0.@}
+# right_three;;
+- : point = @{x = 3.; y = 0.@}
+# origin;;
+- : point = @{x = 0.; y = 0.@}
+@end example
+
+@noindent
+@code{origin} is unchanged; @code{right_three} is a new, separate value that
+happens to share @code{origin}'s @code{y}. This is exactly the same
+distinction Scheme draws between building a new list with @code{cons} and
+mutating an existing one with @code{set-car!}: functional update copies,
+and the original is never at risk.
+
+@subsubheading Mutable fields
+
+A field declared @code{mutable} can be reassigned in place with @code{<-},
+without building a new record:
+
+@example
+# type counter = @{ mutable count : int @};;
+type counter = @{ mutable count : int; @}
+# let fresh_counter () = @{ count = 0 @};;
+val fresh_counter : unit -> counter = <fun>
+# let bump counter = counter.count <- counter.count + 1;;
+val bump : counter -> unit = <fun>
+# let counter = fresh_counter ();;
+val counter : counter = @{count = 0@}
+# bump counter;;
+- : unit = ()
+# bump counter;;
+- : unit = ()
+# counter.count;;
+- : int = 2
+@end example
+
+@noindent
+@code{bump}'s return type is @code{unit}: it is called only for the field
+assignment it performs, not for any value it produces. This is this book's
+smallest example of a stateful object in the sense chapter 3 develops at length: a value with an identity that persists across mutations, as opposed to a plain value.
+
+@subsubheading @code{ref}: a mutable cell holding one value
+
+A one-field mutable record is common enough that the standard library
+predefines it: @code{'a ref} is exactly @code{@{ mutable contents : 'a @}}
+under a shorter name, built with @code{ref}, read with @code{!}, and
+assigned with @code{:=}:
+
+@example
+# let after_deposit () =
+    let balance = ref 100 in
+    balance := !balance + 20;
+    !balance;;
+val after_deposit : unit -> int = <fun>
+# after_deposit ();;
+- : int = 120
+@end example
+
+@noindent
+This is this edition's translation of Scheme's mutable local state, most
+directly the pattern chapter 3's @code{make-withdraw} and
+@code{make-account} use: a value captured by @code{ref} that a closure can
+read and rewrite between calls. Section 0.7 builds exactly that example once
+closures are introduced.
+
+@subsubheading Aliasing: two names, one cell
+
+Binding a second name to an existing @code{ref} does not copy the cell; both
+names refer to the same mutable location, and a write through either name is
+visible through the other:
+
+@example
+# let alias_cell () =
+    let cell = ref 10 in
+    let alias = cell in
+    alias := !alias + 5;
+    !cell;;
+val alias_cell : unit -> int = <fun>
+# alias_cell ();;
+- : int = 15
+@end example
+
+@noindent
+@code{alias} was never told to update @code{cell}; @code{alias} @emph{is}
+@code{cell}, under a second name. This is @newterm{aliasing}, and it is the
+one behavior a purely functional update, like the record @code{with} syntax
+from the start of this section, can never produce:
+
+@example
+# let copy_point () =
+    let original = @{ x = 1.0; y = 1.0 @} in
+    let moved = @{ original with x = 9.0 @} in
+    (original.x, moved.x);;
+val copy_point : unit -> float * float = <fun>
+# copy_point ();;
+- : float * float = (1., 9.)
+@end example
+
+@noindent
+@code{moved} shares no mutable state with @code{original}: moving it left
+@code{original} exactly where it was. Whether a value can alias is a
+property of the value's type, not of how carefully a program is written:
+records with a @code{ref} field, or a @code{ref} itself, can be aliased;
+ordinary immutable records, tuples, and lists cannot, because nothing about
+them is assignable in the first place.
+
+@subsubheading Physical equality distinguishes aliasing from mere equal contents
+
+@code{==} tests whether two values are the very same mutable cell in
+memory, as opposed to @code{=}, which tests whether their contents happen to
+match:
+
+@example
+# let cell_identity () =
+    let a = ref 1 in
+    let b = ref 1 in
+    let alias = a in
+    (a == b, a == alias);;
+val cell_identity : unit -> bool * bool = <fun>
+# cell_identity ();;
+- : bool * bool = (false, true)
+@end example
+
+@noindent
+@code{a} and @code{b} hold equal contents (both @code{1}) but are two
+distinct cells, so @code{a == b} is @code{false}; @code{alias} is not a copy
+of @code{a} but another name for the very same cell, so @code{a == alias}
+is @code{true}. This is this edition's @code{==}, corresponding to Scheme's
+@code{eq?}; it matters only for mutable data (@code{ref}s and
+mutable-field records), since two immutable values with equal contents are,
+for every purpose a program can observe, interchangeable.

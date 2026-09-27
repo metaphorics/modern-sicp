@@ -1,0 +1,3330 @@
+@node	3.3, 3.4, 3.2, Chapter 3
+@section Modeling with Mutable Data
+
+@ref{Chapter 2} dealt with compound data as a means for constructing computational
+objects that have several parts, to model real-world objects that have
+several aspects.  In that chapter we introduced the discipline of data
+abstraction, according to which data structures are specified in terms of
+constructors, which create data objects, and selectors, which access the parts
+of compound data objects.  But we now know that there is another aspect of data
+that chapter 2 did not address.  The desire to model systems composed of
+objects that have changing state leads us to the need to modify compound data
+objects, as well as to construct and select from them.  To model
+compound objects with changing state, we will design data abstractions to
+include, in addition to selectors and constructors, operations called
+@newterm{mutators}, which modify data objects.  For instance, modeling a
+banking system requires us to change account balances.  Thus, a data structure
+for representing bank accounts might admit an operation
+
+@example rust
+account.set_balance(new_value)
+@end example
+
+@noindent
+that changes the balance of the designated account to the designated new value.
+Data objects for which mutators are defined are known as @newterm{mutable data objects}.
+
+Chapter 2 introduced pairs as a general-purpose ``glue'' for synthesizing
+compound data.  We begin this section by defining basic mutators for pairs, so
+that pairs can serve as building blocks for constructing mutable data objects.
+These mutators extend the representational power of pairs, enabling us
+to build data structures other than the sequences and trees that we worked with
+in @ref{2.2}.  We also present some examples of simulations in which
+complex systems are modeled as collections of objects with local state.
+
+@menu
+* 3.3.1::            Mutable List Structure
+* 3.3.2::            Representing Queues
+* 3.3.3::            Representing Tables
+* 3.3.4::            A Simulator for Digital Circuits
+* 3.3.5::            Propagation of Constraints
+@end menu
+
+@node	3.3.1, 3.3.2, 3.3, 3.3
+@subsection Mutable List Structure
+
+The basic operations on pairs---@code{cons_cell} and the @code{car} and
+@code{cdr} selectors---can be used to construct list structure and to select
+parts from list structure, but they are incapable of modifying list structure.
+The same is true of the list operations we have used so far, such as
+@code{append} and @code{Value::list}, since these can be defined in terms of
+@code{cons_cell} and the two selectors.  To modify list structures we need new
+operations.
+
+The primitive mutators for pairs are @code{set_car} and @code{set_cdr}.
+@code{Set_car} takes two arguments, the first of which must be a pair.  It
+modifies this pair, replacing the @code{car} pointer by a pointer to the second
+argument of @code{set_car}.@footnote{@code{Set_car} and @code{set_cdr} return
+the unit value @code{()}, which carries no information.  Like assignment, they
+should be used only for their effect.}
+
+@noindent
+As an example, suppose that @code{x} is bound to the list @code{((a b) c d)}
+and @code{y} to the list @code{(e f)} as illustrated in @ref{Figure 3.12}.
+Evaluating the expression @code{set_car(&first_pair(&x), y.clone())} modifies
+the pair to which @code{x} is bound, replacing its @code{car} by the value of
+@code{y}.  The result of the operation is shown in @ref{Figure 3.13}.  The
+structure @code{x} has been modified and would now be printed as
+@code{((e f) c d)}.  The pairs representing the list @code{(a b)}, identified by
+the pointer that was replaced, are now detached from the original
+structure.@footnote{We see from this that mutation operations on lists can
+create ``garbage'' that is not part of any accessible structure.  Rust frees a
+detached chain the moment its last handle is gone; we will see in @ref{5.3.2}
+that Lisp memory-management systems include a @newterm{garbage collector},
+which identifies and recycles the memory space used by unneeded pairs.}
+
+@example rust
+let x = Value::list(vec![
+    Value::list(vec![Value::sym("a"), Value::sym("b")]),
+    Value::sym("c"),
+    Value::sym("d"),
+]);
+let y = Value::list(vec![Value::sym("e"), Value::sym("f")]);
+
+set_car(&first_pair(&x), y.clone());
+println!("@{x@}");
+// => ((e f) c d)
+@end example
+
+@float
+@anchor{Figure 3.12}
+@ifinfo
+@quotation
+@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.
+
+@example
+     +---+---+     +---+---+     +---+---+
+x -->| * | *-+---->| * | *-+---->| * | / |
+     +-|-+---+     +-|-+---+     +-|-+---+
+       |             V             V
+       |           +---+         +---+
+       |           | c |         | d |
+       |           +---+         +---+
+       |           +---+---+     +---+---+
+       +---------->| * | *-+---->| * | / |
+                   +-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | a |         | b |
+                   +---+         +---+
+                   +---+---+     +---+---+
+              y -->| * | *-+---->| * | / |
+                   +-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | e |         | f |
+                   +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.12b,,123mm,Figure 3.12: Lists x: ((a b) c d) and y: (e f).,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,,123mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.}
+@end float
+
+@float
+@anchor{Figure 3.13}
+@ifinfo
+@quotation
+@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.
+
+@example
+     +---+---+     +---+---+     +---+---+
+x -->| * | *-+---->| * | *-+---->| * | / |
+     +-|-+---+     +-|-+---+     +-|-+---+
+       |             V             V
+       |           +---+         +---+
+       |           | c |         | d |
+       |           +---+         +---+
+       |           +---+---+     +---+---+
+       |           | * | *-+---->| * | / |
+       |           +-|-+---+     +-|-+---+
+       |             V             V
+       |           +---+         +---+
+       |           | a |         | b |
+       |           +---+         +---+
+       +---------->+---+---+     +---+---+
+                   | * | *-+---->| * | / |
+              y -->+-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | e |         | f |
+                   +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of (set-car! x y) on the lists in Figure 3.12.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,,123mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.}
+@end float
+
+Compare @ref{Figure 3.13} with @ref{Figure 3.14}, which illustrates the result
+of executing @code{let z = Value::Pair(cons_cell(y.clone(), cdr(&x)?));} with
+@code{x} and @code{y} bound to the original lists of @ref{Figure 3.12}.  The
+variable @code{z} is now bound to a new pair created by the @code{cons_cell}
+operation; the list to which @code{x} is bound is unchanged.
+
+@float
+@anchor{Figure 3.14}
+@ifinfo
+@quotation
+@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.
+
+@example
+     +---+---+     +---+---+     +---+---+
+x -->| * | *-+---->| * | *-+---->| * | / |
+     +-|-+---+ +-->+-|-+---+     +-|-+---+
+       |       |     V             V
+       |       |   +---+         +---+
+       |       |   | c |         | d |
+       |       |   +---+         +---+
+       |       |   +---+---+     +---+---+
+       +-------+-->| * | *-+---->| * | / |
+               |   +-|-+---+     +-|-+---+
+     +---+---+ |     V             V
+z -->| * | *-+-+   +---+         +---+
+     +-|-+---+     | a |         | b |
+       |           +---+         +---+
+       +---------->+---+---+     +---+---+
+                   | * | *-+---->| * | / |
+              y -->+-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | e |         | f |
+                   +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of (define z (cons y (cdr x))) on the lists in Figure 3.12.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,,123mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.}
+@end float
+
+The @code{set_cdr} operation is similar to @code{set_car}.  The only difference
+is that the @code{cdr} pointer of the pair, rather than the @code{car} pointer,
+is replaced.  The effect of executing @code{set_cdr(&first_pair(&x),
+y.clone())} on the lists of @ref{Figure 3.12} is shown in @ref{Figure 3.15}.
+Here the @code{cdr} pointer of @code{x} has been replaced by the pointer to
+@code{(e f)}.  Also, the list @code{(c d)}, which used to be the @code{cdr} of
+@code{x}, is now detached from the structure; @code{x} would now print as
+@code{((a b) e f)}.
+
+@float
+@anchor{Figure 3.15}
+@ifinfo
+@quotation
+@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.
+
+@example
+     +---+---+     +---+---+     +---+---+
+x -->| * | * |     | * | *-+---->| * | / |
+     +-|-+-|-+     +-|-+---+     +-|-+---+
+       |   |         V             V
+       |   |       +---+         +---+
+       |   |       | c |         | d |
+       |   |       +---+         +---+
+       |   |       +---+---+     +---+---+
+       +---+------>| * | *-+---->| * | / |
+           |       +-|-+---+     +-|-+---+
+           |         V             V
+           |       +---+         +---+
+           |       | a |         | b |
+           |       +---+         +---+
+           +------>+---+---+     +---+---+
+                   | * | *-+---->| * | / |
+              y -->+-|-+---+     +-|-+---+
+                     V             V
+                   +---+         +---+
+                   | e |         | f |
+                   +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of (set-cdr! x y) on the lists in Figure 3.12.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,,123mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.}
+@end float
+
+@noindent
+@code{cons_cell} builds new list structure by creating new pairs, while
+@code{set_car} and @code{set_cdr} modify existing pairs.  Indeed, we could
+implement @code{cons} in terms of the two mutators, together with an operation
+that returns a new pair that is not part of any existing list structure; in
+this runtime that operation is @code{cons_cell} called with two empty slots.
+We obtain the new pair, set its @code{car} and @code{cdr} pointers to the
+designated objects, and return the new pair as the result of the
+call.@footnote{Allocating that fresh cell is one of the operations that must be
+implemented as part of the memory management required by a Lisp
+implementation.  We will discuss this in @ref{5.3.1}.}
+
+@example rust
+fn cons(x: Value, y: Value) -> Value @{
+    let new = cons_cell(Value::Nil, Value::Nil);
+    set_car(&new, x);
+    set_cdr(&new, y);
+    Value::Pair(new)
+@}
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.12}Exercise 3.12:} The following function for
+appending lists was introduced in @ref{2.2.1}:
+
+@example rust
+fn append(x: &Value, y: &Value) -> Value @{
+    match x @{
+        Value::Pair(cell) => @{
+            let rest = append(&cell.cdr.borrow(), y);
+            Value::Pair(cons_cell(cell.car.borrow().clone(), rest))
+        @}
+        _ => y.clone(),
+    @}
+@}
+@end example
+
+@code{Append} forms a new list by successively @code{cons}-ing the elements of
+@code{x} onto @code{y}.  The function @code{append_bang} is similar to
+@code{append}, but it is a mutator rather than a constructor.  It appends the
+lists by splicing them together, modifying the final pair of @code{x} so that
+its @code{cdr} is now @code{y}.  (It is an error to call @code{append_bang}
+with an empty @code{x}.)
+
+@example rust
+fn append_bang(x: &Pair, y: &Pair) -> Pair @{
+    set_cdr(&last_pair(x), Value::Pair(Pair::clone(y)));
+    Pair::clone(x)
+@}
+@end example
+
+Here @code{last_pair} is a function that returns the last pair in its
+argument:
+
+@example rust
+fn last_pair(x: &Pair) -> Pair @{
+    let mut current = Pair::clone(x);
+    loop @{
+        let next = current.cdr.borrow().clone();
+        match next @{
+            Value::Pair(cell) => current = cell,
+            _ => return current,
+        @}
+    @}
+@}
+@end example
+
+Consider the interaction
+
+@example rust
+let x = Value::list(vec![Value::sym("a"), Value::sym("b")]);
+let y = Value::list(vec![Value::sym("c"), Value::sym("d")]);
+let z = append(&x, &y);
+
+println!("@{z@}");
+// => (a b c d)
+
+println!("@{@}", cdr(&x)?);
+// @r{⟨response⟩}
+
+let w = append_bang(&first_pair(&x), &first_pair(&y));
+
+println!("@{@}", Value::Pair(w));
+// => (a b c d)
+
+println!("@{@}", cdr(&x)?);
+// @r{⟨response⟩}
+@end example
+
+What are the missing @code{⟨}@var{response}@code{⟩}s?  Draw box-and-pointer
+diagrams to explain your answer.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.13}Exercise 3.13:} Consider the following
+@code{make_cycle} function, which uses the @code{last_pair} function defined
+in @ref{Exercise 3.12}:
+
+@example rust
+fn make_cycle(x: &Pair) @{
+    set_cdr(&last_pair(x), Value::Pair(Pair::clone(x)));
+@}
+@end example
+
+Draw a box-and-pointer diagram that shows the structure @code{z} created by
+
+@example rust
+let z = Value::list(vec![Value::sym("a"), Value::sym("b"), Value::sym("c")]);
+make_cycle(&first_pair(&z));
+@end example
+
+What happens if we try to compute @code{last_pair(&first_pair(&z))}?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.14}Exercise 3.14:} The following function is quite
+useful, although obscure:
+
+@example rust
+fn mystery(x: &Pair) -> Pair @{
+    fn loop_(x: Option<Pair>, y: Option<Pair>) -> Option<Pair> @{
+        let Some(cell) = x else @{
+            return y;
+        @};
+        let temp = match cell.cdr.borrow().clone() @{
+            Value::Pair(next) => Some(next),
+            _ => None,
+        @};
+        *cell.cdr.borrow_mut() = match y @{
+            Some(previous) => Value::Pair(previous),
+            None => Value::Nil,
+        @};
+        loop_(temp, Some(cell))
+    @}
+    match loop_(Some(Pair::clone(x)), None) @{
+        Some(cell) => cell,
+        None => Pair::clone(x),
+    @}
+@}
+@end example
+
+@code{Loop_} uses the ``temporary'' variable @code{temp} to hold the old value
+of the @code{cdr} of @code{x}, since the assignment on the next line destroys
+the @code{cdr}.  Explain what @code{mystery} does in general.  Suppose
+@code{v} is defined by
+
+@example rust
+let v = Value::list(vec![
+    Value::sym("a"),
+    Value::sym("b"),
+    Value::sym("c"),
+    Value::sym("d"),
+]);
+@end example
+
+Draw the box-and-pointer diagram that represents the list to which @code{v} is
+bound.  Suppose that we now evaluate
+
+@example rust
+let w = mystery(&first_pair(&v));
+@end example
+
+Draw box-and-pointer diagrams that show the structures @code{v} and @code{w}
+after evaluating this expression.  What would be printed as the values of
+@code{v} and @code{w}?
+@end quotation
+
+@subsubheading Sharing and identity
+
+We mentioned in @ref{3.1.3} the theoretical issues of ``sameness'' and
+``change'' raised by the introduction of assignment.  These issues arise in
+practice when individual pairs are @newterm{shared} among different data
+objects.  For example, consider the structure formed by
+
+@example rust
+let x = Value::list(vec![Value::sym("a"), Value::sym("b")]);
+let z1 = cons_cell(x.clone(), x);
+@end example
+
+@noindent
+As shown in @ref{Figure 3.16}, @code{z1} is a pair whose @code{car} and
+@code{cdr} both point to the same pair @code{x}.  This sharing of @code{x} by
+the @code{car} and @code{cdr} of @code{z1} is a consequence of the
+straightforward way in which @code{cons_cell} is implemented.  In general,
+using @code{cons_cell} to construct lists will result in an interlinked
+structure of pairs in which many individual pairs are shared by many different
+structures.
+
+@float
+@anchor{Figure 3.16}
+@ifinfo
+@quotation
+@strong{Figure 3.16:} The list @code{z1} formed by @code{(cons x x)}.
+
+@example
+      +---+---+
+z1 -->| * | * |
+      +-|-+-|-+
+        V   V
+      +---+---+     +---+---+
+ x -->| * | *-+---->| * | / |
+      +-|-+---+     +-|-+---+
+        V             V
+      +---+         +---+
+      | a |         | b |
+      +---+         +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by (cons x x).,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.16b.std,,78mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.16:} The list @code{z1} formed by @code{(cons x x)}.}
+@end float
+
+In contrast to @ref{Figure 3.16}, @ref{Figure 3.17} shows the structure created
+by
+
+@example rust
+let z2 = cons_cell(
+    Value::list(vec![Value::sym("a"), Value::sym("b")]),
+    Value::list(vec![Value::sym("a"), Value::sym("b")]),
+);
+@end example
+
+@float
+@anchor{Figure 3.17}
+@ifinfo
+@quotation
+@strong{Figure 3.17:} The list @code{z2} formed by @code{(cons (list 'a 'b) (list 'a 'b))}.
+
+@example
+      +---+---+     +---+---+     +---+---+
+z2 -->| * | *-+---->| * | *-+---->| * | / |
+      +-|-+---+     +-|-+---+     +-|-+---+
+        |             V             V
+        |           +---+         +---+
+        |           | a |         | b |
+        |           +---+         +---+
+        |             ^             ^
+        |             |             |
+        |           +-|-+---+     +-|-+---+
+        +---------->| * | *-+---->| * | / |
+                    +---+---+     +---+---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by (cons (list 'a 'b) (list 'a 'b)).,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,,121mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.17:} The list @code{z2} formed by @code{(cons (list 'a 'b) (list 'a 'b))}.}
+@end float
+
+@noindent
+In this structure, the pairs in the two @code{(a b)} lists are distinct,
+although the actual symbols are shared.@footnote{The two pairs are distinct
+because each call to @code{cons_cell} returns a new pair.  The symbols are
+shared; @code{Value::sym("a")} yields equal symbols wherever the name
+@code{"a"} appears, and since this edition provides no way to mutate a symbol,
+this sharing is undetectable.  Note also that the sharing of pairs is what
+enables us to compare them with @code{eq_pair}, which simply checks equality of
+pointers.}
+
+@noindent
+When thought of as a list, @code{z1} and @code{z2} both represent ``the same''
+list, @code{((a b) a b)}.  In general, sharing is completely undetectable if we
+operate on lists using only @code{cons_cell} and the two selectors.  However,
+if we allow mutators on list structure, sharing becomes significant.  As an
+example of the difference that sharing can make, consider the following
+function, which modifies the @code{car} of the structure to which it is
+applied:
+
+@example rust
+fn set_to_wow(x: &Pair) -> Pair @{
+    let car_value = x.car.borrow().clone();
+    if let Value::Pair(inner) = car_value @{
+        set_car(&inner, Value::sym("wow"));
+    @}
+    Pair::clone(x)
+@}
+@end example
+
+@noindent
+Even though @code{z1} and @code{z2} are ``the same'' structure, applying
+@code{set_to_wow} to them yields different results.  With @code{z1}, altering
+the @code{car} also changes the @code{cdr}, because in @code{z1} the @code{car}
+and the @code{cdr} are the same pair.  With @code{z2}, the @code{car} and
+@code{cdr} are distinct, so @code{set_to_wow} modifies only the @code{car}:
+
+@example rust
+println!("@{@}", Value::Pair(Pair::clone(&z1)));
+// => ((a b) a b)
+
+println!("@{@}", Value::Pair(set_to_wow(&z1)));
+// => ((wow b) wow b)
+
+println!("@{@}", Value::Pair(Pair::clone(&z2)));
+// => ((a b) a b)
+
+println!("@{@}", Value::Pair(set_to_wow(&z2)));
+// => ((wow b) a b)
+@end example
+
+@noindent
+One way to detect sharing in list structures is to use the predicate
+@code{eq_pair}, this edition's spelling of the @code{eq?} of @ref{2.3.1}.
+More generally, @code{eq_pair(&x, &y)} tests whether @code{x} and @code{y} are
+the same object (that is, whether @code{x} and @code{y} are equal as pointers).
+Thus, with @code{z1} and @code{z2} as defined in @ref{Figure 3.16} and
+@ref{Figure 3.17}, the two halves of @code{z1} satisfy @code{eq_pair} while the
+two halves of @code{z2} do not:
+
+@example rust
+println!("@{@}", Value::Bool(eq_pair(
+    &first_pair(&z1.car.borrow().clone()),
+    &first_pair(&z1.cdr.borrow().clone()),
+)));
+// => #t
+
+println!("@{@}", Value::Bool(eq_pair(
+    &first_pair(&z2.car.borrow().clone()),
+    &first_pair(&z2.cdr.borrow().clone()),
+)));
+// => #f
+@end example
+
+As will be seen in the following sections, we can exploit sharing to greatly
+extend the repertoire of data structures that can be represented by pairs.  On
+the other hand, sharing can also be dangerous, since modifications made to
+structures will also affect other structures that happen to share the modified
+parts.  The mutation operations @code{set_car} and @code{set_cdr} should be
+used with care; unless we have a good understanding of how our data objects are
+shared, mutation can have unanticipated results.@footnote{The subtleties of
+dealing with sharing of mutable data objects reflect the underlying issues of
+``sameness'' and ``change'' that were raised in @ref{3.1.3}.  We mentioned
+there that admitting change to our language requires that a compound object
+must have an ``identity'' that is something different from the pieces from
+which it is composed.  In Lisp, we consider this ``identity'' to be the quality
+that is tested by @code{eq?}, i.e., by equality of pointers; this edition's
+version is the equality of @code{Rc} handles that @code{eq_pair} tests, and it
+rests on the same stipulation: a data object ``itself'' is the information
+stored in some particular set of memory locations in the computer.  This
+suffices for simple programs, but is hardly a general way to resolve the issue
+of ``sameness'' in computational models.}
+
+@quotation
+@strong{@anchor{Exercise 3.15}Exercise 3.15:} Draw box-and-pointer diagrams to
+explain the effect of @code{set_to_wow} on the structures @code{z1} and
+@code{z2} above.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.16}Exercise 3.16:} Ben Bitdiddle decides to write a
+function to count the number of pairs in any list structure.  ``It's easy,''
+he reasons.  ``The number of pairs in any structure is the number in the
+@code{car} plus the number in the @code{cdr} plus one more to count the current
+pair.''  So Ben writes the following function:
+
+@example rust
+fn count_pairs(x: &Value) -> u64 @{
+    match x @{
+        Value::Pair(cell) => @{
+            count_pairs(&cell.car.borrow())
+                + count_pairs(&cell.cdr.borrow())
+                + 1
+        @}
+        _ => 0,
+    @}
+@}
+@end example
+
+Show that this function is not correct.  In particular, draw box-and-pointer
+diagrams representing list structures made up of exactly three pairs for which
+Ben's function would return 3; return 4; return 7; never return at all.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.17}Exercise 3.17:} Devise a correct version of the
+@code{count_pairs} function of @ref{Exercise 3.16} that returns the number of
+distinct pairs in any structure.  (Hint: Traverse the structure, maintaining an
+auxiliary data structure that is used to keep track of which pairs have already
+been counted; a @code{HashSet} of cell addresses is such a history in Rust.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.18}Exercise 3.18:} Write a function that examines a
+list and determines whether it contains a cycle, that is, whether a program
+that tried to find the end of the list by taking successive @code{cdr} steps
+would go into an infinite loop.  @ref{Exercise 3.13} constructed such lists.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.19}Exercise 3.19:} Redo @ref{Exercise 3.18} using an
+algorithm that takes only a constant amount of space.  (This requires a very
+clever idea.)
+@end quotation
+
+@quotation
+@emph{Exercise 3.19a is added by this edition and extends exercise 3.19; SICP
+numbers stop at 3.19.}
+@strong{@anchor{Exercise 3.19a}Exercise 3.19a:} Two chains can share their
+final cells without either chain containing a cycle: the chains printed
+@code{(a b c d)} and @code{(e f c d)} can name one and the same pair for
+@code{(c d)}.  Devise a constant-space procedure that decides whether two
+chains share a suffix, and sketch why it works.  Counting each chain's length
+first is fair: aligning the two walks so they reach the shared tail in step is
+what makes the decision linear in the two lengths with only a cell handle of
+extra space.
+@end quotation
+
+@subsubheading Mutation is just assignment
+
+When we introduced compound data, we observed in @ref{2.1.3} that pairs can be
+represented purely in terms of functions; the dispatch closure again travels
+inside a @code{ProcPair} newtype:
+
+@example rust
+fn procedural_cons(x: Value, y: Value) -> ProcPair @{
+    let car_cell = RefCell::new(x);
+    let tail_cell = RefCell::new(y);
+    ProcPair @{
+        dispatch: Rc::new(move |request| match request @{
+            PairRequest::Car => car_cell.borrow().clone(),
+            PairRequest::Cdr => tail_cell.borrow().clone(),
+            // The book's else arm reports an undefined operation.
+            other => panic!("Undefined operation: CONS: @{other:?@}"),
+        @}),
+    @}
+@}
+@end example
+
+@noindent
+The same observation is true for mutable data.  We can implement mutable data
+objects as functions using assignment and local state.  For instance, we can
+extend the above pair implementation to handle @code{set_car} and
+@code{set_cdr} in a manner analogous to the way we implemented bank accounts
+using @code{make_account} in @ref{3.1.1}:
+
+@example rust
+fn procedural_cons(x: Value, y: Value) -> ProcPair @{
+    let car_cell = RefCell::new(x);
+    let tail_cell = RefCell::new(y);
+    ProcPair @{
+        dispatch: Rc::new(move |request| match request @{
+            PairRequest::Car => car_cell.borrow().clone(),
+            PairRequest::Cdr => tail_cell.borrow().clone(),
+            PairRequest::SetCar(v) => @{
+                *car_cell.borrow_mut() = v;
+                Value::sym("done")
+            @}
+            PairRequest::SetCdr(v) => @{
+                *tail_cell.borrow_mut() = v;
+                Value::sym("done")
+            @}
+        @}),
+    @}
+@}
+@end example
+
+@noindent
+The book's application of a pair to a message, @code{(z 'car)}, is here a call
+of the dispatch through @code{send}: @code{z.send(PairRequest::Car)} reads the
+@code{car} slot, and @code{z.send(PairRequest::SetCar(v))} changes it.  With
+the two mutator arms in place the @code{match} no longer needs the catch-all:
+the compiler can see that every @code{PairRequest} is answered, exactly as it
+could for the account's @code{send} in @ref{3.1.1}.
+
+Assignment is all that is needed, theoretically, to account for the behavior of
+mutable data.  As soon as we admit assignment to our language, we raise the
+issues of assignment and, with them, the issues of mutable data in
+general.@footnote{On the other hand, from the viewpoint of implementation,
+assignment asks us to change captured state, and captured state is itself a
+mutable data structure.  Thus, assignment and mutation are equipotent: Each can
+be implemented in terms of the other.}
+
+@quotation
+@strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{SICP exercise 3.20 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  Suppose we evaluate the
+following sequence against the dispatch implementation of pairs given above:
+
+@example rust
+let x = procedural_cons(Value::int(1), Value::int(2));
+let alias = ProcPair::clone(&x);
+
+alias.send(PairRequest::SetCar(Value::int(17)));
+
+x.send(PairRequest::Car)
+// => Int(17)
+@end example
+
+@noindent
+Trace this sequence through the dispatch closures above: which captured state
+does each @code{send} consult, and why does @code{x.send(PairRequest::Car)}
+answer 17 after the change went through @code{alias}?  What does a fresh
+@code{procedural_cons(Value::int(1), Value::int(2))} answer to the same
+request, and what does that contrast say about where the state of a procedural
+pair lives?  (Compare @ref{Exercise 3.11}.)
+@end quotation
+
+@node	3.3.2, 3.3.3, 3.3.1, 3.3
+@subsection Representing Queues
+
+The mutators @code{set_car} and @code{set_cdr} enable us to use pairs to
+construct data structures that cannot be built with @code{cons_cell},
+@code{car}, and @code{cdr} alone.  This section shows how to use pairs to
+represent a data structure called a queue.  Section @ref{3.3.3} will show how
+to represent data structures called tables.
+
+A @newterm{queue} is a sequence in which items are inserted at one end (called
+the @newterm{rear} of the queue) and deleted from the other end (the
+@newterm{front}).  @ref{Figure 3.18} shows an initially empty queue in which
+the items @code{a} and @code{b} are inserted.  Then @code{a} is removed,
+@code{c} and @code{d} are inserted, and @code{b} is removed.  Because items are
+always removed in the order in which they are inserted, a queue is sometimes
+called a @newterm{FIFO} (first in, first out) buffer.
+
+@float
+@anchor{Figure 3.18}
+@ifinfo
+@quotation
+@strong{Figure 3.18:} Queue operations.
+
+@example
+Operation                Resulting Queue
+(define q (make-queue))
+(insert-queue! q 'a)     a
+(insert-queue! q 'b)     a b
+(delete-queue! q)        b
+(insert-queue! q 'c)     b c
+(insert-queue! q 'd)     b c d
+(delete-queue! q)        c d
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.18,,119mm,Figure 3.18: Queue operations.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.18.std,,119mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.18:} Queue operations.}
+@end float
+
+@noindent
+In terms of data abstraction, we can regard a queue as defined by the following
+set of operations:
+
+@itemize @bullet
+
+@item
+a constructor: @code{Queue::new()} returns an empty queue (a queue containing
+no items).
+
+@item
+two selectors:
+
+@example rust
+⟨@var{queue}⟩.is_empty()
+@end example
+
+@noindent
+tests if the queue is empty.
+
+@example rust
+⟨@var{queue}⟩.front()
+@end example
+
+@noindent
+returns the object at the front of the queue, signaling an error if the queue
+is empty; it does not modify the queue.
+
+@item
+two mutators:
+
+@example rust
+⟨@var{queue}⟩.insert(⟨@var{item}⟩);
+@end example
+
+@noindent
+inserts the item at the rear of the queue, updating the queue in place.
+
+@example rust
+⟨@var{queue}⟩.delete();
+@end example
+
+@noindent
+removes the item at the front of the queue, signaling an error if the queue is
+empty before the deletion.
+
+@end itemize
+
+@noindent
+Because a queue is a sequence of items, we could certainly represent it as an
+ordinary list; the front of the queue would be the @code{car} of the list,
+inserting an item in the queue would amount to appending a new element at the
+end of the list, and deleting an item from the queue would just be taking the
+@code{cdr} of the list.  However, this representation is inefficient, because
+inserting an item requires scanning the list until we reach the end.  Since
+the only method we have for scanning a list is by successively following the
+@code{cdr} field, this scanning requires @math{{\Theta(n)}} steps for a list of @math{n}
+items.  A simple modification to the list representation overcomes this
+disadvantage by allowing the queue operations to be implemented so that they
+require @math{{\Theta(1)}} steps; that is, so that the number of steps needed is
+independent of the length of the queue.
+
+The difficulty with the list representation arises from the need to scan to
+find the end of the list.  The reason we need to scan is that, although the
+standard way of representing a list as a chain of pairs readily provides us
+with a pointer to the beginning of the list, it gives us no easily accessible
+pointer to the end.  The modification that avoids the drawback is to represent
+the queue as a list, together with an additional pointer that indicates the
+final pair in the list.  That way, when we go to insert an item, we can consult
+the rear pointer and so avoid scanning the list.
+
+@noindent
+A queue is represented, then, as a pair of pointers, @code{front} and
+@code{rear}, which indicate, respectively, the first and last pairs in an
+ordinary list.  Since we would like the queue to be an identifiable object, we
+combine the two pointers in one @code{Queue} value.  Thus, the queue itself is
+the struct that holds the two pointers.  @ref{Figure 3.19} illustrates this
+representation.
+
+@float
+@anchor{Figure 3.19}
+@ifinfo
+@quotation
+@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.
+
+@example
+       +---+---+
+  q -->| * | *-+-------------------+
+       +-|-+---+                   |
+         |                         |
+         | front-ptr               | rear-ptr
+         V                         V
+     +---+---+    +---+---+    +---+---+
+     | * | *-+--->| * | *-+--->| * | / |
+     +-|-+---+    +-|-+---+    +-|-+---+
+       V            V            V
+     +---+        +---+        +---+
+     | a |        | b |        | c |
+     +---+        +---+        +---+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.19b,,118mm,Figure 3.19: Implementation of a queue as a list with front and rear pointers.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,,118mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.}
+@end float
+
+To define the queue operations we start from the representation, which keeps
+the front and rear pointers in two fields so that every operation can select
+and modify them directly:
+
+@example rust
+struct Queue @{
+    front: RefCell<Option<Pair>>,   // the front pointer
+    rear: RefCell<Option<Pair>>,    // the rear pointer
+@}
+@end example
+
+@noindent
+Reading @code{queue.front.borrow()} selects the front pointer, and assigning
+through @code{queue.front.borrow_mut()} modifies it; the rear pointer works the
+same way.  The @code{Option} marks the empty list: a pointer with no pair to
+point at.
+
+@noindent
+Now we can implement the actual queue operations as methods on this struct.
+We will consider a queue to be empty if its front pointer is unset:
+
+@example rust
+fn is_empty(&self) -> bool @{
+    self.front.borrow().is_none()
+@}
+@end example
+
+@noindent
+The @code{Queue::new} constructor returns, as an initially empty queue, a
+@code{Queue} whose front and rear pointers are both unset:
+
+@example rust
+fn new() -> Self @{
+    Queue @{
+        front: RefCell::new(None),
+        rear: RefCell::new(None),
+    @}
+@}
+@end example
+
+@noindent
+To select the item at the front of the queue, we return the @code{car} of the
+pair indicated by the front pointer:
+
+@example rust
+fn front(&self) -> Result<Value, SchemeError> @{
+    match self.front.borrow().clone() @{
+        Some(pair) => Ok(pair.car.borrow().clone()),
+        None => Err(SchemeError::UserRaised @{
+            message: "front called with an empty queue".into(),
+            irritants: vec![],
+        @}),
+    @}
+@}
+@end example
+
+@noindent
+To insert an item in a queue, we follow the method whose result is indicated in
+@ref{Figure 3.20}.  We first create a new pair whose @code{car} is the item to
+be inserted and whose @code{cdr} is the empty list.  If the queue was initially
+empty, we set the front and rear pointers of the queue to this new pair.
+Otherwise, we modify the final pair in the queue to point to the new pair, and
+also set the rear pointer to the new pair.
+
+@float
+@anchor{Figure 3.20}
+@ifinfo
+@strong{Figure 3.20:} Result of using @code{(insert-queue! q 'd)} on the queue of @ref{Figure 3.19}.
+
+@example
+       +---+---+
+  q -->| * | *-+--------------------------------+
+       +-|-+---+                                |
+         |                                      |
+         | front-ptr                            | rear-ptr
+         V                                      V
+     +---+---+    +---+---+    +---+---+    +---+---+
+     | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
+     +-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+       V            V            V            V
+     +---+        +---+        +---+        +---+
+     | a |        | b |        | c |        | d |
+     +---+        +---+        +---+        +---+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.20c,,141mm,Figure 3.20: Result of using (insert-queue! q 'd) on the queue of Figure 3.19.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,,141mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.20:} Result of using @code{(insert-queue! q 'd)} on the queue of @ref{Figure 3.19}.}
+@end float
+
+@example rust
+fn insert(&self, item: Value) @{
+    let new_pair = cons_cell(item, Value::Nil);
+    let mut rear = self.rear.borrow_mut();
+    match rear.as_ref() @{
+        Some(rear_pair) => set_cdr(rear_pair, Value::Pair(Rc::clone(&new_pair))),
+        None => *self.front.borrow_mut() = Some(Rc::clone(&new_pair)),
+    @}
+    *rear = Some(new_pair);
+@}
+@end example
+
+@noindent
+To delete the item at the front of the queue, we merely modify the front
+pointer so that it now points at the second item in the queue, which can be
+found by following the @code{cdr} pointer of the first item (see
+@ref{Figure 3.21}):@footnote{If the first item is the final item in the queue, the front
+pointer will be unset after the deletion, which will mark the queue as
+empty; we needn't worry about updating the rear pointer, which will still point
+to the deleted item, because @code{is_empty} looks only at the front
+pointer.}
+
+@example rust
+fn delete(&self) -> Result<(), SchemeError> @{
+    let front = self.front.borrow().clone();
+    let Some(pair) = front else @{
+        return Err(SchemeError::UserRaised @{
+            message: "delete! called with an empty queue".into(),
+            irritants: vec![],
+        @});
+    @};
+    let rest = pair.cdr.borrow().clone();
+    *self.front.borrow_mut() = match rest @{
+        Value::Pair(cell) => Some(cell),
+        Value::Nil => None,
+        other => @{
+            return Err(SchemeError::TypeMismatch(format!(
+                "queue node with a non-list tail: @{other@}"
+            )));
+        @}
+    @};
+    Ok(())
+@}
+@end example
+
+@float
+@anchor{Figure 3.21}
+@ifinfo
+@strong{Figure 3.21:} Result of using @code{(delete-queue!  q)} on the queue of @ref{Figure 3.20}.
+
+@example
+       +---+---+
+  q -->| * | *-+--------------------------------+
+       +-|-+---+                                |
+         +------------+                         |
+            front-ptr |                         | rear-ptr
+                      V                         V
+     +---+---+    +---+---+    +---+---+    +---+---+
+     | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
+     +-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+       V            V            V            V
+     +---+        +---+        +---+        +---+
+     | a |        | b |        | c |        | d |
+     +---+        +---+        +---+        +---+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.21c,,141mm,Figure 3.21: Result of using (delete-queue! q) on the queue of Figure 3.20.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,,141mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.21:} Result of using @code{(delete-queue!  q)} on the queue of @ref{Figure 3.20}.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 3.21}Exercise 3.21:} Ben Bitdiddle decides to test the
+queue implementation described above.  He loads the code and tries it out,
+examining the queue after each operation with a printer for the raw
+front/rear pointer pair that the representation stores:
+
+@example rust
+let q1 = Queue::new();
+
+q1.insert(Value::sym("a"));
+pointer_pair_view(&q1) // ((a) a)
+
+q1.insert(Value::sym("b"));
+pointer_pair_view(&q1) // ((a b) b)
+
+let _ = q1.delete();
+pointer_pair_view(&q1) // ((b) b)
+
+let _ = q1.delete();
+pointer_pair_view(&q1) // (() b)
+@end example
+
+``It's all wrong!'' he complains.  ``The printer's response shows that the
+last item is inserted into the queue twice.  And when I delete both items, the
+second @code{b} is still there, so the queue isn't empty, even though it's
+supposed to be.''  Eva Lu Ator suggests that Ben has misunderstood what is
+happening.  ``It's not that the items are going into the queue twice,'' she
+explains.  ``It's just that the plain pair printer doesn't know how to make
+sense of the queue representation.  If you want to see the queue printed
+correctly, you'll have to define your own print function for queues.'' Explain
+what Eva Lu is talking about.  In particular, show why Ben's examples produce
+the printed results that they do.  Define a function @code{print_queue} that
+takes a queue as input and prints the sequence of items in the queue: on the
+queue built by inserting @code{a} and @code{b}, deleting, and inserting
+@code{d}, it should print @code{(b d)} where the raw reading is
+@code{((b d) d)}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.22}Exercise 3.22:} Instead of representing a queue
+as a pair of pointers, we can build a queue as a closure with local state.
+The local state will consist of pointers to the beginning and the end of an
+ordinary list.  Thus, the @code{make_queue} function will have the form
+
+@example rust
+fn make_queue() -> impl Fn(QueueMsg) -> Result<Value, SchemeError> @{
+    let front_ptr = @r{…};
+    let rear_ptr = @r{…};
+    ⟨@var{definitions of internal procedures}⟩
+    move |message| @{
+        @r{⟨dispatch on the message⟩}
+    @}
+@}
+@end example
+
+Complete the definition of @code{make_queue} and provide implementations of the
+queue operations using this representation.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.23}Exercise 3.23:} A @newterm{deque} (``double-ended
+queue'') is a sequence in which items can be inserted and deleted at either the
+front or the rear.  Operations on deques are the constructor @code{make_deque},
+the predicate @code{empty_deque}, selectors @code{front_deque} and
+@code{rear_deque}, and mutators @code{front_insert_deque},
+@code{rear_insert_deque}, @code{front_delete_deque},
+@code{rear_delete_deque}.  Show how to represent deques using pairs that carry
+a previous handle as well as a next handle, and give implementations of the
+operations.@footnote{Be careful not to make the printer try to walk a structure
+that contains cycles.  (See @ref{Exercise 3.13}.)}
+All operations should be accomplished in @math{{\Theta(1)}} steps.
+@end quotation
+
+
+@node	3.3.3, 3.3.4, 3.3.2, 3.3
+@subsection Representing Tables
+
+When we studied various ways of representing sets in @ref{Chapter 2}, we
+mentioned in @ref{2.3.3} the task of maintaining a table of records
+indexed by identifying keys.  In the implementation of data-directed
+programming in @ref{2.4.3}, we made extensive use of two-dimensional
+tables, in which information is stored and retrieved using two keys.  Here we
+see how to build tables as mutable list structures.
+
+We first consider a one-dimensional table, in which each value is stored under
+a single key.  We implement the table as a list of records, each of which is
+implemented as a pair consisting of a key and the associated value. The records
+are glued together to form a list by pairs whose @code{car}s point to
+successive records.  These gluing pairs are called the @newterm{backbone} of
+the table.  To have a place that we can change when we add a new
+record to the table, we build the table as a @newterm{headed list}.  A headed
+list has a special backbone pair at the beginning, which holds a dummy
+``record''---in this case the arbitrarily chosen symbol @code{*table*}.
+In this edition that headed list is the section's @code{Table}: the marker
+cell, with the record list hanging from its @code{cdr}.
+@ref{Figure 3.22} shows the box-and-pointer diagram for the table
+
+@example rust
+// Table::new builds the headed cell; each insert splices a record
+// in after the marker.
+let table = Table::new();
+table.insert(Value::sym("a"), Value::int(1));
+table.insert(Value::sym("b"), Value::int(2));
+table.insert(Value::sym("c"), Value::int(3));
+@end example
+
+@float
+@anchor{Figure 3.22}
+@ifinfo
+@strong{Figure 3.22:} A table represented as a headed list.
+
+@example
++---+---+    +---+---+    +---+---+    +---+---+
+| * | *-+--->| * | *-+--->| * | *-+--->| * | / |
++-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+|            |            |            |
+V            V            V            V
++---------+   +---+---+   +---+---+   +---+---+
+| *table* |   | * | * |   | * | * |   | * | * |
++---------+   +-|-+-|-+   +-|-+-|-+   +-|-+-|-+
+|   |       |   |       |   |
+V   V       V   V       V   V
++---+ +---+ +---+ +---+ +---+ +---+
+| a | | 1 | | b | | 2 | | c | | 3 |
++---+ +---+ +---+ +---+ +---+ +---+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.22c,,138mm,Figure 3.22: A table represented as a headed list.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,,138mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.22:} A table represented as a headed list.}
+@end float
+
+@noindent
+To extract information from a table we use the table's @code{lookup}
+operation, which takes a key as argument and returns the associated value
+(or false, the absent arm of the lookup's @code{Option}, if there is no
+value stored under that key).  @code{Lookup} is defined in terms of the
+@code{assoc} operation, which expects a key and a list of records as
+arguments.  Note that @code{assoc} never sees the dummy record.
+@code{Assoc} returns the record that has the given key as its
+@code{car}, or @code{None} if there is no such record.@footnote{Because
+keys are compared with the table's structural test, @code{assoc} can
+recognize keys that are symbols, numbers, or list structure, as the
+book's @code{equal?}-based test does.}  @code{Lookup} then matches on
+the @code{Option} returned by @code{assoc} and returns the value (the
+@code{cdr}) of the record when there is one.
+
+@example rust
+impl Table @{
+    // The book's `assoc`: the first record whose key satisfies the
+    // table's key test, or `None`.
+    pub fn assoc(&self, key: &Value, records: &Value) -> Option<Pair> @{
+        let same_key = Rc::clone(&self.same_key);
+        assoc_by(key, records, move |a, b| same_key(a, b))
+    @}
+
+    // The book's `lookup`: the value stored under `key`, or `None`.
+    pub fn lookup(&self, key: &Value) -> Option<Value> @{
+        let records = self.header().cdr.borrow().clone();
+        self.assoc(key, &records)
+            .map(|record| record.cdr.borrow().clone())
+    @}
+@}
+@end example
+
+@noindent
+To insert a value in a table under a specified key, we first use @code{assoc}
+to see if there is already a record in the table with this key.  If not, we
+form a new record by pairing the key with the value, and insert this at
+the head of the table's list of records, after the dummy record.  If there
+already is a record with this key, we set the @code{cdr} of this record to the
+designated new value.  The header of the table provides us with a fixed
+location to modify to insert the new record.@footnote{Thus, the first
+backbone pair is the object that represents the table ``itself''; that is, a
+clone of the table's header handle points at this same pair.  This same
+backbone pair always starts the table.  If we did not arrange things in this
+way, @code{insert} would have to return a new value for the start of the table
+when it added a new record.}
+
+@example rust
+impl Table @{
+    // The book's `insert!`: replaces the value of an existing record
+    // or splices a new one at the front of the record list.
+    pub fn insert(&self, key: Value, value: Value) @{
+        let header = self.header();
+        let records = header.cdr.borrow().clone();
+        match self.assoc(&key, &records) @{
+            Some(record) => set_cdr(&record, value),
+            None => set_cdr(
+                &header,
+                Value::Pair(cons_cell(Value::Pair(cons_cell(key, value)), records)),
+            ),
+        @}
+    @}
+@}
+@end example
+
+@noindent
+To construct a new table, we simply build the headed cell: the marker symbol
+in the car, the record list hanging empty from its cdr.  That is the cell
+@code{Table::new} built for the session above, and the constructor installs
+the table's key comparison with it, the structural test
+@code{structural_same_key}.  A table that should recognize its keys some
+other way takes the caller's own predicate instead, which is the design
+exercise 3.24 asks for.  The operations just defined then work over any
+table built this way:
+
+@example rust
+table.lookup(&Value::sym("b"))
+// => 2
+
+table.lookup(&Value::sym("d"))
+// => #f
+
+table.insert(Value::sym("b"), Value::int(20));
+
+table.lookup(&Value::sym("b"))
+// => 20
+@end example
+
+@subsubheading Two-dimensional tables
+
+In a two-dimensional table, each value is indexed by two keys.  We can
+construct such a table as a one-dimensional table in which each key identifies
+a subtable.  @ref{Figure 3.23} shows the box-and-pointer diagram for the table
+
+@example
+math:  +: 43    letters:  a: 97
+       -: 45              b: 98
+       *: 42
+@end example
+
+@noindent
+which has two subtables.  (The subtables don't need a special header symbol,
+since the key that identifies the subtable serves this purpose.)
+
+@float
+@anchor{Figure 3.23}
+@ifinfo
+@strong{Figure 3.23:} A two-dimensional table.
+
+@example
+table
+  |
+  V
++---+---+   +---+---+   +---+---+
+| * | *-+-->| * | *-+-->| * | / |
++-|-+---+   +-|-+---+   +-|-+---+
+  V           |           V
++-------+     |         +---+---+   +---+---+   +---+---+
+|*table*|     |         | * | *-+-->| * | *-+-->| * | / |
++-------+     |         +-|-+---+   +-|-+---+   +-|-+---+
+              |           V           V           V
+              |       +-------+     +---+---+   +---+---+
+              |       |letters|     | * | * |   | * | * |
+              |       +-------+     +-|-+-|-+   +-|-+-|-+
+              |                       V   V       V   V
+              |                    +---+ +---+ +---+ +---+
+              |                    | a | | 97| | b | | 98|
+              |                    +---+ +---+ +---+ +---+
+              V
+            +---+---+   +---+---+   +---+---+   +---+---+
+            | * | *-+-->| * | *-+-->| * | *-+-->| * | / |
+            +-|-+---+   +-|-+---+   +-|-+---+   +-|-+---+
+              V           V           V           V
+          +------+      +---+---+   +---+---+   +---+---+
+          | math |      | * | * |   | * | * |   | * | * |
+          +------+      +-|-+-|-+   +-|-+-|-+   +-|-+-|-+
+                          V   V       V   V       V   V
+                       +---+ +---+ +---+ +---+ +---+ +---+
+                       | + | | 43| | - | | 45| | * | | 42|
+                       +---+ +---+ +---+ +---+ +---+ +---+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.23b,,143mm,Figure 3.23: A two-dimensional table.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.23b.std,,143mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.23:} A two-dimensional table.}
+@end float
+
+@noindent
+When we look up an item, we use the first key to identify the correct subtable.
+Then we use the second key to identify the record within the subtable.
+
+@example rust
+// The book's two-dimensional `lookup`: the first key names a
+// subtable, the second a record within it.
+pub fn lookup_2d(key1: &Value, key2: &Value, table: &Table) -> Option<Value> @{
+    let subtable = table.assoc(key1, &table.header().cdr.borrow())?;
+    let sub_records = subtable.cdr.borrow().clone();
+    table
+        .assoc(key2, &sub_records)
+        .map(|record| record.cdr.borrow().clone())
+@}
+@end example
+
+@noindent
+To insert a new item under a pair of keys, we use @code{assoc} to see if there
+is a subtable stored under the first key.  If not, we build a new subtable
+containing the single record (@code{key2}, @code{value}) and insert it into
+the table under the first key.  If a subtable already exists for the first key,
+we insert the new record into this subtable, using the insertion method for
+one-dimensional tables described above:
+
+@example rust
+// The book's two-dimensional `insert!`: reuses an existing subtable
+// or builds one holding the single new record.
+pub fn insert_2d(key1: Value, key2: Value, value: Value, table: &Table) @{
+    let header = table.header();
+    let records = header.cdr.borrow().clone();
+    let Some(subtable) = table.assoc(&key1, &records) else @{
+        let record = Value::Pair(cons_cell(key2, value));
+        let sub_records = cons_cell(record, Value::Nil);
+        let subtable = cons_cell(key1, Value::Pair(sub_records));
+        set_cdr(
+            &header,
+            Value::Pair(cons_cell(Value::Pair(subtable), records)),
+        );
+        return;
+    @};
+    let sub_records = subtable.cdr.borrow().clone();
+    if let Some(record) = table.assoc(&key2, &sub_records) @{
+        set_cdr(&record, value);
+        return;
+    @}
+    let record = cons_cell(key2, value);
+    set_cdr(
+        &subtable,
+        Value::Pair(cons_cell(Value::Pair(record), sub_records)),
+    );
+@}
+@end example
+
+@noindent
+The table of @ref{Figure 3.23} is then:
+
+@example rust
+let table = Table::new();
+
+insert_2d(Value::sym("letters"), Value::sym("a"), Value::int(97), &table);
+insert_2d(Value::sym("letters"), Value::sym("b"), Value::int(98), &table);
+insert_2d(Value::sym("math"), Value::sym("+"), Value::int(43), &table);
+insert_2d(Value::sym("math"), Value::sym("-"), Value::int(45), &table);
+insert_2d(Value::sym("math"), Value::sym("*"), Value::int(42), &table);
+
+lookup_2d(&Value::sym("letters"), &Value::sym("b"), &table)
+// => 98
+
+lookup_2d(&Value::sym("math"), &Value::sym("*"), &table)
+// => 42
+
+lookup_2d(&Value::sym("math"), &Value::sym("/"), &table)
+// => #f
+@end example
+
+@subsubheading Creating local tables
+
+The @code{lookup_2d} and @code{insert_2d} operations defined above take the
+table as an argument.  This enables us to use programs that access more than
+one table.  Another way to deal with multiple tables is to have separate
+@code{lookup} and @code{insert} operations for each table.  We can do this by
+representing a table as an object that maintains an internal table as part of
+its local state.  In this edition the internal table is a @code{Table}, whose
+records live behind one @code{RefCell}, and the ``table object'' is the set of
+closures bound to that handle: each closure is one operation, and all of them
+share the internal table they capture.  Here is a generator for
+two-dimensional tables represented in this fashion:
+
+@example rust
+let operation_table = Table::new();
+
+let get = |key1: Value, key2: Value| lookup_2d(&key1, &key2, &operation_table);
+let put = |key1: Value, key2: Value, value: Value| @{
+    insert_2d(key1, key2, value, &operation_table);
+@};
+@end example
+
+@noindent
+Using this table object, we could implement the @code{get} and @code{put}
+operations used in @ref{2.4.3} for data-directed programming as above:
+@code{get} takes as arguments two keys, and @code{put} takes as arguments two
+keys and a value.  Both operations access the same local table, which is
+encapsulated within the captured @code{operation_table}.
+
+@example rust
+put(Value::sym("real-part"), Value::sym("rectangular"), Value::int(0));
+
+get(Value::sym("real-part"), Value::sym("rectangular"))
+// => 0
+
+get(Value::sym("real-part"), Value::sym("polar"))
+// => #f
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.24}Exercise 3.24:} In the table implementations
+above, the keys are tested for equality with the table's structural key test
+(called by @code{assoc}).  This is not always the appropriate test.  For
+instance, we might have a table with numeric keys in which we don't need an
+exact match to the number we're looking up, but only a number within some
+tolerance of it.  Design a table constructor @code{make_table} that takes as
+an argument a @code{same_key} predicate that will be used to test
+``equality'' of keys.  @code{Make_table} should return a table whose
+@code{lookup} and @code{insert} operations use that test for a local table.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.25}Exercise 3.25:} Generalizing one- and
+two-dimensional tables, show how to implement a table in which values are
+stored under an arbitrary number of keys and different values may be stored
+under different numbers of keys.  The @code{lookup} and @code{insert}
+operations should take as input a list of keys used to access the table.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.26}Exercise 3.26:} To search a table as implemented
+above, one needs to scan through the list of records.  This is basically the
+unordered list representation of @ref{2.3.3}.  For large tables, it may
+be more efficient to structure the table in a different manner.  Describe a
+table implementation where the (key, value) records are organized using a
+binary tree, assuming that keys can be ordered in some way (e.g., numerically
+or alphabetically).  (Compare @ref{Exercise 2.66} of @ref{Chapter 2}.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.27}Exercise 3.27:} @newterm{Memoization} (also
+called @newterm{tabulation}) is a technique that enables a function to record,
+in a local table, values that have previously been computed.  This technique
+can make a vast difference in the performance of a program.  A memoized
+function maintains a table in which values of previous calls are stored using
+as keys the arguments that produced the values.  When the memoized function is
+asked to compute a value, it first checks the table to see if the value is
+already there and, if so, just returns that value.  Otherwise, it computes the
+new value in the ordinary way and stores this in the table.  As an example of
+memoization, recall from @ref{1.2.2} the exponential process for
+computing Fibonacci numbers:
+
+@example rust
+fn fib(n: u32) -> i128 @{
+    match n @{
+        0 => 0,
+        1 => 1,
+        _ => fib(n - 1) + fib(n - 2),
+    @}
+@}
+@end example
+
+The memoized version of the same function is
+
+@example rust
+// Every recursive level consults the one shared table first.
+fn memo_fib(n: u32, table: &MemoTable) -> Result<i128, SchemeError> @{
+    let answer = table.lookup_insert(Key::int(i128::from(n)), || match n @{
+        0 => Ok(Value::int(0)),
+        1 => Ok(Value::int(1)),
+        _ => @{
+            let smaller = memo_fib(n - 1, table)?;
+            let smallest = memo_fib(n - 2, table)?;
+            Ok(Value::int(smaller + smallest))
+        @}
+    @})?;
+    match answer @{
+        Value::Int(total) => Ok(total),
+        _ => Err(SchemeError::TypeMismatch(
+            "memo-fib stored a non-number".into(),
+        )),
+    @}
+@}
+@end example
+
+@noindent
+where the memoized function's local table is the section's @code{MemoTable},
+a @code{RefCell} hash map shared by every recursive level through the
+@code{table} argument, and the book's memoizer, which looks up the argument
+before computing it and stores each fresh result afterward, is the single
+call to @code{lookup_insert}:
+
+@example rust
+let table = MemoTable::new();
+@end example
+
+Trace the computation of @code{memo_fib(3)} over this shared table, noting
+each @code{lookup_insert} that answers from storage and each one that
+computes and inserts.  Explain why @code{memo_fib} computes the
+@math{n^{\hbox{th}}} Fibonacci number in a number
+of steps proportional to @math{n}.  Would the scheme still work if we had simply
+defined @code{memo_fib} to memoize the plain @code{fib}, so that the compute
+arm calls @code{fib} instead of @code{memo_fib}?
+@end quotation
+
+@node	3.3.4, 3.3.5, 3.3.3, 3.3
+@subsection A Simulator for Digital Circuits
+
+Designing complex digital systems, such as computers, is an important
+engineering activity.  Digital systems are constructed by interconnecting
+simple elements.  Although the behavior of these individual elements is simple,
+networks of them can have very complex behavior.  Computer simulation of
+proposed circuit designs is an important tool used by digital systems
+engineers.  In this section we design a system for performing digital logic
+simulations.  This system typifies a kind of program called an
+@newterm{event-driven simulation}, in which actions (``events'') trigger
+further events that happen at a later time, which in turn trigger more events,
+and so on.
+
+Our computational model of a circuit will be composed of objects that
+correspond to the elementary components from which the circuit is constructed.
+There are @newterm{wires}, which carry @newterm{digital signals}.  A digital
+signal may at any moment have only one of two possible values, 0 and 1.  There
+are also various types of digital @newterm{function boxes}, which connect wires
+carrying input signals to other output wires.  Such boxes produce output
+signals computed from their input signals.  The output signal is delayed by a
+time that depends on the type of the function box.  For example, an
+@newterm{inverter} is a primitive function box that inverts its input.  If the
+input signal to an inverter changes to 0, then one inverter-delay later the
+inverter will change its output signal to 1.  If the input signal to an
+inverter changes to 1, then one inverter-delay later the inverter will change
+its output signal to 0.  We draw an inverter symbolically as in @ref{Figure 3.24}.  
+An @newterm{and-gate}, also shown in figure 3.24, is a primitive
+function box with two inputs and one output.  It drives its output signal to a
+value that is the @newterm{logical and} of the inputs.  That is, if both of its
+input signals become 1, then one and-gate-delay time later the and-gate will
+force its output signal to be 1; otherwise the output will be 0.  An
+@newterm{or-gate} is a similar two-input primitive function box that drives its
+output signal to a value that is the @newterm{logical or} of the inputs.  That
+is, the output will become 1 if at least one of the input signals is 1;
+otherwise the output will become 0.
+
+@float
+@anchor{Figure 3.24}
+@ifinfo
+@quotation
+@strong{Figure 3.24:} Primitive functions in the digital logic simulator.
+
+@example
+               __          ___
+  |\        --|  \       --\  \
+--| >o--      |   )--       )  >--
+  |/        --|__/       --/__/
+
+Inverter    And-gate     Or-gate
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.24a,,110mm,Figure 3.24: Primitive functions in the digital logic simulator.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,,110mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.24:} Primitive functions in the digital logic simulator.}
+@end float
+
+@noindent
+We can connect primitive functions together to construct more complex
+functions.  To accomplish this we wire the outputs of some function boxes to
+the inputs of other function boxes.  For example, the @newterm{half-adder}
+circuit shown in @ref{Figure 3.25} consists of an or-gate, two and-gates, and
+an inverter.  It takes two input signals, A and B, and has two output signals,
+S and C.  S will become 1 whenever precisely one of A and B is 1, and C will
+become 1 whenever A and B are both 1.  We can see from the figure that, because
+of the delays involved, the outputs may be generated at different times.  Many
+of the difficulties in the design of digital circuits arise from this fact.
+
+@float
+@anchor{Figure 3.25}
+@ifinfo
+@quotation
+@strong{Figure 3.25:} A half-adder circuit.
+
+@example
+    +--------------------------------------+
+    |         ____                         |
+A --------*---\   \ D               ___    |
+    |     |    >   >---------------|   \   |
+    |  +--|---/___/                |    )----- S
+    |  |  |              |\  E  +--|___/   |
+    |  |  |           +--| >o---+          |
+    |  |  |    ___    |  |/                |
+    |  |  +---|   \   |                    |
+    |  |      |    )--*----------------------- C
+B -----*------|___/                        |
+    |                                      |
+    +--------------------------------------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.25c,,122mm,Figure 3.25: A half-adder circuit.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,,122mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.25:} A half-adder circuit.}
+@end float
+
+@noindent
+We will now build a program for modeling the digital logic circuits we wish to
+study.  The program will construct computational objects modeling the wires,
+which will ``hold'' the signals.  Function boxes will be modeled by functions
+that enforce the correct relationships among the signals.
+
+One basic element of our simulation will be a function @code{Wire::new}, which
+constructs wires.  For example, we can construct six wires as follows:
+
+@example rust
+let a = Wire::new();
+let b = Wire::new();
+let c = Wire::new();
+let d = Wire::new();
+let e = Wire::new();
+let s = Wire::new();
+@end example
+
+@noindent
+We attach a function box to a set of wires by calling a function that
+constructs that kind of box.  The arguments to the constructor function are
+the wires to be attached to the box and the agenda the box reports its
+changes to, one shared schedule described below.  A constructor call itself
+returns nothing; the wiring is the effect it leaves on the wires.  For
+example, given that we can construct and-gates, or-gates, and inverters, we
+can wire together the half-adder shown in @ref{Figure 3.25}:
+
+@example rust
+let agenda = Rc::new(Agenda::new());
+
+or_gate(&a, &b, &d, &agenda);
+
+and_gate(&a, &b, &c, &agenda);
+
+inverter(&c, &e, &agenda);
+
+and_gate(&d, &e, &s, &agenda);
+@end example
+
+@noindent
+Better yet, we can explicitly name this operation by defining a function
+@code{half_adder} that constructs this circuit, given the shared agenda and
+the four external wires to be attached to the half-adder:
+
+@example rust
+pub fn half_adder(a: &Wire, b: &Wire, s: &Wire, c: &Wire, agenda: &Rc<Agenda>) @{
+    let d = Wire::new();
+    let e = Wire::new();
+    or_gate(a, b, &d, agenda);
+    and_gate(a, b, c, agenda);
+    inverter(c, &e, agenda);
+    and_gate(&d, &e, s, agenda);
+@}
+@end example
+
+@noindent
+The advantage of making this definition is that we can use @code{half_adder}
+itself as a building block in creating more complex circuits.  @ref{Figure 3.26},
+for example, shows a @newterm{full-adder} composed of two half-adders
+and an or-gate.@footnote{A full-adder is a basic circuit element used in adding
+two binary numbers.  Here A and B are the bits at corresponding positions in
+the two numbers to be added, and @math{\rm C_{in}} is the carry bit from the
+addition one place to the right.  The circuit generates SUM, which is the sum
+bit in the corresponding position, and @math{\rm C_{out}}, which is the carry
+bit to be propagated to the left.} We can construct a full-adder as follows:
+
+@example rust
+pub fn full_adder(a: &Wire, b: &Wire, c_in: &Wire, sum: &Wire, c_out: &Wire, agenda: &Rc<Agenda>) @{
+    let c1 = Wire::new();
+    let c2 = Wire::new();
+    let s = Wire::new();
+    half_adder(b, c_in, &s, &c1, agenda);
+    half_adder(a, &s, sum, &c2, agenda);
+    or_gate(&c1, &c2, c_out, agenda);
+@}
+@end example
+
+@float
+@anchor{Figure 3.26}
+@ifinfo
+@quotation
+@strong{Figure 3.26:} A full-adder circuit.
+
+@example
+    +----------------------------------+
+    |              +-------+           |
+A -----------------+ half- +-------------- SUM
+    |  +-------+   | adder |   ____    |
+B -----+ half- +---+       +---\   \   |
+    |  | adder |   +-------+    >or >----- Cout
+C -----+       +---------------/___/   |
+    |  +-------+                       |
+    +----------------------------------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.26,,129mm,Figure 3.26: A full-adder circuit.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.26.std,,129mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.26:} A full-adder circuit.}
+@end float
+
+@noindent
+Having defined @code{full_adder} as a function, we can now use it as a
+building block for creating still more complex circuits.  (For example, see
+@ref{Exercise 3.30}.)
+
+In essence, our simulator provides us with the tools to construct a language of
+circuits.  If we adopt the general perspective on languages with which we
+approached the study of programming in @ref{1.1}, we can say that the
+primitive function boxes form the primitive elements of the language, that
+wiring boxes together provides a means of combination, and that specifying
+wiring patterns as functions serves as a means of abstraction.
+
+@subsubheading Primitive function boxes
+
+The primitive function boxes implement the ``forces'' by which a change in the
+signal on one wire influences the signals on other wires.  To build function
+boxes, we use the following operations on wires:
+
+@itemize @bullet
+
+@item @code{⟨@var{wire}⟩.signal()}
+
+@noindent
+returns the current value of the signal on the wire.
+
+@item @code{⟨@var{wire}⟩.set_signal(⟨@var{new value}⟩)}
+
+@noindent
+changes the value of the signal on the wire to the new value.
+
+@item @code{⟨@var{wire}⟩.add_action(&⟨@var{action}⟩)}
+
+@noindent
+asserts that the designated action should be run whenever the signal on the
+wire changes value.  Such actions are the vehicles by which changes in the
+signal value on the wire are communicated to other wires.
+
+@end itemize
+
+@noindent
+In addition, we will make use of a method @code{after_delay} that takes a
+time delay and an action to be run and schedules the given action to run
+after the given delay.
+
+Using these operations, we can define the primitive digital logic functions.
+To connect an input to an output through an inverter, we use @code{add_action}
+to associate with the input wire an action that will be run whenever the
+signal on the input wire changes value.  The action computes the
+@code{logical_not} of the input signal, and then, after one
+@code{INVERTER_DELAY}, sets the output signal to be this new value:
+
+@example rust
+pub fn inverter(input: &Wire, output: &Wire, agenda: &Rc<Agenda>) @{
+    // The book's `invert-input`, as a closure the input wire holds.
+    // A wire is a cheap handle: a clone shares the same state.
+    let input = input.clone();
+    let output = output.clone();
+    let agenda = Rc::clone(agenda);
+    let action: Rc<dyn Fn()> = Rc::new(move || @{
+        let new_value = logical_not(input.signal());
+        let output = output.clone();
+        agenda.after_delay(INVERTER_DELAY, Rc::new(move || @{
+            output.set_signal(new_value);
+        @}));
+    @});
+    input.add_action(&action);
+@}
+
+pub fn logical_not(s: u8) -> u8 @{
+    u8::from(s == 0)
+@}
+@end example
+
+@noindent
+The book's @code{logical-not} signals an error for a signal other than 0 or
+1.  Here the signal is a byte that the section's discipline keeps at 0 or 1,
+so no other value can reach the conversion, and @code{u8::from} maps 0 to 1
+and 1 to 0.
+
+@noindent
+An and-gate is a little more complex.  The action procedure must be run if
+either of the inputs to the gate changes.  It computes the @code{logical_and}
+(using a function analogous to @code{logical_not}) of the values of the
+signals on the input wires and sets up a change to the new value to occur on
+the output wire after one @code{AND_GATE_DELAY}.
+
+@example rust
+pub fn and_gate(a1: &Wire, a2: &Wire, output: &Wire, agenda: &Rc<Agenda>) @{
+    // The book's `and-action-procedure`; one closure serves both inputs.
+    let a1 = a1.clone();
+    let a2 = a2.clone();
+    let output = output.clone();
+    let agenda = Rc::clone(agenda);
+    let and_action: Rc<dyn Fn()> = Rc::new(move || @{
+        let new_value = logical_and(a1.signal(), a2.signal());
+        let output = output.clone();
+        agenda.after_delay(AND_GATE_DELAY, Rc::new(move || @{
+            output.set_signal(new_value);
+        @}));
+    @});
+    a1.add_action(&and_action);
+    a2.add_action(&and_action);
+@}
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.28}Exercise 3.28:} Define an or-gate as a primitive
+function box.  Your @code{or_gate} constructor should be similar to
+@code{and_gate}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.29}Exercise 3.29:} Another way to construct an
+or-gate is as a compound digital logic device, built from and-gates and
+inverters.  Define a function @code{or_gate} that accomplishes this.  What is
+the delay time of the or-gate in terms of @code{AND_GATE_DELAY} and
+@code{INVERTER_DELAY}?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.30}Exercise 3.30:} @ref{Figure 3.27} shows a
+@newterm{ripple-carry adder} formed by stringing together @math{n} full-adders.
+This is the simplest form of parallel adder for adding two @math{n}-bit binary
+numbers.  The inputs @math{A_1}, @math{A_2}, @math{A_3}, @dots{}, @math{A_n} and 
+@math{B_1}, @math{B_2}, @math{B_3},
+@dots{}, @math{B_n} are the two binary numbers to be added (each @math{A_k} and
+@math{B_k} is a 0 or a 1).  The circuit generates @math{S_1}, @math{S_2}, 
+@math{S_3}, @dots{}, @math{S_n},
+the @math{n} bits of the sum, and @math{C}, the carry from the addition.  Write a
+function @code{ripple_carry_adder} that generates this circuit.  The function
+should take as arguments three lists of @math{n} wires each---the @math{A_k}, the
+@math{B_k}, and the @math{S_k}---and also another wire @math{C}, along with the
+shared agenda.  The major drawback of the
+ripple-carry adder is the need to wait for the carry signals to propagate.
+What is the delay needed to obtain the complete output from an @math{n}-bit
+ripple-carry adder, expressed in terms of the delays for and-gates, or-gates,
+and inverters?
+@end quotation
+
+@float
+@anchor{Figure 3.27}
+@ifinfo
+@quotation
+@strong{Figure 3.27:} A ripple-carry adder for @math{n}-bit numbers.
+
+@example
+   :                                              :   :
+   : A_1 B_1   C_1   A_2 B_2   C_2   A_3 B_3   C_3:   : A_n B_n C_n=0
+   :  |   |   +---+   |   |   +---+   |   |   +-----  :  |   |   +-
+   |  |   |   |   |   |   |   |   |   |   |   |   :   :  |   |   | 
+   : ++---+---++  |  ++---+---++  |  ++---+---++  :   : ++---+---++
+   : |   FA    |  |  |   FA    |  |  |   FA    |  :   : |   FA    |
+   : +--+---+--+  |  +--+---+--+  |  +--+---+--+  :   : +--+---+--+
+   :    |   |     |     |   |     |     |   |     :   :    |   |   
+C ------+   |     +-----+   |     +-----+   |     :  ------+   |   
+   :        |       C_1     |       C_2     |     :   :C_(n-1) |   
+   :        |               |               |     :   :        |   
+           S_1             S_2             S_3                S_n
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.27b,,132mm,Figure 3.27: A ripple-carry adder for n-bit numbers.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,,132mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.27:} A ripple-carry adder for @math{n}-bit numbers.}
+@end float
+
+@subsubheading Representing wires
+
+A wire in our simulation will be a computational object with two local state
+variables: a @code{signal} (initially taken to be 0) and a collection of
+@code{actions} to be run when the signal changes value.  We implement the wire
+as a struct that holds this state behind an @code{Rc}, with the changes made
+through @code{Cell} and @code{RefCell} and the local operations exposed as
+methods, just as we did with the simple bank-account object in
+@ref{3.1.1}:
+
+@example rust
+struct WireState @{
+    signal: Cell<u8>,
+    actions: RefCell<Vec<Rc<dyn Fn()>>>,
+@}
+
+#[derive(Clone)]
+pub struct Wire @{
+    state: Rc<WireState>,
+@}
+
+impl Wire @{
+    /// The book's `make-wire`: signal 0, no actions.
+    pub fn new() -> Self @{
+        Wire @{
+            state: Rc::new(WireState @{
+                signal: Cell::new(0),
+                actions: RefCell::new(Vec::new()),
+            @}),
+        @}
+    @}
+
+    /// The book's `get-signal`.
+    pub fn signal(&self) -> u8 @{
+        self.state.signal.get()
+    @}
+
+    /// The book's `set-signal!`.
+    pub fn set_signal(&self, value: u8) @{
+        if self.state.signal.get() == value @{
+            return;
+        @}
+        self.state.signal.set(value);
+        let snapshot: Vec<_> = self.state.actions.borrow().clone();
+        for action in snapshot @{
+            action();
+        @}
+    @}
+
+    /// The book's `add-action!`: the action joins the wire's list and
+    /// then runs once immediately.
+    pub fn add_action(&self, action: &Rc<dyn Fn()>) @{
+        self.state.actions.borrow_mut().insert(0, Rc::clone(action));
+        action();
+    @}
+@}
+@end example
+
+@noindent
+The local method @code{set_signal} tests whether the new signal value
+changes the signal on the wire.  If so, it stores the new value and runs each
+of the actions, with a @code{for} loop over a snapshot of the list; the
+snapshot matters because an action may attach further actions to the same
+wire while it runs, and the loop must not walk a list that is changing under
+it.@footnote{Observe that
+the @code{if} in this method has no @code{else}.  Such a ``one-armed
+@code{if}'' is used to decide whether to do something, rather than to select
+between two expressions: when the new value equals the old, the method simply
+returns.  In Rust an @code{if} without an @code{else} has the type
+@code{()}, the value it yields when the predicate is false.}
+
+The method @code{add_action} adds the given action to the list of actions to
+be run, and then runs the new action once.  (See @ref{Exercise 3.31}.)
+
+The three methods just shown are the wire's whole outward face; the state
+record behind them stays private to the @code{Wire} handles that share
+it.@footnote{@anchor{Footnote 155} These methods are simply the wire's local
+procedures under stable names, so ordinary method-call syntax reaches the
+operations the state record keeps private.  It is striking that we can
+interchange the role of ``procedures'' and ``data'' in such a simple way.
+The actions a wire stores are data, an ordinary vector of closures that we
+can count and clone, yet calling one runs it; and the wire itself, a value we
+pass by handle, answers requests like @code{signal()} and
+@code{set_signal(1)} as if it were a procedure being applied.  The truth of
+the matter is that, in a language in which we can deal with procedures as
+objects, there is no fundamental difference between ``procedures'' and
+``data,'' and we can choose our names to allow us to program in whatever
+style we choose.}
+
+@noindent
+Wires, which have time-varying signals and may be incrementally attached to
+devices, are typical of mutable objects.  We have modeled them as a shared
+state record whose fields are modified through @code{Cell} and
+@code{RefCell}, the interior mutability the bank account's balance used in
+@ref{3.1.1}.  When a new wire is created, a new state record is allocated
+(in @code{Wire::new}) and a fresh @code{Wire} handle over it is constructed
+and returned.
+
+The wires are shared among the various devices that have been connected to
+them.  Thus, a change made by an interaction with one device will affect all
+the other devices attached to the wire.  The wire communicates the change to
+its neighbors by calling the action procedures provided to it when the
+connections were established.
+
+@subsubheading The agenda
+
+The only thing needed to complete the simulator is @code{after_delay}.  The
+idea here is that we maintain a data structure, called an @newterm{agenda},
+that contains a schedule of things to do.  The agenda is an explicit value in
+this edition: every gate and probe receives the same @code{Rc<Agenda>} handle
+when it is constructed.  The following operations are defined for agendas:
+
+@itemize @bullet
+
+@item
+@code{Agenda::new()} returns a new empty agenda.
+
+@item
+@code{⟨@var{agenda}⟩.is_empty()} is true if the specified agenda is
+empty.
+
+@item
+@code{⟨@var{agenda}⟩.current_time()} returns the current simulation time.
+
+@item
+@code{⟨@var{agenda}⟩.add_to(⟨@var{time}⟩, ⟨@var{action}⟩)}
+modifies the agenda by adding the given action to be run at the
+specified time.
+
+@item
+@code{⟨@var{agenda}⟩.propagate()} runs the agenda down: it executes the first
+scheduled item, removes it, and keeps going as long as items remain.
+
+@end itemize
+
+@noindent
+The particular agenda that a circuit runs on is shared by every box attached
+to it.  The method @code{after_delay} adds new elements to it:
+
+@example rust
+impl Agenda @{
+    /// The book's `after-delay`: schedules `action` `delay` from now.
+    pub fn after_delay(self: &Rc<Self>, delay: u64, action: Rc<dyn Fn()>) @{
+        self.add_to(self.current_time() + delay, action);
+    @}
+@}
+@end example
+
+@noindent
+The receiver is an @code{Rc<Agenda>} rather than a plain borrow because the
+scheduled actions capture the agenda themselves: an action that runs later
+must still hold the shared schedule it came from.
+
+The simulation is driven by the method @code{propagate}, which operates on
+the agenda, executing each action on the agenda in sequence.  In
+general, as the simulation runs, new items will be added to the agenda, and
+@code{propagate} will continue the simulation as long as there are items on the
+agenda:
+
+@example rust
+impl Agenda @{
+    /// The book's `propagate`.
+    pub fn propagate(&self) @{
+        loop @{
+            // The earliest entry is the one with the least (time, seq).
+            let next = self.heap.borrow_mut().pop();
+            let Some(item) = next else @{
+                break; // nothing scheduled: the simulation is done
+            @};
+            let scheduled = item.0;
+            self.now.set(scheduled.time);
+            (scheduled.action)();
+        @}
+    @}
+@}
+@end example
+
+@subsubheading A sample simulation
+
+The following function, which places a ``probe'' on a wire, shows the
+simulator in action.  The probe tells the wire that, whenever its signal
+changes value, it should record the new signal value, together with the
+current time and a name that identifies the wire, in a shared log; the log
+lines below appear in the order they were recorded:
+
+@example rust
+pub fn probe_wire(name: &str, wire: &Wire, agenda: &Rc<Agenda>, log: &ProbeLog) @{
+    let name = name.to_string();
+    let wire = wire.clone();
+    let agenda = Rc::clone(agenda);
+    let log = Rc::clone(log);
+    let action: Rc<dyn Fn()> = Rc::new(move || @{
+        log.borrow_mut().push(format!(
+            "@{name@} @{@}  New-value = @{@}",
+            agenda.current_time(),
+            wire.signal()
+        ));
+    @});
+    wire.add_action(&action);
+@}
+@end example
+
+@noindent
+A probe runs once as it is attached, which is why each wire's starting value
+already shows at time 0.  We begin by creating the agenda.  The delays for
+the primitive function boxes are constants of the section, with the book's
+values: @code{INVERTER_DELAY} is 2, @code{AND_GATE_DELAY} is 3, and
+@code{OR_GATE_DELAY} is 5:
+
+@example rust
+let agenda = Rc::new(Agenda::new());
+@end example
+
+@noindent
+Now we define four wires, placing probes on two of them:
+
+@example rust
+let input_1 = Wire::new();
+let input_2 = Wire::new();
+let sum = Wire::new();
+let carry = Wire::new();
+let log = probe_log();
+
+probe_wire("sum", &sum, &agenda, &log);
+// sum 0  New-value = 0
+
+probe_wire("carry", &carry, &agenda, &log);
+// carry 0  New-value = 0
+@end example
+
+@noindent
+Next we connect the wires in a half-adder circuit (as in @ref{Figure 3.25}),
+set the signal on @code{input_1} to 1, and run the simulation:
+
+@example rust
+half_adder(&input_1, &input_2, &sum, &carry, &agenda);
+
+input_1.set_signal(1);
+agenda.propagate();
+// sum 8  New-value = 1
+@end example
+
+@noindent
+The @code{sum} signal changes to 1 at time 8.  We are now eight time units from
+the beginning of the simulation.  At this point, we can set the signal on
+@code{input_2} to 1 and allow the values to propagate:
+
+@example rust
+input_2.set_signal(1);
+agenda.propagate();
+// carry 11  New-value = 1
+// sum 16  New-value = 0
+@end example
+
+@noindent
+The @code{carry} changes to 1 at time 11 and the @code{sum} changes to 0 at
+time 16.
+
+@quotation
+@strong{@anchor{Exercise 3.31}Exercise 3.31:} The method @code{add_action}
+defined on @code{Wire} specifies that when a new action procedure is added to
+a wire, the procedure is immediately run.  Explain why this initialization is
+necessary.  In particular, trace through the half-adder example in the
+paragraphs above and say how the system's response would differ if the
+action were attached without the immediate run, as the library's
+@code{add_action_deferred} does:
+
+@example rust
+pub fn add_action_deferred(&self, action: &Rc<dyn Fn()>) @{
+    self.state.actions.borrow_mut().insert(0, Rc::clone(action));
+@}
+@end example
+@end quotation
+
+@subsubheading Implementing the agenda
+
+Finally, we give details of the agenda data structure, which holds the
+actions that are scheduled for future execution.
+
+The agenda is a priority queue of @newterm{scheduled actions}.  Each entry is
+a record with three fields: the time at which the action runs, a sequence
+number that records when the action was scheduled, and the action itself.
+Entries at the same time keep their scheduling order, so one entry's time and
+sequence number play the role of the book's time segment and its queue
+together (see @ref{Exercise 3.32}):
+
+@example rust
+struct Scheduled @{
+    time: u64,
+    seq: u64,
+    action: Rc<dyn Fn()>,
+@}
+
+// Ordered by (time, seq): earlier times first, and within one time,
+// the order in which the actions were scheduled. The PartialEq, Eq,
+// and PartialOrd impls Rust asks for alongside Ord delegate to the
+// same key.
+impl Ord for Scheduled @{
+    fn cmp(&self, other: &Self) -> Ordering @{
+        (self.time, self.seq).cmp(&(other.time, other.seq))
+    @}
+@}
+@end example
+
+@noindent
+The heap replaces the book's hand-built segment list: its ordering key keeps
+every time's actions in scheduling order, the same first-in, first-out
+discipline the queue operations described in @ref{3.3.2} enforce.
+
+The agenda itself is the heap together with two counters.  It differs from
+the tables described in @ref{3.3.3} in that the entries will be kept
+in order of increasing time, earliest first, rather than looked up by key.  In
+addition, we store the @newterm{current time} (i.e., the time of the last
+action that was processed) in a cell of the agenda.  A newly constructed
+agenda has nothing scheduled and has a current time of
+0:@footnote{The book's agenda is a headed list, like the tables in
+@ref{3.3.3}; since this edition keeps the current time in its own field of
+the agenda, the schedule needs no header at all.}
+
+@example rust
+pub struct Agenda @{
+    now: Cell<u64>,      // the current time
+    next_seq: Cell<u64>, // the next sequence number to hand out
+    heap: RefCell<BinaryHeap<Reverse<Scheduled>>>,
+@}
+
+impl Agenda @{
+    /// The book's `make-agenda`: time 0, nothing scheduled.
+    pub fn new() -> Self @{
+        Agenda @{
+            now: Cell::new(0),
+            next_seq: Cell::new(0),
+            heap: RefCell::new(BinaryHeap::new()),
+        @}
+    @}
+
+    /// The book's `current-time`.
+    pub fn current_time(&self) -> u64 @{
+        self.now.get()
+    @}
+@}
+@end example
+
+@noindent
+The standard @code{BinaryHeap} pops its largest element first, so each entry
+travels wrapped in @code{Reverse}, which flips the comparison and leaves the
+earliest @code{(time, seq)} on top.  An agenda is empty if it has nothing
+scheduled:
+
+@example rust
+impl Agenda @{
+    /// The book's `empty-agenda?`.
+    pub fn is_empty(&self) -> bool @{
+        self.heap.borrow().is_empty()
+    @}
+@}
+@end example
+
+@noindent
+To add an action to an agenda, we take the next sequence number and push the
+entry onto the heap.  The ordering key does the work that the book's scan
+over segments did: the entry lands after every entry that runs earlier, and
+after every entry at the same time that was scheduled before it, wherever the
+heap happens to keep it.
+
+@example rust
+impl Agenda @{
+    /// The book's `add-to-agenda!`.
+    pub fn add_to(&self, time: u64, action: Rc<dyn Fn()>) @{
+        let seq = self.next_seq.get();
+        self.next_seq.set(seq + 1);
+        self.heap.borrow_mut().push(Reverse(Scheduled @{ time, seq, action @}));
+    @}
+@}
+@end example
+
+@noindent
+Removing the first item is one pop: the heap hands back the entry with the
+earliest @code{(time, seq)}, and there is no segment to splice out when a
+queue empties, because the heap holds entries rather than segment records.
+The @code{propagate} method shown earlier is the loop that pops,
+advances the current time to the entry's time, and runs the action.
+Whenever we extract an item, we also update the current
+time:@footnote{In this way, the current time will always be the time of the
+action most recently processed.  Storing this time in its own cell of the
+agenda ensures that it will still be available even if the entry that carried
+it has already been popped.}
+
+@quotation
+@strong{@anchor{Exercise 3.32}Exercise 3.32:} The actions to be run during one
+time of the agenda are executed in the order in which they were scheduled
+(first in, first out); the sequence number of a @code{Scheduled} entry is
+what keeps that order.  Explain why this order must be used.  In particular,
+trace the behavior of an and-gate whose inputs change from 0, 1 to 1, 0 at
+the same time and say how the behavior would differ if entries scheduled for
+the same time were ordered last in, first out instead, each new entry going
+ahead of the ones already waiting.
+@end quotation
+
+
+@node	3.3.5, 3.4, 3.2, 3.3
+@subsection Propagation of Constraints
+
+Computer programs are traditionally organized as one-directional computations,
+which perform operations on prespecified arguments to produce desired outputs.
+On the other hand, we often model systems in terms of relations among
+quantities.  For example, a mathematical model of a mechanical structure might
+include the information that the deflection @math{d} of a metal rod is related to
+the force @math{F} on the rod, the length @math{L} of the rod, the cross-sectional
+area @math{A}, and the elastic modulus @math{E} via the equation
+@displaymath
+{dAE} \,=\, {FL.}
+@end displaymath
+@ifinfo
+
+@example
+dAE = FL
+@end example
+
+@end ifinfo
+
+Such an equation is not one-directional.  Given any four of the quantities, we
+can use it to compute the fifth.  Yet translating the equation into a
+traditional computer language would force us to choose one of the quantities to
+be computed in terms of the other four.  Thus, a procedure for computing the
+area @math{A} could not be used to compute the deflection @math{d}, even though the
+computations of @math{A} and @math{d} arise from the same
+equation.@footnote{Constraint propagation first appeared in the incredibly
+forward-looking @abbr{SKETCHPAD} system of Ivan @ref{Sutherland (1963)}.  A
+beautiful constraint-propagation system based on the Smalltalk language was
+developed by Alan @ref{Borning (1977)} at Xerox Palo Alto Research Center.  Sussman,
+Stallman, and Steele applied constraint propagation to electrical circuit
+analysis (@ref{Sussman and Stallman 1975}; @ref{Sussman and Steele 1980}). TK!Solver
+(@ref{Konopasek and Jayaraman 1984}) is an extensive modeling environment based on
+constraints.}
+
+In this section, we sketch the design of a language that enables us to work in
+terms of relations themselves.  The primitive elements of the language are
+@newterm{primitive constraints}, which state that certain relations hold
+between quantities.  For example, @code{adder(network, a, b, c)} specifies that the
+quantities @math{a}, @math{b}, and @math{c} must be related by the equation
+@math{{a + b = c}}, @code{multiplier(network, x, y, z)} expresses the constraint
+@math{{xy = z}}, and @code{constant(network, 3.14, x)} says that the value of
+@math{x} must be 3.14.
+
+Our language provides a means of combining primitive constraints to
+express more complex relations.  We combine constraints by constructing
+@newterm{constraint networks}, in which constraints are joined by
+@newterm{connectors}.  A connector is an object that ``holds'' a value that may
+participate in one or more constraints.  For example, we know that the
+relationship between Fahrenheit and Celsius temperatures is
+@displaymath
+{9C} \,=\, {5(F - 32).}
+@end displaymath
+@ifinfo
+
+@example
+9C = 5(F - 32)
+@end example
+
+@end ifinfo
+
+Such a constraint can be thought of as a network consisting of primitive adder,
+multiplier, and constant constraints (@ref{Figure 3.28}).  In the figure, we
+see on the left a multiplier box with three terminals, labeled @math{{m1}}, @math{{m2}},
+and @math{p}.  These connect the multiplier to the rest of the network as follows:
+The @math{{m1}} terminal is linked to a connector @math{C}, which will hold the Celsius
+temperature.  The @math{{m2}} terminal is linked to a connector @math{w}, which is also
+linked to a constant box that holds 9.  The @math{p} terminal, which the
+multiplier box constrains to be the product of @math{{m1}} and @math{{m2}}, is linked to
+the @math{p} terminal of another multiplier box, whose @math{{m2}} is connected to a
+constant 5 and whose @math{{m1}} is connected to one of the terms in a sum.
+
+@float
+@anchor{Figure 3.28}
+@ifinfo
+@strong{Figure 3.28:} The relation @math{9C = 5(F - 32)} expressed as a constraint network.
+
+@example
+       +---------+     +---------+   v   +---------+
+C -----+ m1      |  u  |      m1 +-------+ a1      |
+       |    *  p +-----+ p  *    |       |    *  s +---- F
+    +--+ m2      |     |      m2 +--+ +--+ a2      |
+    |  +---------+     +---------+  | |  +---------+
+  w |                              x| |y
+    |    +-----+        +-----+     | |     +-----+
+    +----+  9  |        |  5  +-----+ +-----+  32 |
+         +-----+        +-----+             +-----+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.28,,142mm,Figure 3.28: The relation 9C = 5(F - 32) expressed as a constraint network.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.28.std,,142mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.28:} The relation @math{{9C = 5(F - 32)}} expressed as a constraint network.}
+@end float
+
+
+@noindent
+Computation by such a network proceeds as follows: When a connector is given a
+value (by the user or by a constraint box to which it is linked), it awakens
+all of its associated constraints (except for the constraint that just awakened
+it) to inform them that it has a value.  Each awakened constraint box then
+polls its connectors to see if there is enough information to determine a value
+for a connector.  If so, the box sets that connector, which then awakens all of
+its associated constraints, and so on.  For instance, in conversion between
+Celsius and Fahrenheit, @math{w}, @math{x}, and @math{y} are immediately set by the
+constant boxes to 9, 5, and 32, respectively.  The connectors awaken the
+multipliers and the adder, which determine that there is not enough information
+to proceed.  If the user (or some other part of the network) sets @math{C} to a
+value (say 25), the leftmost multiplier will be awakened, and it will set @math{u}
+to @math{{25 \cdot 9 = 225}}.  Then @math{u} awakens the second multiplier, which sets @math{v} to
+45, and @math{v} awakens the adder, which sets @math{f} to 77.
+
+@subsubheading Using the constraint system
+
+To use the constraint system to carry out the temperature computation outlined
+above, we first create two connectors, @code{c} and @code{f}, by calling the
+constructor @code{Connector::new}, and link @code{c} and @code{f} in an
+appropriate network:
+
+@example rust
+let network = Network::new();
+let c = Connector::new();
+let f = Connector::new();
+celsius_fahrenheit_converter(&network, &c, &f);
+@end example
+
+@noindent
+The function that creates the network is defined as follows:
+
+@example rust
+pub fn celsius_fahrenheit_converter(
+    network: &Network,
+    c: &Connector,
+    f: &Connector,
+) @{
+    network.adopt(c);
+    network.adopt(f);
+    let u = network.connector();
+    let v = network.connector();
+    let w = network.connector();
+    let x = network.connector();
+    let y = network.connector();
+    multiplier(&network, c, &w, &u);
+    multiplier(&network, &v, &x, &u);
+    adder(&network, &v, &y, f);
+    constant(&network, 9.0, &w);
+    constant(&network, 5.0, &x);
+    constant(&network, 32.0, &y);
+@}
+@end example
+
+@noindent
+This function creates the internal connectors @code{u}, @code{v}, @code{w},
+@code{x}, and @code{y}, and links them as shown in @ref{Figure 3.28} using the
+primitive constraint constructors @code{adder}, @code{multiplier}, and
+@code{constant}.  The two named connectors were created outside the network, so
+the converter first asks the network to @code{adopt} each of them: the network
+is the strong root that keeps every connector and constraint of the graph
+alive.  Just as with the digital-circuit simulator of
+@ref{3.3.4}, expressing these combinations of primitive elements in terms of
+functions automatically provides our language with a means of abstraction for
+compound objects.
+
+To watch the network in action, we can place probes on the connectors @code{c}
+and @code{f}, using a probe similar to the one we used to monitor wires in
+@ref{3.3.4}.  Placing a probe on a connector will append a line to a shared
+log whenever the connector is given a value:
+
+@example rust
+let log = probe_log();
+probe_connector(&network, "Celsius temp", &c, &log);
+probe_connector(&network, "Fahrenheit temp", &f, &log);
+@end example
+
+@noindent
+Next we set the value of @code{c} to 25.  (The second argument to
+@code{set_value} tells @code{c} that this directive comes from the
+@code{user}.)
+
+@example rust
+let user = Informant::user();
+c.set_value(25.0, &user)
+    .expect("a fresh connector accepts its first value");
+log.borrow().as_slice()
+// => ["Probe: Celsius temp = 25", "Probe: Fahrenheit temp = 77"]
+@end example
+
+@noindent
+The probe on @code{c} awakens and records the value.  @code{c} also propagates
+its value through the network as described above.  This sets @code{f} to 77,
+which the probe on @code{f} records.
+
+Now we can try to set @code{f} to a new value, say 212:
+
+@example rust
+let refused = match f.set_value(212.0, &user) @{
+    Ok(()) => panic!("F must refuse 212 while C holds 25"),
+    Err(error) => error,
+@};
+println!("@{refused@}");
+// => Contradiction (77 212)
+@end example
+
+@noindent
+The connector complains that it has sensed a contradiction: Its value is 77,
+and someone is trying to set it to 212.  If we really want to reuse the network
+with new values, we can tell @code{c} to forget its old value:
+
+@example rust
+c.forget_value(&user);
+log.borrow().as_slice()
+// => ["Probe: Celsius temp = 25", "Probe: Fahrenheit temp = 77",
+//     "Probe: Celsius temp = ?", "Probe: Fahrenheit temp = ?"]
+@end example
+
+@noindent
+@code{c} finds that the @code{user}, who set its value originally, is now
+retracting that value, so @code{c} agrees to lose its value, as shown by the
+log, and informs the rest of the network of this fact.  This information
+eventually propagates to @code{f}, which now finds that it has no reason for
+continuing to believe that its own value is 77.  Thus, @code{f} also gives up
+its value, as shown by the log.
+
+Now that @code{f} has no value, we are free to set it to 212:
+
+@example rust
+f.set_value(212.0, &user)
+    .expect("a forgotten connector accepts a fresh value");
+log.borrow().as_slice()
+// => ["Probe: Celsius temp = 25", "Probe: Fahrenheit temp = 77",
+//     "Probe: Celsius temp = ?", "Probe: Fahrenheit temp = ?",
+//     "Probe: Fahrenheit temp = 212", "Probe: Celsius temp = 100"]
+@end example
+
+@noindent
+This new value, when propagated through the network, forces @code{c} to have a
+value of 100, and this is recorded by the probe on @code{c}.  Notice that the
+very same network is being used to compute @code{c} given @code{f} and to
+compute @code{f} given @code{c}.  This nondirectionality of computation is the
+distinguishing feature of constraint-based systems.
+
+@subsubheading Implementing the constraint system
+
+The constraint system is implemented via objects with local state, in a manner
+very similar to the digital-circuit simulator of
+@ref{3.3.4}.  Here the objects are structs behind @code{Rc} handles, with
+their local state in @code{RefCell}s.  Although the primitive objects of the
+constraint system are somewhat more complex, the overall system is simpler,
+since there is no concern about agendas and logic delays.
+
+The basic operations on connectors are the following:
+
+@itemize @bullet
+
+@item
+@code{⟨@var{connector}⟩.has_value()} tells whether the connector has a value.
+
+@item
+@code{⟨@var{connector}⟩.value()} returns the connector's current value.
+
+@item
+@code{⟨@var{connector}⟩.set_value(⟨@var{new-value}⟩, ⟨@var{informant}⟩)}
+indicates that the informant is requesting the connector to set its value to
+the new value.
+
+@item
+@code{⟨@var{connector}⟩.forget_value(⟨@var{retractor}⟩)} tells the connector
+that the retractor is requesting it to forget its value.
+
+@item
+@code{⟨@var{connector}⟩.connect(⟨@var{new-constraint}⟩)} tells the connector
+to participate in the new constraint.
+
+@end itemize
+
+@noindent
+The connectors communicate with the constraints through the @code{Constraint}
+trait: calling @code{inform_about_value} on a constraint tells it that the
+connector has a value, and calling @code{inform_about_no_value} tells the
+constraint that the connector has lost its value.
+
+@code{Adder} constructs an adder constraint among summand connectors
+@code{a1} and @code{a2} and a @code{sum} connector.  An adder is implemented as
+a struct with local state; the struct together with its own @code{Informant} is
+this edition's version of the book's @code{me} object, and the constructor
+connects the new adder to the designated connectors, registers it so the
+network owns it, and returns it:
+
+@example rust
+struct Adder @{
+    a1: Weak<ConnectorState>,
+    a2: Weak<ConnectorState>,
+    sum: Weak<ConnectorState>,
+    me: Informant,
+@}
+
+pub fn adder(
+    network: &Network,
+    a1: &Connector,
+    a2: &Connector,
+    sum: &Connector,
+) -> Rc<dyn Constraint> @{
+    let constraint = Rc::new(Adder @{
+        a1: weak_connector(a1),
+        a2: weak_connector(a2),
+        sum: weak_connector(sum),
+        me: Informant::new(),
+    @});
+    let object: Rc<dyn Constraint> = constraint.clone();
+    a1.connect(&object);
+    a2.connect(&object);
+    sum.connect(&object);
+    network.register(object);
+    constraint
+@}
+@end example
+
+@noindent
+In the book, the adder's @code{me} procedure acts as a dispatch to the local
+procedures, and two ``syntax interfaces'' (see @ref{Footnote 155} in
+@ref{3.3.4}) are used in conjunction with the dispatch.  The @code{Constraint}
+trait folds the dispatch and its interfaces into two methods, which a connector
+calls directly:
+
+@example rust
+constraint.inform_about_value();
+constraint.inform_about_no_value();
+@end example
+
+@noindent
+The book's local procedures @code{process-new-value} and
+@code{process-forget-value}, and the two arms of the dispatch that route the
+requests to them, become the following:
+
+@example rust
+impl Adder @{
+    fn process_new_value(&self) @{
+        let (Some(a1), Some(a2), Some(sum)) = (
+            connector_of(&self.a1),
+            connector_of(&self.a2),
+            connector_of(&self.sum),
+        ) else @{
+            return;
+        @};
+        let (x, y, total) = (a1.value(), a2.value(), sum.value());
+        if let (Some(x), Some(y)) = (x, y) @{
+            let _ = sum.set_value(x + y, &self.me);
+        @} else if let (Some(x), Some(total)) = (x, total) @{
+            let _ = a2.set_value(total - x, &self.me);
+        @} else if let (Some(y), Some(total)) = (y, total) @{
+            let _ = a1.set_value(total - y, &self.me);
+        @}
+    @}
+@}
+
+impl Constraint for Adder @{
+    fn informant(&self) -> &Informant @{
+        &self.me
+    @}
+
+    fn inform_about_value(&self) @{
+        self.process_new_value();
+    @}
+
+    fn inform_about_no_value(&self) @{
+        if let Some(sum) = connector_of(&self.sum) @{
+            sum.forget_value(&self.me);
+        @}
+        if let Some(a1) = connector_of(&self.a1) @{
+            a1.forget_value(&self.me);
+        @}
+        if let Some(a2) = connector_of(&self.a2) @{
+            a2.forget_value(&self.me);
+        @}
+        self.process_new_value();
+    @}
+@}
+@end example
+
+@noindent
+The adder's local procedure @code{process_new_value} is called when the adder
+is informed that one of its connectors has a value. The adder first checks to
+see if both @code{a1} and @code{a2} have values. If so, it tells @code{sum} to
+set its value to the sum of the two addends.  The @code{informant} argument to
+@code{set_value} is @code{me}, which is the adder object itself.  If @code{a1}
+and @code{a2} do not both have values, then the adder checks to see if perhaps
+@code{a1} and @code{sum} have values.  If so, it sets @code{a2} to the
+difference of these two.  Finally, if @code{a2} and @code{sum} have values,
+this gives the adder enough information to set @code{a1}.  If the adder is told
+that one of its connectors has lost a value, it requests that all of its
+connectors now lose their values.  (Only those values that were set by this
+adder are actually lost.)  Then it runs @code{process_new_value}.  The reason
+for this last step is that one or more connectors may still have a value (that
+is, a connector may have had a value that was not originally set by the adder),
+and these values may need to be propagated back through the adder.
+
+A multiplier is very similar to an adder. It will set its @code{product} to 0
+if either of the factors is 0, even if the other factor is not known.  The
+@code{Multiplier} struct holds @code{m1}, @code{m2}, @code{product}, and
+@code{me} exactly as @code{Adder} does:
+
+@example rust
+pub fn multiplier(
+    network: &Network,
+    m1: &Connector,
+    m2: &Connector,
+    product: &Connector,
+) -> Rc<dyn Constraint> @{
+    let constraint = Rc::new(Multiplier @{
+        m1: weak_connector(m1),
+        m2: weak_connector(m2),
+        product: weak_connector(product),
+        me: Informant::new(),
+    @});
+    let object: Rc<dyn Constraint> = constraint.clone();
+    m1.connect(&object);
+    m2.connect(&object);
+    product.connect(&object);
+    network.register(object);
+    constraint
+@}
+
+impl Multiplier @{
+    fn process_new_value(&self) @{
+        let (Some(m1), Some(m2), Some(product)) = (
+            connector_of(&self.m1),
+            connector_of(&self.m2),
+            connector_of(&self.product),
+        ) else @{
+            return;
+        @};
+        let (x, y, total) = (m1.value(), m2.value(), product.value());
+        if x == Some(0.0) || y == Some(0.0) @{
+            let _ = product.set_value(0.0, &self.me);
+        @} else if let (Some(x), Some(y)) = (x, y) @{
+            let _ = product.set_value(x * y, &self.me);
+        @} else if let (Some(total), Some(x)) = (total, x) @{
+            let _ = m2.set_value(total / x, &self.me);
+        @} else if let (Some(total), Some(y)) = (total, y) @{
+            let _ = m1.set_value(total / y, &self.me);
+        @}
+    @}
+@}
+
+impl Constraint for Multiplier @{
+    fn informant(&self) -> &Informant @{
+        &self.me
+    @}
+
+    fn inform_about_value(&self) @{
+        self.process_new_value();
+    @}
+
+    fn inform_about_no_value(&self) @{
+        if let Some(product) = connector_of(&self.product) @{
+            product.forget_value(&self.me);
+        @}
+        if let Some(m1) = connector_of(&self.m1) @{
+            m1.forget_value(&self.me);
+        @}
+        if let Some(m2) = connector_of(&self.m2) @{
+            m2.forget_value(&self.me);
+        @}
+        self.process_new_value();
+    @}
+@}
+@end example
+
+@noindent
+A @code{constant} constructor simply sets the value of the designated
+connector.  A correct network never notifies a constant box, so the book's
+error for a stray message has nothing to answer: the box's two trait methods
+are empty.
+
+@example rust
+pub fn constant(
+    network: &Network,
+    value: f64,
+    connector: &Connector,
+) -> Rc<dyn Constraint> @{
+    struct ConstantBox(Informant);
+
+    impl Constraint for ConstantBox @{
+        fn informant(&self) -> &Informant @{
+            &self.0
+        @}
+
+        fn inform_about_value(&self) @{@}
+
+        fn inform_about_no_value(&self) @{@}
+    @}
+
+    let me = Rc::new(ConstantBox(Informant::new()));
+    let object: Rc<dyn Constraint> = me.clone();
+    connector.connect(&object);
+    let _ = connector.set_value(value, me.informant());
+    network.register(object);
+    me
+@}
+@end example
+
+@noindent
+Finally, a probe appends a line to the log about the setting or unsetting of
+the designated connector:
+
+@example rust
+pub fn probe_connector(
+    network: &Network,
+    name: &str,
+    connector: &Connector,
+    log: &ProbeLog,
+) -> Rc<dyn Constraint> @{
+    struct Probe @{
+        name: String,
+        connector: Weak<ConnectorState>,
+        log: ProbeLog,
+        me: Informant,
+    @}
+
+    impl Constraint for Probe @{
+        fn informant(&self) -> &Informant @{
+            &self.me
+        @}
+
+        fn inform_about_value(&self) @{
+            let Some(connector) = self.connector.upgrade() else @{
+                return;
+            @};
+            let probe = Connector @{ state: connector @};
+            if let Some(value) = probe.value() @{
+                self.log.borrow_mut().push(format!(
+                    "Probe: @{@} = @{value@}", self.name));
+            @}
+        @}
+
+        fn inform_about_no_value(&self) @{
+            self.log.borrow_mut()
+                .push(format!("Probe: @{@} = ?", self.name));
+        @}
+    @}
+
+    let me = Rc::new(Probe @{
+        name: name.to_string(),
+        connector: weak_connector(connector),
+        log: Rc::clone(log),
+        me: Informant::new(),
+    @});
+    let object: Rc<dyn Constraint> = me.clone();
+    connector.connect(&object);
+    network.register(object);
+    me
+@}
+@end example
+
+@subsubheading Representing connectors
+
+A connector is represented as a handle over shared local state: one
+@code{Rc<ConnectorState>} whose fields are @code{RefCell}s, @code{value}, the
+current value of the connector; @code{informant}, the object
+that set the connector's value; and @code{constraints}, a list of the
+constraints in which the connector participates.  The links to the constraints
+are weak, so a connector and its constraints do not keep each other alive:
+
+@example rust
+#[derive(Default)]
+struct ConnectorState @{
+    value: RefCell<Option<f64>>,
+    informant: RefCell<Option<Informant>>,
+    constraints: RefCell<Vec<Weak<dyn Constraint>>>,
+@}
+
+#[derive(Clone, Default)]
+pub struct Connector @{
+    state: Rc<ConnectorState>,
+@}
+@end example
+
+@noindent
+@code{Connector::new} is the book's @code{make-connector}: a valueless
+connector with no constraints.  The book's local procedures become methods on
+the handle:
+
+@example rust
+impl Connector @{
+    /// The book's `has-value?`: whether anyone currently owns the value.
+    pub fn has_value(&self) -> bool @{
+        self.state.informant.borrow().is_some()
+    @}
+
+    /// The book's `get-value`: the current value, or `None` when the
+    /// connector has none.
+    pub fn value(&self) -> Option<f64> @{
+        if !self.has_value() @{
+            return None;
+        @}
+        *self.state.value.borrow()
+    @}
+
+    /// The book's `set-value!`.
+    pub fn set_value(&self, new_value: f64, setter: &Informant)
+        -> Result<(), SchemeError>
+    @{
+        if !self.has_value() @{
+            *self.state.value.borrow_mut() = Some(new_value);
+            *self.state.informant.borrow_mut() = Some(setter.clone());
+            self.notify_value_except(setter);
+            return Ok(());
+        @}
+        let stored = *self.state.value.borrow();
+        if stored == Some(new_value) @{
+            return Ok(());
+        @}
+        let mut irritants = Vec::new();
+        if let Some(old) = stored @{
+            irritants.push(Value::real(old));
+        @}
+        irritants.push(Value::real(new_value));
+        Err(SchemeError::UserRaised @{
+            message: "Contradiction".into(),
+            irritants,
+        @})
+    @}
+
+    /// The book's `forget-value!`.
+    pub fn forget_value(&self, retractor: &Informant) @{
+        let owned = self
+            .state
+            .informant
+            .borrow()
+            .as_ref()
+            .is_some_and(|informant| informant == retractor);
+        if !owned @{
+            return;
+        @}
+        *self.state.informant.borrow_mut() = None;
+        self.notify_no_value_except(retractor);
+    @}
+
+    /// The book's `connect`.
+    pub fn connect(&self, constraint: &Rc<dyn Constraint>) @{
+        self.add_constraint_once(constraint);
+        if self.has_value() @{
+            constraint.inform_about_value();
+        @}
+    @}
+
+    fn add_constraint_once(&self, constraint: &Rc<dyn Constraint>) @{
+        let mut constraints = self.state.constraints.borrow_mut();
+        let present = constraints.iter().any(|weak| @{
+            weak.upgrade()
+                .is_some_and(|known| known.informant() == constraint.informant())
+        @});
+        if !present @{
+            constraints.insert(0, Rc::downgrade(constraint));
+        @}
+    @}
+@}
+@end example
+
+@noindent
+The connector's local procedure @code{set_value} is called when there is a
+request to set the connector's value.  If the connector does not currently have
+a value, it will set its value and remember as @code{informant} the constraint
+that requested the value to be set.@footnote{The @code{setter} might not be a
+constraint.  In our temperature example, we used the @code{user} informant as
+the setter.}  Then the connector will notify all of its participating
+constraints except the constraint that requested the value to be set.  This is
+accomplished using the following iterator, which applies a designated method to
+all constraints in the list except a given one:
+
+@example rust
+fn each_constraint_except(
+    &self,
+    exception: &Informant,
+) -> Vec<Rc<dyn Constraint>> @{
+    self.state
+        .constraints
+        .borrow()
+        .iter()
+        .filter_map(Weak::upgrade)
+        .filter(|constraint| constraint.informant() != exception)
+        .collect()
+@}
+
+fn notify_value_except(&self, exception: &Informant) @{
+    for constraint in self.each_constraint_except(exception) @{
+        constraint.inform_about_value();
+    @}
+@}
+
+fn notify_no_value_except(&self, exception: &Informant) @{
+    for constraint in self.each_constraint_except(exception) @{
+        constraint.inform_about_no_value();
+    @}
+@}
+@end example
+
+@noindent
+The list holds its members weakly, so the iterator upgrades each link as it
+goes, and a constraint whose strong owner is gone quietly drops out.  When the
+exception is the constraint that just set the value, the test is again a
+physical comparison: each constraint answers for the @code{Informant} identity
+through which it sets values, and two informants are the same exactly when they
+are the same object.
+
+If a connector is asked to forget its value, it runs the local procedure
+@code{forget_value}, which first checks to make sure that the request is
+coming from the same object that set the value originally, comparing the two
+informants physically.  If so, the connector informs its associated
+constraints about the loss of the value.
+
+The book's @code{me} object plays two roles in the connector: it dispatches to
+the local procedures, and it represents the connector as an object, with a
+handful of ``syntax interface'' procedures standing in front of the dispatch.
+In this edition the five operations above are the connector's public methods,
+and the handle itself names the object:
+
+@example rust
+connector.has_value();
+connector.value();
+connector.set_value(new_value, &informant);
+connector.forget_value(&retractor);
+connector.connect(&new_constraint);
+@end example
+
+@noindent
+The local method @code{connect} adds the designated new constraint to the
+list of constraints if it is not already in that list, recognizing membership
+by the @code{Informant} identity.  Then, if the connector has a value, it
+informs the new constraint of this fact.
+
+@quotation
+@strong{In this language: mutable data.}
+
+Rust makes mutation visible in the types and in the sharing.  A pair's halves
+live in RefCells inside one Rc cell, so every mutator's borrow is checked at
+run time, and two names share state exactly when they hold the same
+Rc handle, which Rc::ptr_eq settles.  The section's queues, tables, wires, and
+connectors are objects of that kind, and the gates' actions and the connectors'
+constraints are held only weakly, so wiring cannot keep a gate's inputs alive;
+the Network and the caller's own handles keep a system alive.
+
+@example rust
+let x = Value::list(vec![Value::sym("a"), Value::sym("b")]);
+let z1 = cons_cell(x.clone(), x.clone());
+set_car(&z1, Value::list(vec![Value::sym("wow"), Value::sym("b")]));
+Value::Pair(z1).to_string()
+// => "((wow b) wow b)"
+@end example
+
+The book's mechanism still wins when the sharing crosses code the compiler
+never saw together, because which names hold the same Rc is a property of the
+pointers, and only Rc::ptr_eq settles it, the role eq? plays in the text.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.33}Exercise 3.33:} Using primitive multiplier,
+adder, and constant constraints, define a function @code{averager} that takes
+a network and three connectors @code{a}, @code{b}, and @code{c} as inputs and
+establishes the constraint that the value of @code{c} is the average of the
+values of @code{a} and @code{b}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.34}Exercise 3.34:} Louis Reasoner wants to build a
+squarer, a constraint device with two terminals such that the value of
+connector @code{b} on the second terminal will always be the square of the
+value @code{a} on the first terminal.  He proposes the following simple device
+made from a multiplier:
+
+@example rust
+fn squarer(network: &Network, a: &Connector, b: &Connector) @{
+    multiplier(network, a, a, b);
+@}
+@end example
+
+There is a serious flaw in this idea.  Explain.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.35}Exercise 3.35:} Ben Bitdiddle tells Louis that
+one way to avoid the trouble in @ref{Exercise 3.34} is to define a squarer as a
+new primitive constraint.  Fill in the missing portions in Ben's outline for a
+constraint to implement such a device:
+
+@example rust
+fn squarer(a: &Connector, b: &Connector) -> Rc<dyn Constraint> @{
+    struct Squarer @{
+        a: Connector,
+        b: Connector,
+        me: Informant,
+    @}
+
+    impl Constraint for Squarer @{
+        fn informant(&self) -> &Informant @{
+            &self.me
+        @}
+
+        fn inform_about_value(&self) @{
+            // the book's process-new-value
+            if let Some(v) = self.b.value() @{
+                if v < 0.0 @{
+                    ⟨@var{report "square less than 0: SQUARER" and give up}⟩
+                @} else @{
+                    ⟨@var{alternative1}⟩
+                @}
+            @} else @{
+                ⟨@var{alternative2}⟩
+            @}
+        @}
+
+        fn inform_about_no_value(&self) @{
+            // the book's process-forget-value
+            ⟨@var{body1}⟩
+        @}
+    @}
+
+    let me = Rc::new(Squarer @{
+        a: a.clone(),
+        b: b.clone(),
+        me: Informant::new(),
+    @});
+    let object: Rc<dyn Constraint> = me;
+    ⟨@var{rest of definition}⟩
+    object
+@}
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.36}Exercise 3.36:} @emph{SICP exercise 3.36 is
+about Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}  Suppose we evaluate
+
+@example rust
+let a = Connector::new();
+let user = Informant::user();
+
+a.set_value(10.0, &user)
+    .expect("a fresh connector accepts its first value");
+@end example
+
+@noindent
+and that a logging constraint was connected to @code{a} before the last line,
+one that appends a line to a transcript each time its @code{Constraint}
+dispatch is consulted and each time its internal process procedure runs.  At
+some moment during the evaluation of @code{a.set_value}, the connector's local
+method reaches
+
+@example rust
+fn notify_value_except(&self, exception: &Informant) @{
+    for constraint in self.each_constraint_except(exception) @{
+        constraint.inform_about_value();
+    @}
+@}
+@end example
+
+Trace the calls, in order: name each dispatch of the logging constraint, the
+internal @code{process_new_value} each dispatch runs, and the connector
+methods that hand the requests along.  Do the same for the matching
+@code{a.forget_value(&user)}, whose loop is @code{notify_no_value_except}.
+Explain why the constraint is consulted even though the setter, @code{user},
+never is.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.37}Exercise 3.37:} The
+@code{celsius_fahrenheit_converter} function is cumbersome when compared with
+a more expression-oriented style of definition, such as
+
+@example rust
+fn celsius_fahrenheit_converter(network: &Network, x: &Connector) -> Connector @{
+    let scaled = c_div(
+        network,
+        &c_mul(network, &cv(network, 9.0), x),
+        &cv(network, 5.0),
+    );
+    c_add(network, &scaled, &cv(network, 32.0))
+@}
+
+let network = Network::new();
+let c = network.connector();
+let f = celsius_fahrenheit_converter(&network, &c);
+@end example
+
+Here @code{c_add}, @code{c_mul}, etc. are the ``constraint'' versions of the
+arithmetic operations.  For example, @code{c_add} takes two connectors as
+arguments and returns a connector that is related to these by an adder
+constraint:
+
+@example rust
+fn c_add(network: &Network, x: &Connector, y: &Connector) -> Connector @{
+    let z = network.connector();
+    adder(network, x, y, &z);
+    z
+@}
+@end example
+
+Define analogous functions @code{c_sub}, @code{c_mul}, @code{c_div}, and
+@code{cv} (constant value) that enable us to define compound constraints as in
+the converter example above.@footnote{The expression-oriented format is
+convenient because it avoids the need to name the intermediate expressions in a
+computation.  Our original formulation of the constraint language is cumbersome
+in the same way that many languages are cumbersome when dealing with operations
+on compound data.  For example, if we wanted to compute the product
+@math{{(a + b) \cdot (c + d)}}, where the variables represent vectors, we could work
+in ``imperative style,'' using functions that set the values of designated
+vector arguments but do not themselves return vectors as values:
+
+@example rust
+v_sum(&a, &b, &mut temp1);
+v_sum(&c, &d, &mut temp2);
+v_prod(&temp1, &temp2, &mut answer);
+@end example
+
+Alternatively, we could deal with expressions, using functions that return
+vectors as values, and thus avoid explicitly mentioning @code{temp1} and
+@code{temp2}:
+
+@example rust
+let answer = v_prod(v_sum(&a, &b), v_sum(&c, &d));
+@end example
+
+Since Rust functions can return compound objects as values, we can transform
+our imperative-style constraint language into an expression-oriented style as
+shown in this exercise.  In languages that are impoverished in handling
+compound objects, such as Algol, Basic, and Pascal (unless one explicitly uses
+Pascal pointer variables), one is usually stuck with the imperative style when
+manipulating compound objects.  Given the advantage of the expression-oriented
+format, one might ask if there is any reason to have implemented the system in
+imperative style, as we did in this section.  One reason is that the
+non-expression-oriented constraint language provides a handle on constraint
+objects (e.g., the @code{Rc<dyn Constraint>} that @code{adder} returns) as well
+as on connector objects.  This is useful if we wish to extend the system with
+new operations that communicate with constraints directly rather than only
+indirectly via operations on connectors.  Although it is easy to implement the
+expression-oriented style in terms of the imperative implementation, it is very
+difficult to do the converse.}
+@end quotation

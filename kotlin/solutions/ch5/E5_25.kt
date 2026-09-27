@@ -1,0 +1,312 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Chapter 5, exercise 5.25: normal-order evaluation in the controller,
+// based on the lazy evaluator of 4.2. The plan:
+//
+// 1. Thunks are machine words, built by one operation, `make-thunk`, so
+//    the base controller never builds one.
+// 2. Bindings of thunked operands go through the shared environment with
+//    placeholder symbols: `extend-environment` binds each parameter to a
+//    reserved symbol no object symbol can spell (it starts with NUL, a
+//    character the reader never produces) and records the symbol's thunk
+//    in a side table; `lookup-variable-value` answers the recorded thunk
+//    when it finds a placeholder. The frames keep their shape, so
+//    `define-variable!` and `set-variable-value!` work unchanged.
+// 3. The controller changes in exactly three places: the argument loop
+//    makes a thunk per operand and adjoins it (no saves, no recursion,
+//    which is the laziness); `ev-variable` forces a thunked binding the
+//    first time the variable is read and memoizes by storing the forced
+//    value over the placeholder with `set-variable-value!`;
+//    `primitive-apply` forces any thunks left in `argl` before the
+//    primitive sees them, saving `proc`, `unev`, `argl`, and `continue`
+//    around each nested evaluation.
+//
+// One recorded deviation: memoization is per binding, not per thunk
+// object -- the placeholder rewrite stands in for the book's mutable
+// thunk pair; a thunk aliased into two variables is recomputed. Every
+// session here observes single-variable references, where the two agree.
+
+package sicp.ch5.solutions
+
+import arrow.core.raise.Raise
+import arrow.core.raise.either
+import sicp.ch5.Evaluator
+import sicp.ch5.EvaluatorFault
+import sicp.ch5.MachineError
+import sicp.ch5.Op
+import sicp.ch5.evaluatorControllerFragments
+import sicp.ch5.isThunk
+import sicp.ch5.labelSrc
+import sicp.ch5.listItems
+import sicp.ch5.makeEvaluator
+import sicp.ch5.opCond
+import sicp.ch5.opSrc
+import sicp.ch5.reg
+import sicp.ch5.symbolNameOf
+import sicp.ch5.thunkParts
+import sicp.ch5.thunkWord
+import sicp.runtime.Assign
+import sicp.runtime.Branch
+import sicp.runtime.Env
+import sicp.runtime.Goto
+import sicp.runtime.GotoTarget
+import sicp.runtime.Label
+import sicp.runtime.Perform
+import sicp.runtime.Restore
+import sicp.runtime.Save
+import sicp.runtime.Stmt
+import sicp.runtime.Test
+import sicp.runtime.VBool
+import sicp.runtime.VSym
+import sicp.runtime.VTagged
+import sicp.runtime.Value
+
+private const val PLACEHOLDER_MARK: String = "\u0000param"
+
+/** The per-machine laziness: the placeholder table and the machine it
+ *  serves, absent while the machine itself is under construction. The
+ *  operations run only once [drive] does, by which time [run] has set the
+ *  evaluator. */
+private class Laziness {
+    val placeholders = HashMap<String, Value>()
+    var evaluator: Evaluator? = null
+    private var counter = 0
+
+    fun fresh(): String {
+        counter += 1
+        return "$PLACEHOLDER_MARK$counter"
+    }
+
+    context(r: Raise<MachineError>)
+    fun envOf(
+        op: String,
+        word: Value,
+    ): Env = requireNotNull(evaluator).environmentOf(op, word)
+}
+
+private fun isPlaceholder(w: Value): Boolean = w is VSym && w.name.startsWith(PLACEHOLDER_MARK)
+
+/** The lazy operations: the thunk selectors and the two placeholder
+ *  overrides, which shadow the base entries of the same name. */
+private fun lazyOperations(laziness: Laziness): Map<String, Op> =
+    mapOf(
+        "make-thunk" to
+            { args ->
+                if (args.size != 2) raise(EvaluatorFault("make-thunk needs two arguments"))
+                thunkWord(args[0], args[1])
+            },
+        "thunk?" to
+            { args ->
+                if (args.size != 1) raise(EvaluatorFault("thunk? needs one argument"))
+                VBool(isThunk(args[0]))
+            },
+        "thunk-expression" to
+            { args ->
+                if (args.size != 1 || !isThunk(args[0])) {
+                    raise(EvaluatorFault("thunk-expression needs a thunk"))
+                }
+                thunkParts(args[0]).first
+            },
+        "thunk-environment" to
+            { args ->
+                if (args.size != 1 || !isThunk(args[0])) {
+                    raise(EvaluatorFault("thunk-environment needs a thunk"))
+                }
+                thunkParts(args[0]).second
+            },
+        "extend-environment" to
+            { args ->
+                if (args.size != 3) raise(EvaluatorFault("extend-environment needs three arguments"))
+                val names = listItems("extend-environment", args[0]).map { symbolNameOf(it) }
+                val values =
+                    listItems("extend-environment", args[1]).map { arg ->
+                        if (isThunk(arg)) {
+                            val slot = laziness.fresh()
+                            laziness.placeholders[slot] = arg
+                            VSym(slot)
+                        } else {
+                            arg
+                        }
+                    }
+                if (names.size != values.size) {
+                    raise(EvaluatorFault("arity mismatch: expected ${names.size}, given ${values.size}"))
+                }
+                val parent = laziness.envOf("extend-environment", args[2])
+                val frame =
+                    either { Env.extend(names, values, parent) }.fold(
+                        { _ ->
+                            raise(EvaluatorFault("arity mismatch: expected ${names.size}, given ${values.size}"))
+                        },
+                        { it },
+                    )
+                requireNotNull(laziness.evaluator).internEnvironment(frame)
+            },
+        "lookup-variable-value" to
+            { args ->
+                if (args.size != 2) raise(EvaluatorFault("lookup-variable-value needs two arguments"))
+                val name = symbolNameOf(args[0])
+                val holder = laziness.envOf("lookup-variable-value", args[1])
+                val binding =
+                    either { holder.lookup(name) }.fold(
+                        { _ -> raise(EvaluatorFault("unbound variable: $name")) },
+                        { it },
+                    )
+                when {
+                    isPlaceholder(binding) -> {
+                        val thunk = laziness.placeholders[(binding as VSym).name]
+                        thunk ?: raise(EvaluatorFault("unbound variable: $name"))
+                    }
+
+                    else -> {
+                        binding
+                    }
+                }
+            },
+    )
+
+/** The three controller changes: the lazy argument loop replaces the
+ *  book's save-heavy loop, `ev-variable` forces and memoizes, and
+ *  `primitive-apply` forces the arguments a primitive will consume. */
+private val lazyArgumentLoop: List<Stmt> =
+    listOf(
+        Label("ev-appl-did-operator"),
+        Restore("unev"),
+        Restore("env"),
+        Assign("argl", opSrc("empty-arglist")),
+        Assign("proc", reg("val")),
+        Label("ev-appl-operand-loop"),
+        Test(opCond("no-operands?", reg("unev"))),
+        Branch("ev-appl-args-done"),
+        Assign("exp", opSrc("first-operand", reg("unev"))),
+        Assign("val", opSrc("make-thunk", reg("exp"), reg("env"))),
+        Assign("argl", opSrc("adjoin-arg", reg("val"), reg("argl"))),
+        Assign("unev", opSrc("rest-operands", reg("unev"))),
+        Goto(GotoTarget.Lbl("ev-appl-operand-loop")),
+        Label("ev-appl-args-done"),
+        Goto(GotoTarget.Lbl("apply-dispatch")),
+    )
+
+private val lazyEvVariable: List<Stmt> =
+    listOf(
+        Label("ev-variable"),
+        Assign("val", opSrc("lookup-variable-value", reg("exp"), reg("env"))),
+        Test(opCond("thunk?", reg("val"))),
+        Branch("ev-variable-thunk"),
+        Goto(GotoTarget.ByReg("continue")),
+        Label("ev-variable-thunk"),
+        Save("exp"),
+        Save("env"),
+        Save("continue"),
+        Assign("exp", opSrc("thunk-expression", reg("val"))),
+        Assign("env", opSrc("thunk-environment", reg("val"))),
+        Assign("continue", labelSrc("ev-variable-forced")),
+        Goto(GotoTarget.Lbl("eval-dispatch")),
+        Label("ev-variable-forced"),
+        Restore("continue"),
+        Restore("env"),
+        Restore("exp"),
+        Perform(sicp.runtime.OpAct("set-variable-value!", listOf(reg("exp"), reg("val"), reg("env")))),
+        Goto(GotoTarget.ByReg("continue")),
+    )
+
+private val lazyPrimitiveApply: List<Stmt> =
+    listOf(
+        Label("primitive-apply"),
+        Assign("unev", opSrc("empty-arglist")),
+        Label("force-args-loop"),
+        Test(opCond("no-args?", reg("argl"))),
+        Branch("force-args-done"),
+        Assign("val", opSrc("first-arg", reg("argl"))),
+        Assign("argl", opSrc("rest-args", reg("argl"))),
+        Test(opCond("thunk?", reg("val"))),
+        Branch("force-args-one"),
+        Goto(GotoTarget.Lbl("force-args-keep")),
+        Label("force-args-one"),
+        Save("proc"),
+        Save("unev"),
+        Save("argl"),
+        Save("continue"),
+        Assign("exp", opSrc("thunk-expression", reg("val"))),
+        Assign("env", opSrc("thunk-environment", reg("val"))),
+        Assign("continue", labelSrc("force-args-back")),
+        Goto(GotoTarget.Lbl("eval-dispatch")),
+        Label("force-args-back"),
+        Restore("continue"),
+        Restore("argl"),
+        Restore("unev"),
+        Restore("proc"),
+        Label("force-args-keep"),
+        Assign("unev", opSrc("adjoin-arg", reg("val"), reg("unev"))),
+        Goto(GotoTarget.Lbl("force-args-loop")),
+        Label("force-args-done"),
+        Assign("argl", reg("unev")),
+        Assign("val", opSrc("apply-primitive-procedure", reg("proc"), reg("argl"))),
+        Restore("continue"),
+        Goto(GotoTarget.ByReg("continue")),
+    )
+
+/** The lazy controller: the base fragments with `ev-variable` and
+ *  `primitive-apply` replaced, the base argument loop dropped, and the
+ *  lazy loop appended. */
+private val lazyController: List<Stmt> =
+    evaluatorControllerFragments.flatMap { (name, stmts) ->
+        when (name) {
+            "ev-variable" -> lazyEvVariable
+            "ev-appl-did-operator", "argument-loop" -> emptyList()
+            "primitive-apply" -> lazyPrimitiveApply
+            else -> stmts
+        }
+    } + lazyArgumentLoop
+
+/** One lazy-evaluator run over [source], the machine wired to its
+ *  laziness before the driver starts. */
+private fun run(
+    laziness: Laziness,
+    source: String,
+): List<String> {
+    val evaluator =
+        either { makeEvaluator(source, lazyController, lazyOperations(laziness)) }.fold(
+            { e -> error("the lazy evaluator failed to build: $e") },
+            { it },
+        )
+    laziness.evaluator = evaluator
+    evaluator.drive()
+    return evaluator.transcript
+}
+
+private val factorialSource: String =
+    """
+    (define (factorial n)
+      (if (= n 1)
+          1
+          (* (factorial (- n 1)) n)))
+    (factorial 5)
+    """.trimIndent()
+
+/** The exercise's sessions: the factorial still answers the strict
+ *  evaluator's 120; an argument that is never used is never evaluated,
+ *  so `(always-42 (car '()))` answers 42 where the strict evaluator would
+ *  crash; and the thunked `(bump)` ran once, not once per reference, so
+ *  `(use-twice (bump))` answers `(1 1)` with `count` left at 1. */
+public fun normalOrderRuns(): List<String> {
+    val factorial = run(Laziness(), factorialSource)
+    val lazyArgument =
+        run(
+            Laziness(),
+            """
+            (define (always-42 ignored) 42)
+            (always-42 (car '()))
+            """.trimIndent(),
+        )
+    val memoized =
+        run(
+            Laziness(),
+            """
+            (define count 0)
+            (define (bump) (set! count (+ count 1)) count)
+            (define (use-twice x) (list x x))
+            (use-twice (bump))
+            count
+            """.trimIndent(),
+        )
+    return factorial + lazyArgument + memoized
+}

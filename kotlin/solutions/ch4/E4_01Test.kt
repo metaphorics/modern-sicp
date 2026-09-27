@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Chapter 4, exercise 4.1
+
+package sicp.ch4.solutions
+
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
+
+public class E4_01Test :
+    FunSpec({
+        test("Exercise 4.1: the base evaluator evaluates operands left to right") {
+            leftToRightTranscript() shouldBe "(1 . 2)\n(2 1)\n"
+        }
+
+        test("Exercise 4.1: the right-to-left list-of-values runs the operands backwards") {
+            rightToLeftTranscript() shouldBe "(1 . 2)\n(1 2)\n"
+        }
+
+        test("Exercise 4.1: the cons receives the same values either way") {
+            leftToRightTranscript().lines().first() shouldBe rightToLeftTranscript().lines().first()
+        }
+    })

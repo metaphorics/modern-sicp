@@ -1,0 +1,1788 @@
+@node    Chapter 1, 1.1, 0.10, Top
+@chapter Building Abstractions with Procedures
+
+@quotation
+The acts of the mind, wherein it exerts its power over simple ideas, are
+chiefly these three: @w{1. Combining} several simple ideas into one compound one,
+and thus all complex ideas are made.  @w{2. The second} is bringing two ideas,
+whether simple or complex, together, and setting them by one another so as to
+take a view of them at once, without uniting them into one, by which it gets
+all its ideas of relations.  @w{3. The third} is separating them from all other
+ideas that accompany them in their real existence: this is called abstraction,
+and thus all its general ideas are made.
+
+---John Locke, @cite{An Essay Concerning Human Understanding} (1690)
+@end quotation
+
+
+@noindent
+We are about to study the idea of a @newterm{computational process}.
+Computational processes are abstract beings that inhabit computers.  As they
+evolve, processes manipulate other abstract things called @newterm{data}.  The
+evolution of a process is directed by a pattern of rules called a
+@newterm{program}.  People create programs to direct processes.  In effect, we
+conjure the spirits of the computer with our spells.
+
+A computational process is indeed much like a sorcerer's idea of a spirit.  It
+cannot be seen or touched.  It is not composed of matter at all.  However, it
+is very real.  It can perform intellectual work.  It can answer questions.  It
+can affect the world by disbursing money at a bank or by controlling a robot
+arm in a factory.  The programs we use to conjure processes are like a
+sorcerer's spells.  They are carefully composed from symbolic expressions in
+arcane and esoteric @newterm{programming languages} that prescribe the tasks we
+want our processes to perform.
+
+A computational process, in a correctly working computer, executes programs
+precisely and accurately.  Thus, like the sorcerer's apprentice, novice
+programmers must learn to understand and to anticipate the consequences of
+their conjuring.  Even small errors (usually called @newterm{bugs} or
+@newterm{glitches}) in programs can have complex and unanticipated
+consequences.
+
+Fortunately, learning to program is considerably less dangerous than learning
+sorcery, because the spirits we deal with are conveniently contained in a
+secure way.  Real-world programming, however, requires care, expertise, and
+wisdom.  A small bug in a computer-aided design program, for example, can lead
+to the catastrophic collapse of an airplane or a dam or the self-destruction of
+an industrial robot.
+
+Master software engineers have the ability to organize programs so that they
+can be reasonably sure that the resulting processes will perform the tasks
+intended.  They can visualize the behavior of their systems in advance.  They
+know how to structure programs so that unanticipated problems do not lead to
+catastrophic consequences, and when problems do arise, they can @newterm{debug}
+their programs.  Well-designed computational systems, like well-designed
+automobiles or nuclear reactors, are designed in a modular manner, so that the
+parts can be constructed, replaced, and debugged separately.
+
+@subsubheading Programming in Lisp
+
+We need an appropriate language for describing processes, and we will use for
+this purpose the programming language Lisp.  Just as our everyday thoughts are
+usually expressed in our natural language (such as English, French, or
+Japanese), and descriptions of quantitative phenomena are expressed with
+mathematical notations, our procedural thoughts will be expressed in Lisp.
+Lisp was invented in the late 1950s as a formalism for reasoning about the use
+of certain kinds of logical expressions, called @newterm{recursion equations},
+as a model for computation.  The language was conceived by John McCarthy and is
+based on his paper ``Recursive Functions of Symbolic Expressions and Their
+Computation by Machine'' (@ref{McCarthy 1960}).
+
+Despite its inception as a mathematical formalism, Lisp is a practical
+programming language.  A Lisp @newterm{interpreter} is a machine that carries
+out processes described in the Lisp language.  The first Lisp interpreter was
+implemented by McCarthy with the help of colleagues and students in the
+Artificial Intelligence Group of the @abbr{MIT} Research Laboratory of
+Electronics and in the @abbr{MIT} Computation Center.@footnote{The
+@cite{Lisp 1 Programmer's Manual} appeared in 1960 and the @cite{Lisp 1.5
+Programmer's Manual} (@ref{McCarthy et al. 1965}) was published in 1962.  The early history
+of Lisp is described in @ref{McCarthy 1978}.}  Lisp, whose name is an acronym for
+LISt Processing, was designed to provide symbol-manipulating capabilities for
+attacking programming problems such as the symbolic differentiation and
+integration of algebraic expressions.  It included for this purpose new data
+objects known as atoms and lists, which most strikingly set it apart from all
+other languages of the period.
+
+Lisp was not the product of a concerted design effort.  Instead, it evolved
+informally in an experimental manner in response to users' needs and to
+pragmatic implementation considerations.  Lisp's informal evolution has
+continued through the years, and the community of Lisp users has traditionally
+resisted attempts to promulgate any ``official'' definition of the language.
+This evolution, together with the flexibility and elegance of the initial
+conception, has enabled Lisp, which is the second oldest language in widespread
+use today (only Fortran is older), to continually adapt to encompass the most
+modern ideas about program design.  Thus, Lisp is by now a family of dialects,
+which, while sharing most of the original features, may differ from one another
+in significant ways.  The dialect of Lisp used in this book is called
+Scheme.@footnote{The two dialects in which most major Lisp programs of the
+1970s were written are MacLisp (@ref{Moon 1978}; @ref{Pitman 1983}), developed at the
+@abbr{MIT} Project @abbr{MAC}, and Interlisp (@ref{Teitelman 1974}), developed
+at Bolt Beranek and Newman Inc. and the Xerox Palo Alto Research Center.
+Portable Standard Lisp (@ref{Hearn 1969}; @ref{Griss 1981}) was a Lisp dialect designed to
+be easily portable between different machines.  MacLisp spawned a number of
+subdialects, such as Franz Lisp, which was developed at the University of
+California at Berkeley, and Zetalisp (@ref{Moon and Weinreb 1981}), which was based on a
+special-purpose processor designed at the @abbr{MIT} Artificial Intelligence
+Laboratory to run Lisp very efficiently.  The Lisp dialect used in this book,
+called Scheme (@ref{Steele and Sussman 1975}), was invented in 1975 by Guy Lewis Steele Jr. and
+Gerald Jay Sussman of the @abbr{MIT} Artificial Intelligence Laboratory and
+later reimplemented for instructional use at @abbr{MIT}.  Scheme became an
+@abbr{IEEE} standard in 1990 (@ref{IEEE 1990}).  The Common Lisp dialect
+(@ref{Steele 1982}, @ref{Steele 1990}) was developed by the Lisp community to combine
+features from the earlier Lisp dialects to make an industrial standard for
+Lisp.  Common Lisp became an @abbr{ANSI} standard in 1994 (@ref{ANSI 1994}).}
+
+Because of its experimental character and its emphasis on symbol manipulation,
+Lisp was at first very inefficient for numerical computations, at least in
+comparison with Fortran.  Over the years, however, Lisp compilers have been
+developed that translate programs into machine code that can perform numerical
+computations reasonably efficiently.  And for special applications, Lisp has
+been used with great effectiveness.@footnote{One such special application was a
+breakthrough computation of scientific importance---an integration of the
+motion of the Solar System that extended previous results by nearly two orders
+of magnitude, and demonstrated that the dynamics of the Solar System is
+chaotic.  This computation was made possible by new integration algorithms, a
+special-purpose compiler, and a special-purpose computer all implemented with
+the aid of software tools written in Lisp (@ref{Abelson et al. 1992}; @ref{Sussman and Wisdom 1992}).}  
+Although Lisp has not yet overcome its old reputation as
+hopelessly inefficient, Lisp is now used in many applications where efficiency
+is not the central concern.  For example, Lisp has become a language of choice
+for operating-system shell languages and for extension languages for editors
+and computer-aided design systems.
+
+If Lisp is not a mainstream language, why are we using it as the framework for
+our discussion of programming?  Because the language possesses unique features
+that make it an excellent medium for studying important programming constructs
+and data structures and for relating them to the linguistic features that
+support them.  The most significant of these features is the fact that Lisp
+descriptions of processes, called @newterm{procedures}, can themselves be
+represented and manipulated as Lisp data.  The importance of this is that there
+are powerful program-design techniques that rely on the ability to blur the
+traditional distinction between ``passive'' data and ``active'' processes.  As
+we shall discover, Lisp's flexibility in handling procedures as data makes it
+one of the most convenient languages in existence for exploring these
+techniques.  The ability to represent procedures as data also makes Lisp an
+excellent language for writing programs that must manipulate other programs as
+data, such as the interpreters and compilers that support computer languages.
+Above and beyond these considerations, programming in Lisp is great fun.
+
+@menu
+* 1.1::              The Elements of Programming
+* 1.2::              Procedures and the Processes They Generate
+* 1.3::              Formulating Abstractions with Higher-Order Procedures
+@end menu
+
+@node	1.1, 1.2, Chapter 1, Chapter 1
+@section The Elements of Programming
+
+A powerful programming language is more than just a means for instructing a
+computer to perform tasks.  The language also serves as a framework within
+which we organize our ideas about processes.  Thus, when we describe a
+language, we should pay particular attention to the means that the language
+provides for combining simple ideas to form more complex ideas.  Every powerful
+language has three mechanisms for accomplishing this:
+
+@itemize @bullet
+
+@item @b{primitive expressions},
+which represent the simplest entities the language is concerned with,
+
+@item @b{means of combination},
+by which compound elements are built from simpler ones, and
+
+@item @b{means of abstraction},
+by which compound elements can be named and manipulated as units.
+
+@end itemize
+
+@noindent
+In programming, we deal with two kinds of elements: procedures and data. (Later
+we will discover that they are really not so distinct.)  Informally, data is
+``stuff'' that we want to manipulate, and procedures are descriptions of the
+rules for manipulating the data.  Thus, any powerful programming language
+should be able to describe primitive data and primitive procedures and should
+have methods for combining and abstracting procedures and data.
+
+In this chapter we will deal only with simple numerical data so that we can
+focus on the rules for building procedures.@footnote{The characterization of
+numbers as ``simple data'' is a barefaced bluff.  In fact, the treatment of
+numbers is one of the trickiest and most confusing aspects of any programming
+language.  Some typical issues involved are these: Some computer systems
+distinguish @newterm{integers}, such as 2, from @newterm{real numbers}, such as
+2.71.  Is the real number 2.00 different from the integer 2?  Are the
+arithmetic operations used for integers the same as the operations used for
+real numbers?  Does 6 divided by 2 produce 3, or 3.0?  How large a number can
+we represent?  How many decimal places of accuracy can we represent?  Is the
+range of integers the same as the range of real numbers?  Above and beyond
+these questions, of course, lies a collection of issues concerning roundoff and
+truncation errors---the entire science of numerical analysis.  Since our focus
+in this book is on large-scale program design rather than on numerical
+techniques, we are going to ignore these problems.  The numerical examples in
+this chapter will exhibit the usual roundoff behavior that one observes when
+using arithmetic operations that preserve a limited number of decimal places of
+accuracy in noninteger operations.} In later chapters we will see that these
+same rules allow us to build procedures to manipulate compound data as well.
+
+@menu
+* 1.1.1::            Expressions
+* 1.1.2::            Naming and the Environment
+* 1.1.3::            Evaluating Combinations
+* 1.1.4::            Compound Procedures
+* 1.1.5::            The Substitution Model for Procedure Application
+* 1.1.6::            Conditional Expressions and Predicates
+* 1.1.7::            Example: Square Roots by Newton's Method
+* 1.1.8::            Procedures as Black-Box Abstractions
+@end menu
+
+@node	1.1.1, 1.1.2, 1.1, 1.1
+@subsection Expressions
+
+One easy way to get started at programming is to examine some typical
+interactions with OCaml.  Imagine that you are sitting at a computer
+terminal.  You type an @newterm{expression}, and the toplevel responds by
+displaying the result of its @newterm{evaluating} that expression.
+
+One kind of primitive expression you might type is a number.  (More precisely,
+the expression that you type consists of the numerals that represent the number
+in base 10.)  If you present the toplevel with a number
+
+@example ocaml
+486;;
+(* => 486 *)
+@end example
+
+@noindent
+the toplevel will respond by printing it.@footnote{Throughout this book, when
+we wish to emphasize the distinction between the input typed by the user and
+the response printed by the system, we show the response as a comment line
+beginning with @code{=>}.  A live toplevel also announces the type of every
+result; the primer's transcripts show those replies, and we omit the type
+here so that the listings stay close to the book's shape.}
+
+Expressions representing numbers may be combined with an expression
+representing a primitive operation (such as @code{+} or @code{*}) to form a
+compound expression that represents the application of the operation to those
+numbers.  For @w{example}:
+
+@example ocaml
+137 + 349;;
+(* => 486 *)
+@end example
+
+@example ocaml
+1000 - 334;;
+(* => 666 *)
+@end example
+
+@example ocaml
+5 * 99;;
+(* => 495 *)
+@end example
+
+@example ocaml
+10 / 5;;
+(* => 2 *)
+@end example
+
+@example ocaml
+2.7 +. 10.0;;
+(* => 12.7 *)
+@end example
+
+@noindent
+The last interaction opens a topic that will shape every numerical program
+in this book.  OCaml distinguishes the integers of the footnote above from
+real numbers, which it represents as @newterm{floating-point numbers}, and
+it gives each world its own operators: @code{+}, @code{-}, @code{*}, and
+@code{/} work only on integers, while @code{+.}, @code{-.}, @code{*.}, and
+@code{/.} work only on floating-point numbers.  Writing @code{2.7 + 10} is
+not a calculation but a @newterm{type error}: the compiler rejects the
+program before anything runs.  Crossing between the two worlds is always an
+explicit conversion, most often @code{Float.of_int}, and this book never
+performs one silently.
+
+Expressions such as these, formed by writing an operator and its operands
+together, are called @newterm{combinations}.  In @code{137 + 349} the
+element that specifies the operation is called the @newterm{operator}, and
+the elements it is applied to are called @newterm{operands}.  The value of
+a combination is obtained by applying the operation specified by the
+operator to the @newterm{arguments} that are the values of the operands.
+
+Where the book's Scheme places the operator to the left of its operands, a
+convention known as @newterm{prefix notation}, OCaml writes a binary
+operator between them, a convention known as @newterm{infix notation}.  The
+change is mostly cosmetic, but it has two
+consequences worth pausing over.  The first is that an infix operator
+combines a fixed number of operands, usually two, so adding four numbers
+takes three @code{+}s, chained left to right:
+
+@example ocaml
+21 + 35 + 12 + 7;;
+(* => 75 *)
+@end example
+
+@example ocaml
+25 * 4 * 12;;
+(* => 1200 *)
+@end example
+
+@noindent
+No ambiguity can arise: each operator combines exactly the two operands
+beside it, and the chain groups the same way every time.
+
+The second consequence is that operators carry a @newterm{precedence},
+which says how expressions group when the reader writes no parentheses.
+Multiplication binds tighter than addition, so some of the book's
+parentheses become optional while others remain essential.  Nesting
+combinations still works exactly as it did in the prefix notation:
+
+@example ocaml
+3 * 5 + (10 - 6);;
+(* => 19 *)
+@end example
+
+@noindent
+Here the parentheses are not load-bearing: addition and subtraction share
+precedence and associate to the left, so @code{3 * 5 + 10 - 6} groups the
+same way and comes to the same 19.  Parentheses become essential exactly
+when they overrule that left-to-right reading, as when a subtraction is
+itself subtracted:
+
+@example ocaml
+10 - (4 - 3);;
+(* => 9 *)
+@end example
+
+@noindent
+Dropping those parentheses, @code{10 - 4 - 3}, groups from the left instead
+and comes to @code{3}; here the structure that the prefix form spelled out
+explicitly is carried entirely by the parentheses, since precedence alone
+does not settle it.
+
+There is no limit (in principle) to the depth of such nesting and to the
+overall complexity of the expressions that OCaml can evaluate.  It is we
+humans who get confused by still relatively simple expressions such as
+
+@example ocaml
+3 * ((2 * 4) + (3 + 5)) + ((10 - 7) + 6);;
+@end example
+
+@noindent
+which evaluates to be 57.  We can help ourselves by writing such an
+expression in the form
+
+@example ocaml
+3 * ((2 * 4)
+     + (3 + 5))
+  + ((10 - 7)
+     + 6);;
+@end example
+
+@noindent
+following a formatting convention known as @newterm{pretty-printing}, in
+which each long expression is written so that its subexpressions are
+aligned vertically.  The resulting indentations display clearly the
+structure of the expression.@footnote{OCaml systems typically provide
+features to aid the user in formatting expressions.  Two especially useful
+ones are an automatic indenter that keeps each subexpression aligned under
+its operator, available in editors and in the @code{ocamlformat} tool that
+formats this book's code, and a toplevel that points at the subexpression
+involved in a type error.}
+
+Even with complex expressions, the toplevel always operates in the same
+basic cycle: It reads a phrase, evaluates the phrase, and prints the
+result.  This mode of operation is often expressed by saying that the
+toplevel runs in a @newterm{read-eval-print loop}.  Observe in particular
+that it is not necessary to explicitly instruct the toplevel to print the
+value of the expression.@footnote{OCaml inherits from Lisp the convention
+that every expression has a value.  The double semicolon @code{;;} tells
+the toplevel that the reader is done typing, and the reply names the
+expression's type before its value.  That convention, together with the
+old reputation of Lisp as an inefficient language, is the source of the
+quip by Alan Perlis (paraphrasing Oscar Wilde) that ``Lisp programmers
+know the value of everything but the cost of nothing.''  A typed language
+replies to the quip by announcing the type of everything as well.}
+
+@node	1.1.2, 1.1.3, 1.1.1, 1.1
+@subsection Naming and the Environment
+
+A critical aspect of a programming language is the means it provides for using
+names to refer to computational objects.  We say that the name identifies a
+@newterm{variable} whose @newterm{value} is the object.
+
+In OCaml, we name things with @code{let}.  Typing
+
+@example ocaml
+let size = 2;;
+@end example
+
+@noindent
+causes the toplevel to associate the value 2 with the name
+@code{size}.@footnote{The toplevel answers a definition with the name, the
+type it inferred, and the value: @code{val size : int = 2}.  In this book
+we do not show that reply on definitions, since the listings stay close to
+the book's shape, but it is worth having seen once; the type in it is not
+decoration, and the compiler holds every later use of the name to it.}
+Once the name @code{size} has been associated with the number 2, we can
+refer to the value 2 by name:
+
+@example ocaml
+size;;
+(* => 2 *)
+@end example
+
+@example ocaml
+5 * size;;
+(* => 10 *)
+@end example
+
+@noindent
+Here are further examples of the use of @code{let}:
+
+@example ocaml
+let pi = 3.14159;;
+let radius = 10;;
+@end example
+
+@example ocaml
+pi *. Float.of_int (radius * radius);;
+(* => 314.159 *)
+@end example
+
+@example ocaml
+let circumference = 2.0 *. pi *. Float.of_int radius;;
+@end example
+
+@example ocaml
+circumference;;
+(* => 62.8318 *)
+@end example
+
+@noindent
+The circle quantities show the typed world at work.  @code{radius} is an
+integer and @code{pi} a floating-point number, so squaring the radius
+stays inside the integer operators, and each multiplication by
+@code{pi} crosses the boundary through an explicit @code{Float.of_int}.
+The compiler permits no other route.
+
+@code{Let} is our language's simplest means of abstraction, for it allows us
+to use simple names to refer to the results of compound operations, such as the
+@code{circumference} computed above.  In general, computational objects may
+have very complex structures, and it would be extremely inconvenient to have to
+remember and repeat their details each time we want to use them.  Indeed,
+complex programs are constructed by building, step by step, computational
+objects of increasing complexity. The toplevel makes this step-by-step
+program construction particularly convenient because name-object associations
+can be created incrementally in successive interactions.  This feature
+encourages the incremental development and testing of programs and is largely
+responsible for the fact that an OCaml program usually consists of a large
+number of relatively small functions.
+
+It should be clear that the possibility of associating values with names and
+later retrieving them means that the interpreter must maintain some sort of
+memory that keeps track of the name-object pairs.  This memory is called the
+@newterm{environment} (more precisely the @newterm{global environment}, since
+we will see later that a computation may involve a number of different
+environments).@footnote{@ref{Chapter 3} will show that this notion of
+environment is essential, both for understanding how the interpreter works and
+for implementing interpreters.}
+
+@node	1.1.3, 1.1.4, 1.1.2, 1.1
+@subsection Evaluating Combinations
+
+One of our goals in this chapter is to isolate issues about thinking
+procedurally.  As a case in point, let us consider that, in evaluating
+combinations, the toplevel is itself following a procedure.
+
+@quotation
+To evaluate a combination, do the following:
+
+@enumerate 1
+
+@item
+Evaluate the subexpressions of the combination.
+
+@item
+Apply the procedure that the operator denotes to the arguments that are
+the values of the operands.
+
+@end enumerate
+@end quotation
+
+@noindent
+Even this simple rule illustrates some important points about processes in
+general.  First, observe that the first step dictates that, to accomplish the evaluation process for a combination, we must first perform the
+evaluation process on each element of the combination.  Thus, the evaluation
+rule is @newterm{recursive} in nature; that is, it includes, as one of its
+steps, the need to invoke the rule itself.@footnote{It may seem strange that
+the evaluation rule says, as part of the first step, that we should evaluate
+the operator, since at this point that can only denote a built-in primitive
+operation such as addition or multiplication.  We will see later that it is
+useful to be able to work with combinations whose operators are themselves
+compound expressions.}
+
+Notice how succinctly the idea of recursion can be used to express what, in the
+case of a deeply nested combination, would otherwise be viewed as a rather
+complicated process.  For example, evaluating
+
+@example ocaml
+(2 + 4 * 6) * (3 + 5 + 7)
+@end example
+
+@noindent
+requires that the evaluation rule be applied to four different combinations.
+We can obtain a picture of this process by representing the combination in the
+form of a tree, as shown in @ref{Figure 1.1}.  Each combination is represented
+by a node with branches corresponding to the operator and the operands of the
+combination stemming from it.  The terminal nodes (that is, nodes with no
+branches stemming from them) represent either operators or numbers.  Viewing
+evaluation in terms of the tree, we can imagine that the values of the operands
+percolate upward, starting from the terminal nodes and then combining at higher
+and higher levels.  In general, we shall see that recursion is a very powerful
+technique for dealing with hierarchical, treelike objects.  In fact, the
+``percolate values upward'' form of the evaluation rule is an example of a
+general kind of process known as @newterm{tree accumulation}.
+
+@float
+@anchor{Figure 1.1}
+@ifinfo
+@strong{Figure 1.1:} Tree representation, showing the value of each subcombination.
+
+@example
+   390
+   /|\____________
+  / |             \
+ *  26            15
+    /|\           /|\
+   / | \         // \\
+  +  2  24      / | | \
+        /|\    +  3 5  7
+       / | \
+      *  4  6
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap1/Fig1.1g,,58mm,Figure 1.1: Tree representation@comma{} showing the value of each subcombination.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap1/Fig1.1g.std,,58mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 1.1:} Tree representation, showing the value of each subcombination.}
+@end float
+
+@noindent
+Next, observe that the repeated application of the first step brings us to the
+point where we need to evaluate, not combinations, but primitive expressions
+such as numerals, built-in operators, or other names.  We take care of the
+primitive cases by stipulating that
+
+@itemize @bullet
+
+@item
+the values of numerals are the numbers that they name,
+
+@item
+the values of built-in operators are the machine instruction sequences that
+carry out the corresponding operations, and
+
+@item
+the values of other names are the objects associated with those names in the
+environment.
+
+@end itemize
+
+@noindent
+We may regard the second rule as a special case of the third one by stipulating
+that names such as @code{+} and @code{*} are also included in the global
+environment, and are associated with the sequences of machine instructions that
+are their ``values.''  The key point to notice is the role of the environment
+in determining the meaning of the names in expressions.  In a compiled
+language such as OCaml, it is meaningless to speak of the value of an expression
+such as @code{x + 1} without specifying any information about the environment
+that would provide a meaning for the name @code{x}: the compiler answers such
+an expression with ``Unbound value x'' and refuses to produce a program at
+all.  As we shall see in @ref{Chapter 3}, the general notion of the
+environment as providing a context in which evaluation takes place will play an
+important role in our understanding of program execution.
+
+Notice that the evaluation rule given above does not handle definitions.  For
+instance, evaluating @code{let x = 3} does not apply an operation to two
+arguments, one of which is the value of the name @code{x} and the other of
+which is 3, since the purpose of the @code{let} is precisely to associate
+@code{x} with a value.  (That is, @code{let x = 3} is not a combination.)
+
+Such exceptions to the general evaluation rule are called @newterm{special forms}.  
+@code{Let} is the only example of a special form that we have seen
+so far, but we will meet others shortly.  Each special form has its own
+evaluation rule. The various kinds of expressions (each with its associated
+evaluation rule) constitute the syntax of the programming language.  In
+comparison with Lisp, where the evaluation rule for expressions can be
+described by a simple general rule together with specialized rules for a small
+number of special forms, OCaml carries a heavier syntax: a grammar with
+precedence and associativity, and a larger set of forms, each with its own
+evaluation rule.  The reward for the heavier syntax is that the same grammar
+is readable by the type checker, which catches whole classes of incorrect
+programs before they run.@footnote{Special syntactic forms that are simply convenient
+alternative surface structures for things that can be written in more uniform
+ways are sometimes called @newterm{syntactic sugar}, to use a phrase coined by
+Peter Landin.  In comparison with users of other languages, Lisp programmers,
+as a rule, are less concerned with matters of syntax.  (By contrast, examine
+any Pascal manual and notice how much of it is devoted to descriptions of
+syntax.)  This disdain for syntax is due partly to the flexibility of Lisp,
+which makes it easy to change surface syntax, and partly to the observation
+that many ``convenient'' syntactic constructs, which make the language less
+uniform, end up causing more trouble than they are worth when programs become
+large and complex.  In the words of Alan Perlis, ``Syntactic sugar causes
+cancer of the semicolon.''}
+
+@node	1.1.4, 1.1.5, 1.1.3, 1.1
+@subsection Compound Procedures
+
+We have identified in OCaml some of the elements that must appear in any
+powerful programming language:
+
+@itemize @bullet
+
+@item
+Numbers and arithmetic operations are primitive data and procedures.
+
+@item
+Nesting of combinations provides a means of combining operations.
+
+@item
+Definitions that associate names with values provide a limited means of
+abstraction.
+
+@end itemize
+
+@noindent
+Now we will learn about @newterm{procedure definitions}, a much more powerful
+abstraction technique by which a compound operation can be given a name and
+then referred to as a unit.
+
+We begin by examining how to express the idea of ``squaring.''  We might say,
+``To square something, multiply it by itself.''  This is expressed in our
+language as
+
+@example ocaml
+let square x = x * x;;
+@end example
+
+@noindent
+We can understand this in the following way:
+
+@example
+let square x =  x * x
+    |      |    |   |
+    |      |    +---+--- multiply x by itself
+    |      +---------- the thing to be squared, named x
+    +----------------- the name square
+To square something, multiply it by itself.
+@end example
+
+@noindent
+We have here a @newterm{compound procedure}, which has been given the name
+@code{square}.  The procedure represents the operation of multiplying something
+by itself.  The thing to be multiplied is given a local name, @code{x}, which
+plays the same role that a pronoun plays in natural language.  Evaluating the
+definition creates this compound procedure and associates it with the name
+@code{square}.@footnote{Observe that there are two different operations being
+combined here: we are creating the procedure, and we are giving it the name
+@code{square}.  It is possible, indeed important, to be able to separate these
+two notions: to create procedures without naming them, and to give names to
+procedures that have already been created.  OCaml writes an unnamed procedure
+as @code{fun x -> x * x}; we will see how to use this in @ref{1.3.2}.}
+
+The general form of a procedure definition is
+
+@example ocaml
+let ⟨@var{name}⟩ ⟨@var{formal parameters}⟩ = ⟨@var{body}⟩
+@end example
+
+@noindent
+The @code{⟨}@var{name}@code{⟩} is a symbol to be associated with the procedure definition in
+the environment.@footnote{Throughout this book, we will describe the general
+syntax of expressions by using italic symbols delimited by angle
+brackets---e.g., @code{⟨}@var{name}@code{⟩}---to denote the ``slots'' in the expression to be
+filled in when such an expression is actually used.} The @code{⟨}@var{@w{formal} @w{parameters}}@code{⟩} 
+are the names used within the body of the procedure to refer to
+the corresponding arguments of the procedure.  The @code{⟨}@var{body}@code{⟩} is an
+expression that will yield the value of the procedure application when the
+formal parameters are replaced by the actual arguments to which the procedure
+is applied.@footnote{More generally, the body of the procedure can be a
+sequence of expressions.  In this case, the interpreter evaluates each
+expression in the sequence in turn and returns the value of the final
+expression as the value of the procedure application.  In OCaml such a body
+is written as a chain of @code{let} steps, and the last expression's value
+is the procedure's value.}  Unlike the book's
+Scheme spelling, the name and the formal parameters are not wrapped in
+parentheses, and neither are the arguments of a call: application simply
+writes its arguments after the procedure.
+
+Having defined @code{square}, we can now use it:
+
+@example ocaml
+square 21;;
+(* => 441 *)
+@end example
+
+@example ocaml
+square (2 + 5);;
+(* => 49 *)
+@end example
+
+@example ocaml
+square (square 3);;
+(* => 81 *)
+@end example
+
+@noindent
+We can also use @code{square} as a building block in defining other procedures.
+For example, @math{x^2 + y^2} can be expressed as
+
+@example ocaml
+square x + square y
+@end example
+
+@noindent
+Function application binds tighter than any operator, so the two calls need
+no parentheses here; @code{(square x) + (square y)} says exactly the same
+thing.
+
+We can easily define a procedure @code{sum_of_squares} that, given any two
+numbers as arguments, produces the sum of their squares:
+
+@example ocaml
+let sum_of_squares x y =
+  square x + square y;;
+@end example
+
+@example ocaml
+sum_of_squares 3 4;;
+(* => 25 *)
+@end example
+
+@noindent
+Now we can use @code{sum_of_squares} as a building block in constructing
+further procedures:
+
+@example ocaml
+let f a =
+  sum_of_squares (a + 1) (a * 2);;
+@end example
+
+@example ocaml
+f 5;;
+(* => 136 *)
+@end example
+
+@noindent
+Compound procedures are used in exactly the same way as primitive procedures.
+Indeed, one could not tell by looking at the definition of
+@code{sum_of_squares} given above whether @code{square} was a library
+function, like @code{abs} or @code{Float.of_int}, or defined as a compound
+procedure.
+
+@node	1.1.5, 1.1.6, 1.1.4, 1.1
+@subsection The Substitution Model for Procedure Application
+
+To evaluate a combination whose operator names a compound procedure, the
+interpreter follows much the same process as for combinations whose operators
+name primitive procedures, which we described in @ref{1.1.3}.  That is,
+the interpreter evaluates the elements of the combination and applies the
+procedure (which is the value of the operator of the combination) to the
+arguments (which are the values of the operands of the combination).
+
+We can assume that the mechanism for applying primitive procedures to arguments
+is built into the interpreter.  For compound procedures, the application
+process is as follows:
+
+@quotation
+To apply a compound procedure to arguments, evaluate the body of the procedure
+with each formal parameter replaced by the corresponding argument.
+@end quotation
+
+@noindent
+To illustrate this process, let's evaluate the combination
+
+@example ocaml
+f 5;;
+@end example
+
+@noindent
+where @code{f} is the procedure defined in @ref{1.1.4}.  We begin by
+retrieving the body of @code{f}:
+
+@example ocaml
+sum_of_squares (a + 1) (a * 2)
+@end example
+
+@noindent
+Then we replace the formal parameter @code{a} by the argument 5:
+
+@example ocaml
+sum_of_squares (5 + 1) (5 * 2)
+@end example
+
+@noindent
+Thus the problem reduces to the evaluation of a combination with two operands
+and an operator @code{sum_of_squares}.  Evaluating this combination involves
+three subproblems.  We must evaluate the operator to get the procedure to be
+applied, and we must evaluate the operands to get the arguments.  Now @code{5
++ 1} produces 6 and @code{5 * 2} produces 10, so we must apply the
+@code{sum_of_squares} procedure to 6 and 10.  These values are substituted for
+the formal parameters @code{x} and @code{y} in the body of
+@code{sum_of_squares}, reducing the expression to
+
+@example ocaml
+square 6 + square 10
+@end example
+
+@noindent
+If we use the definition of @code{square}, this reduces to
+
+@example ocaml
+6 * 6 + 10 * 10
+@end example
+
+@noindent
+which reduces by multiplication to
+
+@example ocaml
+36 + 100
+@end example
+
+@noindent
+and finally to
+
+@example ocaml
+136
+@end example
+
+@noindent
+The process we have just described is called the @newterm{substitution model}
+for procedure application.  It can be taken as a model that determines the
+``meaning'' of procedure application, insofar as the procedures in this chapter
+are concerned.  However, there are two points that should be stressed:
+
+@itemize @bullet
+
+@item
+The purpose of the substitution is to help us think about procedure
+application, not to provide a description of how the interpreter really works.
+Typical interpreters do not evaluate procedure applications by manipulating the
+text of a procedure to substitute values for the formal parameters.  In
+practice, the ``substitution'' is accomplished by using a local environment for
+the formal parameters.  We will discuss this more fully in @ref{Chapter 3} and
+@ref{Chapter 4} when we examine the implementation of an interpreter in detail.
+
+@item
+Over the course of this book, we will present a sequence of increasingly
+elaborate models of how interpreters work, culminating with a complete
+implementation of an interpreter and compiler in @ref{Chapter 5}.  The
+substitution model is only the first of these models---a way to get started
+thinking formally about the evaluation process.  In general, when modeling
+phenomena in science and engineering, we begin with simplified, incomplete
+models.  As we examine things in greater detail, these simple models become
+inadequate and must be replaced by more refined models.  The substitution model
+is no exception.  In particular, when we address in @ref{Chapter 3} the use of
+procedures with ``mutable data,'' we will see that the substitution model
+breaks down and must be replaced by a more complicated model of procedure
+application.@footnote{Despite the simplicity of the substitution idea, it turns
+out to be surprisingly complicated to give a rigorous mathematical definition
+of the substitution process.  The problem arises from the possibility of
+confusion between the names used for the formal parameters of a procedure and
+the (possibly identical) names used in the expressions to which the procedure
+may be applied.  Indeed, there is a long history of erroneous definitions of
+@newterm{substitution} in the literature of logic and programming semantics.
+See @ref{Stoy 1977} for a careful discussion of substitution.}
+
+@end itemize
+
+@subsubheading Applicative order versus normal order
+
+According to the description of evaluation given in @ref{1.1.3}, the
+interpreter first evaluates the operator and operands and then applies the
+resulting procedure to the resulting arguments.  This is not the only way to
+perform evaluation.  An alternative evaluation model would not evaluate the
+operands until their values were needed.  Instead it would first substitute
+operand expressions for parameters until it obtained an expression involving
+only primitive operators, and would then perform the evaluation.  If we used
+this method, the evaluation of @code{f 5} would proceed according to the
+sequence of expansions
+
+@example ocaml
+sum_of_squares (5 + 1) (5 * 2)
+@end example
+
+@example ocaml
+square (5 + 1) + square (5 * 2)
+@end example
+
+@example ocaml
+(5 + 1) * (5 + 1) + (5 * 2) * (5 * 2)
+@end example
+
+@noindent
+followed by the reductions
+
+@example ocaml
+6 * 6 + 10 * 10
+@end example
+
+@example ocaml
+36 + 100
+@end example
+
+@example ocaml
+136
+@end example
+
+@noindent
+This gives the same answer as our previous evaluation model, but the process is
+different.  In particular, the evaluations of @code{5 + 1} and @code{5 * 2}
+are each performed twice here, corresponding to the reduction of the expression
+@code{x * x} with @code{x} replaced respectively by @code{5 + 1} and
+@code{5 * 2}.
+
+This alternative ``fully expand and then reduce'' evaluation method is known as
+@newterm{normal-order evaluation}, in contrast to the ``evaluate the arguments
+and then apply'' method that the interpreter actually uses, which is called
+@newterm{applicative-order evaluation}.  It can be shown that, for procedure
+applications that can be modeled using substitution (including all the
+procedures in the first two chapters of this book) and that yield legitimate
+values, normal-order and applicative-order evaluation produce the same value.
+(See @ref{Exercise 1.5} for an instance of an ``illegitimate'' value where
+normal-order and applicative-order evaluation do not give the same result.)
+
+OCaml, like Lisp, uses applicative-order evaluation, partly because of the
+additional efficiency obtained from avoiding multiple evaluations of
+expressions such as those illustrated with @code{5 + 1} and @code{5 * 2} above
+and, more significantly, because normal-order evaluation becomes much more
+complicated to deal with when we move beyond procedures that can be
+modeled by substitution.  On the other hand, normal-order evaluation can be an
+extremely valuable tool, and we will investigate some of its implications in
+@ref{Chapter 3} and @ref{Chapter 4}.@footnote{In @ref{Chapter 3} we will
+introduce @newterm{stream processing}, which is a way of handling apparently
+``infinite'' data structures by incorporating a limited form of normal-order
+evaluation.  In @ref{4.2} we will modify the interpreter of @ref{Chapter 4} to
+produce a normal-order variant of the book's language.}
+
+@node	1.1.6, 1.1.7, 1.1.5, 1.1
+@subsection Conditional Expressions and Predicates
+
+The expressive power of the class of procedures that we can define at this
+point is very limited, because we have no way to make tests and to perform
+different operations depending on the result of a test.  For instance, we
+cannot define a procedure that computes the absolute value of a number by
+testing whether the number is positive, negative, or zero and taking different
+actions in the different cases according to the rule
+@displaymath
+\left|{x}\right| \; = \;
+  \cases{	 	 
+       x & \hbox{if } $x > 0$, \cr
+       0 & \hbox{if } $x  =  0$, \cr
+      -x & \hbox{if } $x < 0$. 
+    }
+@end displaymath
+@ifinfo
+
+@example
+      /
+      |   x  if x > 0
+|x| = <   0  if x = 0
+      |  -x  if x < 0
+      \
+@end example
+
+@end ifinfo
+This construct is called a @newterm{case analysis}, and OCaml notates such a
+case analysis as a chain of conditionals.  To compute the absolute value of a
+number, we can write:
+
+@example ocaml
+let abs x =
+  if x > 0 then x
+  else if x = 0 then 0
+  else -x;;
+@end example
+
+@noindent
+The general form of a case analysis is
+
+@example ocaml
+if ⟨@var{p₁}⟩ then ⟨@var{e₁}⟩
+else if ⟨@var{p₂}⟩ then ⟨@var{e₂}⟩
+@r{…}
+else ⟨@var{eₙ}⟩
+@end example
+
+@noindent
+consisting of the name @code{if} followed by a chain of
+@newterm{clauses}, one per line.  Every clause but the last has the shape
+@code{if ⟨p⟩ then ⟨e⟩ else}, and the last clause is a plain @code{else
+⟨e⟩} whose expression is the @newterm{consequent expression} of the
+fallback case.  The expression after each @code{if} or @code{else if} is
+a @newterm{predicate}---that is, an
+expression whose value is either true or false.@footnote{``Either true or
+false'' is a type in OCaml, written @code{bool}, and its two values are
+written @code{true} and @code{false}.  Scheme reads any value other than
+@code{#f} as true; OCaml goes the other way and requires the predicate itself
+to be a @code{bool}, so @code{if 1 then a else b} is a type error rather than
+a quietly true statement.  Where the book's Scheme needed the names
+@code{true} and @code{false} to be associated with @code{#t} and @code{#f},
+OCaml's are literals of the language.}
+
+Conditional expressions are evaluated as follows.  The predicate @math{p₁} is
+evaluated first.  If its value is false, then @math{p₂} is evaluated.  If
+@math{p₂}'s value is also false, then @math{p₃} is evaluated.  This process
+continues until a predicate is found whose value is true, in which case the
+value of the corresponding consequent expression becomes the value of the
+whole conditional.  Unlike the book's @code{cond}, the chain cannot fall
+through the bottom: if none of the predicates holds, the final @code{else}
+applies, and a chain written without one is a program the compiler rejects,
+not one with an undefined value.
+
+The word @newterm{predicate} is used for procedures that return true or
+false, as well as for expressions that evaluate to true or false.  The
+absolute-value procedure above makes use of the primitive predicates
+@code{>}, @code{<}, and @code{=}.@footnote{@code{Abs} also uses the
+``minus'' operator @code{-}, which, when written in front of a single
+operand, as in @code{-x}, indicates negation.} These take two numbers as
+arguments and test whether the first number is, respectively, greater than,
+less than, or equal to the second number, returning true or false
+accordingly.  For floating-point numbers the same comparisons wear their
+dotted spellings @code{>.}, @code{<.}, and @code{=.}, one more face of the
+two-number-worlds rule.
+
+Another way to write the absolute-value procedure is
+
+@example ocaml
+let abs x =
+  if x < 0 then -x
+  else x;;
+@end example
+
+@noindent
+which could be expressed in English as ``If @math{x} is less than zero return 
+@math{-x}; otherwise return @math{x}.''  The final @code{else} plays the role
+that the book's Scheme gives to @code{else} in a @code{cond}: it catches
+every case the earlier predicates bypassed, and there is no need to wonder
+whether some alternative expression that always evaluates to true might have
+been used instead, because @code{else} is part of the form.  (The library
+already provides an integer absolute value named @code{abs}; our new
+definition simply shadows it, and from here on the name carries our
+procedure.  Replacing one binding of a name with a later one is called
+@newterm{shadowing}, and the book will lean on it more than once.)
+
+The general form of a two-way conditional, the restricted case analysis for
+when there are precisely two cases, is
+
+@example ocaml
+if ⟨@var{predicate}⟩ then ⟨@var{consequent}⟩ else ⟨@var{alternative}⟩
+@end example
+
+@noindent
+To evaluate an @code{if} expression, the interpreter starts by evaluating the
+@code{⟨}@var{predicate}@code{⟩} part of the expression.  If the @code{⟨}@var{predicate}@code{⟩} evaluates
+to a true value, the interpreter then evaluates the @code{⟨}@var{consequent}@code{⟩} and
+returns its value.  Otherwise it evaluates the @code{⟨}@var{alternative}@code{⟩} and returns
+its value.@footnote{A minor difference between an @code{if} and a
+@code{cond} clause of the book's Scheme is that the @code{⟨}@var{consequent}@code{⟩} and
+@code{⟨}@var{alternative}@code{⟩} must be single expressions, and the compiler requires
+both to have the same type, since whichever one the predicate picks becomes
+the value of the whole.}  A case analysis can also be written with
+@code{match}, the @newterm{pattern matching} form that OCaml notates general
+case analyses with; the absolute value reads
+
+@example ocaml
+let abs x =
+  match x with
+  | _ when x > 0 -> x
+  | _ when x = 0 -> 0
+  | _ -> -x;;
+@end example
+
+@noindent
+Each @code{|} line is one case of the analysis, and @code{when} introduces
+its predicate.  We will meet @code{match} again as soon as the book's data
+becomes compound.
+
+In addition to primitive predicates such as @code{<}, @code{=}, and @code{>},
+there are logical composition operations, which enable us to construct compound
+predicates.  The three most frequently used are these:
+
+@itemize @bullet
+
+@item
+@code{⟨@var{e₁}⟩ && @r{…} && ⟨@var{eₙ}⟩}
+
+The interpreter evaluates the expressions @code{⟨}@var{e}@code{⟩} one at a time, in
+left-to-right order.  If any @code{⟨}@var{e}@code{⟩} evaluates to false, the value of the
+whole @code{&&} expression is false, and the rest of the @code{⟨}@var{e}@code{⟩}'s are not
+evaluated.  If all of them evaluate to true, the value of the @code{&&}
+expression is the value of the last one.
+
+@item
+@code{⟨@var{e₁}⟩ || @r{…} || ⟨@var{eₙ}⟩}
+
+The interpreter evaluates the expressions @code{⟨}@var{e}@code{⟩} one at a time, in
+left-to-right order.  If any @code{⟨}@var{e}@code{⟩} evaluates to a true value, that value is
+returned as the value of the @code{||} expression, and the rest of the
+@code{⟨}@var{e}@code{⟩}'s are not evaluated.  If all of them evaluate to false, the value
+of the @code{||} expression is false.
+
+@item
+@code{not ⟨@var{e}⟩}
+
+The value of a @code{not} expression is true when the expression @code{⟨}@var{e}@code{⟩}
+evaluates to false, and false otherwise.
+
+@end itemize
+
+@noindent
+Notice that @code{&&} and @code{||} are special forms, not procedures, because
+the subexpressions are not necessarily all evaluated.  The language
+definition spells out this left-to-right, stop-early behavior; it is known as
+@newterm{short-circuit evaluation}.  @code{Not} is an ordinary function.
+
+As an example of how these are used, the condition that a number @math{x} be in
+the range @math{5 < x < 10} may be expressed as
+
+@example ocaml
+x > 5 && x < 10;;
+@end example
+
+@noindent
+As another example, we can define a predicate to test whether one number is
+greater than or equal to another as 
+
+@example ocaml
+let greater_or_equal x y =
+  x > y || x = y;;
+@end example
+
+@noindent
+or alternatively as 
+
+@example ocaml
+let greater_or_equal x y =
+  not (x < y);;
+@end example
+
+@noindent
+(The library already provides a comparison named @code{>=}; giving our own
+procedure a fresh name keeps the two definitions side by side without
+shadowing anything.)
+
+@quotation
+@strong{@anchor{Exercise 1.1}Exercise 1.1:} Below is a sequence of expressions.
+What is the result printed by the toplevel in response to each expression?
+Assume that the sequence is to be evaluated in the order in which it is
+presented.
+
+@example ocaml
+10;;
+5 + 3 + 4;;
+9 - 1;;
+6 / 2;;
+2 * 4 + (4 - 6);;
+let a = 3;;
+let b = a + 1;;
+a + b + (a * b);;
+a = b;;
+if b > a && b < a * b then b else a;;
+if a = 4 then 6
+else if b = 4 then 6 + 7 + a
+else 25;;
+2 + (if b > a then b else a);;
+(if a > b then a
+ else if a < b then b
+ else -1) * (a + 1);;
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.2}Exercise 1.2:} @emph{SICP exercise 1.2 is about
+Scheme itself, so this edition replaces it; the exercise below keeps the
+number and teaches the same section material.}
+
+The book's expression
+@displaymath
+{{5 + 4 + (2 - (3 - (6 + {4 \over 5}))) \over 3(6 - 2)(2 - 7)}.}
+@end displaymath
+@ifinfo
+
+@example
+5 + 4 + (2 - (3 - (6 + 4/5)))
+-----------------------------
+       3(6 - 2)(2 - 7)
+@end example
+
+@end ifinfo
+is easy to write with infix operators.  Translate it instead into a form that
+uses no infix operators at all, only nested calls, in the style of the prefix
+combinations this section started from.  The only operations you may use are
+the four functions below:
+
+@example ocaml
+let add x y = x +. y;;
+let sub x y = x -. y;;
+let mul x y = x *. y;;
+let div x y = x /. y;;
+@end example
+
+@noindent
+Write the expression as one nested application of @code{add}, @code{sub},
+@code{mul}, and @code{div}, and give its value.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.3}Exercise 1.3:} Define a procedure that takes three
+numbers as arguments and returns the sum of the squares of the two larger
+numbers.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.4}Exercise 1.4:} Observe that our model of
+evaluation allows for combinations whose operators are compound expressions.
+Use this observation to describe the behavior of the following procedure:
+
+@example ocaml
+let a_plus_abs_b a b =
+  (if b > 0 then ( + ) else ( - )) a b;;
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.5}Exercise 1.5:} Ben Bitdiddle has invented a test
+to determine whether the interpreter he is faced with is using
+applicative-order evaluation or normal-order evaluation.  He defines the
+following two procedures:
+
+@example ocaml
+let rec p () = p ();;
+
+let test x y =
+  if x = 0 then 0 else y;;
+@end example
+
+@noindent
+Then he evaluates the expression
+
+@example ocaml
+test 0 (p ());;
+@end example
+
+@noindent
+What behavior will Ben observe with an interpreter that uses applicative-order
+evaluation?  What behavior will he observe with an interpreter that uses
+normal-order evaluation?  Explain your answer.  (Assume that the evaluation
+rule for the special form @code{if} is the same whether the interpreter is
+using normal or applicative order: The predicate expression is evaluated first,
+and the result determines whether to evaluate the consequent or the alternative
+expression.)
+@end quotation
+
+@anchor{Sec.1.1.7}
+@node	1.1.7, 1.1.8, 1.1.6, 1.1
+@subsection Example: Square Roots by Newton's Method
+
+Procedures, as introduced above, are much like ordinary mathematical functions.
+They specify a value that is determined by one or more parameters.  But there
+is an important difference between mathematical functions and computer
+procedures.  Procedures must be effective.
+
+As a case in point, consider the problem of computing square roots.  We can
+define the square-root function as
+@displaymath
+\sqrt{x} \;\; = \;\; {\hbox{the} \;\; y} \;\;
+{\hbox{such that}} \;\; {y \ge 0} \;\; {\hbox{and} \;\; y^2 = x.}
+@end displaymath
+@ifinfo
+
+@example
+sqrt(x) = the y such that y >= 0 and y^2 = x
+@end example
+
+@end ifinfo
+This describes a perfectly legitimate mathematical function.  We could use it
+to recognize whether one number is the square root of another, or to derive
+facts about square roots in general.  On the other hand, the definition does
+not describe a procedure.  Indeed, it tells us almost nothing about how to
+actually find the square root of a given number.  It will not help matters to
+rephrase this definition in pseudo-OCaml:
+
+@example ocaml
+(* let sqrt x = the y such that y >= 0.0 && y *. y = x *)
+@end example
+
+@noindent
+This only begs the question.
+
+The contrast between function and procedure is a reflection of the general
+distinction between describing properties of things and describing how to do
+things, or, as it is sometimes referred to, the distinction between declarative
+knowledge and imperative knowledge.  In mathematics we are usually concerned
+with declarative (what is) descriptions, whereas in computer science we are
+usually concerned with imperative (how to) descriptions.@footnote{Declarative
+and imperative descriptions are intimately related, as indeed are mathematics
+and computer science.  For instance, to say that the answer produced by a
+program is ``correct'' is to make a declarative statement about the program.
+There is a large amount of research aimed at establishing techniques for
+proving that programs are correct, and much of the technical difficulty of this
+subject has to do with negotiating the transition between imperative statements
+(from which programs are constructed) and declarative statements (which can be
+used to deduce things).  In a related vein, an important current area in
+programming-language design is the exploration of so-called very high-level
+languages, in which one actually programs in terms of declarative statements.
+The idea is to make interpreters sophisticated enough so that, given ``what
+is'' knowledge specified by the programmer, they can generate ``how to''
+knowledge automatically.  This cannot be done in general, but there are
+important areas where progress has been made.  We shall revisit this idea in
+@ref{Chapter 4}.}
+
+How does one compute square roots?  The most common way is to use Newton's
+method of successive approximations, which says that whenever we have a guess
+@math{y} for the value of the square root of a number @math{x}, we can perform a
+simple manipulation to get a better guess (one closer to the actual square
+root) by averaging @math{y} with @math{{x / y}}.@footnote{This square-root algorithm
+is actually a special case of Newton's method, which is a general technique for
+finding roots of equations.  The square-root algorithm itself was developed by
+Heron of Alexandria in the first century @abbr{A.D.}  We will see how to
+express the general Newton's method as a procedure in @ref{1.3.4}.} 
+For example, we can compute the square root of 2 as follows.
+Suppose our initial guess is 1:
+
+@example
+Guess     Quotient      Average
+
+1         (2/1)  = 2    ((2 + 1)/2)  = 1.5
+
+1.5       (2/1.5)       ((1.3333 + 1.5)/2)
+            = 1.3333      = 1.4167
+
+1.4167    (2/1.4167)    ((1.4167 + 1.4118)/2) 
+            = 1.4118      = 1.4142  
+
+1.4142    ...           ...
+@end example
+
+@noindent
+Continuing this process, we obtain better and better approximations to the
+square root.
+
+Now let's formalize the process in terms of procedures.  We start with a value
+for the radicand (the number whose square root we are trying to compute) and a
+value for the guess.  If the guess is good enough for our purposes, we are
+done; if not, we must repeat the process with an improved guess.  That is the
+basic strategy.  One difference shows immediately: OCaml checks each
+definition against the ones above it, so the pieces of the program come
+first, and the strategy that combines them comes last.  A guess is improved
+by averaging it with the quotient of the radicand and the old guess:
+
+@example ocaml
+let average x y = (x +. y) /. 2.0;;
+
+let improve guess x =
+  average guess (x /. guess);;
+@end example
+
+@noindent
+We also have to say what we mean by ``good enough.''  The following will do for
+illustration, but it is not really a very good test.  (See @ref{Exercise 1.7}.)  
+The idea is to improve the answer until it is close
+enough so that its square differs from the radicand by less than a
+predetermined tolerance (here 0.001):@footnote{The book's Scheme spells
+predicate names with a trailing question mark, @code{good-enough?}.  OCaml
+does not admit @code{?} inside an ordinary name, so this edition writes
+@code{good_enough}; the intent travels unchanged, which is that the name
+should announce that the procedure returns a @code{bool}.}
+
+@example ocaml
+let square x = x *. x;;
+
+let good_enough guess x =
+  Float.abs (square guess -. x) < 0.001;;
+@end example
+
+@noindent
+The @code{square} here is the floating-point version of the procedure of
+@ref{1.1.4}; the new definition shadows the old one, so the same name now
+carries the same idea at type @code{float -> float}.  With the pieces in
+place, the basic strategy reads
+
+@example ocaml
+let rec sqrt_iter guess x =
+  if good_enough guess x then guess
+  else sqrt_iter (improve guess x) x;;
+@end example
+
+@noindent
+Finally, we need a way to get started.  For instance, we can always guess that the square root of any
+number is 1:@footnote{Observe that we express our initial guess as @code{1.0}
+rather than @code{1}.  This would not make any difference in many Lisp
+implementations, but it is everything in OCaml: the two literals have
+different types, and @code{sqrt_iter 1 x} is a type error, because the
+procedure expects a @code{float} where the integer @code{1} sits.  Writing
+@code{1.0} fixes every later value of the computation as a floating-point
+number, since no operation in the program mixes the two worlds without an
+explicit conversion.  (Exact rational arithmetic, the territory MIT Scheme
+drifts into here, returns in this book at @ref{2.1.1}.)}
+
+@example ocaml
+let sqrt x = sqrt_iter 1.0 x;;
+@end example
+
+@noindent
+If we type these definitions to the toplevel, we can use @code{sqrt} just as
+we can use any procedure:
+
+@example ocaml
+sqrt 9.0;;
+(* => 3.00009155413138 *)
+@end example
+
+@example ocaml
+sqrt (100.0 +. 37.0);;
+(* => 11.704699917758145 *)
+@end example
+
+@example ocaml
+sqrt (sqrt 2.0 +. sqrt 3.0);;
+(* => 1.7739279023207892 *)
+@end example
+
+@example ocaml
+square (sqrt 1000.0);;
+(* => 1000.000369924366 *)
+@end example
+
+@noindent
+The @code{sqrt} program also illustrates that the simple procedural language we
+have introduced so far is sufficient for writing any purely numerical program
+that one could write in, say, C or Pascal.  This might seem surprising, since
+we have not included in our language any iterative (looping) constructs that
+direct the computer to do something over and over again.  @code{Sqrt_iter}, on
+the other hand, demonstrates how iteration can be accomplished using no special
+construct other than the ordinary ability to call a procedure.@footnote{Readers
+who are worried about the efficiency issues involved in using procedure calls
+to implement iteration should note the remarks on ``tail recursion'' in
+@ref{1.2.1}; the short version for OCaml is that a call in final position
+compiles to a jump, so @code{sqrt_iter} runs in constant space.}
+
+@quotation
+@strong{@anchor{Exercise 1.6}Exercise 1.6:} Alyssa P. Hacker doesn't see why
+@code{if} needs to be provided as a special form.  ``Why can't I just define it
+as an ordinary procedure in terms of a case analysis?'' she asks.  Alyssa's
+friend Eva Lu Ator claims this can indeed be done, and she defines a new
+version of @code{if}:
+
+@example ocaml
+let new_if predicate then_clause else_clause =
+  match predicate with
+  | true -> then_clause
+  | false -> else_clause;;
+@end example
+
+@noindent
+Eva demonstrates the program for Alyssa:
+
+@example ocaml
+new_if (2 = 3) 0 5;;
+(* => 5 *)
+@end example
+
+@example ocaml
+new_if (1 = 1) 0 5;;
+(* => 0 *)
+@end example
+
+@noindent
+Delighted, Alyssa uses @code{new_if} to rewrite the square-root program:
+
+@example ocaml
+let rec sqrt_iter guess x =
+  new_if (good_enough guess x)
+         guess
+         (sqrt_iter (improve guess x) x);;
+@end example
+
+@noindent
+What happens when Alyssa attempts to use this to compute square roots?
+Explain.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.7}Exercise 1.7:} The @code{good_enough} test used
+in computing square roots will not be very effective for finding the square
+roots of very small numbers.  Also, in real computers, arithmetic operations
+are almost always performed with limited precision.  This makes our test
+inadequate for very large numbers.  Explain these statements, with examples
+showing how the test fails for small and large numbers.  An alternative
+strategy for implementing @code{good_enough} is to watch how @code{guess}
+changes from one iteration to the next and to stop when the change is a very
+small fraction of the guess.  Design a square-root procedure that uses this
+kind of end test.  Does this work better for small and large numbers?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 1.8}Exercise 1.8:} Newton's method for cube roots is
+based on the fact that if @math{y} is an approximation to the cube root of @math{x},
+then a better approximation is given by the value
+@displaymath
+{{{x / y^2} + 2y \over 3}.}
+@end displaymath
+@ifinfo
+
+@example
+x/y^2 + 2y
+----------
+    3
+@end example
+
+@end ifinfo
+@noindent
+Use this formula to implement a cube-root procedure analogous to the
+square-root procedure.  (In @ref{1.3.4} we will see how to implement
+Newton's method in general as an abstraction of these square-root and cube-root
+procedures.)
+@end quotation
+
+@node	1.1.8, 1.2, Chapter 1, 1.1
+@subsection Procedures as Black-Box Abstractions
+
+@code{Sqrt} is our first example of a process defined by a set of mutually
+defined procedures.  Notice that the definition of @code{sqrt_iter} is
+@newterm{recursive}; that is, the procedure is defined in terms of itself.  The
+idea of being able to define a procedure in terms of itself may be disturbing;
+it may seem unclear how such a ``circular'' definition could make sense at all,
+much less specify a well-defined process to be carried out by a computer.  This
+will be addressed more carefully in @ref{1.2}.  But first let's
+consider some other important points illustrated by the @code{sqrt} example.
+
+Observe that the problem of computing square roots breaks up naturally into a
+number of subproblems: how to tell whether a guess is good enough, how to
+improve a guess, and so on.  Each of these tasks is accomplished by a separate
+procedure.  The entire @code{sqrt} program can be viewed as a cluster of
+procedures (shown in @ref{Figure 1.2}) that mirrors the decomposition of the
+problem into subproblems.
+
+@float
+@anchor{Figure 1.2}
+@ifinfo
+@strong{Figure 1.2:} Procedural decomposition of the @code{sqrt} program.
+
+@example
+                 sqrt
+                  |
+              sqrt_iter
+              /       \
+      good_enough   improve
+        /         \         \
+   square         abs       average
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap1/Fig1.2,,38mm,Figure 1.2: Procedural decomposition of the sqrt program.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap1/Fig1.2.std,,38mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 1.2:} Procedural decomposition of the @code{sqrt} program.}
+@end float
+
+@noindent
+The importance of this decomposition strategy is not simply that one is
+dividing the program into parts.  After all, we could take any large program
+and divide it into parts---the first ten lines, the next ten lines, the next
+ten lines, and so on.  Rather, each procedure must accomplish an identifiable task that can be used as a module in defining other procedures.
+For example, when we define the @code{good_enough} procedure in terms of
+@code{square}, we are able to regard the @code{square} procedure as a ``black
+box.''  We are not at that moment concerned with @emph{how} the procedure
+computes its result, only with the fact that it computes the square.  The
+details of how the square is computed can be suppressed, to be considered at a
+later time.  Indeed, as far as the @code{good_enough} procedure is concerned,
+@code{square} is not quite a procedure but rather an abstraction of a
+procedure, a so-called @newterm{procedural abstraction}.  At this level of
+abstraction, any procedure that computes the square is equally good.
+
+Thus, considering only the values they return, the following two procedures for
+squaring a number should be indistinguishable.  Each takes a numerical argument
+and produces the square of that number as the value.@footnote{It is not even
+clear which of these procedures is a more efficient implementation.  This
+depends upon the hardware available.  There are machines for which the
+``obvious'' implementation is the less efficient one.  Consider a machine that
+has extensive tables of logarithms and antilogarithms stored in a very
+efficient manner.}
+
+@example ocaml
+let square x = x *. x;;
+@end example
+
+@example ocaml
+let double x = x +. x;;
+let square x = exp (double (log x));;
+@end example
+
+@noindent
+In OCaml the indistinguishability is certified in part by the type checker
+and in part by the numbers.  Both definitions have type @code{float ->
+float}, and every caller compiles against that one type.  The values agree
+exactly on many arguments (@code{square 21.0} is @code{441.0} either way)
+but not on all of them: the exponential route computes
+@code{48.99999999999999} for @code{square 7.0}, because @code{exp} and
+@code{log} each round.  A black box in a typed language comes with a stated
+precision, not a promise of bit equality.
+
+So a procedure definition should be able to suppress detail.  The users of the
+procedure may not have written the procedure themselves, but may have obtained
+it from another programmer as a black box.  A user should be able to use the procedure without knowing how it is implemented.
+
+@subsubheading Local names
+
+One detail of a procedure's implementation that should not matter to the user
+of the procedure is the implementer's choice of names for the procedure's
+formal parameters.  Thus, the following procedures should not be
+distinguishable:
+
+@example ocaml
+let square x = x *. x;;
+let square y = y *. y;;
+@end example
+
+@noindent
+This principle---that the meaning of a procedure should be independent of the
+parameter names used by its author---seems on the surface to be self-evident,
+but its consequences are profound.  The simplest consequence is that the
+parameter names of a procedure must be local to the body of the procedure.  For
+example, we used @code{square} in the definition of @code{good_enough} in our
+square-root procedure:
+
+@example ocaml
+let good_enough guess x =
+  Float.abs (square guess -. x) < 0.001;;
+@end example
+
+@noindent
+The intention of the author of @code{good_enough} is to determine if the
+square of the first argument is within a given tolerance of the second
+argument.  We see that the author of @code{good_enough} used the name
+@code{guess} to refer to the first argument and @code{x} to refer to the second
+argument.  The argument of @code{square} is @code{guess}.  If the author of
+@code{square} used @code{x} (as above) to refer to that argument, we see that
+the @code{x} in @code{good_enough} must be a different @code{x} than the one
+in @code{square}.  Running the procedure @code{square} must not affect the
+value of @code{x} that is used by @code{good_enough}, because that value of
+@code{x} may be needed by @code{good_enough} after @code{square} is done
+computing.
+
+If the parameters were not local to the bodies of their respective procedures,
+then the parameter @code{x} in @code{square} could be confused with the
+parameter @code{x} in @code{good_enough}, and the behavior of
+@code{good_enough} would depend upon which version of @code{square} we used.
+Thus, @code{square} would not be the black box we desired.
+
+A formal parameter of a procedure has a very special role in the procedure
+definition, in that it doesn't matter what name the formal parameter has.  Such
+a name is called a @newterm{bound variable}, and we say that the procedure
+definition @newterm{binds} its formal parameters.  The meaning of a procedure
+definition is unchanged if a bound variable is consistently renamed throughout
+the definition.@footnote{The concept of consistent renaming is actually subtle
+and difficult to define formally.  Famous logicians have made embarrassing
+errors here.}  If a variable is not bound, we say that it is @newterm{free}.
+The set of expressions for which a binding defines a name is called the
+@newterm{scope} of that name.  In a procedure definition, the bound variables
+declared as the formal parameters of the procedure have the body of the
+procedure as their scope.
+
+In the definition of @code{good_enough} above, @code{guess} and @code{x} are
+bound variables but @code{Float.abs}, @code{-}, and @code{square} are free.
+The meaning of @code{good_enough} should be independent of the names we choose
+for @code{guess} and @code{x} so long as they are distinct and different from
+@code{Float.abs}, @code{-}, and @code{square}.  (If we renamed @code{guess}
+to @code{square} we would have introduced a bug by @newterm{capturing} the
+variable @code{square}: our parameter would have hidden the procedure
+@code{square} behind it, and the definition would have changed from calling
+the free @code{square} to applying the parameter to itself.  It would have
+changed from free to bound.)
+The meaning of @code{good_enough} is not independent of the names of its free
+variables, however.  It surely depends upon the fact (external to this
+definition) that the name @code{Float.abs} names a procedure for computing
+the absolute value of a number.  @code{Good_enough} will compute a different
+function if we substitute @code{Float.cos} for @code{Float.abs} in its
+definition.
+
+@subsubheading Internal definitions and block structure
+
+We have one kind of name isolation available to us so far: The formal
+parameters of a procedure are local to the body of the procedure.  The
+square-root program illustrates another way in which we would like to control
+the use of names.  The existing program consists of separate procedures:
+
+@example ocaml
+let average x y = (x +. y) /. 2.0;;
+
+let improve guess x =
+  average guess (x /. guess);;
+
+let square x = x *. x;;
+
+let good_enough guess x =
+  Float.abs (square guess -. x) < 0.001;;
+
+let rec sqrt_iter guess x =
+  if good_enough guess x then guess
+  else sqrt_iter (improve guess x) x;;
+
+let sqrt x = sqrt_iter 1.0 x;;
+@end example
+
+@noindent
+The problem with this program is that the only procedure that is important to
+users of @code{sqrt} is @code{sqrt}.  The other procedures (@code{sqrt_iter},
+@code{good_enough}, and @code{improve}) only clutter up their minds.  They may
+not define any other procedure called @code{good_enough} as part of another
+program to work together with the square-root program, because @code{sqrt}
+needs it.  The problem is especially severe in the construction of large
+systems by many separate programmers.  For example, in the construction of a
+large library of numerical procedures, many numerical functions are computed as
+successive approximations and thus might have procedures named
+@code{good_enough} and @code{improve} as auxiliary procedures.  We would like
+to localize the subprocedures, hiding them inside @code{sqrt} so that
+@code{sqrt} could coexist with other successive approximations, each having its
+own private @code{good_enough} procedure.  To make this possible, we allow a
+procedure to have internal definitions that are local to that procedure.  For
+example, in the square-root problem we can write
+
+@example ocaml
+let sqrt x =
+  let good_enough guess x =
+    Float.abs (square guess -. x) < 0.001 in
+  let improve guess x =
+    average guess (x /. guess) in
+  let rec sqrt_iter guess x =
+    if good_enough guess x then guess
+    else sqrt_iter (improve guess x) x in
+  sqrt_iter 1.0 x;;
+@end example
+
+@noindent
+Such nesting of definitions, called @newterm{block structure}, is the right solution to the simplest name-packaging problem.  But there is a better
+idea lurking here.  In addition to internalizing the definitions of the
+auxiliary procedures, we can simplify them.  Since @code{x} is bound in the
+definition of @code{sqrt}, the procedures @code{good_enough}, @code{improve},
+and @code{sqrt_iter}, which are defined internally to @code{sqrt}, are in the
+scope of @code{x}.  Thus, it is not necessary to pass @code{x} explicitly to
+each of these procedures.  Instead, we allow @code{x} to be a free variable in
+the internal definitions, as shown below. Then @code{x} gets its value from the
+argument with which the enclosing procedure @code{sqrt} is called.  This
+discipline is called @newterm{lexical scoping}.@footnote{Lexical scoping dictates 
+that free variables in a procedure are taken to refer to bindings made by enclosing 
+procedure definitions; that is, they are looked up in the environment in which the
+procedure was defined. We will see how this works in detail in chapter 3 when we study 
+environments and the detailed behavior of the interpreter.@anchor{Footnote 28}}
+
+@example ocaml
+let sqrt x =
+  let good_enough guess =
+    Float.abs (square guess -. x) < 0.001 in
+  let improve guess =
+    average guess (x /. guess) in
+  let rec sqrt_iter guess =
+    if good_enough guess then guess
+    else sqrt_iter (improve guess) in
+  sqrt_iter 1.0;;
+@end example
+
+@noindent
+We will use block structure extensively to help us break up large
+programs into tractable pieces.@footnote{Embedded definitions must come
+before their uses in a procedure body. The management is not responsible for the
+consequences of running programs that intertwine definition and use.}
+The idea of block structure originated with the programming language
+Algol 60. It appears in most advanced programming languages and is an
+important tool for helping to organize the construction of large
+programs.

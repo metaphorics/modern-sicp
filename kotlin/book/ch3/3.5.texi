@@ -1,0 +1,2840 @@
+@node 3.5, Chapter 4, 3.4, Chapter 3
+@section Streams
+
+We've gained a good understanding of assignment as a tool in modeling, as well
+as an appreciation of the complex problems that assignment raises. It is time
+to ask whether we could have gone about things in a different way, so as to
+avoid some of these problems.  In this section, we explore an alternative
+approach to modeling state, based on data structures called @newterm{streams}.
+As we shall see, streams can mitigate some of the complexity of modeling state.
+
+Let's step back and review where this complexity comes from.  In an attempt to
+model real-world phenomena, we made some apparently reasonable decisions: We
+modeled real-world objects with local state by computational objects with local
+variables.  We identified time variation in the real world with time variation
+in the computer.  We implemented the time variation of the states of the model
+objects in the computer with assignments to the local variables of the model
+objects.
+
+Is there another approach?  Can we avoid identifying time in the computer with
+time in the modeled world?  Must we make the model change with time in order to
+model phenomena in a changing world?  Think about the issue in terms of
+mathematical functions.  We can describe the time-varying behavior of a
+quantity @math{x} as a function of time @math{{x(t)}}.  If we concentrate on @math{x}
+instant by instant, we think of it as a changing quantity.  Yet if we
+concentrate on the entire time history of values, we do not emphasize
+change---the function itself does not change.@footnote{Physicists sometimes
+adopt this view by introducing the ``world lines'' of particles as a device for
+reasoning about motion.  We've also already mentioned (@ref{2.2.3})
+that this is the natural way to think about signal-processing systems.  We will
+explore applications of streams to signal processing in @ref{3.5.3}.}
+
+If time is measured in discrete steps, then we can model a time function as a
+(possibly infinite) sequence.  In this section, we will see how to model change
+in terms of sequences that represent the time histories of the systems being
+modeled.  To accomplish this, we introduce new data structures called
+@newterm{streams}.  From an abstract point of view, a stream is simply a
+sequence.  However, we will find that the straightforward implementation of
+streams as lists (as in @ref{2.2.1}) doesn't fully reveal the power of
+stream processing.  As an alternative, we introduce the technique of
+@newterm{delayed evaluation}, which enables us to represent very large (even
+infinite) sequences as streams.
+
+Stream processing lets us model systems that have state without ever using
+assignment or mutable data.  This has important implications, both theoretical
+and practical, because we can build models that avoid the drawbacks inherent in
+introducing assignment.  On the other hand, the stream framework raises
+difficulties of its own, and the question of which modeling technique leads to
+more modular and more easily maintained systems remains open.
+
+@menu
+* 3.5.1::            Streams Are Delayed Lists
+* 3.5.2::            Infinite Streams
+* 3.5.3::            Exploiting the Stream Paradigm
+* 3.5.4::            Streams and Delayed Evaluation
+* 3.5.5::            Modularity of Functional Programs and Modularity of
+                     Objects
+@end menu
+
+@node	3.5.1, 3.5.2, 3.5, 3.5
+@subsection Streams Are Delayed Lists
+
+As we saw in @ref{2.2.3}, sequences can serve as standard interfaces
+for combining program modules.  We formulated powerful abstractions for
+manipulating sequences, such as @code{mapSeq}, @code{filterSeq}, and
+@code{accumulateSeq}, that capture a wide variety of operations in a manner that
+is both succinct and elegant.
+
+Unfortunately, if we represent sequences as lists, this elegance is bought at
+the price of severe inefficiency with respect to both the time and space
+required by our computations.  When we represent manipulations on sequences as
+transformations of lists, our programs must construct and copy data structures
+(which may be huge) at every step of a process.
+
+To see why this is true, let us compare two programs for computing the sum of
+all the prime numbers in an interval.  The first program is written in standard
+iterative style:@footnote{Assume that we have a predicate @code{isPrime} (e.g.,
+as in @ref{1.2.6}) that tests for primality.}
+
+@example kotlin
+fun sumPrimesByLoop(a: Long, b: Long): Long @{
+    var total = 0L
+    for (n in a..b) @{
+        if (isPrime(n)) @{
+            total += n
+        @}
+    @}
+    return total
+@}
+@end example
+
+@noindent
+The second program performs the same computation in the signal-flow style of
+@ref{2.2.3}, over the stream operations this section defines:
+
+@example kotlin
+fun sumPrimes(a: Long, b: Long): Long =
+    streamFold(streamFilter(::isPrime, streamEnumerateInterval(a, b)), 0L, Long::plus)
+
+sumPrimes(10000L, 1000000L)
+// => 37544665627
+@end example
+
+@noindent
+In carrying out the computation, the first program needs to store only the sum
+being accumulated.  The same signal flow written over the eager list operations
+of @ref{2.2.3} cannot do any testing until @code{enumerateInterval} has
+constructed a complete list of the numbers in the interval; the filter
+generates another complete list, which the folding step then collapses to form
+a sum.  Such large intermediate storage is the price of the list
+representation, and it is what the stream form above refuses to pay: each stage
+runs only when the next stage asks it for values, so no stage is ever built in
+full.  The inefficiency in using lists becomes painfully apparent if we use the
+sequence paradigm to compute the second prime in the interval from 10,000 to
+1,000,000 by evaluating the expression
+
+@example kotlin
+filterSeq(::isPrime, enumerateInterval(10000L, 1000000L))[1]
+@end example
+
+@noindent
+This expression does find the second prime, but the computational overhead is
+outrageous.  We construct a list of almost a million integers, filter this list
+by testing each element for primality, and then ignore almost all of the
+result.  In a more traditional programming style, we would interleave the
+enumeration and the filtering, and stop when we reached the second prime.
+
+Streams are a clever idea that allows one to use sequence manipulations without
+incurring the costs of manipulating sequences as lists.  With streams we can
+achieve the best of both worlds: We can formulate programs elegantly as
+sequence manipulations, while attaining the efficiency of incremental
+computation.  The basic idea is to arrange to construct a stream only
+partially, and to pass the partial construction to the program that consumes
+the stream.  If the consumer attempts to access a part of the stream that has
+not yet been constructed, the stream will automatically construct just enough
+more of itself to produce the required part, thus preserving the illusion that
+the entire stream exists.  In other words, although we will write programs as
+if we were processing complete sequences, we design our stream implementation
+to automatically and transparently interleave the construction of the stream
+with its use.
+
+On the surface, streams are just lists with different names for the functions
+that manipulate them.  There is a constructor, @code{consStream}, and two
+selectors, @code{streamHead} and @code{streamTail}, which satisfy the
+constraints
+
+@example kotlin
+consStream(x) @{ y @}.streamHead() == x
+consStream(x) @{ y @}.streamTail() == y
+@end example
+
+@noindent
+There is a distinguishable object, @code{LStream.Empty}, which cannot be the
+result of any @code{consStream} operation, and which the branches of the sealed
+@code{LStream} interface identify.@footnote{In this edition the empty stream is
+the @code{Empty} object of the sealed interface @code{LStream}, so the book's
+@code{stream-null?} is the @code{when} branch that matches
+@code{LStream.Empty}.}  Thus we can make and use streams, in just the same way
+as we can make and use lists, to represent aggregate data arranged in a
+sequence.  In particular, we can build stream analogs of the list operations
+from @ref{Chapter 2}, such as @code{streamRef}, @code{streamMap}, and
+@code{streamForEach}:@footnote{This should bother you.  The fact that we are
+defining such similar functions for streams and lists indicates that we are
+missing some underlying abstraction.  Unfortunately, in order to exploit this
+abstraction, we will need to exert finer control over the process of evaluation
+than we can at present.  We will discuss this point further at the end of
+@ref{3.5.4}.  In @ref{4.2}, we'll develop a framework that unifies lists and
+streams.}
+
+@example kotlin
+public fun <T> streamRef(s: LStream<T>, n: Int): T @{
+    var cursor = s
+    repeat(n) @{ cursor = cursor.streamTail() @}
+    return checkNotNull(cursor.streamHead()) @{ "stream-ref $n past the end of the stream" @}
+@}
+
+public fun <T, R> streamMap(f: (T) -> R, s: LStream<T>): LStream<R> =
+    when (s) @{
+        is LStream.Empty -> LStream.Empty
+        is LStream.Cons -> consStream(f(s.head)) @{ streamMap(f, s.tail) @}
+    @}
+
+public fun <T> streamForEach(action: (T) -> Unit, s: LStream<T>) @{
+    var cursor = s
+    while (cursor is LStream.Cons) @{
+        action(cursor.head)
+        cursor = cursor.tail
+    @}
+@}
+@end example
+
+@noindent
+@code{streamForEach} is useful for viewing streams; in this edition the
+rendering comes back as one string, one line per element, so the output is a
+value a test can hold:
+
+@example kotlin
+public fun displayStream(s: LStream<*>): String = buildString @{
+    var cursor: LStream<*> = s
+    while (cursor is LStream.Cons) @{
+        append(cursor.head.toString()).append('\n')
+        cursor = cursor.tail
+    @}
+@}
+@end example
+
+@noindent
+Kotlin ships its own lazy sequence type: the stdlib @code{Sequence}.  A
+@code{Sequence} pipeline runs on demand, so it interleaves stages the way the
+stream idea promises, and a one-shot query like the second prime above never
+materializes the interval.  It is also cold and unmemoized: nothing in a
+@code{Sequence} remembers that a value was computed, so a second walk over the
+same pipeline recomputes every element from the source, and a self-referential
+definition like @code{fibs}, whose every element is defined in terms of earlier
+ones, cannot be written on it at all, because a local value cannot appear in
+its own initializer and a @code{Sequence} has no cell in which a computed tail
+could be stored.  The exercises of this section measure exactly this
+difference, so the edition switches representation here: everything where
+@code{consStream} semantics are load-bearing runs on the memoized
+@code{LStream} type introduced below, whose tails are @code{by lazy} values,
+forced once and shared by every later reader.  The finite pipeline sketches
+that need no sharing, the sieve sketch of @ref{3.5.2} and the maps of exercise
+@ref{Exercise 3.50}, stay on the cold @code{Sequence}.
+
+@noindent
+To make the stream implementation automatically and transparently interleave
+the construction of a stream with its use, we will arrange for the tail of a
+stream node to be computed when it is first read by @code{streamTail} rather
+than when the node is constructed by @code{consStream}.  This implementation
+choice is reminiscent of our discussion of rational numbers in @ref{2.1.2},
+where we saw that we can choose to implement rational numbers so that the
+reduction of numerator and denominator to lowest terms is performed either at
+construction time or at selection time.  The two rational-number
+implementations produce the same data abstraction, but the choice has an effect
+on efficiency.  There is a similar relationship between streams and ordinary
+lists.  As a data abstraction, streams are the same as lists.  The difference
+is the time at which the elements are evaluated.  With ordinary lists, an
+element and its rest are computed when the list is built.  With an
+@code{LStream} node, the head is computed at construction time and the tail
+only when @code{streamTail} first reads it.
+
+Our implementation of streams is based on Kotlin's @code{lazy} value.
+Evaluating @code{lazy @{ ⟨@var{exp}⟩ @}} does not evaluate the expression
+@code{⟨@var{exp}⟩}, but rather returns a so-called @newterm{delayed object},
+which we can think of as a ``promise'' to evaluate @code{⟨@var{exp}⟩} at some
+future time.  As a companion, reading the object's @code{.value} performs the
+evaluation---in effect, forcing the @code{lazy} to fulfill its promise.  We
+will see below how the package works, but first let us use it to construct
+streams.
+
+@code{consStream} is defined so that
+
+@example kotlin
+consStream(⟨@var{a}⟩) @{ ⟨@var{b}⟩ @}
+@end example
+
+@noindent
+is equivalent to
+
+@example kotlin
+LStream.Cons(⟨@var{a}⟩) @{ ⟨@var{b}⟩ @}
+@end example
+
+@noindent
+What this means is that we will construct streams out of nodes of the runtime
+type @code{LStream}:
+
+@example kotlin
+public sealed interface LStream<out T> @{
+    public data object Empty : LStream<Nothing>
+
+    public class Cons<T>(
+        public val head: T,
+        tailThunk: () -> LStream<T>,
+    ) : LStream<T> @{
+        public val tail: LStream<T> by lazy(LazyThreadSafetyMode.NONE, tailThunk)
+    @}
+@}
+@end example
+
+@noindent
+The head is computed at once, at cons time.  The tail thunk is wrapped in a
+@code{by lazy} value: rather than placing the value of the rest of the stream
+into the node, we put there a promise to compute the rest if it is ever
+requested, and the promise is kept at most once, so every later reader shares
+the computed node.  @code{streamHead} and @code{streamTail} can now be defined
+as functions:
+
+@example kotlin
+public fun <T> LStream<T>.streamHead(): T? = (this as? LStream.Cons)?.head
+
+public fun <T> LStream<T>.streamTail(): LStream<T> =
+    when (this) @{
+        is LStream.Empty -> LStream.Empty
+        is LStream.Cons -> tail
+    @}
+@end example
+
+@noindent
+@code{streamHead} selects the head of the node; @code{streamTail} forces the
+memoized tail and returns the rest of the stream.@footnote{Although
+@code{streamHead} and @code{streamTail} are ordinary functions,
+@code{consStream} takes the tail as a lambda.  If @code{consStream} took the
+tail stream as a plain argument, Kotlin would evaluate
+@code{⟨@var{b}⟩} before the call, which is precisely what we do not want to
+happen.  For the same reason @code{lazy} takes its body as a lambda rather than
+as a value, though reading @code{.value} is an ordinary property read.}
+
+@subsubheading The stream implementation in action
+
+To see how this implementation behaves, let us analyze the ``outrageous'' prime
+computation we saw above, reformulated in terms of streams:
+
+@example kotlin
+streamFilter(::isPrime, streamEnumerateInterval(10000L, 1000000L))
+    .streamTail()
+    .streamHead()
+// => 10009
+@end example
+
+@noindent
+We will see that it does indeed work efficiently.
+
+We begin by calling @code{streamEnumerateInterval} with the arguments 10,000
+and 1,000,000.  @code{streamEnumerateInterval} is the stream analog of
+@code{enumerateInterval} (@ref{2.2.3}):
+
+@example kotlin
+public fun streamEnumerateInterval(low: Long, high: Long): LStream<Long> =
+    if (low > high) LStream.Empty else consStream(low) @{ streamEnumerateInterval(low + 1L, high) @}
+@end example
+
+@noindent
+and thus the result returned by @code{streamEnumerateInterval}, formed by the
+@code{consStream}, is@footnote{The numbers shown here do not really appear in
+the delayed expression.  What actually appears is the original expression, in
+an environment in which the variables are bound to the appropriate numbers.
+For example, @code{low + 1L} with @code{low} bound to 10,000 actually appears
+where @code{10001L} is shown.}
+
+@example kotlin
+consStream(10000L) @{ streamEnumerateInterval(10001L, 1000000L) @}
+@end example
+
+@noindent
+That is, @code{streamEnumerateInterval} returns a stream whose head is 10,000
+and whose tail is a promise to enumerate more of the interval if so requested.
+This stream is now filtered for primes, using the stream analog of the
+@code{filter} procedure (@ref{2.2.3}):
+
+@example kotlin
+public fun <T> streamFilter(p: (T) -> Boolean, s: LStream<T>): LStream<T> =
+    when (s) @{
+        is LStream.Empty -> LStream.Empty
+        is LStream.Cons ->
+            if (p(s.head)) @{
+                consStream(s.head) @{ streamFilter(p, s.tail) @}
+            @} else @{
+                streamFilter(p, s.tail)
+            @}
+    @}
+@end example
+
+@noindent
+@code{streamFilter} tests the head of the stream (the head of the node, which
+is 10,000).  Since this is not prime, @code{streamFilter} examines the tail of
+its input stream.  The call to @code{streamTail} forces the delayed
+@code{streamEnumerateInterval}, which now returns
+
+@example kotlin
+consStream(10001L) @{ streamEnumerateInterval(10002L, 1000000L) @}
+@end example
+
+@noindent
+@code{streamFilter} now looks at the head of this stream, 10,001, sees that
+this is not prime either, forces another @code{streamTail}, and so on, until
+@code{streamEnumerateInterval} yields the prime 10,007, whereupon
+@code{streamFilter}, according to its definition, returns
+
+@example kotlin
+consStream(s.head) @{ streamFilter(p, s.tail) @}
+@end example
+
+@noindent
+which in this case is
+
+@example kotlin
+consStream(10007L) @{
+    streamFilter(
+        ::isPrime,
+        consStream(10008L) @{ streamEnumerateInterval(10009L, 1000000L) @},
+    )
+@}
+@end example
+
+@noindent
+This result is now passed to @code{streamTail} in our original expression.
+This forces the delayed @code{streamFilter}, which in turn keeps forcing the
+delayed @code{streamEnumerateInterval} until it finds the next prime, which
+is 10,009.  Finally, the result passed to @code{streamHead} in our original
+expression is
+
+@example kotlin
+consStream(10009L) @{
+    streamFilter(
+        ::isPrime,
+        consStream(10010L) @{ streamEnumerateInterval(10011L, 1000000L) @},
+    )
+@}
+@end example
+
+@noindent
+@code{streamHead} returns 10,009, and the computation is complete.  Only as
+many integers were tested for primality as were necessary to find the second
+prime, and the interval was enumerated only as far as was necessary to feed the
+prime filter.
+
+In general, we can think of delayed evaluation as ``demand-driven''
+programming, whereby each stage in the stream process is activated only enough
+to satisfy the next stage.  What we have done is to decouple the actual order
+of events in the computation from the apparent structure of our procedures.  We
+write programs as if the streams existed ``all at once'' when, in reality,
+the computation is performed incrementally, as in traditional programming
+styles.
+
+@subsubheading Implementing @code{delay} and @code{force}
+
+Although @code{lazy} and @code{.value} may seem like mysterious operations,
+their implementation is really quite straightforward.  A delay must package an
+expression so that it can be evaluated later on demand, and Kotlin accomplishes
+this simply by treating the expression as the body of a lambda of no arguments.
+The package is
+
+@example kotlin
+lazy @{ ⟨@var{exp}⟩ @}
+@end example
+
+@noindent
+and the raw material it wraps is the lambda
+
+@example kotlin
+@{ ⟨@var{exp}⟩ @}
+@end example
+
+@noindent
+Force simply reads what the package holds, so the language already implements
+it: forcing the delayed object is reading its @code{.value} property,
+
+@example kotlin
+delayed.value
+@end example
+
+@noindent
+This implementation suffices for @code{lazy} and @code{.value} to work as
+advertised, but there is an important optimization included as well.  In many
+applications, we end up forcing the same delayed object many times.  This can
+lead to serious inefficiency in recursive programs involving streams.  (See
+@ref{Exercise 3.57}.)  The solution is to build delayed objects so that the
+first time they are forced, they store the value that is computed.  Subsequent
+forcings will simply return the stored value without repeating the computation.
+In other words, the delay of this edition is a special-purpose memoized
+procedure similar to the one described in @ref{Exercise 3.27}.  Kotlin's
+@code{lazy} is exactly that: the first read of @code{.value} runs the lambda
+and stores the result, and every later read returns the stored result.  One way
+to build such a thing ourselves is a function that takes as argument a lambda
+of no arguments and returns a memoized version of it.  The first time the
+memoized lambda is run, it saves the computed result.  On subsequent
+evaluations, it simply returns the result.
+
+@example kotlin
+public fun <T> memoProc(f: () -> T): () -> T @{
+    var alreadyRun = false
+    var result: T? = null
+    return @{
+        if (!alreadyRun) @{
+            result = f()
+            alreadyRun = true
+        @}
+        checkNotNull(result)
+    @}
+@}
+@end example
+
+@noindent
+@code{lazy @{ ⟨@var{exp}⟩ @}} is then equivalent to
+
+@example kotlin
+memoProc @{ ⟨@var{exp}⟩ @}
+@end example
+
+@noindent
+and @code{.value} is the force as defined previously.  The stream nodes above
+declare their tails @code{by lazy}, so each tail thunk runs at most once no
+matter how many readers force it.@footnote{There are many possible
+implementations of streams other than the one described in this section.
+Delayed evaluation, which is the key to making streams practical, was inherent
+in Algol 60's @newterm{call-by-name} parameter-passing method.  The use of this
+mechanism to implement streams was first described by @ref{Landin (1965)}.  Delayed
+evaluation for streams was introduced into Lisp by @ref{Friedman and Wise (1976)}. In
+their implementation, @code{cons} always delays evaluating its arguments, so
+that lists automatically behave as streams.  The memoizing optimization is also
+known as @newterm{call-by-need}.  The Algol community would refer to our
+original delayed objects as @newterm{call-by-name thunks} and to the optimized
+versions as @newterm{call-by-need thunks}.}
+
+@quotation
+@strong{@anchor{Exercise 3.50}Exercise 3.50:} Complete the following
+definition, which generalizes @code{streamMap} to allow functions that take
+multiple arguments, analogous to @code{map} in @ref{2.2.1},
+@ref{Footnote 78}.  In this edition the argument streams arrive as a list of
+cold @code{Sequence}s.
+
+@example kotlin
+fun <T, R> streamMapN(proc: (List<T>) -> R, streams: List<Sequence<T>>): Sequence<R> =
+    if (streams.first().⟨??⟩)
+        emptySequence()
+    else
+        sequenceOf(proc(streams.map(⟨??⟩))) ⟨??⟩
+            streamMapN(proc, streams.map(⟨??⟩))
+@end example
+
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.51}Exercise 3.51:} In order to take a closer look at
+delayed evaluation, we will use the following function, which simply returns
+its argument after recording it in a log:
+
+@example kotlin
+public fun <T> show(x: T, log: MutableList<String>): T @{
+    log.add(x.toString())
+    return x
+@}
+@end example
+
+What does the log hold in response to evaluating each expression in the
+following sequence?@footnote{Exercises such as @ref{Exercise 3.51} and
+@ref{Exercise 3.52} are valuable for testing our understanding of how
+@code{lazy} works.  On the other hand, intermixing delayed evaluation with
+logging---and, even worse, with assignment---is extremely confusing, and
+instructors of courses on computer languages have traditionally tormented their
+students with examination questions such as the ones in this section.  Needless
+to say, writing programs that depend on such subtleties is odious programming
+style.  Part of the power of stream processing is that it lets us ignore the
+order in which events actually happen in our programs.  Unfortunately, this is
+precisely what we cannot afford to do in the presence of assignment, which
+forces us to be concerned with time and change.}
+
+@example kotlin
+val log = mutableListOf<String>()
+
+val x = streamMap(@{ n -> show(n, log) @}, streamEnumerateInterval(0L, 10L))
+// -- 0
+
+streamRef(x, 5)
+// => 5
+// -- 1
+// -- 2
+// -- 3
+// -- 4
+// -- 5
+
+streamRef(x, 7)
+// => 7
+// -- 6
+// -- 7
+@end example
+
+The lines marked @code{--} land in the log, one per @code{show} call.  The
+definition itself records @code{0}, because a mapped head is computed at cons
+time; the first @code{streamRef} adds 1 through 5 as the memoized tails are
+forced; the second adds 6 and 7 and nothing else.  With an unmemoized delay,
+the second walk would re-record 1 through 5.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.52}Exercise 3.52:} Consider the sequence of
+expressions
+
+@example kotlin
+var sum = 0L
+
+fun accum(x: Long): Long @{
+    sum += x
+    return sum
+@}
+
+val seq = streamMap(::accum, streamEnumerateInterval(1L, 20L))
+
+val y = streamFilter(@{ it % 2L == 0L @}, seq)
+
+val z = streamFilter(@{ it % 5L == 0L @}, seq)
+
+streamRef(y, 7)
+displayStream(z)
+@end example
+
+What is the value of @code{sum} after each of the above expressions is
+evaluated?  What is the string that the @code{displayStream} expression
+returns?  Would these responses differ if every tail were packaged as the plain
+lambda @code{@{ ⟨@var{exp}⟩ @}}, run again on each read, without the memoization
+provided by @code{memoProc}?  Explain.
+@end quotation
+@node	3.5.2, 3.5.3, 3.5.1, 3.5
+@subsection Infinite Streams
+
+We have seen how to support the illusion of manipulating streams as complete
+entities even though, in actuality, we compute only as much of the stream as we
+need to access.  We can exploit this technique to represent sequences
+efficiently as streams, even if the sequences are very long.  What is more
+striking, we can use streams to represent sequences that are infinitely long.
+For instance, consider the following definition of the stream of positive
+integers:
+
+@example kotlin
+fun integersStartingFrom(n: Long): LStream<Long> = consStream(n) @{ integersStartingFrom(Math.addExact(n, 1L)) @}
+
+val integers: LStream<Long> = integersStartingFrom(1L)
+@end example
+
+@noindent
+This makes sense because @code{integers} will be a pair whose @code{head} is 1
+and whose tail is a promise to produce the integers beginning with 2.  This is
+an infinitely long stream, but in any given time we can examine only a finite
+portion of it.  Thus, our programs will never know that the entire infinite
+stream is not there.
+
+Using @code{integers} we can define other infinite streams, such as the stream
+of integers that are not divisible by 7:
+
+@example kotlin
+fun divisible(x: Long, y: Long): Boolean = x % y == 0L
+
+val noSevens: LStream<Long> = streamFilter(@{ x -> !divisible(x, 7L) @}, integers)
+@end example
+
+@noindent
+Then we can find integers not divisible by 7 simply by accessing elements of
+this stream:
+@example kotlin
+streamRef(noSevens, 100)
+// => 117
+@end example
+
+@noindent
+In analogy with @code{integers}, we can define the infinite stream of Fibonacci
+numbers:
+
+@example kotlin
+fun fibGen(a: Long, b: Long): LStream<Long> = consStream(a) @{ fibGen(b, Math.addExact(a, b)) @}
+
+val fibs: LStream<Long> = fibGen(0L, 1L)
+@end example
+
+@noindent
+@code{fibs} is a @code{LStream.Cons} whose @code{head} is 0 and whose
+@code{tail} is a lazy value that will evaluate @code{fibGen(1, 1)}.  When we
+force this delayed @code{fibGen(1, 1)}, it will produce a @code{LStream.Cons}
+whose @code{head} is 1 and whose @code{tail} is a lazy value that will
+evaluate @code{fibGen(1, 2)}, and so on.
+
+For a look at a more exciting infinite stream, we can generalize the
+@code{noSevens} example to construct the infinite stream of prime numbers,
+using a method known as the @newterm{sieve of Eratosthenes}.@footnote{Eratosthenes, a third-century @abbr{B.C.}
+Alexandrian Greek philosopher, is famous for giving the first accurate estimate
+of the circumference of the Earth, which he computed by observing shadows cast
+at noon on the day of the summer solstice.  Eratosthenes's sieve method,
+although ancient, has formed the basis for special-purpose hardware ``sieves''
+that, until recently, were the most powerful tools in existence for locating
+large primes.  Since the 70s, however, these methods have been superseded by
+outgrowths of the probabilistic techniques discussed in @ref{1.2.6}.}
+We start with the integers beginning with 2, which is the first prime.  To get
+the rest of the primes, we start by filtering the multiples of 2 from the rest
+of the integers.  This leaves a stream beginning with 3, which is the next
+prime.  Now we filter the multiples of 3 from the rest of this stream.  This
+leaves a stream beginning with 5, which is the next prime, and so on.  In other
+words, we construct the primes by a sieving process, described as follows: To
+sieve a stream @code{s}, form a stream whose first element is the first element
+of @code{s} and the rest of which is obtained by filtering all multiples of the
+first element of @code{s} out of the rest of @code{s} and sieving the
+result. This process is readily described in terms of stream operations:
+
+@example kotlin
+fun sieve(s: Sequence<Long>): Sequence<Long> = sequence @{
+    val p = s.first()
+    yield(p)
+    yieldAll(sieve(s.drop(1).filter @{ it % p != 0L @}))
+@}
+@end example
+
+@noindent
+The sketch stays on a cold @code{Sequence}, which re-runs a filtered copy at
+every stage; a self-referential infinite sieve needs the memoized regime named
+in @ref{3.5.1}, so the compiled @code{primes} is the @code{LStream} cascade:
+
+@example kotlin
+val primes: LStream<Long> = sieveStream(integersStartingFrom(2L))
+@end example
+
+@noindent
+Now to find a particular prime we need only ask for it:
+
+@example kotlin
+streamRef(primes, 50)
+// => 233
+@end example
+
+@noindent
+It is interesting to contemplate the signal-processing system set up by
+@code{sieveStream}, shown in the ``Henderson diagram'' in
+@ref{Figure 3.31}.@footnote{We have named these figures after Peter Henderson, who was the
+first person to show us diagrams of this sort as a way of thinking about stream
+processing.  Each solid line represents a stream of values being transmitted.
+The dashed line from the @code{head} to the @code{consStream} and the
+@code{streamFilter} indicates that this is a single value rather than a
+stream.}  The input stream
+feeds into an ``un-@code{consStream}er'' that separates the first element of the
+stream from the rest of the stream.  The first element is used to construct a
+divisibility filter, through which the rest is passed, and the output of the
+filter is fed to another sieve box.  Then the original first element is
+@code{consStream}ed onto the output of the internal sieve to form the output stream.
+Thus, not only is the stream infinite, but the signal processor is also
+infinite, because the sieve contains a sieve within it.
+
+@float
+@anchor{Figure 3.31}
+@ifinfo
+@strong{Figure 3.31:} The prime sieve viewed as a signal-processing system.
+
+@example
+  +---------------------------------------------------------------+
+  | sieve                                                         |
+  |                                                               |
+  |        __/|                                        |\__       |
+  |    __/head|........................................|   \__    |
+  |   _/      |           :                            |      \_  |
+----><_       |           V                            |consStream _>---->
+  |    \__    |    +------------+    +------------+    |    __/   |
+  |      \tail|--->|streamFilter|    | sieve      |--->| __/      |
+  |          \|    |            |--->|            |    |/         |
+  |                | it % p     |    |            |               |
+  |                | != 0L      |    |            |               |
+  |                +------------+    +------------+               |
+  +---------------------------------------------------------------+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.31a,,132mm,Figure 3.31: The prime sieve viewed as a signal-processing system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,,132mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.31:} The prime sieve viewed as a signal-processing system.}
+@end float
+
+@subsubheading Defining streams implicitly
+
+The @code{integers} and @code{fibs} streams above were defined by specifying
+``generating'' functions that explicitly compute the stream elements one by
+one. An alternative way to specify streams is to take advantage of delayed
+evaluation to define streams implicitly.  For example, the following expression
+defines the stream @code{ones} to be an infinite stream of ones:
+
+@example kotlin
+val ones: LStream<Long> = consStream(1L) @{ ones @}
+@end example
+
+@noindent
+This works much like the definition of a recursive procedure: @code{ones} is a
+@code{LStream.Cons} whose @code{head} is 1 and whose @code{tail} is a lazy
+value that evaluates @code{ones}.  Forcing the @code{tail} gives us again a 1
+and a promise to evaluate @code{ones}, and so on.
+
+We can do more interesting things by manipulating streams with operations such
+as @code{addStreams}, which produces the elementwise sum of two given
+streams:@footnote{This uses the two-stream @code{zipStream}, the shape the
+generalized @code{streamMap} of @ref{Exercise 3.50} completes; the edition also
+carries the same sum over @code{Double} streams.}
+
+@example kotlin
+fun addStreams(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> =
+    zipStream(s1, s2) @{ a, b -> Math.addExact(a, b) @}
+@end example
+
+@noindent
+Now we can define the integers as follows:
+
+@example kotlin
+val integers: LStream<Long> = consStream(1L) @{ addStreams(integers, ones) @}
+@end example
+
+@noindent
+This defines @code{integers} to be a stream whose first element is 1 and the
+rest of which is the sum of @code{ones} and @code{integers}.  Thus, the second
+element of @code{integers} is 1 plus the first element of @code{integers}, or
+2; the third element of @code{integers} is 1 plus the second element of
+@code{integers}, or 3; and so on.  This definition works because, at any point,
+enough of the @code{integers} stream has been generated so that we can feed it
+back into the definition to produce the next integer:
+
+@example kotlin
+addStreams(integers, integers).take(4)
+// => 2 4 6 8
+@end example
+
+We can define the Fibonacci numbers in the same style:
+
+@example kotlin
+val fibs: LStream<Long> =
+    consStream(0L) @{
+        consStream(1L) @{ zipStream(fibs, fibs.streamTail()) @{ a, b -> Math.addExact(a, b) @} @}
+    @}
+@end example
+
+@noindent
+This definition says that @code{fibs} is a stream beginning with 0 and 1, such
+that the rest of the stream can be generated by adding @code{fibs} to itself
+shifted by one place:
+
+@example
+    1 1 2 3 5  8 13 21 @r{…} = @code{fibs.streamTail()}
+    0 1 1 2 3  5  8 13 @r{…} = @code{fibs}
+0 1 1 2 3 5 8 13 21 34 @r{…} = @code{fibs}
+@end example
+
+@noindent
+Forcing a prefix shows the stream and its shifted tail:
+
+@example kotlin
+fibs.take(10)
+// => 0 1 1 2 3 5 8 13 21 34
+fibs.streamTail().take(10)
+// => 1 1 2 3 5 8 13 21 34 55
+@end example
+
+@noindent
+@code{scaleStream} is another useful function in formulating such stream
+definitions.  This multiplies each item in a stream by a given constant:
+
+@example kotlin
+fun scaleStream(s: LStream<Long>, factor: Long): LStream<Long> =
+    streamMap(@{ Math.multiplyExact(factor, it) @}, s)
+@end example
+
+@noindent
+For example,
+
+@example kotlin
+val double: LStream<Long> = consStream(1L) @{ scaleStream(double, 2L) @}
+@end example
+
+@noindent
+produces the stream of powers of 2: 1, 2, 4, 8, 16, 32, @dots{}.
+
+An alternate definition of the stream of primes can be given by starting with
+the integers and filtering them by testing for primality.  We will need the
+first prime, 2, to get started; the edition keeps the sieve's @code{primes}
+above and names this construction @code{primesAlt}:
+
+@example kotlin
+val primesAlt: LStream<Long> = consStream(2L) @{
+    streamFilter(::isPrimeByPrimes, integersStartingFrom(3L))
+@}
+@end example
+
+@noindent
+This definition is not so straightforward as it appears, because we will test
+whether a number @math{n} is prime by checking whether @math{n} is divisible by a
+prime (not by just any integer) less than or equal to @math{\sqrt{n}}.  The
+predicate consults the @code{primesAlt} stream itself:
+
+@example kotlin
+fun isPrimeByPrimes(n: Long): Boolean =
+    primesAlt.asSequence()
+        .takeWhile @{ p -> p * p <= n @}
+        .all @{ p -> n % p != 0L @}
+@end example
+
+@noindent
+This is a recursive definition, since @code{primesAlt} is defined in terms of
+the @code{isPrimeByPrimes} predicate, which itself uses the @code{primesAlt}
+stream.  The reason this definition works is that, at any point, enough of the
+@code{primesAlt} stream has been generated to test the primality of the numbers
+we need to check next.  That is, for every @math{n} we test for primality,
+either @math{n} is not prime (in which case there is a prime already generated
+that divides it) or @math{n} is prime (in which case there is a prime already
+generated---i.e., a prime less than @math{n}---that is greater than
+@math{\sqrt{n}}).@footnote{This last point is very subtle and relies on
+the fact that @math{{p_{n+1} \le p_n^2}.}  (Here, @math{p_k} denotes the
+@math{k^{\hbox{th}}} prime.)  Estimates such as these are very difficult to establish.  The
+ancient proof by Euclid that there are an infinite number of primes shows that
+@math{p_{n+1} \le {p_1 p_2 \cdots p_n + 1}}, and no substantially
+better result was proved until 1851, when the Russian mathematician
+P. L. Chebyshev established that @math{p_{n+1} \le 2p_n} for all @math{n}.
+This result, originally conjectured in 1845, is known as @newterm{Bertrand's hypothesis}.  
+A proof can be found in section 22.3 of @ref{Hardy and Wright 1960}.}
+
+@quotation
+@strong{@anchor{Exercise 3.53}Exercise 3.53:} Without running the program,
+describe the elements of the stream defined by
+
+@example kotlin
+val s: LStream<Long> = consStream(1L) @{ addStreams(s, s) @}
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.54}Exercise 3.54:} Define a function
+@code{mulStreams}, analogous to @code{addStreams}, that produces the
+elementwise product of its two input streams.  Use this together with the
+stream of @code{integers} to complete the following definition of the stream
+whose @math{n^{\hbox{th}}} element (counting from 0) is @math{{n + 1}} factorial:
+
+@example kotlin
+val factorials: LStream<Long> = consStream(1L) @{ mulStreams(⟨??⟩, ⟨??⟩) @}
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.55}Exercise 3.55:} Define a function
+@code{partialSums} that takes as argument a stream @math{S} and returns the
+stream whose elements are @math{S_0}, @math{{S_0 + S_1}}, @math{{S_0 + S_1} + {S_2, \dots}}.  
+For example, @code{partialSums(integers)} should be the
+stream 1, 3, 6, 10, 15, @dots{}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.56}Exercise 3.56:} A famous problem, first raised by
+R. Hamming, is to enumerate, in ascending order with no repetitions, all
+positive integers with no prime factors other than 2, 3, or 5.  One obvious way
+to do this is to simply test each integer in turn to see whether it has any
+factors other than 2, 3, and 5.  But this is very inefficient, since, as the
+integers get larger, fewer and fewer of them fit the requirement.  As an
+alternative, let us call the required stream of numbers @code{s} and notice the
+following facts about it.
+
+@itemize @bullet
+
+@item
+@code{s} begins with 1.
+
+@item
+The elements of @code{scaleStream(s, 2L)} are also
+elements of @code{s}.
+
+@item
+The same is true for @code{scaleStream(s, 3L)}
+and @code{scaleStream(s, 5L)}.
+
+@item
+These are all the elements of @code{s}.
+
+@end itemize
+
+Now all we have to do is combine elements from these sources.  For this we
+define a function @code{merge} that combines two ordered streams into one
+ordered result stream, eliminating repetitions:
+
+@example kotlin
+fun merge(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> @{
+    val s1car = s1.streamHead() ?: return s2
+    val s2car = s2.streamHead() ?: return s1
+    return when @{
+        s1car < s2car -> consStream(s1car) @{ merge(s1.streamTail(), s2) @}
+        s1car > s2car -> consStream(s2car) @{ merge(s1, s2.streamTail()) @}
+        else -> consStream(s1car) @{ merge(s1.streamTail(), s2.streamTail()) @}
+    @}
+@}
+@end example
+
+Then the required stream may be constructed with @code{merge}, as follows:
+
+@example kotlin
+val s: LStream<Long> = consStream(1L) @{ merge(⟨??⟩, ⟨??⟩) @}
+@end example
+
+Fill in the missing expressions in the places marked @code{⟨??⟩} above.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.57}Exercise 3.57:} How many additions are performed
+when we compute the @math{n^{\hbox{th}}} Fibonacci number using the definition of
+@code{fibs} based on the @code{addStreams} function?  Show that the number of
+additions would be exponentially greater if the tails had been plain lambdas
+@code{@{ ⟨@var{exp}⟩ @}}, run again on every access, without the memoization that
+@code{lazy} and the @code{memoProc} of @ref{3.5.1}
+provide.@footnote{This exercise shows how call-by-need is closely related
+to ordinary memoization as described in @ref{Exercise 3.27}.  In that exercise,
+we used assignment to explicitly construct a local table.  Our call-by-need
+stream optimization effectively constructs such a table automatically, storing
+values in the previously forced parts of the stream.}
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.58}Exercise 3.58:} Give an interpretation of the
+stream computed by the following function:
+
+@example kotlin
+fun expand(num: Long, den: Long, radix: Long): LStream<Long> =
+    consStream(num * radix / den) @{
+        expand(num * radix % den, den, radix)
+    @}
+@end example
+
+(@code{/} on @code{Long} is the integer quotient here, and @code{%} the
+remainder.)  What are the successive elements produced by
+@code{expand(1, 7, 10)}?  What is produced by @code{expand(3, 8, 10)}?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.59}Exercise 3.59:} In @ref{2.5.3} we saw how
+to implement a polynomial arithmetic system representing polynomials as lists
+of terms.  In a similar way, we can work with @newterm{power series}, such as
+@displaymath
+\eqalign{
+  e^x 	  &= 1 + x + {1 \over 2} x^2  + {1 \over 3 \cdot 2} x^3  + {1 \over 4 \cdot 3 \cdot 2} x^4  + \dots, \cr
+  \cos x  &= 1 - {1 \over 2} x^2  + {1 \over 4 \cdot 3 \cdot 2} x^4  - \dots, \cr
+  \sin x  &= x - {1 \over 3 \cdot 2} x^3  + {1 \over 5 \cdot 4 \cdot 3 \cdot 2} x^5  - \dots
+}
+@end displaymath
+@ifinfo
+
+@example
+               x^2     x^3       x^4
+e^x = 1 + x + ----- + ----- + --------- + ...
+                2     3 * 2   4 * 3 * 2
+
+             x^2       x^4
+cos x = 1 - ----- + --------- - ...
+              2     4 * 3 * 2
+
+             x^3         x^5
+sin x = x - ----- + ------------- - ...
+            3 * 2   5 * 4 * 3 * 2
+@end example
+
+@end ifinfo
+@noindent
+represented as infinite streams.  We will represent the series @math{{a_0 +
+a_1 x} + {a_2 x^2} + {a_3 x^3 + \dots}} as the stream whose
+elements are the coefficients @math{a_0}, @math{a_1}, @math{a_2}, @math{a_3}, @dots{}.
+The coefficients are @code{Rat} values, exact rationals: the integral divides
+by 2, 3, 4, @dots{}, and 1/3 must stay exact rather than drift as a @code{Double}.
+
+@enumerate a
+
+@item
+The integral of the series @math{{a_0 + a_1 x} + {a_2 x^2} + {a_3 x^3 + \dots}} is the series
+@displaymath
+c + {a_0 x} + {{1 \over 2} a_1 x^2} + {{1 \over 3} a_2 x^3} + {{1 \over 4} a_3 x^4 + \dots,}
+@end displaymath
+@ifinfo
+
+@example
+             1             1             1
+c + a_0 x + --- a_1 x^2 + --- a_2 x^3 + --- a_3 x^4 + ...
+             2             3             4
+@end example
+
+@end ifinfo
+@noindent
+where @math{c} is any constant.  Define a function @code{integrateSeries} that
+takes as input a @code{LStream<Rat>} of coefficients @math{a_0}, @math{a_1}, @math{a_2}, @dots{}
+representing a power
+series and returns the stream @math{a_0}, @math{{{1\over2}a_1}}, @math{{{1\over3}a_2}}, @dots{} of
+coefficients of the non-constant terms of the integral of the series.  (Since
+the result has no constant term, it doesn't represent a power series; when we
+use @code{integrateSeries}, we will @code{consStream} the appropriate constant on.)
+
+@item
+The function @math{{x \mapsto e^x}} is its own derivative.  This implies that
+@math{e^x} and the integral of @math{e^x} are the same series, except for the
+constant term, which is @math{{e^0 = 1}}.  Accordingly, we can generate the series
+for @math{e^x} as
+
+@example kotlin
+val expSeries: LStream<Rat> = consStream(Rat.ONE) @{ integrateSeries(expSeries) @}
+@end example
+
+Show how to generate the series for sine and cosine, starting from the facts
+that the derivative of sine is cosine and the derivative of cosine is the
+negative of sine:
+
+@example kotlin
+val cosineSeries: LStream<Rat> = consStream(Rat.ONE) @{ ⟨??⟩ @}
+
+val sineSeries: LStream<Rat> = consStream(Rat.ZERO) @{ ⟨??⟩ @}
+@end example
+@end enumerate
+@end quotation
+
+@quotation
+@emph{Exercise 3.59a is added by this edition and extends exercise 3.59; SICP numbers stop at 3.59.}
+
+@strong{@anchor{Exercise 3.59a}Exercise 3.59a:} Define @code{differentiateSeries}, the termwise derivative of a coefficient stream: the derivative of the series with coefficients a0, a1, a2, a3, ... has coefficients a1, 2a2, 3a3, ... Pin it two ways: the derivative of @code{integrateSeries(s)} is s again except for the constant term that integration dropped, and, against the known series of @ref{Exercise 3.59}, the derivative of the exponential series is the exponential series, the derivative of the sine series is the cosine series, and the derivative of the cosine series is the negated sine series.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.60}Exercise 3.60:} With power series represented as
+streams of coefficients as in @ref{Exercise 3.59}, adding series is implemented
+by @code{zipStream} with @code{Rat} addition, the elementwise sum that
+@code{addStreams} performs on number streams.  Complete the definition of the
+following function for multiplying series:
+
+@example kotlin
+fun mulSeries(s1: LStream<Rat>, s2: LStream<Rat>): LStream<Rat> =
+    consStream(⟨??⟩) @{ zipStream(⟨??⟩, ⟨??⟩) @{ a, b -> a + b @} @}
+@end example
+
+You can test your function by verifying that @math{{\sin^2x + \cos^2x = 1,}}
+using the series from @ref{Exercise 3.59}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.61}Exercise 3.61:} Let @math{S} be a power series
+(@ref{Exercise 3.59}) whose constant term is 1.  Suppose we want to find the
+power series @math{{1 / S}}, that is, the series @math{X} such that @math{{SX = 1}}.
+Write @math{{S = 1 + S_R}} where @math{S_R} is the part of @math{S} after the
+constant term.  Then we can solve for @math{X} as follows:
+@displaymath
+\eqalign{
+  S \cdot X           &=   1, \cr
+  (1 + S_R) \cdot X   &=   1, \cr
+  X + S_R \cdot X     &=   1, \cr
+  X                   &=   1 - S_R \cdot X.
+}
+@end displaymath
+@ifinfo
+
+@example
+        S * X = 1
+(1 + S_R) * X = 1
+  X + S_R * X = 1
+            X = 1 - S_R * X
+@end example
+
+@end ifinfo
+In other words, @math{X} is the power series whose constant term is 1 and whose
+higher-order terms are given by the negative of @math{S_R} times @math{X}.  Use
+this idea to write a function @code{invertUnitSeries} that computes @math{{1 / S}}
+for a power series @math{S} with constant term 1.  You will need to use
+@code{mulSeries} from @ref{Exercise 3.60}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.62}Exercise 3.62:} Use the results of @ref{Exercise 3.60} 
+and @ref{Exercise 3.61} to define a function @code{divSeries} that
+divides two power series.  @code{divSeries} should work for any two series,
+provided that the denominator series begins with a nonzero constant term.  (If
+the denominator has a zero constant term, then @code{divSeries} should signal
+an error.)  Show how to use @code{divSeries} together with the result of
+@ref{Exercise 3.59} to generate the power series for tangent.
+@end quotation
+
+@node	3.5.3, 3.5.4, 3.5.2, 3.5
+@subsection Exploiting the Stream Paradigm
+
+Streams with delayed evaluation can be a powerful modeling tool, providing many
+of the benefits of local state and assignment.  Moreover, they avoid some of
+the theoretical tangles that accompany the introduction of assignment into a
+programming language.
+
+The stream approach can be illuminating because it allows us to build systems
+with different module boundaries than systems organized around assignment to
+state variables.  For example, we can think of an entire time series (or
+signal) as a focus of interest, rather than the values of the state variables
+at individual moments.  This makes it convenient to combine and compare
+components of state from different moments.
+
+@subsubheading Formulating iterations as stream processes
+
+In section @ref{1.2.1}, we introduced iterative processes, which proceed by
+updating state variables.  We know now that we can represent state as a
+``timeless'' stream of values rather than as a set of variables to be updated.
+Let's adopt this perspective in revisiting the square-root function from
+@ref{1.1.7}.  Recall that the idea is to generate a sequence of better
+and better guesses for the square root of @math{x} by applying over and over again
+the function that improves guesses:
+
+@example kotlin
+fun sqrtImprove(guess: Double, x: Double): Double = (guess + x / guess) / 2.0
+@end example
+
+@noindent
+In our original @code{sqrt} function, we made these guesses be the successive
+values of a state variable. Instead we can generate the infinite stream of
+guesses, starting with an initial guess of 1:@footnote{We can't have the local
+@code{guesses} appear in its own initializer, because the value of
+@code{guesses} depends on @code{guesses} itself; @code{sqrtStream} ties a cell
+first and fills it after the definition is complete.  @ref{Exercise 3.63}
+addresses why we want a local variable here.}
+
+@example kotlin
+fun sqrtStream(x: Double): LStream<Double> @{
+    var guesses: LStream<Double>? = null
+    val tied: LStream<Double> =
+        consStream(1.0) @{
+            streamMap(@{ g -> sqrtImprove(g, x) @}, checkNotNull(guesses) @{ "guesses not yet tied" @})
+        @}
+    guesses = tied
+    return tied
+@}
+
+sqrtStream(2.0).take(5)
+// => [1.0, 1.5, 1.4166666666666665, 1.4142156862745097, 1.4142135623746899]
+@end example
+
+@noindent
+We can generate more and more terms of the stream to get better and better
+guesses.  If we like, we can write a function that keeps generating terms
+until the answer is good enough.  (See @ref{Exercise 3.64}.)
+
+Another iteration that we can treat in the same way is to generate an
+approximation to @math{\pi}, based upon the alternating series that we saw in
+@ref{1.3.1}:
+@displaymath
+{\pi\over4} \,=\, 1 - {1\over3} + {1\over5} - {1\over7} + {\dots.}
+@end displaymath
+@ifinfo
+
+@example
+[pi]        1     1     1
+---- = 1 - --- + --- - --- + ...
+  4         3     5     7
+@end example
+
+@end ifinfo
+We first generate the stream of summands of the series (the reciprocals of the
+odd integers, with alternating signs).  Then we take the stream of sums of more
+and more terms (using the @code{partialSums} function of @ref{Exercise 3.55})
+and scale the result by 4:
+
+@example kotlin
+fun piSummands(n: Long): LStream<Double> =
+    consStream(1.0 / n) @{ streamMap(@{ x -> -x @}, piSummands(n + 2L)) @}
+
+val piStream: LStream<Double> = scaleStream(partialSums(piSummands(1L)), 4.0)
+
+piStream.take(8)
+// => [4.0, 2.666666666666667, 3.466666666666667, 2.8952380952380956, 3.3396825396825403, 2.9760461760461765, 3.2837384837384844, 3.017071817071818]
+@end example
+
+@noindent
+This gives us a stream of better and better approximations to @math{\pi},
+although the approximations converge rather slowly.  Eight terms of the
+sequence bound the value of @math{\pi} between 3.284 and 3.017.
+
+So far, our use of the stream of states approach is not much different from
+updating state variables.  But streams give us an opportunity to do some
+interesting tricks.  For example, we can transform a stream with a
+@newterm{sequence accelerator} that converts a sequence of approximations to a
+new sequence that converges to the same value as the original, only faster.
+
+One such accelerator, due to the eighteenth-century Swiss mathematician
+Leonhard Euler, works well with sequences that are partial sums of alternating
+series (series of terms with alternating signs).  In Euler's technique, if
+@math{S_n} is the @math{n^{\hbox{th}}} term of the original sum sequence, then the
+accelerated sequence has terms
+@displaymath
+S_{n+1} - {{(S_{n+1} - S_n)^2 \over S_{n-1} - 2S_n + S_{n+1}}.}
+@end displaymath
+@ifinfo
+
+@example
+             (S_(n+1) - S_n)^2
+S_(n+1) - ------------------------
+          S_(n-1) - 2S_n + S_(n+1)
+@end example
+
+@end ifinfo
+Thus, if the original sequence is represented as a stream of values, the
+transformed sequence is given by
+
+@example kotlin
+fun eulerTransform(s: LStream<Double>): LStream<Double> @{
+    val s0 = streamRef(s, 0)   // Sₙ₋₁
+    val s1 = streamRef(s, 1)   // Sₙ
+    val s2 = streamRef(s, 2)   // Sₙ₊₁
+    val d21 = s2 - s1
+    val d01 = s0 - s1
+    val denominator = d21 + d01
+    return consStream(s2 - d21 * d21 / denominator) @{
+        eulerTransform(s.streamTail())
+    @}
+@}
+@end example
+
+@noindent
+We can demonstrate Euler acceleration with our sequence of approximations to
+@math{\pi}:
+
+@example kotlin
+eulerTransform(piStream).take(8)
+// => [3.166666666666667, 3.1333333333333337, 3.1452380952380956, 3.13968253968254, 3.1427128427128435, 3.1408813408813416, 3.142071817071818, 3.1412548236077655]
+@end example
+
+@noindent
+Even better, we can accelerate the accelerated sequence, and recursively
+accelerate that, and so on.  Namely, we create a stream of streams (a structure
+we'll call a @newterm{tableau}) in which each stream is the transform of the
+preceding one:
+
+@example kotlin
+fun makeTableau(
+    transform: (LStream<Double>) -> LStream<Double>,
+    s: LStream<Double>,
+): LStream<LStream<Double>> =
+    consStream(s) @{ makeTableau(transform, transform(s)) @}
+@end example
+
+@noindent
+The tableau has the form
+@displaymath
+\matrix{
+ s_{00} 	&   s_{01}  	&   s_{02}  	&   s_{03}  	&   s_{04}  	&   \dots  \cr
+		&   s_{10}  	&   s_{11}  	&   s_{12}  	&   s_{13}  	&   \dots  \cr
+		& 		&   s_{20}  	&   s_{21}  	&   s_{22}  	&   \dots  \cr
+		& 		& 		&   \dots  	& 		&   
+}
+@end displaymath
+@ifinfo
+
+@example
+s_00   s_01   s_02   s_03   s_04   ...
+       s_10   s_11   s_12   s_13   ...
+              s_20   s_21   s_22   ...
+                            ...
+@end example
+
+@end ifinfo
+Finally, we form a sequence by taking the first term in each row of the
+tableau:
+
+@example kotlin
+fun acceleratedSequence(
+    transform: (LStream<Double>) -> LStream<Double>,
+    s: LStream<Double>,
+): LStream<Double> =
+    streamMap<LStream<Double>, Double>(
+        @{ checkNotNull(it.streamHead()) @{ "empty tableau row" @} @},
+        makeTableau(transform, s),
+    )
+@end example
+
+@noindent
+We can demonstrate this kind of ``super-acceleration'' of the @math{\pi}
+sequence:
+
+@example kotlin
+acceleratedSequence(::eulerTransform, piStream).take(8)
+// => [4.0, 3.166666666666667, 3.142105263157895, 3.141599357319005, 3.1415927140337785, 3.1415926539752927, 3.1415926535911765, 3.141592653589778]
+@end example
+
+@noindent
+The result is impressive.  Taking eight terms of the sequence yields the
+correct value of @math{\pi} to 14 decimal places.  If we had used only the
+original @math{\pi} sequence, we would need to compute on the order of @math{10^{13}}
+terms (i.e., expanding the series far enough so that the individual terms are
+less than @math{10^{-13}}) to get that much accuracy!
+
+We could have implemented these acceleration techniques without using streams.
+But the stream formulation is particularly elegant and convenient because the
+entire sequence of states is available to us as a data structure that can be
+manipulated with a uniform set of operations.
+
+@quotation
+@strong{@anchor{Exercise 3.63}Exercise 3.63:} Louis Reasoner asks why the
+@code{sqrtStream} function was not written in the following more
+straightforward way, without the local variable @code{guesses}:
+
+@example kotlin
+fun sqrtStream(x: Double): LStream<Double> =
+    consStream(1.0) @{
+        streamMap(@{ guess -> sqrtImprove(guess, x) @}, sqrtStream(x))
+    @}
+@end example
+
+Alyssa P. Hacker replies that this version of the function is considerably
+less efficient because it performs redundant computation.  Explain Alyssa's
+answer.  Would the two versions still differ in efficiency if stream
+tails were plain @code{() -> LStream<Double>} thunks, forced fresh on every
+access, rather than the memoized @code{lazy} tails of @ref{3.5.1}?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.64}Exercise 3.64:} Write a function
+@code{streamLimit} that takes as arguments a stream and a number (the
+tolerance).  It should examine the stream until it finds two successive
+elements that differ in absolute value by less than the tolerance, and return
+the second of the two elements.  Using this, we could compute square roots up
+to a given tolerance by
+
+@example kotlin
+fun sqrt(x: Double, tolerance: Double): Double =
+    streamLimit(sqrtStream(x), tolerance)
+@end example
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.65}Exercise 3.65:} Use the series
+@displaymath
+\ln 2 \,=\, 1 - {1\over2} + {1\over3} - {1\over4} + \dots
+@end displaymath
+@ifinfo
+
+@example
+            1     1     1
+ln 2 = 1 - --- + --- - --- + ...
+            2     3     4
+@end example
+
+@end ifinfo
+@noindent
+to compute three sequences of approximations to the natural logarithm of 2, in
+the same way we did above for @math{\pi}.  How rapidly do these sequences
+converge?
+@end quotation
+
+@subsubheading Infinite streams of pairs
+
+In @ref{2.2.3}, we saw how the sequence paradigm handles traditional
+nested loops as processes defined on sequences of pairs.  If we generalize this
+technique to infinite streams, then we can write programs that are not easily
+represented as loops, because the ``looping'' must range over an infinite set.
+
+For example, suppose we want to generalize the @code{primeSumPairs} function
+of @ref{2.2.3} to produce the stream of pairs of @emph{all} integers
+@math{{(i, j)}} with @math{{i \le j}} such that @math{{i + j}} is prime.  If
+@code{intPairs} is the sequence of all pairs of integers @math{{(i, j)}} with
+@math{{i \le j}}, then our required stream is simply@footnote{As in 
+@ref{2.2.3}, we represent a pair of integers as a @code{Pair} value rather than a
+cons pair.}
+
+@example kotlin
+streamFilter(@{ pair -> isPrime(pair.first + pair.second) @}, intPairs)
+@end example
+
+@noindent
+Our problem, then, is to produce the stream @code{intPairs}.  More generally,
+suppose we have two streams @math{{S = (S_i)}} and @math{{T = (T_j)}},
+and imagine the infinite rectangular array
+@displaymath
+\matrix{
+	 (S_0, T_0)  &  (S_0, T_1)  &  (S_0, T_2)  &  \dots  \cr
+	 (S_1, T_0)  &  (S_1, T_1)  &  (S_1, T_2)  &  \dots  \cr
+	 (S_2, T_0)  &  (S_2, T_1)  &  (S_2, T_2)  &  \dots  \cr
+	 \dots  & & & 
+}
+@end displaymath
+@ifinfo
+
+@example
+(S_0, T_0)  (S_0, T_1)  (S_0, T_2)  ...
+(S_1, T_0)  (S_1, T_1)  (S_1, T_2)  ...
+(S_2, T_0)  (S_2, T_1)  (S_2, T_2)  ...
+   ...
+@end example
+
+@end ifinfo
+We wish to generate a stream that contains all the pairs in the array that lie
+on or above the diagonal, i.e., the pairs
+@displaymath
+\matrix{
+ (S_0, T_0)  	&  (S_0, T_1)  	&  (S_0, T_2)  	&  \dots  \cr
+		&  (S_1, T_1)  	&  (S_1, T_2)  	&  \dots  \cr
+		& 		&  (S_2, T_2)  	&  \dots  \cr
+		& 		& 		&  \dots 
+}
+@end displaymath
+@ifinfo
+
+@example
+(S_0, T_0)  (S_0, T_1)  (S_0, T_2)  ...
+            (S_1, T_1)  (S_1, T_2)  ...
+                        (S_2, T_2)  ...
+                                    ...
+@end example
+
+@end ifinfo
+@noindent
+(If we take both @math{S} and @math{T} to be the stream of integers, then this will
+be our desired stream @code{intPairs}.)
+
+Call the general stream of pairs @code{pairs(S, T)}, and consider it to be
+composed of three parts: the pair @math{{(S_0, T_0)}}, the rest of the pairs in
+the first row, and the remaining pairs:@footnote{See @ref{Exercise 3.68} for
+some insight into why we chose this decomposition.}
+@displaymath
+\matrix{
+ (S_0, T_0)  	&  (S_0, T_1)  	&  (S_0, T_2)  	&  \dots  \cr
+\noalign{\hrule}
+		&  (S_1, T_1)  	&  (S_1, T_2)  	&  \dots  \cr
+		& 		&  (S_2, T_2)  	&  \dots  \cr
+		& 		& 		&  \dots  
+}
+@end displaymath
+@ifinfo
+
+@example
+(S_0, T_0) | (S_0, T_1)  (S_0, T_2)  ...
+-----------+-----------------------------
+           | (S_1, T_1)  (S_1, T_2)  ...
+           |             (S_2, T_2)  ...
+           |                         ...
+@end example
+
+@end ifinfo
+Observe that the third piece in this decomposition (pairs that are not in the
+first row) is (recursively) the pairs formed from @code{s.streamTail()} and
+@code{t.streamTail()}.  Also note that the second piece (the rest of the first
+row) is
+
+@example kotlin
+streamMap(@{ x -> streamRef(s, 0) to x @}, t.streamTail())
+@end example
+
+@noindent
+Thus we can form our stream of pairs as follows:
+
+@example kotlin
+fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> @{
+    val sh = s.streamHead() ?: return LStream.Empty
+    val th = t.streamHead() ?: return LStream.Empty
+    return consStream(sh to th) @{
+        ⟨combineInSomeWay⟩(
+            streamMap(@{ x -> sh to x @}, t.streamTail()),
+            pairs(s.streamTail(), t.streamTail()),
+        )
+    @}
+@}
+@end example
+
+@noindent
+In order to complete the function, we must choose some way to combine the two
+inner streams.  One idea is to use the stream analog of the @code{append}
+function from @ref{2.2.1}:
+
+@example kotlin
+fun <T> streamAppend(s1: LStream<T>, s2: LStream<T>): LStream<T> =
+    when (s1) @{
+        is LStream.Empty -> s2
+        is LStream.Cons -> consStream(s1.head) @{ streamAppend(s1.tail, s2) @}
+    @}
+@end example
+
+@noindent
+This is unsuitable for infinite streams, however, because it takes all the
+elements from the first stream before incorporating the second stream.  In
+particular, if we try to generate all pairs of positive integers using
+
+@example kotlin
+pairs(integers, integers)
+@end example
+
+@noindent
+our stream of results will first try to run through all pairs with the first
+integer equal to 1, and hence will never produce pairs with any other value of
+the first integer.
+
+To handle infinite streams, we need to devise an order of combination that
+ensures that every element will eventually be reached if we let our program run
+long enough.  An elegant way to accomplish this is with the following
+@code{interleave} function:@footnote{The precise statement of the required
+property on the order of combination is as follows: There should be a function
+@math{f} of two arguments such that the pair corresponding to element @math{i} of the
+first stream and element @math{j} of the second stream will appear as element
+number @math{{f(i, j)}} of the output stream.  The trick of using
+@code{interleave} to accomplish this was shown to us by David Turner, who
+employed it in the language KRC (@ref{Turner 1981}).}
+
+@example kotlin
+fun <T> interleave(s1: LStream<T>, s2: LStream<T>): LStream<T> =
+    when (s1) @{
+        is LStream.Empty -> s2
+        is LStream.Cons -> consStream(s1.head) @{ interleave(s2, s1.tail) @}
+    @}
+@end example
+
+@noindent
+Since @code{interleave} takes elements alternately from the two streams, every
+element of the second stream will eventually find its way into the interleaved
+stream, even if the first stream is infinite.
+
+We can thus generate the required stream of pairs as
+
+@example kotlin
+fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> @{
+    val sh = s.streamHead() ?: return LStream.Empty
+    val th = t.streamHead() ?: return LStream.Empty
+    return consStream(sh to th) @{
+        interleave(
+            streamMap(@{ x -> sh to x @}, t.streamTail()),
+            pairs(s.streamTail(), t.streamTail()),
+        )
+    @}
+@}
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.66}Exercise 3.66:} Examine the stream
+@code{pairs(integers, integers)}. Can you make any general comments about the order in which
+the pairs are placed into the stream? For example, approximately how many pairs precede
+the pair (1, 100)?  the pair (99, 100)? the pair (100, 100)? (If you can make
+precise mathematical statements here, all the better. But feel free to give
+more qualitative answers if you find yourself getting bogged down.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.67}Exercise 3.67:} Modify the @code{pairs} function
+so that @code{pairs(integers, integers)} will produce the stream of @emph{all}
+pairs of integers @math{{(i, j)}} (without the condition @math{{i \le j}}).  Hint:
+You will need to mix in an additional stream.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.68}Exercise 3.68:} Louis Reasoner thinks that
+building a stream of pairs from three parts is unnecessarily complicated.
+Instead of separating the pair @math{{(S_0, T_0)}} from the rest of the pairs in
+the first row, he proposes to work with the whole first row, as follows:
+
+@example kotlin
+fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> =
+    interleave(
+        streamMap(@{ x -> streamRef(s, 0) to x @}, t),
+        pairs(s.streamTail(), t.streamTail()),
+    )
+@end example
+
+Does this work?  Consider what happens if we evaluate
+@code{pairs(integers, integers)} using Louis's definition of @code{pairs}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.69}Exercise 3.69:} Write a function @code{triples}
+that takes three infinite streams, @math{S}, @math{T}, and @math{U}, and produces the
+stream of triples @math{{(S_i, T_j, U_k)}} such that @math{{i \le j \le k}}.  
+Use @code{triples} to generate the stream of all Pythagorean
+triples of positive integers, i.e., the triples @math{{(i, j, k)}} such that
+@math{{i \le j}} and @math{{i^2 + j^2 = k^2}}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.70}Exercise 3.70:} It would be nice to be able to
+generate streams in which the pairs appear in some useful order, rather than in
+the order that results from an @emph{ad hoc} interleaving process.  We can use
+a technique similar to the @code{merge} function of @ref{Exercise 3.56}, if we
+define a way to say that one pair of integers is ``less than'' another.  One
+way to do this is to define a ``weighting function'' @math{{W(i, j)}} and
+stipulate that @math{{(i_1, j_1)}} is less than @math{{(i_2, j_2)}} if
+@math{{W(i_1, j_1) <} {W(i_2, j_2)}}.  Write a function
+@code{mergeWeighted} that is like @code{merge}, except that
+@code{mergeWeighted} takes an additional argument @code{weight}, which is a
+function that computes the weight of a pair, and is used to determine the
+order in which elements should appear in the resulting merged
+stream.@footnote{We will require that the weighting function be such that the
+weight of a pair increases as we move out along a row or down along a column of
+the array of pairs.}  Using this, generalize @code{pairs} to a function
+@code{weightedPairs} that takes two streams, together with a function that
+computes a weighting function, and generates the stream of pairs, ordered
+according to weight.  Use your function to generate
+
+@enumerate a
+
+@item
+the stream of all pairs of positive integers @math{{(i, j)}} with @math{{i \le j}}
+ordered according to the sum @math{{i + j}},
+
+@item
+the stream of all pairs of positive integers @math{{(i, j)}} with @math{{i \le j}},
+where neither @math{i} nor @math{j} is divisible by 2, 3, or 5, and the pairs are
+ordered according to the sum @math{{2i + 3j + 5ij}}.
+
+@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.71}Exercise 3.71:} Numbers that can be expressed as
+the sum of two cubes in more than one way are sometimes called
+@newterm{Ramanujan numbers}, in honor of the mathematician Srinivasa
+Ramanujan.@footnote{To quote from G. H. Hardy's obituary of Ramanujan (@ref{Hardy 1921}): 
+``It was Mr. Littlewood (I believe) who remarked that `every positive
+integer was one of his friends.'  I remember once going to see him when he was
+lying ill at Putney.  I had ridden in taxi-cab No. 1729, and remarked that the
+number seemed to me a rather dull one, and that I hoped it was not an
+unfavorable omen.  `No,' he replied, `it is a very interesting number; it is
+the smallest number expressible as the sum of two cubes in two different ways.'
+'' The trick of using weighted pairs to generate the Ramanujan numbers was
+shown to us by Charles Leiserson.} Ordered streams of pairs provide an elegant
+solution to the problem of computing these numbers.  To find a number that can
+be written as the sum of two cubes in two different ways, we need only generate
+the stream of pairs of integers @math{{(i, j)}} weighted according to the sum
+@math{{i^3 + j^3}} (see @ref{Exercise 3.70}), then search the stream for two
+consecutive pairs with the same weight.  Write a function to generate the
+Ramanujan numbers.  The first such number is 1,729.  What are the next five?
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.72}Exercise 3.72:} In a similar way to @ref{Exercise 3.71} 
+generate a stream of all numbers that can be written as the sum of two
+squares in three different ways (showing how they can be so written).
+@end quotation
+
+@subsubheading Streams as signals
+
+We began our discussion of streams by describing them as computational analogs
+of the ``signals'' in signal-processing systems.  In fact, we can use streams
+to model signal-processing systems in a very direct way, representing the
+values of a signal at successive time intervals as consecutive elements of a
+stream.  For instance, we can implement an @newterm{integrator} or
+@newterm{summer} that, for an input stream @math{{x = (x_i)}}, an initial
+value @math{C}, and a small increment @math{{dt}}, accumulates the sum
+@displaymath
+S_i \,=\, C + {\sum_{j=1}^i x_j \, dt}
+@end displaymath
+@ifinfo
+
+@example
+           i
+          ---
+S_i = C + >   x_j dt
+          ---
+          j=1
+@end example
+
+@end ifinfo
+@noindent
+and returns the stream of values @math{{S = (S_i)}}.  The following
+@code{integral} function is reminiscent of the ``implicit style'' definition
+of the stream of integers (@ref{3.5.2}):
+
+@example kotlin
+fun integral(integrand: LStream<Double>, initialValue: Double, dt: Double): LStream<Double> @{
+    var int: LStream<Double>? = null
+    val tied: LStream<Double> =
+        consStream(initialValue) @{
+            addStreams(scaleStream(integrand, dt), checkNotNull(int) @{ "int not yet tied" @})
+        @}
+    int = tied
+    return tied
+@}
+@end example
+
+@noindent
+@ref{Figure 3.32} is a picture of a signal-processing system that corresponds
+to the @code{integral} function.  The input stream is scaled by @math{{dt}} and
+passed through an adder, whose output is passed back through the same adder.
+The self-reference in the definition of @code{int} is reflected in the figure
+by the feedback loop that connects the output of the adder to one of the
+inputs.  In Kotlin the self-reference goes through a cell: the local
+@code{int} cannot appear in its own initializer, so the tail thunk reads
+the cell that the last line fills, exactly as @code{sqrtStream} ties
+@code{guesses}.
+
+@float
+@anchor{Figure 3.32}
+@ifinfo
+@strong{Figure 3.32:} The @code{integral} function viewed as a signal-processing system.
+
+@example
+                                   initialValue
+                                        |
+       +-----------------+              |   |\__
+input  |                 |      |\__    +-->|   \_  integral
+------>| scaleStream: dt +----->|   \_      |cons_>--*------->
+       |                 |      | add_>---->| __/    |
+       +-----------------+  +-->| __/       |/       |
+                            |   |/                   |
+                            |                        |
+                            +------------------------+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.32a,,143mm,Figure 3.32: The integral procedure viewed as a signal-processing system.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,,143mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.32:} The @code{integral} function viewed as a signal-processing system.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 3.73}Exercise 3.73:} We can model electrical circuits
+using streams to represent the values of currents or voltages at a sequence of
+times.  For instance, suppose we have an @newterm{RC circuit} consisting of a
+resistor of resistance @math{R} and a capacitor of capacitance @math{C} in series.
+The voltage response @math{v} of the circuit to an injected current @math{i} is
+determined by the formula in @ref{Figure 3.33}, whose structure is shown by the
+accompanying signal-flow diagram.
+
+@float
+@anchor{Figure 3.33}
+@ifinfo
+@strong{Figure 3.33:} An RC circuit and the associated signal-flow diagram.
+
+@example
+  +        v        -
+
+ ->----'\/\/\,---| |---
+  i       R         C
+
+
+                  / t
+               1  |
+ v  =  v   +  --- |  i dt  +  R i
+        0      C  |
+                  / 0
+
+         +--------------------+
+     +-->|   scaleStream: R   |---------------------+   |\_
+     |   +--------------------+                     |   |  \_
+     |                                              +-->|    \   v
+  i  |   +--------------------+     +------------+      | add >--->
+ ----+-->|  scaleStream: 1/C  |---->|  integral  |----->|   _/
+         +--------------------+     +------------+      | _/
+                                          |             |/
+				   v
+				    0
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.33a,,125mm,Figure 3.33: An RC circuit and the associated signal-flow diagram.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,,125mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.33:} An RC circuit and the associated signal-flow diagram.}
+@end float
+
+Write a function @code{rc} that models this circuit.  @code{rc} should take as
+inputs the values of @math{R}, @math{C}, and @math{{dt}} and should return a function
+that takes as inputs a stream representing the current @math{i} and an initial
+value for the capacitor voltage @math{v_0} and produces as output the stream of
+voltages @math{v}.  For example, you should be able to use @code{rc} to model an
+RC circuit with @math{R} = 5 ohms, @math{C} = 1 farad, and a 0.5-second time step by
+evaluating @code{val rc1 = rc(5.0, 1.0, 0.5)}.  This defines @code{rc1} as a
+function that takes a stream representing the time sequence of currents and an
+initial capacitor voltage and produces the output stream of voltages.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.74}Exercise 3.74:} Alyssa P. Hacker is designing a
+system to process signals coming from physical sensors.  One important feature
+she wishes to produce is a signal that describes the @newterm{zero crossings}
+of the input signal.  That is, the resulting signal should be @math{{+1}} whenever the
+input signal changes from negative to positive, @math{{-1}} whenever the input signal
+changes from positive to negative, and @math{0} otherwise.  (Assume that the sign of a
+@math{0} input is positive.)  For example, a typical input signal with its associated
+zero-crossing signal would be
+
+@example kotlin
+// … 1 2 1.5 1 0.5 -0.1 -2 -3 -2 -0.5 0.2 3 4 …
+// … 0 0  0  0  0   -1   0  0  0   0   1  0 0 …
+@end example
+
+In Alyssa's system, the signal from the sensor is represented as a stream
+@code{senseData} and the stream @code{zeroCrossings} is the corresponding
+stream of zero crossings.  Alyssa first writes a function
+@code{signChangeDetector} that takes two values as arguments and compares the
+signs of the values to produce an appropriate @math{0}, @math{1}, or @math{{-1}}.  She then
+constructs her zero-crossing stream as follows:
+
+@example kotlin
+fun makeZeroCrossings(inputStream: LStream<Double>, lastValue: Double): LStream<Double> @{
+    val head = inputStream.streamHead() ?: return LStream.Empty
+    return consStream(signChangeDetector(head, lastValue)) @{
+        makeZeroCrossings(inputStream.streamTail(), head)
+    @}
+@}
+
+val zeroCrossings = makeZeroCrossings(senseData, 0.0)
+@end example
+
+Alyssa's boss, Eva Lu Ator, walks by and suggests that this program is
+approximately equivalent to the following one, which uses the two-stream
+@code{zipStream}, the generalization of @code{streamMap} from @ref{Exercise 3.50}:
+
+@example kotlin
+val zeroCrossings = zipStream(senseData, ⟨expression⟩, ::signChangeDetector)
+@end example
+
+Complete the program by supplying the indicated @code{⟨}@var{expression}@code{⟩}.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.75}Exercise 3.75:} Unfortunately, Alyssa's
+zero-crossing detector in @ref{Exercise 3.74} proves to be insufficient,
+because the noisy signal from the sensor leads to spurious zero crossings.  Lem
+E.  Tweakit, a hardware specialist, suggests that Alyssa smooth the signal to
+filter out the noise before extracting the zero crossings.  Alyssa takes his
+advice and decides to extract the zero crossings from the signal constructed by
+averaging each value of the sense data with the previous value.  She explains
+the problem to her assistant, Louis Reasoner, who attempts to implement the
+idea, altering Alyssa's program as follows:
+
+@example kotlin
+fun makeZeroCrossings(inputStream: LStream<Double>, lastValue: Double): LStream<Double> @{
+    val head = inputStream.streamHead() ?: return LStream.Empty
+    val avpt = (head + lastValue) / 2
+    return consStream(signChangeDetector(avpt, lastValue)) @{
+        makeZeroCrossings(inputStream.streamTail(), avpt)
+    @}
+@}
+@end example
+
+This does not correctly implement Alyssa's plan.  Find the bug that Louis has
+installed and fix it without changing the structure of the program.  (Hint: You
+will need to increase the number of arguments to @code{makeZeroCrossings}.)
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.76}Exercise 3.76:} Eva Lu Ator has a criticism of
+Louis's approach in @ref{Exercise 3.75}.  The program he wrote is not modular,
+because it intermixes the operation of smoothing with the zero-crossing
+extraction.  For example, the extractor should not have to be changed if Alyssa
+finds a better way to condition her input signal.  Help Louis by writing a
+function @code{smooth} that takes a stream as input and produces a stream in
+which each element is the average of two successive input stream elements.
+Then use @code{smooth} as a component to implement the zero-crossing detector
+in a more modular style.
+@end quotation
+
+@node	3.5.4, 3.5.5, 3.5.3, 3.5
+@subsection Streams and Delayed Evaluation
+
+The @code{integral} function at the end of the preceding section shows how we
+can use streams to model signal-processing systems that contain feedback loops.
+The feedback loop for the adder shown in @ref{Figure 3.32} is modeled by the
+fact that @code{integral}'s internal stream @code{int} is defined in terms of
+itself:
+
+@example kotlin
+var int: LStream<Double>? = null
+val tied: LStream<Double> =
+    consStream(initialValue) @{
+        addStreams(scaleStream(integrand, dt), checkNotNull(int) @{ "int not yet tied" @})
+    @}
+int = tied
+@end example
+
+@noindent
+This shape is legal only because the tail lambda reads the cell after the last
+line has tied it.  Kotlin's ability to deal with such an implicit definition
+depends on the delay that is incorporated into @code{consStream}.  Without this
+delay, the stream could not be constructed before evaluating both arguments to
+@code{consStream}, which would require that @code{int} already be defined.  In
+general, delay is crucial for using streams to model signal-processing systems
+that contain loops.  Without delay, our models would have to be formulated so
+that the inputs to any signal-processing component would be fully evaluated
+before the output could be produced.  This would outlaw loops.
+
+@noindent
+Unfortunately, stream models of systems with loops may require uses of
+delay beyond the ``hidden'' delay supplied by @code{consStream}.
+For instance, @ref{Figure 3.34} shows a signal-processing system for solving
+the differential equation @math{{dy / dt = f(y)}} where @math{f} is a given
+function.  The figure shows a mapping component, which applies @math{f} to its
+input signal, linked in a feedback loop to an integrator in a manner very
+similar to that of the analog computer circuits that are actually used to solve
+such equations.
+
+@float
+@anchor{Figure 3.34}
+@ifinfo
+@quotation
+@strong{Figure 3.34:} An ``analog computer circuit'' that solves the equation @math{{dy / dt = f(y)}}.
+
+@example
+                            y_0
+                             |
+                             V
+    +----------+  dy   +----------+     y
++-->|  map: f  +------>| integral +--*----->
+|   +----------+       +----------+  |
+|                                    |
++------------------------------------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.34,,110mm,Figure 3.34: An ``analog computer circuit'' that solves the equation dy / dt = f(y).,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.34.std,,110mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.34:} An ``analog computer circuit'' that solves the equation @math{{dy / dt = f(y)}}.}
+@end float
+
+Assuming we are given an initial value @math{y_0} for @math{y}, we could try to model
+this system using the function
+
+@example kotlin
+fun solve(f: (Double) -> Double, y0: Double, dt: Double): LStream<Double> @{
+    val y: LStream<Double> = integral(dy, y0, dt)
+    val dy: LStream<Double> = streamMap(f, y)
+    return y
+@}
+@end example
+This procedure does not compile, because in the first line of @code{solve} the
+call to @code{integral} requires that the input @code{dy} be defined, which
+does not happen until the second line of @code{solve}.
+
+On the other hand, the intent of our definition does make sense, because we
+can, in principle, begin to generate the @code{y} stream without knowing
+@code{dy}.  Indeed, @code{integral} and many other stream operations have
+properties similar to those of @code{consStream}, in that we can generate part
+of the answer given only partial information about the arguments.  For
+@code{integral}, the first element of the output stream is the specified
+@code{initialValue}.  Thus, we can generate the first element of the output
+stream without evaluating the integrand @code{dy}.  Once we know the first
+element of @code{y}, the @code{streamMap} in the second line of @code{solve}
+can begin working to generate the first element of @code{dy}, which will
+produce the next element of @code{y}, and so on.
+
+To take advantage of this idea, we will redefine @code{integral} to expect the
+integrand stream to be a @newterm{delayed argument}: a @code{Lazy} value.
+@code{integral} reads the integrand's @code{.value} only when it is required
+to generate more than the first element of the output stream:
+
+@example kotlin
+fun integral(
+    delayedIntegrand: Lazy<LStream<Double>>,
+    initialValue: Double,
+    dt: Double,
+): LStream<Double> @{
+    var int: LStream<Double>? = null
+    val tied: LStream<Double> =
+        consStream(initialValue) @{
+            addStreams(scaleStream(delayedIntegrand.value, dt), checkNotNull(int) @{ "int not yet tied" @})
+        @}
+    int = tied
+    return tied
+@}
+@end example
+
+@noindent
+The book's internal definition of @code{int} becomes Kotlin's assigned-once
+cell: a local cannot mention itself in its own initializer, so @code{int} is a
+nullable cell that the tail lambda reads, and the last line ties the cell
+before anything can force a tail.  Now we can implement our @code{solve}
+function, tying the integrand lazily in the definition of
+@code{y}:@footnote{The book's version depends on the order of internal
+definitions, and Scheme implementations differ on whether it works.  Kotlin's
+lazy tie replaces that order dependence: the @code{lazy} value is not read
+until @code{integral} forces it past the first element, so the definition
+order of @code{y} and its integrand no longer matters.  Because a local may
+not be read inside its own initializer line, the library form ties @code{y}
+through the once-assigned cell shown in @code{integral} above.  (See
+@ref{4.1.6}.)}
+
+@example kotlin
+fun solve(
+    f: (Double) -> Double,
+    y0: Double,
+    dt: Double,
+): LStream<Double> @{
+    var dy: LStream<Double>? = null
+    val y: LStream<Double> = integral(lazy @{ checkNotNull(dy) @{ "dy not yet tied" @} @}, y0, dt)
+    dy = streamMap(f, y)
+    return y
+@}
+@end example
+
+@noindent
+The @code{dy} cell is assigned exactly once, before any force can reach it: the
+delayed integrand is the book's @code{(delay dy)}, tied back to @code{y}
+itself inside the lazy value.
+
+@noindent
+In general, every caller of @code{integral} must now pass the integrand as a
+@code{lazy @{ ... @}} value.  We can demonstrate that the @code{solve} function
+works by approximating @math{{e \approx 2.718}} by computing the value at
+@math{{y = 1}} of the solution to the differential equation
+@math{{dy / dt = y}} with initial condition @math{{y(0) = 1}}:
+
+@example kotlin
+streamRef(solve(@{ y -> y @}, 1.0, 0.001), 1000)
+// => 2.716923932235896 (the book's 2.716924 rounded)
+@end example
+
+@quotation
+@strong{@anchor{Exercise 3.77}Exercise 3.77:} The @code{integral} function
+used above was analogous to the ``implicit'' definition of the infinite stream
+of integers in @ref{3.5.2}.  Alternatively, we can give a definition of
+@code{integral} that is more like @code{integersStartingFrom} (also in
+@ref{3.5.2}):
+
+@example kotlin
+fun integral(
+    integrand: LStream<Double>,
+    initialValue: Double,
+    dt: Double,
+): LStream<Double> =
+    consStream(initialValue) @{
+        val head = integrand.streamHead()
+        if (head == null) @{
+            LStream.Empty
+        @} else @{
+            integral(integrand.streamTail(), dt * head + initialValue, dt)
+        @}
+    @}
+@end example
+
+When used in systems with loops, this function has the same problem as does
+our original version of @code{integral}.  Modify the function so that it
+expects the @code{integrand} as a delayed argument and hence can be used in
+the @code{solve} function shown above.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.78}Exercise 3.78:} Consider the problem of designing
+a signal-processing system to study the homogeneous second-order linear
+differential equation
+@displaymath
+{d^2 y \over dt^2} - {a {dy \over dt}} - {by} \,=\, {0.}
+@end displaymath
+@ifinfo
+
+@example
+d^2 y        d y
+-----  -  a -----  -  by  =  0
+d t^2        d t
+@end example
+
+@end ifinfo
+The output stream, modeling @math{y}, is generated by a network that contains a
+loop. This is because the value of @math{{d^2 y / dt^2}} depends upon the
+values of @math{y} and @math{{dy / dt}} and both of these are determined by
+integrating @math{{d^2 y / dt^2}}.  The diagram we would like to encode is
+shown in @ref{Figure 3.35}.  Write a function @code{solve2nd} that takes as
+arguments the constants @math{a}, @math{b}, and @math{{dt}} and the initial values
+@math{y_0} and @math{{dy_0}} for @math{y} and @math{{dy / dt}} and generates the
+stream of successive values of @math{y}.
+@end quotation
+
+@float
+@anchor{Figure 3.35}
+@ifinfo
+@quotation
+@strong{Figure 3.35:} Signal-flow diagram for the solution to a second-order linear differential equation.
+
+@example
+               dy_0                y_0
+                |                   |
+                V                   V
+   ddy     +----------+    dy  +----------+    y
++--------->| integral +-----*--+ integral +--*--->
+|          +----------+     |  +----------+  |
+|                           |                |
+|            +----------+   |                |
+|     __/|<--+ scale: a |<--+                |
+|   _/   |   +----------+                    |
++--<_add |                                   |
+     \__ |   +----------+                    |
+        \|<--+ scale: b |<-------------------+
+             +----------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.35b,,116mm,Figure 3.35: Signal-flow diagram for the solution to a second-order linear differential equation.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.35b.std,,116mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.35:} Signal-flow diagram for the solution to a second-order linear differential equation.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 3.79}Exercise 3.79:} Generalize the @code{solve2nd}
+function of @ref{Exercise 3.78} so that it can be used to solve general
+second-order differential equations @math{{d^2 y / dt^2} =
+{f(dy / dt, y)}}.
+@end quotation
+
+@float
+@anchor{Figure 3.36}
+@ifinfo
+@quotation
+@strong{Figure 3.36:} A series RLC circuit.
+
+@example
+              + v_R -
+        i_R
+     +--->----'\/\/\,--------+
+     |                       |  i_L
+    \|/          R          \|/
+  +  |  i_C                  |_   +
+    -+-                       _)
+v_C -+- C                     _)  v_L
+     |                        _)
+  -  |                       |    -
+     +-----------------------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.36,,102mm,Figure 3.36: A series RLC circuit.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.36.std,,102mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.36:} A series RLC circuit.}
+@end float
+
+@quotation
+@strong{@anchor{Exercise 3.80}Exercise 3.80:} A @newterm{series RLC circuit}
+consists of a resistor, a capacitor, and an inductor connected in series, as
+shown in @ref{Figure 3.36}.  If @math{R}, @math{L}, and @math{C} are the resistance,
+inductance, and capacitance, then the relations between voltage @math{{(v)}} and
+current @math{{(i)}} for the three components are described by the equations
+@displaymath
+\eqalign{
+  v_R 	&=   i_R R, \cr
+  v_L 	&=   L\,{di_L \over dt}, \cr
+  i_C 	&=   C\,{dv_C \over dt},
+}
+@end displaymath
+@ifinfo
+
+@example
+v_R = i_R R
+
+         d i_L
+v_L = L -------
+          d t
+
+         d v_C
+i_C = C -------
+          d t
+@end example
+
+@end ifinfo
+and the circuit connections dictate the relations
+@displaymath
+\eqalign{
+  i_R 	&=   i_L = -i_C, \cr
+  v_C 	&=   v_L + v_R.
+}
+@end displaymath
+@ifinfo
+
+@example
+i_R = i_L = -i_C
+
+v_C = v_L + v_R
+@end example
+
+@end ifinfo
+@noindent
+Combining these equations shows that the state of the circuit (summarized by
+@math{v_C}, the voltage across the capacitor, and @math{i_L}, the current in
+the inductor) is described by the pair of differential equations
+@displaymath
+\eqalign{
+  {dv_C \over dt}   &=   -{i_L \over C}\,, \cr
+  {di_L \over dt}   &=    {1 \over L}\, v_C - {R \over L}\, i_L.
+}
+@end displaymath
+@ifinfo
+
+@example
+d v_C        i_L
+-----  =  -  ---
+ d t          C
+
+d i_L      1           R
+-----  =  --- v_C  -  --- i_L
+ d t       L           L
+@end example
+
+@end ifinfo
+@noindent
+The signal-flow diagram representing this system of differential equations is
+shown in @ref{Figure 3.37}.
+@end quotation
+
+@float
+@anchor{Figure 3.37}
+@ifinfo
+@quotation
+@strong{Figure 3.37:} A signal-flow diagram for the solution to a series RLC circuit.
+
+@example
+                 +-------------+
++----------------+  scale: l/L |<--+
+|                +-------------+   |
+|                                  |
+|                +-------------+   |  v_C
+|       dv_C +-->|   integral  +---*------>
+|            |   +-------------+
+|            |        ^
+|            |        | v_(C_0)
+|            |
+|            |   +-------------+
+|            +---+ scale: -l/C |<--+
+|                +-------------+   |
+|  |\__                            |
++->|   \_  di_L  +-------------+   |  i_L
+   | add_>------>|   integral  +---*------>
++->| __/         +-------------+   |
+|  |/                 ^            |
+|                     | i_(L_0)    |
+|                                  |
+|                +-------------+   |
++----------------+ scale: -R/L |<--+
+                 +-------------+
+@end example
+@end quotation
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.37,,110mm,Figure 3.37: A signal-flow diagram for the solution to a series RLC circuit.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.37.std,,110mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.37:} A signal-flow diagram for the solution to a series RLC circuit.}
+@end float
+
+@quotation
+Write a function @code{rlc} that takes as arguments the parameters @math{R},
+@math{L}, and @math{C} of the circuit and the time increment @math{{dt}}.  In a manner
+similar to that of the @code{rc} function of @ref{Exercise 3.73}, @code{rlc}
+should produce a function that takes the initial values of the state
+variables, @math{v_{C_0}} and @math{i_{L_0}}, and produces a @code{Pair} of the streams
+of states @math{v_C} and @math{i_L}.  Using
+@code{rlc}, generate the pair of streams that models the behavior of a series
+RLC circuit with @math{R} = 1 ohm, @math{C} = 0.2 farad, @math{L} = 1 henry, @math{{dt}}
+= 0.1 second, and initial values @math{i_{L_0}} = 0 amps and @math{v_{C_0}} =
+10 volts.
+@end quotation
+
+@subsubheading Normal-order evaluation
+
+The examples in this section illustrate how the explicit use of @code{lazy}
+and @code{.value} provides great programming flexibility, but the same examples
+also show how this can make our programs more complex.  Our new @code{integral}
+function, for instance, gives us the power to model systems with loops, but we
+must now remember that @code{integral} should be called with a delayed
+integrand, and every function that uses @code{integral} must be aware of this.
+In effect, we have created two classes of functions: ordinary functions and
+functions that take delayed arguments.  In general, creating separate classes
+of functions forces us to create separate classes of higher-order functions as
+well.@footnote{This is a small reflection, in Lisp, of the difficulties that
+conventional strongly typed languages such as Pascal have in coping with
+higher-order functions.  In such languages, the programmer must specify the
+data types of the arguments and the result of each function: number, logical
+value, sequence, and so on.  Consequently, we could not express an abstraction
+such as ``map a given function @code{proc} over all the elements in a
+sequence'' by a single higher-order function such as @code{streamMap}.
+Rather, we would need a different mapping function for each different
+combination of argument and result data types that might be specified for a
+@code{proc}.  Maintaining a practical notion of ``data type'' in the presence
+of higher-order functions raises many difficult issues.  One way of dealing
+with this problem is illustrated by the language ML (@ref{Gordon et al. 1979}),
+whose ``polymorphic data types'' include templates for
+higher-order transformations between data types.  Moreover, data types for most
+functions in ML are never explicitly declared by the programmer.  Instead, ML
+includes a @newterm{type-inferencing} mechanism that uses information in the
+environment to deduce the data types for newly defined functions; Kotlin's own
+type inference works the same way.}
+
+One way to avoid the need for two different classes of functions is to make
+all functions take delayed arguments.  We could adopt a model of evaluation in
+which all arguments to functions are automatically delayed and arguments are
+forced only when they are actually needed (for example, when they are required
+by a primitive operation).  This would transform our language to use
+normal-order evaluation, which we first described when we introduced the
+substitution model for evaluation in @ref{1.1.5}.  Converting to
+normal-order evaluation provides a uniform and elegant way to simplify the use
+of delayed evaluation, and this would be a natural strategy to adopt if we were
+concerned only with stream processing.  In @ref{4.2}, after we have
+studied the evaluator, we will see how to transform our language in just this
+way.  Unfortunately, including delays in function calls wreaks havoc with our
+ability to design programs that depend on the order of events, such as programs
+that use assignment, mutate data, or perform input or output.  Even the single
+@code{lazy} in @code{consStream} can cause great confusion, as illustrated by
+@ref{Exercise 3.51} and @ref{Exercise 3.52}.  As far as anyone knows,
+mutability and delayed evaluation do not mix well in programming languages, and
+devising ways to deal with both of these at once is an active area of research.
+@node 3.5.5, Chapter 4, 3.4, 3.5
+@subsection Modularity of Functional Programs and Modularity of Objects
+
+As we saw in @ref{3.1.2}, one of the major benefits of introducing
+assignment is that we can increase the modularity of our systems by
+encapsulating, or ``hiding,'' parts of the state of a large system within local
+variables.  Stream models can provide an equivalent modularity without the use
+of assignment.  As an illustration, we can reimplement the Monte Carlo
+estimation of @math{\pi}, which we examined in @ref{3.1.2}, from a
+stream-processing point of view.
+The key modularity issue was that we wished to hide the internal state of a
+random-number generator from programs that used random numbers.  We began with
+a function @code{randNext} (the book's @code{rand-update}, renamed here because
+the 3.1 exercises own that name privately in their own files), whose
+successive values furnished our supply of random numbers, and used this to
+produce a random-number generator:
+
+@example kotlin
+var x = RANDOM_INIT
+
+val rand: () -> ULong = @{
+    x = randNext(x)
+    x
+@}
+@end example
+
+@noindent
+In the stream formulation there is no random-number generator @emph{per se},
+just a stream of random numbers produced by successive applications of
+@code{randNext}:
+
+@example kotlin
+val randomNumbers: LStream<ULong> =
+    consStream(RANDOM_INIT) @{ streamMap(::randNext, randomNumbers) @}
+@end example
+
+@noindent
+We use this to construct the stream of outcomes of the Ces@`aro experiment
+performed on consecutive pairs in the @code{randomNumbers} stream:
+
+@example kotlin
+val cesaroStream: LStream<Boolean> =
+    mapSuccessivePairs(@{ r1, r2 -> gcdULong(r1, r2) == 1UL @}, randomNumbers)
+
+fun <A, R> mapSuccessivePairs(
+    f: (A, A) -> R,
+    s: LStream<A>,
+): LStream<R> @{
+    val a0 = s.streamHead() ?: return LStream.Empty
+    val a1 = s.streamTail().streamHead() ?: return LStream.Empty
+    return consStream(f(a0, a1)) @{ mapSuccessivePairs(f, s.streamTail().streamTail()) @}
+@}
+@end example
+
+@noindent
+The @code{cesaroStream} is now fed to a @code{monteCarloStream} function, which
+produces a stream of estimates of probabilities.  The results are then
+converted into a stream of estimates of @math{\pi}.  This version of the program
+doesn't need a parameter telling how many trials to perform.  Better estimates
+of @math{\pi} (from performing more experiments) are obtained by looking farther
+into the @code{pi} stream:
+
+@example kotlin
+fun monteCarloStream(
+    experiments: LStream<Boolean>,
+    passed: Long,
+    failed: Long,
+): LStream<Double> @{
+    val outcome = experiments.streamHead() ?: return LStream.Empty
+    val rest = experiments.streamTail()
+    val p: Long
+    val q: Long
+    if (outcome) @{
+        p = Math.addExact(passed, 1L)
+        q = failed
+    @} else @{
+        p = passed
+        q = Math.addExact(failed, 1L)
+    @}
+    return consStream(p.toDouble() / (p + q).toDouble()) @{
+        monteCarloStream(rest, p, q)
+    @}
+@}
+
+val pi: LStream<Double> =
+    streamMap(@{ p -> sqrt(6.0 / p) @}, monteCarloStream(cesaroStream, 0, 0))
+@end example
+
+@noindent
+There is considerable modularity in this approach, because we still can
+formulate a general @code{monteCarloStream} function that can deal with
+arbitrary experiments.  Yet there is no assignment or local state.
+@quotation
+@strong{@anchor{Exercise 3.81}Exercise 3.81:} @ref{Exercise 3.6} discussed
+generalizing the random-number generator to allow one to reset the
+random-number sequence so as to produce repeatable sequences of ``random''
+numbers.  Produce a stream formulation of this same generator that operates on
+an input stream of requests to @code{generate} a new random number or to
+@code{reset} the sequence to a specified value and that produces the desired
+stream of random numbers.  Don't use assignment in your solution.
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 3.82}Exercise 3.82:} Redo @ref{Exercise 3.5} on Monte
+Carlo integration in terms of streams.  The stream version of
+@code{estimateIntegral} will not have an argument telling how many trials to
+perform.  Instead, it will produce a stream of estimates based on successively
+more trials.
+@end quotation
+
+@subsubheading A functional-programming view of time
+
+Let us now return to the issues of objects and state that were raised at the
+beginning of this chapter and examine them in a new light.  We introduced
+assignment and mutable objects to provide a mechanism for modular construction
+of programs that model systems with state.  We constructed computational
+objects with local state variables and used assignment to modify these
+variables.  We modeled the temporal behavior of the objects in the world by the
+temporal behavior of the corresponding computational objects.
+
+Now we have seen that streams provide an alternative way to model objects with
+local state.  We can model a changing quantity, such as the local state of some
+object, using a stream that represents the time history of successive states.
+In essence, we represent time explicitly, using streams, so that we decouple
+time in our simulated world from the sequence of events that take place during
+evaluation.  Indeed, because of the presence of @code{lazy} there may be
+little relation between simulated time in the model and the order of events
+during the evaluation.
+
+In order to contrast these two approaches to modeling, let us reconsider the
+implementation of a ``withdrawal processor'' that monitors the balance in a
+bank account.  In @ref{3.1.3} we implemented a simplified version of
+such a processor:
+
+@example kotlin
+fun makeSimplifiedWithdraw(balance: Long): (Long) -> Long @{
+    var b = balance
+    return @{ amount ->
+        b -= amount
+        b
+    @}
+@}
+@end example
+
+@noindent
+Calls to @code{makeSimplifiedWithdraw} produce computational objects, each
+with a local state variable @code{b} that is decremented by successive calls
+to the object.  The object takes an @code{amount} as an argument and returns
+the new balance.  We can imagine the user of a bank account typing a sequence
+of inputs to such an object and observing the sequence of returned values
+shown on a display screen.
+
+Alternatively, we can model a withdrawal processor as a function that takes as
+input a balance and a stream of amounts to withdraw and produces the stream of
+successive balances in the account:
+
+@example kotlin
+fun streamWithdraw(
+    balance: Long,
+    amountStream: LStream<Long>,
+): LStream<Long> =
+    consStream(balance) @{
+        streamWithdraw(balance - (amountStream.streamHead() ?: 0L), amountStream.streamTail())
+    @}
+@end example
+
+@noindent
+@code{streamWithdraw} implements a well-defined mathematical function whose
+output is fully determined by its input; the @code{?: 0L} fallback on the head
+read exists for the type system only, since the amount stream is infinite and
+the fallback is never taken.  Suppose, however, that the input
+@code{amountStream} is the stream of successive values typed by the user and
+that the resulting stream of balances is displayed.  Then, from the perspective
+of the user who is typing values and watching results, the stream process has
+the same behavior as the object created by @code{makeSimplifiedWithdraw}.
+However, with the stream version, there is no assignment, no local state
+variable, and consequently none of the theoretical difficulties that we
+encountered in @ref{3.1.3}.  Yet the system has state!
+
+This is really remarkable.  Even though @code{streamWithdraw} implements a
+well-defined mathematical function whose behavior does not change, the user's
+perception here is one of interacting with a system that has a changing state.
+One way to resolve this paradox is to realize that it is the user's temporal
+existence that imposes state on the system.  If the user could step back from
+the interaction and think in terms of streams of balances rather than
+individual transactions, the system would appear stateless.@footnote{Similarly
+in physics, when we observe a moving particle, we say that the position (state)
+of the particle is changing.  However, from the perspective of the particle's
+world line in space-time there is no change involved.}
+
+From the point of view of one part of a complex process, the other parts appear
+to change with time.  They have hidden time-varying local state.  If we wish to
+write programs that model this kind of natural decomposition in our world (as
+we see it from our viewpoint as a part of that world) with structures in our
+computer, we make computational objects that are not functional---they must
+change with time.  We model state with local state variables, and we model the
+changes of state with assignments to those variables.  By doing this we make
+the time of execution of a computation model time in the world that we are part
+of, and thus we get ``objects'' in our computer.
+
+Modeling with objects is powerful and intuitive, largely because this matches
+the perception of interacting with a world of which we are part.  However, as
+we've seen repeatedly throughout this chapter, these models raise thorny
+problems of constraining the order of events and of synchronizing multiple
+processes.  The possibility of avoiding these problems has stimulated the
+development of @newterm{functional programming languages}, which do not include
+any provision for assignment or mutable data.  In such a language, all
+procedures implement well-defined mathematical functions of their arguments,
+whose behavior does not change.  The functional approach is extremely
+attractive for dealing with concurrent systems.@footnote{John Backus, the
+inventor of Fortran, gave high visibility to functional programming when he was
+awarded the @abbr{ACM} Turing award in 1978.  His acceptance speech 
+(@ref{Backus 1978}) strongly advocated the functional approach.  A good overview of
+functional programming is given in @ref{Henderson 1980} and in 
+@ref{Darlington et al. 1982}.}
+
+On the other hand, if we look closely, we can see time-related problems
+creeping into functional models as well.  One particularly troublesome area
+arises when we wish to design interactive systems, especially ones that model
+interactions between independent entities.  For instance, consider once more
+the implementation of a banking system that permits joint bank accounts.  In a
+conventional system using assignment and objects, we would model the fact that
+Peter and Paul share an account by having both Peter and Paul send their
+transaction requests to the same bank-account object, as we saw in 
+@ref{3.1.3}.  From the stream point of view, where there are no ``objects''
+@emph{per se}, we have already indicated that a bank account can be modeled as
+a process that operates on a stream of transaction requests to produce a stream
+of responses.  Accordingly, we could model the fact that Peter and Paul have a
+joint bank account by merging Peter's stream of transaction requests with
+Paul's stream of requests and feeding the result to the bank-account stream
+process, as shown in @ref{Figure 3.38}.
+
+@float
+@anchor{Figure 3.38}
+@ifinfo
+@strong{Figure 3.38:} A joint bank account, modeled by merging two streams of transaction requests.
+
+@example
+Peter's requests   +---------+     +---------+
+------------------>|         |     |         |
+Paul's requests    |  merge  |---->| bank    |---->
+------------------>|         |     | account |
+                   +---------+     +---------+
+@end example
+@end ifinfo
+@ifhtml
+@image{../../text/original/figures/chap3/Fig3.38a,,143mm,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
+@end ifhtml
+@iftex
+@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,,143mm,,.pdf}
+
+@end iftex
+@caption{@strong{Figure 3.38:} A joint bank account, modeled by merging two streams of transaction requests.}
+@end float
+
+@noindent
+The trouble with this formulation is in the notion of @newterm{merge}.  It will
+not do to merge the two streams by simply taking alternately one request from
+Peter and one request from Paul. Suppose Paul accesses the account only very
+rarely.  We could hardly force Peter to wait for Paul to access the account
+before he could issue a second transaction.  However such a merge is
+implemented, it must interleave the two transaction streams in some way that is
+constrained by ``real time'' as perceived by Peter and Paul, in the sense that,
+if Peter and Paul meet, they can agree that certain transactions were processed
+before the meeting, and other transactions were processed after the
+meeting.@footnote{Observe that, for any two streams, there is in general more
+than one acceptable order of interleaving.  Thus, technically, ``merge'' is a
+relation rather than a function---the answer is not a deterministic function of
+the inputs.  We already mentioned (@ref{Footnote 167}) that nondeterminism is
+essential when dealing with concurrency.  The merge relation illustrates the
+same essential nondeterminism, from the functional perspective.  In 
+@ref{4.3}, we will look at nondeterminism from yet another point of view.} This
+is precisely the same constraint that we had to deal with in 
+@ref{3.4.1}, where we found the need to introduce explicit synchronization to
+ensure a ``correct'' order of events in concurrent processing of objects with
+state.  Thus, in an attempt to support the functional style, the need to merge
+inputs from different agents reintroduces the same problems that the functional
+style was meant to eliminate.
+
+We began this chapter with the goal of building computational models whose
+structure matches our perception of the real world we are trying to model.  We
+can model the world as a collection of separate, time-bound, interacting
+objects with state, or we can model the world as a single, timeless, stateless
+unity.  Each view has powerful advantages, but neither view alone is completely
+satisfactory.  A grand unification has yet to emerge.@footnote{The object model
+approximates the world by dividing it into separate pieces.  The functional
+model does not modularize along object boundaries.  The object model is useful
+when the unshared state of the ``objects'' is much larger than the state that
+they share.  An example of a place where the object viewpoint fails is quantum
+mechanics, where thinking of things as individual particles leads to paradoxes
+and confusions.  Unifying the object view with the functional view may have
+little to do with programming, but rather with fundamental epistemological
+issues.}
+
+@node    Chapter 4, 4.1, 3.5, Top
+@chapter Metalinguistic Abstraction
+
+@quotation
+@dots{} It's in words that the magic is---Abracadabra, Open Sesame, and the
+rest---but the magic words in one story aren't magical in the next.  The real
+magic is to understand which words work, and when, and for what; the trick is
+to learn the trick.
+
+@dots{} And those words are made from the letters of our alphabet: a
+couple-dozen squiggles we can draw with the pen.  This is the key!  And the
+treasure, too, if we can only get our hands on it!  It's as if---as if the key
+to the treasure @emph{is} the treasure!
+
+---John Barth, @cite{Chimera}
+@end quotation
+
+
+@noindent
+In our study of program design, we have seen that expert programmers control
+the complexity of their designs with the same general techniques used by
+designers of all complex systems.  They combine primitive elements to form
+compound objects, they abstract compound objects to form higher-level building
+blocks, and they preserve modularity by adopting appropriate large-scale views
+of system structure.  In illustrating these techniques, we have used Lisp as a
+language for describing processes and for constructing computational data
+objects and processes to model complex phenomena in the real world.  However,
+as we confront increasingly complex problems, we will find that Lisp, or indeed
+any fixed programming language, is not sufficient for our needs.  We must
+constantly turn to new languages in order to express our ideas more
+effectively.  Establishing new languages is a powerful strategy for controlling
+complexity in engineering design; we can often enhance our ability to deal with
+a complex problem by adopting a new language that enables us to describe (and
+hence to think about) the problem in a different way, using primitives, means
+of combination, and means of abstraction that are particularly well suited to
+the problem at hand.@footnote{The same idea is pervasive throughout all of
+engineering.  For example, electrical engineers use many different languages
+for describing circuits.  Two of these are the language of electrical
+@newterm{networks} and the language of electrical @newterm{systems}.  The
+network language emphasizes the physical modeling of devices in terms of
+discrete electrical elements.  The primitive objects of the network language
+are primitive electrical components such as resistors, capacitors, inductors,
+and transistors, which are characterized in terms of physical variables called
+voltage and current.  When describing circuits in the network language, the
+engineer is concerned with the physical characteristics of a design.  In
+contrast, the primitive objects of the system language are signal-processing
+modules such as filters and amplifiers.  Only the functional behavior of the
+modules is relevant, and signals are manipulated without concern for their
+physical realization as voltages and currents.  The system language is erected
+on the network language, in the sense that the elements of signal-processing
+systems are constructed from electrical networks.  Here, however, the concerns
+are with the large-scale organization of electrical devices to solve a given
+application problem; the physical feasibility of the parts is assumed.  This
+layered collection of languages is another example of the stratified design
+technique illustrated by the picture language of @ref{2.2.4}.}
+
+Programming is endowed with a multitude of languages.  There are physical
+languages, such as the machine languages for particular computers.  These
+languages are concerned with the representation of data and control in terms of
+individual bits of storage and primitive machine instructions.  The
+machine-language programmer is concerned with using the given hardware to erect
+systems and utilities for the efficient implementation of resource-limited
+computations.  High-level languages, erected on a machine-language substrate,
+hide concerns about the representation of data as collections of bits and the
+representation of programs as sequences of primitive instructions.  These
+languages have means of combination and abstraction, such as procedure
+definition, that are appropriate to the larger-scale organization of systems.
+
+@newterm{Metalinguistic abstraction}---establishing new languages---plays an
+important role in all branches of engineering design.  It is particularly
+important to computer programming, because in programming not only can we
+formulate new languages but we can also implement these languages by
+constructing evaluators.  An @newterm{evaluator} (or @newterm{interpreter}) for
+a programming language is a procedure that, when applied to an expression of
+the language, performs the actions required to evaluate that expression.
+
+It is no exaggeration to regard this as the most fundamental idea in
+programming:
+
+@quotation
+The evaluator, which determines the meaning of expressions in a programming
+language, is just another program.
+@end quotation
+
+@noindent
+To appreciate this point is to change our images of ourselves as programmers.
+We come to see ourselves as designers of languages, rather than only users of
+languages designed by others.
+
+In fact, we can regard almost any program as the evaluator for some language.
+For instance, the polynomial manipulation system of @ref{2.5.3}
+embodies the rules of polynomial arithmetic and implements them in terms of
+operations on list-structured data.  If we augment this system with procedures
+to read and print polynomial expressions, we have the core of a special-purpose
+language for dealing with problems in symbolic mathematics.  The digital-logic
+simulator of @ref{3.3.4} and the constraint propagator of 
+@ref{3.3.5} are legitimate languages in their own right, each with its own
+primitives, means of combination, and means of abstraction.  Seen from this
+perspective, the technology for coping with large-scale computer systems merges
+with the technology for building new computer languages, and computer science
+itself becomes no more (and no less) than the discipline of constructing
+appropriate descriptive languages.
+
+We now embark on a tour of the technology by which languages are established in
+terms of other languages.  In this chapter we shall use Lisp as a base,
+implementing evaluators as Lisp procedures.  Lisp is particularly well suited
+to this task, because of its ability to represent and manipulate symbolic
+expressions.  We will take the first step in understanding how languages are
+implemented by building an evaluator for Lisp itself.  The language implemented
+by our evaluator will be a subset of the Scheme dialect of Lisp that we use in
+this book.  Although the evaluator described in this chapter is written for a
+particular dialect of Lisp, it contains the essential structure of an evaluator
+for any expression-oriented language designed for writing programs for a
+sequential machine.  (In fact, most language processors contain, deep within
+them, a little ``Lisp'' evaluator.)  The evaluator has been simplified for the
+purposes of illustration and discussion, and some features have been left out
+that would be important to include in a production-quality Lisp system.
+Nevertheless, this simple evaluator is adequate to execute most of the programs
+in this book.@footnote{The most important features that our evaluator leaves
+out are mechanisms for handling errors and supporting debugging.  For a more
+extensive discussion of evaluators, see @ref{Friedman et al. 1992}, which
+gives an exposition of programming languages that proceeds via a sequence of
+evaluators written in Scheme.}
+
+An important advantage of making the evaluator accessible as a Lisp program is
+that we can implement alternative evaluation rules by describing these as
+modifications to the evaluator program.  One place where we can use this power
+to good effect is to gain extra control over the ways in which computational
+models embody the notion of time, which was so central to the discussion in
+@ref{Chapter 3}.  There, we mitigated some of the complexities of state and
+assignment by using streams to decouple the representation of time in the world
+from time in the computer.  Our stream programs, however, were sometimes
+cumbersome, because they were constrained by the applicative-order evaluation
+of Scheme.  In @ref{4.2}, we'll change the underlying language to
+provide for a more elegant approach, by modifying the evaluator to provide for
+@newterm{normal-order evaluation}.
+
+Section @ref{4.3} implements a more ambitious linguistic change, whereby
+expressions have many values, rather than just a single value.  In this
+language of @newterm{nondeterministic computing}, it is natural to express
+processes that generate all possible values for expressions and then search for
+those values that satisfy certain constraints.  In terms of models of
+computation and time, this is like having time branch into a set of ``possible
+futures'' and then searching for appropriate time lines.  With our
+nondeterministic evaluator, keeping track of multiple values and performing
+searches are handled automatically by the underlying mechanism of the language.
+
+In @ref{4.4} we implement a @newterm{logic-programming} language in
+which knowledge is expressed in terms of relations, rather than in terms of
+computations with inputs and outputs.  Even though this makes the language
+drastically different from Lisp, or indeed from any conventional language, we
+will see that the logic-programming evaluator shares the essential structure of
+the Lisp evaluator.
+
+@menu
+* 4.1::              The Metacircular Evaluator
+* 4.2::              Variations on a Scheme: Lazy Evaluation
+* 4.3::              Variations on a Scheme: Nondeterministic Computing
+* 4.4::              Logic Programming
+@end menu
+

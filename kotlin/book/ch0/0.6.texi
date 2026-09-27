@@ -1,0 +1,110 @@
+@node	0.6, 0.7, 0.5, Chapter 0
+@section Errors as values
+
+This section covers the edition's error type and how this book uses it. No
+exception crosses library code in this book: a fallible operation returns
+or raises errors as ordinary values, and the caller decides where they
+become results.
+
+@heading @code{Raise} and @code{either}
+
+The raising side is Arrow's @code{Raise<E>} context parameter. A function
+that can fail declares the errors it produces, and @code{r.raise(e)}
+aborts the nearest enclosing raise scope with the error value @code{e}.
+Since @code{raise} never returns, the code after a guard needs no branch
+for the failure:
+
+@example kotlin
+public sealed interface PortError @{
+    public data object Blank : PortError
+
+    public data class NotDigits(
+        val input: String,
+    ) : PortError
+
+    public data class OutOfRange(
+        val n: Int,
+    ) : PortError
+@}
+
+context(r: Raise<PortError>)
+public fun parsePort(s: String): Int @{
+    val t = s.trim()
+    if (t.isEmpty()) r.raise(PortError.Blank)
+    if (t.any @{ c -> c !in '0'..'9' @}) r.raise(PortError.NotDigits(s))
+    val n = t.toInt()
+    if (n !in 1..65535) r.raise(PortError.OutOfRange(n))
+    return n
+@}
+@end example
+
+@noindent
+The catching side is @code{either @{ @}}, which runs its block under one
+raise scope and returns an @code{Either}: @code{Either.Right} of the value
+if nothing raised, @code{Either.Left} of the first error if one did. Inside
+the block the context argument is supplied by the scope itself, so calls
+read as plain calls:
+
+@example kotlin
+public fun parsePortEither(s: String): Either<PortError, Int> = either @{ parsePort(s) @}
+
+parsePortEither(" 8080 ")
+// => Either.Right(8080)
+
+parsePortEither("80x0")
+// => Either.Left(NotDigits(input=80x0))
+@end example
+
+@noindent
+Context parameters are a stable part of Kotlin 2.4, and this edition uses
+them with no compiler flag and no opt-in annotation.
+
+@heading Per-domain error sets
+
+The error type is a sealed interface of the domain, one variant per failure
+mode, so a caller can dispatch on errors with the exhaustive @code{when} of
+@ref{0.4}. This book keeps error sets per domain: the account of
+@ref{3.1} raises @code{AccountError}, the interval arithmetic of @ref{2.1.4}
+raises @code{IntervalError}, and so on. One error set is shared by every
+chapter that runs interpreted programs: the runtime's @code{SchemeError},
+whose variants carry the book's runtime faults, from @code{Unbound} for a
+name lookup that walked the whole environment chain, through
+@code{TypeMismatch} and @code{DivisionByZero}, to @code{Overflow} for
+checked arithmetic past the @code{Long} width. The book's own
+@code{(error "message" irritant ...)} calls raise @code{UserRaised}, so
+user programs of @ref{4.1} fail with values too.
+
+@heading What this buys
+
+Three consequences follow and are used without further comment later.
+Errors compose: a helper that raises composes with any other raising
+helper, and no try-and-rethrow plumbing appears. Errors stay typed all the
+way to the driver: @code{Either.Left(InsufficientFunds)} is a value that
+tests can compare, which is how the exercises of @ref{3.1} and @ref{4.3}
+pin failure behavior. And test failure paths cost the same as success
+paths: a probe asserts @code{Either.Left(NotDigits("1x"))} where an
+exception-based design would assert a throw.
+
+@example kotlin
+either @{ parsePort("   ") @}
+// => Either.Left(Blank)
+
+either @{ parsePort("99999") @}
+// => Either.Left(OutOfRange(n=99999))
+@end example
+
+@strong{@anchor{Exercise 0.4}Exercise 0.4:} The scaffold gives you
+@code{parseAmountEager}, a parser for non-negative amounts that throws
+@code{IllegalArgumentException} on blank input and on input containing any
+character outside @code{0..9} after trimming spaces, alongside a sealed
+@code{ParseError} with @code{Blank} and @code{NotDigits} variants. Write
+@code{parseAmount} as a @code{context(r: Raise<ParseError>)} function with
+the same behavior, raising instead of throwing. Test both branches through
+@code{either @{ @}}: digits and surrounding spaces parse to their value,
+blank input raises @code{Blank}, a stray character raises
+@code{NotDigits} carrying the original input, and the eager original still
+throws where your version returns a value.
+
+@cindex Either
+@cindex Raise
+@cindex SchemeError

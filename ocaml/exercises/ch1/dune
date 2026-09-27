@@ -1,0 +1,80 @@
+(library
+ (name sicp_ch1_exercises)
+ (libraries sicp_common)
+ (modules
+  sec_1_1
+  sec_1_2
+  sec_1_3
+  sec_1_4
+  sec_1_5
+  sec_1_6
+  sec_1_7
+  sec_1_8
+  sec_1_9
+  sec_1_10
+  sec_1_11
+  sec_1_12
+  sec_1_13
+  sec_1_14
+  sec_1_15
+  sec_1_16
+  sec_1_17
+  sec_1_18
+  sec_1_19
+  sec_1_20
+  sec_1_21
+  sec_1_22
+  sec_1_23
+  sec_1_24
+  sec_1_25
+  sec_1_26
+  sec_1_27
+  sec_1_28
+  sec_1_29
+  sec_1_30
+  sec_1_31
+  sec_1_32
+  sec_1_33
+  sec_1_34
+  sec_1_35
+  sec_1_36
+  sec_1_37
+  sec_1_38
+  sec_1_39
+  sec_1_40
+  sec_1_41
+  sec_1_42
+  sec_1_43
+  sec_1_44
+  sec_1_45
+  sec_1_46))
+
+(executable
+ (name scaffold_sec_1_1)
+ (modules scaffold_sec_1_1)
+ (libraries sicp_ch1_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_1_1.exe)))
+
+(executable
+ (name scaffold_sec_1_2)
+ (modules scaffold_sec_1_2)
+ (libraries sicp_ch1_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_1_2.exe)))
+
+(executable
+ (name scaffold_sec_1_3)
+ (modules scaffold_sec_1_3)
+ (libraries sicp_ch1_exercises))
+
+(rule
+ (alias scaffold)
+ (action
+  (run ./scaffold_sec_1_3.exe)))

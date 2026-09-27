@@ -1,0 +1,10 @@
+(* SPDX-License-Identifier: GPL-3.0-only
+   Original exercise *)
+
+(** Exercise 4.46: the left-to-right evaluation of the operands, traced. The statement lives in the section; this
+    signature is the exercise's public contract. *)
+
+(** [ex_4_46 ()] runs the demonstration the statement asks for
+    and answers its observable outcomes as printed strings, in the
+    order the statement raises them. *)
+val ex_4_46 : unit -> string list

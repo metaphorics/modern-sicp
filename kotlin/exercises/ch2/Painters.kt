@@ -9,8 +9,7 @@ package sicp.ch2.exercises
 // two combinators `beside` and `below`, and the recursive plans
 // `rightSplit`, `cornerSplit`, and `squareLimit` of the prose. A painter
 // draws by appending SVG line elements to a StringBuilder, so a picture
-// is a plain string and the section's figures render to
-// `book/figures/generated`. Exercises 2.46 to 2.52 re-derive named pieces
+// is a plain string. Exercises 2.46 to 2.52 re-derive named pieces
 // of this file and prove them equivalent; each exercise's rationale says
 // which piece is carried early and why.
 

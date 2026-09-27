@@ -34,7 +34,9 @@ fn racy_test_and_set(cell: &AtomicBool) -> bool {
     if cell.load(Ordering::SeqCst) {
         true
     } else {
-        std::thread::yield_now();
+        for _ in 0..4 {
+            std::thread::yield_now();
+        }
         cell.store(true, Ordering::SeqCst);
         false
     }

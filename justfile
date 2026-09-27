@@ -116,15 +116,22 @@ setup-books:
         (cd "$prefix/src" && echo '{{epubcheck-sha256}}  epubcheck-5.4.0.zip' | sha256sum -c -)
         unzip -q -o "$prefix/src/epubcheck-5.4.0.zip" -d "$prefix/opt"
         printf '#!/bin/sh\nexec java -jar %s/epubcheck.jar "$@"\n' \
-            "$prefix/opt/epubcheck-5.4.0/epubcheck.jar" > "$prefix/bin/epubcheck"
+            "$prefix/opt/epubcheck-5.4.0" > "$prefix/bin/epubcheck"
         chmod +x "$prefix/bin/epubcheck"
     fi
 
     if ! [ -x "$prefix/bin/rsvg-convert" ]; then
-        debdir=$(mktemp -d)
-        (cd "$debdir" && apt-get download "librsvg2-bin={{librsvg2-bin-version}}")
-        dpkg -x "$debdir"/librsvg2-bin_*.deb "$prefix/opt/librsvg2-bin"
-        ln -sfn "$prefix/opt/librsvg2-bin/usr/bin/rsvg-convert" "$prefix/bin/rsvg-convert"
+        if [ "$(id -u)" -eq 0 ] || sudo -n true 2>/dev/null; then
+            # CI runners carry apt and sudo: install the distribution build.
+            sudo apt-get install -y librsvg2-bin
+            ln -sfn "$(command -v rsvg-convert)" "$prefix/bin/rsvg-convert"
+        else
+            # Restricted hosts: extract the pinned Debian package instead.
+            debdir=$(mktemp -d)
+            (cd "$debdir" && { apt-get download "librsvg2-bin={{librsvg2-bin-version}}" || apt-get download librsvg2-bin; })
+            dpkg -x "$debdir"/librsvg2-bin_*.deb "$prefix/opt/librsvg2-bin"
+            ln -sfn "$prefix/opt/librsvg2-bin/usr/bin/rsvg-convert" "$prefix/bin/rsvg-convert"
+        fi
     fi
 
     "$prefix/bin/texi2any" --version | head -1

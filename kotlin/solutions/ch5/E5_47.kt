@@ -17,13 +17,18 @@ import sicp.guest.GValue
 public fun mixedCallsRun(): List<String> {
     val interpreterSource =
         """
-        fun main(): (Long) -> Long {
+        fun incrementer(): (Long) -> Long {
             val increment: Long = 1L
             return { x: Long -> x + increment }
         }
+
+        fun main() {
+        }
         """.trimIndent()
     val closure =
-        Direct.run(admitProgram(interpreterSource)).mainValue as? GValue.VFunction
+        Direct
+            .values(admitProgram(interpreterSource), listOf("incrementer"))
+            .fold({ error("the direct evaluator did not run: $it") }, { it[0] }) as? GValue.VFunction
             ?: error("the direct evaluator did not return an interpreted closure")
     val compiledSource =
         """

@@ -1163,14 +1163,12 @@ internal class EceOps(
     private fun forItems(
         node: For,
         env: Env,
-    ): List<GValue> {
+    ): Iterable<GValue> {
         val endExpression = node.end
         if (endExpression != null) {
             val start = evalExpr(node.iterable, env)
             val end = evalExpr(endExpression, env)
-            if (start is GValue.VInt && end is GValue.VInt) return (start.value..end.value).map { GValue.VInt(it) }
-            if (start is GValue.VLong && end is GValue.VLong) return (start.value..end.value).map { GValue.VLong(it) }
-            return r.raise(GuestError.UnassignedRead(node.span))
+            return Primitives.rangeValues(start, end, node.span).asIterable()
         }
         return when (val source = evalExpr(node.iterable, env)) {
             is GValue.VList -> source.items

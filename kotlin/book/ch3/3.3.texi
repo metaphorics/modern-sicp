@@ -293,25 +293,25 @@ fun cons(x: Value, y: Value): VPair @{
 appending lists was introduced in @ref{2.2.1}:
 
 @example kotlin
-fun append(x: Value, y: Value): Value =
-    if (x !is VPair) @{
+fun append(x: Datum, y: Datum): Datum =
+    if (x !is PairCell) @{
         y
     @} else @{
-        cons(x.car, append(x.cdr, y))
+        pair(x.first, append(x.second, y))
     @}
 @end example
 
-@code{Append} forms a new list by successively @code{cons}ing the elements of
+@code{Append} forms a new list by successively pairing the elements of
 @code{x} onto @code{y}.  The function @code{appendBang} is similar to
 @code{append}, but it is a mutator rather than a constructor.  It appends the
 lists by splicing them together, modifying the final pair of @code{x} so that
-its @code{cdr} is now @code{y}.  (It is an error to call @code{appendBang}
-with an empty @code{x}; the @code{VPair} parameter type refuses one before
-the program runs.)
+its @code{second} field is now @code{y}.  (It is an error to call
+@code{appendBang} with an empty @code{x}; the @code{PairCell} parameter type
+refuses one before the program runs.)
 
 @example kotlin
-fun appendBang(x: VPair, y: VPair): VPair @{
-    lastPair(x).setCdr(y)
+fun appendBang(x: PairCell, y: Datum): PairCell @{
+    lastPair(x).second = y
     return x
 @}
 @end example
@@ -320,34 +320,35 @@ Here @code{lastPair} is a function that returns the last pair in its
 argument:
 
 @example kotlin
-fun lastPair(x: VPair): VPair =
-    if (x.cdr is VNil) x else lastPair(x.cdr as VPair)
+fun lastPair(x: PairCell): PairCell =
+    if (x.second === Empty) x else lastPair(x.second as PairCell)
 @end example
 
-Consider the interaction
+Consider the interaction, in which @code{z} and @code{w} both hold the four
+symbols @code{a}, @code{b}, @code{c}, @code{d} in order:
 
 @example kotlin
-val x = vlist(VSym("a"), VSym("b")) as VPair
-val y = vlist(VSym("c"), VSym("d")) as VPair
+val x = datumList(Symbol("a"), Symbol("b")) as PairCell
+val y = datumList(Symbol("c"), Symbol("d")) as PairCell
 val z = append(x, y)
 
-z
-// => (a b c d)
-
-x.cdr
+x.second
 // ⟨response⟩
 
 val w = appendBang(x, y)
 
-w
-// => (a b c d)
+w === x
+// => true
 
-x.cdr
+x.second
 // ⟨response⟩
 @end example
 
-What are the missing @code{⟨}@var{response}@code{⟩}s?  Draw box-and-pointer diagrams to
-explain your answer.
+What are the missing @code{⟨}@var{response}@code{⟩}s?  A pair prints in the
+constructor form of @code{renderDatum}: a list holding only the symbol
+@code{q}, for example, prints as
+@code{PairCell(first=Symbol(name="q"), second=Empty)}.  Draw box-and-pointer
+diagrams to explain your answer.
 @end quotation
 
 @quotation
@@ -356,8 +357,8 @@ explain your answer.
 in @ref{Exercise 3.12}:
 
 @example kotlin
-fun makeCycle(x: VPair): VPair @{
-    lastPair(x).setCdr(x)
+fun makeCycle(x: PairCell): PairCell @{
+    lastPair(x).second = x
     return x
 @}
 @end example
@@ -366,7 +367,7 @@ Draw a box-and-pointer diagram that shows the structure @code{z} created by
 
 @example kotlin
 val z = makeCycle(
-    vlist(VSym("a"), VSym("b"), VSym("c")) as VPair,
+    datumList(Symbol("a"), Symbol("b"), Symbol("c")) as PairCell,
 )
 @end example
 
@@ -378,31 +379,31 @@ What happens if we try to compute @code{lastPair(z)}?
 useful, although obscure:
 
 @example kotlin
-fun mystery(x: VPair): VPair @{
-    fun loop(x: Value, y: Value): VPair =
-        if (x !is VPair) @{
-            y as VPair
+fun mystery(x: PairCell): PairCell @{
+    fun loop(x: Datum, y: Datum): PairCell =
+        if (x !is PairCell) @{
+            y as PairCell
         @} else @{
-            val temp = x.cdr
-            x.setCdr(y)
+            val temp = x.second
+            x.second = y
             loop(temp, x)
         @}
-    return loop(x, VNil)
+    return loop(x, Empty)
 @}
 @end example
 
 @code{Loop} uses the ``temporary'' variable @code{temp} to hold the old value
-of the @code{cdr} of @code{x}, since the @code{setCdr} on the next line
-destroys the @code{cdr}.  Explain what @code{mystery} does in general.  Suppose
+of the @code{second} field of @code{x}, since the assignment on the next line
+destroys it.  Explain what @code{mystery} does in general.  Suppose
 @code{v} is defined by
 
 @example kotlin
-val v = vlist(
-    VSym("a"),
-    VSym("b"),
-    VSym("c"),
-    VSym("d"),
-) as VPair
+val v = datumList(
+    Symbol("a"),
+    Symbol("b"),
+    Symbol("c"),
+    Symbol("d"),
+) as PairCell
 @end example
 
 Draw the box-and-pointer diagram that represents the list to which @code{v} is

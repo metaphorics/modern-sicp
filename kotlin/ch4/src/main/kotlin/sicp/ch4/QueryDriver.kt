@@ -92,6 +92,7 @@ public class QueryDriver private constructor(
     private val db: QueryDatabase,
     private val deduplicating: Boolean,
     private val maxDepth: Int,
+    private val postponing: Boolean = false,
 ) {
     private var nextRuleInstance = 0L
 
@@ -107,6 +108,14 @@ public class QueryDriver private constructor(
             db: QueryDatabase,
             maxDepth: Int,
         ): QueryDriver = QueryDriver(db, deduplicating = true, maxDepth = maxDepth)
+
+        /** Every answer in database and rule order, with `QNot` and `QGuard`
+         * postponed: a filter that meets a variable still unbound waits on
+         * its frame and runs the moment the last of its variables is bound
+         * (exercise 4.77). A filter whose variables are never bound runs
+         * when the query ends, as the other drivers would have run it. */
+        public fun postponing(db: QueryDatabase): QueryDriver =
+            QueryDriver(db, deduplicating = false, maxDepth = Int.MAX_VALUE, postponing = true)
     }
 
     /** No rule is entered or effect run before the first pull. */
@@ -115,7 +124,8 @@ public class QueryDriver private constructor(
         variables: List<QVar>,
     ): Sequence<QFrame> =
         sequence {
-            val answers = queryFrames(query, QFrame(emptyMap()), 0)
+            val start = QFrame(emptyMap())
+            val answers = if (postponing) settledFrames(query, start, 0) else queryFrames(query, start, 0)
             yieldAll(if (deduplicating) answers.distinctBy { renderAnswer(it, variables) } else answers)
         }
 
@@ -167,15 +177,128 @@ public class QueryDriver private constructor(
         parts: List<QQuery>,
         frame: QFrame,
         depth: Int,
-    ): Sequence<QFrame> =
+    ): Sequence<QFrame> = roundRobin { parts.map { queryFrames(it, frame, depth).iterator() } }
+
+    /** One answer from each stream in turn until every stream is exhausted;
+     * the streams are opened at the first pull, not before. */
+    private fun <T> roundRobin(open: () -> List<Iterator<T>>): Sequence<T> =
         sequence {
-            val pending = ArrayDeque(parts.map { queryFrames(it, frame, depth).iterator() })
+            val pending = ArrayDeque(open())
             while (pending.isNotEmpty()) {
                 val current = pending.removeFirst()
                 if (current.hasNext()) {
                     yield(current.next())
                     pending.addLast(current)
                 }
+            }
+        }
+
+    /** A frame together with the filters that met unbound variables and
+     * still wait for them. */
+    private class Waiting(
+        val frame: QFrame,
+        val filters: List<QQuery>,
+    )
+
+    /** The frames [query] answers from [frame] with filters postponed; a
+     * filter still waiting when the query ends runs then, on the final frame. */
+    private fun settledFrames(
+        query: QQuery,
+        frame: QFrame,
+        depth: Int,
+    ): Sequence<QFrame> =
+        waitingFrames(query, Waiting(frame, emptyList()), depth).mapNotNull { state ->
+            state.frame.takeIf { state.filters.all { holds(it, state.frame, depth) } }
+        }
+
+    private fun waitingFrames(
+        query: QQuery,
+        state: Waiting,
+        depth: Int,
+    ): Sequence<Waiting> =
+        when (query) {
+            is QPattern -> {
+                waitingPattern(query.term, state, depth)
+            }
+
+            is QAnd -> {
+                query.parts.fold(sequenceOf(state)) { states, part ->
+                    states.flatMap { waitingFrames(part, it, depth) }
+                }
+            }
+
+            is QOr -> {
+                roundRobin { query.parts.map { waitingFrames(it, state, depth).iterator() } }
+            }
+
+            is QNot, is QGuard -> {
+                sequence { release(Waiting(state.frame, state.filters + query), depth)?.let { yield(it) } }
+            }
+
+            is QUnique -> {
+                sequence {
+                    val matches = settledFrames(query.part, state.frame, depth).iterator()
+                    if (!matches.hasNext()) return@sequence
+                    val only = matches.next()
+                    if (!matches.hasNext()) release(Waiting(only, state.filters), depth)?.let { yield(it) }
+                }
+            }
+        }
+
+    private fun waitingPattern(
+        pattern: QTerm,
+        state: Waiting,
+        depth: Int,
+    ): Sequence<Waiting> =
+        sequence {
+            val head = headOf(pattern)
+            for (fact in db.factsWithHead(head)) {
+                val extended = unify(pattern, fact.term, state.frame) ?: continue
+                release(Waiting(extended, state.filters), depth)?.let { yield(it) }
+            }
+            if (depth >= maxDepth) return@sequence
+            for (unrenamed in db.rulesWithHead(head)) {
+                val rule = freshRule(unrenamed)
+                val matched = unify(pattern, rule.conclusion, state.frame) ?: continue
+                val entered = release(Waiting(matched, state.filters), depth) ?: continue
+                yieldAll(waitingFrames(rule.body, entered, depth + 1))
+            }
+        }
+
+    /** Runs every waiting filter whose variables are all bound now; the frame
+     * is dropped (null) when one of them fails, and the rest keep waiting. */
+    private fun release(
+        state: Waiting,
+        depth: Int,
+    ): Waiting? {
+        val (ready, blocked) =
+            state.filters.partition { filter ->
+                variablesOf(filter).none { containsVariable(reify(it, state.frame)) }
+            }
+        if (ready.any { !holds(it, state.frame, depth) }) return null
+        return if (ready.isEmpty()) state else Waiting(state.frame, blocked)
+    }
+
+    /** The filter's own test on [frame]: `QNot` succeeds when its subquery
+     * answers nothing, `QGuard` when its arguments are ground and its
+     * predicate accepts them. */
+    private fun holds(
+        filter: QQuery,
+        frame: QFrame,
+        depth: Int,
+    ): Boolean =
+        when (filter) {
+            is QNot -> {
+                !settledFrames(filter.part, frame, depth).iterator().hasNext()
+            }
+
+            is QGuard -> {
+                val bound = filter.args.map { reify(it, frame) }
+                bound.none { containsVariable(it) } && filter.predicate(bound)
+            }
+
+            else -> {
+                true
             }
         }
 
@@ -282,6 +405,23 @@ public class QueryDriver private constructor(
             }
         }
 }
+
+private fun variablesOf(query: QQuery): Set<QVar> =
+    when (query) {
+        is QPattern -> variablesOf(query.term)
+        is QAnd -> query.parts.flatMapTo(mutableSetOf(), ::variablesOf)
+        is QOr -> query.parts.flatMapTo(mutableSetOf(), ::variablesOf)
+        is QNot -> variablesOf(query.part)
+        is QUnique -> variablesOf(query.part)
+        is QGuard -> query.args.flatMapTo(mutableSetOf(), ::variablesOf)
+    }
+
+private fun variablesOf(term: QTerm): Set<QVar> =
+    when (term) {
+        is QSym -> emptySet()
+        is QVar -> setOf(term)
+        is QList -> (term.items + listOfNotNull(term.tail)).flatMapTo(mutableSetOf(), ::variablesOf)
+    }
 
 private fun containsVariable(term: QTerm): Boolean =
     when (term) {

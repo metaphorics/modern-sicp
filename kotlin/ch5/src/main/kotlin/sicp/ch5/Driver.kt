@@ -107,7 +107,7 @@ public object Driver {
             "compiled" -> compiledObservation(text, mode)
             "lazy" -> lazyObservation(text)
             "search" -> searchObservation(text)
-            "query" -> observationOfRun(sicp.ch4.Direct.run(text, Mode.QUERY))
+            "query" -> QueryCase.observe(text).fold(::rejection) { it }
             else -> null
         }
     }

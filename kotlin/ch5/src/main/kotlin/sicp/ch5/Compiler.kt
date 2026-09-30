@@ -282,7 +282,7 @@ public class CompilerSession internal constructor(
             return Either.Left(CompilerSessionError.MachineRejected(MachineProgramError.Running))
         }
         val candidate = if (sourceText.isEmpty()) source else "$sourceText\n$source"
-        return Admission.admit(candidate, mode).fold(
+        return Admission.admit(candidate, mode, requireEntryPoint = false).fold(
             { Either.Left(CompilerSessionError.AdmissionRejected(it)) },
             { checked -> compileAndExecute(checked, candidate, entryName) },
         )
@@ -447,7 +447,6 @@ internal class CompileRuntime(
         ops["compiled-pair-args"] = { args -> GValue.VList(mutableListOf(args[0], args[1]), false) }
         ops["compiled-singleton"] = { args -> GValue.VList(mutableListOf(args[0]), false) }
         ops["compiled-destructure"] = { args -> destructureInto(args[0], (args[1] as GValue.VInt).value) }
-        ops["compiled-range"] = { args -> rangeValues(args[0], args[1]) }
         ops["compiled-write-property"] = { args -> compiledWriteProperty(args) }
         ops["compiled-write-index"] = { args -> compiledWriteIndex(args) }
         ops["compiled-method-proc"] = { args -> methodProc(args) }
@@ -679,20 +678,6 @@ internal class CompileRuntime(
             }
         if (values.size < count) return shapeFault()
         return GValue.VList(values.take(count).toMutableList(), false)
-    }
-
-    context(r: Raise<GuestError>)
-    private fun rangeValues(
-        start: GValue,
-        end: GValue,
-    ): GValue {
-        if (start is GValue.VInt && end is GValue.VInt) {
-            return GValue.VList((start.value..end.value).map { GValue.VInt(it) }.toMutableList(), false)
-        }
-        if (start is GValue.VLong && end is GValue.VLong) {
-            return GValue.VList((start.value..end.value).map { GValue.VLong(it) }.toMutableList(), false)
-        }
-        return shapeFault()
     }
 
     context(r: Raise<GuestError>)
@@ -1751,15 +1736,38 @@ private class ProgramCompiler(
         return InstrSeq(condition.needs + body.needs, setOf("val"), stmts)
     }
 
+    /** A `for` over a list or a range. A range keeps only its running index
+     * and its limit, so `break` never pays for the rest of it and a limit of
+     * `Long.MAX_VALUE` ends by comparison instead of wrapping; `continue`
+     * jumps to the advance step, not past it. */
     private fun compileFor(statement: For): InstrSeq {
         val itemsName = "\$forItems${labelCount + 1}"
         val indexName = "\$forIndex${labelCount + 1}"
-        val continueLabel = freshLabel("for")
+        val limitName = "\$forLimit${labelCount + 1}"
+        val testLabel = freshLabel("for")
         val bodyLabel = freshLabel("for-body")
+        val nextLabel = freshLabel("for-next")
         val endLabel = freshLabel("for-end")
         val stmts = mutableListOf<Stmt>()
         var needs = emptySet<String>()
         val endExpression = statement.end
+
+        fun declare(
+            name: String,
+            from: String,
+        ) = Assign("val", OpSrc("declare-local", listOf(sicp.runtime.Source.ConstSrc(GValue.VString(name)), RegSrc(from), RegSrc("env"))))
+
+        fun binary(operator: String) =
+            Assign(
+                "val",
+                OpSrc("compiled-binary", listOf(sicp.runtime.Source.ConstSrc(GValue.VString(operator)), RegSrc("val"), RegSrc("argl"))),
+            )
+
+        fun compare(operator: String): List<Stmt> =
+            lookupStmts(Name(limitName, statement.span)) + Assign("argl", RegSrc("val")) +
+                lookupStmts(Name(indexName, statement.span)) + binary(operator)
+
+        val step: GValue
         if (endExpression != null) {
             val start = compileExpression(statement.iterable, Linkage.Next)
             openSaves.add("val")
@@ -1771,90 +1779,84 @@ private class ProgramCompiler(
             stmts.addAll(end.stmts)
             stmts.add(Assign("argl", RegSrc("val")))
             stmts.add(Restore("val"))
-            stmts.add(Assign("val", OpSrc("compiled-range", listOf(RegSrc("val"), RegSrc("argl")))))
+            stmts.add(declare(indexName, "val"))
+            stmts.add(declare(limitName, "argl"))
+            frames[frames.size - 1].add(indexName)
+            frames[frames.size - 1].add(limitName)
+            val isLong = (checked.types[statement.iterable] as? GuestType.Named)?.name == "Long"
+            step = if (isLong) GValue.VLong(1L) else GValue.VInt(1)
         } else {
             val items = compileExpression(statement.iterable, Linkage.Next)
             needs = needs + items.needs
             stmts.addAll(items.stmts)
+            stmts.add(declare(itemsName, "val"))
+            stmts.add(Assign("val", OpSrc("compiled-const", listOf(sicp.runtime.Source.ConstSrc(GValue.VInt(0))))))
+            stmts.add(declare(indexName, "val"))
+            frames[frames.size - 1].add(itemsName)
+            frames[frames.size - 1].add(indexName)
+            step = GValue.VInt(1)
         }
-        stmts.add(
-            Assign(
-                "val",
-                OpSrc("declare-local", listOf(sicp.runtime.Source.ConstSrc(GValue.VString(itemsName)), RegSrc("val"), RegSrc("env"))),
-            ),
-        )
-        stmts.add(Assign("val", OpSrc("compiled-const", listOf(sicp.runtime.Source.ConstSrc(GValue.VInt(0))))))
-        stmts.add(
-            Assign(
-                "val",
-                OpSrc("declare-local", listOf(sicp.runtime.Source.ConstSrc(GValue.VString(indexName)), RegSrc("val"), RegSrc("env"))),
-            ),
-        )
-        frames[frames.size - 1].add(itemsName)
-        frames[frames.size - 1].add(indexName)
-        loopContinues.addLast(continueLabel)
+        loopContinues.addLast(nextLabel)
         loopEnds.addLast(endLabel)
         loopSaveDepths.addLast(openSaves.size)
         val bodyStatements = mutableListOf<Stmt>()
-        bodyStatements.addAll(lookupStmts(Name(itemsName, statement.span)))
-        bodyStatements.add(Save("val"))
-        bodyStatements.addAll(lookupStmts(Name(indexName, statement.span)))
-        bodyStatements.add(Assign("argl", RegSrc("val")))
-        bodyStatements.add(Restore("val"))
-        bodyStatements.add(Assign("val", OpSrc("compiled-index", listOf(RegSrc("val"), RegSrc("argl")))))
+        if (endExpression != null) {
+            bodyStatements.addAll(lookupStmts(Name(indexName, statement.span)))
+        } else {
+            bodyStatements.addAll(lookupStmts(Name(itemsName, statement.span)))
+            bodyStatements.add(Save("val"))
+            bodyStatements.addAll(lookupStmts(Name(indexName, statement.span)))
+            bodyStatements.add(Assign("argl", RegSrc("val")))
+            bodyStatements.add(Restore("val"))
+            bodyStatements.add(Assign("val", OpSrc("compiled-index", listOf(RegSrc("val"), RegSrc("argl")))))
+        }
         bodyStatements.add(Save("env"))
         bodyStatements.add(Assign("env", OpSrc("child-env", listOf(RegSrc("env")))))
         frames.add(mutableListOf(statement.name))
-        bodyStatements.add(
-            Assign(
-                "val",
-                OpSrc("declare-local", listOf(sicp.runtime.Source.ConstSrc(GValue.VString(statement.name)), RegSrc("val"), RegSrc("env"))),
-            ),
-        )
+        bodyStatements.add(declare(statement.name, "val"))
         openSaves.add("env")
         bodyStatements.addAll(compileBlock(statement.body).stmts)
         openSaves.removeAt(openSaves.lastIndex)
         frames.removeAt(frames.size - 1)
         bodyStatements.add(Restore("env"))
-        bodyStatements.addAll(lookupStmts(Name(indexName, statement.span)))
-        bodyStatements.add(Assign("argl", RegSrc("val")))
-        bodyStatements.add(Assign("val", OpSrc("compiled-const", listOf(sicp.runtime.Source.ConstSrc(GValue.VInt(1))))))
-        bodyStatements.add(
-            Assign(
-                "val",
-                OpSrc("compiled-binary", listOf(sicp.runtime.Source.ConstSrc(GValue.VString("+")), RegSrc("val"), RegSrc("argl"))),
-            ),
-        )
-        bodyStatements.add(
+        val advance = mutableListOf<Stmt>()
+        if (endExpression != null) {
+            advance.addAll(compare("=="))
+            advance.add(Test(OpCond("is-true", listOf(RegSrc("val")))))
+            advance.add(Branch(endLabel))
+        }
+        advance.addAll(lookupStmts(Name(indexName, statement.span)))
+        advance.add(Assign("argl", RegSrc("val")))
+        advance.add(Assign("val", OpSrc("compiled-const", listOf(sicp.runtime.Source.ConstSrc(step)))))
+        advance.add(binary("+"))
+        advance.add(
             Assign(
                 "val",
                 OpSrc("compiled-assign", listOf(sicp.runtime.Source.ConstSrc(GValue.VString(indexName)), RegSrc("val"), RegSrc("env"))),
             ),
         )
-        val sizeProbe = mutableListOf<Stmt>()
-        sizeProbe.addAll(lookupStmts(Name(itemsName, statement.span)))
-        sizeProbe.add(
-            Assign("val", OpSrc("compiled-property", listOf(RegSrc("val"), sicp.runtime.Source.ConstSrc(GValue.VString("size"))))),
-        )
-        sizeProbe.add(Assign("argl", RegSrc("val")))
-        sizeProbe.addAll(lookupStmts(Name(indexName, statement.span)))
-        sizeProbe.add(
-            Assign(
-                "val",
-                OpSrc("compiled-binary", listOf(sicp.runtime.Source.ConstSrc(GValue.VString("<")), RegSrc("val"), RegSrc("argl"))),
-            ),
-        )
+        val test =
+            if (endExpression != null) {
+                compare("<=")
+            } else {
+                lookupStmts(Name(itemsName, statement.span)) +
+                    Assign("val", OpSrc("compiled-property", listOf(RegSrc("val"), sicp.runtime.Source.ConstSrc(GValue.VString("size"))))) +
+                    Assign("argl", RegSrc("val")) +
+                    lookupStmts(Name(indexName, statement.span)) + binary("<")
+            }
         loopContinues.removeLast()
         loopEnds.removeLast()
         loopSaveDepths.removeLast()
-        stmts.add(Label(continueLabel))
-        stmts.addAll(sizeProbe)
+        stmts.add(Label(testLabel))
+        stmts.addAll(test)
         stmts.add(Test(OpCond("is-true", listOf(RegSrc("val")))))
         stmts.add(Branch(bodyLabel))
         stmts.add(Goto(GotoTarget.Lbl(endLabel)))
         stmts.add(Label(bodyLabel))
         stmts.addAll(bodyStatements)
-        stmts.add(Goto(GotoTarget.Lbl(continueLabel)))
+        stmts.add(Label(nextLabel))
+        stmts.addAll(advance)
+        stmts.add(Goto(GotoTarget.Lbl(testLabel)))
         stmts.add(Label(endLabel))
         stmts.add(Assign("val", OpSrc("compiled-unit", emptyList())))
         return InstrSeq(needs, setOf("val", "argl", "target"), stmts)

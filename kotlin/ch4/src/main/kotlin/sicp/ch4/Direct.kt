@@ -82,6 +82,15 @@ public object Direct {
         sink: OutputSink = OutputSink(),
     ): RunResult = execute(checked, sink)
 
+    /** Evaluates the named zero-parameter top-level functions of [checked]
+     * in order and answers their values. The query cases declare their data
+     * (facts, rules, query) as such functions (grammar 4.3), so an engine can
+     * read the domain data without running `main`. */
+    public fun values(
+        checked: CheckedProgram,
+        names: List<String>,
+    ): Either<GuestError, List<GValue>> = either { Evaluator(checked, OutputSink()).callEach(names) }
+
     internal fun execute(
         checked: CheckedProgram,
         sink: OutputSink = OutputSink(),
@@ -119,6 +128,15 @@ internal open class Evaluator(
         val main = globals.lookup("main")?.value
         if (main !is GValue.VFunction) return GValue.VUnit
         return Primitives.invoke(main, emptyList(), NO_POSITION)
+    }
+
+    context(r: Raise<GuestError>)
+    fun callEach(names: List<String>): List<GValue> {
+        installDeclarations(checked.syntax)
+        return names.map { name ->
+            val function = globals.lookup(name)?.value as? GValue.VFunction ?: r.raise(GuestError.UnassignedRead(NO_POSITION))
+            Primitives.invoke(function, emptyList(), NO_POSITION)
+        }
     }
 
     context(r: Raise<GuestError>)
@@ -666,12 +684,12 @@ internal open class Evaluator(
     private fun iterableValues(
         statement: For,
         env: Env,
-    ): List<GValue> {
+    ): Iterable<GValue> {
         val endExpression = statement.end
         if (endExpression != null) {
             val start = eval(statement.iterable, env)
             val end = eval(endExpression, env)
-            return rangeValues(start, end, statement)
+            return Primitives.rangeValues(start, end, statement.span).asIterable()
         }
         val iterable = eval(statement.iterable, env)
         val list =
@@ -682,16 +700,4 @@ internal open class Evaluator(
             }
         return list
     }
-
-    context(r: Raise<GuestError>)
-    private fun rangeValues(
-        start: GValue,
-        end: GValue,
-        at: For,
-    ): List<GValue> =
-        when {
-            start is GValue.VInt && end is GValue.VInt -> (start.value..end.value).map { GValue.VInt(it) }
-            start is GValue.VLong && end is GValue.VLong -> (start.value..end.value).map { GValue.VLong(it) }
-            else -> r.raise(GuestError.UnassignedRead(at.span))
-        }
 }

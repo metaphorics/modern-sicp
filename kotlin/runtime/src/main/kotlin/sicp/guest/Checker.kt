@@ -11,6 +11,7 @@ private class ClassInfo(
     val methods: Map<String, FunctionDecl>,
     val parent: String?,
     val variants: MutableList<String>,
+    val sealed: Boolean = false,
 )
 
 private enum class BindingKind { LOCAL, PARAM, FUNCTION, PROPERTY, INITIALIZING }
@@ -53,8 +54,12 @@ public class Checker(
     private var inCondition = false
 
     context(r: Raise<AdmissionError>)
-    public fun check(program: Program): CheckedProgram {
+    public fun check(
+        program: Program,
+        requireEntryPoint: Boolean = true,
+    ): CheckedProgram {
         collectHeaders(if (mode.admitsQuery) QUERY_VOCABULARY + program.declarations else program.declarations)
+        if (requireEntryPoint) requireEntryPoint(program)
         for (declaration in program.declarations) checkDeclaration(declaration)
         return CheckedProgram(program, types, mode, lambdaCoercions)
     }
@@ -88,6 +93,61 @@ public class Checker(
 
     // ---------- declarations ----------
 
+    /** Section 2.2: a unit that runs contains exactly one top-level
+     * `fun main()` with no parameters, a block body, and no declared result.
+     * A second `main` is already a redeclaration by [collectHeaders]. */
+    context(r: Raise<AdmissionError>)
+    private fun requireEntryPoint(program: Program) {
+        val main =
+            program.declarations.filterIsInstance<FunctionDecl>().singleOrNull { it.name == "main" }
+                ?: fail("UndeclaredName", program, "a compilation unit declares exactly one `fun main()`")
+        if (main.parameters.isNotEmpty()) failUnsupported("MiscKotlin", main, "`main` takes no parameters")
+        if (main.result != null) failUnsupported("MiscKotlin", main, "`main` declares no return type")
+        if (main.body !is Block) failUnsupported("MiscKotlin", main, "`main` has a block body")
+    }
+
+    /** Rejects a second declaration of one name in one namespace: the same
+     * signature is a host-invalid redeclaration, a different one is a
+     * user-defined overload, which the grammar never admits (section 2.2). */
+    context(r: Raise<AdmissionError>)
+    private fun rejectDuplicate(
+        previous: FunctionDecl,
+        duplicate: FunctionDecl,
+    ): Nothing =
+        if (previous.parameters.map { it.type } == duplicate.parameters.map { it.type }) {
+            fail("Redeclaration", duplicate, "conflicting declarations of `${duplicate.name}`")
+        } else {
+            failUnsupported("MiscKotlin", duplicate, "user-defined overload of `${duplicate.name}`")
+        }
+
+    context(r: Raise<AdmissionError>)
+    private fun requireFreshType(
+        declaration: Declaration,
+        name: String,
+    ) {
+        if (name in classes || name in aliases) fail("Redeclaration", declaration, "type `$name` is declared twice")
+    }
+
+    context(r: Raise<AdmissionError>)
+    private fun requireDistinct(
+        names: List<String>,
+        at: Node,
+        what: String,
+    ) {
+        val seen = mutableSetOf<String>()
+        for (name in names) if (!seen.add(name)) fail("Redeclaration", at, "$what `$name` is declared twice")
+    }
+
+    context(r: Raise<AdmissionError>)
+    private fun methodTable(declaration: PlainClass): Map<String, FunctionDecl> {
+        val table = LinkedHashMap<String, FunctionDecl>()
+        for (method in declaration.methods) {
+            table[method.name]?.let { rejectDuplicate(it, method) }
+            table[method.name] = method
+        }
+        return table
+    }
+
     /** Registers [declarations]: the query modes prepend the query DSL
      * vocabulary, admitted exactly like user-declared data. */
     context(r: Raise<AdmissionError>)
@@ -96,40 +156,52 @@ public class Checker(
         for (declaration in declarations) {
             when (declaration) {
                 is FunctionDecl -> {
+                    functions[declaration.name]?.let { rejectDuplicate(it, declaration) }
                     functions[declaration.name] = declaration
                 }
 
                 is TopProperty -> {
+                    if (declaration.property.name in properties) {
+                        fail("Redeclaration", declaration, "property `${declaration.property.name}` is declared twice")
+                    }
                     properties[declaration.property.name] = declaration
                 }
 
                 is TypeAlias -> {
+                    requireFreshType(declaration, declaration.name)
                     aliases[declaration.name] = resolveType(declaration.target, declaration)
                 }
 
                 is DataClass -> {
+                    requireFreshType(declaration, declaration.name)
+                    requireDistinct(declaration.properties.map { it.name }, declaration, "property")
                     classes[declaration.name] =
                         ClassInfo(declaration.name, true, false, declaration.properties, emptyMap(), declaration.parent, mutableListOf())
                 }
 
                 is PlainClass -> {
+                    requireFreshType(declaration, declaration.name)
+                    requireDistinct(declaration.properties.map { it.name }, declaration, "property")
                     classes[declaration.name] =
                         ClassInfo(
                             declaration.name,
                             false,
                             false,
                             declaration.properties,
-                            declaration.methods.associateBy { it.name },
+                            methodTable(declaration),
                             declaration.parent,
                             mutableListOf(),
                         )
                 }
 
                 is SealedInterface -> {
-                    classes[declaration.name] = ClassInfo(declaration.name, false, false, emptyList(), emptyMap(), null, mutableListOf())
+                    requireFreshType(declaration, declaration.name)
+                    classes[declaration.name] =
+                        ClassInfo(declaration.name, false, false, emptyList(), emptyMap(), null, mutableListOf(), sealed = true)
                 }
 
                 is DataObject -> {
+                    requireFreshType(declaration, declaration.name)
                     classes[declaration.name] =
                         ClassInfo(declaration.name, true, true, emptyList(), emptyMap(), declaration.parent, mutableListOf())
                 }
@@ -147,12 +219,19 @@ public class Checker(
         }
     }
 
+    /** Section 3.5: only a `data class` or `data object` may name a parent,
+     * and the parent must be a `sealed interface`; every other supertype is
+     * inheritance outside a sealed hierarchy. */
     context(r: Raise<AdmissionError>)
     private fun linkVariant(
         declaration: Declaration,
         parentName: String,
     ) {
         val parent = classes[parentName] ?: fail("UndeclaredName", declaration, "undeclared parent `$parentName`")
+        if (declaration is PlainClass) failUnsupported("MiscKotlin", declaration, "a plain class has no inheritance")
+        if (!parent.sealed) {
+            failUnsupported("MiscKotlin", declaration, "inheritance outside a sealed hierarchy: `$parentName` is not a sealed interface")
+        }
         val name = declarationName(declaration)
         if (name !in parent.variants) parent.variants.add(name)
         TypeFamilies.variantToFamily[name] = parentName
@@ -173,7 +252,7 @@ public class Checker(
     private fun checkDeclaration(declaration: Declaration) {
         when (declaration) {
             is FunctionDecl -> {
-                checkFunction(declaration)
+                checkFunction(declaration, entry = declaration.name == "main")
             }
 
             is TopProperty -> {
@@ -206,8 +285,10 @@ public class Checker(
     private fun checkFunction(
         declaration: FunctionDecl,
         enclosing: Scope? = null,
+        entry: Boolean = false,
     ) {
-        val result = declaredResult(declaration)
+        val result = declaredResult(declaration, entry)
+        requireDistinct(declaration.parameters.map { it.name }, declaration, "parameter")
         val scope = Scope(enclosing, lambdaBoundary = enclosing != null)
         for (parameter in declaration.parameters) {
             val type = resolveType(parameter.type, parameter)
@@ -237,9 +318,12 @@ public class Checker(
     }
 
     context(r: Raise<AdmissionError>)
-    private fun declaredResult(declaration: FunctionDecl): GuestType {
+    private fun declaredResult(
+        declaration: FunctionDecl,
+        entry: Boolean = false,
+    ): GuestType {
         if (declaration.result != null) return resolveType(declaration.result, declaration)
-        if (declaration.name == "main" && declaration.parameters.isEmpty()) return T_UNIT
+        if (entry) return T_UNIT
         failUnsupported("MiscKotlin", declaration, "every named function declares its result type")
     }
 

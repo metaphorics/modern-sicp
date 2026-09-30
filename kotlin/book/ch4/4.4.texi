@@ -2355,11 +2355,13 @@ incoming frame and rule-application depth.  Its result is a lazy
 
 The driver starts with one empty frame and yields answers as the consumer
 requests them.  It does not first build a complete list of matches.  Traversal
-is depth-first, with facts before rules and disjuncts in source order; lazy
-sequences avoid unnecessary work when a consumer takes a prefix, but they do
-not provide fair interleaving.  A recursively applicable rule can still
-diverge before a later answer is reached.  The loop-detecting driver bounds
-rule-application depth.
+is depth-first, with facts before rules; a disjunction merges the answers of
+its disjuncts round-robin, one answer from each in turn, so an earlier
+disjunct that answers forever does not starve a later one.  Lazy sequences
+avoid unnecessary work when a consumer takes a prefix, but the search is not
+fair everywhere: a conjunction or rule body that is recursively applicable can
+still diverge before a later answer is reached.  The loop-detecting driver
+bounds rule-application depth.
 
 Adding to the database is a host call: @code{assertFact} adds a fact and
 @code{addRule} adds a rule.  The streaming driver preserves each match in
@@ -2854,10 +2856,9 @@ private fun queryFrames(
                     it,
                     depth) @}
             @}
-        is QOr ->
-            query.parts.asSequence().flatMap @{
-                queryFrames(it, frame, depth)
-            @}
+        is QOr -> interleave(query.parts,
+            frame,
+            depth)
         is QNot -> sequence @{
             if (!queryFrames(
                 query.part,
@@ -2887,6 +2888,31 @@ private fun queryFrames(
     @}
 @end example
 
+@noindent
+Disjunction merges its branch streams with @code{interleave}:
+
+@example kotlin
+private fun interleave(
+    parts: List<QQuery>,
+    frame: QFrame,
+    depth: Int,
+): Sequence<QFrame> =
+    sequence @{
+        val pending = ArrayDeque(
+            parts.map @{
+                queryFrames(it, frame,
+                    depth).iterator()
+            @})
+        while (pending.isNotEmpty()) @{
+            val current = pending.removeFirst()
+            if (current.hasNext()) @{
+                yield(current.next())
+                pending.addLast(current)
+            @}
+        @}
+    @}
+@end example
+
 @subsubheading Simple queries
 
 The @code{patternFrames} sequence yields matching facts first, then matching
@@ -2897,9 +2923,13 @@ the consumer requests one.
 
 @code{QAnd} folds left to right: each sequence of frames from one part feeds
 the next part.  An empty conjunction yields its incoming frame, as required
-for a bodyless rule.  @code{QOr} traverses each disjunct against the same
-incoming frame and yields its answers before moving to the next disjunct; the
-engine is depth-first, not fairly interleaved.
+for a bodyless rule.  @code{QOr} runs each disjunct against the same incoming
+frame and merges the answer streams with @code{interleave}: it takes one
+answer from the first disjunct, then one from the next, and so on around the
+list, dropping a disjunct once its stream is exhausted.  A disjunct that
+answers forever therefore cannot keep a later disjunct from answering; a
+disjunct that neither answers nor finishes still stalls the turn it is
+waiting on.
 
 @subsubheading Filters
 
@@ -3109,14 +3139,16 @@ the previous stream?
 
 @code{queryFrames} and @code{patternFrames} return lazy
 @code{Sequence<QFrame>} values.  Conjunctions compose those sequences with
-@code{flatMap}; disjunctions traverse each part in order with
-@code{asSequence().flatMap}.  The driver yields answers on demand, so a
+@code{flatMap}; disjunctions merge them with @code{interleave}, taking one
+answer from each disjunct in turn.  The driver yields answers on demand, so a
 consumer can take a prefix without constructing every match.
 
-The search is still depth-first, not fair.  An infinite earlier disjunct can
-prevent a later disjunct from being reached, and a left-recursive rule can
-diverge before an answer is available.  Lazy sequences avoid eager
-materialization; they do not guarantee fairness or termination.
+The search is still depth-first except across the disjuncts of one
+disjunction.  An infinite earlier conjunct can prevent a later conjunct from
+being reached, and a left-recursive rule can diverge before an answer is
+available.  Lazy sequences avoid eager materialization; interleaving keeps
+every disjunct moving, but neither guarantees fairness across a whole query
+nor termination.
 
 @node 4.4.4.7, 4.4.4.8, 4.4.4.6, 4.4.4
 
@@ -3168,22 +3200,23 @@ consumer that takes only the first few.)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.72}Exercise 4.72:} The book merges disjunct
+@strong{@anchor{Exercise 4.72}Exercise 4.72:} The engine merges disjunct
 answers with an interleaving process so that every disjunct makes progress
-even when an earlier one answers forever; the engine concatenates instead
-(@ref{4.4.4.6}).  Give examples that illustrate why interleaving works
-better.  (Hint: why did we use @code{interleave} in @ref{3.5.3}?)  Can you
-construct a query on which the engine's concatenation never reaches the
-second disjunct?
+even when an earlier one answers forever (@ref{4.4.4.6}).  Give examples that
+illustrate why interleaving works better than appending the disjunct streams.
+(Hint: why did we use @code{interleave} in @ref{3.5.3}?)  Can you construct a
+query on which appending the disjuncts' answers would never reach the second
+disjunct, while the engine's interleaving does?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.73}Exercise 4.73:} The query engine traverses
-lazy @code{Sequence} values with depth-first @code{flatMap}; it does not
-materialize the complete answer list before a consumer asks for it.  Explain
-why this does not guarantee fair search for a left-recursive rule or prevent
-an infinite branch from delaying later answers.  How would interleaving change
-the observed answer order and termination behavior?
+lazy @code{Sequence} values, composing conjunctions with depth-first
+@code{flatMap}; it does not materialize the complete answer list before a
+consumer asks for it.  Explain why this does not guarantee fair search for a
+left-recursive rule or prevent an infinite branch from delaying later
+answers.  Where the engine does interleave, in a disjunction, how does that
+change the observed answer order and termination behavior?
 @end quotation
 
 @quotation

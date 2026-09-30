@@ -652,9 +652,9 @@ internal class Analysis(
         val body = statement.body.statements.map { analyzeStatement(it) }
         val name = statement.name
         return { env ->
-            val items =
+            val items: Iterable<GValue> =
                 if (end != null) {
-                    rangeValues(iterable(env), end(env), statement)
+                    Primitives.rangeValues(iterable(env), end(env), statement.span).asIterable()
                 } else {
                     when (val source = iterable(env)) {
                         is GValue.VList -> source.items.toList()
@@ -679,16 +679,4 @@ internal class Analysis(
             GValue.VUnit
         }
     }
-
-    context(r: Raise<GuestError>)
-    private fun rangeValues(
-        start: GValue,
-        end: GValue,
-        at: For,
-    ): List<GValue> =
-        when {
-            start is GValue.VInt && end is GValue.VInt -> (start.value..end.value).map { GValue.VInt(it) }
-            start is GValue.VLong && end is GValue.VLong -> (start.value..end.value).map { GValue.VLong(it) }
-            else -> r.raise(GuestError.UnassignedRead(at.span))
-        }
 }

@@ -79,7 +79,7 @@ internal object ReferenceModels {
     fun queryCase(source: String): Either<AdmissionError, Observation> =
         either {
             val checked = Admission.admitOrRaise(source, Mode.QUERY)
-            ReferenceEvaluator(checked, lazySemantics = false, searchSemantics = false).runMain()
+            ReferenceEvaluator(checked, lazySemantics = false, searchSemantics = false).runQuery()
         }
 
     /** The machine model: its own parse and execution of the controller
@@ -151,6 +151,30 @@ private class ReferenceEvaluator(
         }
         return observationOf(sink, error)
     }
+
+    /** The query cases (grammar 4.3): a fixture declares its facts, rules,
+     * query, and variables as data through the [QUERY_ENTRIES] functions, and
+     * the independent [QueryModel] answers it. */
+    fun runQuery(): ReferenceModels.Observation =
+        try {
+            installDeclarations()
+            val (facts, rules, query, variables) =
+                QUERY_ENTRIES.map { name ->
+                    val entry = globals.lookup(name)?.value ?: throw RefFault(GuestError.UnassignedRead(NO_POSITION))
+                    applyValue(entry, emptyList(), NO_POSITION)
+                }
+            val guard = { predicate: GValue, terms: List<GValue> ->
+                val verdict = applyValue(predicate, listOf(GValue.VList(terms.toMutableList(), false)), NO_POSITION)
+                (verdict as? GValue.VBool)?.value ?: throw RefFault(GuestError.UnassignedRead(NO_POSITION))
+            }
+            val lines = QueryModel.answers(itemsOf(facts), itemsOf(rules), query, itemsOf(variables), guard)
+            ReferenceModels.Observation("value", if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n")
+        } catch (fault: RefFault) {
+            ReferenceModels.Observation("error", "")
+        }
+
+    private fun itemsOf(value: GValue): List<GValue> =
+        (value as? GValue.VList)?.items ?: throw RefFault(GuestError.UnassignedRead(NO_POSITION))
 
     private fun runOnce() {
         installDeclarations()
@@ -389,14 +413,16 @@ private class ReferenceEvaluator(
     private fun forItems(
         statement: For,
         env: Env,
-    ): List<GValue> {
+    ): Iterable<GValue> {
         val endExpression = statement.end
         if (endExpression != null) {
             val start = evalExpr(statement.iterable, env)
             val end = evalExpr(endExpression, env)
-            if (start is GValue.VInt && end is GValue.VInt) return (start.value..end.value).map { GValue.VInt(it) }
-            if (start is GValue.VLong && end is GValue.VLong) return (start.value..end.value).map { GValue.VLong(it) }
-            throw RefFault(GuestError.UnassignedRead(statement.span))
+            return when {
+                start is GValue.VInt && end is GValue.VInt -> (start.value..end.value).asSequence().map { GValue.VInt(it) }.asIterable()
+                start is GValue.VLong && end is GValue.VLong -> (start.value..end.value).asSequence().map { GValue.VLong(it) }.asIterable()
+                else -> throw RefFault(GuestError.UnassignedRead(statement.span))
+            }
         }
         val source = evalExpr(statement.iterable, env)
         if (source is GValue.VList) return source.items.toList()
@@ -1187,5 +1213,277 @@ internal object MachineModel {
             "mul" -> left * right
             "rem" -> left % right
             else -> left
+        }
+}
+
+/** The functions a query case declares its data through, in the order the
+ * models read them: facts, rules, the query, and the variables to report. */
+internal val QUERY_ENTRIES: List<String> = listOf("facts", "rules", "query", "variables")
+
+/**
+ * The independent query model: its own bindings, unifier with an occurs
+ * check, rule renaming, and answer order, over the guest values of the
+ * section 4.3 constructors. It answers exactly what the teaching driver is
+ * pinned to answer -- facts before rules in database order, conjunction by
+ * successive extension, disjunction taking one answer from each branch in
+ * turn, `not` and `unique` as filters -- and never calls it.
+ */
+internal object QueryModel {
+    private typealias Bindings = Map<String, GValue>
+
+    fun answers(
+        facts: List<GValue>,
+        rules: List<GValue>,
+        query: GValue,
+        variables: List<GValue>,
+        guard: (GValue, List<GValue>) -> Boolean,
+    ): List<String> {
+        val model = Model(facts.map { field(it, "term") }, rules.map { field(it, "conclusion") to field(it, "body") }, guard)
+        return model
+            .solve(query, emptyMap())
+            .flatMap { bindings -> variables.map { "?${name(it)} = ${render(resolve(it, bindings))}" } }
+            .toList()
+    }
+
+    private class Model(
+        val facts: List<GValue>,
+        val rules: List<Pair<GValue, GValue>>,
+        val guard: (GValue, List<GValue>) -> Boolean,
+    ) {
+        private var renamings = 0
+
+        fun solve(
+            query: GValue,
+            bindings: Bindings,
+        ): Sequence<Bindings> =
+            when (kind(query)) {
+                "QPattern" -> pattern(field(query, "term"), bindings)
+                "QAnd" -> items(query, "parts").fold(sequenceOf(bindings)) { frames, part -> frames.flatMap { solve(part, it) } }
+                "QOr" -> turns(items(query, "parts").map { solve(it, bindings).iterator() })
+                "QNot" -> sequence { if (solve(field(query, "part"), bindings).none()) yield(bindings) }
+                "QUnique" -> only(solve(field(query, "part"), bindings))
+                "QGuard" -> sequence { if (holds(query, bindings)) yield(bindings) }
+                else -> throw IllegalStateException("not a query: ${kind(query)}")
+            }
+
+        private fun pattern(
+            term: GValue,
+            bindings: Bindings,
+        ): Sequence<Bindings> =
+            sequence {
+                for (fact in facts) unify(term, fact, bindings)?.let { yield(it) }
+                for ((conclusion, body) in rules) {
+                    val suffix = "#${renamings++}"
+                    val entered = unify(term, rename(conclusion, suffix), bindings) ?: continue
+                    yieldAll(solve(renameQuery(body, suffix), entered))
+                }
+            }
+
+        private fun holds(
+            guardQuery: GValue,
+            bindings: Bindings,
+        ): Boolean {
+            val arguments = items(guardQuery, "args").map { resolve(it, bindings) }
+            return arguments.none { hasVariable(it) } && guard(field(guardQuery, "predicate"), arguments)
+        }
+
+        private fun only(frames: Sequence<Bindings>): Sequence<Bindings> =
+            sequence {
+                val matches = frames.iterator()
+                if (!matches.hasNext()) return@sequence
+                val one = matches.next()
+                if (!matches.hasNext()) yield(one)
+            }
+
+        private fun turns(streams: List<Iterator<Bindings>>): Sequence<Bindings> =
+            sequence {
+                val waiting = ArrayDeque(streams)
+                while (waiting.isNotEmpty()) {
+                    val stream = waiting.removeFirst()
+                    if (!stream.hasNext()) continue
+                    yield(stream.next())
+                    waiting.addLast(stream)
+                }
+            }
+
+        private fun rename(
+            term: GValue,
+            suffix: String,
+        ): GValue =
+            when (kind(term)) {
+                "QVar" -> variable(name(term) + suffix)
+                "QList" -> list(items(term, "items").map { rename(it, suffix) }, tailOf(term)?.let { rename(it, suffix) })
+                else -> term
+            }
+
+        private fun renameQuery(
+            query: GValue,
+            suffix: String,
+        ): GValue =
+            when (kind(query)) {
+                "QPattern" -> {
+                    node("QPattern", "term" to rename(field(query, "term"), suffix))
+                }
+
+                "QAnd", "QOr" -> {
+                    node(kind(query), "parts" to listValue(items(query, "parts").map { renameQuery(it, suffix) }))
+                }
+
+                "QNot", "QUnique" -> {
+                    node(kind(query), "part" to renameQuery(field(query, "part"), suffix))
+                }
+
+                else -> {
+                    val args = listValue(items(query, "args").map { rename(it, suffix) })
+                    node("QGuard", "predicate" to field(query, "predicate"), "args" to args)
+                }
+            }
+    }
+
+    private fun kind(value: GValue): String =
+        (value as? GValue.VObject)?.className ?: throw IllegalStateException("not a query datum: $value")
+
+    private fun field(
+        value: GValue,
+        name: String,
+    ): GValue = (value as GValue.VObject).fields.getValue(name)
+
+    private fun items(
+        value: GValue,
+        name: String,
+    ): List<GValue> = (field(value, name) as GValue.VList).items
+
+    private fun name(value: GValue): String = (field(value, "name") as GValue.VString).value
+
+    private fun tailOf(term: GValue): GValue? = field(term, "tail").takeUnless { it is GValue.VNull }
+
+    private fun listValue(values: List<GValue>): GValue = GValue.VList(values.toMutableList(), false)
+
+    private fun node(
+        className: String,
+        vararg fields: Pair<String, GValue>,
+    ): GValue = GValue.VObject(className, true, linkedMapOf(*fields))
+
+    private fun variable(name: String): GValue = node("QVar", "name" to GValue.VString(name))
+
+    private fun list(
+        items: List<GValue>,
+        tail: GValue?,
+    ): GValue = node("QList", "items" to listValue(items), "tail" to (tail ?: GValue.VNull))
+
+    private fun walk(
+        term: GValue,
+        bindings: Bindings,
+    ): GValue {
+        var current = term
+        while (kind(current) == "QVar") current = bindings[name(current)] ?: return current
+        return current
+    }
+
+    private fun bind(
+        variable: GValue,
+        term: GValue,
+        bindings: Bindings,
+    ): Bindings? = if (occurs(name(variable), term, bindings)) null else bindings + (name(variable) to term)
+
+    private fun occurs(
+        variable: String,
+        term: GValue,
+        bindings: Bindings,
+    ): Boolean {
+        val here = walk(term, bindings)
+        return when (kind(here)) {
+            "QVar" -> {
+                name(here) == variable
+            }
+
+            "QList" -> {
+                items(here, "items").any { occurs(variable, it, bindings) } ||
+                    tailOf(here)?.let { occurs(variable, it, bindings) } == true
+            }
+
+            else -> {
+                false
+            }
+        }
+    }
+
+    private fun unify(
+        left: GValue,
+        right: GValue,
+        bindings: Bindings,
+    ): Bindings? {
+        val a = walk(left, bindings)
+        val b = walk(right, bindings)
+        return when {
+            kind(a) == "QVar" && kind(b) == "QVar" && name(a) == name(b) -> bindings
+            kind(a) == "QVar" -> bind(a, b, bindings)
+            kind(b) == "QVar" -> bind(b, a, bindings)
+            kind(a) == "QSym" && kind(b) == "QSym" -> bindings.takeIf { name(a) == name(b) }
+            kind(a) == "QList" && kind(b) == "QList" -> unifyLists(a, b, bindings)
+            else -> null
+        }
+    }
+
+    private fun unifyLists(
+        a: GValue,
+        b: GValue,
+        bindings: Bindings,
+    ): Bindings? {
+        val left = items(a, "items")
+        val right = items(b, "items")
+        val common = minOf(left.size, right.size)
+        var current = bindings
+        for (index in 0 until common) current = unify(left[index], right[index], current) ?: return null
+        val leftTail = tailOf(a)
+        val rightTail = tailOf(b)
+        return when {
+            left.size > common -> rightTail?.let { unify(it, list(left.drop(common), leftTail), current) }
+            right.size > common -> leftTail?.let { unify(it, list(right.drop(common), rightTail), current) }
+            leftTail == null && rightTail == null -> current
+            else -> unify(leftTail ?: list(emptyList(), null), rightTail ?: list(emptyList(), null), current)
+        }
+    }
+
+    /** The term with every bound variable replaced, a list whose tail
+     * resolves to a list spliced into one list. */
+    private fun resolve(
+        term: GValue,
+        bindings: Bindings,
+    ): GValue {
+        val here = walk(term, bindings)
+        if (kind(here) != "QList") return here
+        val head = items(here, "items").map { resolve(it, bindings) }
+        val tail = tailOf(here)?.let { resolve(it, bindings) }
+        return when {
+            tail == null -> list(head, null)
+            kind(tail) == "QList" -> list(head + items(tail, "items"), tailOf(tail))
+            head.isEmpty() -> tail
+            else -> list(head, tail)
+        }
+    }
+
+    private fun hasVariable(term: GValue): Boolean =
+        when (kind(term)) {
+            "QVar" -> true
+            "QList" -> items(term, "items").any(::hasVariable) || tailOf(term)?.let(::hasVariable) == true
+            else -> false
+        }
+
+    private fun render(term: GValue): String =
+        when (kind(term)) {
+            "QSym" -> {
+                name(term)
+            }
+
+            "QVar" -> {
+                "?" + name(term)
+            }
+
+            else -> {
+                val tail = tailOf(term)
+                val shown = items(term, "items").joinToString(", ") { render(it) }
+                if (tail == null) "[$shown]" else "[$shown | ${render(tail)}]"
+            }
         }
 }

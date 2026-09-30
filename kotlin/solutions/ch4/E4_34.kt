@@ -43,10 +43,9 @@ fun renderData(node: LazyData, budget: Int): String =
     if (node is LazyCell) renderLazy(node, budget) else renderAtom(node)
         """.trimIndent()
 
-/** The shared infinite `ones` spine. */
-internal val ONES_PRINT_SOURCE: String =
-    LAZY_DATA_SOURCE + "\n" +
-        """
+/** The shared infinite `ones` spine, without the data prelude. */
+internal val ONES_SPINE_SOURCE: String =
+    """
 var onesData: LazyData = LazyEnd
 
 fun shareOnes(): LazyData {
@@ -54,7 +53,11 @@ fun shareOnes(): LazyData {
     onesData = first
     return first
 }
-        """.trimIndent()
+    """.trimIndent()
+
+/** The spine plus the lazy-list data it names, for printer-free runs. */
+internal val ONES_PRINT_SOURCE: String =
+    LAZY_DATA_SOURCE + "\n" + ONES_SPINE_SOURCE
 
 /** A finite list prints whole. */
 public fun lazyProperPrintTranscript(): String =
@@ -79,7 +82,7 @@ public fun onesBudgetPrintTranscript(): String =
     outcomeText(
         LazyModule
             .run(
-                PRINT_SOURCE + "\n" + ONES_PRINT_SOURCE + "\n" +
+                PRINT_SOURCE + "\n" + ONES_SPINE_SOURCE + "\n" +
                     """
 fun main() {
     println(renderLazy(shareOnes(), 10))

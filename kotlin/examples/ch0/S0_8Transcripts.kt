@@ -26,10 +26,19 @@ public fun sessionSquare(): List<Long> {
     )
 }
 
+/** The `size` session of section 0.8: a name, then arithmetic that uses it. */
+public fun sessionSize(): List<Long> {
+    val size = 2L
+    return listOf(size, 5L + 3L + size)
+}
+
 public class S0_8TranscriptsTest :
     FunSpec({
         test("the arithmetic session evaluates in order") {
             sessionArithmetic shouldBe listOf(486L, 100L, 12L, 1L, 6L)
+        }
+        test("the size session binds a name and uses it") {
+            sessionSize() shouldBe listOf(2L, 10L)
         }
         test("the square session evaluates in order") {
             sessionSquare() shouldBe listOf(441L, 49L, 81L)

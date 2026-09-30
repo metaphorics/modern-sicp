@@ -14,8 +14,14 @@ public class E4_77Test :
         ) {
             delayedFilterDemos() shouldBe
                 listOf(
-                    "not-first: 0 frame(s), the unbound filter drops everything",
-                    "lisp-value-first: 0 frame(s), the unbound guard drops everything",
+                    "stock not-first: 0 line(s), the unbound filter drops everything",
+                    "stock lisp-value-first: 0 line(s), the unbound guard drops everything",
+                    "postponed not-first: 6 answer(s), the bound order's: true",
+                    "postponed lisp-value-first: 5 answer(s), the bound order's: true",
+                    "stock rule filter, bound later by the caller: 0 line(s)",
+                    "postponed rule filter, bound later by the caller: true",
+                    "postponed bound order: true",
+                    "a filter no conjunct binds runs at the end, as stock: true",
                     "?x = [Tweakit, Lem, E]",
                     "?y = [Bitdiddle, Ben]",
                     "?x = [Reasoner, Louis]",

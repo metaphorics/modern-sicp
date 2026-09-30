@@ -1076,16 +1076,14 @@ internal class SearchEvaluator(
         fail: Fail,
     ) {
         val loopEnv = Env.child(env)
-        val items = forItems(statement, env)
-        var index = 0
+        val items = forItems(statement, env).iterator()
 
         fun step(currentFail: Fail) {
-            if (index == items.size) {
+            if (!items.hasNext()) {
                 ok(GValue.VUnit, currentFail)
                 return
             }
-            loopEnv.define(statement.name, items[index])
-            index++
+            loopEnv.define(statement.name, items.next())
             try {
                 runStatements(statement.body.statements, Env.child(loopEnv), { _, more -> step(more) }, currentFail)
             } catch (_: BreakSignal) {
@@ -1101,16 +1099,12 @@ internal class SearchEvaluator(
     private fun forItems(
         statement: For,
         env: Env,
-    ): List<GValue> {
+    ): Iterable<GValue> {
         val endExpression = statement.end
         if (endExpression != null) {
             val start = evalDirect(statement.iterable, env)
             val end = evalDirect(endExpression, env)
-            return when {
-                start is GValue.VInt && end is GValue.VInt -> (start.value..end.value).map { GValue.VInt(it) }
-                start is GValue.VLong && end is GValue.VLong -> (start.value..end.value).map { GValue.VLong(it) }
-                else -> r.raise(GuestError.UnassignedRead(statement.span))
-            }
+            return Primitives.rangeValues(start, end, statement.span).asIterable()
         }
         return when (val source = evalDirect(statement.iterable, env)) {
             is GValue.VList -> source.items.toList()

@@ -124,23 +124,28 @@ public object Primitives {
         return GValue.VUnit
     }
 
+    /** `setOf` keeps the first of every group of elements that are `==`, so
+     * pairs, lists, and data classes dedupe by structure (section 3.5). */
+    context(r: Raise<GuestError>)
     private fun deduplicated(arguments: List<GValue>): List<GValue> {
         val out = mutableListOf<GValue>()
         for (argument in arguments) {
-            if (out.none { identityEquals(it, argument) }) out.add(argument)
+            if (out.none { valueEquals(it, argument) }) out.add(argument)
         }
         return out
     }
 
-    private fun identityEquals(
-        a: GValue,
-        b: GValue,
-    ): Boolean =
-        a === b || (a is GValue.VLong && b is GValue.VLong && a.value == b.value) ||
-            (a is GValue.VInt && b is GValue.VInt && a.value == b.value) ||
-            (a is GValue.VString && b is GValue.VString && a.value == b.value) ||
-            (a is GValue.VDouble && b is GValue.VDouble && a.value == b.value) ||
-            (a is GValue.VBool && b is GValue.VBool && a.value == b.value)
+    /** Stores [key] once under structural `==`: a repeated key keeps its
+     * first position and takes the last value, as `LinkedHashMap.put` does. */
+    context(r: Raise<GuestError>)
+    private fun putEntry(
+        entries: LinkedHashMap<GValue, GValue>,
+        key: GValue,
+        value: GValue,
+    ) {
+        val existing = entries.keys.firstOrNull { valueEquals(it, key) }
+        entries[existing ?: key] = value
+    }
 
     context(r: Raise<GuestError>)
     private fun mapEntries(
@@ -150,7 +155,7 @@ public object Primitives {
         val out = LinkedHashMap<GValue, GValue>()
         for (argument in arguments) {
             val pair = argument as? GValue.VPair ?: r.raise(GuestError.UnassignedRead(at))
-            out[pair.first] = pair.second
+            putEntry(out, pair.first, pair.second)
         }
         return out
     }
@@ -605,7 +610,7 @@ public object Primitives {
             "plus" -> {
                 val pair = arguments[0] as? GValue.VPair ?: r.raise(GuestError.UnassignedRead(at))
                 val entries = LinkedHashMap(receiver.entries)
-                entries[pair.first] = pair.second
+                putEntry(entries, pair.first, pair.second)
                 GValue.VMap(entries, mutable = false)
             }
 
@@ -622,6 +627,23 @@ public object Primitives {
         receiver.entries.entries
             .firstOrNull { valueEquals(it.key, key) }
             ?.value
+
+    // ---------- ranges ----------
+
+    /** The values of `start..end` in order, produced one at a time: a `for`
+     * that breaks early never pays for the rest of the range, and a bound of
+     * `Long.MAX_VALUE` terminates like the native loop instead of wrapping. */
+    context(r: Raise<GuestError>)
+    public fun rangeValues(
+        start: GValue,
+        end: GValue,
+        at: Span,
+    ): Sequence<GValue> =
+        when {
+            start is GValue.VInt && end is GValue.VInt -> (start.value..end.value).asSequence().map { GValue.VInt(it) }
+            start is GValue.VLong && end is GValue.VLong -> (start.value..end.value).asSequence().map { GValue.VLong(it) }
+            else -> r.raise(GuestError.UnassignedRead(at))
+        }
 
     // ---------- indexing ----------
 

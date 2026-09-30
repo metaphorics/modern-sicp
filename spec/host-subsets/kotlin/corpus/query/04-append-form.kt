@@ -1,75 +1,49 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Corpus case query/04-append-form: the append relation over explicit lists
-fun unify(a: QTerm, b: QTerm): QTerm? =
-    when {
-        a is QVar -> b
-        b is QVar -> a
-        a is QSym && b is QSym -> if (a.name == b.name) a else null
-        a is QList && b is QList -> unifyList(a, b)
-        else -> null
-    }
+// Corpus case query/04-append-form: rules with recursive structure.
+// A query case is domain data (grammar 4.3): the functions below declare the
+// data base, the rules, the query, and the variables to report, and the query
+// engine answers it; `main` has nothing to run. The append relation is two
+// rules: appending to the empty list gives the second list, and appending a
+// longer list peels one element and recurs; the query asks for the whole.
 
-fun unifyList(a: QList, b: QList): QTerm? {
-    if (a.items.size != b.items.size) return null
-    var result: QTerm? = null
-    var index = 0
-    while (index < a.items.size) {
-        result = unify(a.items.get(index), b.items.get(index)) ?: return null
-        index = index + 1
-    }
-    return result
-}
+fun facts(): List<QFact> = emptyList()
 
-fun render(t: QTerm): String =
-    when {
-        t is QSym -> t.name
-        t is QVar -> "?" + t.name
-        t is QList -> renderList(t)
-        else -> "?"
-    }
+fun rules(): List<QRule> =
+    listOf(
+        QRule(
+            QList(
+                listOf(QSym("append"), QList(emptyList(), null), QVar("y"), QVar("y")),
+                null,
+            ),
+            QAnd(emptyList()),
+        ),
+        QRule(
+            QList(
+                listOf(
+                    QSym("append"),
+                    QList(listOf(QVar("u")), QVar("v")),
+                    QVar("y"),
+                    QList(listOf(QVar("u")), QVar("z")),
+                ),
+                null,
+            ),
+            QPattern(QList(listOf(QSym("append"), QVar("v"), QVar("y"), QVar("z")), null)),
+        ),
+    )
 
-fun renderList(xs: QList): String {
-    var out = "["
-    var first = true
-    for (item in xs.items) {
-        if (first) {
-            first = false
-        } else {
-            out = out + ", "
-        }
-        out = out + render(item)
-    }
-    return out + "]"
-}
+fun query(): QQuery =
+    QPattern(
+        QList(
+            listOf(
+                QSym("append"),
+                QList(listOf(QSym("a"), QSym("b")), null),
+                QList(listOf(QSym("c")), null),
+                QVar("z"),
+            ),
+            null,
+        ),
+    )
 
-fun find(facts: List<QTerm>, pattern: QTerm): QTerm? {
-    for (fact in facts) {
-        val bound = unify(fact, pattern)
-        if (bound != null) return bound
-    }
-    return null
-}
+fun variables(): List<QVar> = listOf(QVar("z"))
 
-fun append(a: QTerm, b: QTerm, c: QTerm): QTerm? {
-    if (a is QList && b is QList && c is QList) return appendLists(a, b, c)
-    return null
-}
-
-fun appendLists(a: QList, b: QList, c: QList): QTerm? {
-    val combined = a.items + b.items
-    if (combined.size != c.items.size) return null
-    var index = 0
-    while (index < combined.size) {
-        unify(combined.get(index), c.items.get(index)) ?: return null
-        index = index + 1
-    }
-    return c
-}
-
-fun main() {
-    val left = QList(listOf(QSym("a"), QSym("b")), null)
-    val right = QList(listOf(QSym("c")), null)
-    val whole = QList(listOf(QSym("a"), QSym("b"), QSym("c")), null)
-    val answer: QTerm = append(left, right, whole) ?: QSym("failed")
-    println(render(answer))
-}
+fun main() {}

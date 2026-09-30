@@ -20,7 +20,8 @@ public object Admission {
     public fun admit(
         source: String,
         mode: Mode,
-    ): Either<AdmissionError, CheckedProgram> = either { checkSource(source, mode) }
+        requireEntryPoint: Boolean = true,
+    ): Either<AdmissionError, CheckedProgram> = either { checkSource(source, mode, requireEntryPoint) }
 
     /** Admission with explicit module composition. */
     public fun admit(
@@ -63,9 +64,10 @@ public object Admission {
     private fun checkSource(
         source: String,
         mode: Mode,
+        requireEntryPoint: Boolean = true,
     ): CheckedProgram {
         val tokens = Lexer(source).tokens()
         val syntax = Parser(tokens).parseProgram()
-        return Checker(mode).check(syntax)
+        return Checker(mode).check(syntax, requireEntryPoint)
     }
 }

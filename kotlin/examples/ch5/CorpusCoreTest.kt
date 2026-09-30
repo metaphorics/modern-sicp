@@ -23,12 +23,23 @@ import sicp.guest.RunResult
 import sicp.guest.renderPrinted
 import java.io.File
 
-private val corpusRoot = File("../../spec/host-subsets/kotlin")
+/** The corpus directory, found from the working directory upward so the test
+ * does not depend on which directory the runner starts in. */
+private val corpusRoot: File = locateCorpus()
+
+private fun locateCorpus(): File {
+    var directory: File? = File(System.getProperty("user.dir")).absoluteFile
+    while (directory != null) {
+        val candidate = File(directory, "spec/host-subsets/kotlin")
+        if (File(candidate, "manifest.tsv").isFile) return candidate
+        directory = directory.parentFile
+    }
+    throw AssertionError("the corpus manifest spec/host-subsets/kotlin/manifest.tsv is not above ${System.getProperty("user.dir")}")
+}
 
 private data class CorpusRow(
     val id: String,
     val fixture: String,
-    val lesson: String,
 )
 
 private fun coreRows(): List<CorpusRow> =
@@ -37,7 +48,7 @@ private fun coreRows(): List<CorpusRow> =
         .filter { it.isNotBlank() && !it.startsWith("#") }
         .map { line ->
             val cells = line.split("\t")
-            CorpusRow(cells[0], cells[1], cells.getOrNull(4) ?: "")
+            CorpusRow(cells[0], cells[1])
         }.filter { it.id.startsWith("core/") }
 
 private fun checkedOf(row: CorpusRow): CheckedProgram {

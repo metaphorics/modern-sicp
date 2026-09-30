@@ -129,9 +129,15 @@ public class EnvironmentChainTest :
 @end example
 
 @noindent
-The declarations and assignments of @ref{3.2} run on exactly this chain,
-and @ref{4.3}'s backtracking evaluator takes a snapshot of the chain to
-abandon a branch's effects.
+@ref{3.2} presents this chain as an abstract model of what a declaration
+or an assignment means; native Kotlin does not execute on a
+@code{BindingFrame}, because the compiler resolves names before the
+program runs. The chain becomes an executing structure in chapter 4,
+where the guest evaluators keep their variables in frames of this shape.
+There, @ref{4.3}'s backtracking evaluator does not copy the chain: at each
+choice point it saves the value of every cell visible from the current
+environment together with a mark in its mutation log, and abandoning a
+branch restores those values and undoes the logged writes past the mark.
 Ownership, in the sense of Rust's edition, has no Kotlin counterpart: the
 collector reclaims unreachable cells, and the book's aliasing arguments are
 made with @code{===}, not with lifetimes.

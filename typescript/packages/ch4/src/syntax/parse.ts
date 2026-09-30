@@ -314,10 +314,13 @@ class Parser {
 
   #parseImport(): Decl {
     const start = this.#next().span;
+    // The grammar admits one leading `type` modifier: it makes the whole
+    // declaration type-only, so every bound name is erased at run time.
+    const typeOnly = this.#eat("type");
     this.#expect("{", "after `import`");
     const names: ImportName[] = [];
     while (!this.#isText("}")) {
-      const isType = this.#eat("type");
+      const isType = typeOnly || this.#eat("type");
       const importedToken = this.#expectIdent("for the imported name");
       const local = this.#eat("as") ? this.#expectIdent("after `as`").text : importedToken.text;
       names.push({ imported: importedToken.text, local, isType });

@@ -708,6 +708,12 @@ export const evalDeclaration = (decl: Decl, env: Env): Completion => @{
         env
       );
   @}
+  if (decl.tag === "import") @{
+    const error = linkImport(decl, env);
+    return error === null
+      ? @{ tag: "normal", value: undefined @}
+      : @{ tag: "error", error: error @};
+  @}
   return @{ tag: "normal", value: undefined @};
 @};
 
@@ -725,9 +731,10 @@ const install = (
 @end example
 
 @noindent
-Type, interface, and import declarations bind nothing at run time: type and
-interface declarations are erased by the checker, and imports link typed
-modules at the boundary only, never inside the evaluator kernel.
+Type declarations bind nothing at run time: they are erased by the checker.
+Imports erase their type-only names the same way; each value name is bound
+from the host's linked-module table, so no module is loaded inside the
+evaluator kernel.
 
 @noindent
 An assignment expression answers the value that was assigned, and a

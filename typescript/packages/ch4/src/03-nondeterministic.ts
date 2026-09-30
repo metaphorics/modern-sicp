@@ -1079,10 +1079,26 @@ export const runAmbAnswers = (
     };
   }
   const searcher = new Searcher(mode === "amb-ramb-experiment", seed);
+  const globals = searcher.session.globalEnv();
+  for (const item of admission.program) {
+    // Imports link before any search starts; this runner exposes no linked
+    // modules, so any value import is rejected here rather than left unbound.
+    const error = item.tag === "import" ? searcher.session.linkImport(item, globals) : null;
+    if (error !== null) {
+      return {
+        answers: [],
+        transcript: [],
+        outcome: fail(error),
+        failures: 0,
+        steps: 0,
+        status: "completed",
+      };
+    }
+  }
   const answers: Value[] = [];
   searcher.execBody(
     admission.program,
-    searcher.session.globalEnv(),
+    globals,
     (value, next) => {
       answers.push(value);
       searcher.defer(next);

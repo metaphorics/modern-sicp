@@ -269,7 +269,10 @@ def run_case(case: Case, driver: Driver, cwd: Path) -> CaseReport:
                 "case": case.name,
                 "engine": "native",
             }
-            if case.oracle == "native":
+            # A `.mts` artifact is a native TypeScript module of typed host data
+            # (query and machine cases). The driver imports it without type
+            # checking, so the reference oracle must still compile it natively.
+            if case.oracle == "native" or case.source.suffix == ".mts":
                 checked = execute(
                     expand(driver.native_compile, replacements),
                     cwd,
@@ -277,6 +280,7 @@ def run_case(case: Case, driver: Driver, cwd: Path) -> CaseReport:
                     report.executions,
                 )
                 require_success(checked)
+            if case.oracle == "native":
                 native = execute(
                     expand(driver.native_run, replacements),
                     cwd,

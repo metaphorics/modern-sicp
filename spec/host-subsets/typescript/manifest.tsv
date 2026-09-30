@@ -20,7 +20,7 @@ core/17-dotted-pairs	cases/core-17-dotted-pairs.ts	native,direct,analyzed,eceval
 core/18-strings-display	cases/core-18-strings-display.ts	native,direct,analyzed,eceval,compiled	native	string literals, concatenation, and template display
 core/19-deep-recursion	cases/core-19-deep-recursion.ts	native,direct,analyzed,eceval,compiled	native	deep non-tail recursion; engines run on the enlarged-stack entry
 core/20-error-stop	cases/core-20-error-stop.ts	native,direct,analyzed,eceval,compiled	native	observation class error: checked-build trap stops the run after its printed prefix
-core/metacircular	witnesses/section-9-kernel.ts	native,direct,analyzed,eceval,compiled	native	§9 self-interpreter kernel body verbatim behind the SPDX header; native and every teaching engine print 120
+core/metacircular	witnesses/section-9-kernel.ts	native,direct,analyzed,eceval,compiled	native	§9 self-interpreter kernel body verbatim behind the file header; native and every teaching engine print 120
 lazy/01-non-strict-application	cases/lazy-01-non-strict-application.ts	reference,lazy	reference	delay/force extension; named mode lazy-memoized-experiment
 lazy/02-delay-force	cases/lazy-02-delay-force.ts	reference,lazy	reference	explicit delayed operands and demands
 lazy/03-church-pairs	cases/lazy-03-church-pairs.ts	reference,lazy	reference	pair data under named lazy modes

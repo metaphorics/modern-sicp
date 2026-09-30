@@ -20,6 +20,7 @@ export type GuestError =
   | { readonly tag: "bad-operand"; readonly operator: string; readonly detail: string }
   | { readonly tag: "unknown-syntax"; readonly construct: string }
   | { readonly tag: "unknown-field"; readonly field: string }
+  | { readonly tag: "unresolved-import"; readonly module: string; readonly name: string }
   | { readonly tag: "readonly-field"; readonly field: string }
   | { readonly tag: "guest-throw"; readonly value: Value };
 

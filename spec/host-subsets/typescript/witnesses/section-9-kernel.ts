@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Adapted from the Scheme evaluator in SICP section 4.1
+// Original exercise
 
 type Expr =
   | { readonly tag: "number"; readonly value: number }

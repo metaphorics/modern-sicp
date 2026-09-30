@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted-from-SICP: section 5.5
 
-import { type RunResult, Session } from "@sicp-ts/ch4/01-metacircular";
+import { type LinkedModules, type RunResult, Session } from "@sicp-ts/ch4/01-metacircular";
 import { format } from "@sicp-ts/ch4/read";
 import { builtinMember } from "@sicp-ts/ch4/runtime/builtins";
 import { child, type Env, findCell, makeCell } from "@sicp-ts/ch4/runtime/env";
@@ -1560,7 +1560,7 @@ export const compileProgram = (
 };
 
 /** Compiles and runs one admitted unit on the teaching machine. */
-export const compileAndRun = (source: string): RunResult => {
+export const compileAndRun = (source: string, modules: LinkedModules = {}): RunResult => {
   const admission = admitSource(source);
   if (!admission.ok) {
     return {
@@ -1582,8 +1582,16 @@ export const compileAndRun = (source: string): RunResult => {
     operations: compiledOperations(output),
     controller: compiled.instructions,
   });
-  const session = new Session("core");
-  machine.writeRegister("env", session.globalEnv());
+  const session = new Session("core", modules);
+  const environment = session.globalEnv();
+  for (const form of admission.program) {
+    // Imports link before the first instruction runs, like module instantiation.
+    const error = form.tag === "import" ? session.linkImport(form, environment) : null;
+    if (error !== null) {
+      return { outcome: fail(error), transcript: [] };
+    }
+  }
+  machine.writeRegister("env", environment);
   machine.writeRegister("thrown", undefined);
   machine.writeRegister("continue", { tag: "symbol", name: "program-end" });
   const run = machine.run(1_000_000);

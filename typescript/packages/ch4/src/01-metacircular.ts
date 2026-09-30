@@ -88,6 +88,13 @@ const CALLBACK_METHODS: Readonly<Record<string, true>> = {
   forEach: true,
 };
 
+/**
+ * The linked modules of a session: a module specifier maps to its exported
+ * guest values. A static named value import binds only what the host linked
+ * here; nothing is loaded at run time (grammar sections 1 and 6).
+ */
+export type LinkedModules = Readonly<Record<string, Readonly<Record<string, Value>>>>;
+
 /** One evaluator session: modes, transcript, and experiment counters. */
 export class Session {
   readonly mode: ExperimentMode;
@@ -96,11 +103,41 @@ export class Session {
   evaluations = 0;
   readonly #builtins: OpTable = makeBuiltins();
   readonly #globals = new Map<string, Value>();
+  readonly #modules: LinkedModules;
 
-  constructor(mode: ExperimentMode) {
+  constructor(mode: ExperimentMode, modules: LinkedModules = {}) {
     this.mode = mode;
+    this.#modules = modules;
     this.#globals.set("Math", namespaceValue(this.#builtins, "math", MATH_NAMES));
     this.#globals.set("Number", namespaceValue(this.#builtins, "number", NUMBER_NAMES));
+  }
+
+  /**
+   * Links one static named import: each value name is bound immutably in the
+   * frame to the export the host linked under that specifier. Type-only names
+   * are erased; an unlinked module or missing export is a typed error, never
+   * a silently absent binding.
+   */
+  linkImport(item: Extract<Decl, { tag: "import" }>, frame: Env): GuestError | null {
+    const exports = Object.hasOwn(this.#modules, item.from) ? this.#modules[item.from] : undefined;
+    if (exports === undefined) {
+      const value = item.names.find((entry) => !entry.isType);
+      return value === undefined
+        ? null
+        : { tag: "unresolved-import", module: item.from, name: value.imported };
+    }
+    for (const entry of item.names) {
+      // Checked before any binding: a failed import binds nothing.
+      if (!entry.isType && !Object.hasOwn(exports, entry.imported)) {
+        return { tag: "unresolved-import", module: item.from, name: entry.imported };
+      }
+    }
+    for (const entry of item.names) {
+      if (!entry.isType) {
+        frame.bindings.set(entry.local, makeCell(exports[entry.imported], true, false));
+      }
+    }
+    return null;
   }
 
   /** The session's global environment: builtins plus namespace values. */
@@ -500,9 +537,7 @@ export class Session {
       return ok(itemAt([...object], index));
     }
     if (isRecordValue(object) && typeof index === "string") {
-      return object.fields.has(index)
-        ? ok(object.fields.get(index))
-        : fail({ tag: "unknown-field", field: index });
+      return ok(object.fields.get(index));
     }
     if (isMapValue(object)) {
       return ok(object.entries.get(index));
@@ -811,6 +846,8 @@ export class Session {
     if (disc.tag === "error") {
       return { tag: "error", error: disc.error };
     }
+    const frame = child(env);
+    this.predeclare(this.switchItems(stmt), frame);
     let matchedIndex = -1;
     for (const [index, clause] of stmt.cases.entries()) {
       const test = this.evaluate(clause.test, env);
@@ -825,14 +862,14 @@ export class Session {
     if (matchedIndex < 0) {
       return stmt.defaultBody === null
         ? normal(undefined)
-        : this.asSwitchBody(stmt.defaultBody, child(env));
+        : this.asSwitchBody(stmt.defaultBody, frame);
     }
     for (let index = matchedIndex; index < stmt.cases.length; index += 1) {
       const clause = stmt.cases[index];
       if (clause === undefined) {
         continue;
       }
-      const completion = this.execSequence(clause.body, child(env));
+      const completion = this.execSequence(clause.body, frame);
       if (completion.tag === "break") {
         return normal(undefined);
       }
@@ -842,7 +879,18 @@ export class Session {
     }
     return stmt.defaultBody === null
       ? normal(undefined)
-      : this.asSwitchBody(stmt.defaultBody, child(env));
+      : this.asSwitchBody(stmt.defaultBody, frame);
+  }
+
+  switchItems(stmt: Extract<Stmt, { tag: "switch" }>): Array<Decl | Stmt> {
+    const items: Array<Decl | Stmt> = [];
+    for (const clause of stmt.cases) {
+      items.push(...clause.body);
+    }
+    if (stmt.defaultBody !== null) {
+      items.push(...stmt.defaultBody);
+    }
+    return items;
   }
 
   asSwitchBody(items: ReadonlyArray<Decl | Stmt>, frame: Env): Completion {
@@ -925,7 +973,11 @@ export class Session {
       frame.bindings.set(item.name, makeCell(closure, true));
       return normal(undefined);
     }
-    if (item.tag === "type-decl" || item.tag === "interface-decl" || item.tag === "import") {
+    if (item.tag === "import") {
+      const error = this.linkImport(item, frame);
+      return error === null ? normal(undefined) : { tag: "error", error };
+    }
+    if (item.tag === "type-decl" || item.tag === "interface-decl") {
       return normal(undefined);
     }
     return this.execStatement(item, frame);
@@ -1165,13 +1217,17 @@ const completionToOutcome = (completion: Completion): Outcome => {
 export const executeProgram = (program: Program, session: Session): Outcome =>
   completionToOutcome(session.execBody(program, session.globalEnv()));
 
-const runProgram = (program: Program, mode: ExperimentMode): RunResult => {
-  const session = new Session(mode);
+const runProgram = (program: Program, mode: ExperimentMode, modules: LinkedModules): RunResult => {
+  const session = new Session(mode, modules);
   return { outcome: executeProgram(program, session), transcript: session.transcript };
 };
 
 /** Reads, admits, and runs one source unit; no guest effect on rejection. */
-export const runSource = (text: string, mode: ExperimentMode = "core"): RunResult => {
+export const runSource = (
+  text: string,
+  mode: ExperimentMode = "core",
+  modules: LinkedModules = {},
+): RunResult => {
   const admission = admitSource(text, mode);
   if (!admission.ok) {
     return {
@@ -1183,7 +1239,7 @@ export const runSource = (text: string, mode: ExperimentMode = "core"): RunResul
       transcript: [],
     };
   }
-  return runProgram(admission.program, mode);
+  return runProgram(admission.program, mode, modules);
 };
 
 /** The book's driver loop over a finite REPL session. */
@@ -1234,7 +1290,11 @@ export const analyze = (expr: Expr): ExecutionProcedure =>
 export const evalAnalyzed = (expr: Expr, env: Env): Outcome => analyze(expr)(env);
 
 /** Runs an admitted program through the analyzer over one shared session. */
-export const runAnalyzedSource = (text: string, mode: ExperimentMode = "core"): RunResult => {
+export const runAnalyzedSource = (
+  text: string,
+  mode: ExperimentMode = "core",
+  modules: LinkedModules = {},
+): RunResult => {
   const admission = admitSource(text, mode);
   if (!admission.ok) {
     return {
@@ -1246,7 +1306,7 @@ export const runAnalyzedSource = (text: string, mode: ExperimentMode = "core"): 
       transcript: [],
     };
   }
-  const session = new Session(mode);
+  const session = new Session(mode, modules);
   const env = session.globalEnv();
   session.predeclare(admission.program, env);
   let outcome: Outcome = ok(undefined);

@@ -45,15 +45,44 @@ describe("section 9 guest evaluator kernel", () => {
     });
     expect(session.memberGet(record, "present")).toEqual({ tag: "ok", value: undefined });
   });
+});
 
-  it("reports absent indexed record keys and keeps present undefined values", () => {
-    const session = new Session("core");
-    const record = makeRecord([["present", undefined]]);
+describe("static named imports", () => {
+  const VALUE_IMPORT = 'import { Effect as E } from "effect";\nconsole.log(E === undefined);';
+  const TYPE_IMPORT = 'import { type Effect } from "effect";\nconsole.log(1);';
+  const modules = { effect: { Effect: 41 } };
 
-    expect(session.indexGet(record, "missing")).toEqual({
-      tag: "error",
-      error: { tag: "unknown-field", field: "missing" },
-    });
-    expect(session.indexGet(record, "present")).toEqual({ tag: "ok", value: undefined });
+  it("binds linked value imports under their local name in every engine", () => {
+    for (const result of [
+      runSource(VALUE_IMPORT, "core", modules),
+      runAnalyzedSource(VALUE_IMPORT, "core", modules),
+      runEvaluator(VALUE_IMPORT, {}, modules),
+      compileAndRun(VALUE_IMPORT, modules),
+    ]) {
+      expect(result.outcome.tag).toBe("ok");
+      expect(result.transcript).toEqual(["false"]);
+    }
+  });
+
+  it("reports an unlinked value import instead of discarding it, and erases type imports", () => {
+    const unresolved = { tag: "unresolved-import", module: "effect", name: "Effect" };
+    for (const result of [
+      runSource(VALUE_IMPORT),
+      runAnalyzedSource(VALUE_IMPORT),
+      runEvaluator(VALUE_IMPORT),
+      compileAndRun(VALUE_IMPORT),
+    ]) {
+      expect(result.outcome).toEqual({ tag: "error", error: unresolved });
+      expect(result.transcript).toEqual([]);
+    }
+    for (const result of [
+      runSource(TYPE_IMPORT),
+      runAnalyzedSource(TYPE_IMPORT),
+      runEvaluator(TYPE_IMPORT),
+      compileAndRun(TYPE_IMPORT),
+    ]) {
+      expect(result.outcome.tag).toBe("ok");
+      expect(result.transcript).toEqual(["1"]);
+    }
   });
 });

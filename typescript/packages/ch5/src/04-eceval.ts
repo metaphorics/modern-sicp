@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted-from-SICP: section 5.4
 
-import { type RunResult, Session } from "@sicp-ts/ch4/01-metacircular";
+import { type LinkedModules, type RunResult, Session } from "@sicp-ts/ch4/01-metacircular";
 /**
  * The explicit-control evaluator (host-subsets grammar section 5): the
  * checked host-subset syntax executes on the teaching machine. The typed
@@ -2173,8 +2173,9 @@ export const makeEvaluator = (
   source: string,
   customOperations: Readonly<Record<string, Operation<Word>>> = {},
   controller: ReadonlyArray<EvaluatorMachineStatement> = evaluatorController,
+  modules: LinkedModules = {},
 ): Evaluator => {
-  const session = new Session("core");
+  const session = new Session("core", modules);
   const state: EvaluatorState = { session, forms: [], next: 0, values: [] };
   const machine = makeMachine<Word>({
     registers: [
@@ -2210,6 +2211,13 @@ export const makeEvaluator = (
       state.next = 0;
       state.values = [];
       const environment = session.globalEnv();
+      for (const form of admission.program) {
+        // Imports link before the first form runs, like module instantiation.
+        const error = form.tag === "import" ? session.linkImport(form, environment) : null;
+        if (error !== null) {
+          return { outcome: fail(error), transcript: [] };
+        }
+      }
       machine.writeRegister("env", environment);
       machine.writeRegister("transfer", undefined);
       const run = machine.run(EVALUATOR_STEP_LIMIT);
@@ -2243,7 +2251,8 @@ export const makeEvaluator = (
 export const runEvaluator = (
   source: string,
   customOperations: Readonly<Record<string, Operation<Word>>> = {},
-): RunResult => makeEvaluator(source, customOperations).run();
+  modules: LinkedModules = {},
+): RunResult => makeEvaluator(source, customOperations, evaluatorController, modules).run();
 
 /** Renders the machine trace of one evaluator run (the 5.4 monitoring exercises). */
 export const renderTrace = (machine: Machine<Word>): ReadonlyArray<string> =>

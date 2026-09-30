@@ -50,25 +50,25 @@ let apply_generic op args =
          (String.concat ", " type_tags))
 ;;
 
-let install_scheme_number_package () =
-  put "add" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a +. b)))
-    | _ -> invalid_arg "add: scheme-number expects two numbers");
-  put "sub" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a -. b)))
-    | _ -> invalid_arg "sub: scheme-number expects two numbers");
-  put "mul" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a *. b)))
-    | _ -> invalid_arg "mul: scheme-number expects two numbers");
-  put "div" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a /. b)))
-    | _ -> invalid_arg "div: scheme-number expects two numbers");
-  put "=zero?" [ "scheme-number" ] (function
+let install_real_package () =
+  put "add" [ "real"; "real" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "real" (Num (a +. b)))
+    | _ -> invalid_arg "add: real expects two numbers");
+  put "sub" [ "real"; "real" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "real" (Num (a -. b)))
+    | _ -> invalid_arg "sub: real expects two numbers");
+  put "mul" [ "real"; "real" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "real" (Num (a *. b)))
+    | _ -> invalid_arg "mul: real expects two numbers");
+  put "div" [ "real"; "real" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "real" (Num (a /. b)))
+    | _ -> invalid_arg "div: real expects two numbers");
+  put "=zero?" [ "real" ] (function
     | [ Num a ] -> Bool (Float.equal a 0.0)
-    | _ -> invalid_arg "=zero?: scheme-number expects one number");
-  put "make" [ "scheme-number" ] (function
-    | [ Num n ] -> Tagged (attach_tag "scheme-number" (Num n))
-    | _ -> invalid_arg "make: scheme-number expects one number")
+    | _ -> invalid_arg "=zero?: real expects one number");
+  put "make" [ "real" ] (function
+    | [ Num n ] -> Tagged (attach_tag "real" (Num n))
+    | _ -> invalid_arg "make: real expects one number")
 ;;
 
 let install_rational_package () =
@@ -224,20 +224,18 @@ let install_complex_package () =
     | _ -> invalid_arg "make_from_mag_ang: complex expects two numbers")
 ;;
 
-let add_complex_to_schemenum z x =
-  make_from_real_imag_rect (real_part z +. x) (imag_part z)
-;;
+let add_complex_to_real z x = make_from_real_imag_rect (real_part z +. x) (imag_part z)
 
 let install_cross_type_example () =
-  put "add" [ "complex"; "scheme-number" ] (function
-    | [ z; Num x ] -> Tagged (attach_tag "complex" (add_complex_to_schemenum z x))
-    | _ -> invalid_arg "add: complex+scheme-number expects a complex number and a number")
+  put "add" [ "complex"; "real" ] (function
+    | [ z; Num x ] -> Tagged (attach_tag "complex" (add_complex_to_real z x))
+    | _ -> invalid_arg "add: complex+real expects a complex number and a number")
 ;;
 
-let make_scheme_number n =
-  match get "make" [ "scheme-number" ] with
+let make_real n =
+  match get "make" [ "real" ] with
   | Some proc -> proc [ Num n ]
-  | None -> invalid_arg "make_scheme_number: no scheme-number constructor installed"
+  | None -> invalid_arg "make_real: no real constructor installed"
 ;;
 
 let make_rational n d =
@@ -258,10 +256,10 @@ let make_complex_from_mag_ang r a =
   | None -> invalid_arg "make_complex_from_mag_ang: no complex constructor installed"
 ;;
 
-let scheme_number_to_complex n =
+let real_to_complex n =
   match n with
-  | { tag = "scheme-number"; contents = Num x } -> make_complex_from_real_imag x 0.0
-  | _ -> invalid_arg "scheme_number_to_complex: expected a tagged scheme-number"
+  | { tag = "real"; contents = Num x } -> make_complex_from_real_imag x 0.0
+  | _ -> invalid_arg "real_to_complex: expected a tagged real"
 ;;
 
 let coercion_table : (string * string, value -> value) Hashtbl.t = Hashtbl.create 8
@@ -269,10 +267,10 @@ let put_coercion t1 t2 proc = Hashtbl.replace coercion_table (t1, t2) proc
 let get_coercion t1 t2 = Hashtbl.find_opt coercion_table (t1, t2)
 
 let install_coercions () =
-  put_coercion "scheme-number" "complex" (function
-    | Tagged t -> scheme_number_to_complex t
+  put_coercion "real" "complex" (function
+    | Tagged t -> real_to_complex t
     | Num _ | Ratpair _ | Cpx _ | Bool _ | Poly _ ->
-      invalid_arg "scheme-number->complex: expected a tagged value")
+      invalid_arg "real->complex: expected a tagged value")
 ;;
 
 let rec apply_generic_coerce op args =

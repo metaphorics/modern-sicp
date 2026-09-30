@@ -180,10 +180,12 @@ prints in response to evaluating each of the following expressions.
 [ Sym "a"; Sym "b"; Sym "c" ]
 [ [ Sym "george" ] ]
 List.tl [ [ Sym "x1"; Sym "x2" ]; [ Sym "y1"; Sym "y2" ] ]
-List.hd (List.tl [ [ Sym "x1"; Sym "x2" ]; [ Sym "y1"; Sym "y2" ] ])
+List.hd (List.tl
+  [ [ Sym "x1"; Sym "x2" ]; [ Sym "y1"; Sym "y2" ] ])
 List.hd [ Sym "a"; Sym "short"; Sym "list" ] = Sym "a"
 memq (Sym "red") [ Sym "shoes"; Sym "blue"; Sym "socks" ]
-memq (Sym "red") [ Sym "red"; Sym "shoes"; Sym "blue"; Sym "socks" ]
+memq (Sym "red")
+  [ Sym "red"; Sym "shoes"; Sym "blue"; Sym "socks" ]
 @end example
 @end quotation
 
@@ -230,15 +232,14 @@ one @code{=} already gives it.}
 
 @quotation
 @strong{@anchor{Exercise 2.55}Exercise 2.55:} @emph{SICP exercise 2.55 is
-about Scheme itself, so this edition replaces it; the exercise below keeps
-the number and teaches the same section material.}  Eva Lu Ator's puzzle
-becomes a reading exercise in this edition's own terms.  The shared Scheme
-subset of @ref{Chapter 4} has a real reader, @code{Sicp_common.Reader}, which
-turns the abbreviation @code{'x} into a @code{Quote} node wrapping the datum
-@code{(quote x)}; reading @code{''abracadabra} therefore quotes the
-two-element list @code{(quote abracadabra)}.  Using @code{Reader.read} and
-@code{Ast.view}, extract the datum a top-level quote wraps, take its @code{car},
-and read off the symbol's name.  Explain why the answer is @code{quote}.
+about Scheme's quote abbreviation, so this edition replaces it; the exercise
+keeps the number and teaches the same section material.}  A quotation is
+symbolic data.  Declare @code{type datum = Symbol of string | List of datum
+list} and let @code{quote d} be @code{List [Symbol "quote"; d]}.  Eva Lu
+Ator evaluates the quotation of the quotation of @code{abracadabra}: its
+value is the quotation of @code{abracadabra}.  Take the @code{car} of that
+value and read off the symbol's name.  Explain why the answer is
+@code{quote}.
 @end quotation
 
 @node	2.3.2, 2.3.3, 2.3.1, 2.3
@@ -430,12 +431,16 @@ the multiplier and the multiplicand are the first and second parts of a
 @code{Prod}:
 
 @example ocaml
-let addend = function Sum (a, _) -> a | _ -> invalid_arg "addend: not a sum"
-let augend = function Sum (_, a) -> a | _ -> invalid_arg "augend: not a sum"
+let addend = function Sum (a, _) -> a | _ -> invalid_arg
+  "addend: not a sum"
+let augend = function Sum (_, a) -> a | _ -> invalid_arg
+  "augend: not a sum"
 let multiplier =
-  function Prod (m, _) -> m | _ -> invalid_arg "multiplier: not a product"
+  function Prod (m, _) -> m | _ -> invalid_arg
+    "multiplier: not a product"
 let multiplicand =
-  function Prod (_, m) -> m | _ -> invalid_arg "multiplicand: not a product"
+  function Prod (_, m) -> m | _ -> invalid_arg
+    "multiplicand: not a product"
 @end example
 
 @end itemize
@@ -526,7 +531,7 @@ let make_product m1 m2 =
 @noindent
 Here is how this version works on our three examples:
 
-@example ocaml
+@smallexample ocaml
 deriv (Sum (Var "x", Const 3)) "x";;
 (* => Const 1 *)
 
@@ -535,7 +540,7 @@ deriv (Prod (Var "x", Var "y")) "x";;
 
 deriv (Prod (Prod (Var "x", Var "y"), Sum (Var "x", Const 3))) "x";;
 (* => Sum (Prod (Var "x", Var "y"), Prod (Var "y", Sum (Var "x", Const 3))) *)
-@end example
+@end smallexample
 
 @noindent
 Although this is quite an improvement, the third example shows that there is
@@ -575,7 +580,8 @@ instead of a pair of expressions.  Then the last example above could be
 expressed as
 
 @example ocaml
-deriv (Prod [ Var "x"; Var "y"; Sum [ Var "x"; Const 3 ] ]) "x"
+deriv (Prod [ Var "x"; Var "y"; Sum [ Var "x"; Const 3 ] ])
+  "x"
 @end example
 
 Try to do this by changing only the representation for sums and products,
@@ -881,7 +887,7 @@ that all elements in the right subtree be larger.
 @image{../../text/original/figures/chap2/Fig2.16c,,120mm,Figure 2.16: Various binary trees that represent the set @{1@comma{} 3@comma{} 5@comma{} 7@comma{} 9@comma{} 11@}.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,,120mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.16:} Various binary trees that represent the set @math{{\{1, 3, 5, 7, 9, 11\}}}.}
@@ -919,11 +925,14 @@ type tree =
   | Empty
   | Node of tree * int * tree
 
-let entry = function Node (_, e, _) -> e | Empty -> invalid_arg "entry: empty tree"
+let entry = function Node (_, e, _) -> e | Empty -> invalid_arg
+  "entry: empty tree"
 let left_branch =
-  function Node (l, _, _) -> l | Empty -> invalid_arg "left_branch: empty tree"
+  function Node (l, _, _) -> l | Empty -> invalid_arg
+    "left_branch: empty tree"
 let right_branch =
-  function Node (_, _, r) -> r | Empty -> invalid_arg "right_branch: empty tree"
+  function Node (_, _, r) -> r | Empty -> invalid_arg
+    "right_branch: empty tree"
 let make_tree entry left right = Node (left, entry, right)
 @end example
 
@@ -1024,14 +1033,17 @@ procedures converts a binary tree to a list.
 @example ocaml
 let rec tree_to_list_1 = function
   | Empty -> []
-  | Node (left, entry, right) -> tree_to_list_1 left @@ (entry :: tree_to_list_1 right)
+  | Node (left, entry, right) ->
+    tree_to_list_1 left @@ (entry :: tree_to_list_1 right)
 ;;
 
 let tree_to_list_2 tree =
   let rec copy_to_list tree result_list =
     match tree with
     | Empty -> result_list
-    | Node (left, entry, right) -> copy_to_list left (entry :: copy_to_list right result_list)
+    | Node (left, entry, right) ->
+      copy_to_list left
+        (entry :: copy_to_list right result_list)
   in
   copy_to_list tree []
 ;;
@@ -1070,16 +1082,22 @@ let rec partial_tree elts n =
   then (Empty, elts)
   else (
     let left_size = (n - 1) / 2 in
-    let left_tree, non_left_elts = partial_tree elts left_size in
+    let left_tree, non_left_elts =
+      partial_tree elts left_size
+    in
     match non_left_elts with
     | [] -> invalid_arg "partial_tree: fewer than n elements"
     | this_entry :: rest ->
       let right_size = n - (left_size + 1) in
-      let right_tree, remaining_elts = partial_tree rest right_size in
-      (Node (left_tree, this_entry, right_tree), remaining_elts))
+      let right_tree, remaining_elts =
+        partial_tree rest right_size
+      in
+      ( Node (left_tree, this_entry, right_tree),
+        remaining_elts ))
 ;;
 
-let list_to_tree elements = fst (partial_tree elements (List.length elements))
+let list_to_tree elements =
+  fst (partial_tree elements (List.length elements))
 @end example
 
 @enumerate a
@@ -1275,7 +1293,7 @@ other letters each with relative frequency 1.
 @image{../../text/original/figures/chap2/Fig2.18a,,135mm,Figure 2.18: A Huffman encoding tree.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,,135mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.18:} A Huffman encoding tree.}
@@ -1404,13 +1422,16 @@ let symbols = function Leaf (s, _) -> [ s ] | Node (_, _, ss, _) -> ss
 let weight = function Leaf (_, w) -> w | Node (_, _, _, w) -> w
 
 let make_code_tree left right =
-  Node (left, right, symbols left @@ symbols right, weight left + weight right)
+  Node (left, right, symbols left @@ symbols right, weight left + weight
+    right)
 ;;
 
 let left_branch =
-  function Node (l, _, _, _) -> l | Leaf _ -> invalid_arg "left_branch: a leaf has no branches"
+  function Node (l, _, _, _) -> l | Leaf _ -> invalid_arg
+    "left_branch: a leaf has no branches"
 let right_branch =
-  function Node (_, r, _, _) -> r | Leaf _ -> invalid_arg "right_branch: a leaf has no branches"
+  function Node (_, r, _, _) -> r | Leaf _ -> invalid_arg
+    "right_branch: a leaf has no branches"
 @end example
 
 @noindent
@@ -1471,7 +1492,8 @@ the set is never already in it.
 let rec adjoin_set x = function
   | [] -> [ x ]
   | first :: rest as set ->
-    if weight x < weight first then x :: set else first :: adjoin_set x rest
+    if weight x < weight first then x :: set else first :: adjoin_set x
+      rest
 ;;
 @end example
 
@@ -1484,7 +1506,8 @@ ordered set of leaves, ready to be merged according to the Huffman algorithm:
 let rec make_leaf_set pairs =
   match pairs with
   | [] -> []
-  | (symbol, frequency) :: rest -> adjoin_set (make_leaf symbol frequency) (make_leaf_set rest)
+  | (symbol, frequency) :: rest -> adjoin_set (make_leaf symbol
+    frequency) (make_leaf_set rest)
 ;;
 @end example
 
@@ -1496,11 +1519,14 @@ sample message:
 let sample_tree =
   make_code_tree
     (make_leaf "A" 4)
-    (make_code_tree (make_leaf "B" 2) (make_code_tree (make_leaf "D" 1) (make_leaf "C" 1)))
+    (make_code_tree
+       (make_leaf "B" 2)
+       (make_code_tree (make_leaf "D" 1) (make_leaf "C" 1)))
 ;;
 
 let sample_message =
-  [ Zero; One; One; Zero; Zero; One; Zero; One; Zero; One; One; One; Zero ]
+  [ Zero; One; One; Zero; Zero; One; Zero; One;
+    Zero; One; One; One; Zero ]
 ;;
 @end example
 
@@ -1516,7 +1542,8 @@ encoded message.
 let rec encode message tree =
   match message with
   | [] -> []
-  | symbol :: rest -> encode_symbol symbol tree @@ encode rest tree
+  | symbol :: rest ->
+    encode_symbol symbol tree @@ encode rest tree
 ;;
 @end example
 
@@ -1535,7 +1562,8 @@ than one pair) and generates a Huffman encoding tree according to the Huffman
 algorithm.
 
 @example ocaml
-let generate_huffman_tree pairs = successive_merge (make_leaf_set pairs)
+let generate_huffman_tree pairs =
+  successive_merge (make_leaf_set pairs)
 @end example
 
 @code{make_leaf_set} is the procedure given above that transforms the list of

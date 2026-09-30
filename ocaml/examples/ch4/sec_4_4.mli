@@ -1,299 +1,173 @@
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 4.4 *)
+(* SPDX-License-Identifier: GPL-3.0-only *)
 
-(** The query system of section 4.4 on the chapter's substrate: assertions,
-    rules, patterns, and frames are typed [Value] pairs and symbols; the one
-    lazy-stream choice is the chapter 3 memoized stream, re-exported as
-    [Streams]; the four layers keep the book's shape -- the driver loop
-    ([run]), the evaluator ([qeval] and its data-directed dispatch), the
-    matcher and unifier ([pattern_match], [unify_match]), and the frame and
-    data-base machinery.
+(** The query system of section 4.4 over closed host constructors
+    (grammar sections 10 and 13, row 4.4).
 
-    A frame is an immutable association list of bindings; it has no marked
-    inhabitant (an absent variable is absence, not a value), the matcher's
-    failure is [None], and frame variables are the internal [(? name)] /
-    [(? id name)] list values, so a renamed rule variable never collides
-    with an explicitly written one. The data base is chronological -- the
-    insertion order the book's pinned transcripts list -- behind the book's
-    stream interface, indexed by the leading symbol. The driver's query
-    reader is the data-language scanner: [()], dotted-tail patterns, and
-    tokens such as [9am] are ordinary data. *)
+    Terms, queries, rules, and frames are ordinary OCaml variants and
+    lists; there is no query text.  A frame is an immutable association
+    of variables to terms; unification includes the occurs check; answer
+    streams are the chapter 3 memoized streams, combined with the book's
+    delayed append and fair interleaving.
 
-(** The chapter 3 memoized stream: one evaluated element paired with a
-    [Lazy.t] tail. Every [delay]/[force] of the book's listings is
-    [cons_stream]'s thunk and the tail's force. *)
+    Answer order: a simple query yields its assertion matches (in
+    assertion order) before its rule-derived answers (rule order,
+    interleaved across rules); [And] feeds each conjunct the frames of
+    the previous ones; [Or] interleaves its disjuncts; [Not] and
+    [Holds] filter frames.  Special forms beyond these are dispatched by
+    name through a handler table, as the book's [put] does. *)
+
+module Eval_error = Sicp_common.Eval_error
 module Streams = Sicp_ch3.Sec_3_5.Streams
 
-(** One frame: bindings of internal variables to values, newest first,
-    built only through [the_empty_frame] and [extend]. *)
-type frame
+(** A pattern variable: its name and the rule application that renamed
+    it ([0] for a variable of the query itself). *)
+type variable =
+  { name : string
+  ; id : int
+  }
 
-(** The frame assigning no variables, the driver's initial frame. *)
-val the_empty_frame : frame
+(** A query term.  Lists are [Pair]/[Nil] structure, so a rule may
+    match a list's head and its tail separately. *)
+type term =
+  | Atom of string
+  | Num of int
+  | Str of string
+  | Var of variable
+  | Nil
+  | Pair of term * term
 
-(** [extend variable value frame] is the frame with one more binding in
-    front. *)
-val extend : Sicp_common.Value.t -> Sicp_common.Value.t -> frame -> frame
+(** A query. *)
+type query =
+  | Pattern of term
+  | And of query list
+  | Or of query list
+  | Not of query
+  | Holds of string * term list
+  (** The book's [lisp-value]: a host predicate ([<], [>], [<=], [>=],
+      [=], [<>] on numbers and strings) applied to instantiated terms. *)
+  | Always_true
+  | Form of string * query list
+  (** A special form dispatched through the handler table. *)
 
-(** [binding_in_frame variable frame] is the stored [(variable, value)]
-    pair, or [None]. *)
-val binding_in_frame
-  :  Sicp_common.Value.t
-  -> frame
-  -> (Sicp_common.Value.t * Sicp_common.Value.t) option
+(** One driver input. *)
+type command =
+  | Assert of term
+  | Rule of term * query
+  | Query of query
 
-(** [frame_bindings frame] is the bindings as an association list, newest
-    first -- the frame's whole content, for history checks and merging. *)
-val frame_bindings : frame -> (Sicp_common.Value.t * Sicp_common.Value.t) list
+(** A frame: bindings, newest first. *)
+type frame = (variable * term) list
 
-(** {2 Query syntax} *)
+(** [list items] is the proper list term of [items]; [dotted items tail]
+    ends it in [tail]. *)
+val list : term list -> term
 
-(** [is_var exp] holds for the internal pattern variables: list values
-    whose car is the symbol [?]. *)
-val is_var : Sicp_common.Value.t -> bool
+val dotted : term list -> term -> term
 
-(** [read_query text] reads the one datum of [text] as a value, ignoring
-    everything after it, or the scanner's message. *)
-val read_query : string -> (Sicp_common.Value.t, string) result
+(** [var name] is the query variable [?name]. *)
+val var : string -> term
 
-(** [query_syntax_process exp] expands every [?x] symbol to the internal
-    [(? x)], the book's driver-loop preprocessing. *)
-val query_syntax_process : Sicp_common.Value.t -> Sicp_common.Value.t
+(** [render_term t] is [t] in list notation: [[a, ?x, [b]]], a dotted
+    tail as [[?u | ?v]], renamed variables as [?name.id]. *)
+val render_term : term -> string
 
-(** [contract_question_mark variable] is the external spelling of an
-    internal variable: [(? x)] reads back as [?x], [(? 7 x)] as [?x-7]. *)
-val contract_question_mark : Sicp_common.Value.t -> Sicp_common.Value.t
+(** [render_query q] renders [q]: patterns as terms, the combinators as
+    [and(...)], [or(...)], [not(...)], [holds(p, ...)], [always-true],
+    and special forms by name. *)
+val render_query : query -> string
 
-(** [make_new_variable variable id] is the renamed variable [(? id name)]
-    of one rule application. *)
-val make_new_variable : Sicp_common.Value.t -> int -> Sicp_common.Value.t
+(** {1 Frames, matching, and unification} *)
 
-(** [rename_variables_in rule] copies the rule with every variable renamed
-    under one fresh application id. *)
-val rename_variables_in : Sicp_common.Value.t -> Sicp_common.Value.t
+val binding_in_frame : variable -> frame -> term option
+val extend : variable -> term -> frame -> frame
 
-(** [is_rule statement] holds for [(rule ...)] forms. *)
-val is_rule : Sicp_common.Value.t -> bool
+(** [depends_on t v frame] holds when [t] mentions [v], directly or
+    through [frame]: the occurs check. *)
+val depends_on : term -> variable -> frame -> bool
 
-(** [rule_conclusion rule] is the conclusion pattern. *)
-val rule_conclusion : Sicp_common.Value.t -> Sicp_common.Value.t
+(** [pattern_match pattern datum frame] extends [frame] so that
+    [pattern] matches the variable-free [datum], or is [None]. *)
+val pattern_match : term -> term -> frame -> frame option
 
-(** [rule_body rule] is the body query, or the always-true placeholder for
-    a rule without one. *)
-val rule_body : Sicp_common.Value.t -> Sicp_common.Value.t
+(** [unify_match a b frame] extends [frame] so that [a] and [b] unify,
+    or is [None]. *)
+val unify_match : term -> term -> frame -> frame option
 
-(** [value_list v] is the elements of a proper list value, or the typed
-    error. *)
-val value_list
-  :  Sicp_common.Value.t
-  -> (Sicp_common.Value.t list, Sicp_common.Eval_error.t) result
+(** [instantiate t frame unbound] replaces every bound variable of [t]
+    by its (instantiated) value and hands each unbound one to
+    [unbound]. *)
+val instantiate : term -> frame -> (variable -> term) -> term
 
-(** [first_operand items] is the first element of a contents list. *)
-val first_operand : Sicp_common.Value.t list -> Sicp_common.Value.t
+(** [rename_variables_in (conclusion, body) id] renames every variable of
+    the rule to application [id]. *)
+val rename_variables_in : term * query -> int -> term * query
 
-(** {2 The matcher and the unifier} *)
+(** {1 The streams of 4.4.4.6} *)
 
-(** [pattern_match pattern datum frame] is the frame extended by the match
-    of the datum against the pattern, consistent with the bindings already
-    in the frame, or [None] when the match fails. *)
-val pattern_match : Sicp_common.Value.t -> Sicp_common.Value.t -> frame -> frame option
-
-(** [unify_match p1 p2 frame] is the symmetric matcher: variables may occur
-    on both sides, a binding that would make a variable depend on itself is
-    rejected, and the result is the extended frame or [None]. *)
-val unify_match : Sicp_common.Value.t -> Sicp_common.Value.t -> frame -> frame option
-
-(** [depends_on exp variable frame] holds when the proposed value mentions
-    the variable, directly or through the frame's bindings. *)
-val depends_on : Sicp_common.Value.t -> Sicp_common.Value.t -> frame -> bool
-
-(** [instantiate exp frame unbound_var_handler] copies [exp] replacing
-    every variable by its frame value, itself instantiated, handing an
-    unbound variable to the handler. *)
-val instantiate
-  :  Sicp_common.Value.t
-  -> frame
-  -> (Sicp_common.Value.t -> frame -> Sicp_common.Value.t)
-  -> Sicp_common.Value.t
-
-(** {2 The stream machinery of 4.4.4.6} *)
-
-(** [singleton_stream x] is the one-element stream. *)
-val singleton_stream : 'a -> 'a Streams.stream
-
-(** [stream_append_delayed s1 delayed_s2] appends, forcing the second
-    stream only when the first runs out -- the explicit delay that
-    postpones looping (4.71). *)
 val stream_append_delayed
   :  'a Streams.stream
   -> (unit -> 'a Streams.stream)
   -> 'a Streams.stream
 
-(** [interleave_delayed s1 delayed_s2] alternates the two streams, the
-    second forced only when first needed (4.72). *)
 val interleave_delayed
   :  'a Streams.stream
   -> (unit -> 'a Streams.stream)
   -> 'a Streams.stream
 
-(** [flatten_stream stream] interleaves a stream of streams; its explicit
-    delay is what exercise 4.73 debates. *)
-val flatten_stream : 'a Streams.stream Streams.stream -> 'a Streams.stream
-
-(** [stream_flatmap proc s] maps [proc] over [s] and interleaves the
-    resulting streams -- the book's combination everywhere in the
-    evaluator. *)
 val stream_flatmap : ('a -> 'b Streams.stream) -> 'a Streams.stream -> 'b Streams.stream
+val singleton_stream : 'a -> 'a Streams.stream
 
-(** {2 The data base} *)
+(** {1 The data base and the evaluator} *)
 
-(** [fetch_assertions pattern frame] is the candidate assertions as a
-    stream: the leading-symbol index when the pattern has one, all
-    assertions otherwise, in insertion order. *)
-val fetch_assertions : Sicp_common.Value.t -> frame -> Sicp_common.Value.t Streams.stream
+(** One query session: its assertions, rules, rule-application counter,
+    and special-form handlers. *)
+type session
 
-(** [fetch_rules pattern frame] is the candidate rules: those indexed under
-    the pattern's key and under [?], or all rules. *)
-val fetch_rules : Sicp_common.Value.t -> frame -> Sicp_common.Value.t Streams.stream
+(** A special-form handler: the session, the form's operand queries,
+    and the input frames, answering the output frames. *)
+type handler = session -> query list -> frame Streams.stream -> frame Streams.stream
 
-(** [add_rule_or_assertion statement] files one [assert!] body into the
-    data base and its index, appending in insertion order. *)
-val add_rule_or_assertion : Sicp_common.Value.t -> Sicp_common.Value.t
+(** [new_session ()] is an empty data base with no special forms. *)
+val new_session : unit -> session
 
-(** {2 The evaluator} *)
+(** [put session name handler] installs the special form [name]. *)
+val put : session -> string -> handler -> unit
 
-(** One dispatch handler: the session environment (filters evaluate host
-    predicates in it), the contents list of the tagged query, and the frame
-    stream; it answers the extended frame stream. *)
-type qproc =
-  Sicp_common.Value.env
-  -> Sicp_common.Value.t list
-  -> frame Streams.stream
-  -> frame Streams.stream
+(** [add_assertion session t] files an assertion after the earlier ones. *)
+val add_assertion : session -> term -> unit
 
-(** [put key1 key2 proc] registers a handler, the book's [(put key 'qeval
-    proc)]; exercise 4.75 registers [unique] through it. *)
-val put : string -> string -> qproc -> unit
+(** [add_rule session conclusion body] files a rule after the earlier ones. *)
+val add_rule : session -> term -> query -> unit
 
-(** [get key1 key2] is the registered handler, or [None]. *)
-val get : string -> string -> qproc option
+(** [fetch_assertions session pattern] is every assertion in order. *)
+val fetch_assertions : session -> term -> term Streams.stream
 
-(** [qeval env query frames] is the query evaluator: dispatch on the query's
-    tag, a simple query for an untagged pattern. *)
-val qeval
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t
-  -> frame Streams.stream
-  -> frame Streams.stream
+(** [fetch_rules session pattern] is every rule in order. *)
+val fetch_rules : session -> term -> (term * query) Streams.stream
 
-(** [simple_query env pattern frames] extends every frame by the matches of
-    the pattern against assertions and, delayed, against rules. *)
-val simple_query
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t
-  -> frame Streams.stream
-  -> frame Streams.stream
+(** [qeval session q frames] is the stream of frames extending [frames]
+    that satisfy [q].  A [Holds] with an unbound variable, an unknown
+    predicate, or an unknown special form raises [Query_error]. *)
+val qeval : session -> query -> frame Streams.stream -> frame Streams.stream
 
-(** [find_assertions pattern frame] is the stream of frames the candidate
-    assertions extend the frame by. *)
-val find_assertions : Sicp_common.Value.t -> frame -> frame Streams.stream
+(** A failure inside lazy answer production. *)
+exception Query_error of Eval_error.t
 
-(** [apply_rules env pattern frame] is the stream of frames the candidate
-    rules extend the frame by. *)
-val apply_rules
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t
-  -> frame
-  -> frame Streams.stream
+(** [answers session q] is every instantiation of [q]'s own term
+    structure by its answer frames, unbound variables left as they are. *)
+val answers : session -> query -> (query Streams.stream, Eval_error.t) result
 
-(** [apply_a_rule env rule pattern frame] renames the rule, unifies the
-    conclusion with the pattern in the frame, and evaluates the body in the
-    unified frame. *)
-val apply_a_rule
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t
-  -> Sicp_common.Value.t
-  -> frame
-  -> frame Streams.stream
+(** [instantiate_query q frame] is [q] with every variable bound in
+    [frame] replaced. *)
+val instantiate_query : query -> frame -> query
 
-(** [conjoin env conjuncts frames] runs the conjuncts in series. *)
-val conjoin
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t list
-  -> frame Streams.stream
-  -> frame Streams.stream
+(** [run ~emit session commands] runs a driver session: assertions and
+    rules are filed, and each query writes [? query] and then one line
+    per answer. *)
+val run : emit:(string -> unit) -> session -> command list -> (unit, Eval_error.t) result
 
-(** [disjoin env disjuncts frames] merges the disjuncts' streams with
-    interleaving. *)
-val disjoin
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t list
-  -> frame Streams.stream
-  -> frame Streams.stream
-
-(** [negate env [query] frames] keeps only the frames the query cannot
-    extend; the [not] filter. *)
-val negate
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t list
-  -> frame Streams.stream
-  -> frame Streams.stream
-
-(** [lisp_value env call frames] keeps only the frames whose instantiation
-    makes the host predicate true; an unbound pattern variable is an
-    error. *)
-val lisp_value
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t list
-  -> frame Streams.stream
-  -> frame Streams.stream
-
-(** [execute env call] applies the host predicate named by [call] to its
-    already-evaluated argument values and judges the result by the object
-    language's truth. *)
-val execute
-  :  Sicp_common.Value.env
-  -> Sicp_common.Value.t
-  -> (bool, Sicp_common.Eval_error.t) result
-
-(** {2 The driver} *)
-
-(** One driver input: an [assert!] added to the data base, or a query's
-    lazy stream of instantiated query patterns -- printed one by one as
-    they are forced, the book's display-stream. *)
-type outcome =
-  | Asserted
-  | Answers of Sicp_common.Value.t Streams.stream
-
-(** [run env text] reads one input, processes its syntax, and answers. A
-    malformed query or a failing filter answers the typed error. *)
-val run : Sicp_common.Value.env -> string -> (outcome, Sicp_common.Eval_error.t) result
-
-(** [answers outcome] forces the whole answer stream; the book's
-    display-stream, for finite queries. An [Asserted] outcome has no
-    answers. *)
-val answers : outcome -> Sicp_common.Value.t list
-
-(** [answers_upto n outcome] forces at most [n] answers, how a session
-    observes a prefix of an unbounded answer stream. *)
-val answers_upto : int -> outcome -> Sicp_common.Value.t list
-
-(** [query env text] is [run] followed by [answers]: every answer of a
-    finite query as a list. *)
-val query
-  :  Sicp_common.Value.env
-  -> string
-  -> (Sicp_common.Value.t list, Sicp_common.Eval_error.t) result
-
-(** [query_upto n env text] is [run] followed by [answers_upto n]. *)
-val query_upto
-  :  int
-  -> Sicp_common.Value.env
-  -> string
-  -> (Sicp_common.Value.t list, Sicp_common.Eval_error.t) result
-
-(** [the_query_system ()] resets the data base and the renaming counter and
-    answers a fresh global environment, the host environment [lisp-value]
-    evaluates its predicates in. The dispatch registrations are code and
-    survive the reset. *)
-val the_query_system : unit -> Sicp_common.Value.env
+(** [read_fixture ~filename text] decodes a constructor-literal query
+    program: a list of [Assert term], [Rule (term, query)], and [Query
+    query], with terms built from [Atom], [Num], [Str], [Var], [List],
+    and [Dotted (items, tail)]. *)
+val read_fixture : filename:string -> string -> (command list, string) result

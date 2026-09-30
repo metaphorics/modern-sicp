@@ -19,7 +19,7 @@ val contents_of : tagged -> value
 val put : string -> string list -> (value list -> value) -> unit
 val get : string -> string list -> (value list -> value) option
 val apply_generic : string -> value list -> value
-val install_scheme_number_package : unit -> unit
+val install_real_package : unit -> unit
 val install_rational_package : unit -> unit
 val install_complex_package : unit -> unit
 val is_zero : value -> bool

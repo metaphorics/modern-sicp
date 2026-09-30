@@ -11,7 +11,7 @@ and tagged =
   }
 
 let type_tag = function
-  | Num _ -> "scheme-number"
+  | Num _ -> "real"
   | Tagged t -> t.tag
 ;;
 
@@ -21,11 +21,11 @@ let contents_of = function
 ;;
 
 let attach_tag tag contents =
-  if String.equal tag "scheme-number"
+  if String.equal tag "real"
   then (
     match contents with
     | Num _ -> contents
-    | Tagged _ -> invalid_arg "attach_tag: scheme-number expects a bare Num contents")
+    | Tagged _ -> invalid_arg "attach_tag: real expects a bare Num contents")
   else Tagged { tag; contents }
 ;;
 

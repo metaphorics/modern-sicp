@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(* Exercise 5.36: the compiler's right-to-left operand order and its measured cost. This is the pending scaffold of the solution with the same
+(* Exercise 5.36: the compiler's operand order, and a compiler that evaluates operands in the other order. This is the pending scaffold of the solution with the same
    name under solutions/ch5: every entry raises the pending marker
    until the exercise is solved. *)
 

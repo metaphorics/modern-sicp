@@ -148,7 +148,7 @@ let has_cycle edges =
 
 let ex_2_85a () =
   let tower_edges = [ "integer", "rational"; "rational", "real"; "real", "complex" ] in
-  let self_coercion_edges = [ "scheme-number", "scheme-number" ] in
+  let self_coercion_edges = [ "real", "real" ] in
   let three_step_edges = [ "a", "b"; "b", "c"; "c", "a" ] in
   has_cycle tower_edges, has_cycle self_coercion_edges, has_cycle three_step_edges
 ;;

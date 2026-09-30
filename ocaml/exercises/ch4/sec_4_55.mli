@@ -1,5 +1,8 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** The pending entries of section 4.4's exercises. *)
-val ex_4_55 : 'a
+(** Exercise 4.55: the pending scaffold of the solution with the
+    same name under solutions/ch4. *)
+
+(** [ex_4_55 ()] raises [Sicp_common.Pending.Pending_solution]. *)
+val ex_4_55 : unit -> string list

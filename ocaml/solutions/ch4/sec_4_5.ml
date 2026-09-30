@@ -1,75 +1,72 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 4.1 exercise 4.5 *)
+   Adapted from SICP section 4.1 exercise 4.5 *)
 
-(** Cond arrow clauses. In a clause written [(test => recipient)] the
-    reader delivers [=>] as an ordinary variable expression, so the
-    dispatch detects the two-element action list whose first element is
-    that variable: the test is evaluated once, and when it holds, the
-    recipient is evaluated and applied to the test's value through the
-    evaluator, so a compound recipient works like any procedure. *)
-
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
 module Ast = Sicp_common.Ast
 module Eval_error = Sicp_common.Eval_error
-module Reader = Sicp_common.Reader
-module Value = Sicp_common.Value
-module SE = Sicp_ch4.Sec_4_1
+module S = Sicp_ch4.Sec_4_1
 
-module rec Ev : sig
-  val eval : SE.eval_t
-end = struct
-  module C = SE.Core (Ev)
+type clause =
+  | Test of Ast.expr * Ast.expr
+  | Arrow of Ast.expr * Ast.expr
+  | Else of Ast.expr
 
-  let rec eval_cond clauses else_body env =
-    match clauses with
-    | [] ->
-      (match else_body with
-       | Some body -> C.eval_sequence body env
-       | None -> Ok (Value.bool false))
-    | (test, actions) :: rest ->
-      Ev.eval test env
-      >>= fun tested ->
-      if SE.false_ tested
-      then eval_cond rest else_body env
-      else (
-        match actions with
-        | [ arrow; recipient ] ->
-          (match Ast.view arrow with
-           | Ast.Variable "=>" ->
-             Ev.eval recipient env >>= fun proc -> C.apply_procedure proc [ tested ]
-           | _ -> C.eval_sequence actions env)
-        | _ -> C.eval_sequence actions env)
-  ;;
+(* A space cannot occur in a source identifier, so the payload's name
+   never captures a variable of the recipient. *)
+let payload = "cond value"
+let invalid detail = Error (Eval_error.Invalid_form detail)
 
-  let eval exp env =
-    match Ast.view exp with
-    | Ast.Cond (clauses, else_body) -> eval_cond clauses else_body env
-    | _ -> C.eval exp env
-  ;;
-end
-
-let eval = Ev.eval
-
-let run env text =
-  Reader.read text
-  |> Result.map_error (fun e -> Eval_error.Invalid_form (Reader.to_string e))
-  >>= fun exp -> Ev.eval exp env
+let rec cond_to_expr = function
+  | [] -> invalid "a conditional needs a final Else clause"
+  | [ Else e ] -> Ok e
+  | Else _ :: _ -> invalid "Else must be the last clause"
+  | Test (test, result) :: rest ->
+    let* rest = cond_to_expr rest in
+    Ok (Ast.if_ test result rest)
+  | Arrow (test, recipient) :: rest ->
+    let* rest = cond_to_expr rest in
+    Ok
+      (Ast.match_
+         test
+         [ ( Ast.pconstruct "Some" [ Ast.pvar payload ]
+           , Ast.apply recipient [ Ast.var payload ] )
+         ; Ast.pconstruct "None" [], rest
+         ])
 ;;
 
-let render = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let eval_cond clauses env =
+  let* e = cond_to_expr clauses in
+  S.eval_expr e env
 ;;
 
-(** [ex_4_05 ()] evaluates the statement's [assoc] example, an arrow
-      clause whose recipient is a compound procedure, and an arrow
-      clause whose test fails and falls through to the [else]. *)
 let ex_4_05 () =
-  let env = SE.the_global_environment () in
-  [ run env "(cond ((assoc 'b '((a 1) (b 2))) => cadr) (else false))"
-  ; run env "(cond ((memq 'c '(a b c)) => (lambda (l) (cons 'x l))) (else 'none))"
-  ; run env "(cond ((assoc 'z '((a 1))) => cadr) (else 'missing))"
-  ]
-  |> List.map render
+  let expr = Sec_4_1.open_expression [] in
+  let lookup key =
+    expr
+      (Printf.sprintf
+         "let rec assoc l = match l with [] -> None | (k, v) :: rest -> if k = \"%s\" \
+          then Some v else assoc rest in assoc [ (\"a\", 1); (\"b\", 2) ]"
+         key)
+  in
+  let run clauses =
+    match eval_cond clauses (S.the_global_environment ()) with
+    | Ok v -> Sicp_common.Value.to_string v
+    | Error e -> "error: " ^ Eval_error.to_string e
+  in
+  let* identity = expr "fun x -> x" in
+  let* double = expr "fun x -> x * 2" in
+  let* zero = expr "0" in
+  let* seven = expr "7" in
+  let* b = lookup "b" in
+  let* c = lookup "c" in
+  let* less = expr "1 < 2" in
+  let* greater = expr "1 > 2" in
+  Ok
+    [ run [ Arrow (b, identity); Else zero ]
+    ; run [ Arrow (c, double); Test (less, seven); Else zero ]
+    ; run [ Test (greater, seven); Arrow (b, double); Else zero ]
+    ; run [ Arrow (c, double); Else zero ]
+    ; run [ Else zero; Test (less, seven) ]
+    ]
 ;;

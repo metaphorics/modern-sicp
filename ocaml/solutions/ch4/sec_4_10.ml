@@ -1,105 +1,116 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 4.1 exercise 4.10 *)
+   Adapted from SICP section 4.1 exercise 4.10 *)
 
-(** Exercise 4.10: a new surface syntax for the same language. [eval]
-    and [apply] never mention the surface syntax: the terms of the
-    alternative syntax translate into the typed [Ast], and the
-    unmodified base evaluator runs the result. *)
-
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
 module Ast = Sicp_common.Ast
 module Eval_error = Sicp_common.Eval_error
 module Value = Sicp_common.Value
+module S = Sicp_ch4.Sec_4_1
 
-(** One term of the alternative surface syntax: a self-evaluating
-      literal, a name, a function written [fn], a [do] sequence, or a
-      call written [term ! args]. *)
 type term =
-  | Lit of Value.t
+  | Lit of Ast.scalar
   | Name of string
   | Fn of string list * term
   | Do of term list
   | Call of term * term list
+  | Op of string * term * term
+  | When of term * term * term
+  | Rec of string * term * term
 
-(** [value_to_datum v] is the datum whose evaluation is [v], the inverse
-    of the substrate's [datum_to_value] over the data values. A
-    procedure is not a literal and reports a type error. *)
-let rec value_to_datum (v : Value.t) : (Ast.datum, Eval_error.t) result =
-  match Value.view v with
-  | Value.Int n -> Ok (Ast.DInt n)
-  | Value.Float f -> Ok (Ast.DFloat f)
-  | Value.Bool b -> Ok (Ast.DBool b)
-  | Value.String s -> Ok (Ast.DString s)
-  | Value.Symbol s -> Ok (Ast.DSymbol s)
-  | Value.Nil -> Ok Ast.DNil
-  | Value.Pair (car, cdr) ->
-    value_to_datum car
-    >>= fun car -> value_to_datum cdr >>= fun cdr -> Ok (Ast.DPair (car, cdr))
-  | Value.Primitive_procedure _ | Value.Compound_procedure _ ->
-    Error (Eval_error.Invalid_form "from_new_syntax: a procedure is not a literal")
+let invalid detail = Error (Eval_error.Invalid_form detail)
+
+let operator = function
+  | "+" -> Ok (fun a b -> Ast.arith Ast.Add a b)
+  | "-" -> Ok (fun a b -> Ast.arith Ast.Sub a b)
+  | "*" -> Ok (fun a b -> Ast.arith Ast.Mul a b)
+  | "/" -> Ok (fun a b -> Ast.arith Ast.Div a b)
+  | "=" -> Ok (fun a b -> Ast.compare_ Ast.Eq a b)
+  | "<" -> Ok (fun a b -> Ast.compare_ Ast.Lt a b)
+  | ">" -> Ok (fun a b -> Ast.compare_ Ast.Gt a b)
+  | "^" -> Ok (fun a b -> Ast.concat a b)
+  | other -> invalid ("unknown operator " ^ other)
 ;;
 
-(** [from_new_syntax term] translates one term of the alternative
-    syntax into the standard AST: [Lit] to a self-evaluating expression
-    (quoted when the literal is data), [Name] to a variable reference,
-    [Fn] to a one-expression [lambda], [Do] to a [begin], and [Call] to
-    an application. *)
-let rec from_new_syntax (term : term) : (Ast.expr, Eval_error.t) result =
-  match term with
-  | Lit v ->
-    (match Value.view v with
-     | Value.Int n -> Ok (Ast.int n)
-     | Value.Float f -> Ok (Ast.float f)
-     | Value.Bool b -> Ok (Ast.bool b)
-     | Value.String s -> Ok (Ast.string s)
-     | _ -> value_to_datum v >>= fun datum -> Ok (Ast.quote datum))
-  | Name name -> Ok (Ast.variable name)
+let rec from_new_syntax = function
+  | Lit s -> Ok (Ast.scalar s)
+  | Name n -> Ok (Ast.var n)
+  | Fn ([], _) -> invalid "fn needs a parameter"
   | Fn (parameters, body) ->
-    from_new_syntax body >>= fun body -> Ast.lambda parameters [ body ]
-  | Do terms ->
-    let rec go acc = function
-      | [] -> Ok (List.rev acc)
-      | term :: rest -> from_new_syntax term >>= fun e -> go (e :: acc) rest
-    in
-    go [] terms >>= Ast.sequence
-  | Call (operator, operands) ->
-    from_new_syntax operator
-    >>= fun operator ->
-    let rec go acc = function
-      | [] -> Ok (List.rev acc)
-      | term :: rest -> from_new_syntax term >>= fun e -> go (e :: acc) rest
-    in
-    go [] operands >>= fun operands -> Ok (Ast.application operator operands)
+    let* body = from_new_syntax body in
+    Ok (Ast.fun_ parameters body)
+  | Do [] -> invalid "do needs a term"
+  | Do [ last ] -> from_new_syntax last
+  | Do (first :: rest) ->
+    let* first = from_new_syntax first in
+    let* rest = from_new_syntax (Do rest) in
+    Ok (Ast.sequence first rest)
+  | Call (_, []) -> invalid "call needs an argument"
+  | Call (f, args) ->
+    let* f = from_new_syntax f in
+    let* args = all args in
+    Ok (Ast.apply f args)
+  | Op (name, a, b) ->
+    let* build = operator name in
+    let* a = from_new_syntax a in
+    let* b = from_new_syntax b in
+    Ok (build a b)
+  | When (c, t, f) ->
+    let* c = from_new_syntax c in
+    let* t = from_new_syntax t in
+    let* f = from_new_syntax f in
+    Ok (Ast.if_ c t f)
+  | Rec (name, definition, body) ->
+    let* definition = from_new_syntax definition in
+    let* body = from_new_syntax body in
+    Ok (Ast.let_ true [ { Ast.name = Some name; rhs = definition } ] body)
+
+and all = function
+  | [] -> Ok []
+  | t :: rest ->
+    let* e = from_new_syntax t in
+    let* es = all rest in
+    Ok (e :: es)
 ;;
 
-(** [eval] is the untouched base evaluator: the exercise's point is that
-    a syntax change stops at the translation. *)
-let eval : Sicp_ch4.Sec_4_1.eval_t = Sicp_ch4.Sec_4_1.eval
-
-(** [render r] is the printed outcome of one demonstration step. *)
-let render = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let eval_term term env =
+  let* e = from_new_syntax term in
+  S.eval_expr e env
 ;;
 
-(** [ex_4_10 ()] writes [square] in the new syntax, stores the
-    translated [Fn] under [square] with a define built from the
-    translation, and calls it on [4] through a [Call] inside a [Do]. The
-    trace is the call's value, then the printed value of the
-    intermediate translated [Fn] evaluated on its own. *)
+let factorial =
+  Rec
+    ( "fact"
+    , Fn
+        ( [ "n" ]
+        , When
+            ( Op ("=", Name "n", Lit (Ast.Int 0))
+            , Lit (Ast.Int 1)
+            , Op
+                ( "*"
+                , Name "n"
+                , Call (Name "fact", [ Op ("-", Name "n", Lit (Ast.Int 1)) ]) ) ) )
+    , Call (Name "fact", [ Lit (Ast.Int 6) ]) )
+;;
+
 let ex_4_10 () =
-  let env = Sicp_ch4.Sec_4_1.the_global_environment () in
-  let square = Fn ([ "x" ], Call (Name "*", [ Name "x"; Name "x" ])) in
-  let call = Call (Name "square", [ Lit (Value.int 4) ]) in
-  let intermediate = from_new_syntax square >>= fun lam -> eval lam env in
-  let program =
-    from_new_syntax square
-    >>= fun lam ->
-    from_new_syntax call
-    >>= fun call ->
-    let define = Ast.definition (Ast.define_variable "square" lam) in
-    Ast.sequence [ define; call ] >>= fun program -> eval program env
+  let run term =
+    let out = Buffer.create 16 in
+    let env = S.the_global_environment ~emit:(Buffer.add_string out) () in
+    match eval_term term env with
+    | Ok v -> Buffer.contents out ^ Value.to_string v
+    | Error err -> Buffer.contents out ^ "error: " ^ Eval_error.to_string err
   in
-  [ render program; render intermediate ]
+  [ run factorial
+  ; run
+      (Do
+         [ Call (Name "print_string", [ Lit (Ast.String "new ") ])
+         ; Op ("^", Lit (Ast.String "syntax"), Lit (Ast.String "!"))
+         ])
+  ; run
+      (Call
+         ( Fn ([ "x"; "y" ], Op ("-", Name "x", Name "y"))
+         , [ Lit (Ast.Int 10); Lit (Ast.Int 3) ] ))
+  ; run (Op ("%", Lit (Ast.Int 1), Lit (Ast.Int 2)))
+  ]
 ;;

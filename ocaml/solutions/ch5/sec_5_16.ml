@@ -1,63 +1,40 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Adapted from the Scheme program of SICP section 5.2 *)
 
-(** Exercise 5.16: instruction tracing, on and off. *)
+let ( let* ) = Result.bind
 
-let ( >>= ) = Result.bind
+module M = Sicp_ch5.Sec_5_1
+module Monitor = Sec_5_15.Monitor
 
-module Machine = Sicp_ch5.Sec_5_2
-module Sim = Sec_5_15.Sim
-
-let gcd_controller =
-  {|(controller
- test-b
-   (test (op =) (reg b) (const 0))
-   (branch (label gcd-done))
-   (assign t (op rem) (reg a) (reg b))
-   (assign a (reg b))
-   (assign b (reg t))
-   (goto (label test-b))
- gcd-done)|}
+let gcd m a b ?before () =
+  let* () = Monitor.set_register m "a" (M.Int a) in
+  let* () = Monitor.set_register m "b" (M.Int b) in
+  let* _ = Monitor.start ?before m in
+  Monitor.get_register m "a"
 ;;
 
-(** [ex_5_16 ()] runs the GCD machine on (12, 8) with tracing on --
-    one line per executed instruction -- then runs the same machine
-    again with tracing off and shows the silence. *)
 let ex_5_16 () =
-  Sim.make
-    ~registers:[ "a"; "b"; "t" ]
-    ~operations:Machine.arith_operations
-    ~controller:gcd_controller
-  >>= fun m ->
+  let* m =
+    Monitor.make
+      ~registers:[ "a"; "b"; "t" ]
+      ~operations:M.arith_operations
+      ~controller:Sec_5_10.gcd_controller
+  in
   let lines = ref [] in
-  Sim.set_register m "a" (Machine.Int 12)
-  >>= fun () ->
-  Sim.set_register m "b" (Machine.Int 8)
-  >>= fun () ->
-  Sim.start
-    ~before:(fun i ->
-      lines := !lines @ [ Machine.instruction_to_string (Sim.instruction_text m i) ])
-    m
-  >>= fun _ ->
-  Sim.get_register m "a"
-  >>= fun first_answer ->
-  let traced = !lines in
-  let before_len = List.length traced in
-  Sim.set_register m "a" (Machine.Int 20)
-  >>= fun () ->
-  Sim.set_register m "b" (Machine.Int 14)
-  >>= fun () ->
-  Sim.start m
-  >>= fun _ ->
-  Sim.get_register m "a"
-  >>= fun second_answer ->
-  let traced_lines = List.length !lines - before_len in
+  let trace i =
+    lines
+    := M.instruction_to_string M.value_to_string (Monitor.instruction_at m i) :: !lines
+  in
+  let* first_answer = gcd m 12 8 ~before:trace () in
+  let traced = List.rev !lines in
+  let* second_answer = gcd m 20 14 () in
+  let silent_lines = List.length !lines - List.length traced in
   Ok
     (traced
-     @ [ "gcd 12 8 = " ^ Machine.value_to_string first_answer
-       ; "with tracing off the run on (20, 14) printed "
-         ^ string_of_int traced_lines
-         ^ " trace lines and answered "
-         ^ Machine.value_to_string second_answer
+     @ [ "gcd 12 8 = " ^ M.value_to_string first_answer
+       ; Printf.sprintf
+           "with tracing off the run on (20, 14) printed %d trace lines and answered %s"
+           silent_lines
+           (M.value_to_string second_answer)
        ])
 ;;

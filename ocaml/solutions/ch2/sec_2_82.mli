@@ -28,10 +28,10 @@ val coerce_all_to : value -> value list -> value list option
     the first type that works for all of them. *)
 val apply_generic_n : string -> value list -> value
 
-(** [ex_2_82_a ()] installs ["add3"] for three ["scheme-number"]
-    arguments plus a ["rational" -> "scheme-number"] coercion, then
+(** [ex_2_82_a ()] installs ["add3"] for three ["real"]
+    arguments plus a ["rational" -> "real"] coercion, then
     calls [apply_generic_n] on a mix of one rational and two
-    scheme-numbers: coercing every argument to the first argument's
+    reals: coercing every argument to the first argument's
     type finds the installed entry. *)
 val ex_2_82_a : unit -> value
 

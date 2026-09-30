@@ -189,7 +189,7 @@ time
 @image{../../text/original/figures/chap3/Fig3.29b,,147mm,Figure 3.29: Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.29:} Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.}
@@ -271,7 +271,7 @@ time
 @image{../../text/original/figures/chap3/Fig3.30c,,147mm,Figure 3.30: Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.30:} Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.}
@@ -466,7 +466,8 @@ cannot be interleaved.
 
 Here is a version of the @code{make_account} procedure from
 @ref{3.1.1}, where the deposits and withdrawals have been serialized.
-Scheme's quoted messages become the constructors of a @code{message} variant,
+The original's quoted messages become the constructors of a @code{message}
+variant,
 and the dispatch procedure becomes a pattern match that answers with a
 @code{response}; @code{Balance} and @code{Serializer} are messages that carry
 no argument, and @code{withdraw_result} is the checked result type of
@@ -501,9 +502,11 @@ let make_account balance =
   fun m ->
     match m with
     | Withdraw amount ->
-      Withdrawn (protected.protect (fun () -> withdraw amount))
+      Withdrawn
+        (protected.protect (fun () -> withdraw amount))
     | Deposit amount ->
-      New_balance (protected.protect (fun () -> deposit amount))
+      New_balance
+        (protected.protect (fun () -> deposit amount))
     | Balance -> New_balance !balance
     | _ -> invalid_arg "Unknown request: MAKE-ACCOUNT"
 @end example
@@ -576,9 +579,11 @@ let make_account_serialized_balance balance =
   fun m ->
     match m with
     | Withdraw amount ->
-      Withdrawn (protected.protect (fun () -> withdraw amount))
+      Withdrawn
+        (protected.protect (fun () -> withdraw amount))
     | Deposit amount ->
-      New_balance (protected.protect (fun () -> deposit amount))
+      New_balance
+        (protected.protect (fun () -> deposit amount))
     | Balance ->
       New_balance (protected.protect (fun () -> !balance))
       (* serialized *)
@@ -731,7 +736,8 @@ procedure with the serializers for both accounts:
 let serialized_exchange account1 account2 =
   let s1 = account1.serializer in
   let s2 = account2.serializer in
-  s1.protect (fun () -> s2.protect (fun () -> exchange account1 account2))
+  s1.protect (fun () ->
+    s2.protect (fun () -> exchange account1 account2))
 @end example
 
 @quotation
@@ -796,9 +802,13 @@ let make_account_and_serializer balance =
   fun m ->
     match m with
     | Withdraw amount ->
-      Withdrawn (balance_serializer.protect (fun () -> withdraw amount))
+      Withdrawn
+        (balance_serializer.protect
+           (fun () -> withdraw amount))
     | Deposit amount ->
-      New_balance (balance_serializer.protect (fun () -> deposit amount))
+      New_balance
+        (balance_serializer.protect
+           (fun () -> deposit amount))
     | Balance -> New_balance !balance
     | Serializer -> Serialized balance_serializer
 @end example
@@ -880,7 +890,9 @@ let clear cell = Atomic.set cell false
 
 let make_mutex () =
   let cell = Atomic.make false in
-  let rec acquire () = if atomic_test_and_set cell then acquire () (* retry *) in
+  let rec acquire () =
+    if atomic_test_and_set cell then acquire () (* retry *)
+  in
   @{ acquire; release = fun () -> clear cell @}
 @end example
 
@@ -937,7 +949,8 @@ indivisible test-and-set it needs negates the host's compare-and-set, which
 answers true on the opposite event (a successful change from false to true):
 
 @example ocaml
-let atomic_test_and_set cell = not (Atomic.compare_and_set cell false true)
+let atomic_test_and_set cell =
+  not (Atomic.compare_and_set cell false true)
 @end example
 
 @noindent

@@ -1,159 +1,221 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Adapted from the Scheme program of SICP section 5.4 *)
 
-(** Exercise 5.23: derived expressions -- [cond] and [let] enter the
-    evaluator through transformer machine operations. *)
+let ( let* ) = Result.bind
 
-let ( >>= ) = Result.bind
-
-module Eval = Sicp_ch5.Sec_5_4
 module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
+module M = Sicp_ch5.Sec_5_1
+module Eval = Sicp_ch5.Sec_5_4
 
-(** The dispatch grows two tests, one per derived form, before the
-    application test; each entry transforms [exp] and re-enters
-    [eval-dispatch]. *)
-let dispatch_with_derived =
-  {|
-  (test (op cond?) (reg exp))
-  (branch (label ev-cond))
-  (test (op let?) (reg exp))
-  (branch (label ev-let))|}
+type controller = Eval.word M.instruction list
+type operations = (string * Eval.word M.op) list
+
+(* {1 The section's session harness} *)
+
+let admit source =
+  match Check.check ~filename:"session.ml" source with
+  | Ok program -> Ok program
+  | Error d ->
+    Error (Eval_error.Invalid_form ("rejected: " ^ Check.diagnostic_to_string d))
 ;;
 
-(** The two transformer entries: the book's cheat -- [cond->if] and
-    [let->combination] are machine operations. *)
-let ev_derived =
-  {|ev-cond
-  (assign exp (op cond->if) (reg exp))
-  (goto (label eval-dispatch))
-ev-let
-  (assign exp (op let->combination) (reg exp))
-  (goto (label eval-dispatch))|}
+let lines_of text =
+  match List.rev (String.split_on_char '\n' text) with
+  | "" :: rest -> List.rev rest
+  | lines -> List.rev lines
 ;;
 
-(** The exercise's controller: the base fragments with the dispatch
-    replaced and the transformer entries appended. *)
-let controller =
-  let plain = List.assoc "eval-dispatch" Eval.controller_fragments in
-  (* the base dispatch minus its final goto, the derived-form tests,
-     then the goto *)
-  let core =
-    let lines = String.split_on_char '\n' plain in
-    String.concat
-      "\n"
-      (List.filter
-         (fun l ->
-            not (String.starts_with ~prefix:"  (goto (label unknown-expression-type))" l))
-         lines)
+let session ?operations ~controller source =
+  let* program = admit source in
+  let out = Buffer.create 64 in
+  let* ev =
+    Eval.make_evaluator ?operations ~controller ~emit:(Buffer.add_string out) ()
   in
-  String.concat
-    "\n"
-    (List.filter_map
-       (fun (name, text) ->
-          match name with
-          | "eval-dispatch" ->
-            Some
-              (core ^ dispatch_with_derived ^ "\n  (goto (label unknown-expression-type))")
-          | "errors" -> Some (ev_derived ^ "\n" ^ text)
-          | _ -> Some text)
-       Eval.controller_fragments)
+  let* _ = Eval.run_program ev program in
+  Ok (lines_of (Buffer.contents out))
 ;;
 
-(** [cond_to_if clauses else_body] is the book's [cond->if]: a chain
-    of [if]s ending in the else body, in [false] when there is none,
-    and with a bodyless clause's value its test. *)
-let rec cond_to_if clauses else_body =
-  match clauses with
-  | [] ->
-    (match else_body with
-     | Some body -> Ast.sequence body
-     | None -> Ok (Ast.bool false))
-  | (test, body) :: rest ->
-    let alternative = cond_to_if rest else_body in
-    let consequent =
-      match body with
-      | [] -> Ok test
-      | exprs -> Ast.sequence exprs
-    in
-    alternative
-    >>= fun alternative ->
-    consequent >>= fun consequent -> Ok (Ast.if_ test consequent (Some alternative))
+type stats =
+  { pushes : int
+  ; depth : int
+  ; instructions : int
+  }
+
+let statistics ?operations ~controller source =
+  let* program = admit source in
+  let* ev = Eval.make_evaluator ?operations ~controller ~emit:ignore () in
+  let* _ = Eval.run_program ev program in
+  let m = Eval.machine ev in
+  let pushes, depth = M.stack_statistics m in
+  Ok { pushes; depth; instructions = M.executed m }
 ;;
 
-(** [let_to_combination] is the book's [let->combination]: the body as
-    a lambda over the binding names, applied to the binding
-    initializers. *)
+let extend ~dispatch ~entries =
+  let tests =
+    List.concat_map
+      (fun (test, label) -> [ M.Test (test, [ M.Reg "exp" ]); M.Branch label ])
+      dispatch
+  in
+  List.concat_map
+    (fun (name, fragment) ->
+       match name with
+       | "eval-dispatch" ->
+         let rest =
+           List.filter
+             (function
+               | M.Label "eval-dispatch" -> false
+               | _ -> true)
+             fragment
+         in
+         (M.Label "eval-dispatch" :: tests) @ rest
+       | "done" -> entries @ fragment
+       | _ -> fragment)
+    Eval.controller_fragments
+;;
+
+let splice ~from ~until replacement controller =
+  let is label = function
+    | M.Label l -> l = label
+    | _ -> false
+  in
+  match List.find_index (is from) controller, List.find_index (is until) controller with
+  | Some i, Some j when i < j ->
+    List.filteri (fun k _ -> k < i) controller
+    @ replacement
+    @ List.filteri (fun k _ -> k >= j) controller
+  | _ -> invalid_arg ("splice: label " ^ from ^ " does not precede label " ^ until)
+;;
+
+(* {1 The derived forms} *)
+
+let scrutinee_name = "cond scrutinee"
+
+let literal_case (pattern, _) =
+  match Ast.view_pattern pattern with
+  | Ast.PScalar _ | Ast.PWildcard | Ast.PVar _ -> true
+  | _ -> false
+;;
+
+let is_cond e =
+  match Ast.view e with
+  | Ast.Match (_, cases) -> List.for_all literal_case cases
+  | _ -> false
+;;
+
+(* The case bodies see the scrutinee through [scrutinee_name], a name no
+   guest identifier can spell, so no body variable is captured. *)
+let rec clauses_to_if = function
+  | [] -> Error (Eval_error.Invalid_form "cond->if needs a case")
+  | [ (pattern, body) ] -> selected pattern body
+  | (pattern, body) :: rest ->
+    (match Ast.view_pattern pattern with
+     | Ast.PScalar literal ->
+       let* alternative = clauses_to_if rest in
+       Ok
+         (Ast.if_
+            (Ast.compare_ Ast.Eq (Ast.var scrutinee_name) (Ast.scalar literal))
+            body
+            alternative)
+     | _ -> selected pattern body)
+
+and selected pattern body =
+  match Ast.view_pattern pattern with
+  | Ast.PVar name -> Ok (Ast.apply (Ast.fun_ [ name ] body) [ Ast.var scrutinee_name ])
+  | _ -> Ok body
+;;
+
+let cond_to_if e =
+  match Ast.view e with
+  | Ast.Match (scrutinee, cases) when List.for_all literal_case cases ->
+    let* chain = clauses_to_if cases in
+    Ok (Ast.apply (Ast.fun_ [ scrutinee_name ] chain) [ scrutinee ])
+  | _ -> Error (Eval_error.Invalid_form "cond->if needs a literal match")
+;;
+
 let let_to_combination e =
   match Ast.view e with
-  | Ast.Let (bindings, body) ->
-    let names = List.map fst bindings in
-    let inits = List.map snd bindings in
-    Ast.lambda names body >>= fun lam -> Ok (Ast.application lam inits)
-  | _ -> Error (Sicp_common.Eval_error.Invalid_form "let->combination needs a let")
+  | Ast.Let (false, bindings, body) ->
+    let parameter i (b : Ast.binding) =
+      match b.name with
+      | Some name -> name
+      | None -> Printf.sprintf "let discarded %d" i
+    in
+    let parameters = List.mapi parameter bindings in
+    Ok
+      (Ast.apply
+         (Ast.fun_ parameters body)
+         (List.map (fun (b : Ast.binding) -> b.rhs) bindings))
+  | _ -> Error (Eval_error.Invalid_form "let->combination needs a parallel let")
 ;;
 
-(** The exercise's operations: the two syntax tests and the two
-    transformers. *)
+let transformer name f =
+  ( name
+  , M.Value_op
+      (function
+        | [ Eval.Exp e ] -> Result.map (fun e -> Eval.Exp e) (f e)
+        | ws -> Error (Eval_error.Arity_mismatch { expected = 1; given = List.length ws }))
+  )
+;;
+
 let operations =
   [ ( "cond?"
-    , Eval.Value_op
+    , M.Test_op
         (function
-          | [ Eval.Exp e ] ->
-            (match Ast.view e with
-             | Ast.Cond _ -> Ok (Eval.V (Sicp_common.Value.bool true))
-             | _ -> Ok (Eval.V (Sicp_common.Value.bool false)))
-          | _ -> Error (Eval.Arity "cond? needs one argument")) )
-  ; ( "let?"
-    , Eval.Value_op
-        (function
-          | [ Eval.Exp e ] ->
-            (match Ast.view e with
-             | Ast.Let _ -> Ok (Eval.V (Sicp_common.Value.bool true))
-             | _ -> Ok (Eval.V (Sicp_common.Value.bool false)))
-          | _ -> Error (Eval.Arity "let? needs one argument")) )
-  ; ( "cond->if"
-    , Eval.Value_op
-        (function
-          | [ Eval.Exp e ] ->
-            (match Ast.view e with
-             | Ast.Cond (clauses, else_body) ->
-               Eval.expr_word (cond_to_if clauses else_body)
-             | _ -> Error (Eval.Op_failed "cond->if needs a cond"))
-          | _ -> Error (Eval.Arity "cond->if needs one argument")) )
-  ; ( "let->combination"
-    , Eval.Value_op
-        (function
-          | [ Eval.Exp e ] -> Eval.expr_word (let_to_combination e)
-          | _ -> Error (Eval.Arity "let->combination needs one argument")) )
+          | [ Eval.Exp e ] -> Ok (is_cond e)
+          | ws ->
+            Error (Eval_error.Arity_mismatch { expected = 1; given = List.length ws })) )
+  ; transformer "cond->if" cond_to_if
+  ; transformer "let->combination" let_to_combination
   ]
 ;;
 
-let run source =
-  Eval.make_evaluator ~controller ~operations ~source ()
-  >>= fun m ->
-  let ended =
-    match Eval.start m with
-    | Ok () -> Ok ()
-    | Error e when Eval.error_to_string e = "operation failed: " ^ Eval.input_exhausted ->
-      Ok ()
-    | Error e -> Error e
-  in
-  ended >>= fun () -> Ok (Eval.transcript m)
+let controller =
+  extend
+    ~dispatch:[ "cond?", "ev-cond"; "let?", "ev-derived-let" ]
+    ~entries:
+      [ M.Label "ev-cond"
+      ; M.Assign_op ("exp", "cond->if", [ M.Reg "exp" ])
+      ; M.Goto "eval-dispatch"
+      ; M.Label "ev-derived-let"
+      ; M.Assign_op ("exp", "let->combination", [ M.Reg "exp" ])
+      ; M.Goto "eval-dispatch"
+      ]
 ;;
 
-(** [ex_5_23 ()] runs [cond] and [let] sessions through the extended
-    evaluator: a three-clause classify with an [else], a bodyless
-    clause, and a [let] whose body is a lambda application. *)
+let run source = session ~operations ~controller source
+
+let classify_session =
+  {|let classify n = match n with 0 -> "zero" | 1 -> "one" | _ -> "many"
+let () = print_endline (classify 0)
+let () = print_endline (classify 1)
+let () = print_endline (classify 7)
+let () = print_endline (match 3 < 2 with true -> "yes" | false -> "no")
+let () = print_endline (match 7 * 2 with 0 -> "zero" | m -> string_of_int m)
+let () = print_endline (string_of_int (let a = 2 and b = 3 in a * b))
+|}
+;;
+
+let classify_cost =
+  {|let classify n = match n with 0 -> "zero" | 1 -> "one" | _ -> "many"
+let v = classify 7
+|}
+;;
+
 let ex_5_23 () =
-  run
-    {|
-(define (classify n)
-  (cond ((= n 0) 'zero)
-        ((= n 1) 'one)
-        (else 'many)))
-(classify 0)
-(classify 1)
-(classify 7)
-(cond ((= 1 2)))
-(let ((a 2) (b 3)) (* a b))|}
+  let* answers = run classify_session in
+  let* derived = statistics ~operations ~controller classify_cost in
+  let* basic = statistics ~controller:Eval.base_controller classify_cost in
+  Ok
+    (answers
+     @ [ Printf.sprintf
+           "classify 7 through cond->if: pushes = %d, instructions = %d"
+           derived.pushes
+           derived.instructions
+       ; Printf.sprintf
+           "classify 7 through ev-match: pushes = %d, instructions = %d"
+           basic.pushes
+           basic.instructions
+       ])
 ;;

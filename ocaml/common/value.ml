@@ -1,225 +1,321 @@
 (* SPDX-License-Identifier: GPL-3.0-only *)
 
-(* The mutually recursive knot of the runtime: environments hold values,
-   compound procedures hold environments. [view] is declared separately
-   below, so its constructors do not clash with [t]'s in one block; same
-   named constructors across the two blocks are disambiguated by the type
-   annotations on every function that builds one of them. *)
+type env = (string * t option ref) list
 
-type compound_view =
+and thunk_state =
+  | Delayed of Ast.expr * env
+  | Forced of t
+
+and apply_fun = t -> t list -> (t, Eval_error.t) result
+
+and t =
+  | VInt of int
+  | VFloat of float
+  | VBool of bool
+  | VString of string
+  | VUnit
+  | VTuple of t list
+  | VConstructor of string * t list
+  | VNil
+  | VCons of t * t
+  | VRecord of (string * t) list
+  | VClosure of closure
+  | VPrimitive of primitive
+  | VPartial of primitive * t list
+  | VCompiled of compiled
+  | VRef of t ref
+  | VArray of t array
+  | VTable of table
+  | VThunk of thunk_state ref
+  | VIndirect of t option ref
+  (** A member of a recursive group read while its right-hand side
+      is still running: the value the cell will hold. *)
+
+and closure =
   { name : string option
   ; parameters : string list
-  ; body : Ast.expr list
+  ; body : Ast.expr
   ; env : env
   }
 
-and env = frame list
-and frame = (string, t) Hashtbl.t
+and compiled =
+  { entry : string
+  ; entry_parameters : string list
+  ; entry_env : env
+  }
 
-and t =
-  | Int of int
-  | Float of float
-  | Bool of bool
-  | String of string
-  | Symbol of string
-  | Nil
-  | Pair of t * t
-  | Primitive_procedure of string * primitive
-  | Compound_procedure of compound_view
+and primitive =
+  { prim_name : string
+  ; prim_arity : int
+  ; prim_apply : apply_fun -> t list -> (t, Eval_error.t) result
+  }
 
-and primitive = t list -> (t, Eval_error.t) result
+and table = (t * t) list ref
 
-(* The public view of a value; same constructor names as [t], separate
-   declaration block. *)
+type closure_view =
+  { name : string option
+  ; parameters : string list
+  ; body : Ast.expr
+  ; env : env
+  }
+
 type view =
   | Int of int
   | Float of float
   | Bool of bool
   | String of string
-  | Symbol of string
+  | Unit
+  | Tuple of t list
+  | Constructor of string * t list
   | Nil
-  | Pair of t * t
-  | Primitive_procedure of string
-  | Compound_procedure of compound_view
+  | Cons of t * t
+  | Record of (string * t) list
+  | Closure of closure_view
+  | Primitive of primitive
+  | Partial of primitive * t list
+  | Compiled of compiled
+  | Ref of t ref
+  | Array of t array
+  | Table of table
+  | Thunk of thunk_state ref
 
-let view (v : t) : view =
-  match v with
-  | Int n -> Int n
-  | Float f -> Float f
-  | Bool b -> Bool b
-  | String s -> String s
-  | Symbol s -> Symbol s
-  | Nil -> Nil
-  | Pair (car, cdr) -> Pair (car, cdr)
-  | Primitive_procedure (name, _) -> Primitive_procedure name
-  | Compound_procedure c -> Compound_procedure c
+let rec resolve = function
+  | VIndirect cell ->
+    (match !cell with
+     | Some v -> resolve v
+     | None -> invalid_arg "Value: a recursive binding is used before its value exists")
+  | v -> v
 ;;
 
-let int (n : int) : t = Int n
-let float (f : float) : t = Float f
-let bool (b : bool) : t = Bool b
-let string (s : string) : t = String s
-let symbol (s : string) : t = Symbol s
-let nil : t = Nil
-let pair (car : t) (cdr : t) : t = Pair (car, cdr)
-let primitive ~(name : string) (f : primitive) : t = Primitive_procedure (name, f)
-
-let compound
-      ~(name : string option)
-      ~(parameters : string list)
-      ~(body : Ast.expr list)
-      ~(env : env)
-  : t
-  =
-  Compound_procedure { name; parameters; body; env }
+let view v =
+  match resolve v with
+  | VInt n -> Int n
+  | VFloat f -> Float f
+  | VBool b -> Bool b
+  | VString s -> String s
+  | VUnit -> Unit
+  | VTuple parts -> Tuple parts
+  | VConstructor (name, fields) -> Constructor (name, fields)
+  | VNil -> Nil
+  | VCons (head, tail) -> Cons (head, tail)
+  | VRecord fields -> Record fields
+  | VClosure c ->
+    Closure { name = c.name; parameters = c.parameters; body = c.body; env = c.env }
+  | VPrimitive p -> Primitive p
+  | VPartial (p, args) -> Partial (p, args)
+  | VCompiled c -> Compiled c
+  | VRef cell -> Ref cell
+  | VArray a -> Array a
+  | VTable tbl -> Table tbl
+  | VThunk cell -> Thunk cell
+  | VIndirect _ -> invalid_arg "Value.view: unresolved indirection"
 ;;
 
-let physical_equal (a : t) (b : t) : bool =
-  match a, b with
-  | Int _, Int _ | Float _, Float _ | Bool _, Bool _ | Symbol _, Symbol _ -> a = b
-  | Nil, Nil -> true
-  | _ -> a == b
+let int n = VInt n
+let float f = VFloat f
+let bool b = VBool b
+let string s = VString s
+let unit = VUnit
+let tuple parts = VTuple parts
+let construct name fields = VConstructor (name, fields)
+let nil = VNil
+let cons head tail = VCons (head, tail)
+let record fields = VRecord fields
+let closure ~name ~parameters ~body ~env = VClosure { name; parameters; body; env }
+
+let primitive ~name ~arity apply =
+  VPrimitive { prim_name = name; prim_arity = arity; prim_apply = apply }
 ;;
 
-let rec structural_equal (a : t) (b : t) : bool =
-  match a, b with
-  | Pair (a1, d1), Pair (a2, d2) -> structural_equal a1 a2 && structural_equal d1 d2
-  | Primitive_procedure (n1, _), Primitive_procedure (n2, _) -> String.equal n1 n2
-  | Compound_procedure _, Compound_procedure _ -> a == b
-  | _ -> a = b
+let partial p args = VPartial (p, args)
+
+let compiled ~entry ~parameters ~env =
+  VCompiled { entry; entry_parameters = parameters; entry_env = env }
 ;;
 
-let escape_string s =
-  let buf = Buffer.create (String.length s) in
+let ref_value v = VRef (ref v)
+let array a = VArray a
+let table () = VTable (ref [])
+let thunk ~expr ~env = VThunk (ref (Delayed (expr, env)))
+let forced v = VThunk (ref (Forced v))
+
+let thunk_state_of v =
+  match resolve v with
+  | VThunk cell -> Some cell
+  | _ -> None
+;;
+
+let set_thunk_state cell state = cell := state
+
+let rec key_equal a b =
+  match resolve a, resolve b with
+  | VInt x, VInt y -> Int.equal x y
+  | VFloat x, VFloat y -> Float.equal x y
+  | VBool x, VBool y -> Bool.equal x y
+  | VString x, VString y -> String.equal x y
+  | VUnit, VUnit -> true
+  | VTuple xs, VTuple ys -> key_equal_list xs ys
+  | VConstructor (nx, xs), VConstructor (ny, ys) ->
+    String.equal nx ny && key_equal_list xs ys
+  | VNil, VNil -> true
+  | VCons (hx, tx), VCons (hy, ty) -> key_equal hx hy && key_equal tx ty
+  | VRecord xs, VRecord ys ->
+    List.length xs = List.length ys
+    && List.for_all2
+         (fun (fx, vx) (fy, vy) -> String.equal fx fy && key_equal vx vy)
+         xs
+         ys
+  | _ -> false
+
+and key_equal_list xs ys =
+  List.length xs = List.length ys && List.for_all2 key_equal xs ys
+;;
+
+let table_of_value v =
+  match resolve v with
+  | VTable tbl -> Some tbl
+  | _ -> None
+;;
+
+let table_find tbl_value key =
+  match table_of_value tbl_value with
+  | None -> None
+  | Some tbl -> List.find_opt (fun (k, _) -> key_equal k key) !tbl |> Option.map snd
+;;
+
+let table_replace tbl_value key value =
+  match table_of_value tbl_value with
+  | None -> ()
+  | Some tbl ->
+    let rest = List.filter (fun (k, _) -> not (key_equal k key)) !tbl in
+    tbl := rest @ [ key, value ]
+;;
+
+let table_remove tbl_value key =
+  match table_of_value tbl_value with
+  | None -> ()
+  | Some tbl -> tbl := List.filter (fun (k, _) -> not (key_equal k key)) !tbl
+;;
+
+let table_length tbl_value =
+  match table_of_value tbl_value with
+  | None -> 0
+  | Some tbl -> List.length !tbl
+;;
+
+let float_to_string f =
+  if Float.is_integer f && Float.abs f < 1e16
+  then Printf.sprintf "%.0f" f
+  else (
+    let rec precision p =
+      let s = Printf.sprintf "%.*g" p f in
+      if p >= 17 || Float.equal (Float.of_string s) f then s else precision (p + 1)
+    in
+    precision 15)
+;;
+
+let escape s =
+  let buf = Buffer.create (String.length s + 2) in
   String.iter
-    (fun c ->
-       match c with
-       | '"' -> Buffer.add_string buf "\\\""
-       | '\\' -> Buffer.add_string buf "\\\\"
-       | c -> Buffer.add_char buf c)
+    (function
+      | '"' -> Buffer.add_string buf "\\\""
+      | '\\' -> Buffer.add_string buf "\\\\"
+      | '\n' -> Buffer.add_string buf "\\n"
+      | '\r' -> Buffer.add_string buf "\\r"
+      | '\t' -> Buffer.add_string buf "\\t"
+      | c -> Buffer.add_char buf c)
     s;
   Buffer.contents buf
 ;;
 
-let float_string v =
-  if Float.is_nan v
-  then "nan"
-  else if Float.is_infinite v
-  then if Float.sign_bit v then "-inf" else "inf"
-  else (
-    let rec shortest precision =
-      let s = Printf.sprintf "%.*g" precision v in
-      if float_of_string s = v || precision >= 17 then s else shortest (precision + 1)
+let rec to_string v =
+  match resolve v with
+  | VInt n -> string_of_int n
+  | VFloat f -> float_to_string f
+  | VBool true -> "true"
+  | VBool false -> "false"
+  | VString s -> "\"" ^ escape s ^ "\""
+  | VUnit -> "()"
+  | VTuple parts -> "(" ^ String.concat ", " (List.map to_string parts) ^ ")"
+  | VConstructor (name, []) -> name
+  | VConstructor (name, fields) ->
+    name ^ " (" ^ String.concat ", " (List.map to_string fields) ^ ")"
+  | VNil -> "[]"
+  | VCons _ as v ->
+    let rec elements acc v =
+      match resolve v with
+      | VCons (head, tail) -> elements (to_string head :: acc) tail
+      | VNil -> List.rev acc
+      | other -> List.rev ((to_string other ^ " improper") :: acc)
     in
-    let shortest = shortest 1 in
-    let magnitude = Float.abs v in
-    let in_fixed_range = magnitude >= 1e-6 && magnitude < 1e21 in
-    let sign, body =
-      if shortest.[0] = '-'
-      then "-", String.sub shortest 1 (String.length shortest - 1)
-      else "", shortest
-    in
-    match String.index_opt body 'e' with
-    | None ->
-      let body = if String.contains body '.' then body else body ^ ".0" in
-      sign ^ body
-    | Some k ->
-      let mantissa = String.sub body 0 k in
-      let exponent =
-        int_of_string (String.sub body (k + 1) (String.length body - k - 1))
-      in
-      if in_fixed_range
-      then (
-        let digits =
-          let buf = Buffer.create (String.length mantissa) in
-          String.iter (fun c -> if c <> '.' then Buffer.add_char buf c) mantissa;
-          Buffer.contents buf
-        in
-        let point =
-          (match String.index_opt mantissa '.' with
-           | Some k -> k
-           | None -> String.length mantissa)
-          + exponent
-        in
-        let len = String.length digits in
-        if point <= 0
-        then sign ^ "0." ^ String.make (-point) '0' ^ digits
-        else if point >= len
-        then sign ^ digits ^ String.make (point - len) '0' ^ ".0"
-        else sign ^ String.sub digits 0 point ^ "." ^ String.sub digits point (len - point))
-      else (
-        let mantissa =
-          if String.contains mantissa '.' then mantissa else mantissa ^ ".0"
-        in
-        sign ^ mantissa ^ "e" ^ string_of_int exponent))
+    "[" ^ String.concat "; " (elements [] v) ^ "]"
+  | VRecord fields ->
+    "{"
+    ^ String.concat "; " (List.map (fun (name, v) -> name ^ " = " ^ to_string v) fields)
+    ^ "}"
+  | VClosure c ->
+    (match c.name with
+     | Some name -> "closure " ^ name
+     | None -> "closure")
+  | VPrimitive p -> "primitive " ^ p.prim_name
+  | VPartial (p, _) -> "partial " ^ p.prim_name
+  | VCompiled c -> "compiled procedure " ^ c.entry
+  | VRef _ -> "ref"
+  | VArray _ -> "array"
+  | VTable _ -> "table"
+  | VThunk cell ->
+    (match !cell with
+     | Delayed _ -> "thunk delayed"
+     | Forced v -> "thunk forced (" ^ to_string v ^ ")")
+  | VIndirect _ -> "recursive binding"
 ;;
 
-let render (quoted : string -> string) (v : t) : string =
-  let rec go (v : t) : string =
-    match v with
-    | Int n -> string_of_int n
-    | Float f -> float_string f
-    | Bool b -> if b then "#t" else "#f"
-    | String s -> quoted s
-    | Symbol s -> s
-    | Nil -> "()"
-    | Pair _ ->
-      let rec parts (acc : t list) (v : t) : t list * t =
-        match v with
-        | Pair (car, cdr) -> parts (car :: acc) cdr
-        | v -> List.rev acc, v
-      in
-      let elements, tail = parts [] v in
-      let inner = String.concat " " (List.map go elements) in
-      (match tail with
-       | Nil -> "(" ^ inner ^ ")"
-       | tail -> "(" ^ inner ^ " . " ^ go tail ^ ")")
-    | Primitive_procedure (name, _) -> "#[primitive-procedure " ^ name ^ "]"
-    | Compound_procedure { name; _ } ->
-      (match name with
-       | Some name -> "#[compound-procedure " ^ name ^ "]"
-       | None -> "#[compound-procedure]")
-  in
-  go v
+let compare_scalars a b =
+  match resolve a, resolve b with
+  | VInt x, VInt y -> Ok (Int.compare x y)
+  | VFloat x, VFloat y -> Ok (Float.compare x y)
+  | VString x, VString y -> Ok (String.compare x y)
+  | _ ->
+    Error
+      (Eval_error.Type_error "ordered comparison operands must be int, float, or string")
 ;;
 
-let to_string v = render (fun s -> "\"" ^ escape_string s ^ "\"") v
-let display v = render (fun s -> s) v
-let env_empty () : env = [ Hashtbl.create 8 ]
-
-let env_extend names values (outer : env) : (env, Eval_error.t) result =
-  let expected = List.length names in
-  let given = List.length values in
-  if expected <> given
-  then Error (Eval_error.Arity_mismatch { expected; given })
-  else (
-    let frame = Hashtbl.create (max 8 expected) in
-    List.iter2 (fun name value -> Hashtbl.replace frame name value) names values;
-    Ok (frame :: outer))
+let equal_scalars a b =
+  match resolve a, resolve b with
+  | VUnit, VUnit -> Ok true
+  | VInt x, VInt y -> Ok (Int.equal x y)
+  | VFloat x, VFloat y -> Ok (x = y)
+  | VBool x, VBool y -> Ok (Bool.equal x y)
+  | VString x, VString y -> Ok (String.equal x y)
+  | _ ->
+    Error
+      (Eval_error.Type_error "equality operands must be unit, int, float, bool, or string")
 ;;
 
-let rec env_find_binding (env : env) (name : string) : t option =
-  match env with
-  | [] -> None
-  | frame :: outer ->
-    (match Hashtbl.find_opt frame name with
-     | Some value -> Some value
-     | None -> env_find_binding outer name)
+let env_empty () = []
+
+let env_extend bindings env =
+  List.map (fun (name, v) -> name, ref (Some v)) bindings @ env
 ;;
 
-let env_define (env : env) (name : string) (value : t) : unit =
-  match env with
-  | frame :: _ -> Hashtbl.replace frame name value
-  | [] -> invalid_arg "Value.env_define: empty environment"
+let env_extend_recursive names env =
+  let cells = List.map (fun name -> name, ref None) names in
+  cells @ env, List.map snd cells
 ;;
 
-let rec env_set (env : env) (name : string) (value : t) : (unit, Eval_error.t) result =
-  match env with
-  | [] -> Error (Eval_error.Unbound_variable name)
-  | frame :: outer ->
-    if Hashtbl.mem frame name
-    then (
-      Hashtbl.replace frame name value;
-      Ok ())
-    else env_set outer name value
+let env_fill cell v = cell := Some v
+
+let env_find env name =
+  match List.assoc_opt name env with
+  | None -> None
+  | Some cell ->
+    (match !cell with
+     | Some v -> Some v
+     | None -> Some (VIndirect cell))
+;;
+
+let env_find_at env n =
+  match if n < 0 then None else List.nth_opt env n with
+  | Some (name, { contents = Some v }) -> Some (name, v)
+  | Some (_, { contents = None }) | None -> None
 ;;

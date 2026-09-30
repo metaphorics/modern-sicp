@@ -13,23 +13,23 @@ val list_word
 (** [append_controller] copies [x] and shares [y];
     [append_bang_controller] splices [y] into [x] with one
     [set-cdr!]. *)
-val append_controller : string
+val append_controller : Sicp_ch5.Sec_5_3.word Sicp_ch5.Sec_5_1.instruction list
 
-val append_bang_controller : string
+val append_bang_controller : Sicp_ch5.Sec_5_3.word Sicp_ch5.Sec_5_1.instruction list
 
 (** [run controller result mem x y] runs one machine over the planted
     lists and reads the result register ([z] for [append], [x] for
     [append!]). *)
 val run
-  :  string
+  :  Sicp_ch5.Sec_5_3.word Sicp_ch5.Sec_5_1.instruction list
   -> string
   -> Sicp_ch5.Sec_5_3.memory
   -> Sicp_ch5.Sec_5_3.word
   -> Sicp_ch5.Sec_5_3.word
   -> (Sicp_ch5.Sec_5_3.word, Sicp_ch5.Sec_5_3.error) result
 
-(** [ex_5_22 ()] runs both machines over [x = (1 2 3)] and
-    [y = (4 5)]: the [append] answer with its three fresh cells and
+(** [ex_5_22 ()] runs both machines over [x = [1; 2; 3]] and
+    [y = [4; 5]]: the [append] answer with its three fresh cells and
     [x] untouched, then the [append!] before/after memory dumps and the
     shared-pointer answer. *)
 val ex_5_22 : unit -> (string list, Sicp_ch5.Sec_5_3.error) result

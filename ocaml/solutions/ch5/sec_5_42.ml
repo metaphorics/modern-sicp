@@ -1,69 +1,48 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.42: [compile-variable] and [compile-assignment] emit
-    lexical-address instructions when [find-variable] locates the name
-    and fall back to the evaluator's global search when it does not
-    (the only name a compile-time environment can miss is a global).
-    The compiler's [lexical] configuration is exactly this rewrite; a
-    miss is visible in the output as the plain
-    [lookup-variable-value] instruction.  The test is the nested
-    [lambda] combination at the start of 5.5.6, run to a value on the
-    lexical machine. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Value = Sicp_common.Value
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
-let nested_example =
-  {|(define (f x y)
-  (lambda (a b c d e)
-    (lambda (y z) (* x y z))))|}
+let rec compile_lexical environments state e target linkage =
+  let self = compile_lexical environments in
+  match Ast.view e, Sec_5_40.find environments e with
+  | Ast.Var name, Some frames ->
+    (match Sec_5_41.find_variable name frames with
+     | Some address ->
+       Sec_5_38.end_with_linkage
+         linkage
+         (C.make_instruction_sequence
+            [ "env" ]
+            [ target ]
+            [ Sec_5_39.lookup_instruction frames address name target ])
+     | None -> C.compile_open ~self state e target linkage)
+  | _ -> C.compile_open ~self state e target linkage
 ;;
 
-(** [compiled_statements src] is the lexical compilation of [src]. *)
-let compiled_statements src =
-  let state = C.new_state () in
-  match Sicp_common.Reader.read src with
-  | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-  | Ok exp ->
-    C.compile { C.default_config with lexical = true } state [] exp "val" C.Next
-    >>= fun seq -> Ok seq.stmts
+let compile_program_lexical items =
+  let environments = Sec_5_40.environments items in
+  C.compile_program_with ~compile:(compile_lexical environments) (C.new_state ()) items
 ;;
 
-(** [lexical_accesses stmts] is the lexical-address instructions the
-    compilation emitted. *)
-let lexical_accesses stmts =
-  let contains needle text =
-    let n = String.length needle
-    and len = String.length text in
-    let rec from i = i + n <= len && (String.sub text i n = needle || from (i + 1)) in
-    from 0
-  in
-  List.filter (contains "(op lexical-address-lookup)") stmts
+let lexical_lookups (s : C.seq) =
+  List.filter
+    (function
+      | M.Assign_op (_, "lexical-address-lookup", _) -> true
+      | _ -> false)
+    s.statements
 ;;
 
-(** [ex_5_42 ()] compiles the example lexically, shows the emitted
-    accesses -- [x] at (2 0), [y] at (0 0), [z] at (0 1) inside the
-    innermost lambda -- and runs the applied example on the lexical
-    machine: [(f 3 4)] answers a procedure, and applying it to five
-    arguments computes [* 3 6 10] = 180 through lexical lookups. *)
 let ex_5_42 () =
-  compiled_statements nested_example
-  >>= fun stmts ->
-  let applied =
-    {|(define (f x y)
-  (lambda (a b c d e)
-    ((lambda (y z) (* x y z))
-     (* a b x)
-     (+ c d x))))
-(define (run f) (f 1 2 3 4 5))
-(run (f 3 4))|}
-  in
-  Sec_5_39.run_lexical applied
-  >>= fun transcript ->
+  let* p = Sec_5_33.program ~filename:"ex_5_42.ml" Sec_5_40.nested_example in
+  let code = compile_program_lexical (Check.items p) in
+  let* r = Sec_5_33.run_code ~operations:[ Sec_5_39.operation ] code in
   Ok
-    [ String.concat "\n" (lexical_accesses stmts)
-    ; "lexical run: " ^ String.concat " " (Sec_5_39.values_of transcript)
-    ]
+    (List.map Sec_5_35.statement_to_string (lexical_lookups code)
+     @ [ "lexical run: " ^ Value.to_string r.value ])
 ;;

@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.31: [lazy] and [lazy-memo] parameter declarations on the typed AST. The statement lives in the section; this
+(** Exercise 4.31: [_lazy] and [_lazy_memo] parameter declarations carried by parameter names. The statement lives in the section; this
     signature is the pending exercise's public contract. *)
 
 (** [ex_4_31 ()] runs the demonstration the statement asks for and

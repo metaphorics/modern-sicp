@@ -104,7 +104,7 @@
 
 @documentencoding UTF-8
 
-@dircategory The Algorithmic Language Scheme
+@dircategory Modern SICP in OCaml
 @direntry
 * SICP: (sicp). Structure and Interpretation of Computer Programs
 @end direntry
@@ -245,7 +245,7 @@ The language of this book
 * 0.9::              Modules as values
 * 0.10::             Testing and formatting
 
-Programming in Lisp
+Building Abstractions with Procedures
 
 * 1.1::              The Elements of Programming
 * 1.2::              Procedures and the Processes They Generate
@@ -365,8 +365,8 @@ Streams
 Metalinguistic Abstraction
 
 * 4.1::              The Metacircular Evaluator
-* 4.2::              Variations on a Scheme -- Lazy Evaluation
-* 4.3::              Variations on a Scheme -- Nondeterministic Computing
+* 4.2::              Lazy Evaluation
+* 4.3::              Nondeterministic Computing
 * 4.4::              Logic Programming
 
 The Metacircular Evaluator
@@ -379,13 +379,13 @@ The Metacircular Evaluator
 * 4.1.6::            Internal Definitions
 * 4.1.7::            Separating Syntactic Analysis from Execution
 
-Variations on a Scheme -- Lazy Evaluation
+Lazy Evaluation
 
 * 4.2.1::            Normal Order and Applicative Order
 * 4.2.2::            An Interpreter with Lazy Evaluation
 * 4.2.3::            Streams as Lazy Lists
 
-Variations on a Scheme -- Nondeterministic Computing
+Nondeterministic Computing
 
 * 4.3.1::            Amb and Search
 * 4.3.2::            Examples of Nondeterministic Programs
@@ -728,17 +728,20 @@ New Haven, Connecticut
 This is @i{Structure and Interpretation of Computer Programs}, Second
 Edition, adapted to OCaml.
 
-What this edition keeps: every section and every exercise number of the
-original book, one to one.  All five chapters and all 356 exercises are
-here.
+What this edition keeps: every numbered section and every original exercise
+number remains unchanged. All five chapters and all 356 SICP exercises are
+present. The primer's five exercises use a separate 0.x sequence and do not
+shift those identities.
 
 What this edition changes:
 
 @itemize @bullet
 @item
-Every program is re-expressed in OCaml.  A listing appears in an
-@@example ocaml block, and the printed result of each interaction
-follows the code as a comment line marked with @code{(* => *)}.
+Every code example is ordinary OCaml. Chapter 0's interactions are
+toplevel transcripts: a phrase after the @code{#} prompt, then its reply
+@code{- : @var{type} = @var{value}}. In the numbered chapters each
+interaction has its own @@example ocaml block whose result appears as a
+@code{(* => *)} comment recording the value the toplevel prints.
 @item
 Chapter 0 is new.  It teaches the parts of OCaml this book uses, so
 the book reads without prior OCaml knowledge.
@@ -746,8 +749,8 @@ the book reads without prior OCaml knowledge.
 The prose is re-cut where the host language changes the lesson:
 closures and the environment model (3.2), domains and mutexes (3.4), and effect handlers for nondeterministic computing (4.3).
 @item
-Each chapter closes with an ``In this language'' note that names the
-host mechanism the chapter relied on.
+Sections 2.4, 2.5, 3.3, and 4.1 close with an ``In this language'' note
+that names the host mechanism their lesson relies on.
 @end itemize
 
 Toolchain: OCaml 5.5.1 with dune 3.24.  The code in @file{examples/}, @file{exercises/}, and @file{solutions/} is the source of every listing; tests run with @code{dune runtest}.
@@ -762,7 +765,7 @@ Creative Commons Attribution-ShareAlike 4.0 International License.
 @noindent
 Adapted by the Modern @abbr{SICP} editions from the Unofficial Texinfo
 Format and the @abbr{HTML}5 and @abbr{EPUB}3 edition (sarabander/sicp).
-Changes: the prose is rewritten in %NAME%; every program is re-expressed;
+Changes: the prose is rewritten in OCaml; every program is re-expressed;
 section and exercise numbers are unchanged; a Chapter 0 primer is added.
 
 @noindent
@@ -771,8 +774,8 @@ Prose, figures, and exercise statements: @abbr{CC BY-SA} 4.0.  Programs:
 @abbr{CC BY-SA} 4.0 Section 3(b)(1) permits.  The two never mix in one
 file.
 
-How to read: section 0.8 explains the interaction convention and the
-layout of this edition.
+How to read: section 0.1 explains the toplevel interaction format and
+this edition's layout; section 0.10 explains its tests.
 
 @node    Preface, Preface 1e, PrefaceOCaml, Top
 @unnumbered Preface to the Second Edition

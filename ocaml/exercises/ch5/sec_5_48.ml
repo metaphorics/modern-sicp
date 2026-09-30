@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(* Exercise 5.48: the compile-and-run primitive inside the evaluator. This is the pending scaffold of the solution with the same
+(* Exercise 5.48: compiling and running from inside an interpreted session. This is the pending scaffold of the solution with the same
    name under solutions/ch5: every entry raises the pending marker
    until the exercise is solved. *)
 

@@ -2,11 +2,10 @@
 @section Pattern matching and variants
 
 @noindent
-Scheme represents structured data with pairs and tags them by convention;
-OCaml has a dedicated construct for exactly this, the @newterm{variant}
-type, and a dedicated way to take one apart, @code{match}. A variant lists
-its possible shapes, each with a name (a @newterm{constructor}) and the data
-it carries:
+OCaml has a dedicated construct for structured data with several possible
+shapes, the @newterm{variant} type, and a dedicated way to take one apart,
+@code{match}. A variant lists its possible shapes, each with a name (a
+@newterm{constructor}) and the data it carries:
 
 @example
 # type shape =
@@ -46,11 +45,10 @@ entire benefit of exhaustiveness checking: representing a new case correctly
 becomes a compile error to fix, not a bug to discover at runtime in whichever
 branch happens to run.
 
-@subsubheading Guards, and Scheme's @code{cond}
+@subsubheading Guards
 
 A @code{match} arm may add a @code{when} clause, narrowing which values of a
-pattern it accepts; this is this edition's translation of Scheme's
-@code{cond}:
+pattern it accepts:
 
 @example
 # let abs_value n =
@@ -67,10 +65,9 @@ val abs_value : int -> int = <fun>
 @subsubheading @code{option}: no more, no less, than ``maybe nothing''
 
 The standard library's own most useful variant is @code{option}, with two
-constructors, @code{None} and @code{Some @var{value}}. It replaces every use
-in Scheme of a sentinel value (an out-of-band @code{#f}, or a specific
-number that ``really'' means absent) with a type the compiler forces the
-caller to handle:
+constructors, @code{None} and @code{Some @var{value}}. It replaces the
+sentinel value---a special flag or number that ``really'' means absent---with
+a type the compiler forces the caller to handle:
 
 @example
 # let head = function
@@ -93,8 +90,7 @@ val safe_divide : int -> int -> int option = <fun>
 @code{head}'s type, @code{'a list -> 'a option}, is @newterm{polymorphic}:
 the @code{'a} is a type variable, meaning @code{head} works on a list of any
 one element type and returns an option of that same type: the function never inspects what kind of value it holds, only whether the list is empty.
-A caller of @code{safe_divide} cannot forget to check for division by zero
-the way a caller ignoring a Scheme error condition can; the result is an
+A caller of @code{safe_divide} cannot forget to check for division by zero; the result is an
 @code{int option}, not an @code{int}, and getting an @code{int} back out
 requires a @code{match} (or one of the combinators section 0.8 introduces)
 that has a case for @code{None}.
@@ -130,7 +126,8 @@ for symbolic expressions and register-machine instructions:
 type tree = Leaf | Node of tree * int * tree
 # let rec tree_sum = function
     | Leaf -> 0
-    | Node (left, label, right) -> tree_sum left + label + tree_sum right;;
+    | Node (left, label, right) ->
+      tree_sum left + label + tree_sum right;;
 val tree_sum : tree -> int = <fun>
 # tree_sum (Node (Node (Leaf, 1, Leaf), 6, Node (Leaf, 4, Leaf)));;
 - : int = 11

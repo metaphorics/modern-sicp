@@ -1,50 +1,55 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-module Replay = Sicp_ch1.Replay
-module Eval = Sicp_ch4.Sec_4_1
-module Eval_error = Sicp_common.Eval_error
-module Reader = Sicp_common.Reader
-module Value = Sicp_common.Value
+(* The section replay: guest programs of 4.1 run through the direct and
+   the analyzed evaluators, and every transcript the section shows is
+   proved with [expect]. *)
 
-let show = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+module Replay = Sicp_ch1.Replay
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
+module Eval = Sicp_ch4.Sec_4_1
+
+(* [transcript eval source] is the guest output of [source], followed by
+   the runtime error when the run stops on one. *)
+let transcript eval source =
+  match Check.check ~filename:"replay.ml" source with
+  | Error d -> "rejected: " ^ Check.kind_to_string d.kind
+  | Ok program ->
+    let out = Buffer.create 64 in
+    (match eval ~emit:(Buffer.add_string out) program with
+     | Ok _ -> Buffer.contents out
+     | Error e -> Buffer.contents out ^ "error: " ^ Eval_error.to_string e)
 ;;
 
-let expect_value actual expected = Replay.expect (show actual) expected
-
-(* The analyzed evaluator takes the typed expression, so its driver
-   reads the same surface text through the shared reader first. *)
-let analyze_run env text =
-  match Reader.read text with
-  | Ok exp -> Eval.Analyze.eval exp env
-  | Error e -> Error (Eval_error.Invalid_form (Reader.to_string e))
+let both source expected =
+  Replay.expect (transcript Eval.run source) expected;
+  Replay.expect (transcript Eval.run_analyzed source) expected
 ;;
 
 let () =
-  let env = Eval.the_global_environment () in
-  (* 4.1.4: the driver sample, from the section's interaction. *)
-  expect_value
-    (Eval.run
-       env
-       "(define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))")
-    "ok";
-  expect_value (Eval.run env "(append '(a b c) '(d e f))") "(a b c d e f)";
+  (* 4.1.4: the driver's sample, list append. *)
+  both
+    "let rec append x y = match x with [] -> y | h :: t -> h :: append t y\n\
+     let rec show xs = match xs with [] -> \"\" | [ x ] -> x | x :: rest -> x ^ \" \" ^ \
+     show rest\n\
+     let () = print_endline (show (append [ \"a\"; \"b\"; \"c\" ] [ \"d\"; \"e\"; \"f\" \
+     ]))"
+    "a b c d e f\n";
   (* 4.1.5: the factorial program is data for the evaluator. *)
-  expect_value
-    (Eval.run env "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))")
-    "ok";
-  expect_value (Eval.run env "(factorial 5)") "120";
-  (* 4.1.7: the analyzed evaluator runs the same program to the same
-     value. *)
-  let analyzed = Eval.the_global_environment () in
-  expect_value
-    (analyze_run
-       analyzed
-       "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))")
-    "ok";
-  expect_value (analyze_run analyzed "(factorial 10)") "3628800";
-  (* The error channel of a primitive reaches the driver untouched. *)
-  expect_value (Eval.run env "(car 5)") "Error: type error: car: not a pair: 5"
+  both
+    "let rec factorial n = if n = 1 then 1 else factorial (n - 1) * n\n\
+     let () = print_int (factorial 5); print_newline (); print_int (factorial 10)"
+    "120\n3628800";
+  (* 4.1.3: closures keep their defining environment and share captured
+     references. *)
+  both
+    "let make_counter start = let c = ref start in function () -> c := !c + 1; !c\n\
+     let () = let a = make_counter 0 in let b = make_counter 0 in\n\
+     let _ = a () in print_int (a () * 10 + b ())"
+    "21";
+  (* A runtime failure stops the program after the output before it. *)
+  both
+    "let () = print_string \"before \"; print_int (1 / 0)"
+    "before error: division by zero"
 ;;

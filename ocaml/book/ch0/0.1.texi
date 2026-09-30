@@ -55,31 +55,24 @@ val square : int -> int = <fun>
 - : int = 441
 @end example
 
-This book's transcripts use the plain @code{ocaml} interpreter throughout,
-not @code{utop}. That is a deliberate departure from the usual OCaml
-convention, where @code{utop} is the everyday choice: history, completion,
-and colored output make it pleasant to use. Against the pinned 5.5.1 switch
-in this project's environment, however, @code{utop} fails on ordinary code
-before this chapter's exercises can even use it:
+This book's transcripts show that same form throughout: a phrase after the
+toplevel's @code{#} prompt, then the reply @code{- : @var{type} =
+@var{value}}.  The plain @code{ocaml} toplevel that ships with every OCaml
+installation prints these exchanges exactly as written.  The everyday choice
+in the OCaml community is @code{utop}, a toplevel that adds history,
+completion, and colored output to the same language and the same replies;
+its prompt is decorated, but the words of each reply match this book's.
+@code{utop} is not a dependency of this project---the chapters build and test
+against what @file{modern-sicp.opam} pins---so install it separately if you
+want its comforts:
 
 @example
-$ echo '10.0 /. 3.0;;' | utop
-        OCaml version 5.5.1
-
-# Line 1, characters 5-7:
-Error: Unbound value (/.)
+$ opam install utop
 @end example
 
 @noindent
-@code{/.} is float division, defined by @code{Stdlib} and available with no
-setup in every OCaml program ever written; a toplevel that cannot find it is
-not usable for a book of verified transcripts. The plain @code{ocaml}
-interpreter has none of @code{utop}'s comforts, but it evaluates standard
-OCaml with no surprises, which is the one property this book actually needs.
-Once a project is built through Dune, an editor with @code{ocaml-lsp-server}
-recovers most of what @code{utop} would otherwise add (inline types, jump to
-definition), so the loss is confined to the interpreter transcripts in this
-book.
+Whichever toplevel you follow along in, the language is the one this book
+teaches and the replies are the ones printed here.
 
 @subsubheading Building this edition
 

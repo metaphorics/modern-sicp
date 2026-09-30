@@ -33,8 +33,8 @@ val apply_generic_loop : int -> string -> value list -> value
 val apply_generic_fixed : string -> value list -> value
 
 (** Installs Louis's two self-coercions
-    ([scheme-number -> scheme-number] and [complex -> complex], both
-    the identity) plus ["exp"] for ["scheme-number"; "scheme-number"]
+    ([real -> real] and [complex -> complex], both
+    the identity) plus ["exp"] for ["real"; "real"]
     only, exactly as the exercise states. *)
 val install_louis_setup : unit -> unit
 

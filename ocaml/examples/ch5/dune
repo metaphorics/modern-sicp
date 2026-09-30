@@ -1,12 +1,12 @@
 (library
  (name sicp_ch5)
- (libraries sicp_common)
+ (libraries sicp_common sicp_ch4)
  (modules metacircular sec_5_1 sec_5_2 sec_5_3 sec_5_4 sec_5_5))
 
 (executable
  (name run_sec_5_1)
  (modules run_sec_5_1)
- (libraries sicp_ch5 sicp_ch1))
+ (libraries sicp_ch5 sicp_ch1 sicp_common))
 
 (rule
  (alias runtest)
@@ -16,7 +16,7 @@
 (executable
  (name run_sec_5_2)
  (modules run_sec_5_2)
- (libraries sicp_ch5 sicp_ch1))
+ (libraries sicp_ch5 sicp_ch1 sicp_common))
 
 (rule
  (alias runtest)
@@ -26,7 +26,7 @@
 (executable
  (name run_sec_5_3)
  (modules run_sec_5_3)
- (libraries sicp_ch5 sicp_ch1))
+ (libraries sicp_ch5 sicp_ch1 sicp_common))
 
 (rule
  (alias runtest)
@@ -36,7 +36,7 @@
 (executable
  (name run_sec_5_4)
  (modules run_sec_5_4)
- (libraries sicp_ch5 sicp_ch1 sicp_ch5_solutions))
+ (libraries sicp_ch5 sicp_ch1 sicp_common))
 
 (rule
  (alias runtest)
@@ -46,7 +46,7 @@
 (executable
  (name run_sec_5_5)
  (modules run_sec_5_5)
- (libraries sicp_ch5 sicp_common))
+ (libraries sicp_ch5 sicp_ch1 sicp_common))
 
 (rule
  (alias runtest)

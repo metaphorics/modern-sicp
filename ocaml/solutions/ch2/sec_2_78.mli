@@ -2,7 +2,7 @@
    Adapted from the Scheme program of SICP section 2.5 exercise 2.78 *)
 
 (** A bare [Num] needs no wrapper: OCaml's own constructor already is
-    the "scheme-number" tag, the way Lisp's internal [number?] already
+    the "real" tag, the way Lisp's internal [number?] already
     distinguishes a number from every other representation. *)
 type value =
   | Num of float
@@ -13,7 +13,7 @@ and tagged =
   ; contents : value
   }
 
-(** [type_tag v] reads "scheme-number" off a bare [Num] with no
+(** [type_tag v] reads "real" off a bare [Num] with no
     lookup, and [t.tag] otherwise. *)
 val type_tag : value -> string
 
@@ -23,7 +23,7 @@ val type_tag : value -> string
 val contents_of : value -> value
 
 (** [attach_tag tag contents] is the identity when [tag] is
-    "scheme-number" -- attaching that tag to a [Num] cannot add a
+    "real" -- attaching that tag to a [Num] cannot add a
     wrapper, because [contents] must already be a [Num] -- and builds
     a [Tagged] record otherwise. *)
 val attach_tag : string -> value -> value

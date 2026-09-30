@@ -85,7 +85,7 @@ val halve_even : int -> (int, step_error) result = <fun>
 Three steps that each might fail compose with @code{Result.bind}, which
 runs the next step only if the previous one succeeded, and short-circuits
 to the first @code{Error} otherwise: this is this edition's whole answer
-to the question a long @code{cond} chain of error checks would otherwise
+to the question a long chain of error checks would otherwise
 answer by hand:
 
 @example

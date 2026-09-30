@@ -67,10 +67,10 @@ val apply_generic_coerce : string -> value list -> value
 val put_coercion : string -> string -> (value -> value) -> unit
 val get_coercion : string -> string -> (value -> value) option
 
-(** [install_scheme_number_package ()] tags OCaml's own floats as
+(** [install_real_package ()] tags OCaml's own floats as
     ordinary numbers. Also installs [=zero?], which the book defers to
     Exercise 2.80 but 2.5.3's [adjoin_term] already needs to run. *)
-val install_scheme_number_package : unit -> unit
+val install_real_package : unit -> unit
 
 (** [install_rational_package ()] reuses [Sicp_ch1.Sec_1_2.Gcd.gcd] to
     reduce every rational this package builds, exactly as 2.1.1's
@@ -104,28 +104,28 @@ val angle : value -> float
     fix, not this package's job. *)
 val install_complex_package : unit -> unit
 
-(** [add_complex_to_schemenum] and [install_cross_type_example ()] are
+(** [add_complex_to_real] and [install_cross_type_example ()] are
     2.5.2's "cumbersome" illustration: one explicit
-    [\["complex"; "scheme-number"\]] procedure, shown once and not
+    [\["complex"; "real"\]] procedure, shown once and not
     reused once coercion arrives. *)
-val add_complex_to_schemenum : value -> float -> value
+val add_complex_to_real : value -> float -> value
 
 val install_cross_type_example : unit -> unit
 
-(** [scheme_number_to_complex] is the one coercion this section
+(** [real_to_complex] is the one coercion this section
     installs: an ordinary number viewed as a complex number with zero
     imaginary part. [install_coercions ()] puts it in the coercion
-    table under [("scheme-number", "complex")]. *)
-val scheme_number_to_complex : tagged -> value
+    table under [("real", "complex")]. *)
+val real_to_complex : tagged -> value
 
 val install_coercions : unit -> unit
-val make_scheme_number : float -> value
+val make_real : float -> value
 val make_rational : int -> int -> value
 val make_complex_from_real_imag : float -> float -> value
 val make_complex_from_mag_ang : float -> float -> value
 
 (** The four generic arithmetic operations, all routed through
-    [apply_generic_coerce] so a [scheme-number] combined with a
+    [apply_generic_coerce] so a [real] combined with a
     [complex] number coerces instead of failing. *)
 val add : value -> value -> value
 
@@ -134,7 +134,7 @@ val mul : value -> value -> value
 val div : value -> value -> value
 
 (** [is_zero v] is the generic [=zero?] this section's polynomial
-    package needs; only [install_scheme_number_package] installs it,
+    package needs; only [install_real_package] installs it,
     so a rational or complex coefficient is Exercise 2.80's job. *)
 val is_zero : value -> bool
 

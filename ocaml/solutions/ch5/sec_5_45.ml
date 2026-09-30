@@ -1,167 +1,240 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.45: the compiler's stack use against the interpreter's
-    and the special-purpose machine's, for the recursive factorial.
-
-    All three run under the same monitored stack: the interpreted
-    session on the 5.4 machine (5.27's), the compiled session on the
-    5.5.7 machine with the monitored driver, and the special-purpose
-    machine of Figure 5.11 as 5.14 measured it.  The ratios of pushes
-    and depths approach constants; the special-purpose machine is far
-    ahead of the compiled code, which in turn is far ahead of the
-    interpreter -- the compiler's saves are general-purpose ones, the
-    hand-tailored controller needs only [n] and [continue]. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Env = Sicp_common.Env
+module Eval_error = Sicp_common.Eval_error
+module Prelude = Sicp_common.Prelude
+module Value = Sicp_common.Value
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
+module W = Sicp_ch5.Sec_5_4
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
+let bad detail = Error (Eval_error.Bad_instruction detail)
 
-let factorial_source =
-  {|(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))|}
+(* {1 The 5.5.7 interface} *)
+
+let runtime =
+  let s = C.compile_program (C.new_state ()) [] in
+  List.filter
+    (function
+      | M.Goto "done" | M.Label "done" -> false
+      | _ -> true)
+    s.statements
 ;;
 
-(** The monitored driver: statistics printed before each value. *)
-let monitored_controller =
-  let monitored_driver =
-    ";; branches if flag is set:\n(branch (label external-entry))\n"
-    ^ {|read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op print-stack-statistics))
-  (perform (op announce-output))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))|}
-  in
-  String.concat
-    "\n"
-    (List.map
-       (fun (nm, text) -> if nm = "driver" then monitored_driver else text)
-       C.eceval_fragments)
+let block_statements (s : C.seq) =
+  let keep = List.length s.statements - List.length runtime - 2 in
+  List.filteri (fun i _ -> i < keep) s.statements
 ;;
 
-(** [int_after prefix line] is the integer the digits right after
-    [prefix] spell, searching anywhere in the line: both the 5.4
-    machine's [(total-pushes = P maximum-depth = D)] and the 5.2
-    machine's prefixed [total-pushes = P maximum-depth = D] carry the
-    two counters behind the same markers. *)
-let int_after prefix line =
-  let plen = String.length prefix in
-  let len = String.length line in
-  let rec from i =
-    if i + plen > len
-    then None
-    else if String.sub line i plen = prefix
-    then (
-      let rec digits j =
-        if j < len && line.[j] >= '0' && line.[j] <= '9' then digits (j + 1) else j
-      in
-      let stop = digits (i + plen) in
-      if stop = i + plen
-      then None
-      else int_of_string_opt (String.sub line (i + plen) (stop - i - plen)))
-    else from (i + 1)
-  in
-  from 0
+let apply_dispatch =
+  List.concat_map
+    (function
+      | M.Branch "compound-apply" as branch ->
+        [ branch
+        ; M.Test ("compiled-procedure?", [ M.Reg "proc" ])
+        ; M.Branch "compiled-from-evaluator"
+        ]
+      | i -> [ i ])
+    (List.assoc "apply-dispatch" W.controller_fragments)
+  @ [ M.Label "compiled-from-evaluator"; M.Restore "continue"; M.Goto "compiled-apply" ]
 ;;
 
-(** [parse_stats line] reads the counters of a
-    [(total-pushes = P maximum-depth = D)] line. *)
-let parse_stats line =
-  match int_after "total-pushes = " line, int_after "maximum-depth = " line with
-  | Some p, Some d -> Some (p, d)
-  | _ -> None
+let controller ?(runtime = runtime) blocks =
+  List.concat_map
+    (fun (name, fragment) ->
+       match name with
+       | "done" -> []
+       | "apply-dispatch" -> apply_dispatch
+       | _ -> fragment)
+    W.controller_fragments
+  @ List.concat_map
+      (fun (label, code) -> (M.Label label :: code) @ [ M.Goto "done" ])
+      blocks
+  @ runtime
+  @ [ M.Label "done" ]
 ;;
 
-(** [compiled_at n] runs the compiled factorial at [n] and answers the
-    session's counters. *)
-let compiled_at n =
-  let state = C.new_state () in
-  C.compile_block state factorial_source
-  >>= fun (entry, block) ->
-  C.make_compiled_evaluator
-    ~controller:(monitored_controller ^ "\n" ^ block)
-    ~source:(Printf.sprintf "(factorial %d)" n)
-    ~state
+let no_callbacks _ _ =
+  Error (Eval_error.Invalid_form "compiled-procedure operations call no guest procedure")
+;;
+
+let compiled_operations =
+  List.filter
+    (fun (name, _) -> not (List.mem name W.base_operation_names))
+    (C.runtime_operations ~apply:no_callbacks)
+;;
+
+let make_evaluator ?runtime ~emit blocks =
+  W.make_evaluator
+    ~operations:compiled_operations
+    ~registers:[ "arg1"; "arg2" ]
+    ~controller:(controller ?runtime blocks)
+    ~emit
     ()
-  >>= fun m ->
-  C.set_register m "val" (Sicp_ch5.Sec_5_4.Lab entry)
-  >>= fun () ->
-  C.set_flag m true;
-  (match C.start m with
-   | Ok () -> Ok ()
-   | Error (C.Op_failed m2) when m2 = Sicp_ch5.Sec_5_4.input_exhausted -> Ok ()
-   | Error e -> Error e)
-  >>= fun () ->
-  let stats = List.filter_map parse_stats (C.transcript m) in
-  match List.rev stats with
-  | p :: _ -> Ok p
-  | [] -> Error (C.Op_failed "no statistics")
 ;;
 
-(** [interpreted_at n] runs the interpreted factorial at [n] on the
-    monitored 5.4 driver (5.26's and 5.27's harness) and answers the
-    counters. *)
-let interpreted_at n =
-  Sec_5_26.run (Sec_5_27.recursive_source ^ "\n(factorial " ^ string_of_int n ^ ")")
-  >>= fun transcript ->
-  let stats = Sec_5_26.stats_of transcript in
-  match List.rev stats with
-  | s :: _ -> Ok (Sec_5_26.pushes_of s, Sec_5_26.depth_of s)
-  | [] -> Error (C.Op_failed "no statistics")
+let value_of what = function
+  | W.V v -> Ok v
+  | w -> bad (what ^ " holds " ^ W.word_to_string w)
 ;;
 
-(** [special_at n] runs the special-purpose machine of Figure 5.11 (as
-    5.14 measured it) at [n]. *)
-let special_at n =
-  Sec_5_14.measure n
-  >>= fun line ->
-  match parse_stats line with
-  | Some p -> Ok p
-  | None -> Error (C.Op_failed "no statistics")
-;;
-
-(** [ex_5_45 ()] measures n = 5 and 10 on all three machines and
-    answers the ratios: compiled over interpreted, special-purpose
-    over interpreted.  The measured constants at n = 10: the compiled
-    code uses about a fifth of the interpreter's pushes and about half
-    its depth; the special-purpose machine about a tenth of the
-    pushes and a fixed depth of 2n -- the compiler is closer to the
-    interpreter than to the hand-tailored controller, and (b)'s
-    improvements (open coding, which 5.38 measured, and direct calls
-    for known procedures) all shrink the general machinery around
-    each recursive step. *)
-let ex_5_45 () =
-  let run_one n =
-    interpreted_at n
-    >>= fun (ip, id) ->
-    compiled_at n
-    >>= fun (cp, cd) ->
-    special_at n
-    >>= fun (sp, sd) ->
-    Ok
-      (Printf.sprintf
-         "n = %d: interpreted %d/%d, compiled %d/%d, special %d/%d;           ratios \
-          compiled %.3f/%.3f, special %.3f/%.3f"
-         n
-         ip
-         id
-         cp
-         cd
-         sp
-         sd
-         (float cp /. float ip)
-         (float cd /. float id)
-         (float sp /. float ip)
-         (float sd /. float id))
+let run_block ev env label =
+  let m = W.machine ev in
+  M.restart m;
+  let* () = M.set_register m "env" (W.Env env) in
+  let* () = M.goto_label m label in
+  let* () = M.start m in
+  let* v = Result.bind (M.get_register m "val") (value_of "val") in
+  let* env =
+    match M.get_register m "env" with
+    | Ok (W.Env env) -> Ok env
+    | Ok w -> bad ("env holds " ^ W.word_to_string w)
+    | Error e -> Error e
   in
-  run_one 5 >>= fun line5 -> run_one 10 >>= fun line10 -> Ok [ line5; line10 ]
+  Ok (v, env)
+;;
+
+let named bindings values =
+  List.filter_map
+    (fun ((b : Ast.binding), v) -> Option.map (fun name -> name, v) b.name)
+    (List.combine bindings values)
+;;
+
+let eval_item ev env = function
+  | Ast.Type_item _ -> Ok (Value.unit, env)
+  | Ast.Value_item (false, bindings) ->
+    let* values =
+      List.fold_left
+        (fun acc (b : Ast.binding) ->
+           let* vs = acc in
+           let* v = W.eval ev env b.rhs in
+           Ok (v :: vs))
+        (Ok [])
+        bindings
+    in
+    let values = List.rev values in
+    let last =
+      match List.rev values with
+      | v :: _ -> v
+      | [] -> Value.unit
+    in
+    Ok (last, Env.extend (named bindings values) env)
+  | Ast.Value_item (true, bindings) ->
+    let names = List.filter_map (fun (b : Ast.binding) -> b.name) bindings in
+    let env, cells = Env.extend_recursive names env in
+    let* last =
+      List.fold_left
+        (fun acc ((b : Ast.binding), cell) ->
+           let* _ = acc in
+           let* v = W.eval ev env b.rhs in
+           Env.fill cell v;
+           Ok v)
+        (Ok Value.unit)
+        (List.combine bindings cells)
+    in
+    Ok (last, env)
+;;
+
+let global_environment ~emit = Prelude.initial_env ~emit ()
+
+(* {1 The measurements} *)
+
+let interpreted source =
+  let* p = Sec_5_33.program ~filename:"ex_5_45.ml" source in
+  W.stack_statistics_after p
+;;
+
+let compiled source =
+  let* p = Sec_5_33.program ~filename:"ex_5_45.ml" source in
+  let state = C.new_state () in
+  let blocks =
+    List.mapi
+      (fun i item ->
+         Printf.sprintf "item-%d" i, block_statements (C.compile_program state [ item ]))
+      (Check.items p)
+  in
+  let* ev = make_evaluator ~emit:ignore blocks in
+  let* _, stats =
+    List.fold_left
+      (fun acc (label, _) ->
+         let* env, _ = acc in
+         let* _, env = run_block ev env label in
+         Ok (env, M.stack_statistics (W.machine ev)))
+      (Ok (global_environment ~emit:ignore, (0, 0)))
+      blocks
+  in
+  Ok stats
+;;
+
+let special controller registers n =
+  let* m = M.make_machine ~registers ~operations:M.arith_operations ~controller in
+  let* () = M.set_register m "n" (M.Int n) in
+  let* () = M.start m in
+  Ok (M.stack_statistics m)
+;;
+
+let factorial_machine =
+  [ M.Assign ("continue", M.Label_ref "fact-done")
+  ; M.Label "fact-loop"
+  ; M.Test ("=", [ M.Reg "n"; M.Const (M.Int 1) ])
+  ; M.Branch "base-case"
+  ; M.Save "continue"
+  ; M.Save "n"
+  ; M.Assign_op ("n", "-", [ M.Reg "n"; M.Const (M.Int 1) ])
+  ; M.Assign ("continue", M.Label_ref "after-fact")
+  ; M.Goto "fact-loop"
+  ; M.Label "after-fact"
+  ; M.Restore "n"
+  ; M.Restore "continue"
+  ; M.Assign_op ("val", "*", [ M.Reg "n"; M.Reg "val" ])
+  ; M.Goto_reg "continue"
+  ; M.Label "base-case"
+  ; M.Assign ("val", M.Const (M.Int 1))
+  ; M.Goto_reg "continue"
+  ; M.Label "fact-done"
+  ]
+;;
+
+let ratio a b = if b = 0 then 0.0 else float_of_int a /. float_of_int b
+
+let comparison ~definition ~call ~machine n =
+  let source = definition ^ Printf.sprintf "\nlet result = %s %d\n" call n in
+  let* ip, id = interpreted source in
+  let* cp, cd = compiled source in
+  let* sp, sd = special machine [ "n"; "val"; "continue" ] n in
+  Ok
+    (Printf.sprintf
+       "n = %d: interpreted %d/%d, compiled %d/%d, special %d/%d; ratios compiled \
+        %.3f/%.3f, special %.3f/%.3f"
+       n
+       ip
+       id
+       cp
+       cd
+       sp
+       sd
+       (ratio cp ip)
+       (ratio cd id)
+       (ratio sp ip)
+       (ratio sd id))
+;;
+
+let ex_5_45 () =
+  List.fold_right
+    (fun n acc ->
+       let* lines = acc in
+       let* line =
+         comparison
+           ~definition:Sec_5_33.factorial
+           ~call:"factorial"
+           ~machine:factorial_machine
+           n
+       in
+       Ok (line :: lines))
+    [ 5; 10 ]
+    (Ok [])
 ;;

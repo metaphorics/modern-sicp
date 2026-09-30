@@ -55,96 +55,50 @@ their programs.  Well-designed computational systems, like well-designed
 automobiles or nuclear reactors, are designed in a modular manner, so that the
 parts can be constructed, replaced, and debugged separately.
 
-@subsubheading Programming in Lisp
+@subsubheading Programming in OCaml
 
 We need an appropriate language for describing processes, and we will use for
-this purpose the programming language Lisp.  Just as our everyday thoughts are
+this purpose the programming language OCaml.  Just as our everyday thoughts are
 usually expressed in our natural language (such as English, French, or
 Japanese), and descriptions of quantitative phenomena are expressed with
-mathematical notations, our procedural thoughts will be expressed in Lisp.
-Lisp was invented in the late 1950s as a formalism for reasoning about the use
-of certain kinds of logical expressions, called @newterm{recursion equations},
-as a model for computation.  The language was conceived by John McCarthy and is
-based on his paper ``Recursive Functions of Symbolic Expressions and Their
-Computation by Machine'' (@ref{McCarthy 1960}).
+mathematical notations, our procedural thoughts will be expressed in OCaml.
+OCaml is a statically typed functional language of the ML family, with type
+inference, algebraic data types, and pattern matching; the primer of
+@ref{Chapter 0} teaches the forms this book uses.@footnote{OCaml descends from
+ML, developed at the University of Edinburgh in the 1970s, through Caml and
+Caml Light at @abbr{INRIA}.  The language of the original book is Lisp,
+invented in the late 1950s by John McCarthy as a formalism for reasoning about
+the use of certain kinds of logical expressions, called
+@newterm{recursion equations}, as a model for computation; it is described in
+McCarthy's paper ``Recursive Functions of Symbolic Expressions and Their
+Computation by Machine'' (@ref{McCarthy 1960}), and its early history is told
+in @ref{McCarthy 1978} and the @cite{Lisp 1.5 Programmer's Manual}
+(@ref{McCarthy et al. 1965}).  The dialect of Lisp in which the original text
+was written is Scheme (@ref{Steele and Sussman 1975}).}
 
-Despite its inception as a mathematical formalism, Lisp is a practical
-programming language.  A Lisp @newterm{interpreter} is a machine that carries
-out processes described in the Lisp language.  The first Lisp interpreter was
-implemented by McCarthy with the help of colleagues and students in the
-Artificial Intelligence Group of the @abbr{MIT} Research Laboratory of
-Electronics and in the @abbr{MIT} Computation Center.@footnote{The
-@cite{Lisp 1 Programmer's Manual} appeared in 1960 and the @cite{Lisp 1.5
-Programmer's Manual} (@ref{McCarthy et al. 1965}) was published in 1962.  The early history
-of Lisp is described in @ref{McCarthy 1978}.}  Lisp, whose name is an acronym for
-LISt Processing, was designed to provide symbol-manipulating capabilities for
-attacking programming problems such as the symbolic differentiation and
-integration of algebraic expressions.  It included for this purpose new data
-objects known as atoms and lists, which most strikingly set it apart from all
-other languages of the period.
+An @newterm{interpreter} for a language is a machine that carries out
+processes described in that language, while a compiler translates such
+descriptions into another form that a machine carries out directly.  The
+evaluators built in @ref{Chapter 4} are exactly such machines, written in
+OCaml for the language this book interprets, and @ref{Chapter 5} compiles
+that same language.
 
-Lisp was not the product of a concerted design effort.  Instead, it evolved
-informally in an experimental manner in response to users' needs and to
-pragmatic implementation considerations.  Lisp's informal evolution has
-continued through the years, and the community of Lisp users has traditionally
-resisted attempts to promulgate any ``official'' definition of the language.
-This evolution, together with the flexibility and elegance of the initial
-conception, has enabled Lisp, which is the second oldest language in widespread
-use today (only Fortran is older), to continually adapt to encompass the most
-modern ideas about program design.  Thus, Lisp is by now a family of dialects,
-which, while sharing most of the original features, may differ from one another
-in significant ways.  The dialect of Lisp used in this book is called
-Scheme.@footnote{The two dialects in which most major Lisp programs of the
-1970s were written are MacLisp (@ref{Moon 1978}; @ref{Pitman 1983}), developed at the
-@abbr{MIT} Project @abbr{MAC}, and Interlisp (@ref{Teitelman 1974}), developed
-at Bolt Beranek and Newman Inc. and the Xerox Palo Alto Research Center.
-Portable Standard Lisp (@ref{Hearn 1969}; @ref{Griss 1981}) was a Lisp dialect designed to
-be easily portable between different machines.  MacLisp spawned a number of
-subdialects, such as Franz Lisp, which was developed at the University of
-California at Berkeley, and Zetalisp (@ref{Moon and Weinreb 1981}), which was based on a
-special-purpose processor designed at the @abbr{MIT} Artificial Intelligence
-Laboratory to run Lisp very efficiently.  The Lisp dialect used in this book,
-called Scheme (@ref{Steele and Sussman 1975}), was invented in 1975 by Guy Lewis Steele Jr. and
-Gerald Jay Sussman of the @abbr{MIT} Artificial Intelligence Laboratory and
-later reimplemented for instructional use at @abbr{MIT}.  Scheme became an
-@abbr{IEEE} standard in 1990 (@ref{IEEE 1990}).  The Common Lisp dialect
-(@ref{Steele 1982}, @ref{Steele 1990}) was developed by the Lisp community to combine
-features from the earlier Lisp dialects to make an industrial standard for
-Lisp.  Common Lisp became an @abbr{ANSI} standard in 1994 (@ref{ANSI 1994}).}
-
-Because of its experimental character and its emphasis on symbol manipulation,
-Lisp was at first very inefficient for numerical computations, at least in
-comparison with Fortran.  Over the years, however, Lisp compilers have been
-developed that translate programs into machine code that can perform numerical
-computations reasonably efficiently.  And for special applications, Lisp has
-been used with great effectiveness.@footnote{One such special application was a
-breakthrough computation of scientific importance---an integration of the
-motion of the Solar System that extended previous results by nearly two orders
-of magnitude, and demonstrated that the dynamics of the Solar System is
-chaotic.  This computation was made possible by new integration algorithms, a
-special-purpose compiler, and a special-purpose computer all implemented with
-the aid of software tools written in Lisp (@ref{Abelson et al. 1992}; @ref{Sussman and Wisdom 1992}).}  
-Although Lisp has not yet overcome its old reputation as
-hopelessly inefficient, Lisp is now used in many applications where efficiency
-is not the central concern.  For example, Lisp has become a language of choice
-for operating-system shell languages and for extension languages for editors
-and computer-aided design systems.
-
-If Lisp is not a mainstream language, why are we using it as the framework for
-our discussion of programming?  Because the language possesses unique features
-that make it an excellent medium for studying important programming constructs
-and data structures and for relating them to the linguistic features that
-support them.  The most significant of these features is the fact that Lisp
-descriptions of processes, called @newterm{procedures}, can themselves be
-represented and manipulated as Lisp data.  The importance of this is that there
-are powerful program-design techniques that rely on the ability to blur the
-traditional distinction between ``passive'' data and ``active'' processes.  As
-we shall discover, Lisp's flexibility in handling procedures as data makes it
-one of the most convenient languages in existence for exploring these
-techniques.  The ability to represent procedures as data also makes Lisp an
-excellent language for writing programs that must manipulate other programs as
-data, such as the interpreters and compilers that support computer languages.
-Above and beyond these considerations, programming in Lisp is great fun.
+Why are we using OCaml as the framework for our discussion of programming?
+Because the language possesses features that make it an excellent medium for
+studying important programming constructs and data structures and for relating
+them to the linguistic features that support them.  The most significant of
+these features is the fact that OCaml descriptions of processes, called
+@newterm{procedures}, can themselves be represented and manipulated as OCaml
+data: a procedure is an ordinary value, passed and returned like any other.
+The importance of this is that there are powerful program-design techniques
+that rely on the ability to blur the traditional distinction between
+``passive'' data and ``active'' processes.  As we shall discover, OCaml's
+flexibility in handling procedures as data makes it one of the most convenient
+languages in existence for exploring these techniques.  The ability to
+represent procedures as data also makes OCaml an excellent language for writing
+programs that must manipulate other programs as data, such as the interpreters
+and compilers that support computer languages.  Above and beyond these
+considerations, programming in OCaml is great fun.
 
 @menu
 * 1.1::              The Elements of Programming
@@ -187,20 +141,21 @@ In this chapter we will deal only with simple numerical data so that we can
 focus on the rules for building procedures.@footnote{The characterization of
 numbers as ``simple data'' is a barefaced bluff.  In fact, the treatment of
 numbers is one of the trickiest and most confusing aspects of any programming
-language.  Some typical issues involved are these: Some computer systems
-distinguish @newterm{integers}, such as 2, from @newterm{real numbers}, such as
-2.71.  Is the real number 2.00 different from the integer 2?  Are the
-arithmetic operations used for integers the same as the operations used for
-real numbers?  Does 6 divided by 2 produce 3, or 3.0?  How large a number can
-we represent?  How many decimal places of accuracy can we represent?  Is the
-range of integers the same as the range of real numbers?  Above and beyond
-these questions, of course, lies a collection of issues concerning roundoff and
-truncation errors---the entire science of numerical analysis.  Since our focus
-in this book is on large-scale program design rather than on numerical
-techniques, we are going to ignore these problems.  The numerical examples in
-this chapter will exhibit the usual roundoff behavior that one observes when
-using arithmetic operations that preserve a limited number of decimal places of
-accuracy in noninteger operations.} In later chapters we will see that these
+language, and OCaml answers the usual questions with its types.  Integers and
+floating-point numbers are distinct types: @code{2} is an @code{int},
+@code{2.0} a @code{float}, and no arithmetic operation works on both---@code{+}
+and @code{/} act on @code{int}, @code{+.} and @code{/.} on @code{float}, so
+@code{6 / 2} produces the @code{int} @code{3}, while @code{6.0 /. 2.0} produces
+the @code{float} @code{3.}.  On a 64-bit runtime an @code{int} holds a signed
+63-bit value, at most @math{2^{62} - 1}, and arithmetic past the bound wraps
+around silently, so @math{20!} fits and @math{21!} does not, and with
+@math{F(0) = 0}, @math{F(1) = 1}, the Fibonacci number @math{F(90)} fits while
+@math{F(91)} does not.  A @code{float} is a double-precision number with the
+usual roundoff behavior of arithmetic that preserves a limited number of
+decimal places of accuracy in noninteger operations.  Since our focus in this
+book is on large-scale program design rather than on numerical techniques, we
+keep the main examples inside these bounds and flag the boundaries that an
+exercise asks you to cross.} In later chapters we will see that these
 same rules allow us to build procedures to manipulate compound data as well.
 
 @menu
@@ -1158,9 +1113,9 @@ shadowing anything.)
 
 @quotation
 @strong{@anchor{Exercise 1.1}Exercise 1.1:} Below is a sequence of expressions.
-What is the result printed by the toplevel in response to each expression?
-Assume that the sequence is to be evaluated in the order in which it is
-presented.
+What reply does the toplevel print in response to each phrase, its value and
+inferred type alike?  Assume that the sequence is to be evaluated in the order
+in which it is presented.
 
 @example ocaml
 10;;
@@ -1184,11 +1139,9 @@ else 25;;
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.2}Exercise 1.2:} @emph{SICP exercise 1.2 is about
-Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}
-
-The book's expression
+@emph{This edition replaces SICP exercise 1.2 with a host-language exercise
+that keeps its number and teaching objective.}
+@strong{@anchor{Exercise 1.2}Exercise 1.2:} The book's expression
 @displaymath
 {{5 + 4 + (2 - (3 - (6 + {4 \over 5}))) \over 3(6 - 2)(2 - 7)}.}
 @end displaymath

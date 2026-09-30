@@ -1,7 +1,11 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** The pending entries of section 4.4's exercises. *)
-val ex_4_74 : 'a
+(** Exercise 4.74: the pending scaffold of the solution with the
+    same name under solutions/ch4. *)
 
-val ex_4_74a : 'a
+(** [ex_4_74 ()] raises [Sicp_common.Pending.Pending_solution]. *)
+val ex_4_74 : unit -> string list
+
+(** [ex_4_74a ()] raises [Sicp_common.Pending.Pending_solution]. *)
+val ex_4_74a : unit -> string list

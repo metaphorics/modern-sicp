@@ -1,123 +1,87 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.34: the iterative factorial's compilation.  The
-    essential difference from the recursive version: [iter]'s call to
-    itself is in tail position with linkage [return] and target [val],
-    so [compile-proc-appl] emits the two-instruction direct transfer --
-    no [save] of [continue], no stack growth.  The measured maximum
-    depth is the same for every n. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
-let factorial_iter_source =
-  {|(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))|}
+let iterative =
+  "let factorial n =\n\
+  \  let rec iter product counter =\n\
+  \    if counter > n then product else iter (counter * product) (counter + 1)\n\
+  \  in\n\
+  \  iter 1 1"
 ;;
 
-(** [tail_call_statements] is the part of [iter]'s body that performs
-    the recursive call: a direct transfer with no saves. *)
-let tail_call_statements =
-  [ "(test (op primitive-procedure?) (reg proc))"
-  ; "(branch (label primitive-branch))"
-  ; "compiled-branch"
-  ; "(assign val (op compiled-procedure-entry) (reg proc))"
-  ; "(goto (reg val))"
-  ]
+let is_compiled_branch l = String.length l > 15 && String.sub l 0 15 = "compiled-branch"
+
+let rec until_jump acc = function
+  | [] -> List.rev acc, []
+  | (M.Goto "compiled-apply" as jump) :: rest -> List.rev (jump :: acc), rest
+  | i :: rest -> until_jump (i :: acc) rest
 ;;
 
-(** [depth_at n] runs the compiled iterative factorial at [n] on a
-    monitored machine and answers the interaction's maximum depth. *)
-let depth_at n =
-  let state = C.new_state () in
-  let monitored_driver =
-    ";; branches if flag is set:\n(branch (label external-entry))\n"
-    ^ {|read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op print-stack-statistics))
-  (perform (op announce-output))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))|}
+let compiled_branches statements =
+  let rec go acc = function
+    | [] -> List.rev acc
+    | M.Label l :: _ as rest when is_compiled_branch l ->
+      let branch, rest = until_jump [] rest in
+      go (branch :: acc) rest
+    | _ :: rest -> go acc rest
   in
-  let controller =
-    String.concat
-      "\n"
-      (List.map
-         (fun (nm, text) -> if nm = "driver" then monitored_driver else text)
-         C.eceval_fragments)
-  in
-  C.compile_block state factorial_iter_source
-  >>= fun (entry, block) ->
-  C.make_compiled_evaluator
-    ~controller:(controller ^ "\n" ^ block)
-    ~source:(Printf.sprintf "(factorial %d)" n)
-    ~state
-    ()
-  >>= fun m ->
-  C.set_register m "val" (Sicp_ch5.Sec_5_4.Lab entry)
-  >>= fun () ->
-  C.set_flag m true;
-  (match C.start m with
-   | Ok () -> Ok ()
-   | Error (C.Op_failed m2) when m2 = Sicp_ch5.Sec_5_4.input_exhausted -> Ok ()
-   | Error e -> Error e)
-  >>= fun () ->
-  let depths =
-    List.filter_map
-      (fun line ->
-         if String.length line > 37 && String.sub line 0 14 = "(total-pushes "
-         then (
-           match String.index_opt line '(' with
-           | Some _ ->
-             (try
-                Some
-                  (int_of_string
-                     (String.trim (String.sub line (String.length line - 2) 2)))
-              with
-              | _ -> None)
-           | None -> None)
-         else None)
-      (C.transcript m)
-  in
-  Ok
-    (match depths with
-     | [ d ] -> d
-     | _ -> 0)
+  go [] statements
 ;;
 
-(** [ex_5_34 ()] compiles the iterative factorial and reports the tail
-    call's direct transfer plus the measured depths at n = 3, 4, 5:
-    constant space, the annotation the exercise asks for. *)
+let depth definition n =
+  let* p =
+    Sec_5_33.program
+      ~filename:"ex_5_34.ml"
+      (definition ^ "\nlet result = factorial " ^ string_of_int n ^ "\n")
+  in
+  let* r = Sec_5_33.run_program p in
+  Ok r.depth
+;;
+
 let ex_5_34 () =
+  let* p = Sec_5_33.program ~filename:"ex_5_34.ml" iterative in
+  let* rhs =
+    match Check.items p with
+    | [ Ast.Value_item (false, [ b ]) ] -> Ok b.rhs
+    | _ -> Error (Eval_error.Invalid_form "one definition")
+  in
+  let code = C.compile (C.new_state ()) rhs "val" C.Next in
+  let* recursive = Sec_5_33.definition_code Sec_5_33.factorial in
+  let render call = String.concat "; " (List.map Sec_5_35.statement_to_string call) in
+  let calls name (s : C.seq) =
+    List.map (fun c -> name ^ " call: " ^ render c) (compiled_branches s.statements)
+  in
+  let* depths =
+    List.fold_right
+      (fun n acc ->
+         let* lines = acc in
+         let* d_iter = depth iterative n in
+         let* d_rec = depth Sec_5_33.factorial n in
+         Ok
+           (Printf.sprintf "depth at n = %d: iterative %d, recursive %d" n d_iter d_rec
+            :: lines))
+      [ 3; 4; 5 ]
+      (Ok [])
+  in
+  let saves =
+    List.length
+      (List.filter
+         (function
+           | M.Save _ -> true
+           | _ -> false)
+         code.statements)
+  in
   Ok
-    [ "iter tail call: " ^ String.concat "; " tail_call_statements
-    ; Printf.sprintf
-        "depth at n = 3: %d"
-        (match depth_at 3 with
-         | Ok d -> d
-         | Error _ -> 0)
-    ; Printf.sprintf
-        "depth at n = 4: %d"
-        (match depth_at 4 with
-         | Ok d -> d
-         | Error _ -> 0)
-    ; Printf.sprintf
-        "depth at n = 5: %d"
-        (match depth_at 5 with
-         | Ok d -> d
-         | Error _ -> 0)
-    ]
+    (calls "iterative" code
+     @ calls "recursive" recursive
+     @ [ Printf.sprintf "saves in the iterative compilation: %d" saves ]
+     @ depths)
 ;;

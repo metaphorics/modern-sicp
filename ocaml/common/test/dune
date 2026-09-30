@@ -1,12 +1,11 @@
 (executables
  (names
   prop_env
-  prop_reader
   test_ast
+  test_check
+  test_constructor_data
   test_env
-  test_eval_error
   test_random
-  test_reader
   test_value)
  (libraries sicp_common alcotest qcheck-core qcheck-core.runner))
 
@@ -18,12 +17,12 @@
 (rule
  (alias runtest)
  (action
-  (run ./prop_reader.exe)))
+  (run ./test_check.exe)))
 
 (rule
  (alias runtest)
  (action
-  (run ./test_ast.exe)))
+  (run ./test_constructor_data.exe)))
 
 (rule
  (alias runtest)
@@ -33,19 +32,14 @@
 (rule
  (alias runtest)
  (action
-  (run ./test_eval_error.exe)))
-
-(rule
- (alias runtest)
- (action
   (run ./test_random.exe)))
 
 (rule
  (alias runtest)
  (action
-  (run ./test_reader.exe)))
+  (run ./test_value.exe)))
 
 (rule
  (alias runtest)
  (action
-  (run ./test_value.exe)))
+  (run ./test_ast.exe)))

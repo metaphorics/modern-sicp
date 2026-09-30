@@ -63,15 +63,15 @@ let apply_generic_n op args =
 ;;
 
 let ex_2_82_a () =
-  put "add3" [ "scheme-number"; "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b; Num c ] -> Tagged (attach_tag "scheme-number" (Num (a +. b +. c)))
+  put "add3" [ "real"; "real"; "real" ] (function
+    | [ Num a; Num b; Num c ] -> Tagged (attach_tag "real" (Num (a +. b +. c)))
     | _ -> invalid_arg "add3: expects three numbers");
-  put_coercion "rational" "scheme-number" (function
-    | Tagged t -> Tagged (attach_tag "scheme-number" t.contents)
-    | Num _ -> invalid_arg "rational->scheme-number: expected a tagged value");
+  put_coercion "rational" "real" (function
+    | Tagged t -> Tagged (attach_tag "real" t.contents)
+    | Num _ -> invalid_arg "rational->real: expected a tagged value");
   let r = Tagged (attach_tag "rational" (Num 1.0)) in
-  let two = Tagged (attach_tag "scheme-number" (Num 2.0)) in
-  let three = Tagged (attach_tag "scheme-number" (Num 3.0)) in
+  let two = Tagged (attach_tag "real" (Num 2.0)) in
+  let three = Tagged (attach_tag "real" (Num 3.0)) in
   apply_generic_n "add3" [ r; two; three ]
 ;;
 

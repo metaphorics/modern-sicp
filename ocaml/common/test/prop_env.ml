@@ -1,13 +1,16 @@
 (* SPDX-License-Identifier: GPL-3.0-only *)
 
-module E = Sicp_common.Eval_error
 module Env = Sicp_common.Env
 module V = Sicp_common.Value
 open QCheck2
 
+(* Environments are immutable chains: a lookup answers the newest
+   binding of a name in scope, and extending never disturbs the
+   environment it extends.  A generated program of nested scopes is
+   compared with an association-list model. *)
+
 type op =
-  | Define of string * int
-  | Set of string * int
+  | Extend of (string * int) list
   | Find of string
 
 let keys = [ "a"; "b"; "c"; "d" ]
@@ -16,83 +19,54 @@ let op_gen =
   let open Gen in
   let key = oneof_list keys in
   oneof
-    [ map2 (fun k v -> Define (k, v)) key int
-    ; map2 (fun k v -> Set (k, v)) key int
+    [ map (fun bindings -> Extend bindings) (list_size (int_range 0 3) (pair key int))
     ; map (fun k -> Find k) key
     ]
 ;;
 
 let show_op = function
-  | Define (k, v) -> Printf.sprintf "define %s %d" k v
-  | Set (k, v) -> Printf.sprintf "set! %s %d" k v
-  | Find k -> Printf.sprintf "find %s" k
+  | Extend bindings ->
+    "extend ["
+    ^ String.concat "; " (List.map (fun (k, v) -> Printf.sprintf "%s=%d" k v) bindings)
+    ^ "]"
+  | Find k -> "find " ^ k
 ;;
 
-let show_ops ops = String.concat "; " (List.map show_op ops)
-
-(* The model: a list of assoc-list frames, newest first, mirroring the
-   documented Env semantics. *)
-
-let model_find model k =
-  let rec go = function
-    | [] -> None
-    | frame :: rest ->
-      (match List.assoc_opt k frame with
-       | Some v -> Some v
-       | None -> go rest)
-  in
-  go model
+let as_int v =
+  match V.view v with
+  | V.Int n -> n
+  | _ -> max_int
 ;;
 
-let model_define model k v =
-  match model with
-  | [] -> model
-  | frame :: rest -> ((k, v) :: List.remove_assoc k frame) :: rest
-;;
-
-let rec model_set model k v =
-  match model with
-  | [] -> None
-  | frame :: rest ->
-    if List.mem_assoc k frame
-    then Some (((k, v) :: List.remove_assoc k frame) :: rest)
-    else Option.map (fun rest' -> frame :: rest') (model_set rest k v)
-;;
-
+(* A frame binding one name twice keeps its first binding, as the
+   environment's assoc search does. *)
 let property ops =
-  let env = Env.empty () in
-  let rec go model = function
+  let rec go env model scopes = function
     | [] -> true
-    | op :: rest ->
-      (match op, model with
-       | Define (k, v), model ->
-         Env.define env k (V.int v);
-         go (model_define model k v) rest
-       | Set (k, v), model ->
-         (match Env.set env k (V.int v), model_set model k v with
-          | Ok (), Some model' -> go model' rest
-          | Error E.(Unbound_variable _), None -> go model rest
-          | _ -> false)
-       | Find k, model ->
-         let actual =
-           Option.map
-             (fun value ->
-                match V.view value with
-                | V.Int n -> n
-                | _ -> max_int)
-             (Env.find_binding env k)
-         in
-         if actual = model_find model k then go model rest else false)
+    | Extend bindings :: rest ->
+      go
+        (Env.extend (List.map (fun (k, v) -> k, V.int v) bindings) env)
+        (bindings @ model)
+        ((env, model) :: scopes)
+        rest
+    | Find k :: rest ->
+      let actual = Option.map as_int (Env.find env k) in
+      let outer_intact =
+        List.for_all
+          (fun (e, m) -> Option.map as_int (Env.find e k) = List.assoc_opt k m)
+          scopes
+      in
+      actual = List.assoc_opt k model && outer_intact && go env model scopes rest
   in
-  go [ [] ] ops
+  go Env.empty [] [] ops
 ;;
 
 let env_matches_model =
   Test.make
-    ~name:"Env matches a frame-list model"
+    ~name:"Env lookup answers the newest binding and never disturbs outer scopes"
     ~count:1000
-    ~print:show_ops
-    (Gen.sized (fun _ -> Gen.list op_gen))
+    ~print:(fun ops -> String.concat "; " (List.map show_op ops))
+    (Gen.list op_gen)
     property
 ;;
 

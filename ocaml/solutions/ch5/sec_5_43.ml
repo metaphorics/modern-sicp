@@ -1,77 +1,50 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.43: internal definitions are scanned out before a
-    procedure body compiles: the defines become a [let] of
-    [*unassigned*] bindings whose values are [set!] after it, the
-    transformation 4.1.6 argued for and 4.16 implemented.  The
-    compiler's [scan_out] configuration performs it.  Scanning out is
-    what makes lexical addressing sound: a [define] executed deep in a
-    body would grow the frame the compile-time environment predicted. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
+module Value = Sicp_common.Value
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
 let source =
-  {|(define (f)
-  (define a 1)
-  (define b 2)
-  (+ a b))|}
+  "let parity n =\n\
+  \  let rec even k = if k = 0 then true else odd (k - 1)\n\
+  \  and odd k = if k = 0 then false else even (k - 1) in\n\
+  \  if even n then 1 else 3\n\
+   let result = parity 7\n"
 ;;
 
-let scan_out = { C.default_config with scan_out = true }
-
-(** [body_shapes cfg] compiles [f]'s lambda body under [cfg] and
-    answers whether the compilation binds [*unassigned*] (the scanned
-    shape) or performs [define-variable!] (the plain shape). *)
-let body_shape cfg =
-  let state = C.new_state () in
-  match Sicp_common.Reader.read "(lambda () (define a 1) (define b 2) (+ a b))" with
-  | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-  | Ok exp ->
-    C.compile cfg state [] exp "val" C.Next
-    >>= fun seq ->
-    let has needle =
-      List.exists
-        (fun s ->
-           let len = String.length s
-           and n = String.length needle in
-           let rec from i = i + n <= len && (String.sub s i n = needle || from (i + 1)) in
-           from 0)
-        seq.stmts
-    in
-    (* the scanned shape binds the marker as a quoted constant (the
-       quotation rides the compile-time constant table, so the emitted
-       name is a constant reference behind [text-of-quotation]) *)
-    Ok (has "(op text-of-quotation)", has "(op define-variable!)")
+let group_operations (s : C.seq) =
+  List.filter_map
+    (function
+      | M.Assign_op (_, (("let-rec-group" | "group-environment") as op), _)
+      | M.Perform (("fill-first-pending" as op), _) -> Some op
+      | _ -> None)
+    s.statements
 ;;
 
-(** [ex_5_43 ()] shows both shapes and runs the scanned program on the
-    plain compiled machine: the internal defines answer [3] without
-    ever executing a [define]. *)
 let ex_5_43 () =
-  body_shape C.default_config
-  >>= fun (unassigned_plain, define_plain) ->
-  body_shape scan_out
-  >>= fun (unassigned_scanned, define_scanned) ->
-  let state = C.new_state () in
-  C.compile_and_go ~cfg:scan_out ~state ~compiled:source ~source:"(f)" ()
-  >>= fun m ->
-  (match C.start m with
-   | Ok () -> Ok ()
-   | Error (C.Op_failed m2) when m2 = Sicp_ch5.Sec_5_4.input_exhausted -> Ok ()
-   | Error e -> Error e)
-  >>= fun () ->
+  let* p = Sec_5_33.program ~filename:"ex_5_43.ml" source in
+  let items = Check.items p in
+  let* body =
+    match items with
+    | Ast.Value_item (false, [ b ]) :: _ ->
+      Ok (C.compile (C.new_state ()) b.rhs "val" C.Next)
+    | _ -> Error (Eval_error.Invalid_form "parity first")
+  in
+  let* plain = Sec_5_33.run_program p in
+  let* lexical =
+    Sec_5_33.run_code
+      ~operations:[ Sec_5_39.operation ]
+      (Sec_5_42.compile_program_lexical items)
+  in
   Ok
-    [ Printf.sprintf
-        "plain body: quoted *unassigned* marker = %b, define-variable! = %b"
-        unassigned_plain
-        define_plain
-    ; Printf.sprintf
-        "scanned body: quoted *unassigned* marker = %b, define-variable! = %b"
-        unassigned_scanned
-        define_scanned
-    ; "scanned run: " ^ String.concat " " (C.transcript m)
+    [ "group code in order: " ^ String.concat ", " (group_operations body)
+    ; "plain run: " ^ Value.to_string plain.value
+    ; "lexical run: " ^ Value.to_string lexical.value
     ]
 ;;

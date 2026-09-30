@@ -1,514 +1,639 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.52: the compiler's C backend.  The instruction sequences
-    the 5.5 compiler emits are translated one statement at a time into
-    the statements of a single C function: registers are globals,
-    labels are C labels (dashes become underscores), [continue] and
-    procedure entries hold label addresses (the GNU computed-goto
-    extension the system compiler accepts), and the machine's
-    operations are one C dispatch mirroring the compiled operations
-    table.  The run-time support is the object world of 5.50's
-    machine: pairs, symbols, the primitive table, and the environment
-    procedures behind id symbols.  Compiling the adapted metacircular
-    source with this backend produces a Scheme interpreter in C that
-    runs its object program; the build uses the system C compiler. *)
-
-module C = Sicp_ch5.Sec_5_5
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
 module Value = Sicp_common.Value
+module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
+module W = Sicp_ch5.Sec_5_4
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
-(** [c_ident] is a label name as a C identifier. *)
-let c_ident name = String.map (fun c -> if c = '-' then '_' else c) name
-
-(** [runtime_c] is the run-time support: values, the environment-id
-    table, the primitive table, the machine operations, and the
-    driver. *)
-let runtime_c =
-  {|/* The C runtime of the compiled evaluator. */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-typedef struct Value Value;
-struct Value {
-    int tag;              /* 0 int, 1 symbol, 2 pair, 3 primitive, 4 compiled, 5 bool, 6 nil, 7 string */
-    long i;
-    char *sym;
-    char *str;
-    Value *car, *cdr;
-    void *entry;
-    Value *env;
-};
-static Value TRUE_V, FALSE_V, NIL_V;
-static Value *boolean(int b) { return b ? &TRUE_V : &FALSE_V; }
-static Value *sym(const char *s) { Value *v = calloc(1, sizeof *v); v->tag = 1; v->sym = strdup(s); return v; }
-static Value *num(long n) { Value *v = calloc(1, sizeof *v); v->tag = 0; v->i = n; return v; }
-static Value *pair(Value *a, Value *d) { Value *v = calloc(1, sizeof *v); v->tag = 2; v->car = a; v->cdr = d; return v; }
-static int is_true(Value *v) { return !(v->tag == 5 && v->i == 0); }
-static int val_eq(Value *a, Value *b) {
-    if (a == b) return 1;
-    if (a->tag != b->tag) return 0;
-    if (a->tag == 0 || a->tag == 3) return a->i == b->i;
-    if (a->tag == 1) return strcmp(a->sym, b->sym) == 0;
-    return 0;
-}
-static Value *car(Value *v) { return v->tag == 2 ? v->car : sym("<car-of-atom>"); }
-static Value *cdr(Value *v) { return v->tag == 2 ? v->cdr : sym("<cdr-of-atom>"); }
-
-/* The environment table: id symbols to frame lists. */
-static Value *env_keys[8192]; static Value *env_vals[8192]; static int env_n = 0;
-static Value *env_of_id(const char *id) {
-    for (int i = 0; i < env_n; i++)
-        if (!strcmp(env_keys[i]->sym, id)) return env_vals[i];
-    return &NIL_V;
-}
-static Value *env_register(Value *frames) {
-    char buf[32]; snprintf(buf, sizeof buf, "env%d", env_n);
-    Value *id = sym(buf);
-    env_keys[env_n] = id; env_vals[env_n] = frames; env_n++;
-    return id;
-}
-static Value *lookup_var(Value *name, Value *env_id) {
-    for (Value *frames = env_of_id(env_id->sym); frames && frames->tag == 2; frames = frames->cdr) {
-        Value *names = frames->car->car, *values = frames->car->cdr;
-        while (names && names->tag == 2) {
-            if (val_eq(names->car, name)) return values->car;
-            names = names->cdr; values = values->cdr;
-        }
-    }
-    fprintf(stderr, "unbound variable\n"); exit(3);
-}
-static void set_var(Value *name, Value *val, Value *env_id) {
-    for (Value *frames = env_of_id(env_id->sym); frames && frames->tag == 2; frames = frames->cdr) {
-        Value *names = frames->car->car, *values = frames->car->cdr;
-        Value *n = names, *v = values;
-        while (n && n->tag == 2) {
-            if (val_eq(n->car, name)) { v->car = val; return; }
-            n = n->cdr; v = v->cdr;
-        }
-    }
-}
-static void define_var(Value *name, Value *val, Value *env_id) {
-    for (Value *frames = env_of_id(env_id->sym); frames && frames->tag == 2; frames = frames->cdr) {
-        Value *names = frames->car->car, *values = frames->car->cdr;
-        Value *n = names, *v = values;
-        while (n && n->tag == 2) {
-            if (val_eq(n->car, name)) { v->car = val; return; }
-            n = n->cdr; v = v->cdr;
-        }
-        frames->car = pair(pair(name, names), pair(val, values));
-        return;
-    }
-}
-
-static void print_value_pub(Value *v);
-
-static const char *prim_names[] = {
-    "cons","car","cdr","null?","pair?","symbol?","number?","string?","eq?","equal?",
-    "+","-","*","/","=","<",">","<=",">=","remainder","quotient","abs","not",
-    "list","error","display","newline","cadr","caddr","cadddr","caadr","cdadr","cddr","cdddr",
-    "extend-environment","lookup-variable-value","set-variable-value!","define-variable!",
-    "apply-in-underlying-scheme"
-};
-#define NPRIMS (long)(sizeof(prim_names)/sizeof(*prim_names))
-static Value *prim_apply(long idx, Value *args) {
-    const char *n = prim_names[idx];
-    Value *a = args->tag == 2 ? args->car : &NIL_V;
-    Value *b = args->tag == 2 && args->cdr->tag == 2 ? args->cdr->car : &NIL_V;
-    Value *c = args->tag == 2 && args->cdr->tag == 2 && args->cdr->cdr->tag == 2 ? args->cdr->cdr->car : &NIL_V;
-    if (!strcmp(n, "cons")) return pair(a, b);
-    if (!strcmp(n, "car")) return car(a);
-    if (!strcmp(n, "cdr")) return cdr(a);
-    if (!strcmp(n, "null?")) return boolean(a->tag == 6);
-    if (!strcmp(n, "pair?")) return boolean(a->tag == 2);
-    if (!strcmp(n, "symbol?")) return boolean(a->tag == 1);
-    if (!strcmp(n, "number?")) return boolean(a->tag == 0);
-    if (!strcmp(n, "string?")) return boolean(a->tag == 7);
-    if (!strcmp(n, "eq?")) return boolean(val_eq(a, b));
-    if (!strcmp(n, "equal?")) return boolean(val_eq(a, b));
-    if (!strcmp(n, "not")) return boolean(!is_true(a));
-    if (!strcmp(n, "+") || !strcmp(n, "-") || !strcmp(n, "*")) {
-        long x = a->i, y = b->i;
-        return num(n[0] == '+' ? x + y : n[0] == '-' ? x - y : x * y);
-    }
-    if (!strcmp(n, "/")) return num(b->i ? a->i / b->i : 0);
-    if (!strcmp(n, "=")) return boolean(a->i == b->i);
-    if (!strcmp(n, "<")) return boolean(a->i < b->i);
-    if (!strcmp(n, ">")) return boolean(a->i > b->i);
-    if (!strcmp(n, "<=")) return boolean(a->i <= b->i);
-    if (!strcmp(n, ">=")) return boolean(a->i >= b->i);
-    if (!strcmp(n, "remainder")) return num(a->i % b->i);
-    if (!strcmp(n, "quotient")) return num(a->i / b->i);
-    if (!strcmp(n, "abs")) return num(a->i < 0 ? -a->i : a->i);
-    if (!strcmp(n, "list")) return args;
-    if (!strcmp(n, "error")) { fprintf(stderr, "error\n"); exit(2); }
-    if (!strcmp(n, "display")) { print_value_pub(a); return a; }
-    if (!strcmp(n, "newline")) { printf("\n"); return sym("newline"); }
-    if (!strcmp(n, "cadr")) return car(cdr(car(args)));
-    if (!strcmp(n, "caddr")) return car(cdr(cdr(car(args))));
-    if (!strcmp(n, "cadddr")) return car(cdr(cdr(cdr(car(args)))));
-    if (!strcmp(n, "caadr")) return car(car(cdr(car(args))));
-    if (!strcmp(n, "cdadr")) return cdr(car(cdr(car(args))));
-    if (!strcmp(n, "cddr")) return cdr(cdr(a));
-    if (!strcmp(n, "cdddr")) return cdr(cdr(cdr(a)));
-    if (!strcmp(n, "extend-environment")) {
-        Value *frame = pair(a, b);
-        Value *frames = (c->tag == 1 && !strcmp(c->sym, "the-empty"))
-            ? pair(frame, &NIL_V)
-            : pair(frame, env_of_id(c->sym));
-        return env_register(frames);
-    }
-    if (!strcmp(n, "lookup-variable-value")) return lookup_var(a, b);
-    if (!strcmp(n, "set-variable-value!")) { set_var(a, b, c); return sym("ok"); }
-    if (!strcmp(n, "define-variable!")) { define_var(a, b, c); return sym("ok"); }
-    if (!strcmp(n, "apply-in-underlying-scheme")) return prim_apply(a->i, b);
-    return sym("unimplemented");
-}
-static void print_value_pub(Value *v) {
-    if (!v) { printf("()"); return; }
-    switch (v->tag) {
-    case 0: printf("%ld", v->i); break;
-    case 1: printf("%s", v->sym); break;
-    case 6: printf("()"); break;
-    case 5: printf(v->i ? "#t" : "#f"); break;
-    case 7: printf("\"%s\"", v->str); break;
-    case 3: printf("#[primitive]"); break;
-    case 4: printf("#[compiled-procedure]"); break;
-    case 2: {
-        printf("(");
-        print_value_pub(v->car);
-        for (Value *d = v->cdr; d && d->tag == 2; d = d->cdr) { printf(" "); print_value_pub(d->car); }
-        printf(")");
-        break;
-    }
-    default: printf("#[?]");
-    }
-}
-
-/* The machine registers. */
-static Value *R_exp, *R_env, *R_val, *R_proc, *R_argl, *R_unev, *R_arg1, *R_arg2;
-static void *R_continue, *R_entry;
-static int R_flag;
-static Value *estack[400000]; static void *lstack[400000]; static int esp = 0;
-static void spush(Value *v) { estack[esp] = v; esp++; }
-static void spush_label(void *l) { lstack[esp] = l; esp++; }
-static Value *spop_v(void) { esp--; return estack[esp]; }
-static void *spop_l(void) { esp--; return lstack[esp]; }
-
-/* The compile-time constants, built by the emitted initializer. */
-static Value *K[4096];
-static Value *const_arg(const char *s) {
-    /* names are minted 1-based; the K table is 0-based */
-    if (!strncmp(s, "compile-time-constant-", 22)) return K[atoi(s + 22) - 1];
-    if (!strcmp(s, "#t")) return &TRUE_V;
-    if (!strcmp(s, "#f")) return &FALSE_V;
-    if (s[0] >= '0' && s[0] <= '9') return num(atol(s));
-    return sym(s);
-}
-static Value *make_compiled_procedure(void *entry, Value *env_id) {
-    Value *v = calloc(1, sizeof *v);
-    v->tag = 4; v->entry = entry; v->env = env_id;
-    return v;
-}
-static Value *machine_op(const char *name, Value *w1, Value *w2, Value *w3) {
-    if (!strcmp(name, "lookup-variable-value")) return lookup_var(w1, w2);
-    if (!strcmp(name, "text-of-quotation")) return w1;
-    if (!strcmp(name, "false?")) return boolean(!is_true(w1));
-    if (!strcmp(name, "empty-arglist")) return &NIL_V;
-    if (!strcmp(name, "list")) return w1 ? pair(w1, &NIL_V) : &NIL_V;
-    if (!strcmp(name, "cons")) return pair(w1, w2);
-    if (!strcmp(name, "compiled-procedure-env")) return w1->env;
-    if (!strcmp(name, "primitive-procedure?")) return boolean(w1->tag == 3);
-    if (!strcmp(name, "compound-procedure?")) return boolean(w1->tag == 4);
-    if (!strcmp(name, "set-variable-value!")) { set_var(w1, w2, w3); return sym("ok"); }
-    if (!strcmp(name, "define-variable!")) { define_var(w1, w2, w3); return sym("ok"); }
-    if (!strcmp(name, "apply-primitive-procedure")) {
-        if (w1->tag != 3) { fprintf(stderr, "apply of a non-primitive\\n"); exit(4); }
-        return prim_apply(w1->i, w2);
-    }
-    if (!strcmp(name, "+") || !strcmp(name, "-") || !strcmp(name, "*")) {
-        long x = w1->i, y = w2->i;
-        return num(name[0] == '+' ? x + y : name[0] == '-' ? x - y : x * y);
-    }
-    if (!strcmp(name, "=")) return boolean(w1->i == w2->i);
-    if (!strcmp(name, "<")) return boolean(w1->i < w2->i);
-    return sym("no-such-machine-op");
-}
-static Value *extend_compile(const char *names_csv, Value *args, Value *base_id) {
-    Value *names = &NIL_V;
-    char buf[256]; snprintf(buf, sizeof buf, "%s", names_csv);
-    for (char *t = strtok(buf, " "); t; t = strtok(NULL, " ")) names = pair(sym(t), names);
-    names = names->tag == 2 ? names : &NIL_V;
-    /* reverse into order */
-    { Value *r = &NIL_V; for (Value *p = names; p && p->tag == 2; p = p->cdr) r = pair(p->car, r); names = r; }
-    Value *frame = pair(names, args);
-    Value *frames = (base_id->tag == 1 && !strcmp(base_id->sym, "the-empty"))
-        ? pair(frame, &NIL_V)
-        : pair(frame, env_of_id(base_id->sym));
-    return env_register(frames);
-}
-|}
-  ^ {|
-/* The driver: run the compiled program, print the value. */
-extern void compiled_program(void);
-static void init_constants(void);
-int main(void) {
-    TRUE_V.tag = 5; TRUE_V.i = 1;
-    FALSE_V.tag = 5; FALSE_V.i = 0;
-    NIL_V.tag = 6;
-    init_constants();
-    /* the top-level environment: one empty frame over the-empty, with
-       the primitive table and the booleans bound, as the 5.5.7
-       machine's global environment is set up */
-    R_env = env_register(pair(pair(&NIL_V, &NIL_V), &NIL_V));
-    for (long i = 0; i < NPRIMS; i++) {
-        Value *p = calloc(1, sizeof *p);
-        p->tag = 3;
-        p->i = i;
-        define_var(sym(prim_names[i]), p, R_env);
-    }
-    define_var(sym("true"), &TRUE_V, R_env);
-    define_var(sym("false"), &FALSE_V, R_env);
-    compiled_program();
-    return 0;
-}
-|}
+let unsupported what =
+  Error (Eval_error.Invalid_form ("the C backend does not support " ^ what))
 ;;
 
-(** [c_value state v] is a C expression building the compile-time
-    constant [v]. *)
-let rec c_value state (v : Value.t) : string =
-  match Value.view v with
-  | Value.Int n -> Printf.sprintf "num(%d)" n
-  | Value.Bool b -> Printf.sprintf "boolean(%d)" (if b then 1 else 0)
-  | Value.String s -> Printf.sprintf "string_const(\"%s\")" (String.escaped s)
-  | Value.Symbol s -> Printf.sprintf "sym(\"%s\")" (String.escaped s)
-  | Value.Nil -> "&NIL_V"
-  | Value.Pair (a, d) -> Printf.sprintf "pair(%s, %s)" (c_value state a) (c_value state d)
-  | _ -> "&NIL_V"
+let c_string s =
+  let b = Buffer.create (String.length s + 2) in
+  Buffer.add_char b '"';
+  String.iter
+    (fun ch ->
+       match ch with
+       | '"' -> Buffer.add_string b "\\\""
+       | '\\' -> Buffer.add_string b "\\\\"
+       | ' ' .. '~' -> Buffer.add_char b ch
+       | _ -> Buffer.add_string b (Printf.sprintf "\\%03o" (Char.code ch)))
+    s;
+  Buffer.add_char b '"';
+  Buffer.contents b
 ;;
 
-(** [constants_c state] is the initializer: one constant per slot. *)
-let constants_c state =
-  let bindings = C.registered_constants state in
-  let slots =
-    String.concat
-      ""
-      (List.mapi (fun i _ -> Printf.sprintf "  K[%d] = &NIL_V;\n" i) bindings)
-  in
-  let builds =
-    String.concat
-      ""
-      (List.mapi
-         (fun i (_name, v) -> Printf.sprintf "  K[%d] = %s;\n" i (c_value state v))
-         bindings)
-  in
-  let string_helper =
-    {|static Value *string_const(const char *s) {
-    Value *v = calloc(1, sizeof *v);
-    v->tag = 7; v->str = strdup(s);
-    return v;
-}
-|}
-  in
-  string_helper ^ "static void init_constants(void) {\n" ^ slots ^ builds ^ "}\n"
+type emitter =
+  { labels : (string, int) Hashtbl.t
+  ; globals : Buffer.t
+  ; init : Buffer.t
+  ; mutable next : int
+  }
+
+let fresh em prefix =
+  em.next <- em.next + 1;
+  Printf.sprintf "%s_%d" prefix em.next
 ;;
 
-(** [stmt_c line] is one controller statement as C statements.  The
-    statement grammar of the 5.5 compiler: assign, test, branch, goto,
-    save, restore, perform over operands [(reg r)], [(const c)], and
-    [(label l)]. *)
-let stmt_c line =
-  let trimmed = String.trim line in
-  if trimmed = ""
-  then ""
-  else if trimmed.[0] <> '('
-  then Printf.sprintf "%s: ;\n" (c_ident trimmed)
-  else (
-    let inner = String.sub trimmed 1 (String.length trimmed - 2) in
-    let tokens = String.split_on_char ' ' inner |> List.filter (fun s -> s <> "") in
-    let strip name =
-      let n = String.length name in
-      let a = if n > 0 && name.[0] = '(' then 1 else 0 in
-      let b = if n > a && name.[n - 1] = ')' then 1 else 0 in
-      String.sub name a (n - a - b)
-    in
-    let rec operands acc = function
-      | k :: v :: rest when k.[0] = '(' ->
-        let w =
-          match strip k with
-          | "reg" -> Some (`Reg (strip v))
-          | "const" -> Some (`Const (strip v))
-          | "label" -> Some (`Label (strip v))
-          | _ -> None
-        in
-        (match w with
-         | Some o -> operands (o :: acc) rest
-         | None -> None)
-      | [] -> Some (List.rev acc)
-      | _ -> None
-    in
-    let arg_c = function
-      | `Reg r -> Printf.sprintf "R_%s" r
-      | `Const c -> Printf.sprintf "const_arg(\"%s\")" c
-      | `Label l -> Printf.sprintf "&&%s" (c_ident l)
-    in
-    let args_c = function
-      | [] -> "NULL, NULL, NULL"
-      | [ a ] -> Printf.sprintf "%s, NULL, NULL" (arg_c a)
-      | [ a; b ] -> Printf.sprintf "%s, %s, NULL" (arg_c a) (arg_c b)
-      | [ a; b; c ] -> Printf.sprintf "%s, %s, %s" (arg_c a) (arg_c b) (arg_c c)
-      | _ -> "NULL, NULL, NULL"
-    in
-    (* an op site: the operation name token, then its operands *)
-    let op_site = function
-      | name :: rest ->
-        (match operands [] rest with
-         | Some ops -> Some (strip name, ops)
-         | None -> None)
-      | [] -> None
-    in
-    let comment () = Printf.sprintf "/* %s */\n" trimmed in
-    match tokens with
-    | [ "assign"; target; "(label"; l ] ->
-      Printf.sprintf "R_%s = &&%s;\n" target (c_ident (strip l))
-    | [ "assign"; target; "(const"; v ] ->
-      Printf.sprintf "R_%s = const_arg(\"%s\");\n" target (strip v)
-    | "assign" :: target :: "(op" :: site ->
-      let out = "R_" ^ target in
-      (match op_site site with
-       | None -> comment ()
-       | Some (op, ops) ->
-         (match op with
-          | "compiled-procedure-entry" ->
-            Printf.sprintf "%s = R_proc;\nR_entry = R_proc->entry;\n" out
-          | "make-compiled-procedure" ->
-            (match ops with
-             | [ `Const entry ] | [ `Const entry; `Reg "env" ] ->
-               Printf.sprintf
-                 "%s = make_compiled_procedure(&&%s, R_env);\n"
-                 out
-                 (c_ident entry)
-             | _ -> Printf.sprintf "%s = make_compiled_procedure(NULL, R_env);\n" out)
-          | "extend-environment" ->
-            let names =
-              List.filter_map
-                (function
-                  | `Const c -> Some c
-                  | _ -> None)
-                ops
-            in
+let label em l =
+  match Hashtbl.find_opt em.labels l with
+  | Some n -> n
+  | None ->
+    let n = Hashtbl.length em.labels + 1 in
+    Hashtbl.replace em.labels l n;
+    n
+;;
+
+let name_array em names =
+  let g = fresh em "names" in
+  Printf.bprintf
+    em.globals
+    "static const char *%s[] = { %s };\n"
+    g
+    (String.concat
+       ", "
+       (List.map
+          (function
+            | Some n -> c_string n
+            | None -> "NULL")
+          names
+        @ [ "NULL" ]));
+  g
+;;
+
+let scalar_c = function
+  | Ast.Int n -> Ok (Printf.sprintf "make_int(%dL)" n)
+  | Ast.Bool b -> Ok (Printf.sprintf "make_bool(%d)" (Bool.to_int b))
+  | Ast.Unit -> Ok "make_unit()"
+  | Ast.String s -> Ok (Printf.sprintf "make_string(%s)" (c_string s))
+  | Ast.Float _ -> unsupported "floats"
+;;
+
+let all f xs =
+  List.fold_right
+    (fun x acc ->
+       let* rest = acc in
+       let* y = f x in
+       Ok (y :: rest))
+    xs
+    (Ok [])
+;;
+
+let rec pattern_c p =
+  let items kind name ps =
+    let* parts = all pattern_c ps in
+    Ok
+      (Printf.sprintf
+         "make_pat(%s, 0, %s, %d, (Pat *[]){ %s })"
+         kind
+         name
+         (List.length ps)
+         (String.concat ", " (if parts = [] then [ "NULL" ] else parts)))
+  in
+  match Ast.view_pattern p with
+  | Ast.PWildcard -> Ok "make_pat(PK_WILD, 0, NULL, 0, NULL)"
+  | Ast.PVar x -> Ok (Printf.sprintf "make_pat(PK_VAR, 0, %s, 0, NULL)" (c_string x))
+  | Ast.PScalar (Ast.Int n) ->
+    Ok (Printf.sprintf "make_pat(PK_INT, %dL, NULL, 0, NULL)" n)
+  | Ast.PScalar (Ast.Bool b) ->
+    Ok (Printf.sprintf "make_pat(PK_BOOL, %d, NULL, 0, NULL)" (Bool.to_int b))
+  | Ast.PScalar Ast.Unit -> Ok "make_pat(PK_UNIT, 0, NULL, 0, NULL)"
+  | Ast.PScalar (Ast.String s) ->
+    Ok (Printf.sprintf "make_pat(PK_STRING, 0, %s, 0, NULL)" (c_string s))
+  | Ast.PScalar (Ast.Float _) -> unsupported "float patterns"
+  | Ast.PTuple ps -> items "PK_TUPLE" "NULL" ps
+  | Ast.PConstruct (c, ps) -> items "PK_CTOR" (c_string c) ps
+  | Ast.PNil -> Ok "make_pat(PK_NIL, 0, NULL, 0, NULL)"
+  | Ast.PCons (h, t) -> items "PK_CONS" "NULL" [ h; t ]
+;;
+
+let binary_code e =
+  match Ast.view e with
+  | Ast.Arith (Ast.Add, _, _) -> Ok "O_ADD"
+  | Ast.Arith (Ast.Sub, _, _) -> Ok "O_SUB"
+  | Ast.Arith (Ast.Mul, _, _) -> Ok "O_MUL"
+  | Ast.Arith (Ast.Div, _, _) -> Ok "O_DIV"
+  | Ast.Arith (Ast.Rem, _, _) -> Ok "O_MOD"
+  | Ast.Arith (_, _, _) -> unsupported "float arithmetic"
+  | Ast.Compare (Ast.Eq, _, _) -> Ok "O_EQ"
+  | Ast.Compare (Ast.Ne, _, _) -> Ok "O_NE"
+  | Ast.Compare (Ast.Lt, _, _) -> Ok "O_LT"
+  | Ast.Compare (Ast.Le, _, _) -> Ok "O_LE"
+  | Ast.Compare (Ast.Gt, _, _) -> Ok "O_GT"
+  | Ast.Compare (Ast.Ge, _, _) -> Ok "O_GE"
+  | Ast.Concat _ -> Ok "O_CONCAT"
+  | Ast.Cons _ -> Ok "O_CONS"
+  | Ast.Assign _ -> Ok "O_ASSIGN"
+  | _ -> unsupported "this binary operator"
+;;
+
+let unary_code e =
+  match Ast.view e with
+  | Ast.Not _ -> Ok "U_NOT"
+  | Ast.Neg _ -> Ok "U_NEG"
+  | Ast.Deref _ -> Ok "U_DEREF"
+  | Ast.Make_ref _ -> Ok "U_REF"
+  | _ -> unsupported "records"
+;;
+
+let reg r =
+  "R_"
+  ^ String.map
+      (function
+        | '-' -> '_'
+        | ch -> ch)
+      r
+;;
+
+let source em field = function
+  | M.Reg r -> Ok (reg r ^ "." ^ field)
+  | M.Label_ref l -> Ok (string_of_int (label em l))
+  | M.Const (W.Args []) -> Ok "empty_args()"
+  | M.Const (W.V v) ->
+    (match Value.view v with
+     | Value.Int n -> scalar_c (Ast.Int n)
+     | Value.Bool b -> scalar_c (Ast.Bool b)
+     | Value.Unit -> scalar_c Ast.Unit
+     | Value.String s -> scalar_c (Ast.String s)
+     | Value.Nil -> Ok "make_nil()"
+     | _ -> unsupported ("the constant " ^ Value.to_string v))
+  | M.Const w -> unsupported ("the constant " ^ W.word_to_string w)
+;;
+
+let expression sources i =
+  match List.nth_opt sources i with
+  | Some (M.Const (W.Exp e)) -> Ok e
+  | _ -> unsupported "an operation without its syntax constant"
+;;
+
+(* [operation em op sources] is the C field an operation writes and the C
+   expression computing it. *)
+let operation em op sources =
+  let src field i =
+    match List.nth_opt sources i with
+    | Some s -> source em field s
+    | None -> unsupported (op ^ " with too few operands")
+  in
+  let call field fmt args =
+    let* args = all (fun (f, i) -> src f i) args in
+    Ok (field, fmt args)
+  in
+  let two f a b = f ^ "(" ^ a ^ ", " ^ b ^ ")" in
+  match op with
+  | "lookup-variable-value" ->
+    let* e = expression sources 0 in
+    (match Ast.view e with
+     | Ast.Var x ->
+       let* env = src "env" 1 in
+       Ok ("v", Printf.sprintf "lookup(%s, %s)" env (c_string x))
+     | _ -> unsupported "lookup of a non-variable")
+  | "apply-binary" ->
+    let* e = expression sources 0 in
+    let* code = binary_code e in
+    call
+      "v"
+      (fun a -> Printf.sprintf "binary(%s, %s)" code (String.concat ", " a))
+      [ "v", 1; "v", 2 ]
+  | "apply-unary" ->
+    let* e = expression sources 0 in
+    let* code = unary_code e in
+    call "v" (fun a -> Printf.sprintf "unary(%s, %s)" code (List.hd a)) [ "v", 1 ]
+  | "build" ->
+    let* e = expression sources 0 in
+    let* argl = src "args" 1 in
+    (match Ast.view e with
+     | Ast.Tuple _ ->
+       Ok ("v", Printf.sprintf "make_items(T_TUPLE, NULL, %s->n, %s->vs)" argl argl)
+     | Ast.Construct (c, _) ->
+       Ok
+         ( "v"
+         , Printf.sprintf "make_items(T_CTOR, %s, %s->n, %s->vs)" (c_string c) argl argl
+         )
+     | _ -> unsupported "records")
+  | "make-compiled-procedure" ->
+    let* entry = src "label" 0 in
+    let* e = expression sources 1 in
+    let* env = src "env" 2 in
+    (match Ast.view e with
+     | Ast.Fun (ps, _) ->
+       let names = name_array em (List.map Option.some ps) in
+       Ok
+         ( "v"
+         , Printf.sprintf "make_compiled(%s, %d, %s, %s)" entry (List.length ps) names env
+         )
+     | _ -> unsupported "a procedure without parameters")
+  | "compiled-procedure-bind" ->
+    call
+      "env"
+      (fun a -> two "compiled_bind" (List.hd a) (List.nth a 1))
+      [ "v", 0; "args", 1 ]
+  | "adjoin-arg" ->
+    call "args" (fun a -> two "adjoin" (List.nth a 1) (List.hd a)) [ "v", 0; "args", 1 ]
+  | "let-rec-group" ->
+    let* e = expression sources 0 in
+    let* env = src "env" 1 in
+    (match Ast.view e with
+     | Ast.Let (true, bindings, _) ->
+       let names = name_array em (List.map (fun (b : Ast.binding) -> b.name) bindings) in
+       Ok
+         ( "pending"
+         , Printf.sprintf "let_rec_group(%d, %s, %s)" (List.length bindings) names env )
+     | _ -> unsupported "a recursive group without its syntax")
+  | "group-environment" -> call "env" (fun a -> List.hd a ^ "->env") [ "pending", 0 ]
+  | "rest-pending" ->
+    call "pending" (fun a -> "rest_pending(" ^ List.hd a ^ ")") [ "pending", 0 ]
+  | "try-pattern" ->
+    (match sources with
+     | M.Const (W.Pat p) :: _ ->
+       let* pat = pattern_c p in
+       let g = fresh em "pattern" in
+       Printf.bprintf em.globals "static Pat *%s;\n" g;
+       Printf.bprintf em.init "  %s = %s;\n" g pat;
+       call
+         "env"
+         (fun a -> Printf.sprintf "try_pattern(%s, %s, %s)" g (List.hd a) (List.nth a 1))
+         [ "v", 1; "env", 2 ]
+     | _ -> unsupported "try-pattern without its pattern")
+  | "let-environment" ->
+    let* e = expression sources 0 in
+    (match Ast.view e with
+     | Ast.Let (false, bindings, _) ->
+       let names = name_array em (List.map (fun (b : Ast.binding) -> b.name) bindings) in
+       call
+         "env"
+         (fun a ->
             Printf.sprintf
-              "%s = extend_compile(\"%s\", R_argl, R_env);\n"
-              out
-              (String.concat " " names)
-          | _ -> Printf.sprintf "%s = machine_op(\"%s\", %s);\n" out op (args_c ops)))
-    | "test" :: "(op" :: site ->
-      (match op_site site with
-       | Some ("false?", _) -> "R_flag = !is_true(R_val);\n"
-       | Some (op, ops) ->
-         Printf.sprintf "R_flag = is_true(machine_op(\"%s\", %s));\n" op (args_c ops)
-       | None -> comment ())
-    | [ "branch"; "(label"; l ] ->
-      Printf.sprintf "if (R_flag) goto %s;\n" (c_ident (strip l))
-    | [ "goto"; "(label"; l ] -> Printf.sprintf "goto %s;\n" (c_ident (strip l))
-    | [ "goto"; "(reg"; r ] ->
-      (match strip r with
-       | "continue" -> "goto *R_continue;\n"
-       | "val" -> "goto *R_entry;\n"
-       | _ -> comment ())
-    | [ "save"; r ] -> Printf.sprintf "spush(R_%s);\n" (strip r)
-    | [ "restore"; r ] -> Printf.sprintf "R_%s = spop_v();\n" (strip r)
-    | "perform" :: "(op" :: site ->
-      (match op_site site with
-       | Some (op, ops) ->
-         Printf.sprintf "(void)machine_op(\"%s\", %s);\n" op (args_c ops)
-       | None -> comment ())
-    | _ -> comment ())
+              "let_environment(%d, %s, %s, %s)"
+              (List.length bindings)
+              names
+              (List.hd a)
+              (List.nth a 1))
+         [ "args", 1; "env", 2 ]
+     | _ -> unsupported "a top-level binding without its syntax")
+  | "last-argument" ->
+    call "v" (fun a -> "last_argument(" ^ List.hd a ^ ")") [ "args", 0 ]
+  | "apply-primitive-procedure" ->
+    call
+      "v"
+      (fun a -> two "apply_primitive" (List.hd a) (List.nth a 1))
+      [ "v", 0; "args", 1 ]
+  | "primitive-excess-arguments" ->
+    call
+      "args"
+      (fun a -> two "primitive_excess" (List.hd a) (List.nth a 1))
+      [ "v", 0; "args", 1 ]
+  | "compiled-excess-arguments" ->
+    call
+      "args"
+      (fun a ->
+         Printf.sprintf "drop_args(%s, compiled(%s)->n)" (List.nth a 1) (List.hd a))
+      [ "v", 0; "args", 1 ]
+  | "compiled-exact-arguments" ->
+    call
+      "args"
+      (fun a ->
+         Printf.sprintf "take_args(%s, compiled(%s)->n)" (List.nth a 1) (List.hd a))
+      [ "v", 0; "args", 1 ]
+  | "compiled-entry" ->
+    call "label" (fun a -> "compiled_entry(" ^ List.hd a ^ ")") [ "v", 0 ]
+  | "partial-compiled" ->
+    call
+      "v"
+      (fun a -> two "partial_compiled" (List.hd a) (List.nth a 1))
+      [ "v", 0; "args", 1 ]
+  | _ -> unsupported ("the operation " ^ op)
 ;;
 
-(** [compile_to_c source] is the whole C file: the runtime, the
-    constant initializer, and the compiled program as one function. *)
-let compile_to_c source =
-  let state = C.new_state () in
-  C.compile_block state source
-  >>= fun (entry, block) ->
-  let body = String.concat "" (List.map stmt_c (String.split_on_char '\n' block)) in
-  let head =
-    let first =
-      String.split_on_char '\n' body
-      |> List.find_opt (fun l -> String.trim l <> "")
-      |> Option.map String.trim
-      |> Option.value ~default:""
-    in
-    let entry_line = c_ident entry ^ ":" in
-    if
-      String.length first >= String.length entry_line
-      && String.sub first 0 (String.length entry_line) = entry_line
-    then ""
-    else c_ident entry ^ ": ;\n"
+let test em op sources =
+  let src field i =
+    match List.nth_opt sources i with
+    | Some s -> source em field s
+    | None -> unsupported (op ^ " with too few operands")
+  in
+  match op with
+  | "false?" -> Result.map (fun a -> "!truth(" ^ a ^ ")") (src "v" 0)
+  | "true?" -> Result.map (fun a -> "truth(" ^ a ^ ")") (src "v" 0)
+  | "matched?" -> Result.map (fun a -> a ^ " != &unmatched") (src "env" 0)
+  | "primitive-procedure?" -> Result.map (fun a -> "is_primitive(" ^ a ^ ")") (src "v" 0)
+  | "compiled-procedure?" -> Result.map (fun a -> "is_compiled(" ^ a ^ ")") (src "v" 0)
+  | "no-arguments?" -> Result.map (fun a -> a ^ "->n == 0") (src "args" 0)
+  | "primitive-exact?" | "compiled-partial?" ->
+    let* p = src "v" 0 in
+    let* a = src "args" 1 in
+    Ok
+      (if op = "primitive-exact?"
+       then Printf.sprintf "primitive_exact(%s, %s)" p a
+       else Printf.sprintf "%s->n < compiled(%s)->n" a p)
+  | _ -> unsupported ("the test " ^ op)
+;;
+
+let perform em op sources =
+  match op, sources with
+  | "fill-first-pending", [ p; v ] ->
+    let* p = source em "pending" p in
+    let* v = source em "v" v in
+    Ok (Printf.sprintf "fill_first_pending(%s, %s);" p v)
+  | "signal-match-failure", _ -> Ok "fail(\"no case matched\");"
+  | "signal-not-applicable", _ -> Ok "fail(\"not applicable\");"
+  | _ -> unsupported ("the action " ^ op)
+;;
+
+let statement em = function
+  | M.Label l ->
+    let n = label em l in
+    Ok (Printf.sprintf "case %d: lab_%d:;" n n)
+  | M.Assign (t, M.Reg r) -> Ok (Printf.sprintf "%s = %s;" (reg t) (reg r))
+  | M.Assign (t, (M.Label_ref _ as s)) ->
+    Result.map (fun s -> Printf.sprintf "%s.label = %s;" (reg t) s) (source em "label" s)
+  | M.Assign (t, (M.Const (W.Args _) as s)) ->
+    Result.map (fun s -> Printf.sprintf "%s.args = %s;" (reg t) s) (source em "args" s)
+  | M.Assign (t, s) ->
+    Result.map (fun s -> Printf.sprintf "%s.v = %s;" (reg t) s) (source em "v" s)
+  | M.Assign_op (t, op, sources) ->
+    let* field, e = operation em op sources in
+    Ok (Printf.sprintf "%s.%s = %s;" (reg t) field e)
+  | M.Test (op, sources) -> Result.map (fun c -> "flag = " ^ c ^ ";") (test em op sources)
+  | M.Branch l -> Ok (Printf.sprintf "if (flag) goto lab_%d;" (label em l))
+  | M.Goto l -> Ok (Printf.sprintf "goto lab_%d;" (label em l))
+  | M.Goto_reg r -> Ok (Printf.sprintf "pc = %s.label; goto dispatch;" (reg r))
+  | M.Save r -> Ok (Printf.sprintf "push(%s);" (reg r))
+  | M.Restore r -> Ok (Printf.sprintf "%s = pop();" (reg r))
+  | M.Perform (op, sources) -> perform em op sources
+;;
+
+let emit (code : C.seq) =
+  let em =
+    { labels = Hashtbl.create 64
+    ; globals = Buffer.create 4096
+    ; init = Buffer.create 4096
+    ; next = 0
+    }
+  in
+  let* lines = all (statement em) code.statements in
+  let registers =
+    String.concat
+      ""
+      (List.map
+         (fun r -> Printf.sprintf "static Word %s;\n" (reg r))
+         C.compiled_registers)
   in
   Ok
-    (runtime_c
-     ^ "\n"
-     ^ constants_c state
-     ^ "\nvoid compiled_program(void) {\n"
-     ^ "/* the top-level continuation must be a label of this function:\n"
-     ^ "   a computed goto cannot cross function boundaries. */\n"
-     ^ "if (!R_continue) R_continue = &&finish;\n"
-     ^ head
-     ^ body
-     ^ "\nfinish: ;\n"
-     ^ "print_value_pub(R_val);\n"
-     ^ "printf(\"\\n\");\n"
-     ^ "}\n")
+    (String.concat
+       ""
+       [ Buffer.contents em.globals
+       ; registers
+       ; "\nstatic void init_constants(void)\n{\n"
+       ; Buffer.contents em.init
+       ; "}\n\n\
+          static void run(void)\n\
+          {\n\
+         \  long pc = 0;\n\
+         \  int flag = 0;\n\
+         \  R_env.env = initial_env();\n\
+          dispatch:\n\
+         \  switch (pc) {\n\
+         \  case 0:\n"
+       ; String.concat "" (List.map (fun l -> "  " ^ l ^ "\n") lines)
+       ; "  return;\n\
+         \  default:\n\
+         \    fail(\"unknown label\");\n\
+         \  }\n\
+         \  (void)flag;\n\
+          }\n\n\
+          int main(void)\n\
+          {\n\
+         \  init_constants();\n\
+         \  run();\n\
+         \  fflush(stdout);\n\
+         \  return 0;\n\
+          }\n"
+       ])
 ;;
 
-let input_line_opt ic =
-  try Some (input_line ic) with
-  | End_of_file -> None
+let compiled_runtime_c =
+  {c|typedef struct Pending {
+  Env *env;
+  int n;
+  int position;
+  Env **cells;
+} Pending;
+
+typedef union {
+  Value *v;
+  Env *env;
+  Args *args;
+  long label;
+  Pending *pending;
+} Word;
+
+static Env unmatched;
+static Word *stack;
+static long depth, capacity;
+
+static void push(Word w)
+{
+  if (depth == capacity) {
+    capacity = capacity == 0 ? 1024 : capacity * 2;
+    stack = realloc(stack, sizeof(Word) * (size_t)capacity);
+    if (stack == NULL) fail("out of memory");
+  }
+  stack[depth++] = w;
+}
+
+static Word pop(void)
+{
+  if (depth == 0) fail("stack underflow");
+  return stack[--depth];
+}
+
+static Value *make_compiled(long entry, int n, const char **params, Env *env)
+{
+  Value *v = make(T_COMPILED);
+  v->i = entry;
+  v->n = n;
+  v->params = params;
+  v->env = env;
+  return v;
+}
+
+static Value *compiled(Value *v)
+{
+  v = resolve(v);
+  if (v->tag != T_COMPILED) fail("expected a compiled procedure");
+  return v;
+}
+
+static Env *compiled_bind(Value *proc, Args *argl)
+{
+  proc = compiled(proc);
+  if (argl->n != proc->n) fail("compiled-procedure-bind: arity mismatch");
+  return extend_all(proc->env, proc->n, proc->params, argl->vs);
+}
+
+static Args *take_args(Args *a, int k)
+{
+  Args *b = allocate(sizeof *b);
+  b->n = k < a->n ? k : a->n;
+  b->vs = a->vs;
+  return b;
+}
+
+static Value *partial_compiled(Value *proc, Args *argl)
+{
+  proc = compiled(proc);
+  int k = argl->n;
+  return make_compiled(proc->i, proc->n - k, proc->params + k,
+                       extend_all(proc->env, k, proc->params, argl->vs));
+}
+
+static Pending *let_rec_group(int n, const char **names, Env *env)
+{
+  Pending *p = allocate(sizeof *p);
+  p->n = n;
+  p->cells = allocate(sizeof(Env *) * (size_t)(n > 0 ? n : 1));
+  for (int k = n - 1; k >= 0; k--)
+    if (names[k] != NULL) env = extend(env, names[k], NULL);
+  Env *walk = env;
+  for (int k = 0; k < n; k++)
+    if (names[k] != NULL) {
+      p->cells[k] = walk;
+      walk = walk->next;
+    }
+  p->env = env;
+  return p;
+}
+
+static void fill_first_pending(Pending *p, Value *v)
+{
+  if (p->position >= p->n) fail("fill-first-pending: no binding left");
+  if (p->cells[p->position] != NULL) p->cells[p->position]->v = v;
+}
+
+static Pending *rest_pending(Pending *p)
+{
+  Pending *q = allocate(sizeof *q);
+  *q = *p;
+  q->position++;
+  return q;
+}
+
+static Env *try_pattern(Pat *p, Value *v, Env *env)
+{
+  Env *bound = env;
+  return bind(p, v, &bound) ? bound : &unmatched;
+}
+
+static Env *let_environment(int n, const char **names, Args *argl, Env *env)
+{
+  for (int k = n - 1; k >= 0; k--)
+    if (names[k] != NULL) env = extend(env, names[k], argl->vs[k]);
+  return env;
+}
+
+static Value *last_argument(Args *argl)
+{
+  return argl->n == 0 ? make_unit() : argl->vs[argl->n - 1];
+}
+
+static int is_primitive(Value *v) { return resolve(v)->tag == T_PRIM; }
+static int is_compiled(Value *v) { return resolve(v)->tag == T_COMPILED; }
+
+static int primitive_exact(Value *proc, Args *argl)
+{
+  proc = resolve(proc);
+  return proc->tag == T_PRIM && proc->n + argl->n == prim_arity(proc);
+}
+
+static Args *all_primitive_arguments(Value *proc, Args *argl)
+{
+  Args *all = empty_args();
+  for (int k = 0; k < proc->n; k++) all = adjoin(all, proc->items[k]);
+  for (int k = 0; k < argl->n; k++) all = adjoin(all, argl->vs[k]);
+  return all;
+}
+
+static Value *apply_primitive(Value *proc, Args *argl)
+{
+  proc = resolve(proc);
+  if (proc->tag != T_PRIM) fail("expected a primitive");
+  Args *all = all_primitive_arguments(proc, argl);
+  if (all->n < prim_arity(proc)) return make_prim(prim_id(proc), prim_arity(proc), all->n, all->vs);
+  return prim_apply(prim_id(proc), all->vs);
+}
+
+static Args *primitive_excess(Value *proc, Args *argl)
+{
+  proc = resolve(proc);
+  return drop_args(argl, prim_arity(proc) - proc->n);
+}
+
+static long compiled_entry(Value *proc) { return compiled(proc)->i; }
+|c}
 ;;
 
-(** [build_and_run c_source] writes, builds, and runs the program,
-    answering the output. *)
-let build_and_run c_source =
-  let dir = Filename.temp_dir "sicp_5_52" "" in
-  let cfile = Filename.concat dir "compiled.c" in
-  let out = Filename.concat dir "compiled" in
-  let oc = open_out cfile in
-  output_string oc c_source;
-  close_out oc;
-  let build =
-    Printf.sprintf "cd %s && cc -O1 -o compiled compiled.c 2>&1" (Filename.quote dir)
-  in
-  let ic = Unix.open_process_in build in
-  let first_line = input_line_opt ic in
-  let status = Unix.close_process_in ic in
-  match status, first_line with
-  | Unix.WEXITED 0, None ->
-    let ic = Unix.open_process_in out in
-    let buffer = Buffer.create 256 in
-    (try
-       while true do
-         Buffer.add_string buffer (input_line ic);
-         Buffer.add_char buffer '\n'
-       done
-     with
-     | End_of_file -> ());
-    ignore (Unix.close_process_in ic);
-    Ok (Buffer.contents buffer)
-  | _, Some line -> Error (C.Op_failed ("the C backend failed to build: " ^ line))
-  | _ -> Error (C.Op_failed "the C backend failed to build")
+let c_program code =
+  let* generated = emit code in
+  Ok (Sec_5_51.runtime_c ^ compiled_runtime_c ^ generated)
 ;;
 
-(** [ex_5_52 ()] compiles the adapted metacircular source to C, builds
-    it, and runs it: the object program's factorial answers 120
-    through the C-compiled interpreter. *)
+let compile_to_c program =
+  c_program (C.compile_program (C.new_state ()) (Check.items program))
+;;
+
+let run_c program =
+  let* c_source = compile_to_c program in
+  let* out, _ = Sec_5_51.build_and_run ~c_source ~inputs:[] in
+  Ok out
+;;
+
 let ex_5_52 () =
-  let source =
-    Sicp_ch5.Metacircular.source ^ "\n(m-eval '(factorial 5) the-global-environment)\n"
+  let* metacircular =
+    Sec_5_33.program
+      ~filename:"ex_5_52.ml"
+      (Sicp_ch5.Metacircular.with_guest Sec_5_50.guest_factorial)
   in
-  compile_to_c source >>= build_and_run >>= fun output -> Ok [ output ]
+  let* counter =
+    Sec_5_33.program
+      ~filename:"ex_5_52.ml"
+      (Sicp_ch5.Metacircular.with_guest Sec_5_50.guest_counter)
+  in
+  let* c_source = compile_to_c metacircular in
+  let* c_output, _ = Sec_5_51.build_and_run ~c_source ~inputs:[] in
+  let* counter_output = run_c counter in
+  let machine = Buffer.create 16 in
+  let* _ = C.run ~emit:(Buffer.add_string machine) metacircular in
+  let machine_output = Buffer.contents machine in
+  let* native_output =
+    Sec_5_51.ocaml_native_run (Sicp_ch5.Metacircular.with_guest Sec_5_50.guest_factorial)
+  in
+  let* () =
+    if c_output = machine_output && machine_output = native_output
+    then Ok ()
+    else
+      Error
+        (Sicp_common.Eval_error.User_error
+           (Printf.sprintf
+              "engines disagree: C %S, machine %S, native %S"
+              c_output
+              machine_output
+              native_output))
+  in
+  Ok
+    [ Printf.sprintf
+        "compiled metacircular in C: %S (machine %S); counter %S"
+        c_output
+        machine_output
+        counter_output
+    ; Printf.sprintf "native oracle: %S" native_output
+    ; Printf.sprintf
+        "generated C: %d lines"
+        (List.length (String.split_on_char '\n' c_source))
+    ]
 ;;

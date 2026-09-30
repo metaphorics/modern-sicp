@@ -2,8 +2,8 @@
    Adapted from the Scheme program of SICP section 5.3 *)
 
 (** Exercise 5.20: the box-and-pointer and memory-vector drawings of
-    [(define x (cons 1 2))] and [(define y (list x x))] with the free
-    pointer initially at [p1], and Exercise 5.20a's allocator trace. *)
+    [let x = (1, 2)] and [let y = [x; x]] with the free pointer
+    initially at [p1], and Exercise 5.20a's allocator trace. *)
 
 let ( >>= ) = Result.bind
 
@@ -22,7 +22,7 @@ let draw mem x y =
 
 (** [ex_5_20 ()] runs the exercise's two definitions through the
     allocation path: the cells come out at [p1], [p2], and [p3] -- the
-    innermost cons of [(list x x)] allocates first, since a register
+    innermost cons of [[x; x]], that is [x :: []], allocates first, since a register
     machine needs the cdr argument before it can fill the outer cell --
     so [x] is [p1], [y] is [p3], and the final value of [free] is
     [p4]. Both elements of [y] name the same cell [p1]: the sharing the

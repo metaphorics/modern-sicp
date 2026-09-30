@@ -1,184 +1,157 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.67: a loop detector for the query system. The variant rule
-    application carries a history of the current chain of deductions: one
-    (pattern, frame) pair per rule body now being processed on the branch.
-    Before a renamed rule's body is evaluated in its unified frame, the
-    body is instantiated in that frame with every unbound variable
-    contracted to one wildcard; if the resulting shape already occurs in
-    the history, the system would begin processing a query it is already
-    working on, so the branch fails. The wildcard makes the comparison
-    immune to rule-variable renaming, which is what defeats a literal
-    (pattern, frame) equality: the frames of a looping chain grow (fresh
-    renamed bindings each round) while the chain's deduction -- the query
-    the system is effectively working on -- repeats exactly.
+(* Exercise 4.67: a loop detector for the query system.  The variant
+   rule application carries a history of the current chain of
+   deductions: one key per rule body now being processed on the branch.
+   Before a renamed rule's body is evaluated in its unified frame, the
+   body is instantiated in that frame with every unbound variable
+   numbered by first occurrence; if the resulting shape already occurs
+   in the history, the system would begin processing a query it is
+   already working on, so the branch fails.  Numbering keeps distinct
+   shapes distinct where one shared wildcard would conflate them, and
+   makes the comparison immune to rule-variable renaming, which is what
+   defeats a literal (pattern, frame) equality: the frames of a looping
+   chain grow (fresh renamed bindings each round) while the chain's
+   deduction -- the query the system is effectively working on --
+   repeats exactly.  The detector numbers its rule applications below
+   zero, where the session counter can never collide with them, and a
+   [Not] runs through the detector so a loop inside one is cut too.
 
-    The demo is the text's married Minnie Mickey data base with its
-    symmetric rule. The stock evaluator answers
-    [(married Mickey Minnie)] and then re-derives the same answer forever
-    (a [take] of any size keeps returning it); the detector answers it
-    once, cuts the repeated chain once, and terminates. Two finite
-    regressions show the answers still come: [wheel] and [outranked-by]
-    return exactly the stock answers under the detector -- the detector
-    only prunes chains that repeat a deduction already on the stack. *)
+   The demo is the text's married Minnie Mickey data base with its
+   symmetric rule.  The stock evaluator answers
+   [[married, Mickey, Minnie]] and then re-derives the same answer
+   forever (a take of any size keeps returning it); the detector answers
+   it once, cuts the repeated chain once, and terminates.  Two finite
+   regressions show the answers still come: [wheel] and [outranked-by]
+   return exactly the stock answers under the detector -- the detector
+   only prunes chains that repeat a deduction already on the stack. *)
 
-module Eval = Sicp_ch4.Sec_4_4
-module Eval_error = Sicp_common.Eval_error
-module Value = Sicp_common.Value
+open Sec_4_55.Kit
 
-(* The facts and rules of the demo: the married pair and its symmetric
-   rule, plus the Microshaft supervisor data with the wheel and
-   outranked-by rules for the finite regressions. *)
-let demo_assertions =
-  [ "(assert! (supervisor (Hacker Alyssa P) (Bitdiddle Ben)))"
-  ; "(assert! (supervisor (Fect Cy D) (Bitdiddle Ben)))"
-  ; "(assert! (supervisor (Tweakit Lem E) (Bitdiddle Ben)))"
-  ; "(assert! (supervisor (Reasoner Louis) (Hacker Alyssa P)))"
-  ; "(assert! (supervisor (Bitdiddle Ben) (Warbucks Oliver)))"
-  ; "(assert! (supervisor (Scrooge Eben) (Warbucks Oliver)))"
-  ; "(assert! (supervisor (Cratchet Robert) (Scrooge Eben)))"
-  ; "(assert! (supervisor (Aull DeWitt) (Warbucks Oliver)))"
-  ; "(assert! (married Minnie Mickey))"
+let supervisors =
+  List.filter
+    (function
+      | Q.Pair (Q.Atom "supervisor", _) -> true
+      | _ -> false)
+    microshaft
+;;
+
+let rules =
+  [ l [ at "married"; v "x"; v "y" ], p [ at "married"; v "y"; v "x" ]
+  ; ( l [ at "wheel"; v "person" ]
+    , Q.And
+        [ p [ at "supervisor"; v "middle-manager"; v "person" ]
+        ; p [ at "supervisor"; v "x"; v "middle-manager" ]
+        ] )
+  ; ( l [ at "outranked-by"; v "staff-person"; v "boss" ]
+    , Q.Or
+        [ p [ at "supervisor"; v "staff-person"; v "boss" ]
+        ; Q.And
+            [ p [ at "supervisor"; v "staff-person"; v "middle-manager" ]
+            ; p [ at "outranked-by"; v "middle-manager"; v "boss" ]
+            ]
+        ] )
   ]
 ;;
 
-let demo_rules =
-  [ "(assert! (rule (married ?x ?y)\n     (married ?y ?x)))"
-  ; "(assert! (rule (wheel ?person)\n\
-    \  (and (supervisor ?middle-manager ?person)\n\
-    \       (supervisor ?x ?middle-manager))))"
-  ; "(assert! (rule (outranked-by ?staff-person ?boss)\n\
-    \  (or (supervisor ?staff-person ?boss)\n\
-    \      (and (supervisor ?staff-person ?middle-manager)\n\
-    \           (outranked-by ?middle-manager ?boss)))))"
-  ]
+(* The deduction key: the body instantiated in its frame, with each
+   unbound variable numbered by first occurrence.  Numbering keeps
+   distinct shapes distinct: a body binding two different variables is
+   a more constrained deduction than one binding the same variable
+   twice, and a single shared wildcard would conflate them. *)
+let deduction_key body frame =
+  canonical_query
+    (let rec instantiate = function
+       | Q.Pattern t -> Q.Pattern (Q.instantiate t frame (fun v -> Q.Var v))
+       | Q.And qs -> Q.And (List.map instantiate qs)
+       | Q.Or qs -> Q.Or (List.map instantiate qs)
+       | Q.Not q -> Q.Not (instantiate q)
+       | Q.Holds (name, ts) ->
+         Q.Holds (name, List.map (fun t -> Q.instantiate t frame (fun v -> Q.Var v)) ts)
+       | Q.Always_true -> Q.Always_true
+       | Q.Form (name, qs) -> Q.Form (name, List.map instantiate qs)
+     in
+     instantiate body)
 ;;
 
-let assert_all env texts = List.iter (fun text -> ignore (Eval.run env text)) texts
+(* [history] holds the deduction keys of the rule bodies on the current
+   chain; [cuts] counts the chains the detector refused; [ids] numbers
+   the detector's rule applications below zero, where the session
+   counter -- which only counts up -- can never collide with them. *)
+let rec qeval_loop_safe s ids cuts history q frames =
+  match q with
+  | Q.Pattern pattern ->
+    Q.stream_flatmap
+      (fun frame ->
+         Q.stream_append_delayed (find_assertions s pattern frame) (fun () ->
+           apply_rules s ids cuts history pattern frame))
+      frames
+  | Q.And conjuncts ->
+    List.fold_left
+      (fun frames c -> qeval_loop_safe s ids cuts history c frames)
+      frames
+      conjuncts
+  | Q.Or disjuncts -> disjoin s ids cuts history disjuncts frames
+  | Q.Not inner ->
+    Streams.stream_filter
+      (fun frame ->
+         Streams.stream_null
+           (qeval_loop_safe s ids cuts history inner (Q.singleton_stream frame)))
+      frames
+  | Q.Always_true -> frames
+  | Q.Holds _ | Q.Form _ -> Q.qeval s q frames
 
-let show_result = function
-  | Ok answers -> List.map Value.to_string answers
-  | Error e -> [ "Error: " ^ Eval_error.to_string e ]
-;;
+and disjoin s ids cuts history disjuncts frames =
+  match disjuncts with
+  | [] -> Streams.the_empty_stream
+  | first :: rest ->
+    Q.interleave_delayed (qeval_loop_safe s ids cuts history first frames) (fun () ->
+      disjoin s ids cuts history rest frames)
 
-(* {2 The loop detector} *)
-
-(** One (pattern, frame) entry per rule body on the current deduction
-    chain. *)
-type history = (Value.t * Eval.frame) list
-
-(** The wildcard every unbound variable contracts to, so two spellings of
-    the same pending query compare equal however their renamed variables
-    differ. *)
-let wildcard = Value.symbol "?_"
-
-(** [deduction_key pattern frame] is the query the system is effectively
-    working on: [pattern] with the frame's bindings applied and its
-    unbound variables anonymous. *)
-let deduction_key pattern frame = Eval.instantiate pattern frame (fun _ _ -> wildcard)
-
-(** [chain_repeats history pattern frame] holds when processing (pattern,
-    frame) would re-run a deduction already on the chain. *)
-let chain_repeats history pattern frame =
-  let key = deduction_key pattern frame in
-  List.exists (fun (p, f) -> Value.structural_equal key (deduction_key p f)) history
-;;
-
-(* Cuts observed in the current demo run. *)
-let loop_cuts = ref 0
-
-let rec qeval_loop_safe env query frames history =
-  match Value.view query with
-  | Value.Pair (tag, _) when Value.structural_equal tag (Value.symbol "and") ->
-    conjoin env (contents query) frames history
-  | Value.Pair (tag, _) when Value.structural_equal tag (Value.symbol "or") ->
-    disjoin env (contents query) frames history
-  | Value.Pair (tag, _) when Value.structural_equal tag (Value.symbol "always-true") ->
-    frames
-  | _ -> simple_query env query frames history
-
-and contents query =
-  match Value.view query with
-  | Value.Pair (_, cdr) ->
-    (match Eval.value_list cdr with
-     | Ok items -> items
-     | Error _ -> [])
-  | _ -> []
-
-and simple_query env pattern frames history =
-  Eval.stream_flatmap
-    (fun frame ->
-       Eval.stream_append_delayed (Eval.find_assertions pattern frame) (fun () ->
-         apply_rules env pattern frame history))
-    frames
-
-and apply_rules env pattern frame history =
-  Eval.stream_flatmap
-    (fun rule -> apply_a_rule env rule pattern frame history)
-    (Eval.fetch_rules pattern frame)
+and apply_rules s ids cuts history pattern frame =
+  Q.stream_flatmap
+    (fun rule -> apply_a_rule s ids cuts history rule pattern frame)
+    (Q.fetch_rules s pattern)
 
 (* The variant rule application: after unification, the history check on
-    the body; a repeated deduction fails the branch, a fresh one is
-    pushed before the body is evaluated. *)
-and apply_a_rule env rule pattern frame (history : history) =
-  let clean_rule = Eval.rename_variables_in rule in
-  match Eval.unify_match pattern (Eval.rule_conclusion clean_rule) frame with
-  | None -> Eval.Streams.the_empty_stream
+   the body; a repeated deduction fails the branch, a fresh one is pushed
+   before the body is evaluated. *)
+and apply_a_rule s ids cuts history rule pattern frame =
+  decr ids;
+  let conclusion, body = Q.rename_variables_in rule !ids in
+  match Q.unify_match pattern conclusion frame with
+  | None -> Streams.the_empty_stream
   | Some unified ->
-    let body = Eval.rule_body clean_rule in
-    if chain_repeats history body unified
+    let key = deduction_key body unified in
+    if List.mem key history
     then (
-      incr loop_cuts;
-      Eval.Streams.the_empty_stream)
-    else
-      qeval_loop_safe env body (Eval.singleton_stream unified) ((body, unified) :: history)
-
-and conjoin env conjuncts frames history =
-  match conjuncts with
-  | [] -> frames
-  | first :: rest -> conjoin env rest (qeval_loop_safe env first frames history) history
-
-and disjoin env disjuncts frames history =
-  match disjuncts with
-  | [] -> Eval.Streams.the_empty_stream
-  | first :: rest ->
-    Eval.interleave_delayed (qeval_loop_safe env first frames history) (fun () ->
-      disjoin env rest frames history)
+      incr cuts;
+      Streams.the_empty_stream)
+    else qeval_loop_safe s ids cuts (key :: history) body (Q.singleton_stream unified)
 ;;
 
-(** [run_loop_safe env text] evaluates a query through the detector and
-    answers the shown instantiations, as the driver would. *)
-let run_loop_safe env text =
-  match Eval.read_query text with
-  | Error message -> [ "Error: " ^ message ]
-  | Ok raw ->
-    let q = Eval.query_syntax_process raw in
-    let frame_stream =
-      qeval_loop_safe env q (Eval.singleton_stream Eval.the_empty_frame) []
-    in
-    List.map
-      (fun f ->
-         Value.to_string (Eval.instantiate q f (fun v _ -> Eval.contract_question_mark v)))
-      (Eval.Streams.stream_take 1000 frame_stream)
+let run_loop_safe s q =
+  let ids = ref 0 in
+  let cuts = ref 0 in
+  let answers = Dynarray.create () in
+  Streams.stream_for_each
+    (fun frame ->
+       Dynarray.add_last answers (Q.render_query (Q.instantiate_query q frame)))
+    (qeval_loop_safe s ids cuts [] q (Q.singleton_stream []));
+  Dynarray.to_list answers, !cuts
 ;;
 
 let ex_4_67 () =
-  loop_cuts := 0;
-  let env = Eval.the_query_system () in
-  assert_all env demo_assertions;
-  assert_all env demo_rules;
-  let detected = run_loop_safe env "(married Mickey ?who)" in
-  let cuts = !loop_cuts in
-  loop_cuts := 0;
-  (* The stock evaluator re-derives the same answer endlessly; three
-     forced answers show the loop at work. *)
-  let stock = Eval.query_upto 3 env "(married Mickey ?who)" in
-  let detector_wheel = run_loop_safe env "(wheel ?who)" in
-  let stock_wheel = Eval.query env "(wheel ?who)" in
-  let detector_outranked = run_loop_safe env "(outranked-by (Bitdiddle Ben) ?who)" in
-  let stock_outranked = Eval.query env "(outranked-by (Bitdiddle Ben) ?who)" in
-  let same answers1 answers2 = List.equal String.equal answers1 answers2 in
+  let s = session ~rules (supervisors @ [ atoms [ "married"; "Minnie"; "Mickey" ] ]) in
+  let married = p [ at "married"; at "Mickey"; v "who" ] in
+  let detected, cuts = run_loop_safe s married in
+  let stock = answers_upto 3 s married in
+  let wheel = p [ at "wheel"; v "who" ] in
+  let detector_wheel, _ = run_loop_safe s wheel in
+  let outranked = p [ at "outranked-by"; person "Bitdiddle Ben"; v "who" ] in
+  let detector_outranked, _ = run_loop_safe s outranked in
+  let same a b = List.equal String.equal a b in
   [ Printf.sprintf
       "married Mickey ?who with the loop detector: %d answer(s), %d deduction chain cut, \
        terminates"
@@ -189,14 +162,14 @@ let ex_4_67 () =
   @ [ "stock evaluator, take(3) of the same query -- the loop re-derives the answer \
        forever:"
     ]
-  @ show_result stock
+  @ stock
   @ [ Printf.sprintf
         "wheel under the detector: %d answers, identical to stock: %b"
         (List.length detector_wheel)
-        (same detector_wheel (show_result stock_wheel))
+        (same detector_wheel (answers_all s wheel))
     ; Printf.sprintf
         "outranked-by under the detector: %d answer(s), identical to stock: %b"
         (List.length detector_outranked)
-        (same detector_outranked (show_result stock_outranked))
+        (same detector_outranked (answers_all s outranked))
     ]
 ;;

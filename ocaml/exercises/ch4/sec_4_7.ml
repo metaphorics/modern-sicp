@@ -1,12 +1,15 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
-
-type shape = (string * Sicp_common.Ast.expr) list * Sicp_common.Ast.expr list
+   Adapted from SICP section 4.1 exercise 4.7 *)
 
 (* The pending scaffold of the solution with the same name under
    solutions/ch4: every entry raises the pending marker until the
    exercise is solved. *)
 
-let let_star_to_nested_lets = raise Sicp_common.Pending.Pending_solution
-let eval_shape = raise Sicp_common.Pending.Pending_solution
-let ex_4_07 = raise Sicp_common.Pending.Pending_solution
+type let_star =
+  { bindings : (string * Sicp_common.Ast.expr) list
+  ; body : Sicp_common.Ast.expr
+  }
+
+let let_star_to_nested_lets _ = raise Sicp_common.Pending.Pending_solution
+let eval_let_star _ = raise Sicp_common.Pending.Pending_solution
+let ex_4_07 _ = raise Sicp_common.Pending.Pending_solution

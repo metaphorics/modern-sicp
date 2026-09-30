@@ -1,625 +1,729 @@
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 4.1 *)
+(* SPDX-License-Identifier: GPL-3.0-only *)
 
-(** The metacircular evaluator of section 4.1, written in OCaml against
-    the shared substrate. The evaluator's syntax is the typed [Ast]
-    produced by [Reader]: the core never parses text. [eval] and [apply]
-    return [(value, eval_error) result]; primitive procedures report
-    through the same channel.
-
-    [Core] is the standard dispatch of 4.1.1 to 4.1.3, parameterized by
-    the [eval] it recurses through. [Base] instantiates it with itself,
-    which is the evaluator as the book presents it. An exercise that adds
-    a clause to [eval] instantiates [Core] with its own recursive module,
-    so every nested evaluation crosses the new clause.
-
-    [Analyze] is the analyzed evaluator of 4.1.7: [analyze] compiles an
-    expression once into an execution procedure, a host closure from
-    environments to results, and [Analyze.eval] calls it immediately. *)
-
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
 module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
 module Env = Sicp_common.Env
 module Eval_error = Sicp_common.Eval_error
-module Reader = Sicp_common.Reader
+module Prelude = Sicp_common.Prelude
 module Value = Sicp_common.Value
 
-(* The [t] and [view] families share constructor names; every pattern
-   match goes through [Value.view], whose constructors pick themselves. *)
+type outcome = (Value.t, Eval_error.t) result
 
-type eval_t = Ast.expr -> Value.env -> (Value.t, Eval_error.t) result
+(* The semantic core shared by the direct and analyzed evaluators: a
+   strategy only answers how a closure body runs in its environment. *)
 
-(** [true_ v] holds for every value except the false object, the book's
-    [true?]. *)
-let true_ v = not (Value.physical_equal v (Value.bool false))
+type strategy = Value.env -> Ast.expr -> outcome
 
-(** [false_ v] holds exactly for the false object, the book's [false?]. *)
-let false_ v = Value.physical_equal v (Value.bool false)
-
-(** [datum_to_value d] is the runtime value of the quoted datum [d]. *)
-let rec datum_to_value = function
-  | Ast.DInt n -> Value.int n
-  | Ast.DFloat f -> Value.float f
-  | Ast.DBool b -> Value.bool b
-  | Ast.DString s -> Value.string s
-  | Ast.DSymbol s -> Value.symbol s
-  | Ast.DNil -> Value.nil
-  | Ast.DPair (car, cdr) -> Value.pair (datum_to_value car) (datum_to_value cdr)
+let scalar_value = function
+  | Ast.Int n -> Value.int n
+  | Ast.Float f -> Value.float f
+  | Ast.Bool b -> Value.bool b
+  | Ast.String s -> Value.string s
+  | Ast.Unit -> Value.unit
 ;;
 
-(** The symbol marking a scanned-out internal definition that has not
-    been assigned yet (4.16); the environment never uses [None] or a
-    default value for it. *)
-let unassigned = Value.symbol "*unassigned*"
+let type_error detail = Error (Eval_error.Type_error detail)
+let not_applicable v = Error (Eval_error.Not_applicable (Value.to_string v))
+let unbound name = Error (Eval_error.Unbound_variable name)
 
-let is_unassigned v = Value.physical_equal v unassigned
-
-(** {2 4.1.3: the four environment operations}
-
-    The representations live in [Env] and [Value] since 3.2: an
-    environment is a chain of mutable frames, newest first, and a
-    compound procedure captures the environment it was created in. The
-    operations wrap that representation with the evaluator's error
-    channel. *)
-
-let lookup_variable_value name env =
-  match Env.find_binding env name with
-  | Some value -> Ok value
-  | None -> Error (Eval_error.Unbound_variable name)
-;;
-
-let extend_environment names values base_env = Env.extend names values base_env
-let set_variable_value_ name value env = Env.set env name value
-
-let define_variable_ name value env =
-  Env.define env name value;
-  Ok (Value.symbol "ok")
-;;
-
-(** Arity checks over the evaluated operands; a mismatch answers a typed
-    error naming expected and given. *)
-let arity0 = function
-  | [] -> Ok ()
-  | args -> Error (Eval_error.Arity_mismatch { expected = 0; given = List.length args })
-;;
-
-let arity1 = function
-  | [ v ] -> Ok v
-  | args -> Error (Eval_error.Arity_mismatch { expected = 1; given = List.length args })
-;;
-
-let arity2 = function
-  | [ a; b ] -> Ok (a, b)
-  | args -> Error (Eval_error.Arity_mismatch { expected = 2; given = List.length args })
-;;
-
-let need_pair name (v : Value.t) =
+let as_bool what v =
   match Value.view v with
-  | Value.Pair (car, cdr) -> Ok (car, cdr)
-  | _ -> Error (Eval_error.Type_error (name ^ ": not a pair: " ^ Value.to_string v))
+  | Value.Bool b -> Ok b
+  | _ -> type_error (what ^ ": condition is not a bool")
 ;;
 
-let need_list name (v : Value.t) =
+let arithmetic op left right =
+  match op, Value.view left, Value.view right with
+  | Ast.Add, Value.Int x, Value.Int y -> Ok (Value.int (x + y))
+  | Ast.Sub, Value.Int x, Value.Int y -> Ok (Value.int (x - y))
+  | Ast.Mul, Value.Int x, Value.Int y -> Ok (Value.int (x * y))
+  | Ast.Div, Value.Int _, Value.Int 0 -> Error Eval_error.Division_by_zero
+  | Ast.Div, Value.Int x, Value.Int y -> Ok (Value.int (x / y))
+  | Ast.Rem, Value.Int _, Value.Int 0 -> Error Eval_error.Division_by_zero
+  | Ast.Rem, Value.Int x, Value.Int y -> Ok (Value.int (x mod y))
+  | Ast.Addf, Value.Float x, Value.Float y -> Ok (Value.float (x +. y))
+  | Ast.Subf, Value.Float x, Value.Float y -> Ok (Value.float (x -. y))
+  | Ast.Mulf, Value.Float x, Value.Float y -> Ok (Value.float (x *. y))
+  | Ast.Divf, Value.Float x, Value.Float y -> Ok (Value.float (x /. y))
+  | _ -> type_error "arithmetic operands do not match the operator"
+;;
+
+let negate v =
   match Value.view v with
-  | Value.Nil | Value.Pair _ -> Ok ()
-  | _ -> Error (Eval_error.Type_error (name ^ ": not a list: " ^ Value.to_string v))
+  | Value.Int n -> Ok (Value.int (Int.neg n))
+  | Value.Float f -> Ok (Value.float (Float.neg f))
+  | _ -> type_error "negation operand is not a number"
 ;;
 
-let rec value_list (v : Value.t) =
-  match Value.view v with
-  | Value.Nil -> Ok []
-  | Value.Pair (car, cdr) -> value_list cdr >>= fun rest -> Ok (car :: rest)
-  | _ -> Error (Eval_error.Type_error ("not a list: " ^ Value.to_string v))
+(* The host relation of [op]: Stdlib's comparison, which on floats is
+   the IEEE relation (a NaN is unequal and unordered). *)
+let relation op x y =
+  match op with
+  | Ast.Eq -> x = y
+  | Ast.Ne -> x <> y
+  | Ast.Lt -> x < y
+  | Ast.Le -> x <= y
+  | Ast.Gt -> x > y
+  | Ast.Ge -> x >= y
 ;;
 
-let list_values values = List.fold_right Value.pair values Value.nil
-
-let int2 name f =
-  ( name
-  , fun args ->
-      arity2 args
-      >>= fun (a, b) ->
-      match Value.view a, Value.view b with
-      | Value.Int a, Value.Int b -> Ok (Value.int (f a b))
-      | _ -> Error (Eval_error.Type_error (name ^ ": the operands are not both integers"))
-  )
-;;
-
-let int_cmp name f =
-  ( name
-  , fun args ->
-      arity2 args
-      >>= fun (a, b) ->
-      match Value.view a, Value.view b with
-      | Value.Int a, Value.Int b -> Ok (Value.bool (f a b))
-      | _ -> Error (Eval_error.Type_error (name ^ ": the operands are not both integers"))
-  )
-;;
-
-(** {2 4.1.4: the primitive table}
-
-    The book's sample primitives plus the arithmetic and output the
-    section's programs use; every primitive answers through the one
-    error channel. *)
-let primitive_table : (string * Value.primitive) list =
-  [ ( "car"
-    , fun args -> arity1 args >>= fun v -> need_pair "car" v >>= fun (car, _) -> Ok car )
-  ; ( "cdr"
-    , fun args -> arity1 args >>= fun v -> need_pair "cdr" v >>= fun (_, cdr) -> Ok cdr )
-  ; ("cons", fun args -> arity2 args >>= fun (car, cdr) -> Ok (Value.pair car cdr))
-  ; ("list", fun args -> Ok (list_values args))
-  ; ( "null?"
-    , fun args ->
-        arity1 args >>= fun v -> Ok (Value.bool (Value.physical_equal v Value.nil)) )
-  ; ( "pair?"
-    , fun args ->
-        arity1 args
-        >>= fun v ->
-        Ok
-          (Value.bool
-             (match Value.view v with
-              | Value.Pair _ -> true
-              | _ -> false)) )
-  ; ( "number?"
-    , fun args ->
-        arity1 args
-        >>= fun v ->
-        Ok
-          (Value.bool
-             (match Value.view v with
-              | Value.Int _ | Value.Float _ -> true
-              | _ -> false)) )
-  ; ( "symbol?"
-    , fun args ->
-        arity1 args
-        >>= fun v ->
-        Ok
-          (Value.bool
-             (match Value.view v with
-              | Value.Symbol _ -> true
-              | _ -> false)) )
-  ; ( "eq?"
-    , fun args -> arity2 args >>= fun (a, b) -> Ok (Value.bool (Value.physical_equal a b))
-    )
-  ; ( "equal?"
-    , fun args ->
-        arity2 args >>= fun (a, b) -> Ok (Value.bool (Value.structural_equal a b)) )
-  ; ("not", fun args -> arity1 args >>= fun v -> Ok (Value.bool (false_ v)))
-  ; ( "assoc"
-    , fun args ->
-        arity2 args
-        >>= fun (key, entries) ->
-        need_list "assoc" entries
-        >>= fun () ->
-        let rec go (entries : Value.t) =
-          match Value.view entries with
-          | Value.Nil -> Ok (Value.bool false)
-          | Value.Pair (entry, rest) ->
-            (match value_list entry with
-             | Ok (k :: _ :: _) when Value.structural_equal key k -> Ok entry
-             | Ok _ -> go rest
-             | Error _ ->
-               Error
-                 (Eval_error.Type_error "assoc: the entries are not two-element lists"))
-          | _ ->
-            Error
-              (Eval_error.Type_error ("assoc: not a list: " ^ Value.to_string entries))
-        in
-        go entries )
-  ; ( "memq"
-    , fun args ->
-        arity2 args
-        >>= fun (item, l2) ->
-        need_list "memq" l2
-        >>= fun () ->
-        let rec go (l : Value.t) =
-          match Value.view l with
-          | Value.Nil -> Ok (Value.bool false)
-          | Value.Pair (car, _) when Value.physical_equal item car -> Ok l
-          | Value.Pair (_, cdr) -> go cdr
-          | _ -> Error (Eval_error.Type_error ("memq: not a list: " ^ Value.to_string l))
-        in
-        go l2 )
-  ; ( "cadr"
-    , fun args ->
-        arity1 args
-        >>= fun v ->
-        need_pair "cadr" v
-        >>= fun (_, cdr) -> need_pair "cadr" cdr >>= fun (second, _) -> Ok second )
-  ; int2 "+" ( + )
-  ; int2 "-" ( - )
-  ; int2 "*" ( * )
-  ; int_cmp "=" ( = )
-  ; int_cmp "<" ( < )
-  ; int_cmp ">" ( > )
-  ; ( "display"
-    , fun args ->
-        arity1 args
-        >>= fun v ->
-        print_string (Value.display v);
-        Ok (Value.symbol "ok") )
-  ; ( "newline"
-    , fun args ->
-        arity0 args
-        >>= fun () ->
-        print_newline ();
-        Ok (Value.symbol "ok") )
-  ; ( "error"
-    , fun args ->
-        match args with
-        | [] -> Error (Eval_error.User_error "error")
-        | message :: irritants ->
-          let rendered =
-            List.fold_left
-              (fun acc v -> acc ^ " " ^ Value.display v)
-              (Value.display message)
-              irritants
-          in
-          Error (Eval_error.User_error rendered) )
-  ]
-;;
-
-(** [setup_environment ()] is the global environment: one frame with the
-    primitives and the bindings of [true] and [false]. *)
-let setup_environment () =
-  let env = Env.empty () in
-  Env.define env "true" (Value.bool true);
-  Env.define env "false" (Value.bool false);
-  List.iter
-    (fun (name, f) -> Env.define env name (Value.primitive ~name f))
-    primitive_table;
-  env
-;;
-
-(** [the_global_environment ()] is a fresh global environment, the
-    book's [the-global-environment]. *)
-let the_global_environment = setup_environment
-
-(** [sequence_to_exp exps] packs a clause body into one expression, a
-    [begin] when more than one expression remains. *)
-let sequence_to_exp exps =
-  match exps with
-  | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
-  | [ exp ] -> Ok exp
-  | exps -> Ast.sequence exps
-;;
-
-(** [cond_to_if exp] is the derived-expression rewrite of a [cond]:
-    each clause becomes an [if], the trailing [else] body or the false
-    object when every predicate fails. *)
-let cond_to_if exp =
-  match Ast.view exp with
-  | Ast.Cond (clauses, else_body) ->
-    let rec expand = function
-      | [] ->
-        (match else_body with
-         | Some body -> sequence_to_exp body
-         | None -> Ok (Ast.bool false))
-      | (test, actions) :: rest ->
-        expand rest
-        >>= fun alternative ->
-        sequence_to_exp actions
-        >>= fun consequent -> Ok (Ast.if_ test consequent (Some alternative))
-    in
-    expand clauses
-  | _ -> Error (Eval_error.Invalid_form "cond_to_if: not a cond")
-;;
-
-(** {2 4.1.1: the core of the evaluator}
-
-    [Core] holds the procedures of the [eval]/[apply] cycle. Every
-    recursive step goes through the functor argument's [eval], so an
-    instantiation with extra clauses catches the whole recursion. *)
-module Core (Eval : sig
-    val eval : eval_t
-  end) =
-struct
-  (** [list_of_values exps env] evaluates the operands of a combination.
-      The recursion evaluates the first operand, then the rest, so the
-      order is left to right by construction; exercise 4.1 pins both
-      orders down explicitly. *)
-  let rec list_of_values exps env =
-    match exps with
-    | [] -> Ok []
-    | exp :: rest ->
-      Eval.eval exp env
-      >>= fun value -> list_of_values rest env >>= fun values -> Ok (value :: values)
-  ;;
-
-  (** [list_of_values_right_to_left] is exercise 4.1's second version:
-      the same operands evaluated from right to left. *)
-  let rec list_of_values_right_to_left exps env =
-    match exps with
-    | [] -> Ok []
-    | exp :: rest ->
-      list_of_values_right_to_left rest env
-      >>= fun values -> Eval.eval exp env >>= fun value -> Ok (value :: values)
-  ;;
-
-  (** [eval_sequence exps env] evaluates the expressions of a body or a
-      [begin] in order and returns the value of the last one. *)
-  let rec eval_sequence exps env =
-    match exps with
-    | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
-    | [ exp ] -> Eval.eval exp env
-    | exp :: rest -> Eval.eval exp env >>= fun _ -> eval_sequence rest env
-  ;;
-
-  (** [apply_procedure proc args] is the book's [apply]: a primitive is
-      looked up in the section's table by the name the value carries and
-      applied directly; a compound procedure extends the captured
-      environment with a frame binding the parameters to the arguments
-      and evaluates the body there. *)
-  let apply_procedure proc args =
-    match Value.view proc with
-    | Value.Primitive_procedure name ->
-      (match List.assoc_opt name primitive_table with
-       | Some f -> f args
-       | None ->
-         Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
-    | Value.Compound_procedure { parameters; body; env; _ } ->
-      Env.extend parameters args env >>= fun extended -> eval_sequence body extended
-    | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
-  ;;
-
-  (** [eval_if exp env] evaluates the predicate in the object language
-      and translates the value with [true_] before branching. A missing
-      alternative yields the false object. *)
-  let eval_if exp env =
-    match Ast.view exp with
-    | Ast.If (predicate, consequent, alternative) ->
-      Eval.eval predicate env
-      >>= fun tested ->
-      if true_ tested
-      then Eval.eval consequent env
-      else (
-        match alternative with
-        | Some branch -> Eval.eval branch env
-        | None -> Ok (Value.bool false))
-    | _ -> Error (Eval_error.Invalid_form "eval_if: not an if")
-  ;;
-
-  (** [eval_assignment name exp env] changes the nearest binding of
-      [name] and answers the symbol [ok]. *)
-  let eval_assignment name exp env =
-    Eval.eval exp env
-    >>= fun value ->
-    set_variable_value_ name value env >>= fun () -> Ok (Value.symbol "ok")
-  ;;
-
-  (** [eval_definition d env] binds the variable, or the procedure the
-      function form names, in the newest frame, and answers [ok]. *)
-  let eval_definition d env =
-    match Ast.view_definition d with
-    | Ast.Define_variable (name, exp) ->
-      Eval.eval exp env >>= fun value -> define_variable_ name value env
-    | Ast.Define_function { name; parameters; body } ->
-      let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
-      define_variable_ name proc env
-  ;;
-
-  (** The standard dispatch of the metacircular evaluator: one clause
-      per syntactic type, [cond] reduced to [if] as a derived
-      expression, and a final clause that treats the remainder as a
-      procedure application. [And], [Or], and [Let] are not in the
-      language of this section; exercises 4.4 to 4.6 add them. *)
-  let eval exp env =
-    match Ast.view exp with
-    | Ast.Int n -> Ok (Value.int n)
-    | Ast.Float f -> Ok (Value.float f)
-    | Ast.Bool b -> Ok (Value.bool b)
-    | Ast.String s -> Ok (Value.string s)
-    | Ast.Variable name -> lookup_variable_value name env
-    | Ast.Quote datum -> Ok (datum_to_value datum)
-    | Ast.Definition d -> eval_definition d env
-    | Ast.Set (name, exp) -> eval_assignment name exp env
-    | Ast.If _ -> eval_if exp env
-    | Ast.Lambda (parameters, body) ->
-      Ok (Value.compound ~name:None ~parameters ~body ~env)
-    | Ast.Sequence body -> eval_sequence body env
-    | Ast.Cond _ -> cond_to_if exp >>= fun rewritten -> Eval.eval rewritten env
-    | Ast.Application (operator, operands) ->
-      Eval.eval operator env
-      >>= fun proc ->
-      list_of_values operands env >>= fun args -> apply_procedure proc args
-    | Ast.And _ | Ast.Or _ | Ast.Let _ ->
-      Error (Eval_error.Invalid_form "unknown expression type: EVAL")
-  ;;
-end
-
-module rec Base : sig
-  val eval : eval_t
-end = struct
-  module C = Core (Base)
-
-  let eval = C.eval
-end
-
-(** [eval exp env] evaluates one expression in one environment. *)
-let eval = Base.eval
-
-(** {2 4.1.4: the driver}
-
-    The driver reads object-language text with the shared [Reader] --
-    parsing lives at the surface, never in the core -- and evaluates it
-    in the given environment. Defines and assignments mutate that
-    environment, so a sequence of [run] calls shares state, exactly as
-    the book's driver loop does. *)
-
-let read_error e = Eval_error.Invalid_form (Reader.to_string e)
-
-(** [run env text] reads one form from [text] and evaluates it in [env]. *)
-let run env text =
-  Reader.read text |> Result.map_error read_error >>= fun exp -> eval exp env
-;;
-
-(** [run_program env text] reads a whole program of forms and evaluates
-    them in order, answering the value of the last one. *)
-let run_program env text =
-  Reader.read_program text
-  |> Result.map_error read_error
-  >>= fun exps ->
-  let rec go = function
-    | [] -> Ok (Value.symbol "ok")
-    | [ exp ] -> eval exp env
-    | exp :: rest -> eval exp env >>= fun _ -> go rest
+let comparison op left right =
+  let ordered =
+    match op with
+    | Ast.Eq | Ast.Ne -> false
+    | _ -> true
   in
-  go exps
+  match Value.view left, Value.view right with
+  | Value.Int x, Value.Int y -> Ok (Value.bool (relation op x y))
+  | Value.Float x, Value.Float y -> Ok (Value.bool (relation op x y))
+  | Value.String x, Value.String y -> Ok (Value.bool (relation op x y))
+  | Value.Bool x, Value.Bool y when not ordered -> Ok (Value.bool (relation op x y))
+  | Value.Unit, Value.Unit when not ordered -> Ok (Value.bool (relation op () ()))
+  | _ -> type_error "comparison operands are outside the admitted comparison types"
 ;;
 
-(** {2 4.1.7: separating syntactic analysis from execution}
+(* [force] runs on a subject exactly where a pattern tests its shape:
+   variables and wildcards bind the subject as it is. *)
+let bind_pattern_with ~force (p : Ast.pattern) v =
+  let rec bind (p : Ast.pattern) v =
+    match Ast.view_pattern p with
+    | Ast.PWildcard -> Ok (Some [])
+    | Ast.PVar name -> Ok (Some [ name, v ])
+    | shape ->
+      let* v = force v in
+      (match shape, Value.view v with
+       | Ast.PScalar expected, _ ->
+         (match Value.equal_scalars (scalar_value expected) v with
+          | Ok true -> Ok (Some [])
+          | Ok false | Error _ -> Ok None)
+       | Ast.PTuple patterns, Value.Tuple values -> bind_many patterns values
+       | Ast.PConstruct (expected, patterns), Value.Constructor (name, fields)
+         when String.equal expected name -> bind_fields patterns fields
+       | Ast.PNil, Value.Nil -> Ok (Some [])
+       | Ast.PCons (head_pattern, tail_pattern), Value.Cons (head, tail) ->
+         bind_many [ head_pattern; tail_pattern ] [ head; tail ]
+       | _, _ -> Ok None)
+  and bind_many patterns values =
+    if List.length patterns <> List.length values
+    then Ok None
+    else (
+      let rec go acc patterns values =
+        match patterns, values with
+        | [], [] -> Ok (Some (List.concat (List.rev acc)))
+        | pattern :: patterns, value :: values ->
+          let* bound = bind pattern value in
+          (match bound with
+           | None -> Ok None
+           | Some bindings -> go (bindings :: acc) patterns values)
+        | _, _ -> Ok None
+      in
+      go [] patterns values)
+  and bind_fields patterns fields =
+    let* bound = bind_many patterns fields in
+    match bound with
+    | Some _ -> Ok bound
+    | None ->
+      (* Grammar section 3: a constructor with multiple payload fields
+         uses a tuple payload, so one variable payload binds the whole
+         tuple and a multi-pattern payload destructures one tuple
+         payload. *)
+      (match patterns, fields with
+       | [ _ ], [ _ ] -> Ok None
+       | [ pattern ], values -> bind pattern (Value.tuple values)
+       | patterns, [ value ] ->
+         let* value = force value in
+         (match Value.view value with
+          | Value.Tuple values -> bind_many patterns values
+          | _ -> Ok None)
+       | _, _ -> Ok None)
+  in
+  bind p v
+;;
 
-    [Analyze] splits [eval] in two: [analyze] walks the expression once
-    and returns an execution procedure, a host closure from environments
-    to results, with every dispatch decision already made.
-    [Analyze.eval] analyzes and executes immediately, the book's
-    [(define (eval exp env) ((analyze exp) env))]. *)
-module Analyze = struct
-  (** One execution procedure: the analyzed form of one expression. *)
-  type execution = Value.env -> (Value.t, Eval_error.t) result
+let bind_pattern p v =
+  match bind_pattern_with ~force:Result.ok p v with
+  | Ok bound -> bound
+  | Error _ -> None
+;;
 
-  let constant value = fun _ -> Ok value
-  let constant_error error = fun _ -> Error error
-  let ok_constant value = Ok (constant value)
+let rec eval (strategy : strategy) env (e : Ast.expr) : outcome =
+  match Ast.view e with
+  | Ast.Scalar s -> Ok (scalar_value s)
+  | Ast.Var name ->
+    (match Env.find env name with
+     | Some v -> Ok v
+     | None -> unbound name)
+  | Ast.Let (is_rec, bindings, body) -> eval_let strategy env is_rec bindings body
+  | Ast.Fun (parameters, body) -> Ok (Value.closure ~name:None ~parameters ~body ~env)
+  | Ast.Apply (fn, args) ->
+    let* fn = strategy env fn in
+    let* args = eval_list strategy env args in
+    apply strategy fn args
+  | Ast.If (condition, consequent, alternative) ->
+    let* condition = strategy env condition in
+    let* b = as_bool "if" condition in
+    if b then strategy env consequent else strategy env alternative
+  | Ast.Match (scrutinee, cases) ->
+    let* v = strategy env scrutinee in
+    eval_cases strategy env v cases
+  | Ast.Tuple parts ->
+    let* parts = eval_list strategy env parts in
+    Ok (Value.tuple parts)
+  | Ast.Construct (name, fields) ->
+    let* fields = eval_list strategy env fields in
+    Ok (Value.construct name fields)
+  | Ast.Record fields ->
+    let* fields = eval_fields strategy env fields in
+    Ok (Value.record fields)
+  | Ast.Field (record, name) ->
+    let* record = strategy env record in
+    (match Value.view record with
+     | Value.Record fields ->
+       (match List.assoc_opt name fields with
+        | Some v -> Ok v
+        | None -> type_error ("record field " ^ name ^ " is absent"))
+     | _ -> type_error "field access target is not a record")
+  | Ast.Sequence (first, second) ->
+    let* _ = strategy env first in
+    strategy env second
+  | Ast.And (left, right) ->
+    let* left = strategy env left in
+    let* b = as_bool "&&" left in
+    if not b then Ok (Value.bool false) else strategy env right
+  | Ast.Or (left, right) ->
+    let* left = strategy env left in
+    let* b = as_bool "||" left in
+    if b then Ok (Value.bool true) else strategy env right
+  | Ast.Arith (op, left, right) ->
+    let* left = strategy env left in
+    let* right = strategy env right in
+    arithmetic op left right
+  | Ast.Compare (op, left, right) ->
+    let* left = strategy env left in
+    let* right = strategy env right in
+    comparison op left right
+  | Ast.Nil -> Ok Value.nil
+  | Ast.Cons (head, tail) ->
+    let* head = strategy env head in
+    let* tail = strategy env tail in
+    Ok (Value.cons head tail)
+  | Ast.Concat (left, right) ->
+    let* left = strategy env left in
+    let* right = strategy env right in
+    (match Value.view left, Value.view right with
+     | Value.String a, Value.String b -> Ok (Value.string (a ^ b))
+     | _ -> type_error "^ operands are not strings")
+  | Ast.Not operand ->
+    let* operand = strategy env operand in
+    let* b = as_bool "not" operand in
+    Ok (Value.bool (not b))
+  | Ast.Neg operand ->
+    let* operand = strategy env operand in
+    negate operand
+  | Ast.Deref reference ->
+    let* reference = strategy env reference in
+    (match Value.view reference with
+     | Value.Ref cell -> Ok !cell
+     | _ -> type_error "! target is not a reference")
+  | Ast.Assign (reference, rhs) ->
+    let* reference = strategy env reference in
+    let* value = strategy env rhs in
+    (match Value.view reference with
+     | Value.Ref cell ->
+       cell := value;
+       Ok Value.unit
+     | _ -> type_error ":= target is not a reference")
+  | Ast.Make_ref operand ->
+    let* operand = strategy env operand in
+    Ok (Value.ref_value operand)
 
-  (* The analyzed body of every compound procedure, keyed by the
-     procedure's identity. The book's [make-procedure] stores the
-     execution procedure inside the procedure object; [Value.compound]
-     is the shared runtime value, so the analyzed body lives beside it
-     here, registered once at creation. A physical scan, because a
-     hash over the value would change as the captured frames mutate. *)
-  let bodies : (Value.t * execution) list ref = ref []
-  let register proc body_exec = bodies := (proc, body_exec) :: !bodies
+and eval_list strategy env exprs =
+  let rec go acc = function
+    | [] -> Ok (List.rev acc)
+    | e :: rest ->
+      let* v = strategy env e in
+      go (v :: acc) rest
+  in
+  go [] exprs
 
-  let registered proc =
-    let rec go = function
-      | [] -> None
-      | (k, exec) :: rest -> if Value.physical_equal k proc then Some exec else go rest
+and eval_fields strategy env fields =
+  let rec go acc = function
+    | [] -> Ok (List.rev acc)
+    | (name, e) :: rest ->
+      let* v = strategy env e in
+      go ((name, v) :: acc) rest
+  in
+  go [] fields
+
+and eval_let strategy env is_rec bindings body =
+  if is_rec
+  then (
+    let names = List.filter_map (fun (b : Ast.binding) -> b.name) bindings in
+    let env, cells = Env.extend_recursive names env in
+    let* () = eval_recursive_bindings strategy env cells bindings in
+    strategy env body)
+  else
+    let* values =
+      eval_list strategy env (List.map (fun (b : Ast.binding) -> b.rhs) bindings)
     in
-    go !bodies
-  ;;
-
-  let rec analyze exp =
-    match Ast.view exp with
-    | Ast.Int n -> ok_constant (Value.int n)
-    | Ast.Float f -> ok_constant (Value.float f)
-    | Ast.Bool b -> ok_constant (Value.bool b)
-    | Ast.String s -> ok_constant (Value.string s)
-    | Ast.Variable name -> Ok (fun env -> lookup_variable_value name env)
-    | Ast.Quote datum -> ok_constant (datum_to_value datum)
-    | Ast.Definition d -> analyze_definition d
-    | Ast.Set (name, exp) -> analyze_assignment name exp
-    | Ast.If (predicate, consequent, alternative) ->
-      analyze_if predicate consequent alternative
-    | Ast.Lambda (parameters, body) -> analyze_lambda parameters body
-    | Ast.Sequence body -> analyze_sequence body
-    | Ast.Cond _ -> cond_to_if exp >>= analyze
-    | Ast.Application (operator, operands) -> analyze_application operator operands
-    | Ast.And _ | Ast.Or _ | Ast.Let _ ->
-      Ok (constant_error (Eval_error.Invalid_form "unknown expression type: ANALYZE"))
-
-  and analyze_definition d =
-    match Ast.view_definition d with
-    | Ast.Define_variable (name, exp) ->
-      analyze exp
-      >>= fun get ->
-      Ok (fun env -> get env >>= fun value -> define_variable_ name value env)
-    | Ast.Define_function { name; parameters; body } ->
-      analyze_sequence body
-      >>= fun body_exec ->
-      Ok
-        (fun env ->
-          let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
-          register proc body_exec;
-          define_variable_ name proc env)
-
-  and analyze_assignment name exp =
-    analyze exp
-    >>= fun get ->
-    Ok
-      (fun env ->
-        get env
-        >>= fun value ->
-        set_variable_value_ name value env >>= fun () -> Ok (Value.symbol "ok"))
-
-  and analyze_lambda parameters body =
-    analyze_sequence body
-    >>= fun body_exec ->
-    Ok
-      (fun env ->
-        let proc = Value.compound ~name:None ~parameters ~body ~env in
-        register proc body_exec;
-        Ok proc)
-
-  and analyze_if predicate consequent alternative =
-    analyze predicate
-    >>= fun get ->
-    analyze consequent
-    >>= fun when_true ->
-    let when_false =
-      match alternative with
-      | Some branch -> analyze branch
-      | None -> ok_constant (Value.bool false)
+    let named =
+      List.filter_map
+        (fun ((b : Ast.binding), v) -> Option.map (fun name -> name, v) b.name)
+        (List.combine bindings values)
     in
-    when_false
-    >>= fun otherwise ->
-    Ok
-      (fun env ->
-        get env >>= fun tested -> if true_ tested then when_true env else otherwise env)
+    strategy (Env.extend named env) body
 
-  and analyze_sequence body =
-    let rec go = function
-      | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
-      | [ exp ] -> analyze exp
-      | exp :: rest ->
-        analyze exp
-        >>= fun first ->
-        go rest >>= fun others -> Ok (fun env -> first env >>= fun _ -> others env)
-    in
-    go body
+and eval_recursive_bindings strategy env cells bindings =
+  let rec go cells bindings =
+    match bindings with
+    | [] -> Ok ()
+    | (b : Ast.binding) :: rest ->
+      let* v = strategy env b.rhs in
+      let cells =
+        match b.name, cells with
+        | Some _, cell :: cells ->
+          Env.fill cell v;
+          cells
+        | _, cells -> cells
+      in
+      go cells rest
+  in
+  go cells bindings
 
-  and analyze_application operator operands =
-    analyze operator
-    >>= fun get_proc ->
-    let rec collect = function
-      | [] -> Ok []
-      | exp :: rest ->
-        analyze exp >>= fun get -> collect rest >>= fun gets -> Ok (get :: gets)
+and eval_cases strategy env v cases =
+  match cases with
+  | [] -> type_error "no case matched"
+  | (pattern, body) :: rest ->
+    (match bind_pattern pattern v with
+     | None -> eval_cases strategy env v rest
+     | Some bindings -> strategy (Env.extend bindings env) body)
+
+and apply strategy fn args =
+  match args with
+  | [] -> Ok fn
+  | arg :: rest ->
+    (match Value.view fn with
+     | Value.Closure { parameters = parameter :: parameters; body; env; _ } ->
+       let env = Env.extend [ parameter, arg ] env in
+       if parameters = []
+       then
+         let* v = strategy env body in
+         apply strategy v rest
+       else apply strategy (Value.closure ~name:None ~parameters ~body ~env) rest
+     | Value.Closure { parameters = []; _ } -> not_applicable fn
+     | Value.Primitive p -> apply_primitive strategy p [] (arg :: rest)
+     | Value.Partial (p, gathered) -> apply_primitive strategy p gathered (arg :: rest)
+     | _ -> not_applicable fn)
+
+and apply_primitive strategy p gathered args =
+  let missing = p.prim_arity - List.length gathered in
+  if List.length args < missing
+  then Ok (Value.partial p (gathered @ args))
+  else (
+    let rec split n acc = function
+      | rest when n = 0 -> List.rev acc, rest
+      | x :: rest -> split (n - 1) (x :: acc) rest
+      | [] -> List.rev acc, []
     in
-    collect operands
-    >>= fun gets ->
-    Ok
-      (fun env ->
-        get_proc env
-        >>= fun proc ->
-        let rec evaluate acc = function
-          | [] -> Ok (List.rev acc)
-          | get :: rest -> get env >>= fun value -> evaluate (value :: acc) rest
+    let taken, rest = split missing [] args in
+    let* result = p.prim_apply (apply strategy) (gathered @ taken) in
+    apply strategy result rest)
+;;
+
+(* Program execution: type declarations introduce runtime data shapes
+   (their constructors are values by name) and value declarations extend
+   the global environment in source order. *)
+
+let run_items strategy initial items =
+  let rec go env outcome = function
+    | [] -> Ok outcome
+    | (item : Ast.item) :: rest ->
+      (match item with
+       | Ast.Type_item _ -> go env outcome rest
+       | Ast.Value_item (is_rec, bindings) ->
+         if is_rec
+         then (
+           let names = List.filter_map (fun (b : Ast.binding) -> b.name) bindings in
+           let env, cells = Env.extend_recursive names env in
+           let* () = eval_recursive_bindings strategy env cells bindings in
+           let last =
+             List.fold_left
+               (fun acc (b : Ast.binding) ->
+                  match b.name with
+                  | Some name -> Some name
+                  | None -> acc)
+               None
+               bindings
+           in
+           let outcome =
+             match last with
+             | Some name ->
+               (match Env.find env name with
+                | Some v -> v
+                | None -> outcome)
+             | None -> outcome
+           in
+           go env outcome rest)
+         else
+           let* values =
+             eval_list strategy env (List.map (fun (b : Ast.binding) -> b.rhs) bindings)
+           in
+           let named =
+             List.filter_map
+               (fun ((b : Ast.binding), v) -> Option.map (fun name -> name, v) b.name)
+               (List.combine bindings values)
+           in
+           let env = Env.extend named env in
+           let outcome =
+             match List.rev named with
+             | (_, v) :: _ -> v
+             | [] -> outcome
+           in
+           go env outcome rest)
+  in
+  go initial Value.unit items
+;;
+
+let rec direct env body = eval direct env body
+
+let run ~emit program =
+  run_items direct (Prelude.initial_env ~emit ()) (Check.items program)
+;;
+
+(* The analyzed evaluator: every syntax node is analyzed once per run
+   into an environment application; execution never re-reads syntax
+   structure except through the memoized analysis of closure bodies. *)
+
+(* [analyzer ()] is a fresh analyzer: its memo table maps each closure
+   body analyzed during one run to its execution procedure. *)
+(* Analyses are memoized per body node, keyed physically: a closure
+   call finds its body's analysis in constant time, never comparing
+   expression trees; the hash is the body's source position, four
+   integers. *)
+module Body_table = Hashtbl.Make (struct
+    type t = Ast.expr
+
+    let equal = ( == )
+
+    let hash e =
+      let ({ start; stop } : Ast.span) = Ast.at e in
+      Hashtbl.hash (start.line, start.column, stop.line, stop.column)
+    ;;
+  end)
+
+let analyzer () =
+  let memo : (Value.env -> outcome) Body_table.t = Body_table.create 64 in
+  let rec analyze (e : Ast.expr) : Value.env -> outcome =
+    match Ast.view e with
+    | Ast.Scalar s -> fun _ -> Ok (scalar_value s)
+    | Ast.Var name ->
+      fun env ->
+        (match Env.find env name with
+         | Some v -> Ok v
+         | None -> unbound name)
+    | Ast.Let (is_rec, bindings, body) ->
+      let rhss = List.map (fun (b : Ast.binding) -> analyze b.rhs) bindings in
+      let body = analyze body in
+      fun env -> eval_let_analyzed env is_rec bindings rhss body
+    | Ast.Fun (parameters, body) ->
+      let (_ : Value.env -> outcome) = analysis_of body in
+      fun env -> Ok (Value.closure ~name:None ~parameters ~body ~env)
+    | Ast.Apply (fn, args) ->
+      let fn = analyze fn in
+      let args = List.map analyze args in
+      fun env ->
+        let* fn = fn env in
+        let* args = eval_all env args in
+        apply analyzed_strategy fn args
+    | Ast.If (condition, consequent, alternative) ->
+      let condition = analyze condition in
+      let consequent = analyze consequent in
+      let alternative = analyze alternative in
+      fun env ->
+        let* condition = condition env in
+        let* b = as_bool "if" condition in
+        if b then consequent env else alternative env
+    | Ast.Match (scrutinee, cases) ->
+      let scrutinee = analyze scrutinee in
+      let cases = List.map (fun (pattern, body) -> pattern, analyze body) cases in
+      fun env ->
+        let* v = scrutinee env in
+        eval_cases_analyzed env v cases
+    | Ast.Tuple parts ->
+      let parts = List.map analyze parts in
+      fun env -> Result.map Value.tuple (eval_all env parts)
+    | Ast.Construct (name, fields) ->
+      let fields = List.map analyze fields in
+      fun env ->
+        Result.map (fun fields -> Value.construct name fields) (eval_all env fields)
+    | Ast.Record fields ->
+      let fields = List.map (fun (name, e) -> name, analyze e) fields in
+      fun env ->
+        let rec go acc = function
+          | [] -> Ok (Value.record (List.rev acc))
+          | (name, proc) :: rest ->
+            let* v = proc env in
+            go ((name, v) :: acc) rest
         in
-        evaluate [] gets >>= fun args -> apply proc args)
+        go [] fields
+    | Ast.Field (record, name) ->
+      let record = analyze record in
+      fun env ->
+        let* record = record env in
+        (match Value.view record with
+         | Value.Record fields ->
+           (match List.assoc_opt name fields with
+            | Some v -> Ok v
+            | None -> type_error ("record field " ^ name ^ " is absent"))
+         | _ -> type_error "field access target is not a record")
+    | Ast.Sequence (first, second) ->
+      let first = analyze first in
+      let second = analyze second in
+      fun env ->
+        let* _ = first env in
+        second env
+    | Ast.And (left, right) ->
+      let left = analyze left in
+      let right = analyze right in
+      fun env ->
+        let* left = left env in
+        let* b = as_bool "&&" left in
+        if not b then Ok (Value.bool false) else right env
+    | Ast.Or (left, right) ->
+      let left = analyze left in
+      let right = analyze right in
+      fun env ->
+        let* left = left env in
+        let* b = as_bool "||" left in
+        if b then Ok (Value.bool true) else right env
+    | Ast.Arith (op, left, right) ->
+      let left = analyze left in
+      let right = analyze right in
+      fun env ->
+        let* left = left env in
+        let* right = right env in
+        arithmetic op left right
+    | Ast.Compare (op, left, right) ->
+      let left = analyze left in
+      let right = analyze right in
+      fun env ->
+        let* left = left env in
+        let* right = right env in
+        comparison op left right
+    | Ast.Nil -> fun _ -> Ok Value.nil
+    | Ast.Cons (head, tail) ->
+      let head = analyze head in
+      let tail = analyze tail in
+      fun env ->
+        let* head = head env in
+        let* tail = tail env in
+        Ok (Value.cons head tail)
+    | Ast.Concat (left, right) ->
+      let left = analyze left in
+      let right = analyze right in
+      fun env ->
+        let* left = left env in
+        let* right = right env in
+        (match Value.view left, Value.view right with
+         | Value.String a, Value.String b -> Ok (Value.string (a ^ b))
+         | _ -> type_error "^ operands are not strings")
+    | Ast.Not operand ->
+      let operand = analyze operand in
+      fun env ->
+        let* operand = operand env in
+        let* b = as_bool "not" operand in
+        Ok (Value.bool (not b))
+    | Ast.Neg operand ->
+      let operand = analyze operand in
+      fun env ->
+        let* operand = operand env in
+        negate operand
+    | Ast.Deref reference ->
+      let reference = analyze reference in
+      fun env ->
+        let* reference = reference env in
+        (match Value.view reference with
+         | Value.Ref cell -> Ok !cell
+         | _ -> type_error "! target is not a reference")
+    | Ast.Assign (reference, rhs) ->
+      let reference = analyze reference in
+      let rhs = analyze rhs in
+      fun env ->
+        let* reference = reference env in
+        let* value = rhs env in
+        (match Value.view reference with
+         | Value.Ref cell ->
+           cell := value;
+           Ok Value.unit
+         | _ -> type_error ":= target is not a reference")
+    | Ast.Make_ref operand ->
+      let operand = analyze operand in
+      fun env ->
+        let* operand = operand env in
+        Ok (Value.ref_value operand)
+  and analysis_of body =
+    match Body_table.find_opt memo body with
+    | Some proc -> proc
+    | None ->
+      let proc = analyze body in
+      Body_table.replace memo body proc;
+      proc
+  and analyzed_strategy env body = analysis_of body env
+  and eval_all env procs =
+    let rec go acc = function
+      | [] -> Ok (List.rev acc)
+      | proc :: rest ->
+        let* v = proc env in
+        go (v :: acc) rest
+    in
+    go [] procs
+  and eval_let_analyzed env is_rec bindings rhss body =
+    if is_rec
+    then (
+      let names = List.filter_map (fun (b : Ast.binding) -> b.name) bindings in
+      let env, cells = Env.extend_recursive names env in
+      let rec go cells bindings rhss =
+        match bindings, rhss with
+        | [], [] -> Ok ()
+        | (b : Ast.binding) :: bindings, rhs :: rhss ->
+          let* v = rhs env in
+          let cells =
+            match b.name, cells with
+            | Some _, cell :: cells ->
+              Env.fill cell v;
+              cells
+            | _, cells -> cells
+          in
+          go cells bindings rhss
+        | _, _ -> Error (Eval_error.Invalid_form "binding group mismatch")
+      in
+      let* () = go cells bindings rhss in
+      body env)
+    else
+      let* values = eval_all env rhss in
+      let named =
+        List.filter_map
+          (fun ((b : Ast.binding), v) -> Option.map (fun name -> name, v) b.name)
+          (List.combine bindings values)
+      in
+      body (Env.extend named env)
+  and eval_cases_analyzed env v cases =
+    match cases with
+    | [] -> type_error "no case matched"
+    | (pattern, body) :: rest ->
+      (match bind_pattern pattern v with
+       | None -> eval_cases_analyzed env v rest
+       | Some bindings -> body (Env.extend bindings env))
+  in
+  analyze
+;;
 
-  (** The analyzed evaluator's [apply]: primitives run through the
-      section's table, and a compound procedure extends the captured
-      environment with the arguments and executes its registered
-      analyzed body. *)
-  and apply proc args =
-    match Value.view proc with
-    | Value.Primitive_procedure name ->
-      (match List.assoc_opt name primitive_table with
-       | Some f -> f args
-       | None ->
-         Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
-    | Value.Compound_procedure { parameters; env; _ } ->
-      Env.extend parameters args env
-      >>= fun extended ->
-      (match registered proc with
-       | Some body_exec -> body_exec extended
-       | None -> Error (Eval_error.Invalid_form "the analyzed body is missing"))
-    | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
-  ;;
+let analyze e = analyzer () e
 
-  (** [eval exp env] analyzes [exp] and runs the resulting execution
-      procedure in [env]. *)
-  let eval exp env = analyze exp >>= fun proc -> proc env
-end
+let run_analyzed ~emit program =
+  let analyze = analyzer () in
+  let eval_all env procs =
+    let rec go acc = function
+      | [] -> Ok (List.rev acc)
+      | proc :: rest ->
+        let* v = proc env in
+        go (v :: acc) rest
+    in
+    go [] procs
+  in
+  let items = Check.items program in
+  let procs =
+    List.map
+      (fun (item : Ast.item) ->
+         match item with
+         | Ast.Type_item _ -> `Type
+         | Ast.Value_item (is_rec, bindings) ->
+           `Value
+             (is_rec, bindings, List.map (fun (b : Ast.binding) -> analyze b.rhs) bindings))
+      items
+  in
+  let rec go env outcome = function
+    | [] -> Ok outcome
+    | `Type :: rest -> go env outcome rest
+    | `Value (is_rec, bindings, rhss) :: rest ->
+      if is_rec
+      then (
+        let names = List.filter_map (fun (b : Ast.binding) -> b.name) bindings in
+        let env, cells = Env.extend_recursive names env in
+        let rec fill_all cells bindings rhss =
+          match bindings, rhss with
+          | [], [] -> Ok ()
+          | (b : Ast.binding) :: bindings, rhs :: rhss ->
+            let* v = rhs env in
+            let cells =
+              match b.name, cells with
+              | Some _, cell :: cells ->
+                Env.fill cell v;
+                cells
+              | _, cells -> cells
+            in
+            fill_all cells bindings rhss
+          | _, _ -> Error (Eval_error.Invalid_form "binding group mismatch")
+        in
+        let* () = fill_all cells bindings rhss in
+        let outcome =
+          match List.rev (List.filter_map (fun (b : Ast.binding) -> b.name) bindings) with
+          | name :: _ ->
+            (match Env.find env name with
+             | Some v -> v
+             | None -> outcome)
+          | [] -> outcome
+        in
+        go env outcome rest)
+      else
+        let* values = eval_all env rhss in
+        let named =
+          List.filter_map
+            (fun ((b : Ast.binding), v) -> Option.map (fun name -> name, v) b.name)
+            (List.combine bindings values)
+        in
+        let env = Env.extend named env in
+        let outcome =
+          match List.rev named with
+          | (_, v) :: _ -> v
+          | [] -> outcome
+        in
+        go env outcome rest
+  in
+  go (Prelude.initial_env ~emit ()) Value.unit procs
+;;
+
+(* {1 The evaluators as functions over one expression} *)
+
+type eval_t = Ast.expr -> Env.t -> outcome
+
+let eval_expr : eval_t = fun e env -> eval direct env e
+let apply_procedure proc args = apply direct proc args
+let the_global_environment ?(emit = print_string) () = Prelude.initial_env ~emit ()
+
+let expression source =
+  match Check.check ~filename:"expression.ml" ("let it = (" ^ source ^ ")") with
+  | Error d -> Error (Check.diagnostic_to_string d)
+  | Ok program ->
+    (match Check.items program with
+     | [ Ast.Value_item (false, [ { Ast.rhs; _ } ]) ] -> Ok rhs
+     | _ -> Error "expression: one binding expected")
+;;
+
+let transcript ?(experiment = Check.Core) run source =
+  match Check.check_experiment ~experiment ~filename:"program.ml" source with
+  | Error d -> "rejected: " ^ Check.kind_to_string d.kind
+  | Ok program ->
+    let out = Buffer.create 64 in
+    (match run ~emit:(Buffer.add_string out) program with
+     | Ok _ -> Buffer.contents out
+     | Error e -> Buffer.contents out ^ "error: " ^ Eval_error.to_string e)
+;;
+
+let open_eval ~(self : eval_t) : eval_t =
+  fun e env -> eval (fun env e -> self e env) env e
+;;
+
+let apply_with ~(self : eval_t) proc args = apply (fun env e -> self e env) proc args

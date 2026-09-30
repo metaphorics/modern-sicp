@@ -87,7 +87,8 @@ module Float_number :
 # module Int_summer = Summer (Int_number);;
 module Int_summer : sig val sum : Int_number.t list -> Int_number.t end
 # module Float_summer = Summer (Float_number);;
-module Float_summer : sig val sum : Float_number.t list -> Float_number.t end
+module Float_summer :
+  sig val sum : Float_number.t list -> Float_number.t end
 # Int_summer.sum [ 1; 2; 3 ];;
 - : Int_number.t = 6
 # Float_summer.sum [ 1.5; 2.5 ];;
@@ -150,7 +151,8 @@ of a variable, since only a literal @code{(module @dots{})} at the call site
 lets the type checker resolve @code{M.t} for that one call:
 
 @example
-# let sum_with (module M : NUMBER) xs = M.to_string (List.fold_left M.add M.zero xs);;
+# let sum_with (module M : NUMBER) xs =
+  M.to_string (List.fold_left M.add M.zero xs);;
 val sum_with : (module M : NUMBER) -> M.t list -> string = <fun>
 # sum_with (module Int_number) [ 1; 2; 3 ];;
 - : string = "6"

@@ -10,4 +10,4 @@
 val ex_5_06 : unit -> (string list, Sicp_ch5.Sec_5_1.error) result
 
 (** The Figure 5.12 controller with the pair removed. *)
-val fib_modified_controller : string
+val fib_modified_controller : Sicp_ch5.Sec_5_1.value Sicp_ch5.Sec_5_1.instruction list

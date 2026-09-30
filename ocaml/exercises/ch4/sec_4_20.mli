@@ -1,22 +1,23 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from SICP section 4.1 exercise 4.20 *)
 
-(** Exercise 4.20: letrec as a derived expression. The statement lives in the section; this
+(** Exercise 4.20: [let rec] as a derived expression. The statement lives in the section; this
     signature is the pending exercise's public contract. *)
 
-(** A letrec shape: the bindings and the body of one letrec form. *)
-type shape = (string * Sicp_common.Ast.expr) list * Sicp_common.Ast.expr list
+(** [letrec_to_lets e] is the derived form of the [let rec] group [e],
+    or an [Invalid_form] error when [e] is not a [let rec]. *)
+val letrec_to_lets
+  :  Sicp_common.Ast.expr
+  -> (Sicp_common.Ast.expr, Sicp_common.Eval_error.t) result
 
-(** [letrec_to_lets shape] lowers one letrec shape to unassigned lets
-      and assignments. *)
-val letrec_to_lets : shape -> (Sicp_common.Ast.expr, Sicp_common.Eval_error.t) result
+(** [eval] is the evaluator that derives every [let rec] with
+    [letrec_to_lets] and reports a read of the unassigned marker as an
+    error. *)
+val eval : Sicp_ch4.Sec_4_1.eval_t
 
-(** [eval_shape shape env] lowers [shape] and evaluates the result
-      with the scan-out evaluator of 4.16. *)
-val eval_shape
-  :  shape
-  -> Sicp_common.Value.env
-  -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+(** [parity binder] is the source of Louis's example, [f 5], whose
+    internal group is written [let binder ... and ...]. *)
+val parity : string -> string
 
 (** [ex_4_20 ()] runs the demonstration the statement asks for and
     answers its observable outcomes as printed strings, in the order

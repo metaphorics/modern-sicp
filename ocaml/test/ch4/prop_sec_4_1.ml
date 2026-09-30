@@ -1,101 +1,114 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(* Properties over the reference solutions of section 4.1. The unit
-   spot checks in [test_sec_4_1.ml] pin the deterministic values;
-   these assert the evaluator's invariants over random inputs, because
-   one worked example can satisfy them by accident. *)
+(* Properties over the solutions of section 4.1.  The unit spot checks
+   in [test_sec_4_1.ml] pin the deterministic values; these assert the
+   evaluator's invariants over random inputs, because one worked example
+   can satisfy them by accident. *)
 
 open QCheck2
 
-let eval_text env text =
-  match Sicp_common.Reader.read text with
-  | Ok exp -> Sicp_ch4.Sec_4_1.eval exp env
-  | Error e ->
-    Error (Sicp_common.Eval_error.Invalid_form (Sicp_common.Reader.to_string e))
+let bool_names i = "b" ^ string_of_int (i mod 4)
+
+let rec gen_bool depth =
+  if depth = 0
+  then
+    Gen.oneof
+      [ Gen.return "true"; Gen.return "false"; Gen.map bool_names (Gen.int_bound 3) ]
+  else
+    Gen.oneof
+      [ Gen.return "true"
+      ; Gen.return "false"
+      ; Gen.map bool_names (Gen.int_bound 3)
+      ; Gen.map2
+          (fun a b -> "(" ^ a ^ " && " ^ b ^ ")")
+          (gen_bool (depth - 1))
+          (gen_bool (depth - 1))
+      ; Gen.map2
+          (fun a b -> "(" ^ a ^ " || " ^ b ^ ")")
+          (gen_bool (depth - 1))
+          (gen_bool (depth - 1))
+      ; Gen.map
+          (fun c ->
+             "(if "
+             ^ c
+             ^ " then "
+             ^ bool_names depth
+             ^ " else not "
+             ^ bool_names depth
+             ^ ")")
+          (gen_bool (depth - 1))
+      ]
 ;;
 
-let shown = function
-  | Ok v -> Sicp_common.Value.to_string v
-  | Error e -> "Error: " ^ Sicp_common.Eval_error.to_string e
+(* The generated bodies read b0..b3.  Admission type-checks before
+   evaluation, so the bindings live in the source, not in the
+   environment: b0 and b2 are true, b1 and b3 false. *)
+let bound source =
+  "let b0 = true and b1 = false and b2 = true and b3 = false in (" ^ source ^ ")"
 ;;
 
-let fresh () = Sicp_ch4.Sec_4_1.the_global_environment ()
-
-(* A definition answers ok, a set! through the nearest binding, and a
-   lookup reads what was written. *)
-let define_set_lookup n =
-  n >= 0
-  &&
-  let env = fresh () in
-  let open_ok = eval_text env "(define x 0)" = Ok (Sicp_common.Value.symbol "ok") in
-  let set_ok =
-    match eval_text env Printf.(sprintf "(set! x %d)" n) with
-    | Error _ -> false
-    | Ok _ -> eval_text env "x" = Ok (Sicp_common.Value.int n)
-  in
-  open_ok && set_ok
+let run eval source =
+  match Sicp_ch4.Sec_4_1.expression (bound source) with
+  | Error d -> `Rejected d
+  | Ok e ->
+    (match eval e (Sicp_ch4.Sec_4_1.the_global_environment ()) with
+     | Ok v -> `Value (Sicp_common.Value.to_string v)
+     | Error e -> `Failed (Sicp_common.Eval_error.to_string e))
 ;;
 
-let define_set_lookup_prop =
+(* The same conjunction evaluated three ways always agrees: directly,
+   through the special-forms evaluator, and through the derived form. *)
+let connectives_agree =
   Test.make
-    ~name:"define, set!, and lookup round-trip the newest binding"
-    ~count:100
-    (Gen.int_range 0 1000)
-    define_set_lookup
+    ~name:"a connective expression answers the same value special, derived, and direct"
+    (gen_bool 3)
+    (fun source ->
+       let direct = run Sicp_ch4.Sec_4_1.eval_expr source in
+       let special = run Sicp_ch4_solutions.Sec_4_4.eval_special source in
+       let derived = run Sicp_ch4_solutions.Sec_4_4.eval_derived source in
+       match direct with
+       | `Value _ -> direct = special && direct = derived
+       | _ -> false)
 ;;
 
-(* Closures capture their definition environment: two calls of the
-   same maker keep independent state. *)
-let closures_capture_independently d1 d2 =
-  let env = fresh () in
-  let _ = eval_text env "(define (make) (define v 0) (lambda (d) (set! v (+ v d)) v))" in
-  let _ = eval_text env "(define a (make))" in
-  let _ = eval_text env "(define b (make))" in
-  let _ = eval_text env (Printf.sprintf "(a %d)" d1) in
-  let _ = eval_text env (Printf.sprintf "(b %d)" d2) in
-  let _ = eval_text env "(a 3)" in
-  shown (eval_text env "(a 0)")
-  = Sicp_common.Value.to_string (Sicp_common.Value.int (d1 + 3))
-  && shown (eval_text env "(b 0)")
-     = Sicp_common.Value.to_string (Sicp_common.Value.int d2)
-;;
-
-let closures_capture_prop =
+(* Lowering a plain let never changes its value: the standard evaluator
+   sees the same program as the 4.6 evaluator, and shadowing pins the
+   scope. *)
+let let_lowering_sound =
   Test.make
-    ~name:"two maker calls keep independent captured state"
-    ~count:40
-    (Gen.pair (Gen.int_range 0 50) (Gen.int_range 0 50))
-    (fun (d1, d2) -> closures_capture_independently d1 d2)
+    ~name:"let_to_combination preserves the value of a shadowing let"
+    Gen.(pair (int_bound 100) (int_bound 100))
+    (fun (outer, inner) ->
+       let source =
+         Printf.sprintf "let x = %d in let x = %d and y = x in x + y" outer inner
+       in
+       let expected = `Value (string_of_int (inner + outer)) in
+       run Sicp_ch4.Sec_4_1.eval_expr source = expected
+       && run Sicp_ch4_solutions.Sec_4_6.eval source = expected)
 ;;
 
-(* The analyzed evaluator agrees with the direct one on a defined
-   recursive procedure over random argument sizes. *)
-let analyzed_agrees n =
-  let definition = "(define (factorial k) (if (= k 1) 1 (* k (factorial (- k 1)))))" in
-  let program = Printf.sprintf "(begin %s (factorial %d))" definition n in
-  let direct =
-    let env = fresh () in
-    eval_text env program
-  in
-  let analyzed =
-    match Sicp_common.Reader.read program with
-    | Ok exp -> Sicp_ch4.Sec_4_1.Analyze.eval exp (fresh ())
-    | Error e ->
-      Error (Sicp_common.Eval_error.Invalid_form (Sicp_common.Reader.to_string e))
-  in
-  shown direct = shown analyzed
-;;
-
-let analyzed_agrees_prop =
+(* Analyzing a connective-heavy body never changes its answer: the
+   4.22 lowering plus the section analyzer is the direct run. *)
+let analyze_let_sound =
   Test.make
-    ~name:"the analyzed evaluator agrees with the direct one"
-    ~count:100
-    (Gen.int_range 1 12)
-    analyzed_agrees
+    ~name:"4.22 analyzes a connective let to the direct value"
+    (gen_bool 3)
+    (fun body ->
+       let source =
+         Printf.sprintf
+           "let r = if %s then 1 else 2 in if r = 1 then %s else not %s"
+           body
+           body
+           body
+       in
+       let direct = run Sicp_ch4.Sec_4_1.eval_expr source in
+       match direct with
+       | `Value _ -> direct = run Sicp_ch4_solutions.Sec_4_22.eval source
+       | _ -> false)
 ;;
 
 let () =
   QCheck_base_runner.run_tests_main
-    [ define_set_lookup_prop; closures_capture_prop; analyzed_agrees_prop ]
+    [ connectives_agree; let_lowering_sound; analyze_let_sound ]
 ;;

@@ -97,7 +97,9 @@ fancy numerical tricks in @ref{3.5.3}.}
 let rec pi_sum a b =
   if a > b
   then 0.0
-  else (1.0 /. (Float.of_int a *. Float.of_int (a + 2))) +. pi_sum (a + 4) b;;
+  else
+    (1.0 /. (Float.of_int a *. Float.of_int (a + 2)))
+    +. pi_sum (a + 4) b;;
 @end example
 
 @noindent
@@ -157,12 +159,15 @@ Notice that @code{sum} takes as its arguments the lower and upper bounds
 @code{a} and @code{b} together with the procedures @code{term} and
 @code{next}.  We can use @code{sum} just as we would any procedure.  For
 example, we can use it (along with a procedure @code{inc} that increments its
-argument by 1) to define @code{sum_cubes}:
+argument by 1 and a @code{float}-valued @code{cube}, shadowing the integer
+version at the start of this section) to define @code{sum_cubes}:
 
 @example ocaml
-let inc n = n + 1;;
+let inc x = x +. 1.0;;
 
-let sum_cubes a b = sum cube a inc b;;
+let cube x = x *. x *. x;;
+
+let sum_cubes a b = sum cube (Float.of_int a) inc (Float.of_int b);;
 @end example
 
 @noindent
@@ -170,7 +175,7 @@ Using this, we can compute the sum of the cubes of the integers from 1 to 10:
 
 @example ocaml
 sum_cubes 1 10;;
-(* => 3025 *)
+(* => 3025. *)
 @end example
 
 @noindent
@@ -180,7 +185,8 @@ With the aid of an identity procedure to compute the term, we can define
 @example ocaml
 let identity x = x;;
 
-let sum_integers a b = sum identity a inc b;;
+let sum_integers a b =
+  sum identity (Float.of_int a) inc (Float.of_int b);;
 @end example
 
 @noindent
@@ -188,7 +194,7 @@ Then we can add up the integers from 1 to 10:
 
 @example ocaml
 sum_integers 1 10;;
-(* => 55 *)
+(* => 55. *)
 @end example
 
 @noindent
@@ -200,26 +206,28 @@ them altogether in @ref{1.3.2}.}
 
 @example ocaml
 let pi_sum a b =
-  let pi_term x = 1.0 /. (Float.of_int x *. Float.of_int (x + 2)) in
-  let pi_next x = x + 4 in
-  sum pi_term a pi_next b;;
+  let pi_term x = 1.0 /. (x *. (x +. 2.0)) in
+  let pi_next x = x +. 4.0 in
+  sum pi_term (Float.of_int a) pi_next (Float.of_int b);;
 @end example
 
 @noindent
-There is a wrinkle here that the Scheme original does not have: @code{sum}
-takes an integer index @code{a}, an integer step @code{next}, but a term that
-returns a @code{float}, and it adds those terms with @code{+.}, not @code{+}.
-OCaml's @code{+} works only on @code{int} and @code{+.} only on @code{float};
-unlike Scheme's arithmetic, which dispatches on the numbers it is actually
-given, neither operator can be handed the other's kind of number, so one
-@code{sum} cannot silently mix them the way the Scheme original does.  Rather
-than write a separate @code{sum} for every combination of index and term
-types, this edition settles the index type once, at @code{float}: every term
-above returns @code{float} even where the true result, like @code{sum_cubes 1
-10 = 3025}, happens to be a whole number.  The payoff shows up two pages on,
-where @code{integral} needs a genuinely real-valued step and reuses this same
-@code{sum} without change---no conversion, no second definition, because the
-index was never really an @code{int} to begin with.
+There is a wrinkle here that the original book does not have: OCaml's
+@code{+} works only on @code{int} and @code{+.} only on @code{float}, and
+neither operator can be handed the other's kind of number, so a single
+@code{sum} cannot silently cover both kinds of sum the way the original's
+generic arithmetic did.  Rather than write a separate @code{sum} for every
+combination of index and term types, this edition settles the index type
+once, at @code{float}: @code{sum} takes a @code{float} index and a
+@code{float}-returning term, @code{inc} steps by @code{1.0}, and @code{cube}
+is redefined at @code{float -> float}, shadowing the integer version at the
+start of this section.  A caller that counts in integers, like
+@code{sum_cubes}, promotes its bounds with @code{Float.of_int} and receives a
+@code{float} back---the displayed @code{3025.}---even where the true result,
+like @code{sum_cubes 1 10 = 3025}, is a whole number.  The payoff shows up
+two pages on, where @code{integral} needs a genuinely real-valued step and
+reuses this same @code{sum} without change---no conversion, no second
+definition, because the index was never really an @code{int} to begin with.
 
 @noindent
 Using these procedures, we can compute an approximation to @math{\pi}:
@@ -419,7 +427,7 @@ subsection's heading still uses for it).  Using @code{fun} we can describe
 what we want as
 
 @example ocaml
-fun x -> x + 4;;
+fun x -> x +. 4.0;;
 @end example
 
 @noindent
@@ -436,10 +444,10 @@ auxiliary procedures as:
 @example ocaml
 let pi_sum a b =
   sum
-    (fun x -> 1.0 /. (Float.of_int x *. (Float.of_int x +. 2.0)))
-    a
-    (fun x -> x + 4)
-    b;;
+    (fun x -> 1.0 /. (x *. (x +. 2.0)))
+    (Float.of_int a)
+    (fun x -> x +. 4.0)
+    (Float.of_int b);;
 @end example
 
 @noindent
@@ -486,9 +494,13 @@ the procedure of an argument x that adds x and 4
 
 @noindent
 Like any expression that has a procedure as its value, a @code{fun} expression
-can be used as the operator in a combination such as
+can be used as the operator in a combination such as (here @code{square} is
+redefined for integers, shadowing the floating-point version of
+@ref{1.1.7}):
 
 @example ocaml
+let square x = x * x;;
+
 (fun x y z -> x + y + square z) 1 2 3;;
 (* => 12 *)
 @end example
@@ -681,9 +693,11 @@ will return to this issue in @ref{4.1.6}, after we learn more about
 evaluation.}
 
 @quotation
-@strong{@anchor{Exercise 1.34}Exercise 1.34:} Suppose we define the procedure
+@strong{@anchor{Exercise 1.34}Exercise 1.34:} Suppose we define the procedures
 
 @example ocaml
+let square x = x * x;;
+
 let f g = g 2;;
 @end example
 
@@ -810,7 +824,9 @@ Here is another example, using the half-interval method to search for a root of
 the equation @math{{x^3 - 2x - 3 = 0}} between 1 and 2:
 
 @example ocaml
-half_interval_method (fun x -> (x *. x *. x) -. (2.0 *. x) -. 3.0) 1.0 2.0;;
+half_interval_method
+  (fun x -> (x *. x *. x) -. (2.0 *. x) -. 3.0)
+  1.0 2.0;;
 (* => Ok 1.89306640625 *)
 @end example
 
@@ -847,7 +863,9 @@ let fixed_point ?(max_iterations = 100_000) f first_guess =
     then Error Not_converged
     else (
       let next = f guess in
-      if close_enough guess next then Ok next else try_guess next (n + 1))
+      if close_enough guess next
+      then Ok next
+      else try_guess next (n + 1))
   in
   try_guess first_guess 0;;
 @end example
@@ -947,11 +965,10 @@ solution to @math{{x^x = 1000}} by finding a fixed point of
 @math{{x \mapsto \log 1000 / \log x}}.  (Use OCaml's primitive @code{log}
 function, which computes natural logarithms.)  Compare the number of steps
 this takes with and without average damping.  (Note that you cannot start
-@code{fixed_point} with a guess of 1: unlike Scheme's @code{error}, OCaml's
-@code{1.0 /. 0.0} does not raise---it returns @code{infinity}---but a search
-that never leaves @code{infinity} behind is exactly as stuck as one that would
-have signaled a division-by-zero error, and the edition's iteration cap will
-eventually turn that stall into @code{Error Not_converged}.)
+@code{fixed_point} with a guess of 1: OCaml's
+@code{1.0 /. 0.0} does not raise an error---it returns @code{infinity}---and a
+search that never leaves @code{infinity} behind is stuck just the same until
+the edition's iteration cap turns that stall into @code{Error Not_converged}.)
 @end quotation
 
 @quotation
@@ -1071,11 +1088,12 @@ let average_damp f x = average x (f x);;
 @end example
 
 @noindent
-@code{Average_damp} is a procedure that takes as its argument a procedure
-@code{f} and returns as its value a procedure (produced by the @code{fun})
-that, when applied to a number @code{x}, produces the average of @code{x} and
-@code{(f x)}.  For example, applying @code{average_damp} to the @code{square}
-procedure produces a procedure whose value at some number @math{x} is the
+@code{average_damp} is a procedure that takes as its argument a procedure
+@code{f} and returns as its value a procedure (the partially applied
+@code{average_damp f}) that, when applied to a number @code{x}, produces the
+average of @code{x} and @code{(f x)}.  For example, applying
+@code{average_damp} to the squaring procedure @code{(fun x -> x *. x)}
+produces a procedure whose value at some number @math{x} is the
 average of @math{x} and @math{{x^2}}.  Applying this resulting procedure to 10
 returns the average of 10 and 100, or 55:@footnote{Observe that
 @code{average_damp f x} is itself a combination whose function position,
@@ -1115,7 +1133,8 @@ square-root procedure to one that extracts cube roots:@footnote{See
 @ref{Exercise 1.45} for a further generalization.}
 
 @example ocaml
-let cube_root x = fixed_point (average_damp (fun y -> x /. (y *. y))) 1.0;;
+let cube_root x =
+  fixed_point (average_damp (fun y -> x /. (y *. y))) 1.0;;
 @end example
 
 @subsubheading Newton's Method
@@ -1237,7 +1256,8 @@ begins with a function and finds a fixed point of some transformation of the
 function.  We can express this general idea itself as a procedure:
 
 @example ocaml
-let fixed_point_of_transform g transform guess = fixed_point (transform g) guess;;
+let fixed_point_of_transform g transform guess =
+  fixed_point (transform g) guess;;
 @end example
 
 @noindent
@@ -1250,7 +1270,8 @@ this section (@ref{1.3.4}), where we look for a fixed point of the
 average-damped version of @math{{y \mapsto x / y}}:
 
 @example ocaml
-let sqrt x = fixed_point_of_transform (fun y -> x /. y) average_damp 1.0;;
+let sqrt x =
+  fixed_point_of_transform (fun y -> x /. y) average_damp 1.0;;
 @end example
 
 @noindent
@@ -1259,7 +1280,10 @@ Similarly, we can express the second square-root computation from this section
 @math{{y \mapsto y^2 - x}}:
 
 @example ocaml
-let sqrt x = fixed_point_of_transform (fun y -> (y *. y) -. x) newton_transform 1.0;;
+let sqrt x =
+  fixed_point_of_transform
+    (fun y -> (y *. y) -. x)
+    newton_transform 1.0;;
 @end example
 
 @noindent
@@ -1312,7 +1336,7 @@ procedures is that allowing procedures to be returned as values requires
 reserving storage for a procedure's free variables even while the procedure
 is not executing.  In OCaml this storage is the closure record the compiler
 builds wherever a function captures a variable from its enclosing scope; in
-the Scheme evaluator we will study in @ref{4.1}, these variables are stored in
+the evaluator we will study in @ref{4.1}, these variables are stored in
 the procedure's environment instead.}
 
 @quotation
@@ -1429,7 +1453,7 @@ commits to a single stopping rule the moment it is called, then hands back one
 value.  Write @code{sqrt_guesses x}, returning an infinite lazy @code{Seq.t}
 of the successive average-damped guesses at the square root of @code{x},
 starting from 1.0, with no @code{good_enough} test built in at all.  Show that
-forcing enough of the sequence agrees with @code{Average_damp}'s own converged
+forcing enough of the sequence agrees with @code{average_damp}'s own converged
 @code{sqrt x}.
 @end quotation
 

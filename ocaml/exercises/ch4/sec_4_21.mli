@@ -1,12 +1,8 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from SICP section 4.1 exercise 4.21 *)
 
-(** Exercise 4.21: recursion without define. The statement lives in the section; this
+(** Exercise 4.21: recursion without a recursive binding. The statement lives in the section; this
     signature is the pending exercise's public contract. *)
-
-(** [eval] is the base evaluator, run on programs whose procedures
-      are plain lambdas. *)
-val eval : Sicp_ch4.Sec_4_1.eval_t
 
 (** [ex_4_21 ()] runs the demonstration the statement asks for and
     answers its observable outcomes as printed strings, in the order

@@ -1,218 +1,168 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.33: compiling the alternative factorial.  The
-    compilation differs from the book's [factorial] in exactly one
-    save/restore pair: the alternative's [*] needs [n] only after the
-    recursive call returns, so [n] lives in its frame and needs no
-    register; but the recursive call is an operand of [*], so [argl]
-    is saved around it as before.  Both procedures answer the same
-    values; neither is faster, the alternative's code is one pair of
-    stack operations different, not faster or slower per call. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
+module Value = Sicp_common.Value
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
+module W = Sicp_ch5.Sec_5_4
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
-let factorial_source =
-  {|(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))|}
+let program ~filename source =
+  Result.map_error
+    (fun d -> Eval_error.Invalid_form (Check.diagnostic_to_string d))
+    (Check.check ~filename source)
 ;;
 
-let factorial_alt_source =
-  {|(define (factorial-alt n)
-  (if (= n 1)
-      1
-      (* n (factorial-alt (- n 1)))))|}
+type run =
+  { value : Value.t
+  ; output : string
+  ; steps : int
+  ; pushes : int
+  ; depth : int
+  }
+
+let run_code ?operations code =
+  let out = Buffer.create 16 in
+  let* m = C.load ?operations ~emit:(Buffer.add_string out) code in
+  M.initialize_stack m;
+  let* () = M.start m in
+  let* w = M.get_register m "val" in
+  let* value =
+    match w with
+    | W.V v -> Ok v
+    | w -> Error (Eval_error.Bad_instruction ("val holds " ^ W.word_to_string w))
+  in
+  let pushes, depth = M.stack_statistics m in
+  Ok { value; output = Buffer.contents out; steps = M.executed m; pushes; depth }
 ;;
 
-(** [statements_of state src] is the compilation's statements, one
-    controller line each, without the linkage tail. *)
-let statements_of state src =
-  match Sicp_common.Reader.read src with
-  | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-  | Ok exp ->
-    C.compile C.default_config state [] exp "val" C.Next >>= fun seq -> Ok seq.stmts
+let run_program ?operations program =
+  run_code ?operations (C.compile_program (C.new_state ()) (Check.items program))
 ;;
 
-(** [saves_of stmts] is the save/restore instructions in order. *)
-let has_prefix p s =
-  String.length s >= String.length p && String.sub s 0 (String.length p) = p
+let factorial = "let rec factorial n = if n = 1 then 1 else factorial (n - 1) * n"
+
+let factorial_alt =
+  "let rec factorial_alt n = if n = 1 then 1 else n * factorial_alt (n - 1)"
 ;;
 
-let saves_of stmts =
-  List.filter (fun s -> has_prefix "(save" s || has_prefix "(restore" s) stmts
+let definition_code source =
+  let* p = program ~filename:"ex_5_33.ml" source in
+  match Check.items p with
+  | [ Ast.Value_item (true, [ binding ]) ] ->
+    Ok (C.compile (C.new_state ()) binding.rhs "val" C.Next)
+  | _ -> Error (Eval_error.Invalid_form "one recursive definition")
 ;;
 
-(** [run source] compiles the source, runs it on the machine, and
-    answers the transcript. *)
-let run source =
-  let state = C.new_state () in
-  C.compile_and_go ~state ~compiled:source ~source:"" ()
-  >>= fun m ->
-  (match C.start m with
-   | Ok () -> Ok ()
-   | Error (C.Op_failed m) when m = Sicp_ch5.Sec_5_4.input_exhausted -> Ok ()
-   | Error e -> Error e)
-  >>= fun () -> Ok (C.transcript m)
+let stack_operations (seq : C.seq) =
+  String.concat
+    "; "
+    (List.filter_map
+       (function
+         | M.Save r -> Some ("save " ^ r)
+         | M.Restore r -> Some ("restore " ^ r)
+         | _ -> None)
+       seq.statements)
 ;;
 
-(** [ex_5_33 ()] compiles both definitions, reports the differing
-    save/restore pairs, and runs both factorials at 5: the alternative
-    preserves [env] around the recursive call where the book's version
-    preserves nothing extra, because [n] is fetched after the call for
-    the multiplication. *)
+let measured name definition =
+  let* p =
+    program ~filename:"ex_5_33.ml" (definition ^ "\nlet result = " ^ name ^ " 5\n")
+  in
+  run_program p
+;;
+
 let ex_5_33 () =
-  let state = C.new_state () in
-  statements_of state factorial_source
-  >>= fun stmts ->
-  let state2 = C.new_state () in
-  statements_of state2 factorial_alt_source
-  >>= fun alt_stmts ->
-  run (factorial_source ^ "\n(factorial 5)")
-  >>= fun transcript ->
-  run (factorial_alt_source ^ "\n(factorial-alt 5)")
-  >>= fun alt_transcript ->
-  Ok
-    [ "factorial saves: " ^ String.concat "; " (saves_of stmts)
-    ; "factorial-alt saves: " ^ String.concat "; " (saves_of alt_stmts)
-    ; "factorial 5: " ^ String.concat " " transcript
-    ; "factorial-alt 5: " ^ String.concat " " alt_transcript
-    ]
+  let* plain = definition_code factorial in
+  let* alt = definition_code factorial_alt in
+  let* plain_run = measured "factorial" factorial in
+  let* alt_run = measured "factorial_alt" factorial_alt in
+  let line name code (r : run) =
+    Printf.sprintf
+      "%s: %d statements; %s; answers %s in %d steps"
+      name
+      (List.length code.C.statements)
+      (stack_operations code)
+      (Value.to_string r.value)
+      r.steps
+  in
+  Ok [ line "factorial" plain plain_run; line "factorial_alt" alt alt_run ]
 ;;
 
-(** {1:five_33a Exercise 5.33a}
+(* The hand-optimized body of [factorial_alt].  It replaces the span of
+   the naive compilation from [entry1] to [after-if5]; every other
+   statement of the unit is the compiler's.  The labels it names are the
+   ones the naive compilation of [factorial_alt_program] generates. *)
+let v w = M.Const (W.V w)
+let n = M.Const (W.Exp (Ast.var "n"))
+let binary op = M.Const (W.Exp (Ast.arith op (Ast.var "a") (Ast.var "b")))
+let equal = M.Const (W.Exp (Ast.compare_ Ast.Eq (Ast.var "a") (Ast.var "b")))
 
-    The hand-optimized body of [factorial-alt].  The book's compiled
-    listing pays full procedure-call machinery for every arithmetic
-    step (a lookup for [proc], an argument list, a dispatch, an
-    [apply-primitive-procedure], and the register saves the preserving
-    mechanism wraps around it all); the optimized body runs the
-    arithmetic on the machine's [arg1]/[arg2] words with one
-    instruction per operation, drops the two [proc] saves the compiler
-    emits around the argument-list build, and folds the constant 1 into
-    [arg2].  The compiled calling convention is kept: [continue] and
-    [env] still ride the stack around the recursive call (the callee
-    clobbers both and the [Return] linkage owes the caller its return
-    address), and [argl] is saved because the argument list of [*] is
-    built around the call. *)
-
-let alt_body_source = {|(if (= n 1) 1 (* n (factorial-alt (- n 1))))|}
-
-let optimized_statements =
-  [ "(assign env (op compiled-procedure-env) (reg proc))"
-  ; "(assign env (op extend-environment) (const n) (reg argl) (reg env))"
-  ; "(assign arg1 (op lookup-variable-value) (const n) (reg env))"
-  ; "(assign arg2 (const 1))"
-  ; "(assign val (op =) (reg arg1) (reg arg2))"
-  ; "(test (op false?) (reg val))"
-  ; "(branch (label false-branch1))"
-  ; "(assign val (const 1))"
-  ; "(goto (reg continue))"
-  ; "false-branch1"
-  ; "(save continue)"
-  ; "(save env)"
-  ; "(assign proc (op lookup-variable-value) (const factorial-alt) (reg env))"
-  ; "(assign arg1 (op lookup-variable-value) (const n) (reg env))"
-  ; "(assign arg2 (const 1))"
-  ; "(assign val (op -) (reg arg1) (reg arg2))"
-  ; "(assign argl (op list) (reg val))"
-  ; "(save argl)"
-  ; "(assign continue (label after-call2))"
-  ; "(assign val (op compiled-procedure-entry) (reg proc))"
-  ; "(goto (reg val))"
-  ; "after-call2"
-  ; "(restore argl)"
-  ; "(restore env)"
-  ; "(restore continue)"
-  ; "(assign arg1 (op lookup-variable-value) (const n) (reg env))"
-  ; "(assign arg2 (reg val))"
-  ; "(assign val (op *) (reg arg1) (reg arg2))"
-  ; "(goto (reg continue))"
+let optimized_body =
+  [ M.Label "entry1"
+  ; M.Assign_op ("env", "compiled-procedure-bind", [ M.Reg "proc"; M.Reg "argl" ])
+  ; M.Assign_op ("arg1", "lookup-variable-value", [ n; M.Reg "env" ])
+  ; M.Assign ("arg2", v (Value.int 1))
+  ; M.Assign_op ("val", "apply-binary", [ equal; M.Reg "arg1"; M.Reg "arg2" ])
+  ; M.Test ("false?", [ M.Reg "val" ])
+  ; M.Branch "false-branch4"
+  ; M.Assign ("val", v (Value.int 1))
+  ; M.Goto_reg "continue"
+  ; M.Label "false-branch4"
+  ; M.Save "continue"
+  ; M.Save "arg1"
+  ; M.Assign_op ("val", "apply-binary", [ binary Ast.Sub; M.Reg "arg1"; M.Reg "arg2" ])
+  ; M.Assign_op ("argl", "adjoin-arg", [ M.Reg "val"; M.Const (W.Args []) ])
+  ; M.Assign ("continue", M.Label_ref "after-call8")
+  ; M.Goto "entry1"
+  ; M.Label "after-call8"
+  ; M.Restore "arg1"
+  ; M.Assign ("arg2", M.Reg "val")
+  ; M.Assign_op ("val", "apply-binary", [ binary Ast.Mul; M.Reg "arg1"; M.Reg "arg2" ])
+  ; M.Restore "continue"
+  ; M.Goto_reg "continue"
   ]
 ;;
 
-(** [block_of name stmts] is one enterable controller block: the entry
-    label and the statements.  The compiler's [Return]-linkage output
-    and the hand-optimized listing both already end in the return
-    [goto]; nothing is appended. *)
-let block_of name stmts = String.concat "\n" (name :: stmts)
+let factorial_alt_program = factorial_alt ^ "\nlet result = factorial_alt 5\n"
 
-(** The naive compilation's statements: the body of the alternative
-    factorial exactly as 5.33's compiler emits it, entered with the
-    compiled calling convention ([proc] is the compiled procedure,
-    [argl] the argument list, [continue] the return address). *)
-let naive_statements =
-  let state = C.new_state () in
-  (match Sicp_common.Reader.read alt_body_source with
-   | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-   | Ok body ->
-     C.compile C.default_config state [ [ "n" ] ] body "val" C.Return
-     >>= fun seq ->
-     Ok
-       ([ "(assign env (op compiled-procedure-env) (reg proc))"
-        ; "(assign env (op extend-environment) (const n) (reg argl) (reg env))"
-        ]
-        @ seq.stmts))
-  |> function
-  | Ok stmts -> stmts
-  | Error e -> failwith (C.error_to_string e)
-;;
-
-let naive_block = block_of "entry1" naive_statements
-let optimized_block = block_of "entry1" optimized_statements
-
-(** [measure block n] runs one block as [factorial-alt] on a fresh
-    machine and answers the transcript plus the executed-instruction
-    count.  The harness arms the compiled calling convention the way
-    [compile_and_go] cannot for a bare body: the entry block builds the
-    compiled-procedure object for [entry1] (so the body's recursive
-    lookups of [factorial-alt] re-enter the same block as compiled
-    code), defines it in the global environment, and lists the
-    argument.  The fixed harness instructions are identical for both
-    blocks, so their step-count difference is the code's alone. *)
-let measure block n =
-  let state = C.new_state () in
-  let controller =
-    C.eceval_controller
-    ^ "\nmeasure-entry\n"
-    ^ "  (assign proc (op make-compiled-procedure) (const entry1) (reg env))\n"
-    ^ "  (perform (op define-variable!) (const factorial-alt) (reg proc) (reg env))\n"
-    ^ Printf.sprintf "  (assign argl (op list) (const %d))\n" n
-    ^ "  (assign val (op compiled-procedure-entry) (reg proc))\n"
-    ^ "  (goto (reg val))\n"
-    ^ block
+let index_of label statements =
+  let rec go i = function
+    | [] -> Error (Eval_error.Unknown_label label)
+    | M.Label l :: _ when l = label -> Ok i
+    | _ :: rest -> go (i + 1) rest
   in
-  C.make_compiled_evaluator ~controller ~source:"" ~state ()
-  >>= fun m ->
-  C.set_register m "val" (Sicp_ch5.Sec_5_4.Lab "measure-entry")
-  >>= fun () ->
-  C.set_flag m true;
-  (match C.start m with
-   | Ok () -> Ok ()
-   | Error (C.Op_failed m2) when m2 = Sicp_ch5.Sec_5_4.input_exhausted -> Ok ()
-   | Error e -> Error e)
-  >>= fun () -> Ok (C.transcript m, C.step_count m)
+  go 0 statements
 ;;
 
-(** [ex_5_33a ()] measures both versions at n = 5: the machine's own
-    step counts, same answer 120. *)
+let splice (naive : C.seq) =
+  let* first = index_of "entry1" naive.statements in
+  let* last = index_of "after-if5" naive.statements in
+  let before = List.filteri (fun i _ -> i < first) naive.statements in
+  let after = List.filteri (fun i _ -> i > last) naive.statements in
+  Ok { naive with statements = before @ optimized_body @ after }
+;;
+
 let ex_5_33a () =
-  measure naive_block 5
-  >>= fun (naive_transcript, naive_steps) ->
-  measure optimized_block 5
-  >>= fun (opt_transcript, opt_steps) ->
+  let* p = program ~filename:"ex_5_33a.ml" factorial_alt_program in
+  let naive = C.compile_program (C.new_state ()) (Check.items p) in
+  let* optimized = splice naive in
+  let* naive_run = run_code naive in
+  let* optimized_run = run_code optimized in
+  let win = naive_run.steps - optimized_run.steps in
   Ok
-    [ "naive steps: " ^ string_of_int naive_steps
-    ; "optimized steps: " ^ string_of_int opt_steps
-    ; "naive transcript: " ^ String.concat " " naive_transcript
-    ; "optimized transcript: " ^ String.concat " " opt_transcript
+    [ Printf.sprintf "naive steps: %d" naive_run.steps
+    ; Printf.sprintf "optimized steps: %d" optimized_run.steps
+    ; "naive answer: " ^ Value.to_string naive_run.value
+    ; "optimized answer: " ^ Value.to_string optimized_run.value
     ; Printf.sprintf
         "instruction win: %d of %d (%.1f%%)"
-        (naive_steps - opt_steps)
-        naive_steps
-        (100.0 *. float_of_int (naive_steps - opt_steps) /. float_of_int naive_steps)
+        win
+        naive_run.steps
+        (100.0 *. float_of_int win /. float_of_int naive_run.steps)
     ]
 ;;

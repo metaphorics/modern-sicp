@@ -74,7 +74,7 @@ numbers 1, 2, 3, and 4.
 @image{../../text/original/figures/chap2/Fig2.3e,,147mm,Figure 2.3: Two ways to combine 1@comma{} 2@comma{} 3@comma{} and 4 using pairs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.3e.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.3e.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.3:} Two ways to combine 1, 2, 3, and 4 using pairs.}
@@ -171,7 +171,7 @@ constructed by nested @code{::} operations:
 @image{../../text/original/figures/chap2/Fig2.4e,,125mm,Figure 2.4: The sequence 1@comma{} 2@comma{} 3@comma{} 4 represented as a chain of pairs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.4e.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.4e.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.4:} The sequence 1, 2, 3, 4 represented as a chain of pairs.}
@@ -212,32 +212,19 @@ one_through_four;;
 @noindent
 Be careful not to confuse the expression @code{[ 1; 2; 3; 4 ]} with the value
 @code{[1; 2; 3; 4]}, which is the result obtained when the expression is
-evaluated.  The confusion is harmless in OCaml only because code and data live
+evaluated.  The confusion is harmless in OCaml because code and data live
 on opposite sides of the compiler: a list literal is data, never a procedure
 call, so evaluating a printed list value would simply rebuild the same list.
-Scheme must draw the sharper distinction because its printed list
-@code{(1 2 3 4)} re-reads as an application---evaluating it would ``apply'' the
-procedure @code{1} to arguments @code{2}, @code{3}, @code{4} and signal an
-error.
 
 We can think of @code{List.hd} as selecting the first item in the list, and of
 @code{List.tl} as selecting the sublist consisting of all but the first item.
 Nested applications of the two can be used to extract the second, third, and
 subsequent items in the list.@footnote{Since nested applications of
-@code{List.hd} and @code{List.tl} are cumbersome to write, Lisp dialects
-provide abbreviations for them---for instance,
-
-@example ocaml
-(* cadr arg  =  List.hd (List.tl arg) *)
-@end example
-
-The names of all such procedures start with @code{c} and end with @code{r}.
-Each @code{a} between them stands for a @code{car} operation and each @code{d}
-for a @code{cdr} operation, to be applied in the same order in which they
-appear in the name.  OCaml's standard library names the compound operations it
-actually needs instead: @code{List.nth items n} returns the @math{n}-th item,
+@code{List.hd} and @code{List.tl} are cumbersome to write, the standard
+library provides the compound operations it actually needs instead:
+@code{List.nth items n} returns the @math{n}-th item,
 and the pattern @code{x :: rest} in a @code{match} names the first item and
-the rest in one step, so compound @code{car}/@code{cdr} chains rarely arise.}
+the rest in one step, so long access chains rarely arise.}
 The constructor @code{::} makes a list like the original one, but with an
 additional item at the beginning.
 
@@ -262,19 +249,9 @@ List.hd (List.tl one_through_four);;
 The value @code{[]}, used to terminate the chain of pairs, can be thought
 of as a sequence of no elements, the @newterm{empty list}.  The word
 @newterm{nil} is a contraction of the Latin word @emph{nihil}, which means
-``nothing.''@footnote{It's remarkable how much energy in the standardization of
-Lisp dialects has been dissipated in arguments that are literally over nothing:
-Should @code{nil} be an ordinary name?  Should the value of @code{nil} be a
-symbol?  Should it be a list?  Should it be a pair?  In Scheme, @code{nil} is
-an ordinary name, which we use in this section as a variable whose value is the
-end-of-list marker (just as @code{true} is an ordinary variable that has a true
-value).  Other dialects of Lisp, including Common Lisp, treat @code{nil} as a
-special symbol.  The authors of this book, who have endured too many language
-standardization brawls, would like to avoid the entire issue, and OCaml lets
-them: the end-of-list marker is the literal @code{[]}, a value of every list
-type, with no binding of the name @code{nil} anywhere in the language.  Once we
-have introduced quotation in @ref{2.3}, Scheme editions denote the empty list
-as @code{'()}; the OCaml edition keeps writing @code{[]}.}
+``nothing.''@footnote{The end-of-list marker is the literal
+@code{[]}, a value of every list type, with no binding of the name @code{nil}
+anywhere in the language.}
 
 @subsubheading List operations
 
@@ -312,17 +289,18 @@ list_ref squares 3;;
 
 @noindent
 The first match arm plays the part of the @math{{n = 0}} case; the second strips
-one item and counts down.  The third arm has no counterpart in the Scheme
-definition: there, asking for an item past the end of the list tears a
-@code{car} or @code{cdr} off of a non-pair and errors somewhere far from the
+one item and counts down.  The third arm has no counterpart in a version that
+dispatches on pair structure alone: there, asking for an item past the end of
+the list takes a first or rest field
+off of a non-pair and errors somewhere far from the
 cause, while OCaml's @code{match} forces the end of the list to be a case that
 is decided on purpose, and @code{invalid_arg} names the failure at the place
 that understands it.  The standard library's @code{List.nth items n} is
 @code{list_ref} with the same contract, raising @code{Invalid_argument} when
 @math{n} falls outside the list.
 
-Often we follow the chain down the whole list.  To aid in this, Scheme includes
-a primitive predicate @code{null?}, which tests whether its argument is the
+Often we follow the chain down the whole list.  To aid in this, some languages
+include a primitive predicate that tests whether its argument is the
 empty list; in OCaml the empty list is one arm of a @code{match}.  The
 procedure @code{length}, which returns the number of items in a list,
 illustrates this typical pattern of use:
@@ -485,7 +463,8 @@ let rec cc amount coin_values =
   else if amount < 0.0 || no_more coin_values then 0
   else
     (cc amount (except_first_denomination coin_values))
-    + (cc (amount -. first_denomination coin_values) coin_values)
+    + (cc (amount -. first_denomination coin_values)
+        coin_values)
 ;;
 @end example
 
@@ -497,48 +476,33 @@ affect the answer produced by @code{cc}?  Why or why not?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.20}Exercise 2.20:} The procedures @code{+},
-@code{*}, and @code{List.map} in Scheme take arbitrary numbers of arguments.
-One way Scheme
-defines such procedures is to use @code{define} with @newterm{dotted-tail notation}.
-In a procedure definition, a parameter list that has a dot before
-the last parameter name indicates that, when the procedure is called, the
-initial parameters (if any) will have as values the initial arguments, as
-usual, but the final parameter's value will be a @newterm{list} of any
-remaining arguments.  For instance, given the definition
+@strong{@anchor{Exercise 2.20}Exercise 2.20:} OCaml functions have fixed
+arity: @code{+}, @code{*}, and @code{List.map} each take a set number of
+arguments fixed at their definition.  When a computation takes one initial
+argument and then any number of further arguments, the idiom is to take the
+initial argument as usual and the remaining arguments as one explicit
+@newterm{list}.  The parameter pattern and its resulting bindings are:
 
-@example scheme
-(define (f x y . z) ⟨body⟩)
+@example
+f x y zs
+  x  = 1
+  y  = 2
+  zs = [3; 4; 5; 6]
 @end example
 
 @noindent
-the procedure @code{f} can be called with two or more arguments.  If we evaluate
-@code{(f 1 2 3 4 5 6)}, then in the body of @code{f}, @code{x} will be 1,
-@code{y} will be 2, and @code{z} will be the list @code{(3 4 5 6)}.
-
-OCaml has no dotted-tail notation: every function takes a fixed number of
-arguments, fixed at its definition.  The idiom that plays the rest-argument
-role is to take the initial arguments as usual and the remaining arguments as
-one explicit list.  A two-or-more-argument @code{f} is written
+so a call @code{f 1 2 [ 3; 4; 5; 6 ]} binds @code{x} to 1,
+@code{y} to 2, and @code{zs} to @code{[3; 4; 5; 6]}.@footnote{OCaml's
+@code{fun} has no rest-argument form at all, so a function that accepts zero
+or more arguments takes the whole list and becomes a one-argument function
+over a list, called as @code{g [ 1; 2; 3; 4; 5; 6 ]}.}  Written out, a
+two-or-more-argument @code{f} is
 
 @example ocaml
 let f x y zs = (* ⟨body⟩, with [zs] holding the rest *) ⋯
 @end example
 
 @noindent
-and called as @code{f 1 2 [ 3; 4; 5; 6 ]}, which binds @code{x} to 1,
-@code{y} to 2, and @code{zs} to @code{[3; 4; 5; 6]}.@footnote{To define
-@code{f} and @code{g} using @code{lambda}, Scheme would write
-
-@example scheme
-(define f (lambda (x y . z) ⟨body⟩))
-(define g (lambda w ⟨body⟩))
-@end example
-
-OCaml's @code{fun} has no rest-argument form at all.  A function that accepts
-zero or more arguments is written to take the whole list, so @code{g} becomes a
-one-argument function over a list, called as @code{g [ 1; 2; 3; 4; 5; 6 ]}.}
-
 Use this notation to write a procedure @code{same_parity} that takes one
 integer and the list of the rest and returns a list of all the arguments that
 have the same even-odd parity as the first argument.  For example,
@@ -575,8 +539,8 @@ as a higher-order procedure, just as in @ref{1.3}.  The higher-order
 procedure here is called @code{map}.  @code{Map} takes as arguments a procedure
 of one argument and a list, and returns a list of the results produced by
 applying the procedure to each element in the list:@footnote{@anchor{Footnote 78}
-Scheme standardly provides a @code{map} procedure that
-is more general than the one described here.  This more general @code{map}
+The book's original @code{map} is
+more general than the one described here.  This more general @code{map}
 takes a procedure of @math{n} arguments, together with @math{n} lists, and applies
 the procedure to all the first elements of the lists, all the second elements
 of the lists, and so on, returning a list of the results.  OCaml's library
@@ -727,8 +691,8 @@ implementation of @code{for_each}.
 
 The representation of sequences in terms of lists generalizes naturally to
 represent sequences whose elements may themselves be sequences.  For example,
-we can regard the object @code{((1 2) 3 4)} of Scheme as a list of three items,
-the first of which is itself a list, @code{(1 2)}.  In OCaml, a list's elements
+we can regard the object @code{((1,2),3,4)} as a list of three items,
+the first of which is itself a list, @code{(1,2)}.  In OCaml, a list's elements
 all carry one type, so a structure that mixes numbers and lists of numbers at
 the same level gets its own @newterm{variant} type, with one constructor for a
 leaf and one for the branching case:
@@ -743,7 +707,8 @@ type tree =
 The object above is then the tree @code{Node [Node [Leaf 1; Leaf 2]; Leaf 3; Leaf 4]}:
 a node holding three subtrees, the first of which is itself a node holding two
 leaves.  This is the type system drawing @ref{Figure 2.5}'s structure: where
-Scheme discovers at run time whether a @code{car} is a pair or a number, the
+a dynamically checked list discovers at run time whether a component is a pair
+or a number, the
 OCaml value says so in its constructor, and the compiler checks that every
 program that takes the tree apart handles both cases.  @ref{Figure 2.5} shows
 the representation of this structure in terms of pairs.
@@ -753,18 +718,18 @@ the representation of this structure in terms of pairs.
 @ifinfo
 @quotation
 @strong{Figure 2.5:} Structure formed by @code{Node [Node [Leaf 1; Leaf 2]; Leaf 3; Leaf 4]},
-the tree reading of Scheme's @code{(cons (list 1 2) (list 3 4))}.
+the tree reading of the paired structure @code{((1,2),3,4)}.
 
 @example
-                                          (3 4)
+                                          (3,4)
                                             |
                                             V
-((1 2) 3 4)  +---+---+                  +---+---+     +---+---+
+((1,2),3,4)  +---+---+                  +---+---+     +---+---+
         ---->| * | *-+----------------->| * | *-+---->| * | / |
              +-|-+---+                  +-|-+---+     +-|-+---+
                |                          |             |
                V                          V             V
-      (1 2)  +---+---+     +---+---+    +---+         +---+
+      (1,2)  +---+---+     +---+---+    +---+         +---+
         ---->| * | *-+---->| * | / |    | 3 |         | 4 |
              +-|-+---+     +-|-+---+    +---+         +---+
                |             |
@@ -776,13 +741,13 @@ the tree reading of Scheme's @code{(cons (list 1 2) (list 3 4))}.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.5e,,140mm,Figure 2.5: Structure formed by (cons (list 1 2) (list 3 4)).,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.5e,,140mm,Figure 2.5: Structure formed by pairing (1@comma{}2) with (3@comma{}4).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.5e.std,,140mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.5e.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 2.5:} Structure formed by Scheme's @code{(cons (list 1 2) (list 3 4))}, the same three-item list whose OCaml tree reading is @code{Node [Node [Leaf 1; Leaf 2]; Leaf 3; Leaf 4]}.}
+@caption{@strong{Figure 2.5:} Structure formed by pairing (1,2) with (3,4), the same three-item list whose OCaml tree reading is @code{Node [Node [Leaf 1; Leaf 2]; Leaf 3; Leaf 4]}.}
 @end float
 
 Another way to think of sequences whose elements are sequences is as
@@ -797,10 +762,10 @@ shows the structure in @ref{Figure 2.5} viewed as a tree.
 @strong{Figure 2.6:} The list structure in @ref{Figure 2.5} viewed as a tree.
 
 @example
- ((1 2) 3 4)
+ ((1,2),3,4)
      /\\
     /  | \
-(1 2)  3 4
+(1,2)  3 4
  / \
  1 2
 @end example
@@ -822,9 +787,9 @@ often reduce operations on trees to operations on their branches, which reduce
 in turn to operations on the branches of the branches, and so on, until we
 reach the leaves of the tree.  As an example, compare the @code{length}
 procedure of @ref{2.2.1} with the @code{count_leaves} procedure, which
-returns the total number of leaves of a tree.  Scheme's @code{x} is one value
-playing two roles: a list, for @code{length}, and a tree, for
-@code{count-leaves}.  OCaml keeps the two views apart: the tree and the list of
+returns the total number of leaves of a tree.  The original example uses one
+value playing two roles: a list, for @code{length}, and a tree, for
+@code{count_leaves}.  OCaml keeps the two views apart: the tree and the list of
 subtrees at its top level are two values, and each operation takes the one it
 means:
 
@@ -839,21 +804,22 @@ length x_top;;
 (* => 3 *)
 @end example
 
-@example ocaml
+@smallexample ocaml
 count_leaves x;;
 (* => 4 *)
 
 let xx = [ x; x ];;
 
 xx;;
-(* => [Node [Node [Leaf 1; Leaf 2]; Leaf 3; Leaf 4]; Node [Node [Leaf 1; Leaf 2]; Leaf 3; Leaf 4]] *)
+(* => [Node [Node [Leaf 1; Leaf 2]; Leaf 3; Leaf 4];
+      Node [Node [Leaf 1; Leaf 2]; Leaf 3; Leaf 4]] *)
 
 length xx;;
 (* => 2 *)
 
 count_leaves (Node xx);;
 (* => 8 *)
-@end example
+@end smallexample
 
 @noindent
 To implement @code{count_leaves}, recall the recursive plan for computing
@@ -884,8 +850,8 @@ recursion lands on:
 @end itemize
 
 @noindent
-And in the branching case, where Scheme strips the @code{car} and the
-@code{cdr} apart and recurses on each, we recurse on every subtree in the
+And in the branching case, where a pair-based version strips the two fields
+apart and recurses on each, we recurse on every subtree in the
 list:
 
 @itemize @bullet
@@ -897,9 +863,10 @@ subtrees of the node.
 @end itemize
 
 @noindent
-Here is the complete procedure:@footnote{In Scheme, the order of the first two
-clauses in the @code{cond} matters, since the empty list satisfies
-@code{null?} and also is not a pair.  The OCaml @code{match} has no such
+Here is the complete procedure:@footnote{In a pair-based version, the order of
+the first two
+clauses in the dispatch matters, since the empty list satisfies
+the empty test and also is not a pair.  The OCaml @code{match} has no such
 fragility: a value matches exactly one constructor of its type, so there is no
 clause order to get wrong, and the compiler objects if a constructor is left
 out entirely.}
@@ -909,27 +876,27 @@ let rec count_leaves tree =
   match tree with
   | Leaf _ -> 1
   | Node children ->
-    List.fold_left (fun acc sub_tree -> acc + count_leaves sub_tree) 0 children
+    List.fold_left
+      (fun acc sub_tree -> acc + count_leaves sub_tree)
+      0 children
 ;;
 @end example
 
 @quotation
-@strong{@anchor{Exercise 2.24}Exercise 2.24:} @emph{SICP exercise 2.24 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Scheme builds
-@code{(list 1 (list 2 (list 3 4)))} out of pairs that can hold anything, so the
-structure only exists once it is printed, drawn, and read as a tree.  The OCaml
-reading of the same nesting is the tree
-@code{Node [Leaf 1; Node [Leaf 2; Node [Leaf 3; Leaf 4]]]} of the @code{tree}
-type above.  Give the result OCaml's toplevel prints for that value, draw the
-corresponding box-and-pointer structure, and give the interpretation of this
-structure as a tree (as in @ref{Figure 2.6}).
+@strong{@anchor{Exercise 2.24}Exercise 2.24:} @emph{This edition replaces
+SICP exercise 2.24 with a host-language exercise that keeps its number and
+teaching objective.}  Build the value
+@code{Node [Leaf 1; Node [Leaf 2; Node [Leaf 3; Leaf 4]]]} of the
+@code{tree} type above, this edition's spelling of the nested list
+@code{(1 (2 (3 4)))}.  Give the result OCaml's toplevel prints for that value,
+draw the corresponding box-and-pointer structure, and give the interpretation
+of this structure as a tree (as in @ref{Figure 2.6}).
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.25}Exercise 2.25:} @emph{SICP exercise 2.25 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Give combinations of
+@strong{@anchor{Exercise 2.25}Exercise 2.25:} @emph{This edition replaces
+SICP exercise 2.25 with a host-language exercise that keeps its number and
+teaching objective.}  Give combinations of
 @code{fst} and @code{snd} (and, where a list is involved, @code{List.hd} and
 @code{List.tl}) that will pick 7 from each of the following values:
 
@@ -941,9 +908,9 @@ number and teaches the same section material.}  Give combinations of
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.26}Exercise 2.26:} @emph{SICP exercise 2.26 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Suppose we define @code{x} and
+@strong{@anchor{Exercise 2.26}Exercise 2.26:} @emph{This edition replaces
+SICP exercise 2.26 with a host-language exercise that keeps its number and
+teaching objective.}  Suppose we define @code{x} and
 @code{y} to be two lists:
 
 @example ocaml
@@ -1063,12 +1030,15 @@ and a tree whose leaves are numbers.  It returns a tree of the same shape,
 where each number is multiplied by the factor.  The recursive plan for
 @code{scale_tree} is similar to the one for @code{count_leaves}:
 
-@example ocaml
+@smallexample ocaml
 let rec scale_tree tree factor =
   match tree with
   | Leaf n -> Leaf (n * factor)
   | Node children ->
-    Node (List.map (fun sub_tree -> scale_tree sub_tree factor) children)
+    Node
+      (List.map
+         (fun sub_tree -> scale_tree sub_tree factor)
+         children)
 ;;
 
 scale_tree
@@ -1078,8 +1048,9 @@ scale_tree
      ; Node [ Leaf 6; Leaf 7 ]
      ])
   10;;
-(* => Node [Leaf 10; Node [Leaf 20; Node [Leaf 30; Leaf 40]]; Leaf 50; Node [Leaf 60; Leaf 70]] *)
-@end example
+(* => Node [Leaf 10; Node [Leaf 20; Node [Leaf 30; Leaf 40]]; Leaf 50;
+      Node [Leaf 60; Leaf 70]] *)
+@end smallexample
 
 @noindent
 Another way to implement @code{scale_tree} is to regard the tree as a sequence
@@ -1103,9 +1074,9 @@ let rec scale_tree_map tree factor =
 @end example
 
 @noindent
-The inner @code{match} inside the function given to @code{map} is Scheme's
-@code{(if (pair? sub-tree) ...)}: the mapping procedure itself decides whether
-the subtree is a leaf or a branch.
+The inner @code{match} inside the function given to @code{map} is the
+pair test of the pair-based version: the mapping procedure itself decides
+whether the subtree is a leaf or a branch.
 Many tree operations can be implemented by similar combinations of sequence
 operations and recursion.
 
@@ -1114,15 +1085,16 @@ operations and recursion.
 @code{square_tree} analogous to the @code{square_list} procedure of
 @ref{Exercise 2.21}.  That is, @code{square_tree} should behave as follows:
 
-@example ocaml
+@smallexample ocaml
 square_tree
   (Node
      [ Leaf 1
      ; Node [ Leaf 2; Node [ Leaf 3; Leaf 4 ]; Leaf 5 ]
      ; Node [ Leaf 6; Leaf 7 ]
      ]);;
-(* => Node [Leaf 1; Node [Leaf 4; Node [Leaf 9; Leaf 16]]; Leaf 25; Node [Leaf 36; Leaf 49]] *)
-@end example
+(* => Node [Leaf 1; Node [Leaf 4; Node [Leaf 9; Leaf 16]]; Leaf 25;
+      Node [Leaf 36; Leaf 49]] *)
+@end smallexample
 
 @noindent
 Define @code{square_tree} both directly (i.e., without using any higher-order
@@ -1285,7 +1257,7 @@ the commonality between the two programs.
 @image{../../text/original/figures/chap2/Fig2.7e,,147mm,Figure 2.7: The signal-flow plans for the procedures sum-odd-squares (top) and even-fibs (bottom) reveal the commonality between the two programs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.7e.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.7e.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.7:} The signal-flow plans for the procedures @code{sum_odd_squares_tree} (top) and @code{even_fibs_slow} (bottom) reveal the commonality between the two programs.}
@@ -1399,7 +1371,12 @@ let rec enumerate_tree tree =
       children
 ;;
 
-enumerate_tree (Node [ Leaf 1; Node [ Leaf 2; Node [ Leaf 3; Leaf 4 ] ]; Leaf 5 ]);;
+enumerate_tree
+  (Node
+     [ Leaf 1
+     ; Node [ Leaf 2; Node [ Leaf 3; Leaf 4 ] ]
+     ; Leaf 5
+     ]);;
 (* => [1; 2; 3; 4; 5] *)
 @end example
 
@@ -1823,8 +1800,8 @@ we map along the sequence @code{enumerate_interval 1 (i - 1)}.  For each
 @math{j} in this latter sequence, we generate the pair @code{(i, j)}.  This
 gives us a sequence of pairs for each @math{i}.  Combining all the sequences for
 all the @math{i} (by accumulating with @code{append}) produces the required
-sequence of pairs:@footnote{The book's Scheme programs represent a pair as a
-two-element list rather than as a Lisp pair.  OCaml's tuple @code{(i, j)} is
+sequence of pairs:@footnote{The book's original programs represent a pair as a
+two-element list rather than as a dedicated pair type.  OCaml's tuple @code{(i, j)} is
 exactly the pair that name suggests, so this edition's pairs are tuples
 throughout.}
 
@@ -1897,17 +1874,16 @@ permutations of @math{{S - x}},@footnote{The set @math{{S - x}} is the set of al
 elements of @math{S}, excluding @math{x}.} and adjoin @math{x} to the front of each one.
 This yields, for each @math{x} in @math{S}, the sequence of permutations of @math{S}
 that begin with @math{x}.  Combining these sequences for all @math{x} gives all the
-permutations of @math{S}:@footnote{Semicolons in Scheme code are used to introduce
-@newterm{comments}.  Everything from the semicolon to the end of the line is
-ignored by the interpreter.  OCaml comments run between @code{(*} and
-@code{*)}, they may span lines, and, unlike Scheme's line comments, they nest.
+permutations of @math{S}:@footnote{OCaml comments run between @code{(*} and
+@code{*)}, they may span lines, and they nest.
 In this book we don't use many comments; we try to
 make our programs self-documenting by using descriptive names.}
 
 @example ocaml
 let rec permutations s =
   match s with
-  | [] (* empty set? *) -> [ [] ] (* sequence containing the empty set *)
+  | [] (* empty set? *) ->
+    [ [] ] (* sequence containing the empty set *)
   | _ ->
     flatmap
       (fun x ->
@@ -2260,7 +2236,7 @@ let wave4 = below wave2 wave2
 @image{../../text/original/figures/chap2/Fig2.12,,118mm,Figure 2.12: Creating a complex figure@comma{} starting from the wave painter of Figure 2.10.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.12.std,,118mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.12.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.12:} Creating a complex figure, starting from the @code{wave} painter of @ref{Figure 2.10}.}
@@ -2369,7 +2345,7 @@ let rec corner_split painter n =
 @noindent
 The @code{up_split} used here is @ref{Exercise 2.44}'s; the runnable module of
 this section carries a definition so that @code{corner_split} compiles, exactly
-as a Scheme session would carry one typed in from the exercise.
+as an interactive session would carry one typed in from the exercise.
 
 @float
 @anchor{Figure 2.14}
@@ -2419,8 +2395,8 @@ let square_limit painter n =
 @noindent
 A note on order: the listings above name @code{beside}, @code{below},
 @code{flip_vert}, @code{flip_horiz}, @code{wave}, and @code{rogers} before
-anything that defines them.  A Scheme file tolerates that forward reference,
-because nothing runs until every @code{define} above it has been read.  OCaml
+anything that defines them.  A language that reads whole definitions before
+running anything tolerates that forward reference.  OCaml
 resolves every name where it is written, so the runnable module of this section
 walks the language bottom-up (vectors, frames, painters, then the transformations and combiners, and only then these compound definitions), and the subsections below follow that order.  Every value shown above is asserted
 by the section's runner, which assembles the layers exactly in the order the
@@ -2694,7 +2670,10 @@ module Svg = struct
 
   let document ~view_box ~size body =
     Printf.sprintf
-      @{|<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d" viewBox="%s"><g stroke="black" stroke-width="0.008" stroke-linecap="round" fill="none">%s</g></svg>|@}
+      ( @{|<svg xmlns="http://www.w3.org/2000/svg"|@}
+      ^^ @{| width="%d" height="%d" viewBox="%s">|@}
+      ^^ @{|<g stroke="black" stroke-width="0.008"|@}
+      ^^ @{| stroke-linecap="round" fill="none">%s</g></svg>|@} )
       size size view_box body
   ;;
 
@@ -2709,7 +2688,7 @@ With that in hand, we can create painters for line drawings, such as the
 follows:@footnote{@code{Segments_to_painter} uses the representation for line
 segments described in @ref{Exercise 2.48} below.  It also returns its segments
 in the order @code{List.map} visits them, in the spirit of the @code{for_each}
-procedure described in @ref{Exercise 2.23}, which the Scheme original used to
+procedure described in @ref{Exercise 2.23}, which the original used to
 draw its lines one at a time.}
 
 @example ocaml

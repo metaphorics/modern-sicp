@@ -1,84 +1,107 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.40: pruning before the restrictions. There are
-    [5^5 = 3125] sets of assignments before the distinctness
-    requirement and [5! = 120] after it. Generating only the
-    possibilities the earlier restrictions leave open shrinks the
-    search again: Baker and Fletcher are drawn from four floors each,
-    Cooper from the four the bottom rule allows, and every restriction
-    that mentions one or two people is imposed as soon as those people
-    have floors. The demonstration pins the answer, the two counting
-    identities, and the backtrack counts of the naive and the pruned
-    procedures. *)
+(* Exercise 4.40: pruning before the restrictions. The two counting
+   identities are measured by the search itself: a search that only
+   assigns floors answers once per assignment, [5^5 = 3125] times, and
+   the same search under the distinctness requirement answers [5! =
+   120] times. The pruned procedure generates only possibilities no
+   earlier restriction has ruled out: each person is drawn from the
+   floors still free and the floors their own clauses allow, and every
+   restriction is imposed as soon as the people it mentions have
+   floors. The search experiment's counters compare the naive and the
+   pruned searches; both answer the book's assignment. *)
 
-module Eval = Sicp_ch4.Sec_4_3
-module Eval_error = Sicp_common.Eval_error
-module Value = Sicp_common.Value
+module Check = Sicp_common.Check
 
-let show = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let transcript source =
+  Sicp_ch4.Sec_4_1.transcript ~experiment:Check.Search Sicp_ch4.Sec_4_3.run source
+  |> String.split_on_char '\n'
+  |> List.filter (fun line -> line <> "")
 ;;
 
-let program =
+let library =
   {|
-(define (require p) (if (not p) (amb)))
-(define (distinct? items)
-  (cond ((null? items) #t)
-        ((null? (cdr items)) #t)
-        ((member (car items) (cdr items)) #f)
-        (else (distinct? (cdr items)))))
-(define (multiple-dwelling)
-  (let ((baker (amb 1 2 3 4 5))
-        (cooper (amb 1 2 3 4 5))
-        (fletcher (amb 1 2 3 4 5))
-        (miller (amb 1 2 3 4 5))
-        (smith (amb 1 2 3 4 5)))
-    (require (distinct? (list baker cooper fletcher miller smith)))
-    (require (not (= baker 5)))
-    (require (not (= cooper 1)))
-    (require (not (= fletcher 5)))
-    (require (not (= fletcher 1)))
-    (require (> miller cooper))
-    (require (not (= (abs (- smith fletcher)) 1)))
-    (require (not (= (abs (- fletcher cooper)) 1)))
-    (list (list 'baker baker) (list 'cooper cooper)
-          (list 'fletcher fletcher) (list 'miller miller)
-          (list 'smith smith))))
-(define (multiple-dwelling-pruned)
-  (let ((baker (amb 1 2 3 4)))
-    (let ((cooper (amb 2 3 4 5)))
-      (let ((fletcher (amb 1 2 3 4)))
-        (let ((miller (amb 1 2 3 4 5)))
-          (let ((smith (amb 1 2 3 4 5)))
-            (require (not (= baker 5)))
-            (require (not (= cooper 1)))
-            (require (not (= fletcher 5)))
-            (require (not (= fletcher 1)))
-            (require (> miller cooper))
-            (require (not (= (abs (- smith fletcher)) 1)))
-            (require (not (= (abs (- fletcher cooper)) 1)))
-            (require (distinct? (list baker cooper fletcher miller smith)))
-            (list (list 'baker baker) (list 'cooper cooper)
-                  (list 'fletcher fletcher) (list 'miller miller)
-                  (list 'smith smith))))))))|}
+let rec member floor floors =
+  match floors with
+  | [] -> false
+  | other :: rest -> other - floor = 0 || member floor rest
+
+let rec distinct items =
+  match items with
+  | [] -> true
+  | x :: rest -> (not (member x rest)) && distinct rest
+
+let abs n = if n < 0 then - n else n
+
+let rec an_element_of items =
+  match items with
+  | [] -> require false; 0
+  | x :: rest -> amb x (an_element_of rest)
+
+let rec without floor floors =
+  match floors with
+  | [] -> []
+  | other :: rest ->
+    if other - floor = 0 then without floor rest else other :: without floor rest
+
+let show_dwelling baker cooper fletcher miller smith =
+  "((baker " ^ string_of_int baker ^ ") (cooper " ^ string_of_int cooper
+  ^ ") (fletcher " ^ string_of_int fletcher ^ ") (miller " ^ string_of_int miller
+  ^ ") (smith " ^ string_of_int smith ^ "))"
+
+let any_floor top_floor = an_element_of [ 1; 2; 3; 4; top_floor ]
+
+let assignments top_floor =
+  let baker = any_floor top_floor in
+  let cooper = any_floor top_floor in
+  let fletcher = any_floor top_floor in
+  let miller = any_floor top_floor in
+  let smith = any_floor top_floor in
+  [ baker; cooper; fletcher; miller; smith ]
+
+let distinct_assignments top_floor =
+  require (distinct (assignments top_floor))
+
+let multiple_dwelling top_floor =
+  let baker = any_floor top_floor in
+  let cooper = any_floor top_floor in
+  let fletcher = any_floor top_floor in
+  let miller = any_floor top_floor in
+  let smith = any_floor top_floor in
+  require (distinct [ baker; cooper; fletcher; miller; smith ]);
+  require (baker <> top_floor);
+  require (cooper <> 1);
+  require (fletcher <> top_floor);
+  require (fletcher <> 1);
+  require (miller > cooper);
+  require (abs (smith - fletcher) <> 1);
+  require (abs (fletcher - cooper) <> 1);
+  show_dwelling baker cooper fletcher miller smith
+
+let multiple_dwelling_pruned top_floor =
+  let floors = [ 1; 2; 3; 4; top_floor ] in
+  let fletcher = an_element_of (without 1 (without top_floor floors)) in
+  let cooper = an_element_of (without 1 (without fletcher floors)) in
+  require (abs (fletcher - cooper) <> 1);
+  let miller = an_element_of (without cooper (without fletcher floors)) in
+  require (miller > cooper);
+  let baker =
+    an_element_of (without top_floor (without miller (without cooper (without fletcher floors))))
+  in
+  let smith =
+    an_element_of (without baker (without miller (without cooper (without fletcher floors))))
+  in
+  require (abs (smith - fletcher) <> 1);
+  show_dwelling baker cooper fletcher miller smith
+|}
 ;;
+
+let run label body = label :: transcript (library ^ "\nlet () = " ^ body ^ "\n")
 
 let ex_4_40 () =
-  let env = Eval.the_global_environment () in
-  let (_ : (Value.t, Eval_error.t) result) = Eval.run_program env program in
-  Eval.reset_backtrack_count ();
-  let naive = show (Eval.run env "(multiple-dwelling)") in
-  let naive_count = "backtracks=" ^ string_of_int (Eval.backtrack_count ()) in
-  Eval.reset_backtrack_count ();
-  let pruned = show (Eval.run env "(multiple-dwelling-pruned)") in
-  let pruned_count = "backtracks=" ^ string_of_int (Eval.backtrack_count ()) in
-  [ "before distinct?: 3125"
-  ; "after distinct?: 120"
-  ; naive
-  ; naive_count
-  ; pruned
-  ; pruned_count
-  ]
+  run "before distinct" "let _ = assignments 5 in ()"
+  @ run "after distinct" "distinct_assignments 5"
+  @ run "multiple_dwelling" "print_endline (multiple_dwelling 5)"
+  @ run "multiple_dwelling_pruned" "print_endline (multiple_dwelling_pruned 5)"
 ;;

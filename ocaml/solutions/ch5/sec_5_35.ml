@@ -1,91 +1,132 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.35: the expression compiled to Figure 5.18 is
-    [(define (f x) (+ x (g (+ x 2))))].  The figure's numbering is a
-    session artifact: the book's label counter had generated fourteen
-    labels before this compilation.  Seeding this compiler's counter
-    at 14 reproduces the figure exactly, with the edition's two
-    spellings -- the entry name rides in a [(const entry16)] and the
-    parameter list is one [(const x)] input. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Value = Sicp_common.Value
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
+module W = Sicp_ch5.Sec_5_4
 
-let ( >>= ) = Result.bind
-let source = "(define (f x) (+ x (g (+ x 2))))"
+let ( let* ) = Result.bind
 
-(** [figure_statements] is Figure 5.18 in the edition's spelling, one
-    controller line per instruction or label. *)
-let figure_statements =
-  [ "(assign val (op make-compiled-procedure) (const entry16) (reg env))"
-  ; "(goto (label after-lambda15))"
-  ; "entry16"
-  ; "(assign env (op compiled-procedure-env) (reg proc))"
-  ; "(assign env (op extend-environment) (const x) (reg argl) (reg env))"
-  ; "(assign proc (op lookup-variable-value) (const +) (reg env))"
-  ; "(save continue)"
-  ; "(save proc)"
-  ; "(save env)"
-  ; "(assign proc (op lookup-variable-value) (const g) (reg env))"
-  ; "(save proc)"
-  ; "(assign proc (op lookup-variable-value) (const +) (reg env))"
-  ; "(assign val (const 2))"
-  ; "(assign argl (op list) (reg val))"
-  ; "(assign val (op lookup-variable-value) (const x) (reg env))"
-  ; "(assign argl (op cons) (reg val) (reg argl))"
-  ; "(test (op primitive-procedure?) (reg proc))"
-  ; "(branch (label primitive-branch19))"
-  ; "compiled-branch18"
-  ; "(assign continue (label after-call17))"
-  ; "(assign val (op compiled-procedure-entry) (reg proc))"
-  ; "(goto (reg val))"
-  ; "primitive-branch19"
-  ; "(assign val (op apply-primitive-procedure) (reg proc) (reg argl))"
-  ; "after-call17"
-  ; "(assign argl (op list) (reg val))"
-  ; "(restore proc)"
-  ; "(test (op primitive-procedure?) (reg proc))"
-  ; "(branch (label primitive-branch22))"
-  ; "compiled-branch21"
-  ; "(assign continue (label after-call20))"
-  ; "(assign val (op compiled-procedure-entry) (reg proc))"
-  ; "(goto (reg val))"
-  ; "primitive-branch22"
-  ; "(assign val (op apply-primitive-procedure) (reg proc) (reg argl))"
-  ; "after-call20"
-  ; "(assign argl (op list) (reg val))"
-  ; "(restore env)"
-  ; "(assign val (op lookup-variable-value) (const x) (reg env))"
-  ; "(assign argl (op cons) (reg val) (reg argl))"
-  ; "(restore proc)"
-  ; "(restore continue)"
-  ; "(test (op primitive-procedure?) (reg proc))"
-  ; "(branch (label primitive-branch25))"
-  ; "compiled-branch24"
-  ; "(assign val (op compiled-procedure-entry) (reg proc))"
-  ; "(goto (reg val))"
-  ; "primitive-branch25"
-  ; "(assign val (op apply-primitive-procedure) (reg proc) (reg argl))"
-  ; "(goto (reg continue))"
-  ; "after-call23"
-  ; "after-lambda15"
-  ; "(perform (op define-variable!) (const f) (reg val) (reg env))"
-  ; "(assign val (const ok))"
+let arith_symbol = function
+  | Ast.Add -> "+"
+  | Ast.Sub -> "-"
+  | Ast.Mul -> "*"
+  | Ast.Div -> "/"
+  | Ast.Rem -> "mod"
+  | Ast.Addf -> "+."
+  | Ast.Subf -> "-."
+  | Ast.Mulf -> "*."
+  | Ast.Divf -> "/."
+;;
+
+let comparison_symbol = function
+  | Ast.Eq -> "="
+  | Ast.Ne -> "<>"
+  | Ast.Lt -> "<"
+  | Ast.Le -> "<="
+  | Ast.Gt -> ">"
+  | Ast.Ge -> ">="
+;;
+
+let binding_name (b : Ast.binding) = Option.value b.name ~default:"_"
+
+let rec pattern_to_string p =
+  match Ast.view_pattern p with
+  | Ast.PWildcard -> "_"
+  | Ast.PVar x -> x
+  | Ast.PScalar s -> Value.to_string (Sicp_ch4.Sec_4_1.scalar_value s)
+  | Ast.PTuple ps -> "(" ^ String.concat ", " (List.map pattern_to_string ps) ^ ")"
+  | Ast.PConstruct (c, []) -> c
+  | Ast.PConstruct (c, ps) ->
+    c ^ " (" ^ String.concat ", " (List.map pattern_to_string ps) ^ ")"
+  | Ast.PNil -> "[]"
+  | Ast.PCons (h, t) -> pattern_to_string h ^ " :: " ^ pattern_to_string t
+;;
+
+let descriptor e =
+  match Ast.view e with
+  | Ast.Var x -> x
+  | Ast.Scalar s -> Value.to_string (Sicp_ch4.Sec_4_1.scalar_value s)
+  | Ast.Fun (parameters, _) -> "fun " ^ String.concat " " parameters
+  | Ast.Arith (op, _, _) -> "(" ^ arith_symbol op ^ ")"
+  | Ast.Compare (op, _, _) -> "(" ^ comparison_symbol op ^ ")"
+  | Ast.Concat _ -> "(^)"
+  | Ast.Cons _ -> "(::)"
+  | Ast.Assign _ -> "(:=)"
+  | Ast.Not _ -> "not"
+  | Ast.Neg _ -> "(~-)"
+  | Ast.Deref _ -> "(!)"
+  | Ast.Make_ref _ -> "ref"
+  | Ast.Field (_, f) -> "." ^ f
+  | Ast.Tuple parts -> Printf.sprintf "tuple/%d" (List.length parts)
+  | Ast.Construct (c, _) -> c
+  | Ast.Record fields -> "{" ^ String.concat "; " (List.map fst fields) ^ "}"
+  | Ast.Let (false, bindings, _) ->
+    "let " ^ String.concat " and " (List.map binding_name bindings)
+  | Ast.Let (true, bindings, _) ->
+    "let rec " ^ String.concat " and " (List.map binding_name bindings)
+  | Ast.Apply _ | Ast.If _ | Ast.Match _ | Ast.Sequence _ | Ast.And _ | Ast.Or _ | Ast.Nil
+    -> "<expression>"
+;;
+
+let word_to_string = function
+  | W.Exp e -> descriptor e
+  | W.Pat p -> pattern_to_string p
+  | w -> W.word_to_string w
+;;
+
+let statement_to_string i = M.instruction_to_string word_to_string i
+let listing (seq : C.seq) = List.map statement_to_string seq.statements
+let answer = "let f x = x + g (x + 2)"
+
+let figure =
+  [ "Assign_op (\"val\", \"make-compiled-procedure\", [Label_ref \"entry1\"; Const (fun \
+     x); Reg \"env\"])"
+  ; "Goto \"after-lambda2\""
+  ; "Label \"entry1\""
+  ; "Assign_op (\"env\", \"compiled-procedure-bind\", [Reg \"proc\"; Reg \"argl\"])"
+  ; "Save \"continue\""
+  ; "Assign_op (\"arg1\", \"lookup-variable-value\", [Const (x); Reg \"env\"])"
+  ; "Save \"arg1\""
+  ; "Assign_op (\"proc\", \"lookup-variable-value\", [Const (g); Reg \"env\"])"
+  ; "Assign (\"argl\", Const ([]))"
+  ; "Assign_op (\"arg1\", \"lookup-variable-value\", [Const (x); Reg \"env\"])"
+  ; "Assign (\"arg2\", Const (2))"
+  ; "Assign_op (\"val\", \"apply-binary\", [Const ((+)); Reg \"arg1\"; Reg \"arg2\"])"
+  ; "Assign_op (\"argl\", \"adjoin-arg\", [Reg \"val\"; Reg \"argl\"])"
+  ; "Test (\"primitive-exact?\", [Reg \"proc\"; Reg \"argl\"])"
+  ; "Branch \"primitive-branch3\""
+  ; "Label \"compiled-branch4\""
+  ; "Assign (\"continue\", Label_ref \"proc-return6\")"
+  ; "Goto \"compiled-apply\""
+  ; "Label \"proc-return6\""
+  ; "Assign (\"arg2\", Reg \"val\")"
+  ; "Goto \"after-call5\""
+  ; "Label \"primitive-branch3\""
+  ; "Assign_op (\"arg2\", \"apply-primitive-procedure\", [Reg \"proc\"; Reg \"argl\"])"
+  ; "Goto \"after-call5\""
+  ; "Label \"after-call5\""
+  ; "Restore \"arg1\""
+  ; "Assign_op (\"val\", \"apply-binary\", [Const ((+)); Reg \"arg1\"; Reg \"arg2\"])"
+  ; "Restore \"continue\""
+  ; "Goto_reg \"continue\""
+  ; "Label \"after-lambda2\""
   ]
 ;;
 
-(** [ex_5_35 ()] compiles [source] with the counter seeded at 14 and
-    answers the compiler's own output beside the figure it matches. *)
 let ex_5_35 () =
-  let state = C.new_state_seeded 14 in
-  match Sicp_common.Reader.read source with
-  | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-  | Ok exp ->
-    C.compile C.default_config state [] exp "val" C.Next
-    >>= fun seq ->
+  let* program =
+    Sec_5_33.program ~filename:"ex_5_35.ml" ("let g y = y * 3\n" ^ answer ^ "\n")
+  in
+  match Check.items program with
+  | [ _; Ast.Value_item (false, [ binding ]) ] ->
+    let compiled = listing (C.compile (C.new_state ()) binding.rhs "val" C.Next) in
     Ok
-      [ "compiled to the figure: " ^ source
-      ; String.concat "\n" seq.stmts
-      ; "figure matches: " ^ string_of_bool (seq.stmts = figure_statements)
-      ]
+      ([ "compiled to the figure: " ^ answer ]
+       @ compiled
+       @ [ Printf.sprintf "figure matches: %b" (compiled = figure) ])
+  | _ -> Error (Sicp_common.Eval_error.Invalid_form "two top-level bindings")
 ;;

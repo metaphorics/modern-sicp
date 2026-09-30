@@ -117,7 +117,9 @@ and poly =
 let attach_tag tag contents = @{ tag; contents @}
 let type_tag t = t.tag
 let contents_of t = t.contents
-let table : (string * string list, value list -> value) Hashtbl.t = Hashtbl.create 32
+let table :
+  (string * string list, value list -> value) Hashtbl.t =
+  Hashtbl.create 32
 let put op type_tags proc = Hashtbl.replace table (op, type_tags) proc
 let get op type_tags = Hashtbl.find_opt table (op, type_tags)
 @end example
@@ -159,46 +161,46 @@ let div x y = apply_generic "div" [ x; y ]
 @noindent
 We begin by installing a package for handling @newterm{ordinary} numbers, that
 is, the primitive numbers of our language.  We will tag these with the string
-@code{"scheme-number"}.  The arithmetic operations in this package are the
+@code{"real"}.  The arithmetic operations in this package are the
 primitive arithmetic procedures (so there is no need to define extra procedures
 to handle the untagged numbers).  Since these operations each take two
 arguments, they are installed in the table keyed by the list
-@code{["scheme-number"; "scheme-number"]}:
+@code{["real"; "real"]}:
 
 @example ocaml
-let install_scheme_number_package () =
-  put "add" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a +. b)))
-    | _ -> invalid_arg "add: scheme-number expects two numbers");
-  put "sub" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a -. b)))
-    | _ -> invalid_arg "sub: scheme-number expects two numbers");
-  put "mul" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a *. b)))
-    | _ -> invalid_arg "mul: scheme-number expects two numbers");
-  put "div" [ "scheme-number"; "scheme-number" ] (function
-    | [ Num a; Num b ] -> Tagged (attach_tag "scheme-number" (Num (a /. b)))
-    | _ -> invalid_arg "div: scheme-number expects two numbers");
-  put "=zero?" [ "scheme-number" ] (function
+let install_real_package () =
+  put "add" [ "real"; "real" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "real" (Num (a +. b)))
+    | _ -> invalid_arg "add: real expects two numbers");
+  put "sub" [ "real"; "real" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "real" (Num (a -. b)))
+    | _ -> invalid_arg "sub: real expects two numbers");
+  put "mul" [ "real"; "real" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "real" (Num (a *. b)))
+    | _ -> invalid_arg "mul: real expects two numbers");
+  put "div" [ "real"; "real" ] (function
+    | [ Num a; Num b ] -> Tagged (attach_tag "real" (Num (a /. b)))
+    | _ -> invalid_arg "div: real expects two numbers");
+  put "=zero?" [ "real" ] (function
     | [ Num a ] -> Bool (Float.equal a 0.0)
-    | _ -> invalid_arg "=zero?: scheme-number expects one number");
-  put "make" [ "scheme-number" ] (function
-    | [ Num n ] -> Tagged (attach_tag "scheme-number" (Num n))
-    | _ -> invalid_arg "make: scheme-number expects one number")
+    | _ -> invalid_arg "=zero?: real expects one number");
+  put "make" [ "real" ] (function
+    | [ Num n ] -> Tagged (attach_tag "real" (Num n))
+    | _ -> invalid_arg "make: real expects one number")
 ;;
 @end example
 
 @noindent
 This installer also installs @code{"=zero?"}, which the book defers to
 Exercise 2.80 but 2.5.3's @code{adjoin_term} already needs to run before that
-exercise is reached.  Users of the Scheme-number package will create (tagged)
+exercise is reached.  Users of the real package will create (tagged)
 ordinary numbers by means of the procedure:
 
 @example ocaml
-let make_scheme_number n =
-  match get "make" [ "scheme-number" ] with
+let make_real n =
+  match get "make" [ "real" ] with
   | Some proc -> proc [ Num n ]
-  | None -> invalid_arg "make_scheme_number: no scheme-number constructor installed"
+  | None -> invalid_arg "make_real: no real constructor installed"
 ;;
 @end example
 
@@ -232,36 +234,47 @@ let install_rational_package () =
       Tagged
         (attach_tag
            "rational"
-           (make_rat ((numer x * denom y) + (numer y * denom x)) (denom x * denom y)))
+           (make_rat
+              ((numer x * denom y) + (numer y * denom x))
+              (denom x * denom y)))
     | _ -> invalid_arg "add: rational expects two pairs");
   put "sub" [ "rational"; "rational" ] (function
     | [ x; y ] ->
       Tagged
         (attach_tag
            "rational"
-           (make_rat ((numer x * denom y) - (numer y * denom x)) (denom x * denom y)))
+           (make_rat
+              ((numer x * denom y) - (numer y * denom x))
+              (denom x * denom y)))
     | _ -> invalid_arg "sub: rational expects two pairs");
   put "mul" [ "rational"; "rational" ] (function
     | [ x; y ] ->
-      Tagged (attach_tag "rational" (make_rat (numer x * numer y) (denom x * denom y)))
+      Tagged
+        (attach_tag "rational"
+           (make_rat (numer x * numer y) (denom x * denom y)))
     | _ -> invalid_arg "mul: rational expects two pairs");
   put "div" [ "rational"; "rational" ] (function
     | [ x; y ] ->
-      Tagged (attach_tag "rational" (make_rat (numer x * denom y) (denom x * numer y)))
+      Tagged
+        (attach_tag "rational"
+           (make_rat (numer x * denom y) (denom x * numer y)))
     | _ -> invalid_arg "div: rational expects two pairs");
   put "=zero?" [ "rational" ] (function
     | [ x ] -> Bool (numer x = 0)
     | _ -> invalid_arg "=zero?: rational expects one pair");
   put "make" [ "rational" ] (function
     | [ Num n; Num d ] ->
-      Tagged (attach_tag "rational" (make_rat (int_of_float n) (int_of_float d)))
+      Tagged
+        (attach_tag "rational"
+           (make_rat (int_of_float n) (int_of_float d)))
     | _ -> invalid_arg "make: rational expects two numbers")
 ;;
 
 let make_rational n d =
   match get "make" [ "rational" ] with
   | Some proc -> proc [ Num (float_of_int n); Num (float_of_int d) ]
-  | None -> invalid_arg "make_rational: no rational constructor installed"
+  | None ->
+    invalid_arg "make_rational: no rational constructor installed"
 ;;
 @end example
 
@@ -293,12 +306,15 @@ let install_rectangular_package () =
     | _ -> invalid_arg "angle: rectangular expects one pair");
   put "make_from_real_imag" [ "rectangular" ] (function
     | [ Num x; Num y ] -> Tagged (attach_tag "rectangular" (Cpx (x, y)))
-    | _ -> invalid_arg "make_from_real_imag: rectangular expects two numbers");
+    | _ ->
+      invalid_arg
+        "make_from_real_imag: rectangular expects two numbers");
   put "make_from_mag_ang" [ "rectangular" ] (function
     | [ Num r; Num a ] ->
       let x, y = Rectangular.make_from_mag_ang r a in
       Tagged (attach_tag "rectangular" (Cpx (x, y)))
-    | _ -> invalid_arg "make_from_mag_ang: rectangular expects two numbers")
+    | _ ->
+      invalid_arg "make_from_mag_ang: rectangular expects two numbers")
 ;;
 
 let install_polar_package () =
@@ -339,28 +355,39 @@ let angle z = as_number (apply_generic "angle" [ z ])
 let make_from_real_imag_rect x y =
   match get "make_from_real_imag" [ "rectangular" ] with
   | Some proc -> proc [ Num x; Num y ]
-  | None -> invalid_arg "make_from_real_imag: no rectangular constructor installed"
+  | None ->
+    invalid_arg
+      "make_from_real_imag: no rectangular constructor installed"
 ;;
 
 let make_from_mag_ang_polar r a =
   match get "make_from_mag_ang" [ "polar" ] with
   | Some proc -> proc [ Num r; Num a ]
-  | None -> invalid_arg "make_from_mag_ang: no polar constructor installed"
+  | None ->
+    invalid_arg "make_from_mag_ang: no polar constructor installed"
 ;;
 
 let install_complex_package () =
   let tag z = attach_tag "complex" z in
   let add_complex z1 z2 =
-    make_from_real_imag_rect (real_part z1 +. real_part z2) (imag_part z1 +. imag_part z2)
+    make_from_real_imag_rect
+      (real_part z1 +. real_part z2)
+      (imag_part z1 +. imag_part z2)
   in
   let sub_complex z1 z2 =
-    make_from_real_imag_rect (real_part z1 -. real_part z2) (imag_part z1 -. imag_part z2)
+    make_from_real_imag_rect
+      (real_part z1 -. real_part z2)
+      (imag_part z1 -. imag_part z2)
   in
   let mul_complex z1 z2 =
-    make_from_mag_ang_polar (magnitude z1 *. magnitude z2) (angle z1 +. angle z2)
+    make_from_mag_ang_polar
+      (magnitude z1 *. magnitude z2)
+      (angle z1 +. angle z2)
   in
   let div_complex z1 z2 =
-    make_from_mag_ang_polar (magnitude z1 /. magnitude z2) (angle z1 -. angle z2)
+    make_from_mag_ang_polar
+      (magnitude z1 /. magnitude z2)
+      (angle z1 -. angle z2)
   in
   put "add" [ "complex"; "complex" ] (function
     | [ z1; z2 ] -> Tagged (tag (add_complex z1 z2))
@@ -376,7 +403,8 @@ let install_complex_package () =
     | _ -> invalid_arg "div: complex expects two complex numbers");
   put "make_from_real_imag" [ "complex" ] (function
     | [ Num x; Num y ] -> Tagged (tag (make_from_real_imag_rect x y))
-    | _ -> invalid_arg "make_from_real_imag: complex expects two numbers");
+    | _ ->
+      invalid_arg "make_from_real_imag: complex expects two numbers");
   put "make_from_mag_ang" [ "complex" ] (function
     | [ Num r; Num a ] -> Tagged (tag (make_from_mag_ang_polar r a))
     | _ -> invalid_arg "make_from_mag_ang: complex expects two numbers")
@@ -394,21 +422,25 @@ outside world.
 let make_complex_from_real_imag x y =
   match get "make_from_real_imag" [ "complex" ] with
   | Some proc -> proc [ Num x; Num y ]
-  | None -> invalid_arg "make_complex_from_real_imag: no complex constructor installed"
+  | None ->
+    invalid_arg
+      "make_complex_from_real_imag: no complex constructor installed"
 ;;
 
 let make_complex_from_mag_ang r a =
   match get "make_from_mag_ang" [ "complex" ] with
   | Some proc -> proc [ Num r; Num a ]
-  | None -> invalid_arg "make_complex_from_mag_ang: no complex constructor installed"
+  | None ->
+    invalid_arg
+      "make_complex_from_mag_ang: no complex constructor installed"
 ;;
 @end example
 
 @noindent
-Installing every package and adding a scheme-number to itself, two rationals,
+Installing every package and adding a real to itself, two rationals,
 and two complex numbers all through the one @code{add} shows the generic
-dispatch at work: @code{add (make_scheme_number 3.) (make_scheme_number 4.)}
-tags a scheme-number holding @code{7.}; @code{add (make_rational 1 2)
+dispatch at work: @code{add (make_real 3.) (make_real 4.)}
+tags a real holding @code{7.}; @code{add (make_rational 1 2)
 (make_rational 1 4)} tags a rational holding @code{3/4}; and
 @code{add (make_complex_from_real_imag 3. 4.) (make_complex_from_real_imag 1.
 2.)} tags a complex number whose rectangular contents are @code{(4., 6.)}.
@@ -447,7 +479,7 @@ tag (if any) becomes visible to be used for further dispatching.
 @image{../../text/original/figures/chap2/Fig2.24d,,108mm,Figure 2.24: Representation of 3 + 4i in rectangular form.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.24d.std,,108mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.24d.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.24:} Representation of @math{{3 + 4i}} in rectangular form.}
@@ -487,7 +519,7 @@ case?
 
 @quotation
 @strong{@anchor{Exercise 2.78}Exercise 2.78:} The internal procedures in the
-@code{"scheme-number"} package are essentially nothing more than calls to the
+@code{"real"} package are essentially nothing more than calls to the
 primitive procedures @code{+}, @code{-}, etc.  It was not possible to use the
 primitives of the language directly because our type-tag system requires that
 each data object have a type attached to it.  In fact, however, OCaml's own
@@ -498,7 +530,7 @@ representation without any lookup.  Modify the definitions of @code{type_tag},
 system takes advantage of OCaml's internal type system.  That is to say, the
 system should work as before except that ordinary numbers should be
 represented simply as a bare @code{Num} rather than as a @code{Tagged} record
-whose tag is @code{"scheme-number"}.
+whose tag is @code{"real"}.
 @end quotation
 
 @quotation
@@ -535,19 +567,22 @@ One way to handle cross-type operations is to design a different procedure for
 each possible combination of types for which the operation is valid.  For
 example, we could extend the complex-number package so that it provides a
 procedure for adding complex numbers to ordinary numbers and installs this in
-the table using the tag @code{["complex"; "scheme-number"]}:@footnote{We also have
+the table using the tag @code{["complex"; "real"]}:@footnote{We also have
 to supply an almost identical procedure to handle the types
-@code{["scheme-number"; "complex"]}.}
+@code{["real"; "complex"]}.}
 
 @example ocaml
-let add_complex_to_schemenum z x =
+let add_complex_to_real z x =
   make_from_real_imag_rect (real_part z +. x) (imag_part z)
 ;;
 
 let install_cross_type_example () =
-  put "add" [ "complex"; "scheme-number" ] (function
-    | [ z; Num x ] -> Tagged (attach_tag "complex" (add_complex_to_schemenum z x))
-    | _ -> invalid_arg "add: complex+scheme-number expects a complex number and a number")
+  put "add" [ "complex"; "real" ] (function
+    | [ z; Num x ] ->
+      Tagged (attach_tag "complex" (add_complex_to_real z x))
+    | _ ->
+      invalid_arg
+        "add: complex+real expects a complex number and a number")
 ;;
 @end example
 
@@ -589,10 +624,11 @@ Here is a typical coercion procedure, which transforms a given ordinary number
 to a complex number with that real part and zero imaginary part:
 
 @example ocaml
-let scheme_number_to_complex n =
+let real_to_complex n =
   match n with
-  | @{ tag = "scheme-number"; contents = Num x @} -> make_complex_from_real_imag x 0.0
-  | _ -> invalid_arg "scheme_number_to_complex: expected a tagged scheme-number"
+  | @{ tag = "real"; contents = Num x @} ->
+    make_complex_from_real_imag x 0.0
+  | _ -> invalid_arg "real_to_complex: expected a tagged real"
 ;;
 @end example
 
@@ -601,15 +637,18 @@ We install these coercion procedures in a special coercion table, indexed under
 the names of the two types:
 
 @example ocaml
-let coercion_table : (string * string, value -> value) Hashtbl.t = Hashtbl.create 8
-let put_coercion t1 t2 proc = Hashtbl.replace coercion_table (t1, t2) proc
+let coercion_table :
+  (string * string, value -> value) Hashtbl.t =
+  Hashtbl.create 8
+let put_coercion t1 t2 proc =
+  Hashtbl.replace coercion_table (t1, t2) proc
 let get_coercion t1 t2 = Hashtbl.find_opt coercion_table (t1, t2)
 
 let install_coercions () =
-  put_coercion "scheme-number" "complex" (function
-    | Tagged t -> scheme_number_to_complex t
+  put_coercion "real" "complex" (function
+    | Tagged t -> real_to_complex t
     | Num _ | Ratpair _ | Cpx _ | Bool _ | Poly _ ->
-      invalid_arg "scheme-number->complex: expected a tagged value")
+      invalid_arg "real->complex: expected a tagged value")
 ;;
 @end example
 
@@ -618,7 +657,7 @@ Generally some of the slots in the table will be empty, because it is not
 generally possible to coerce an arbitrary data object of each type into all
 other types.  For example, there is no way to coerce an arbitrary complex
 number to an ordinary number, so there will be no general
-@code{"complex"->"scheme-number"} entry in the table.
+@code{"complex"->"real"} entry in the table.
 
 Once the coercion table has been set up, we can handle coercion in a uniform
 manner by modifying the @code{apply_generic} procedure of @ref{2.4.3}.
@@ -632,11 +671,11 @@ type.  If so, we coerce the first argument and try the operation again.  If
 objects of the first type cannot in general be coerced to the second type, we
 try the coercion the other way around to see if there is a way to coerce the
 second argument to the type of the first argument.  Finally, if there is no
-known way to coerce either type to the other type, we give up.  Scheme redefines
-the same @code{apply-generic} binding in place, so @code{add}, @code{sub},
-@code{mul}, and @code{div} -- already written above in terms of it -- start
-coercing automatically, because Scheme resolves the name at call time, not at
-definition time.  OCaml resolves a name where it is written; this edition
+known way to coerce either type to the other type, we give up.  OCaml resolves
+a name where it is written, so rebinding
+@code{apply_generic} in place would not rewire @code{add}, @code{sub},
+@code{mul}, and @code{div} -- already written above in terms of it.  This
+edition
 names the coercion-aware procedure @code{apply_generic_coerce} instead of
 silently shadowing @code{apply_generic}, and restates @code{add}, @code{sub},
 @code{mul}, and @code{div} against the new name:
@@ -645,7 +684,8 @@ silently shadowing @code{apply_generic}, and restates @code{add}, @code{sub},
 let rec apply_generic_coerce op args =
   let type_tags = List.map (fun a -> type_tag (untag op a)) args in
   match get op type_tags with
-  | Some proc -> proc (List.map (fun a -> contents_of (untag op a)) args)
+  | Some proc ->
+    proc (List.map (fun a -> contents_of (untag op a)) args)
   | None ->
     (match args with
      | [ a1; a2 ] ->
@@ -655,12 +695,15 @@ let rec apply_generic_coerce op args =
          | _ -> assert false
        in
        (match get_coercion t1 t2, get_coercion t2 t1 with
-        | Some t1_to_t2, _ -> apply_generic_coerce op [ t1_to_t2 a1; a2 ]
-        | None, Some t2_to_t1 -> apply_generic_coerce op [ a1; t2_to_t1 a2 ]
+        | Some t1_to_t2, _ ->
+          apply_generic_coerce op [ t1_to_t2 a1; a2 ]
+        | None, Some t2_to_t1 ->
+          apply_generic_coerce op [ a1; t2_to_t1 a2 ]
         | None, None ->
           invalid_arg
             (Printf.sprintf
-               "apply_generic_coerce: no method for these types: %s (%s)"
+               "apply_generic_coerce: no method for these \
+                types: %s (%s)"
                op
                (String.concat ", " type_tags)))
      | _ ->
@@ -687,7 +730,7 @@ let is_zero v = as_bool (apply_generic_coerce "=zero?" [ v ])
 @noindent
 Once @code{install_cross_type_example} and @code{install_coercions} are both
 installed, @code{add (make_complex_from_real_imag 1. 2.)
-(make_scheme_number 3.)} and @code{add (make_scheme_number 3.)
+(make_real 3.)} and @code{add (make_real 3.)
 (make_complex_from_real_imag 1. 2.)} answer the same complex number, with
 rectangular contents @code{(4., 2.)}, whichever route -- the explicit
 cross-type procedure or the coercion table -- @code{apply_generic_coerce}
@@ -874,7 +917,7 @@ triangle      right          |       \    |
 @image{../../text/original/figures/chap2/Fig2.26f,,147mm,Figure 2.26: Relations among types of geometric figures.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.26f.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.26f.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.26:} Relations among types of geometric figures.}
@@ -886,10 +929,10 @@ triangle      right          |       \    |
 if they already have the same type.  Therefore, he reasons, we need to put
 procedures in the coercion table to @newterm{coerce} arguments of each type to
 their own type.  For example, in addition to the
-@code{"scheme-number"->"complex"} coercion shown above, he would do:
+@code{"real"->"complex"} coercion shown above, he would do:
 
 @example ocaml
-put_coercion "scheme-number" "scheme-number" (fun n -> n);
+put_coercion "real" "real" (fun n -> n);
 put_coercion "complex" "complex" (fun z -> z)
 @end example
 
@@ -897,7 +940,7 @@ put_coercion "complex" "complex" (fun z -> z)
 
 @item
 With Louis's coercion procedures installed, what happens if
-@code{apply_generic} is called with two arguments of type @code{"scheme-number"}
+@code{apply_generic} is called with two arguments of type @code{"real"}
 or two arguments of type @code{"complex"} for an operation that is not found in
 the table for those types?  For example, assume that we've defined a generic
 exponentiation operation:
@@ -907,14 +950,15 @@ let exp x y = apply_generic "exp" [ x; y ]
 @end example
 
 @noindent
-and have put a procedure for exponentiation in the Scheme-number
+and have put a procedure for exponentiation in the real
 package but not in any other package:
 
 @example ocaml
-(* following added to Scheme-number package, using primitive [**] *)
-put "exp" [ "scheme-number"; "scheme-number" ] (function
-  | [ Num x; Num y ] -> Tagged (attach_tag "scheme-number" (Num (x ** y)))
-  | _ -> invalid_arg "exp: scheme-number expects two numbers")
+(* following added to the real package, using [ ** ] *)
+put "exp" [ "real"; "real" ] (function
+  | [ Num x; Num y ] ->
+    Tagged (attach_tag "real" (Num (x ** y)))
+  | _ -> invalid_arg "exp: real expects two numbers")
 @end example
 
 @noindent
@@ -1148,10 +1192,12 @@ appropriate operations on tagged polynomials in the operation table.
 @example ocaml
 let install_polynomial_package () =
   put "add" [ "polynomial"; "polynomial" ] (function
-    | [ Poly p1; Poly p2 ] -> Tagged (attach_tag "polynomial" (Poly (add_poly p1 p2)))
+    | [ Poly p1; Poly p2 ] ->
+      Tagged (attach_tag "polynomial" (Poly (add_poly p1 p2)))
     | _ -> invalid_arg "add: polynomial expects two polys");
   put "mul" [ "polynomial"; "polynomial" ] (function
-    | [ Poly p1; Poly p2 ] -> Tagged (attach_tag "polynomial" (Poly (mul_poly p1 p2)))
+    | [ Poly p1; Poly p2 ] ->
+      Tagged (attach_tag "polynomial" (Poly (mul_poly p1 p2)))
     | _ -> invalid_arg "mul: polynomial expects two polys");
   put "make" [ "polynomial" ] (function
     | [ Poly p ] -> Tagged (attach_tag "polynomial" (Poly p))
@@ -1237,7 +1283,10 @@ let mul_term_by_all_terms t1 l =
 let rec mul_terms l1 l2 =
   if is_empty_termlist l1
   then the_empty_termlist
-  else add_terms (mul_term_by_all_terms (first_term l1) l2) (mul_terms (rest_terms l1) l2)
+  else
+    add_terms
+      (mul_term_by_all_terms (first_term l1) l2)
+      (mul_terms (rest_terms l1) l2)
 ;;
 @end example
 
@@ -1355,7 +1404,7 @@ length of the sublist beginning with that term's coefficient, decremented by
 the generic arithmetic system using the type mechanism suggested in
 @ref{Exercise 2.78}.  Thus, coefficients that are ordinary numbers will be
 represented as the numbers themselves rather than as a @code{Tagged} record
-whose tag is @code{"scheme-number"}.}  This would be a terrible representation for
+whose tag is @code{"real"}.}  This would be a terrible representation for
 a sparse polynomial such as @math{B}: There would be a giant list of zeros
 punctuated by a few lonely nonzero terms.  A more reasonable representation of
 the term list of a sparse polynomial is as a list of the nonzero terms, where
@@ -1412,7 +1461,8 @@ the procedure:
 let make_polynomial var term_list =
   match get "make" [ "polynomial" ] with
   | Some proc -> proc [ Poly (make_poly var term_list) ]
-  | None -> invalid_arg "make_polynomial: no polynomial constructor installed"
+  | None ->
+    invalid_arg "make_polynomial: no polynomial constructor installed"
 ;;
 @end example
 
@@ -1497,7 +1547,7 @@ let div_terms l1 l2 =
     else (
       let new_c = div t1.coeff t2.coeff in
       let new_o = t1.order - t2.order in
-      let rest_of_result = (* compute rest of result recursively *) in
+      let rest_of_result = (* rest of result recursively *) in
       (* form complete result *) ))
 ;;
 @end example
@@ -1595,8 +1645,12 @@ not attempt to reduce fractions to lowest terms.  Test your system by calling
 @code{make_rational} on two polynomials to produce a rational function:
 
 @example ocaml
-let p1 = make_polynomial "x" [ make_term 2 (Num 1.); make_term 0 (Num 1.) ]
-let p2 = make_polynomial "x" [ make_term 3 (Num 1.); make_term 0 (Num 1.) ]
+let p1 =
+  make_polynomial "x"
+    [ make_term 2 (Num 1.); make_term 0 (Num 1.) ]
+let p2 =
+  make_polynomial "x"
+    [ make_term 3 (Num 1.); make_term 0 (Num 1.) ]
 let rf = make_rational p2 p1
 @end example
 
@@ -1653,10 +1707,17 @@ generic operation @code{greatest_common_divisor} that reduces to
 numbers.  As a test, try
 
 @example ocaml
-let p1 = make_polynomial "x" [ make_term 4 (Num 1.); make_term 3 (Num (-1.))
-                              ; make_term 2 (Num (-2.)); make_term 1 (Num 2.) ]
+let p1 =
+  make_polynomial "x"
+    [ make_term 4 (Num 1.)
+    ; make_term 3 (Num (-1.))
+    ; make_term 2 (Num (-2.))
+    ; make_term 1 (Num 2.)
+    ]
 
-let p2 = make_polynomial "x" [ make_term 3 (Num 1.); make_term 1 (Num (-1.)) ]
+let p2 =
+  make_polynomial "x"
+    [ make_term 3 (Num 1.); make_term 1 (Num (-1.)) ]
 
 let () = ignore (greatest_common_divisor p1 p2)
 @end example
@@ -1801,7 +1862,7 @@ let reduce_integers n d =
 
 and define @code{reduce} as a generic operation that calls @code{apply_generic}
 to dispatch to either @code{reduce_poly} (for @code{"polynomial"} arguments) or
-@code{reduce_integers} (for @code{"scheme-number"} arguments).  You can now
+@code{reduce_integers} (for @code{"real"} arguments).  You can now
 easily make the rational-arithmetic package reduce fractions to lowest terms by
 having @code{make_rat} call @code{reduce} before combining the given numerator
 and denominator to form a rational number.  The system now handles rational
@@ -1809,10 +1870,16 @@ expressions in either integers or polynomials.  To test your program, try the
 example at the beginning of this extended exercise:
 
 @example ocaml
-let p1 = make_polynomial "x" [ make_term 1 (Num 1.); make_term 0 (Num 1.) ]
-let p2 = make_polynomial "x" [ make_term 3 (Num 1.); make_term 0 (Num (-1.)) ]
+let p1 =
+  make_polynomial "x"
+    [ make_term 1 (Num 1.); make_term 0 (Num 1.) ]
+let p2 =
+  make_polynomial "x"
+    [ make_term 3 (Num 1.); make_term 0 (Num (-1.)) ]
 let p3 = make_polynomial "x" [ make_term 1 (Num 1.) ]
-let p4 = make_polynomial "x" [ make_term 2 (Num 1.); make_term 0 (Num (-1.)) ]
+let p4 =
+  make_polynomial "x"
+    [ make_term 2 (Num 1.); make_term 0 (Num (-1.)) ]
 let rf1 = make_rational p1 p2
 let rf2 = make_rational p3 p4
 let sum = add rf1 rf2

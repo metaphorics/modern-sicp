@@ -1,70 +1,89 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.49: Alyssa's sentence generation. Her [parse-word]
-    ignores the unparsed input, draws a word of the demanded part of
-    speech from [an-element-of], and always succeeds; [parse] is then
-    called with the empty input, whose trailing distinctness
-    requirement passes vacuously, and the driver's [try_again] walks
-    the generated sentences. The demonstration pins the first six
-    sentences, which descend the grammar's first alternatives -- the
-    boring, badly sampled output the footnote describes and exercise
-    4.50's [ramb] addresses. *)
+(* Exercise 4.49: generating sentences. Alyssa's [parse_word] ignores
+   the input and draws its word from [an_element_of] over the word list,
+   so the grammar generates instead of parsing. The generation is
+   infinite and the section's experiment walks every branch, so the
+   demonstration caps each sentence at [phrase_limit] prepositional
+   phrases and reports the first six sentences with the counts of the
+   whole capped search. The six show the footnote's complaint: depth
+   first search varies only its latest choice, so after "the student
+   studies" and one phrase it keeps the same skeleton and walks the
+   last noun phrase's words. Under the cap the verb first changes at
+   sentence 42 and the subject at sentence 165 of 2592. *)
 
-module Eval = Sicp_ch4.Sec_4_3
-module Eval_error = Sicp_common.Eval_error
-module Value = Sicp_common.Value
+module Check = Sicp_common.Check
 
-let show = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let transcript source =
+  Sicp_ch4.Sec_4_1.transcript ~experiment:Check.Search Sicp_ch4.Sec_4_3.run source
+  |> String.split_on_char '\n'
+  |> List.filter (fun line -> line <> "")
 ;;
 
 let program =
   {|
-(define (require p) (if (not p) (amb)))
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) (an-element-of (cdr items))))
-(define *unparsed* '())
-(define nouns '(noun student professor cat class))
-(define verbs '(verb studies lectures eats sleeps))
-(define articles '(article the a))
-(define prepositions '(prep for to in by with))
-(define (parse-word word-list)
-  (let ((found-word (an-element-of (cdr word-list))))
-    (list (car word-list) found-word)))
-(define (parse-simple-noun-phrase)
-  (list 'simple-noun-phrase (parse-word articles) (parse-word nouns)))
-(define (parse-noun-phrase)
-  (define (maybe-extend noun-phrase)
-    (amb noun-phrase
-         (maybe-extend
-          (list 'noun-phrase noun-phrase (parse-prepositional-phrase)))))
-  (maybe-extend (parse-simple-noun-phrase)))
-(define (parse-prepositional-phrase)
-  (list 'prep-phrase (parse-word prepositions) (parse-noun-phrase)))
-(define (parse-verb-phrase)
-  (define (maybe-extend verb-phrase)
-    (amb verb-phrase
-         (maybe-extend
-          (list 'verb-phrase verb-phrase (parse-prepositional-phrase)))))
-  (maybe-extend (parse-word verbs)))
-(define (parse-sentence)
-  (list 'sentence (parse-noun-phrase) (parse-verb-phrase)))
-(define (parse input)
-  (set! *unparsed* input)
-  (let ((sent (parse-sentence))) (require (null? *unparsed*)) sent))|}
+type tree =
+  | Word of string * string
+  | Node of string * tree list
+
+let rec show tree =
+  match tree with
+  | Word (category, word) -> "(" ^ category ^ " " ^ word ^ ")"
+  | Node (label, parts) -> "(" ^ label ^ show_parts parts ^ ")"
+
+and show_parts parts =
+  match parts with
+  | [] -> ""
+  | part :: rest -> " " ^ show part ^ show_parts rest
+
+let nouns = [ "student"; "professor"; "cat"; "class" ]
+let verbs = [ "studies"; "lectures"; "eats"; "sleeps" ]
+let articles = [ "the"; "a" ]
+let prepositions = [ "for"; "to"; "in"; "by"; "with" ]
+let phrase_limit = 1
+
+let rec an_element_of items =
+  match items with
+  | [] -> require false; ""
+  | x :: rest -> amb x (an_element_of rest)
+
+let parse_word category words = Word (category, an_element_of words)
+
+let parse_simple_noun_phrase phrases =
+  Node ("simple-noun-phrase", [ parse_word "article" articles; parse_word "noun" nouns ])
+
+let rec parse_noun_phrase phrases =
+  let rec maybe_extend noun_phrase =
+    amb
+      noun_phrase
+      (maybe_extend (Node ("noun-phrase", [ noun_phrase; parse_prepositional_phrase phrases ])))
+  in
+  maybe_extend (parse_simple_noun_phrase phrases)
+
+and parse_prepositional_phrase phrases =
+  phrases := !phrases + 1;
+  require (!phrases <= phrase_limit);
+  Node ("prep-phrase", [ parse_word "prep" prepositions; parse_noun_phrase phrases ])
+
+let parse_verb_phrase phrases =
+  let rec maybe_extend verb_phrase =
+    amb
+      verb_phrase
+      (maybe_extend (Node ("verb-phrase", [ verb_phrase; parse_prepositional_phrase phrases ])))
+  in
+  maybe_extend (parse_word "verb" verbs)
+
+let generate phrases =
+  Node ("sentence", [ parse_noun_phrase phrases; parse_verb_phrase phrases ])
+
+let () = print_endline (show (generate (ref 0)))
+|}
 ;;
 
 let ex_4_49 () =
-  let env = Eval.the_global_environment () in
-  let (_ : (Value.t, Eval_error.t) result) = Eval.run_program env program in
-  let first = Eval.run env "(parse '())" in
-  let second = Eval.try_again () in
-  let third = Eval.try_again () in
-  let fourth = Eval.try_again () in
-  let fifth = Eval.try_again () in
-  let sixth = Eval.try_again () in
-  List.map show [ first; second; third; fourth; fifth; sixth ]
+  let lines = transcript program in
+  let sentences = List.filter (fun line -> not (String.contains line ':')) lines in
+  let counts = List.filter (fun line -> String.contains line ':') lines in
+  List.filteri (fun index _ -> index < 6) sentences @ counts
 ;;

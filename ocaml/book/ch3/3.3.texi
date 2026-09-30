@@ -128,7 +128,7 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @image{../../text/original/figures/chap3/Fig3.12b,,123mm,Figure 3.12: Lists x: ((a b) c d) and y: (e f).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.}
@@ -169,7 +169,7 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of set_car x y on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.13:} Effect of @code{set_car x y} on the lists in @ref{Figure 3.12}.}
@@ -216,7 +216,7 @@ z -->| * | *-+-+   +---+         +---+
 @image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of let z = mcons y (cdr x) on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.14:} Effect of @code{let z = mcons y (cdr x)} on the lists in @ref{Figure 3.12}.}
@@ -265,7 +265,7 @@ x -->| * | * |     | * | *-+---->| * | / |
 @image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of set_cdr x y on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.15:} Effect of @code{set_cdr x y} on the lists in @ref{Figure 3.12}.}
@@ -279,7 +279,7 @@ procedure @code{get_new_pair}, which returns a new pair that is not part of
 any existing list structure.  We obtain the new pair, set its @code{car} and
 @code{cdr} fields to the designated objects, and return the new pair as the
 result of @code{mcons}.@footnote{@code{get_new_pair} would be one of the
-operations implemented as part of a Lisp's memory management, discussed in
+operations implemented as part of the underlying memory management, discussed in
 @ref{5.3.1}; here OCaml's own allocator plays that role, and the record
 literal below is the request for a fresh block.}
 
@@ -323,7 +323,8 @@ Here @code{last_pair} is a procedure that returns the last pair in its
 argument:
 
 @example ocaml
-let rec last_pair x = if is_pair (cdr x) then last_pair (cdr x) else x
+let rec last_pair x =
+  if is_pair (cdr x) then last_pair (cdr x) else x
 @end example
 
 Consider the interaction
@@ -460,7 +461,7 @@ z1 -->| * | * |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by (cons x x).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by mcons x x.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap3/Fig3.16b.std,,78mm,,.pdf}
@@ -499,10 +500,10 @@ z2 -->| * | *-+---->| * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by (cons (list 'a 'b) (list 'a 'b)).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by mcons (from_symbols ["a";"b"]) (from_symbols ["a";"b"]).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,,121mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.17:} The list @code{z2} formed by @code{mcons (from_symbols ["a";"b"]) (from_symbols ["a";"b"])}.}
@@ -515,8 +516,8 @@ because each call to @code{from_symbols} builds fresh pairs.  The symbols are
 shared; @code{Sym "a"} built in one call and @code{Sym "a"} built in another
 are structurally equal strings, and OCaml provides no way to mutate a string
 literal built this way, so the sharing is undetectable through @code{show} or
-@code{=}.  In Lisp there is a unique symbol object with any given name, which
-is what makes @code{eq?} usable as a fast equality test for symbols; OCaml's
+@code{=}.  A language with unique symbol objects with any given name can make
+pointer equality usable as a fast equality test for symbols; OCaml's
 strings have no such uniquing, so this edition compares symbol payloads with
 structural @code{=} instead.}
 
@@ -576,13 +577,13 @@ dealing with sharing of mutable data objects reflect the underlying issues of
 ``sameness'' and ``change'' that were raised in @ref{3.1.3}.  We
 mentioned there that admitting change to our language requires that a compound
 object must have an ``identity'' that is something different from the pieces
-from which it is composed.  In Lisp, we consider this ``identity'' to be the
-quality that is tested by @code{eq?}, i.e., by equality of pointers; this
+from which it is composed.  We consider this ``identity'' to be the
+quality that is tested by pointer equality; this
 edition's analogue is OCaml's physical equality @code{==}.  Since in
-most Lisp implementations a pointer is essentially a memory address, we are
+most implementations a pointer is essentially a memory address, we are
 ``solving the problem'' of defining the identity of objects by stipulating that
 a data object ``itself'' is the information stored in some particular set of
-memory locations in the computer.  This suffices for simple Lisp programs, but
+memory locations in the computer.  This suffices for simple programs, but
 is hardly a general way to resolve the issue of ``sameness'' in computational
 models.}
 
@@ -601,7 +602,9 @@ pair.''  So Ben writes the following procedure:
 
 @example ocaml
 let rec count_pairs x =
-  if is_pair x then count_pairs (car x) + count_pairs (cdr x) + 1 else 0
+  if is_pair x
+  then count_pairs (car x) + count_pairs (cdr x) + 1
+  else 0
 @end example
 
 Show that this procedure is not correct.  In particular, draw box-and-pointer
@@ -669,8 +672,8 @@ assignment and mutation are equipotent: Each can be implemented in terms of the
 other.}
 
 @quotation
-@emph{SICP exercise 3.20 is about Scheme itself, so this edition replaces it;
-the exercise below keeps the number and teaches the same section material.}
+@emph{This edition replaces SICP exercise 3.20 with a host-language exercise
+that keeps its number and teaching objective.}
 @strong{@anchor{Exercise 3.20}Exercise 3.20:}
 Suppose we evaluate
 
@@ -727,7 +730,7 @@ delete_queue q               c d
 @image{../../text/original/figures/chap3/Fig3.18,,119mm,Figure 3.18: Queue operations.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.18.std,,119mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.18.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.18:} Queue operations.}
@@ -839,7 +842,7 @@ representation.
 @image{../../text/original/figures/chap3/Fig3.19b,,118mm,Figure 3.19: Implementation of a queue as a list with front and rear pointers.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,,118mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.}
@@ -916,7 +919,7 @@ also set the rear pointer to the new pair.
 @image{../../text/original/figures/chap3/Fig3.20c,,141mm,Figure 3.20: Result of using insert_queue q (Sym "d") on the queue of Figure 3.19.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,,141mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.20:} Result of using @code{insert_queue q (Sym "d")} on the queue of @ref{Figure 3.19}.}
@@ -979,7 +982,7 @@ let delete_queue q =
 @image{../../text/original/figures/chap3/Fig3.21c,,141mm,Figure 3.21: Result of using delete_queue q on the queue of Figure 3.20.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,,141mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.21:} Result of using @code{delete_queue q} on the queue of @ref{Figure 3.20}.}
@@ -1106,7 +1109,7 @@ V   V       V   V       V   V
 @image{../../text/original/figures/chap3/Fig3.22c,,138mm,Figure 3.22: A table represented as a headed list.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,,138mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.22:} A table represented as a headed list.}
@@ -1265,9 +1268,14 @@ let insert2 key1 key2 value table =
   | Some subtable ->
     (match assoc key2 (cdr subtable) with
      | Some record -> set_cdr record value
-     | None -> set_cdr subtable (mcons (mcons key2 value) (cdr subtable)))
+     | None ->
+       set_cdr subtable
+         (mcons (mcons key2 value) (cdr subtable)))
   | None ->
-    set_cdr table (mcons (mcons key1 (mcons (mcons key2 value) mnil)) (cdr table))
+    set_cdr table
+      (mcons
+         (mcons key1 (mcons (mcons key2 value) mnil))
+         (cdr table))
 @end example
 
 @subsubheading Creating local tables
@@ -1382,7 +1390,8 @@ let memoize f =
   let table = Hashtbl.create 16 in
   fun x ->
     match Hashtbl.find_opt table x with
-    | Some previously_computed_result -> previously_computed_result
+    | Some previously_computed_result ->
+      previously_computed_result
     | None ->
       let result = f x in
       Hashtbl.add table x result;
@@ -1452,7 +1461,7 @@ Inverter    And-gate     Or-gate
 @image{../../text/original/figures/chap3/Fig3.24a,,110mm,Figure 3.24: Primitive functions in the digital logic simulator.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,,110mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.24:} Primitive functions in the digital logic simulator.}
@@ -1496,7 +1505,7 @@ B -----*------|___/                        |
 @image{../../text/original/figures/chap3/Fig3.25c,,122mm,Figure 3.25: A half-adder circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,,122mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.25:} A half-adder circuit.}
@@ -1601,7 +1610,7 @@ C -----+       +---------------/___/   |
 @image{../../text/original/figures/chap3/Fig3.26,,129mm,Figure 3.26: A full-adder circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.26.std,,129mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.26.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.26:} A full-adder circuit.}
@@ -1668,7 +1677,8 @@ let logical_not = function
 let inverter sim input output =
   let invert_input () =
     let new_value = logical_not (input.get_signal ()) in
-    after_delay sim sim.inverter_delay (fun () -> output.set_signal new_value)
+    after_delay sim sim.inverter_delay
+      (fun () -> output.set_signal new_value)
   in
   input.add_action invert_input
 @end example
@@ -1686,7 +1696,8 @@ let logical_and a b = if a = 1 && b = 1 then 1 else 0
 let and_gate sim a1 a2 output =
   let and_action_procedure () =
     let new_value = logical_and (a1.get_signal ()) (a2.get_signal ()) in
-    after_delay sim sim.and_gate_delay (fun () -> output.set_signal new_value)
+    after_delay sim sim.and_gate_delay
+      (fun () -> output.set_signal new_value)
   in
   a1.add_action and_action_procedure;
   a2.add_action and_action_procedure
@@ -1752,7 +1763,7 @@ C ------+   |     +-----+   |     +-----+   |     :  ------+   |
 @image{../../text/original/figures/chap3/Fig3.27b,,132mm,Figure 3.27: A ripple-carry adder for n-bit numbers.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.27:} A ripple-carry adder for @math{n}-bit numbers.}
@@ -1865,7 +1876,8 @@ specified time.
 The procedure @code{after_delay} adds new elements to the simulator's agenda:
 
 @example ocaml
-let after_delay sim delay action = add_to_agenda sim (delay + sim.current_time) action
+let after_delay sim delay action =
+  add_to_agenda sim (delay + sim.current_time) action
 @end example
 
 @noindent
@@ -1909,7 +1921,9 @@ We begin by creating the simulator, specifying delays for the primitive
 function boxes:
 
 @example ocaml
-let sim = make_sim ~inverter_delay:2 ~and_gate_delay:3 ~or_gate_delay:5 ()
+let sim =
+  make_sim ~inverter_delay:2 ~and_gate_delay:3
+    ~or_gate_delay:5 ()
 @end example
 
 @noindent
@@ -2051,15 +2065,23 @@ let add_to_agenda sim time action =
   in
   let rec add_to_segments segments =
     if cell_time segments = time
-    then ignore (Queue.insert_queue (segment_queue (car segments)) (Proc action))
+    then
+      ignore
+        (Queue.insert_queue
+           (segment_queue (car segments))
+           (Proc action))
     else (
       let rest = cdr segments in
       if belongs_before rest
-      then set_cdr segments (mcons (make_new_time_segment time action) rest)
+      then
+        set_cdr segments
+          (mcons (make_new_time_segment time action) rest)
       else add_to_segments rest)
   in
   if belongs_before sim.segments
-  then sim.segments <- mcons (make_new_time_segment time action) sim.segments
+  then
+    sim.segments <-
+      mcons (make_new_time_segment time action) sim.segments
   else add_to_segments sim.segments
 @end example
 
@@ -2205,7 +2227,7 @@ C -----+ m1      |  u  |      m1 +-------+ a1      |
 @image{../../text/original/figures/chap3/Fig3.28,,142mm,Figure 3.28: The relation 9C = 5(F - 32) expressed as a constraint network.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.28.std,,142mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.28.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.28:} The relation @math{{9C = 5(F - 32)}} expressed as a constraint network.}
@@ -2390,11 +2412,20 @@ let adder a1 a2 sum =
     @}
   and process_new_value () =
     if a1.has_value () && a2.has_value ()
-    then sum.set_value (a1.get_value () + a2.get_value ()) (Of_constraint me)
+    then
+      sum.set_value
+        (a1.get_value () + a2.get_value ())
+        (Of_constraint me)
     else if a1.has_value () && sum.has_value ()
-    then a2.set_value (sum.get_value () - a1.get_value ()) (Of_constraint me)
+    then
+      a2.set_value
+        (sum.get_value () - a1.get_value ())
+        (Of_constraint me)
     else if a2.has_value () && sum.has_value ()
-    then a1.set_value (sum.get_value () - a2.get_value ()) (Of_constraint me)
+    then
+      a1.set_value
+        (sum.get_value () - a2.get_value ())
+        (Of_constraint me)
   and process_forget_value () =
     sum.forget_value (Of_constraint me);
     a1.forget_value (Of_constraint me);
@@ -2458,11 +2489,20 @@ let multiplier m1 m2 product =
       || (m2.has_value () && m2.get_value () = 0)
     then product.set_value 0 (Of_constraint me)
     else if m1.has_value () && m2.has_value ()
-    then product.set_value (m1.get_value () * m2.get_value ()) (Of_constraint me)
+    then
+      product.set_value
+        (m1.get_value () * m2.get_value ())
+        (Of_constraint me)
     else if product.has_value () && m1.has_value ()
-    then m2.set_value (product.get_value () / m1.get_value ()) (Of_constraint me)
+    then
+      m2.set_value
+        (product.get_value () / m1.get_value ())
+        (Of_constraint me)
     else if product.has_value () && m2.has_value ()
-    then m1.set_value (product.get_value () / m2.get_value ()) (Of_constraint me)
+    then
+      m1.set_value
+        (product.get_value () / m2.get_value ())
+        (Of_constraint me)
   and process_forget_value () =
     product.forget_value (Of_constraint me);
     m1.forget_value (Of_constraint me);
@@ -2482,7 +2522,9 @@ the constant box will produce an error.
 
 @example ocaml
 let constant value connector =
-  let handle = @{ me = (fun _ -> invalid_arg "Unknown request: CONSTANT") @} in
+  let handle =
+    @{ me = (fun _ -> invalid_arg "Unknown request: CONSTANT") @}
+  in
   connector.connect handle;
   connector.set_value value (Of_constraint handle);
   handle
@@ -2499,7 +2541,9 @@ let probe log name connector =
         (function
           | I_have_a_value ->
             log
-            := Printf.sprintf "Probe: %s = %d" name (connector.get_value ())
+            := Printf.sprintf
+                 "Probe: %s = %d" name
+                 (connector.get_value ())
                :: !log
           | I_lost_my_value ->
             log := Printf.sprintf "Probe: %s = ?" name :: !log)
@@ -2570,7 +2614,9 @@ let for_each_except exception_ inform constraints =
   match exception_ with
   | User -> List.iter inform constraints
   | Of_constraint me ->
-    List.iter (fun item -> if not (item == me) then inform item) constraints
+    List.iter
+      (fun item -> if not (item == me) then inform item)
+      constraints
 @end example
 
 @noindent
@@ -2664,8 +2710,8 @@ let squarer a b =
 @end quotation
 
 @quotation
-@emph{SICP exercise 3.36 is about Scheme itself, so this edition replaces it;
-the exercise below keeps the number and teaches the same section material.}
+@emph{This edition replaces SICP exercise 3.36 with a host-language exercise
+that keeps its number and teaching objective.}
 @strong{@anchor{Exercise 3.36}Exercise 3.36:}
 Suppose we evaluate
 

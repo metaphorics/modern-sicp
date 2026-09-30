@@ -1,92 +1,93 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.36: the compiler's operand evaluation order is right to
-    left: [construct-arglist] reverses the operand codes, so the last
-    operand's value initializes [argl] and each earlier operand conses
-    onto it.  The order is determined in [construct-arglist] (the one
-    [reverse]); the [left_to_right] configuration turns it off.
-
-    The measurement answers the efficiency question: both orders
-    evaluate each operand once, build the list with one [list] and one
-    [cons] per additional operand, and preserve the same registers, so
-    the instruction counts are equal -- the code size is unaffected. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
+module W = Sicp_ch5.Sec_5_4
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
-(** [record_primitive] is the [record] procedure bound in the machine's
-    global environment: it logs the value it sees, in order, and
-    returns it; the observable the order shows through. *)
-let log = ref []
-
-let record_primitive : Sicp_common.Value.primitive = function
-  | [ v ] ->
-    log := !log @ [ Sicp_common.Value.to_string v ];
-    Ok v
-  | _ -> Error (Sicp_common.Eval_error.Arity_mismatch { expected = 1; given = 0 })
+let prepend_arg =
+  ( "prepend-arg"
+  , M.Value_op
+      (function
+        | [ W.V v; W.Args vs ] -> Ok (W.Args (v :: vs))
+        | [ _; _ ] ->
+          Error (Eval_error.Bad_instruction "prepend-arg expects a value and a list")
+        | ws -> Error (Eval_error.Arity_mismatch { expected = 2; given = List.length ws }))
+  )
 ;;
 
-(** [compiled_statements cfg src] compiles [src] under [cfg]. *)
-let compiled_statements cfg src =
-  let state = C.new_state () in
-  match Sicp_common.Reader.read src with
-  | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-  | Ok exp -> C.compile cfg state [] exp "val" C.Next >>= fun seq -> Ok seq.stmts
+let construct_arglist_right_to_left compile state operands =
+  let start =
+    C.make_instruction_sequence [] [ "argl" ] [ M.Assign ("argl", M.Const (W.Args [])) ]
+  in
+  List.fold_left
+    (fun acc operand ->
+       C.preserving
+         [ "env" ]
+         acc
+         (C.preserving
+            [ "argl" ]
+            (compile state operand "val" C.Next)
+            (C.make_instruction_sequence
+               [ "val"; "argl" ]
+               [ "argl" ]
+               [ M.Assign_op ("argl", "prepend-arg", [ M.Reg "val"; M.Reg "argl" ]) ])))
+    start
+    (List.rev operands)
 ;;
 
-(** [run cfg src] compiles [src] under [cfg] and runs it on a machine
-    whose global environment binds [record], so the recorded order is
-    the evaluation order of the operands. *)
-let run cfg src =
-  let state = C.new_state () in
-  log := [];
-  match Sicp_common.Reader.read src with
-  | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-  | Ok exp ->
-    C.compile cfg state [] exp "val" C.Next
-    >>= fun seq ->
-    let controller =
-      C.eceval_controller
-      ^ "\ncompiled-entry-x\n"
-      ^ C.statements_text seq
-      ^ "\n(goto (reg continue))"
+let rec compile_right_to_left state e target linkage =
+  match Ast.view e with
+  | Ast.Apply (operator, operands) ->
+    let proc_code = compile_right_to_left state operator "proc" C.Next in
+    let operand_codes =
+      construct_arglist_right_to_left compile_right_to_left state operands
     in
-    C.make_compiled_evaluator
-      ~controller
-      ~globals:[ "record", record_primitive ]
-      ~source:""
-      ~state
-      ()
-    >>= fun m ->
-    C.set_register m "val" (Sicp_ch5.Sec_5_4.Lab "compiled-entry-x")
-    >>= fun () ->
-    C.set_flag m true;
-    (match C.start m with
-     | Ok () -> Ok ()
-     | Error (C.Op_failed m2) when m2 = Sicp_ch5.Sec_5_4.input_exhausted -> Ok ()
-     | Error e -> Error e)
-    >>= fun () -> Ok (!log, List.length seq.stmts)
+    C.preserving
+      [ "env"; "continue" ]
+      proc_code
+      (C.preserving
+         [ "proc"; "continue" ]
+         operand_codes
+         (C.compile_procedure_call state target linkage))
+  | _ -> C.compile_open ~self:compile_right_to_left state e target linkage
 ;;
 
-(** [ex_5_36 ()] runs [(list (record 1) (record 2))] under both
-    configurations: the default records [2 1] (right to left), the
-    reordered configuration records [1 2], and the instruction counts
-    are equal. *)
+let source =
+  "let show n =\n\
+  \  print_int n;\n\
+  \  n\n\
+   let add3 a b c = a + b + c\n\
+   let result = add3 (show 1) (show 2) (show 3)\n"
+;;
+
 let ex_5_36 () =
-  let src = "(list (record 1) (record 2))" in
-  run C.default_config src
-  >>= fun (log_right, stmts_right) ->
-  run { C.default_config with left_to_right = true } src
-  >>= fun (log_left, stmts_left) ->
+  let* p = Sec_5_33.program ~filename:"ex_5_36.ml" source in
+  let items = Check.items p in
+  let default_code = C.compile_program (C.new_state ()) items in
+  let reordered_code =
+    C.compile_program_with ~compile:compile_right_to_left (C.new_state ()) items
+  in
+  let* default_run = Sec_5_33.run_code default_code in
+  let* reordered_run = Sec_5_33.run_code ~operations:[ prepend_arg ] reordered_code in
+  let count (s : C.seq) = List.length s.statements in
   Ok
-    [ "default order: " ^ String.concat " " log_right
-    ; "left-to-right order: " ^ String.concat " " log_left
+    [ "default order: " ^ default_run.output
+    ; "right-to-left order: " ^ reordered_run.output
     ; Printf.sprintf
-        "instruction counts: %d = %d: %b"
-        stmts_right
-        stmts_left
-        (stmts_right = stmts_left)
+        "statements: %d and %d; steps: %d and %d"
+        (count default_code)
+        (count reordered_code)
+        default_run.steps
+        reordered_run.steps
+    ; "answers: "
+      ^ Sicp_common.Value.to_string default_run.value
+      ^ " and "
+      ^ Sicp_common.Value.to_string reordered_run.value
     ]
 ;;

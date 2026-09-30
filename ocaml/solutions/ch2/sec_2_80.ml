@@ -39,10 +39,10 @@ let apply_generic op args =
          (String.concat ", " type_tags))
 ;;
 
-let install_scheme_number_package () =
-  put "=zero?" [ "scheme-number" ] (function
+let install_real_package () =
+  put "=zero?" [ "real" ] (function
     | [ Num a ] -> Bool (Float.equal a 0.0)
-    | _ -> invalid_arg "=zero?: scheme-number expects one number")
+    | _ -> invalid_arg "=zero?: real expects one number")
 ;;
 
 let install_rational_package () =
@@ -65,10 +65,10 @@ let is_zero v =
 ;;
 
 let ex_2_80 () =
-  install_scheme_number_package ();
+  install_real_package ();
   install_rational_package ();
   install_complex_package ();
-  let sn n = Tagged (attach_tag "scheme-number" (Num n)) in
+  let sn n = Tagged (attach_tag "real" (Num n)) in
   let rat n d = Tagged (attach_tag "rational" (Ratpair (n, d))) in
   let cpx x y = Tagged (attach_tag "complex" (Cpx (x, y))) in
   ( is_zero (sn 0.0)

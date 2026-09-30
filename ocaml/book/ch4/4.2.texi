@@ -1,13 +1,12 @@
 @node	4.2, 4.3, 4.1, Chapter 4
-@section Variations on a Scheme --- Lazy Evaluation
+@section Variations on the Guest Language: Lazy Evaluation
 
-Now that we have an evaluator expressed as an OCaml program, we can
-experiment
+Now that we have an evaluator expressed as an OCaml program, we can experiment
 with alternative choices in language design simply by modifying the evaluator.
 Indeed, new languages are often invented by first writing an evaluator that
 embeds the new language within an existing high-level language.  For example,
-if we wish to discuss some aspect of a proposed modification to Lisp with
-another member of the Lisp community, we can supply an evaluator that embodies
+if we wish to discuss some aspect of a proposed modification to a language with
+another member of its community, we can supply an evaluator that embodies
 the change.  The recipient can then experiment with the new evaluator and send
 back comments as further modifications.  Not only does the high-level
 implementation base make it easier to test and debug the evaluator; in
@@ -16,12 +15,14 @@ grab, especially a large document or file for the purpose of using it either
 with or without the owner's permission.''  Snarf down: ``To snarf, sometimes
 with the connotation of absorbing, processing, or understanding.''  (These
 definitions were snarfed from @ref{Steele et al. 1983}.  See also @ref{Raymond 1993}.)}
-features from the underlying language, just as our embedded Lisp evaluator uses
+features from the underlying language, just as our embedded evaluator uses
 primitives and control structure from the underlying OCaml.  Only later (if
 ever) need the designer go to the trouble of building a complete implementation
 in a low-level language or in hardware.  In this section and the next we
-explore some variations on Scheme that provide significant additional
-expressive power.
+explore some variations on the object language that provide significant
+additional expressive power.  Each variation is a separately named experiment.
+It is admitted with its own rule (@code{Check.check_experiment}) and run by
+its own evaluator, and it never changes the strict core of @ref{4.1}.
 
 @menu
 * 4.2.1::            Normal Order and Applicative Order
@@ -33,8 +34,8 @@ expressive power.
 @subsection Normal Order and Applicative Order
 
 In @ref{1.1}, where we began our discussion of models of evaluation, we
-noted that Scheme is an @newterm{applicative-order} language, namely, that all
-the arguments to Scheme procedures are evaluated when the procedure is applied.
+noted that OCaml is an @newterm{applicative-order} language, namely, that all
+the arguments to OCaml procedures are evaluated when the procedure is applied.
 In contrast, @newterm{normal-order} languages delay evaluation of procedure
 arguments until the actual argument values are needed.  Delaying evaluation of
 procedure arguments until the last possible moment (e.g., until they are
@@ -47,56 +48,47 @@ this is not a hard-and-fast distinction, and the two terminologies are often
 used interchangeably.}  Consider the procedure
 
 @example ocaml
-let env = the_global_environment () in
-Strict_eval.run env "(define (try a b) (if (= a 0) 1 b))"
-(* => ok *)
+let try_ a b = if a = 0 then 1 else b
 @end example
 
 @noindent
-Evaluating @code{(try 0 (/ 1 0))} generates an error in Scheme.  With lazy
+Evaluating @code{try_ 0 (1 / 0)} generates an error in OCaml.  With lazy
 evaluation, there would be no error.  Evaluating the expression would return 1,
-because the argument @code{(/ 1 0)} would never be evaluated.  The edition
-holds the applicative-order evaluator of @ref{4.1} ready as
-@code{Strict_eval}, the same dispatch applied over the section's primitive
-table; given the same program in an environment that carries the section's
-arithmetic, it dies in the operand:
+because the argument @code{1 / 0} would never be evaluated.  The strict
+evaluator of @ref{4.1} dies in the operand:
 
 @example ocaml
-Strict_eval.run env "(try 0 (/ 1 0))"
-(* ;;; the applicative-order evaluator evaluates (/ 1 0)
-   before the call, so the if is never reached: *)
-(* => Error: division by zero *)
+Sec_4_1.transcript Sec_4_1.run
+  "let try_ a b = if a = 0 then 1 else b
+   let () = print_int (try_ 0 (1 / 0))"
+(* => "error: division by zero" *)
 @end example
 
 An example that exploits lazy evaluation is the definition of a procedure
 @code{unless}
 
 @example ocaml
-Strict_eval.run env
-  "(define (unless condition usual-value exceptional-value)
-     (if condition exceptional-value usual-value))"
-(* => ok *)
+let unless condition usual_value exceptional_value =
+  if condition then exceptional_value else usual_value
 @end example
 
 @noindent
 that can be used in expressions such as
 
 @example ocaml
-Strict_eval.run env
-  "(unless (= b 0)
-     (/ a b)
-     (begin (display \"exception: returning 0\") 0))"
-(* ;;; with a bound to 1 and b to 0, the usual value (/ 1 0)
-   is evaluated before unless is called: *)
-(* => Error: division by zero *)
+unless (b = 0)
+  (a / b)
+  (print_string "exception: returning 0\n"; 0)
 @end example
 
 @noindent
 This won't work in an applicative-order language because both the usual value
 and the exceptional value will be evaluated before @code{unless} is called
-(compare @ref{Exercise 1.6}).  An advantage of lazy evaluation is that some
-procedures, such as @code{unless}, can do useful computation even if evaluation
-of some of their arguments would produce errors or would not terminate.
+(compare @ref{Exercise 1.6}).  With @code{a} bound to 1 and @code{b} to 0,
+the strict evaluator stops on the division.  An advantage of lazy evaluation
+is that some procedures, such as @code{unless}, can do useful computation even
+if evaluation of some of their arguments would produce errors or would not
+terminate.
 
 If the body of a procedure is entered before an argument has been evaluated we
 say that the procedure is @newterm{non-strict} in that argument.  If the
@@ -121,21 +113,21 @@ operating on the resulting data structures, even if the values of the elements
 are not known.  It makes perfect sense, for instance, to compute the length of
 a list without knowing the values of the individual elements in the list.  We
 will exploit this idea in @ref{4.2.3} to implement the streams of
-@ref{Chapter 3} as lists formed of non-strict @code{cons} pairs.
+@ref{Chapter 3} as lists formed by a non-strict @code{cons}.
 
 @quotation
 @strong{@anchor{Exercise 4.25}Exercise 4.25:} Suppose that (in ordinary
-applicative-order Scheme) we define @code{unless} as shown above and then
+applicative-order OCaml) we define @code{unless} as shown above and then
 define @code{factorial} in terms of @code{unless} as
 
 @example
-(define (factorial n)
-  (unless (= n 1)
-          (* n (factorial (- n 1)))
-          1))
+let rec factorial n =
+  unless (n = 1)
+    (n * factorial (n - 1))
+    1
 @end example
 
-What happens if we attempt to evaluate @code{(factorial 5)}?  Will our
+What happens if we attempt to evaluate @code{factorial 5}?  Will our
 definitions work in a normal-order language?
 @end quotation
 
@@ -147,23 +139,22 @@ things such as @code{unless}.  Ben points out that it's possible to implement
 one did that, @code{unless} would be merely syntax, not a procedure that could
 be used in conjunction with higher-order procedures.  Fill in the details on
 both sides of the argument.  Show how to implement @code{unless} as a derived
-expression (like @code{cond} or @code{let}), and give an example of a situation
-where it might be useful to have @code{unless} available as a procedure, rather
-than as a special form.
+expression (like @code{function} or @code{let}), and give an example of a
+situation where it might be useful to have @code{unless} available as a
+procedure, rather than as a special form.
 @end quotation
 
 @node	4.2.2, 4.2.3, 4.2.1, 4.2
 @subsection An Interpreter with Lazy Evaluation
 
 In this section we will implement a normal-order language that is the same as
-Scheme except that compound procedures are non-strict in each argument.
-Primitive procedures will still be strict.  It is not difficult to modify the
-evaluator of @ref{4.1.1} so that the language it interprets behaves
-this way.  Almost all the required changes center around procedure application.
-The module @code{Sec_4_2} of the examples holds the result; like the
-evaluator of @ref{4.1}, it instantiates a @code{Core} functor with the
-dispatch it recurses through, and it reuses the environment operations,
-the primitive table, and the reader of the section's substrate.
+the object language of @ref{4.1} except that compound procedures are
+non-strict in each argument.  Primitive procedures will still be strict.  It
+is not difficult to modify the evaluator of @ref{4.1.1} so that the language
+it interprets behaves this way.  Almost all the required changes center around
+procedure application.  The module @code{Sec_4_2} holds the result.  Programs
+for it are admitted by @code{Check.check_experiment ~experiment:Check.Lazy},
+which also admits the names @code{delay} and @code{force}.
 
 The basic idea is that, when applying a procedure, the interpreter must
 determine which arguments are to be evaluated and which are to be delayed.  The
@@ -186,422 +177,419 @@ The critical difference between what we are doing here and what we did in
 evaluator, and thus making this uniform and automatic throughout the language.}
 In general, a thunk will be forced only when its value is needed: when it is
 passed to a primitive procedure that will use the value of the thunk; when it
-is the value of a predicate of a conditional; and when it is the value of an
-operator that is about to be applied as a procedure.  One design choice we have
-available is whether or not to @newterm{memoize} thunks, as we did with delayed
-objects in @ref{3.5.1}.  With memoization, the first time a thunk is
-forced, it stores the value that is computed.  Subsequent forcings simply
-return the stored value without repeating the computation.  We'll make our
-interpreter memoize, because this is more efficient for many applications.
-There are tricky considerations here, however.@footnote{Lazy evaluation
-combined with memoization is sometimes referred to as @newterm{call-by-need}
-argument passing, in contrast to @newterm{call-by-name} argument passing.
-(Call-by-name, introduced in Algol 60, is similar to non-memoized lazy
-evaluation.)  As language designers, we can build our evaluator to memoize, not
-to memoize, or leave this an option for programmers (@ref{Exercise 4.31}).  As
-you might expect from @ref{Chapter 3}, these choices raise issues that become
-both subtle and confusing in the presence of assignments.  (See @ref{Exercise 4.27}
-and @ref{Exercise 4.29}.)  An excellent article by @ref{Clinger (1982)}
-attempts to clarify the multiple dimensions of confusion that arise here.}
+is the value of the condition of a conditional or the scrutinee of a
+@code{match}; and when it is the value of an operator that is about to be
+applied as a procedure.  One design choice we have available is whether or not
+to @newterm{memoize} thunks, as we did with delayed objects in @ref{3.5.1}.
+With memoization, the first time a thunk is forced, it stores the value that
+is computed.  Subsequent forcings simply return the stored value without
+repeating the computation.  We'll make our interpreter memoize, because this
+is more efficient for many applications.  There are tricky considerations
+here, however.@footnote{Lazy evaluation combined with memoization is sometimes
+referred to as @newterm{call-by-need} argument passing, in contrast to
+@newterm{call-by-name} argument passing.  (Call-by-name, introduced in Algol
+60, is similar to non-memoized lazy evaluation.)  As language designers, we
+can build our evaluator to memoize, not to memoize, or leave this an option
+for programmers (@ref{Exercise 4.31}).  As you might expect from
+@ref{Chapter 3}, these choices raise issues that become both subtle and
+confusing in the presence of assignments.  (See @ref{Exercise 4.27} and
+@ref{Exercise 4.29}.)  An excellent article by @ref{Clinger (1982)} attempts
+to clarify the multiple dimensions of confusion that arise here.}
 
 @subsubheading Modifying the evaluator
 
 The main difference between the lazy evaluator and the one in @ref{4.1}
 is in the handling of procedure applications in @code{eval} and
-@code{apply_procedure}.
+@code{apply}.  The lazy evaluator is written in the open style of
+@ref{4.1.1}: its dispatch @code{step} receives the evaluator @code{self} to
+recurse through, and a state @code{counters} that holds the memoization policy
+and counts the thunks it makes and forces.
 
-The application clause of @code{eval} becomes
+The application clause of the dispatch becomes
 
 @example ocaml
-(* the application clause of the lazy dispatch *)
-| Ast.Application (operator, operands) ->
-  actual_value operator env >>= fun proc -> apply_procedure proc operands env
+| Ast.Apply (fn, args) -> apply_from_expr self counters env fn args
+@end example
+
+@noindent
+where, apart from the two names @code{delay} and @code{force} that the
+experiment adds to make and force a thunk explicitly, @code{apply_from_expr}
+does this:
+
+@example ocaml
+let* fn = self env fn in
+let* fn = actual_value self counters fn in
+apply_value self counters env fn args
 @end example
 
 @noindent
 This is almost the same as the application clause of @code{eval} in
-@ref{4.1.1}.  For lazy evaluation, however, we call @code{apply_procedure} with
+@ref{4.1.1}.  For lazy evaluation, however, we call @code{apply_value} with
 the operand expressions, rather than the arguments produced by evaluating them.
 Since we will need the environment to construct thunks if the arguments are to
 be delayed, we must pass this as well.  We still evaluate the operator, because
-@code{apply_procedure} needs the actual procedure to dispatch on its type (primitive versus compound) and apply it.
+@code{apply_value} needs the actual procedure to dispatch on its type
+(primitive versus compound) and apply it.
 
-Whenever we need the actual value of an expression, we use
+Whenever we need the actual value of an expression, we evaluate it with
+@code{self} and pass the result to @code{actual_value}, so that if the
+expression's value is a thunk, it will be forced.
+
+Our new version of @code{apply} is also almost the same as the version in
+@ref{4.1.1}.  The difference is that @code{eval} has passed in unevaluated
+operand expressions: For primitive procedures (which are strict), we evaluate
+all the arguments before applying the primitive; for compound procedures
+(which are non-strict) we delay all the arguments before applying the
+procedure.  A closure binds its parameters one at a time, making a thunk of
+each operand; a closure that receives fewer operands than it has parameters
+returns a closure of the remaining parameters:
 
 @example ocaml
-let actual_value exp env = Eval.eval exp env >>= force_value
+and apply_value self counters caller_env fn args =
+  match args with
+  | [] -> Ok fn
+  | _ ->
+    (match Value.view fn with
+     | Value.Closure @{ parameters = []; _ @} -> not_applicable fn
+     | Value.Closure @{ parameters; body; env; _ @} ->
+       let rec take bound parameters args =
+         match parameters, args with
+         | [], rest -> `Done (List.rev bound, rest)
+         | _, [] -> `Partial (List.rev bound, parameters)
+         | parameter :: parameters, arg :: rest ->
+           counters.allocations <- counters.allocations + 1;
+           take
+             ((parameter,
+               Value.thunk ~expr:arg ~env:caller_env)
+              :: bound)
+             parameters rest
+       in
+       (match take [] parameters args with
+        | `Done (bound, rest) ->
+          let* result = self (Env.extend bound env) body in
+          (match rest with
+           | [] -> Ok result
+           | _ ->
+             apply_value self counters caller_env result rest)
+        | `Partial (bound, remaining) ->
+          Ok (Value.closure ~name:None ~parameters:remaining
+                ~body ~env:(Env.extend bound env)))
+     | Value.Primitive p ->
+       let* values =
+         eval_strict_list self counters caller_env args
+       in
+       apply_primitive_values self counters p [] values
+     | Value.Partial (p, gathered) ->
+       let* values =
+         eval_strict_list self counters caller_env args
+       in
+       apply_primitive_values self counters p gathered values
+     | _ -> not_applicable fn)
 @end example
 
 @noindent
-instead of just @code{eval}, so that if the expression's value is a thunk, it
-will be forced.
-
-Our new version of @code{apply_procedure} is also almost the same as the
-version in @ref{4.1.1}.  The difference is that @code{eval} has passed in
-unevaluated operand expressions: For primitive procedures (which are strict),
-we evaluate all the arguments before applying the primitive; for compound
-procedures (which are non-strict) we delay all the arguments before applying
-the procedure.
+The procedure that processes the arguments of a primitive is just like
+@code{eval_list} from @ref{4.1.1}, except that it uses @code{actual_value}
+to force each value:
 
 @example ocaml
-let apply_procedure proc operands env =
-  match Value.view proc with
-  | Value.Primitive_procedure name ->
-    (match List.assoc_opt name primitive_table with
-     | Some f -> list_of_arg_values operands env >>= fun args -> f args
-     | None ->
-       Error (Eval_error.Invalid_form ("the primitive " ^ name ^ " is not installed")))
-  | Value.Compound_procedure @{ parameters; body; env = proc_env; _ @} ->
-    list_of_delayed_args operands env
-    >>= fun args ->
-    SE.extend_environment parameters args proc_env
-    >>= fun extended -> eval_sequence body extended
-  | _ -> Error (Eval_error.Not_applicable (Value.to_string proc))
-;;
+and eval_strict_list self counters env exprs =
+  let rec go acc = function
+    | [] -> Ok (List.rev acc)
+    | e :: rest ->
+      let* v = self env e in
+      let* v = actual_value self counters v in
+      go (v :: acc) rest
+  in
+  go [] exprs
 @end example
 
 @noindent
-The procedures that process the arguments are just like @code{list_of_values}
-from @ref{4.1.1}, except that @code{list_of_delayed_args} delays the
-arguments instead of evaluating them, and @code{list_of_arg_values} uses
-@code{actual_value} instead of @code{eval}:
+The other places we must change the evaluator are the strict sites: the
+condition of an @code{if}, the scrutinee of a @code{match}, the operands of
+the arithmetic and comparison operators, and the reference of an assignment.
+At each of them we use @code{actual_value} to get the value of the expression
+before testing it.  Here is the @code{If} clause:
 
 @example ocaml
-let rec list_of_arg_values exps env =
-  match exps with
-  | [] -> Ok []
-  | exp :: rest ->
-    actual_value exp env
-    >>= fun value -> list_of_arg_values rest env >>= fun values -> Ok (value :: values)
-;;
-
-let rec list_of_delayed_args exps env =
-  match exps with
-  | [] -> Ok []
-  | exp :: rest ->
-    let first = delay_it ~eval:Eval.eval exp env in
-    list_of_delayed_args rest env >>= fun values -> Ok (first :: values)
-;;
+| Ast.If (condition, consequent, alternative) ->
+  let* condition = self env condition in
+  let* condition = actual_value self counters condition in
+  let* b = as_bool "if" condition in
+  if b then self env consequent else self env alternative
 @end example
 
 @noindent
-The other place we must change the evaluator is in the handling of @code{if},
-where we must use @code{actual_value} instead of @code{eval} to get the value
-of the predicate expression before testing whether it is true or false:
+A non-recursive @code{let} is non-strict as well: each named right-hand side
+becomes a thunk, since a @code{let} is equivalent to the application of a
+@code{fun} (@ref{Exercise 4.6}).  A binding @code{let () = e} or
+@code{let _ = e} exists only for its effects, so its right-hand side is forced
+at once.
 
-@example ocaml
-let eval_if exp env =
-  match Ast.view exp with
-  | Ast.If (predicate, consequent, alternative) ->
-    actual_value predicate env
-    >>= fun tested ->
-    if true_ tested
-    then Eval.eval consequent env
-    else (
-      match alternative with
-      | Some branch -> Eval.eval branch env
-      | None -> Ok (Value.bool false))
-  | _ -> Error (Eval_error.Invalid_form "eval_if: not an if")
-;;
-@end example
+Finally, we must change the driver of @ref{4.1.4}.  The procedure
+@code{run_with} forces the value of each top-level declaration, so that the
+declarations of a program run in source order as they do in the strict
+evaluator, and it appends four lines that count the thunks of the run.
+@code{Sec_4_2.run} is @code{run_with} over a fresh memoizing state.
 
-@noindent
-Finally, we must change the driver of @ref{4.1.4}
-to use @code{actual_value} instead of @code{eval}, so that if a delayed value
-is propagated back to the read-eval-print loop, it will be forced before being
-printed.  We also change the prompts to indicate that this is the lazy
-evaluator:
-
-@example ocaml
-let input_prompt = ";;; L-Eval input:"
-let output_prompt = ";;; L-Eval value:"
-
-(* The lazy driver: one form is read with the shared Reader and
-   evaluated with [actual_value], so a delayed value is forced
-   before it prints. *)
-let run env text =
-  Reader.read text |> Result.map_error read_error >>= fun exp -> actual_value exp env
-;;
-@end example
-
-@noindent
 With these changes made, we can start the evaluator and test it.  The
-successful evaluation of the @code{try} expression discussed in
+successful evaluation of the @code{try_} expression discussed in
 @ref{4.2.1} indicates that the interpreter is performing lazy evaluation:
 
 @example ocaml
-let env = the_global_environment () in
-run env "(define (try a b) (if (= a 0) 1 b))"
-(* ;;; L-Eval value: *)
-(* => ok *)
-run env "(try 0 (/ 1 0))"
-(* ;;; L-Eval value: *)
-(* => 1 *)
+Sec_4_1.transcript ~experiment:Check.Lazy Sec_4_2.run
+  "let try_ a b = if a = 0 then 1 else b
+   let () = print_int (try_ 0 (1 / 0))"
+(* => "1thunk-allocations: 2
+       thunk-forces: 1
+       thunk-recomputations: 1
+       thunk-memo-hits: 0\n" *)
 @end example
 
 @noindent
-The @code{unless} of @ref{4.2.1} works here as the text promises, with
-@code{a} bound to 1 and @code{b} to 0:
+The program prints @code{1}.  The two thunks are the two operands of
+@code{try_}; only the first is forced, by the comparison @code{a = 0}.  The
+@code{unless} of @ref{4.2.1} works here as the text promises, with @code{a}
+bound to 1 and @code{b} to 0.  The program
 
 @example ocaml
-run env "(unless (= 0 0) (/ 1 0) (begin (display \"exception: returning 0\") 0))"
-(* exception: returning 0 *)
-(* ;;; L-Eval value: *)
-(* => 0 *)
+let unless condition usual_value exceptional_value =
+  if condition then exceptional_value else usual_value
+
+let a = 1
+let b = 0
+
+let () =
+  print_int
+    (unless (b = 0)
+       (a / b)
+       (print_string "exception: returning 0\n"; 0))
 @end example
+
+@noindent
+prints
+
+@example
+exception: returning 0
+0
+@end example
+
+@noindent
+followed by the four counts.
 
 @subsubheading Representing thunks
 
 Our evaluator must arrange to create thunks when procedures are applied to
 arguments and to force these thunks later.  A thunk must package an expression
-together with the environment, so that the argument can be produced later.  To
-force the thunk, we simply extract the expression and environment from the
-thunk and evaluate the expression in the environment.  We use
-@code{actual_value} rather than @code{eval} so that in case the value of the
-expression is itself a thunk, we will force that, and so on, until we reach
-something that is not a thunk:
+together with the environment, so that the argument can be produced later.  In
+this edition a thunk is a value of its own, whose view is @code{Thunk cell},
+where the cell holds the state of the thunk:
 
 @example ocaml
-let rec force_value (v : Value.t) : (Value.t, Eval_error.t) result =
-  if is_thunk v
-  then (
-    let rec go = function
-      | [] ->
-        Error (Eval_error.Type_error "force_value: not a thunk of this evaluator")
-      | (w, force) :: rest -> if Value.physical_equal w v then force () else go rest
-    in
-    go !thunks >>= force_value)
-  else Ok v
-;;
+type thunk_state =
+  | Delayed of Ast.expr * env
+  | Forced of t
 @end example
 
 @noindent
-One easy way to package an expression with an environment in this edition is
-the host closure: the thunk is a primitive-shaped value under the reserved
-name @code{thunk}, a name no primitive table installs, and the forcing closure
-travels beside the value in a registry that @code{force_value} scans by
-physical identity, the same shape the 4.1 analyzer uses for procedure bodies:
+@code{Value.thunk ~expr ~env} makes a new delayed thunk.  To force the thunk,
+we simply extract the expression and environment from the thunk and evaluate
+the expression in the environment.  We use @code{actual_value} on the result
+so that in case the value of the expression is itself a thunk, we will force
+that, and so on, until we reach something that is not a thunk.
 
-@example ocaml
-let thunk_tag = "thunk"
-
-let is_thunk v =
-  match Value.view v with
-  | Value.Primitive_procedure name -> String.equal name thunk_tag
-  | _ -> false
-;;
-
-let thunk_of (force : unit -> (Value.t, Eval_error.t) result) : Value.t =
-  let v = Value.primitive ~name:thunk_tag (fun _ -> force ()) in
-  thunks := (v, force) :: !thunks;
-  v
-;;
-@end example
-
-@noindent
-Actually, what we want for our interpreter is not quite this, but rather thunks
-that have been memoized.  When a thunk is forced, we will store the value that
-was computed, so that the thunk can be recognized as already
-evaluated.@footnote{The book's memoized thunk overwrites its stored expression
-with the value and erases the @code{env} from the thunk once the expression's
-value has been computed.  This makes no difference in the values returned by
+What we want for our interpreter is thunks that have been memoized.  When a
+thunk is forced, we will store the value that was computed, so that the thunk
+can be recognized as already evaluated.  The state changes from
+@code{Delayed} to @code{Forced}, and the change also drops the reference to
+the environment.@footnote{This makes no difference in the values returned by
 the interpreter.  It does help save space, however, because removing the
 reference from the thunk to the @code{env} once it is no longer needed allows
 this structure to be @newterm{garbage-collected} and its space recycled, as we
-will discuss in @ref{5.3}.  The edition's thunk keeps its expression and
-environment in its closure and lets the host runtime collect the whole thunk
-when its last reference disappears.
+will discuss in @ref{5.3}.
 
 Similarly, we could have allowed unneeded environments in the memoized delayed
-objects of @ref{3.5.1} to be garbage-collected, by having
-@code{memo-proc} do something like @code{(set! proc '())} to discard the
-procedure @code{proc} (which includes the environment in which the @code{delay}
-was evaluated) after storing its value.}
+objects of @ref{3.5.1} to be garbage-collected, by having the memoizing
+procedure discard the delayed computation (which includes the environment in
+which the @code{delay} was evaluated) after storing its value.}
 
 @example ocaml
-(* A memoized thunk remembers its value in a host [Lazy] cell: the
-   first forcing fills the cell, later forcings read it, and the
-   book's mutation of a thunk into an evaluated thunk becomes the
-   cell's one-time fill. A failure answered while the cell fills is
-   cached and re-answered on every later forcing. *)
-let delay_it ?(memo = true) ~(eval : eval_t) exp env =
-  if memo
-  then (
-    let cell = lazy (eval exp env >>= force_value) in
-    thunk_of (fun () -> Lazy.force cell))
-  else thunk_of (fun () -> eval exp env >>= force_value)
-;;
+and actual_value self counters v =
+  match Value.view v with
+  | Value.Thunk cell ->
+    counters.forces <- counters.forces + 1;
+    (match !cell with
+     | Value.Forced memo ->
+       counters.memo_hits <- counters.memo_hits + 1;
+       Ok memo
+     | Value.Delayed (expr, env) ->
+       counters.recomputations <- counters.recomputations + 1;
+       let* forced = self env expr in
+       let* forced = actual_value self counters forced in
+       if counters.memoize
+       then Value.set_thunk_state cell (Value.Forced forced);
+       Ok forced)
+  | _ -> Ok v
 @end example
 
 @noindent
-Notice that the same @code{delay_it} procedure works both with and without
-memoization: the @code{memo} flag chooses, and it defaults to the memoizing
-interpreter of this section.
+Notice that the same @code{actual_value} procedure works both with and without
+memoization: the @code{memoize} field of the state chooses.
+@code{Sec_4_2.state ~memoize:false ()} is a state that never records a
+result, so every force of a delayed thunk recomputes it.  The four counts in
+the transcript are the numbers of thunks allocated, of forcing demands, of
+forces that ran the delayed computation, and of forces that read a memoized
+result.
 
 @quotation
-@strong{@anchor{Exercise 4.27}Exercise 4.27:} Suppose we type in the following
-definitions to the lazy evaluator:
+@strong{@anchor{Exercise 4.27}Exercise 4.27:} Suppose we give the following
+program to the lazy evaluator:
 
 @example
-(define count 0)
-(define (id x) (set! count (+ count 1)) x)
+let count = ref 0
+let id x = count := !count + 1; x
+let w = id (id 10)
+
+let () =
+  print_int !count;
+  print_newline ();
+  print_int w;
+  print_newline ();
+  print_int !count
 @end example
 
-Give the missing values in the following sequence of interactions, and explain
-your answers.@footnote{This exercise demonstrates that the interaction between
-lazy evaluation and side effects can be very confusing.  This is just what you
-might expect from the discussion in @ref{Chapter 3}.}
-
-@example
-(define w (id (id 10)))
-
-@i{;;; L-Eval input:}
-count
-
-@i{;;; L-Eval value:}
-⟨@var{response}⟩
-
-@i{;;; L-Eval input:}
-w
-
-@i{;;; L-Eval value:}
-⟨@var{response}⟩
-
-@i{;;; L-Eval input:}
-count
-
-@i{;;; L-Eval value:}
-⟨@var{response}⟩
-@end example
+Give the three numbers the program prints, and explain your
+answers.@footnote{This exercise demonstrates that the interaction between lazy
+evaluation and side effects can be very confusing.  This is just what you
+might expect from the discussion in @ref{Chapter 3}.}  How do the numbers
+change if the declaration of @code{w} is moved into the body of the last
+declaration as a local @code{let w = id (id 10) in}?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.28}Exercise 4.28:} @code{eval} uses
 @code{actual_value} rather than @code{eval} to evaluate the operator before
-passing it to @code{apply_procedure} to force the value of the
+passing it to @code{apply_value}, in order to force the value of the
 operator.  Give an example that demonstrates the need for this forcing.
 
 @noindent
 @strong{@anchor{Exercise 4.29}Exercise 4.29:} Exhibit a program that you would
 expect to run much more slowly without memoization than with memoization.
-Also, consider the following interaction, where the @code{id} procedure is
+Also, consider the following program, where the @code{id} procedure is
 defined as in @ref{Exercise 4.27} and @code{count} starts at 0:
 
 @example
-(define (square x) (* x x))
+let square x = x * x
 
-@i{;;; L-Eval input:}
-(square (id 10))
-
-@i{;;; L-Eval value:}
-⟨@var{response}⟩
-
-@i{;;; L-Eval input:}
-count
-
-@i{;;; L-Eval value:}
-⟨@var{response}⟩
+let () =
+  print_int (square (id 10));
+  print_newline ();
+  print_int !count
 @end example
 
-Give the responses both when the evaluator memoizes and when it does not.
+Give the output both when the evaluator memoizes and when it does not.
 @end quotation
 
 @quotation
 @emph{Exercise 4.29a is added by this edition and extends exercise
 4.29; SICP numbers stop at 4.29.} @strong{@anchor{Exercise 4.29a}Exercise 4.29a:} The
-section leaves its memoization choice built in. Give the evaluator a
-toggle: a flag read when an operand is delayed, so the same program runs
-memoized or unmemoized without rebuilding the evaluator. Alongside the
-toggle, install counters over the thunk machinery: one for thunk
-creations, one for forcings that reach a thunk, and one for thunk bodies
-actually evaluated. Run one fixed program under each mode and give the
-three counts it produces; explain which of the three counters the two modes
-share, and why the other two differ.
+section's @code{run} leaves its memoization choice built in.  Give the
+evaluator a toggle: a flag read when a thunk is forced, so the same program
+runs memoized or unmemoized without rebuilding the evaluator.  Alongside the
+toggle, keep counters over the thunk machinery: one for thunk creations, one
+for forcings that reach a thunk, and one for thunk bodies actually evaluated.
+(The state of @code{Sec_4_2} carries both; build yours on @code{open_eval}
+and @code{run_with}, or explain how the section's version works.)  Run one
+fixed program under each mode and give the three counts it produces; explain
+which of the three counters the two modes share, and why the other two differ.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.30}Exercise 4.30:} Cy D. Fect, a reformed C
-programmer, is worried that some side effects may never take place, because the
-lazy evaluator doesn't force the expressions in a sequence.  Since the value of
-an expression in a sequence other than the last one is not used (the expression
-is there only for its effect, such as assigning to a variable or printing),
-there can be no subsequent use of this value (e.g., as an argument to a
-primitive procedure) that will cause it to be forced.  Cy thus thinks that when
-evaluating sequences, we must force all expressions in the sequence except the
-final one.  He proposes to modify @code{eval_sequence} from @ref{4.1.1}
-to use @code{actual_value} rather than @code{eval}:
+programmer, is worried that some side effects may never take place in a lazy
+evaluator that doesn't force the expressions in a sequence.  Since the value
+of the expression @code{e1} in a sequence @code{e1; e2} is not used (the
+expression is there only for its effect, such as assigning to a reference or
+printing), there can be no subsequent use of this value (e.g., as an argument
+to a primitive procedure) that will cause it to be forced.  Cy thus thinks
+that when evaluating sequences, we must force all expressions in the sequence
+except the final one.  The @code{Sequence} clause of @code{Sec_4_2} does just
+that:
 
-@example
-(define (eval-sequence exps env)
-  (cond ((last-exp? exps) 
-         (eval (first-exp exps) env))
-        (else 
-         (actual-value (first-exp exps) 
-                       env)
-         (eval-sequence (rest-exps exps) 
-                        env))))
+@example ocaml
+| Ast.Sequence (first, second) ->
+  let* first = self env first in
+  let* _ = actual_value self counters first in
+  self env second
 @end example
+
+@noindent
+Consider the alternative clause that leaves out the call of
+@code{actual_value}, as the lazy evaluator of the original book did.
 
 @enumerate a
 
 @item
-Ben Bitdiddle thinks Cy is wrong.  He shows Cy the @code{for-each} procedure
-described in @ref{Exercise 2.23}, which gives an important example of a
-sequence with side effects:
+Ben Bitdiddle thinks the alternative would be good enough.  He shows Cy the
+@code{for_each} procedure described in @ref{Exercise 2.23}, which gives an
+important example of a sequence with side effects:
 
 @example
-(define (for-each proc items)
-  (if (null? items)
-      'done
-      (begin (proc (car items))
-             (for-each proc 
-                       (cdr items)))))
+let rec for_each proc items =
+  match items with
+  | [] -> ()
+  | x :: rest -> proc x; for_each proc rest
 @end example
 
-He claims that the evaluator in the text (with the original
-@code{eval_sequence}) handles this correctly:
+He claims that the evaluator with the alternative clause handles this
+correctly:
 
 @example
-@i{;;; L-Eval input:}
-(for-each
- (lambda (x) (newline) (display x))
- (list 57 321 88))
-@i{57}
-@i{321}
-@i{88}
-
-@i{;;; L-Eval value:}
-@i{done}
+let () =
+  for_each
+    (fun x -> print_newline (); print_int x)
+    [ 57; 321; 88 ]
 @end example
 
-Explain why Ben is right about the behavior of @code{for-each}.
+@noindent
+prints
+
+@example
+
+57
+321
+88
+@end example
+
+Explain why Ben is right about the behavior of @code{for_each}.
 
 @item
-Cy agrees that Ben is right about the @code{for-each} example, but says that
-that's not the kind of program he was thinking about when he proposed his
-change to @code{eval_sequence}.  He defines the following two procedures in the
-lazy evaluator:
+Cy agrees that Ben is right about the @code{for_each} example, but says that
+that's not the kind of program he was thinking about.  He defines the
+following two procedures in the lazy evaluator:
 
 @example
-(define (p1 x)
-  (set! x (cons x '(2))) x)
+let p1 x =
+  let r = ref [ x ] in
+  r := x :: [ 2 ];
+  !r
 
-(define (p2 x)
-  (define (p e) e x)
-  (p (set! x (cons x '(2)))))
+let p2 x =
+  let r = ref [ x ] in
+  let p e = e; !r in
+  p (r := x :: [ 2 ])
 @end example
 
-What are the values of @code{(p1 1)} and @code{(p2 1)} with the original
-@code{eval_sequence}?  What would the values be with Cy's proposed change to
-@code{eval_sequence}?
+What are the values of @code{p1 1} and @code{p2 1} with the alternative
+clause?  What are they with the clause of @code{Sec_4_2}?
 
 @item
-Cy also points out that changing @code{eval_sequence} as he proposes does not
-affect the behavior of the example in part a.  Explain why this is true.
+Cy also points out that the choice between the two clauses does not affect the
+behavior of the example in part a.  Explain why this is true.
 
 @item
 How do you think sequences ought to be treated in the lazy evaluator?  Do you
-like Cy's approach, the approach in the text, or some other approach?
+like Cy's approach, the alternative, or some other approach?
 
 @end enumerate
 @end quotation
@@ -609,124 +597,157 @@ like Cy's approach, the approach in the text, or some other approach?
 @quotation
 @strong{@anchor{Exercise 4.31}Exercise 4.31:} The approach taken in this
 section is somewhat unpleasant, because it makes an incompatible change to
-Scheme.  It might be nicer to implement lazy evaluation as an
-@newterm{upward-compatible extension}, that is, so that ordinary Scheme
-programs will work as before.  We can do this by extending the syntax of
-procedure declarations to let the user control whether or not arguments are to
-be delayed.  While we're at it, we may as well also give the user the choice
-between delaying with and without memoization.  For example, the definition
+the language.  It might be nicer to implement lazy evaluation as an
+@newterm{upward-compatible extension}, that is, so that ordinary programs will
+work as before.  We can do this by extending the syntax of procedure
+declarations to let the user control whether or not arguments are to be
+delayed.  While we're at it, we may as well also give the user the choice
+between delaying with and without memoization.  For example, the declaration
 
 @example
-(define (f a (b lazy) c (d lazy-memo))
-  @r{…})
+let f a (b lazy) c (d lazy_memo) = @r{…}
 @end example
 
 @noindent
 would define @code{f} to be a procedure of four arguments, where the first and
 third arguments are evaluated when the procedure is called, the second argument
 is delayed, and the fourth argument is both delayed and memoized.  Thus,
-ordinary procedure definitions will produce the same behavior as ordinary
-Scheme, while adding the @code{lazy-memo} declaration to each parameter of
+ordinary procedure declarations will produce the same behavior as ordinary
+OCaml, while adding the @code{lazy_memo} declaration to each parameter of
 every compound procedure will produce the behavior of the lazy evaluator
-defined in this section. Design and implement the changes required to produce
-such an extension to Scheme.  You will have to implement new syntax procedures
-to handle the new syntax for @code{define}.  You must also arrange for
-@code{eval} or @code{apply_procedure} to determine when arguments are to
-be delayed, and to force or delay arguments accordingly, and you must
-arrange for forcing to memoize or not, as appropriate.
+defined in this section.  Design and implement the changes required to produce
+such an extension.  @code{Check} admits only OCaml syntax, so you will have to
+carry the parameter declarations as data beside the abstract syntax of the
+procedure.  You must also arrange for @code{eval} or @code{apply} to determine
+when arguments are to be delayed, and to force or delay arguments accordingly,
+and you must arrange for forcing to memoize or not, as appropriate.
 @end quotation
 
 @node	4.2.3, 4.3, 4.1, 4.2
 @subsection Streams as Lazy Lists
 
 In @ref{3.5.1}, we showed how to implement streams as delayed lists.
-We introduced special forms @code{delay} and @code{cons-stream}, which allowed
-us to construct a ``promise'' to compute the @code{cdr} of a stream, without
-actually fulfilling that promise until later.  We could use this general
-technique of introducing special forms whenever we need more control over the
-evaluation process, but this is awkward.  For one thing, a special form is not
-a first-class object like a procedure, so we cannot use it together with
-higher-order procedures.@footnote{This is precisely the issue with the
-@code{unless} procedure, as in @ref{Exercise 4.26}.}  Additionally, we were
-forced to create streams as a new kind of data object similar but not identical
-to lists, and this required us to reimplement many ordinary list operations
-(@code{map}, @code{append}, and so on) for use with streams.
+We used a delayed tail, which allowed us to construct a ``promise'' to compute
+the rest of a stream, without actually fulfilling that promise until later.
+We could use this general technique of introducing special forms whenever we
+need more control over the evaluation process, but this is awkward.  For one
+thing, a special form is not a first-class object like a procedure, so we
+cannot use it together with higher-order procedures.@footnote{This is
+precisely the issue with the @code{unless} procedure, as in
+@ref{Exercise 4.26}.}  Additionally, we were forced to create streams as a new
+kind of data object similar but not identical to lists, and this required us
+to reimplement many ordinary list operations (@code{map}, @code{append}, and so
+on) for use with streams.
 
 With lazy evaluation, streams and lists can be identical, so there is no need
 for special forms or for separate list and stream operations.  All we need to
 do is to arrange matters so that @code{cons} is non-strict.  One way to
 accomplish this is to extend the lazy evaluator to allow for non-strict
-primitives, and to implement @code{cons} as one of these.  An easier way is to
-recall (@ref{2.1.3}) that there is no fundamental need to implement
-@code{cons} as a primitive at all.  Instead, we can represent pairs as
-procedures:@footnote{This is the procedural representation described in
-@ref{Exercise 2.4}.  Essentially any procedural representation (e.g., a
-message-passing implementation) would do as well.  Notice that we can install
-these definitions in the lazy evaluator simply by typing them at the driver
-loop.  If we had originally included @code{cons}, @code{car}, and @code{cdr} as
-primitives in the global environment, they will be redefined.  (Also see
+primitives, and to implement @code{::} as one of these.  An easier way is to
+recall (@ref{2.1.3}) that there is no fundamental need to use the built-in
+constructor directly at all.  Instead, we can make the construction of a pair
+the body of a compound procedure, which is non-strict in its
+arguments:@footnote{This is close to the procedural representation described
+in @ref{Exercise 2.4}, which a typed language cannot use for lists of any
+length, because the type of such a list would contain itself.  The compound
+procedure keeps OCaml's list type and moves only the construction behind a
+procedure call.  Notice that we can install this definition in the lazy
+evaluator simply by declaring it in the program.  (Also see
 @ref{Exercise 4.33} and @ref{Exercise 4.34}.)}
 
 @example ocaml
-run env "(define (cons x y) (lambda (m) (m x y)))"
-(* => ok *)
-run env "(define (car z) (z (lambda (p q) p)))"
-(* => ok *)
-run env "(define (cdr z) (z (lambda (p q) q)))"
-(* => ok *)
+let cons x y = x :: y
 @end example
 
 @noindent
-In terms of these basic operations, the standard definitions of the list
-operations will work with infinite lists (streams) as well as finite ones, and
-the stream operations can be implemented as list operations.  Here are some
-examples:
+When @code{cons} is applied, both operands become thunks, and the body builds
+a list cell that holds the two thunks.  A @code{match} forces only the parts
+its pattern tests.  In terms of this basic operation, the standard definitions
+of the list operations will work with infinite lists (streams) as well as
+finite ones, and the stream operations can be implemented as list operations.
+Here are some examples:
 
 @example ocaml
-run env "(define (list-ref items n) (if (= n 0) (car items) (list-ref (cdr items) (- n 1))))"
-(* => ok *)
-run env "(define (map proc items) (if (null? items) '() (cons (proc (car items)) (map proc (cdr items)))))"
-(* => ok *)
-run env "(define (scale-list items factor) (map (lambda (x) (* x factor)) items))"
-(* => ok *)
-run env "(define (add-lists list1 list2) (cond ((null? list1) list2) ((null? list2) list1) (else (cons (+ (car list1) (car list2)) (add-lists (cdr list1) (cdr list2))))))"
-(* => ok *)
-run env "(define ones (cons 1 ones))"
-(* => ok *)
-run env "(define integers (cons 1 (add-lists ones integers)))"
-(* => ok *)
-run env "(list-ref integers 17)"
-(* ;;; L-Eval value: *)
-(* => 18 *)
+let rec list_ref items n =
+  match items with
+  | x :: rest -> if n = 0 then x else list_ref rest (n - 1)
+  | [] -> 0
+
+let rec map proc items =
+  match items with
+  | x :: rest -> cons (proc x) (map proc rest)
+  | [] -> []
+
+let scale_list items factor = map (fun x -> x * factor) items
+
+let rec add_lists list1 list2 =
+  match list1, list2 with
+  | [], _ -> list2
+  | _, [] -> list1
+  | x :: xs, y :: ys -> cons (x + y) (add_lists xs ys)
+
+let rec ones = 1 :: ones
+
+let integers =
+  let knot = ref [] in
+  let result = cons 1 (add_lists ones !knot) in
+  knot := result;
+  result
+
+let () = print_int (list_ref integers 17)
 @end example
+
+@noindent
+Under the lazy experiment, the program prints @code{18}.  OCaml's @code{let rec} admits the cyclic list
+@code{ones}, whose recursive occurrence lies beneath a constructor, but not a
+recursive value defined by an application.  The definition of
+@code{integers} therefore ties the knot through a reference.  Nothing here
+delays anything explicitly: the operand @code{!knot} is read only when the
+tail of @code{integers} is forced, after the assignment.
 
 @noindent
 Note that these lazy lists are even lazier than the streams of @ref{Chapter 3}:
-The @code{car} of the list, as well as the @code{cdr}, is
+The head of the list, as well as the tail, is
 delayed.@footnote{This permits us to create delayed versions of more general
 kinds of list structures, not just sequences.  @ref{Hughes 1990} discusses some
-applications of ``lazy trees.''}  In fact, even accessing the @code{car} or
-@code{cdr} of a lazy pair need not force the value of a list element.  The
-value will be forced only when it is really needed---e.g., for use as the
-argument of a primitive, or to be printed as an answer.
+applications of ``lazy trees.''}  In fact, even taking a lazy list apart need
+not force the value of a list element.  The value will be forced only when it
+is really needed, e.g., for use as the argument of a primitive, or to be
+printed.
 
 Lazy pairs also help with the problem that arose with streams in
 @ref{3.5.4}, where we found that formulating stream models of systems with
 loops may require us to sprinkle our programs with explicit @code{delay}
-operations, beyond the ones supplied by @code{cons-stream}.  With lazy
-evaluation, all arguments to procedures are delayed uniformly.  For instance,
-we can implement procedures to integrate lists and solve differential equations
-as we originally intended in @ref{3.5.4}:
+operations, beyond the ones that build each stream.  With lazy evaluation,
+all arguments to procedures are delayed uniformly.  For instance, we can
+implement procedures to integrate lists and solve differential equations as we
+originally intended in @ref{3.5.4}, where @code{map}, @code{scale_list}, and
+@code{add_lists} are the versions above over @code{float}:
 
 @example ocaml
-run env "(define (integral integrand initial-value dt) (define int (cons initial-value (add-lists (scale-list integrand dt) int))) int)"
-(* => ok *)
-run env "(define (solve f y0 dt) (define y (integral dy y0 dt)) (define dy (map f y)) y)"
-(* => ok *)
-run env "(list-ref (solve (lambda (x) x) 1 0.001) 1000)"
-(* ;;; L-Eval value: *)
-(* => 2.716923932235896 *)
+let integral integrand initial_value dt =
+  let int = ref [] in
+  let result =
+    cons initial_value
+      (add_lists (scale_list integrand dt) !int)
+  in
+  int := result;
+  result
+
+let solve f y0 dt =
+  let y = ref [] in
+  let result = integral (map f !y) y0 dt in
+  y := result;
+  result
+
+let () =
+  print_endline
+    (string_of_float
+       (list_ref (solve (fun x -> x) 1.0 0.001) 1000))
 @end example
+
+@noindent
+Under the lazy experiment, the program prints @code{2.71692393224}.
 
 @quotation
 @strong{@anchor{Exercise 4.32}Exercise 4.32:} Give some examples that
@@ -740,20 +761,21 @@ this extra laziness?
 implementation given above by evaluating the expression
 
 @example
-(car '(a b c))
+list_ref [ 1 / 0; 42 ] 1
 @end example
 
 To his surprise, this produces an error.  After some thought, he realizes that
-the ``lists'' obtained by reading in quoted expressions are different from the
-lists manipulated by the new definitions of @code{cons}, @code{car}, and
-@code{cdr}.  Modify the evaluator's treatment of quoted expressions so that
-quoted lists typed at the driver loop will produce true lazy lists.
+the lists written as literals are different from the lists built by the new
+procedure @code{cons}: the evaluator builds a literal list with the strict
+constructor, evaluating every element.  Modify the evaluator's treatment of
+list literals so that literal lists produce true lazy lists.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.34}Exercise 4.34:} Modify the driver loop for the
+@strong{@anchor{Exercise 4.34}Exercise 4.34:} Modify the driver for the
 evaluator so that lazy pairs and lists will print in some reasonable way.
 (What are you going to do about infinite lists?)  You may also need to modify
 the representation of lazy pairs so that the evaluator can identify them in
 order to print them.
 @end quotation
+

@@ -1,186 +1,115 @@
-(* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 4.1 *)
+(* SPDX-License-Identifier: GPL-3.0-only *)
 
-(** The metacircular evaluator of section 4.1 against the shared
-    substrate: the typed [Ast] is the syntax, [Value] the runtime data,
-    [Env] the environments, and every failure travels through
-    [Eval_error]. [Core] is the reusable standard dispatch; [Analyze] is
-    the analyzed evaluator of 4.1.7. *)
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
+module Eval_error = Sicp_common.Eval_error
 
-(** One evaluator: from an expression and an environment to a value or a
-    typed error. *)
-type eval_t =
-  Sicp_common.Ast.expr
-  -> Sicp_common.Value.env
-  -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+(** The section 4.1 teaching evaluators over the checked syntax: the
+    direct evaluator and the analyzed evaluator, which separate syntax
+    analysis from execution and analyze each syntax node once per run.
 
-(** [true_ v] holds for every value except the false object. *)
-val true_ : Sicp_common.Value.t -> bool
+    Both evaluators share one semantic core -- lexical environments,
+    left-to-right operand evaluation, curried application, pattern
+    matching, and the fixed primitive surface -- and differ only in how
+    a closure body is executed: directly, or through its analysis.
 
-(** [false_ v] holds exactly for the false object. *)
-val false_ : Sicp_common.Value.t -> bool
+    Neither evaluator ever calls the host language on guest programs;
+    the only host computation is the primitive surface of [Prelude]. *)
+module Value = Sicp_common.Value
 
-(** [datum_to_value d] is the runtime value of the quoted datum [d]. *)
-val datum_to_value : Sicp_common.Ast.datum -> Sicp_common.Value.t
+(** [run ~emit program] evaluates [program] directly.  Printing
+    primitives write their bytes through [emit]. *)
+val run : emit:(string -> unit) -> Check.program -> (Value.t, Eval_error.t) result
 
-(** The marker value of a scanned-out internal definition that has not
-    been assigned yet (4.16). *)
-val unassigned : Sicp_common.Value.t
+(** [run_analyzed ~emit program] evaluates [program] through syntax
+    analysis: each expression is analyzed once, then execution is
+    environment application. *)
+val run_analyzed
+  :  emit:(string -> unit)
+  -> Check.program
+  -> (Value.t, Eval_error.t) result
 
-(** [is_unassigned v] holds exactly for [unassigned]. *)
-val is_unassigned : Sicp_common.Value.t -> bool
+(** [bind_pattern pattern value] is the bindings of [pattern] against
+    [value], or [None] when the pattern does not match.  Constructor
+    payloads align under the grammar's tuple-payload rule: a single
+    variable payload binds the whole payload tuple and a multi-pattern
+    payload destructures it. *)
+val bind_pattern : Ast.pattern -> Value.t -> (string * Value.t) list option
 
-(** {2 4.1.3: the environment operations} *)
+(** [bind_pattern_with ~force pattern value] is [bind_pattern] for an
+    evaluator whose values may be delayed: [force] runs on each subject
+    whose shape the pattern tests (a scalar, tuple, constructor, [[]]
+    or [::] pattern) before the test, while variables and wildcards
+    bind their subject unforced.  An error from [force] stops the
+    match. *)
+val bind_pattern_with
+  :  force:(Value.t -> (Value.t, Eval_error.t) result)
+  -> Ast.pattern
+  -> Value.t
+  -> ((string * Value.t) list option, Eval_error.t) result
 
-(** [lookup_variable_value name env] is the value of the nearest binding
-    of [name], or [Error (Unbound_variable name)]. *)
-val lookup_variable_value
-  :  string
-  -> Sicp_common.Value.env
-  -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+(** {1 Operator semantics}
 
-(** [extend_environment names values base_env] is a fresh frame binding
-    each name to the value at the same position, in front of
-    [base_env]. *)
-val extend_environment
-  :  string list
-  -> Sicp_common.Value.t list
-  -> Sicp_common.Value.env
-  -> (Sicp_common.Value.env, Sicp_common.Eval_error.t) result
+    The scalar and operator meanings every teaching engine shares, so the
+    search experiment, the explicit-control evaluator, and the compiled
+    machine compute exactly what the evaluators here compute. *)
 
-(** [set_variable_value_ name value env] rebinds the nearest binding of
-    [name]. *)
-val set_variable_value_
-  :  string
-  -> Sicp_common.Value.t
-  -> Sicp_common.Value.env
-  -> (unit, Sicp_common.Eval_error.t) result
+(** [scalar_value s] is the runtime value of the literal [s]. *)
+val scalar_value : Ast.scalar -> Value.t
 
-(** [define_variable_ name value env] binds [name] in the newest frame
-    and answers the symbol [ok]. *)
-val define_variable_
-  :  string
-  -> Sicp_common.Value.t
-  -> Sicp_common.Value.env
-  -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+(** [arithmetic op left right] applies [op] under grammar section 6:
+    target-width integer wrapping, truncating division, remainder with
+    the sign of its left operand, and a division-by-zero failure. *)
+val arithmetic : Ast.arith -> Value.t -> Value.t -> (Value.t, Eval_error.t) result
 
-(** [primitive_table env] holds the section's primitives under their
-    object-language names. *)
-val primitive_table : (string * Sicp_common.Value.primitive) list
+(** [negate v] is the integer or float negation of [v]. *)
+val negate : Value.t -> (Value.t, Eval_error.t) result
 
-(** [setup_environment ()] is a fresh global environment with the
-    primitives and the bindings of [true] and [false]. *)
-val setup_environment : unit -> Sicp_common.Value.env
+(** [comparison op left right] applies [op] under the scalar comparison
+    rules of grammar section 3. *)
+val comparison : Ast.comparison -> Value.t -> Value.t -> (Value.t, Eval_error.t) result
 
-(** [the_global_environment ()] is a fresh global environment, the
-    book's [the-global-environment]. *)
-val the_global_environment : unit -> Sicp_common.Value.env
+(** {1 The evaluators over one expression}
 
-(** [sequence_to_exp exps] packs a clause body into one expression. *)
-val sequence_to_exp
-  :  Sicp_common.Ast.expr list
-  -> (Sicp_common.Ast.expr, Sicp_common.Eval_error.t) result
+    The entry points the exercises extend: one expression evaluated in
+    an environment, rather than a whole checked unit. *)
 
-(** [cond_to_if exp] is the derived-expression rewrite of one [cond]. *)
-val cond_to_if
-  :  Sicp_common.Ast.expr
-  -> (Sicp_common.Ast.expr, Sicp_common.Eval_error.t) result
+(** An evaluator of one expression in an environment. *)
+type eval_t = Ast.expr -> Sicp_common.Env.t -> (Value.t, Eval_error.t) result
 
-(** {2 4.1.1: the core of the evaluator} *)
+(** [eval_expr] is the direct evaluator. *)
+val eval_expr : eval_t
 
-(** [Core (Eval)] is the standard dispatch of the metacircular
-    evaluator, recursing through [Eval.eval]. An exercise that adds a
-    clause to [eval] instantiates [Core] with its own recursive module;
-    the base evaluator is [Core] instantiated with itself. The result
-    signature cannot mention the parameter, so the functor-parameter
-    warning is silenced here; the implementation uses it throughout. *)
-module Core (Eval : sig
-    (** The recursive evaluator the standard clauses call back into. *)
-    val eval : eval_t
-  end) : sig
-  (** [list_of_values exps env] evaluates the operands left to right. *)
-  val list_of_values
-    :  Sicp_common.Ast.expr list
-    -> Sicp_common.Value.env
-    -> (Sicp_common.Value.t list, Sicp_common.Eval_error.t) result
+(** [analyze e] analyzes [e] once and answers its execution procedure. *)
+val analyze : Ast.expr -> Sicp_common.Env.t -> (Value.t, Eval_error.t) result
 
-  (** [list_of_values_right_to_left exps env] evaluates the same
-      operands right to left (exercise 4.1). *)
-  val list_of_values_right_to_left
-    :  Sicp_common.Ast.expr list
-    -> Sicp_common.Value.env
-    -> (Sicp_common.Value.t list, Sicp_common.Eval_error.t) result
+(** [apply_procedure proc args] applies a closure or primitive to
+    [args] under the direct evaluator. *)
+val apply_procedure : Value.t -> Value.t list -> (Value.t, Eval_error.t) result
 
-  (** [eval_sequence exps env] evaluates a body or [begin] in order,
-      answering the last value. *)
-  val eval_sequence
-    :  Sicp_common.Ast.expr list
-    -> Sicp_common.Value.env
-    -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+(** [the_global_environment ?emit ()] is the prelude environment;
+    printing goes through [emit] (default: standard output). *)
+val the_global_environment : ?emit:(string -> unit) -> unit -> Sicp_common.Env.t
 
-  (** [apply_procedure proc args] is the book's [apply]. *)
-  val apply_procedure
-    :  Sicp_common.Value.t
-    -> Sicp_common.Value.t list
-    -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+(** [expression source] admits the single OCaml expression [source]
+    (checked as the unit [let it = (source)]) and answers its syntax. *)
+val expression : string -> (Ast.expr, string) result
 
-  (** [eval_if exp env] evaluates one [if] under the object language's
-      truth. *)
-  val eval_if
-    :  Sicp_common.Ast.expr
-    -> Sicp_common.Value.env
-    -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
-
-  (** [eval_assignment name exp env] rebinds [name] and answers [ok]. *)
-  val eval_assignment
-    :  string
-    -> Sicp_common.Ast.expr
-    -> Sicp_common.Value.env
-    -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
-
-  (** [eval_definition d env] installs one definition and answers [ok]. *)
-  val eval_definition
-    :  Sicp_common.Ast.definition
-    -> Sicp_common.Value.env
-    -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
-
-  (** [eval exp env] is the standard dispatch: every syntactic type of
-      the section except [and], [or], and [let], which the exercises
-      add. *)
-  val eval : eval_t
-end
-[@@warning "-67"]
-
-(** [eval exp env] evaluates one expression, the base instantiation of
-    [Core]. *)
-val eval : eval_t
-
-(** {2 4.1.4: the driver} *)
-
-(** [run env text] reads one object-language form from [text] and
-    evaluates it in [env]. *)
-val run
-  :  Sicp_common.Value.env
+(** [transcript ?experiment run source] admits [source] and runs it with
+    [run]: the guest output, then [error: ...] when the run stops on a
+    runtime error, or [rejected: kind] when admission fails. *)
+val transcript
+  :  ?experiment:Check.experiment
+  -> (emit:(string -> unit) -> Check.program -> (Value.t, Eval_error.t) result)
   -> string
-  -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
-
-(** [run_program env text] reads a program of forms and evaluates them
-    in order, answering the last value. *)
-val run_program
-  :  Sicp_common.Value.env
   -> string
-  -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
 
-(** The analyzed evaluator of 4.1.7. *)
-module Analyze : sig
-  (** One execution procedure: the analyzed form of one expression, an
-      environment to result closure with the dispatch already decided. *)
-  type execution =
-    Sicp_common.Value.env -> (Sicp_common.Value.t, Sicp_common.Eval_error.t) result
+(** [open_eval ~self] is one step of the direct evaluator's dispatch: it
+    handles the node at hand and evaluates every subexpression and
+    every closure body through [self].  An exercise's evaluator is the
+    fixed point of its own clauses falling back on [open_eval]. *)
+val open_eval : self:eval_t -> eval_t
 
-  (** [analyze exp] compiles [exp] once into its execution procedure. *)
-  val analyze : Sicp_common.Ast.expr -> (execution, Sicp_common.Eval_error.t) result
-
-  (** [eval exp env] analyzes [exp] and runs the result in [env]. *)
-  val eval : eval_t
-end
+(** [apply_with ~self proc args] applies [proc], running closure bodies
+    through [self]. *)
+val apply_with : self:eval_t -> Value.t -> Value.t list -> (Value.t, Eval_error.t) result

@@ -1,6 +1,6 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 5.32: the evaluator's symbol-operator fast path and the design answer. *)
+(** Exercise 5.32: the explicit-control evaluator's fast path for calls whose operator is a variable. *)
 
-val ex_5_32 : unit -> (string list, Sicp_ch5.Sec_5_4.error) result
+val ex_5_32 : unit -> (string list, Sicp_common.Eval_error.t) result

@@ -5,7 +5,7 @@
 
 (** [trace_line m i] renders one traced instruction: the labels the
     assembler retained for it, then the instruction itself. *)
-val trace_line : Sec_5_15.Sim.machine -> int -> string
+val trace_line : Sec_5_15.Monitor.machine -> int -> string
 
 (** [ex_5_17 ()] traces the Fibonacci machine on [n = 3] with the
     labels printed and the count undisturbed. *)

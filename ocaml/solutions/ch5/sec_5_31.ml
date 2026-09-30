@@ -1,51 +1,47 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.31: which of the evaluator's saves are superfluous for
-    four combinations.  The compiler answers by construction: each
-    compilation's [preserving] emits exactly the saves the register
-    analysis demands, so the answer is the compiler's own output. *)
-
+module Ast = Sicp_common.Ast
+module Check = Sicp_common.Check
 module C = Sicp_ch5.Sec_5_5
+module M = Sicp_ch5.Sec_5_1
 
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
-(** The four combinations of the exercise, in order. *)
-let combinations = [ "(f 'x 'y)"; "((f) 'x 'y)"; "(f (g 'x) y)"; "(f (g 'x) 'y)" ]
-
-(** [saves_of src] is the [save]/[restore] pairs of the combination's
-    compilation, as the machine reads them, one instruction per line. *)
-let saves_of state src =
-  match Sicp_common.Reader.read src with
-  | Error e -> Error (C.Parse (Sicp_common.Reader.to_string e))
-  | Ok exp ->
-    C.compile C.default_config state [] exp "val" C.Next
-    >>= fun seq ->
-    Ok
-      (List.filter
-         (fun s ->
-            String.length s > 5
-            && (String.sub s 0 5 = "(save" || String.sub s 0 8 = "(restore"))
-         seq.stmts)
+let combinations =
+  [ "f 1 2", "let f a b = a + b\nlet combination = f 1 2"
+  ; ( "(pick true) 1 2"
+    , "let pick flag = if flag then fun a b -> a + b else fun a b -> a - b\n\
+       let combination = (pick true) 1 2" )
+  ; "f (g 1) y", "let f a b = a + b\nlet g a = a\nlet y = 2\nlet combination = f (g 1) y"
+  ; "f (g 1) 2", "let f a b = a + b\nlet g a = a\nlet combination = f (g 1) 2"
+  ]
 ;;
 
-let render lines = String.concat "; " lines
+let last_right_hand_side program =
+  match List.rev (Check.items program) with
+  | Ast.Value_item (_, [ binding ]) :: _ -> Ok binding.rhs
+  | _ -> Error (Sicp_common.Eval_error.Invalid_form "the unit ends in one binding")
+;;
 
-(** [ex_5_31 ()] answers, for each combination, which of the
-    evaluator's saves the compiler keeps: (a) [f], [x] and [y] are all
-    symbols, so no evaluation can change [env], [argl], [proc], or
-    [continue] and every save is superfluous; (b) the operator
-    [(f)] is itself a call, so [env] and [continue] must survive it;
-    (c) the operand [(g 'x)] is a call, so [env] and [argl] (and
-    [continue]) are preserved around it, while the last operand [y]
-    needs nothing; (d) like (c) with a constant last operand. *)
+let stack_operations (seq : C.seq) =
+  List.filter_map
+    (function
+      | M.Save r -> Some ("save " ^ r)
+      | M.Restore r -> Some ("restore " ^ r)
+      | _ -> None)
+    seq.statements
+;;
+
 let ex_5_31 () =
   let state = C.new_state () in
-  let rec go acc = function
-    | [] -> Ok (List.rev acc)
-    | src :: rest ->
-      saves_of state src
-      >>= fun saves -> go (Printf.sprintf "%s: %s" src (render saves) :: acc) rest
-  in
-  go [] combinations >>= fun lines -> Ok lines
+  List.fold_right
+    (fun (shown, source) acc ->
+       let* lines = acc in
+       let* program = Sec_5_33.program ~filename:"ex_5_31.ml" source in
+       let* e = last_right_hand_side program in
+       let seq = C.compile state e "val" C.Next in
+       Ok ((shown ^ ": " ^ String.concat "; " (stack_operations seq)) :: lines))
+    combinations
+    (Ok [])
 ;;

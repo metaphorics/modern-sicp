@@ -1,49 +1,68 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.36: unbounded Pythagorean triples. Plain depth-first
-    search is not fair over unbounded ranges: replacing
-    [an-integer-between] by [an-integer-starting-from] in the 4.35
-    procedure would descend into the first coordinate and never return.
-    This edition's rule keeps the evaluator's search unchanged and
-    restores fairness in the enumeration order: the procedure grows the
-    hypotenuse without bound and searches each finite hypotenuse
-    completely, so every triple is reached in finitely many
-    [try_again] steps. The demonstration pins the first six triples. *)
+(* Exercise 4.36: unbounded Pythagorean triples. The section's search
+   experiment walks every branch depth first, so an unbounded generator
+   can only be run under a ceiling; the ceiling is what makes the
+   fairness of an enumeration observable. The fair procedure grows the
+   hypotenuse outermost and searches each finite hypotenuse completely:
+   raising its ceiling only appends answers, so every triple sits at a
+   position no ceiling changes and a search without ceiling reaches it
+   after finitely many answers. The naive replacement of 4.35's
+   generators by one starting from [low] keeps [i] outermost: raising
+   the ceiling inserts new triples in front of old ones, and without a
+   ceiling the search never leaves the first [i]. *)
 
-module Eval = Sicp_ch4.Sec_4_3
-module Eval_error = Sicp_common.Eval_error
-module Value = Sicp_common.Value
+module Check = Sicp_common.Check
 
-let show = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let transcript source =
+  Sicp_ch4.Sec_4_1.transcript ~experiment:Check.Search Sicp_ch4.Sec_4_3.run source
+  |> String.split_on_char '\n'
+  |> List.filter (fun line -> line <> "")
 ;;
 
-let program =
+let program ceiling procedure =
   {|
-(define (require p) (if (not p) (amb)))
-(define (an-integer-between low high)
-  (require (not (> low high)))
-  (amb low (an-integer-between (+ low 1) high)))
-(define (an-integer-starting-from n)
-  (amb n (an-integer-starting-from (+ n 1))))
-(define (a-pythagorean-triple-from low)
-  (let ((k (an-integer-starting-from low)))
-    (let ((i (an-integer-between low (- k 1))))
-      (let ((j (an-integer-between i (- k 1))))
-        (require (= (+ (* i i) (* j j)) (* k k)))
-        (list i j k)))))|}
+let rec an_integer_between low high =
+  require (low <= high);
+  amb low (an_integer_between (low + 1) high)
+
+let ceiling = |}
+  ^ string_of_int ceiling
+  ^ {|
+
+let an_integer_starting_from n = an_integer_between n ceiling
+
+let show_triple i j k =
+  "(" ^ string_of_int i ^ " " ^ string_of_int j ^ " " ^ string_of_int k ^ ")"
+
+let fair_triple_from low =
+  let k = an_integer_starting_from low in
+  let i = an_integer_between low (k - 1) in
+  let j = an_integer_between i (k - 1) in
+  require (i * i + j * j = k * k);
+  show_triple i j k
+
+let naive_triple_from low =
+  let i = an_integer_starting_from low in
+  let j = an_integer_starting_from i in
+  let k = an_integer_starting_from j in
+  require (i * i + j * j = k * k);
+  show_triple i j k
+
+let () = print_endline (|}
+  ^ procedure
+  ^ {| 1)
+|}
 ;;
 
 let ex_4_36 () =
-  let env = Eval.the_global_environment () in
-  let (_ : (Value.t, Eval_error.t) result) = Eval.run_program env program in
-  let first = Eval.run env "(a-pythagorean-triple-from 1)" in
-  let second = Eval.try_again () in
-  let third = Eval.try_again () in
-  let fourth = Eval.try_again () in
-  let fifth = Eval.try_again () in
-  let sixth = Eval.try_again () in
-  List.map show [ first; second; third; fourth; fifth; sixth ]
+  let run ceiling procedure =
+    (procedure ^ " ceiling " ^ string_of_int ceiling)
+    :: transcript (program ceiling procedure)
+  in
+  run 20 "fair_triple_from"
+  @ run 30 "fair_triple_from"
+  @ run 20 "naive_triple_from"
+  @ run 30 "naive_triple_from"
 ;;

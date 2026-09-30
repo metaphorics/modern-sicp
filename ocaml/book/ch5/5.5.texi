@@ -199,10 +199,12 @@ let rec compile cfg state cenv exp target linkage =
   | Ast.Quote _ -> compile_quoted cfg state exp target linkage
   | Ast.Variable _ -> compile_variable cfg cenv exp target linkage
   | Ast.Set _ -> compile_assignment cfg state cenv exp target linkage
-  | Ast.Definition _ -> compile_definition cfg state cenv exp target linkage
+  | Ast.Definition _ -> compile_definition cfg state cenv exp target
+    linkage
   | Ast.If _ -> compile_if cfg state cenv exp target linkage
   | Ast.Lambda _ -> compile_lambda cfg state cenv exp target linkage
-  | Ast.Sequence body -> compile_sequence cfg state cenv body target linkage
+  | Ast.Sequence body -> compile_sequence cfg state cenv body target
+    linkage
   | Ast.Cond _ ->
     (match cond_to_if exp with
      | Ok e -> compile cfg state cenv e target linkage
@@ -214,8 +216,10 @@ let rec compile cfg state cenv exp target linkage =
   | Ast.Application (operator, operands) ->
     if is_open_coded cfg cenv operator
     then compile_open_code cfg state cenv exp target linkage
-    else compile_application cfg state cenv operator operands target linkage
-  | Ast.And _ | Ast.Or _ -> Error (Op_failed "Unknown expression type: COMPILE")
+    else compile_application cfg state cenv operator operands target
+      linkage
+  | Ast.And _ | Ast.Or _ -> Error (Op_failed
+    "Unknown expression type: COMPILE")
 ;;
 @end example
 
@@ -414,7 +418,8 @@ type seq =
   ; stmts : string list
   @}
 
-let make_instruction_sequence needs modifies stmts = @{ needs; modifies; stmts @}
+let make_instruction_sequence needs modifies stmts = @{ needs; modifies;
+  stmts @}
 @end example
 
 @noindent
@@ -437,7 +442,8 @@ make_instruction_sequence
 We sometimes need to construct an instruction sequence with no statements:
 
 @example ocaml
-let empty_instruction_sequence = @{ needs = []; modifies = []; stmts = [] @}
+let empty_instruction_sequence = @{ needs = []; modifies = []; stmts =
+  [] @}
 @end example
 
 @noindent
@@ -541,7 +547,8 @@ and restored.
 
 @example ocaml
 let end_with_linkage cfg linkage seq =
-  compile_linkage linkage >>= fun tail -> preserving cfg [ "continue" ] seq tail
+  compile_linkage linkage >>= fun tail -> preserving cfg [ "continue" ]
+    seq tail
 ;;
 @end example
 
@@ -579,7 +586,8 @@ and compile_quoted cfg state exp target linkage =
       (make_instruction_sequence
          [ "env" ]
          [ target ]
-         [ stmt "(assign %s (op text-of-quotation) (const %s))" target name ])
+         [ stmt "(assign %s (op text-of-quotation) (const %s))" target
+           name ])
   | _ -> Error (Op_failed "not a quotation")
 
 and compile_variable cfg cenv exp target linkage =
@@ -595,7 +603,8 @@ and compile_variable cfg cenv exp target linkage =
          [ "env" ]
          [ target ]
          [ stmt
-             "(assign %s (op lookup-variable-value) (const %s) (reg env))"
+             ("(assign %s (op lookup-variable-value) "
+              ^ "(const %s) (reg env))")
              target
              name ])
   | _ -> Error (Op_failed "compile-variable needs a variable")
@@ -637,7 +646,8 @@ and compile_assignment cfg state cenv exp target linkage =
          [ "env"; "val" ]
          [ target ]
          [ stmt
-             "(perform (op set-variable-value!) (const %s) (reg val) (reg env))"
+             ("(perform (op set-variable-value!) (const %s) "
+              ^ "(reg val) (reg env))")
              name
          ; stmt "(assign %s (const ok))" target
          ])
@@ -656,7 +666,10 @@ and compile_definition cfg state cenv exp target linkage =
     (make_instruction_sequence
        [ "env" ]
        [ target ]
-       [ stmt "(perform (op define-variable!) (const %s) (reg val) (reg env))" name
+       [ (stmt
+            ("(perform (op define-variable!) (const %s) "
+             ^ "(reg val) (reg env))")
+            name)
        ; stmt "(assign %s (const ok))" target
        ])
   >>= fun seq -> end_with_linkage cfg linkage seq
@@ -735,7 +748,8 @@ and compile_if cfg state cenv exp target linkage =
       | Next -> Lab after_if
       | l -> l
     in
-    let alternative_exp = Option.value alternative ~default:(Ast.bool false) in
+    let alternative_exp = Option.value alternative ~default:(Ast.bool
+      false) in
     compile cfg state cenv alternative_exp target linkage
     >>= fun a_code ->
     compile cfg state cenv consequent target consequent_linkage
@@ -746,14 +760,18 @@ and compile_if cfg state cenv exp target linkage =
       make_instruction_sequence
         [ "val" ]
         []
-        [ "(test (op false?) (reg val))"; stmt "(branch (label %s))" f_branch ]
+        [ "(test (op false?) (reg val))"; stmt "(branch (label %s))"
+          f_branch ]
     in
     let branches =
       parallel_instruction_sequences
-        (append_2_sequences (make_instruction_sequence [] [] [ t_branch ]) c_code)
-        (append_2_sequences (make_instruction_sequence [] [] [ f_branch ]) a_code)
+        (append_2_sequences (make_instruction_sequence [] [] [ t_branch
+          ]) c_code)
+        (append_2_sequences (make_instruction_sequence [] [] [ f_branch
+          ]) a_code)
     in
-    let branch_tail = @{ branches with stmts = branches.stmts @ [ after_if ] @} in
+    let branch_tail = @{ branches with stmts = branches.stmts @ [
+      after_if ] @} in
     let with_test = append_2_sequences test_code branch_tail in
     preserving cfg [ "env"; "continue" ] p_code with_test
   | _ -> Error (Op_failed "compile-if needs an if")
@@ -791,7 +809,8 @@ and compile_sequence cfg state cenv body target linkage =
     compile cfg state cenv first target Next
     >>= fun first_code ->
     compile_sequence cfg state cenv rest target linkage
-    >>= fun rest_code -> preserving cfg [ "env"; "continue" ] first_code rest_code
+    >>= fun rest_code -> preserving cfg [ "env"; "continue" ] first_code
+      rest_code
 @end example
 
 @subsubheading Compiling @code{lambda} expressions
@@ -839,7 +858,8 @@ let is_compiled_object v =
   match Value.view v with
   | Value.Pair (tag, second) ->
     (match Value.view tag, Value.view second with
-     | Value.Symbol s, Value.Int _ -> String.equal s "compiled-procedure"
+     | Value.Symbol s, Value.Int _ -> String.equal s
+       "compiled-procedure"
      | _ -> false)
   | _ -> false
 
@@ -853,7 +873,8 @@ let compiled_parts table v =
      | Value.Int id ->
        (match Hashtbl.find_opt table id with
         | Some (entry, env) -> Ok (entry, env)
-        | None -> Error (Op_failed "the compiled procedure's entry is gone"))
+        | None -> Error (Op_failed
+          "the compiled procedure's entry is gone"))
      | _ -> Error (Op_failed "not a compiled procedure"))
   | _ -> Error (Op_failed "not a compiled procedure")
 @end example
@@ -875,7 +896,8 @@ and compile_lambda cfg state cenv exp target linkage =
         [ "env" ]
         [ target ]
         [ stmt
-            "(assign %s (op make-compiled-procedure) (const %s) (reg env))"
+            ("(assign %s (op make-compiled-procedure) "
+             ^ "(const %s) (reg env))"
             target
             proc_entry
         ]
@@ -934,7 +956,8 @@ and compile_lambda_body cfg state cenv exp proc_entry =
           "(assign env (op extend-environment) %s (reg argl) (reg env))"
           name_consts
     in
-    compile_sequence cfg state (extend_cenv params cenv) body "val" Return
+    compile_sequence cfg state (extend_cenv params cenv) body "val"
+      Return
     >>= fun body_code ->
     Ok
       (append_2_sequences
@@ -991,17 +1014,20 @@ modify @code{proc}, which will be needed for the actual procedure application).
 linkage in the procedure call.
 
 @example ocaml
-and compile_application cfg state cenv operator operands target linkage =
+and compile_application cfg state cenv operator operands target linkage
+  =
   compile cfg state cenv operator "proc" Next
   >>= fun proc_code ->
-  result_map_all (List.map (fun o -> compile cfg state cenv o "val" Next) operands)
+  result_map_all (List.map (fun o -> compile cfg state cenv o "val"
+    Next) operands)
   >>= fun codes ->
   construct_arglist cfg codes
   >>= fun arglist_code ->
   compile_procedure_call cfg state target linkage
   >>= fun call_code ->
   preserving cfg [ "proc"; "continue" ] arglist_code call_code
-  >>= fun call_and_args -> preserving cfg [ "env"; "continue" ] proc_code call_and_args
+  >>= fun call_and_args -> preserving cfg [ "env"; "continue" ]
+    proc_code call_and_args
 @end example
 
 @noindent
@@ -1057,7 +1083,8 @@ sequences from the order supplied by @code{compile-application}.
 and construct_arglist cfg operand_codes =
   (* 5.36 flips the order with the cfg.left_to_right switch; the
      default compiles the operands right to left, the book's reverse *)
-  let ordered = if cfg.left_to_right then operand_codes else List.rev operand_codes in
+  let ordered = if cfg.left_to_right then operand_codes else List.rev
+    operand_codes in
   match ordered with
   | [] ->
     Ok
@@ -1089,13 +1116,15 @@ and construct_arglist cfg operand_codes =
         then Ok code_for_next_arg
         else
           code_to_get_rest_args rest
-          >>= fun rest_code -> preserving cfg [ "env" ] code_for_next_arg rest_code
+          >>= fun rest_code -> preserving cfg [ "env" ]
+            code_for_next_arg rest_code
     in
     if rest_codes = []
     then Ok code_to_get_last_arg
     else
       code_to_get_rest_args rest_codes
-      >>= fun rest_code -> preserving cfg [ "env" ] code_to_get_last_arg rest_code
+      >>= fun rest_code -> preserving cfg [ "env" ] code_to_get_last_arg
+        rest_code
 @end example
 
 @subsubheading Applying procedures
@@ -1138,7 +1167,8 @@ and compile_procedure_call cfg state target linkage =
   let compiled_branch = make_label state "compiled-branch" in
   let primitive_branch = make_label state "primitive-branch" in
   let compound_branch =
-    if cfg.compound_calls then Some (make_label state "compound-branch") else None
+    if cfg.compound_calls then Some (make_label state "compound-branch")
+      else None
   in
   let compiled_linkage =
     match linkage with
@@ -1158,7 +1188,10 @@ and compile_procedure_call cfg state target linkage =
     (make_instruction_sequence
        [ "proc"; "argl" ]
        [ target ]
-       (stmt "(assign %s (op apply-primitive-procedure) (reg proc) (reg argl))" target
+       (stmt
+          ("(assign %s (op apply-primitive-procedure) "
+           ^ "(reg proc) (reg argl))")
+          target
         :: primitive_tail))
   >>= fun primitive_code ->
   (* the third branch of exercise 5.47 hands interpreted procedures to
@@ -1461,7 +1494,8 @@ needed by @code{seq2} and the registers modified by @code{seq1}.)  Thus,
 
 @example ocaml
 let append_2_sequences seq1 seq2 =
-  @{ needs = list_union seq1.needs (list_difference seq2.needs seq1.modifies)
+  @{ needs = list_union seq1.needs (list_difference seq2.needs
+    seq1.modifies)
   ; modifies = list_union seq1.modifies seq2.modifies
   ; stmts = seq1.stmts @ seq2.stmts
   @}
@@ -1484,7 +1518,8 @@ let list_union s1 s2 =
   let rec go acc = function
     | [] -> List.rev acc @ s2
     | x :: rest ->
-      if List.mem x s2 || List.mem x acc then go acc rest else go (x :: acc) rest
+      if List.mem x s2 || List.mem x acc then go acc rest else go (x ::
+        acc) rest
   in
   go [] s1
 ;;
@@ -1493,7 +1528,8 @@ let rec list_difference s1 s2 =
   match s1 with
   | [] -> []
   | x :: rest ->
-    if List.mem x s2 then list_difference rest s2 else x :: list_difference rest s2
+    if List.mem x s2 then list_difference rest s2 else x ::
+      list_difference rest s2
 ;;
 @end example
 
@@ -1523,7 +1559,8 @@ let preserving cfg regs seq1 seq2 =
   let rec go seq1 = function
     | [] -> Ok (append_2_sequences seq1 seq2)
     | first_reg :: rest ->
-      let needed = List.mem first_reg seq2.needs && List.mem first_reg seq1.modifies in
+      let needed = List.mem first_reg seq2.needs && List.mem first_reg
+        seq1.modifies in
       let saves = if cfg.preserving_on then needed else true in
       if not saves
       then go seq1 rest
@@ -1841,7 +1878,8 @@ false-branch4
           (const factorial) 
           (reg env))
   (save proc)  @r{; save @code{factorial} procedure}
-@r{;; compute @code{(- n 1)}, which is the argument for @code{factorial}}
+@r{;; compute @code{(- n 1)}, which is the argument for
+  @code{factorial}}
   (assign proc 
           (op lookup-variable-value)
           (const -) 
@@ -2417,7 +2455,8 @@ driver's inputs:
 
 @example ocaml
 let state = Sec_5_5.new_state () in
-Sec_5_5.compile_and_go ~state ~compiled:factorial_source ~source:"(factorial 5)" ()
+Sec_5_5.compile_and_go ~state ~compiled:factorial_source
+  ~source:"(factorial 5)" ()
 >>= fun m -> Sec_5_5.start m
 @end example
 
@@ -2570,7 +2609,8 @@ monitored driver, and the session is the module's own transcript:
 
 @example ocaml
 let state = Sec_5_5.new_state () in
-Sec_5_5.compile_and_go ~state ~compiled:factorial_source ~source:"(factorial 5)" ()
+Sec_5_5.compile_and_go ~state ~compiled:factorial_source
+  ~source:"(factorial 5)" ()
 >>= fun m -> Sec_5_5.start m
 @end example
 

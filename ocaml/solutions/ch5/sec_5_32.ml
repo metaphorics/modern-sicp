@@ -1,108 +1,113 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 5.5 *)
-let ( >>= ) = Result.bind
+   Adapted from SICP section 5.5 *)
 
-(** Exercise 5.32: (a) the evaluator's symbol-operator fast path; (b)
-    the answer to Alyssa's suggestion lives in the rationale.
+module Ast = Sicp_common.Ast
+module Eval_error = Sicp_common.Eval_error
+module Value = Sicp_common.Value
+module M = Sicp_ch5.Sec_5_1
+module W = Sicp_ch5.Sec_5_4
 
-    The modified [ev-application] tests whether the operator is a
-    symbol; if it is, the lookup happens in place, without saving
-    [env] or [unev] and without a round trip through
-    [eval-dispatch], and control joins the ordinary path at
-    [ev-appl-after-operator] with [proc] already set.  The operand
-    loop is the base fragment. *)
+let ( let* ) = Result.bind
+let r name = M.Reg name
 
-(** The symbol-operator dispatch: inserted before the ordinary
-    operator evaluation. *)
+let rec from_label label = function
+  | [] -> []
+  | M.Label l :: _ as rest when l = label -> rest
+  | _ :: rest -> from_label label rest
+;;
+
+let base_application = List.assoc "ev-application" W.controller_fragments
+
 let ev_application_fast =
-  {|ev-application
-  (save continue)
-  (assign unev (op operands) (reg exp))
-  (test (op symbol-operator?) (reg exp))
-  (branch (label ev-appl-symbol-operator))
-  (save env)
-  (save unev)
-  (assign exp (op operator) (reg exp))
-  (assign
-   continue (label ev-appl-did-operator))
-  (goto (label eval-dispatch))
-ev-appl-symbol-operator
-  (assign exp (op operator) (reg exp))
-  (assign val (op lookup-variable-value) (reg exp) (reg env))
-  (assign argl (op empty-arglist))
-  (assign proc (reg val))
-  (test (op no-operands?) (reg unev))
-  (branch (label apply-dispatch))
-  (save proc)
-  (goto (label ev-appl-operand-loop))|}
+  [ M.Label "ev-application"
+  ; M.Save "continue"
+  ; M.Test ("symbol-operator?", [ r "exp" ])
+  ; M.Branch "ev-appl-symbol-operator"
+  ; M.Save "env"
+  ; M.Assign_op ("unev", "operands", [ r "exp" ])
+  ; M.Save "unev"
+  ; M.Assign_op ("exp", "operator", [ r "exp" ])
+  ; M.Assign ("continue", M.Label_ref "ev-appl-did-operator")
+  ; M.Goto "eval-dispatch"
+  ; M.Label "ev-appl-symbol-operator"
+  ; M.Assign_op ("unev", "operands", [ r "exp" ])
+  ; M.Assign_op ("exp", "operator", [ r "exp" ])
+  ; M.Assign_op ("val", "lookup-variable-value", [ r "exp"; r "env" ])
+  ; M.Goto "ev-appl-have-operator"
+  ; M.Label "ev-appl-did-operator"
+  ; M.Restore "unev"
+  ; M.Restore "env"
+  ; M.Label "ev-appl-have-operator"
+  ; M.Assign ("argl", M.Const (W.Args []))
+  ; M.Assign ("proc", r "val")
+  ; M.Test ("no-operands?", [ r "unev" ])
+  ; M.Branch "apply-dispatch"
+  ; M.Save "proc"
+  ]
+  @ from_label "ev-appl-operand-loop" base_application
 ;;
 
-(** [controller] is the base evaluator with the fast-path application
-    fragments. *)
 let controller =
-  String.concat
-    "\n"
-    (List.map
-       (fun (n, text) ->
-          match n with
-          | "ev-application" -> ev_application_fast
-          | _ -> text)
-       Sicp_ch5.Sec_5_4.controller_fragments)
+  List.concat_map
+    (fun (name, fragment) ->
+       if name = "ev-application" then ev_application_fast else fragment)
+    W.controller_fragments
 ;;
 
-(** The extra operation the dispatch names. *)
-let symbol_operator_op =
+let symbol_operator =
   ( "symbol-operator?"
-  , Sicp_ch5.Sec_5_4.Value_op
+  , M.Test_op
       (function
-        | [ Sicp_ch5.Sec_5_4.Exp e ] ->
-          (match Sicp_common.Ast.view e with
-           | Sicp_common.Ast.Application (op, _) ->
-             (match Sicp_common.Ast.view op with
-              | Sicp_common.Ast.Variable _ ->
-                Ok (Sicp_ch5.Sec_5_4.V (Sicp_common.Value.bool true))
-              | _ -> Ok (Sicp_ch5.Sec_5_4.V (Sicp_common.Value.bool false)))
-           | _ ->
-             Error (Sicp_ch5.Sec_5_4.Op_failed "symbol-operator? needs an expression"))
-        | _ -> Error (Sicp_ch5.Sec_5_4.Arity "symbol-operator? needs one argument")) )
+        | [ W.Exp e ] ->
+          Ok
+            (match Ast.view e with
+             | Ast.Apply (f, _) ->
+               (match Ast.view f with
+                | Ast.Var _ -> true
+                | _ -> false)
+             | _ -> false)
+        | [ w ] ->
+          Error (Eval_error.Bad_instruction ("symbol-operator? of " ^ W.word_to_string w))
+        | ws -> Error (Eval_error.Arity_mismatch { expected = 1; given = List.length ws }))
+  )
 ;;
 
-(** [run source] evaluates [source] on the fast-path evaluator and
-    answers the transcript. *)
-let run source =
-  Sicp_ch5.Sec_5_4.make_evaluator
-    ~controller
-    ~operations:[ symbol_operator_op ]
-    ~source
-    ()
-  >>= fun m ->
-  (match Sicp_ch5.Sec_5_4.start m with
-   | Ok () -> Ok ()
-   | Error (Sicp_ch5.Sec_5_4.Op_failed m) when m = Sicp_ch5.Sec_5_4.input_exhausted ->
-     Ok ()
-   | Error e -> Error e)
-  >>= fun () -> Ok (Sicp_ch5.Sec_5_4.transcript m)
-;;
-
-(** [ex_5_32 ()] pins the fast path: symbol-operator calls answer as
-    before, a compound operator still evaluates through
-    [eval-dispatch], and the base monitored factorial of 5 costs the
-    book's 144 pushes; the fast path removes that call's [env] and
-    [unev] saves, as the fragment shows. *)
-let ex_5_32 () =
-  run "(define (f x) (* x x))\n(f 6)\n((lambda (y) (+ y 1)) 41)"
-  >>= fun transcript ->
-  Sec_5_26.measure
-    "(define (factorial n)\n(if (= n 1) 1 (* n (factorial (- n 1)))))"
-    [ 5 ]
-  >>= fun stats ->
-  let pushes =
-    match stats with
-    | [ s ] -> Sec_5_26.pushes_of s
-    | _ -> 0
+let measure controller source =
+  let* p = Sec_5_33.program ~filename:"ex_5_32.ml" source in
+  let* ev =
+    W.make_evaluator ~operations:[ symbol_operator ] ~controller ~emit:ignore ()
   in
-  Ok
-    [ String.concat "\n" transcript
-    ; Printf.sprintf "base monitored pushes at n = 5: %d" pushes
-    ]
+  let m = W.machine ev in
+  M.initialize_stack m;
+  let* v = W.run_program ev p in
+  let pushes, depth = M.stack_statistics m in
+  Ok (v, pushes, depth)
+;;
+
+let programs =
+  [ "factorial 5", Sec_5_33.factorial ^ "\nlet result = factorial 5\n"
+  ; "(fun y -> y + 1) 41", "let result = (fun y -> y + 1) 41\n"
+  ]
+;;
+
+let ex_5_32 () =
+  List.fold_right
+    (fun (name, source) acc ->
+       let* lines = acc in
+       let* base_value, base_pushes, base_depth = measure W.base_controller source in
+       let* fast_value, fast_pushes, fast_depth = measure controller source in
+       Ok
+         (Printf.sprintf
+            "%s: base answers %s with %d pushes, depth %d; fast path answers %s with %d \
+             pushes, depth %d"
+            name
+            (Value.to_string base_value)
+            base_pushes
+            base_depth
+            (Value.to_string fast_value)
+            fast_pushes
+            fast_depth
+          :: lines))
+    programs
+    (Ok [])
 ;;

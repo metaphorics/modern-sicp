@@ -2,7 +2,7 @@
    Original exercise *)
 
 (* The pending scaffold of the solution with the same name under
-   solutions/ch4: every entry raises the pending marker until the
-   exercise is solved. *)
+   solutions/ch4: every entry raises the pending marker when called,
+   until the exercise is solved. *)
 
-let ex_4_63 = raise Sicp_common.Pending.Pending_solution
+let ex_4_63 () = raise Sicp_common.Pending.Pending_solution

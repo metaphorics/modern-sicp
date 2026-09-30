@@ -30,9 +30,8 @@ val right_three : point = @{x = 3.; y = 0.@}
 
 @noindent
 @code{origin} is unchanged; @code{right_three} is a new, separate value that
-happens to share @code{origin}'s @code{y}. This is exactly the same
-distinction Scheme draws between building a new list with @code{cons} and
-mutating an existing one with @code{set-car!}: functional update copies,
+happens to share @code{origin}'s @code{y}. This is the distinction between
+building a new value and mutating an existing one: functional update copies,
 and the original is never at risk.
 
 @subsubheading Mutable fields
@@ -80,11 +79,10 @@ val after_deposit : unit -> int = <fun>
 @end example
 
 @noindent
-This is this edition's translation of Scheme's mutable local state, most
-directly the pattern chapter 3's @code{make-withdraw} and
-@code{make-account} use: a value captured by @code{ref} that a closure can
-read and rewrite between calls. Section 0.7 builds exactly that example once
-closures are introduced.
+This is mutable local state: a value captured by @code{ref} that a closure
+can read and rewrite between calls, the pattern chapter 3's
+@code{make_withdraw} and @code{make_account} use. Section 0.7 builds exactly
+that example once closures are introduced.
 
 @subsubheading Aliasing: two names, one cell
 
@@ -121,17 +119,19 @@ val copy_point : unit -> float * float = <fun>
 
 @noindent
 @code{moved} shares no mutable state with @code{original}: moving it left
-@code{original} exactly where it was. Whether a value can alias is a
-property of the value's type, not of how carefully a program is written:
-records with a @code{ref} field, or a @code{ref} itself, can be aliased;
-ordinary immutable records, tuples, and lists cannot, because nothing about
-them is assignable in the first place.
+@code{original} exactly where it was. Sharing itself is not restricted by
+type: two names can refer to one and the same list, tuple, or record, and
+nothing copies it. What sharing changes is only observable when the shared
+value can change. A record with a @code{ref} field, or a @code{ref} itself,
+can be written through one name and read through another; immutable data has
+nothing to assign, so sharing it can never make a difference a program can
+depend on.
 
 @subsubheading Physical equality distinguishes aliasing from mere equal contents
 
-@code{==} tests whether two values are the very same mutable cell in
-memory, as opposed to @code{=}, which tests whether their contents happen to
-match:
+@code{==} tests whether two values are physically the same value in
+memory---the same heap cell---as opposed to @code{=}, which tests whether
+their contents happen to match:
 
 @example
 # let cell_identity () =
@@ -148,7 +148,8 @@ val cell_identity : unit -> bool * bool = <fun>
 @code{a} and @code{b} hold equal contents (both @code{1}) but are two
 distinct cells, so @code{a == b} is @code{false}; @code{alias} is not a copy
 of @code{a} but another name for the very same cell, so @code{a == alias}
-is @code{true}. This is this edition's @code{==}, corresponding to Scheme's
-@code{eq?}; it matters only for mutable data (@code{ref}s and
-mutable-field records), since two immutable values with equal contents are,
-for every purpose a program can observe, interchangeable.
+is @code{true}. On mutable data @code{==} answers a real question---are these
+two names watching the same cell?---and a program may depend on the answer.
+On immutable data it does not: the language leaves physical equality
+unspecified there, so two equal-looking immutable values may or may not be
+the same in memory, and only @code{=} is safe to reason with.

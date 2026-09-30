@@ -1,162 +1,102 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Adapted from the Scheme program of SICP section 5.2 *)
 
-(** Exercise 5.12: the assembler's analysis of a controller -- the
-    instruction inventory and the register scan-out the data-path
-    design needs. *)
+let ( let* ) = Result.bind
 
-let ( >>= ) = Result.bind
-
-module Machine = Sicp_ch5.Sec_5_2
-
-(** The type of an instruction, in the order the analysis sorts by:
-    assigns, then tests, branches, gotos, saves, restores, performs. *)
-let type_rank = function
-  | Machine.Assign _ | Machine.Assign_op _ -> 0
-  | Machine.Test _ -> 1
-  | Machine.Branch _ -> 2
-  | Machine.Goto_label _ | Machine.Goto_reg _ -> 3
-  | Machine.Save _ -> 4
-  | Machine.Restore _ -> 5
-  | Machine.Perform _ -> 6
-;;
+module M = Sicp_ch5.Sec_5_1
 
 let type_names = [| "assign"; "test"; "branch"; "goto"; "save"; "restore"; "perform" |]
 
-let rec uniq_sorted = function
-  | [] -> []
-  | x :: xs ->
-    let rest = uniq_sorted (List.filter (fun y -> y <> x) xs) in
-    x :: rest
+(* Assembly removes labels, so every instruction here has a rank. *)
+let type_rank = function
+  | M.Label _ | M.Assign _ | M.Assign_op _ -> 0
+  | M.Test _ -> 1
+  | M.Branch _ -> 2
+  | M.Goto _ | M.Goto_reg _ -> 3
+  | M.Save _ -> 4
+  | M.Restore _ -> 5
+  | M.Perform _ -> 6
 ;;
 
-(** [analysis controller] computes the four lists the exercise asks
-    for: the deduplicated instructions sorted by type, the entry-point
-    registers, the saved and restored registers, and each register's
-    sources. *)
+let show_instruction = M.instruction_to_string M.value_to_string
+
+(* Sources are rendered by the engine's own instruction renderer, so
+   the source notation cannot drift from the trace notation: an
+   instruction whose target is empty renders as [Assign ("", src)], and
+   the source is everything after its first ", " without the closing
+   parenthesis. *)
+let source_to_string src =
+  let rendered = show_instruction (M.Assign ("", src)) in
+  let start = String.index rendered ',' + 2 in
+  String.sub rendered start (String.length rendered - start - 1)
+;;
+
+(* Keeps the first occurrence of each element, in order. *)
+let dedup xs =
+  List.rev
+    (List.fold_left (fun seen x -> if List.mem x seen then seen else x :: seen) [] xs)
+;;
+
+let names_where f insts = List.sort_uniq String.compare (List.concat_map f insts)
+
+let sources_of insts r =
+  List.concat_map
+    (function
+      | M.Assign (target, src) when String.equal target r -> [ src ]
+      | M.Assign_op (target, _, inputs) when String.equal target r -> inputs
+      | _ -> [])
+    insts
+  |> List.map source_to_string
+  |> dedup
+;;
+
 let analysis controller =
-  Machine.parse_program controller
-  >>= fun (program : Machine.program) ->
+  let* program = M.assemble controller in
   let insts = Array.to_list program.code in
-  let by_type =
-    List.sort
-      (fun a b ->
-         let c = compare (type_rank a) (type_rank b) in
-         if c = 0
-         then compare (Machine.instruction_to_string a) (Machine.instruction_to_string b)
-         else c)
-      insts
-  in
-  let sorted = uniq_sorted by_type in
-  let entry_points =
-    insts
-    |> List.concat_map (function
-      | Machine.Goto_reg r -> [ r ]
-      | _ -> [])
-    |> List.sort_uniq String.compare
-  in
-  let stacked =
-    insts
-    |> List.concat_map (function
-      | Machine.Save r | Machine.Restore r -> [ r ]
-      | _ -> [])
-    |> List.sort_uniq String.compare
-  in
-  let assigned =
-    insts
-    |> List.concat_map (function
-      | Machine.Assign (r, _) | Machine.Assign_op (r, _, _) -> [ r ]
-      | _ -> [])
-    |> List.sort_uniq String.compare
-  in
-  let source_lines =
-    List.map
-      (fun r ->
-         let srcs =
-           insts
-           |> List.concat_map (function
-             | Machine.Assign (target, src) when String.equal target r -> [ src ]
-             | Machine.Assign_op (target, _, inputs) when String.equal target r -> inputs
-             | _ -> [])
-           |> List.map Machine.source_to_string
-           |> uniq_sorted
-         in
-         "sources of " ^ r ^ ": " ^ String.concat ", " srcs)
-      assigned
+  let sorted =
+    List.map (fun i -> type_rank i, show_instruction i, i) insts
+    |> List.sort_uniq compare
+    |> List.map (fun (_, _, i) -> i)
   in
   let type_counts =
-    List.map
-      (fun rank ->
-         let count = List.length (List.filter (fun i -> type_rank i = rank) sorted) in
-         type_names.(rank) ^ ": " ^ string_of_int count)
-      [ 0; 1; 2; 3; 4; 5; 6 ]
+    List.init (Array.length type_names) (fun rank ->
+      let count = List.length (List.filter (fun i -> type_rank i = rank) sorted) in
+      type_names.(rank) ^ ": " ^ string_of_int count)
+  in
+  let entry_points =
+    names_where
+      (function
+        | M.Goto_reg r -> [ r ]
+        | _ -> [])
+      insts
+  in
+  let stacked =
+    names_where
+      (function
+        | M.Save r | M.Restore r -> [ r ]
+        | _ -> [])
+      insts
+  in
+  let assigned =
+    names_where
+      (function
+        | M.Assign (r, _) | M.Assign_op (r, _, _) -> [ r ]
+        | _ -> [])
+      insts
   in
   Ok
-    ([ "unique instructions, sorted by type: " ^ string_of_int (List.length sorted) ]
-     @ type_counts
+    ((("unique instructions, sorted by type: " ^ string_of_int (List.length sorted))
+      :: type_counts)
      @ [ "entry-point registers: " ^ String.concat ", " entry_points
        ; "saved/restored registers: " ^ String.concat ", " stacked
        ]
-     @ source_lines)
+     @ List.map
+         (fun r -> "sources of " ^ r ^ ": " ^ String.concat ", " (sources_of insts r))
+         assigned)
 ;;
 
-(** [ex_5_12 ()] analyzes the Fibonacci machine of Figure 5.12 and the
-    factorial machine of Figure 5.11, whose [val] sources the book
-    quotes. *)
 let ex_5_12 () =
-  let fib_controller =
-    {|(controller
-   (assign continue (label fib-done))
- fib-loop
-   (test (op <) (reg n) (const 2))
-   (branch (label immediate-answer))
-   (save continue)
-   (assign continue (label afterfib-n-1))
-   (save n)
-   (assign n (op -) (reg n) (const 1))
-   (goto (label fib-loop))
- afterfib-n-1
-   (restore n)
-   (restore continue)
-   (assign n (op -) (reg n) (const 2))
-   (save continue)
-   (assign continue (label afterfib-n-2))
-   (save val)
-   (goto (label fib-loop))
- afterfib-n-2
-   (assign n (reg val))
-   (restore val)
-   (restore continue)
-   (assign val (op +) (reg val) (reg n))
-   (goto (reg continue))
- immediate-answer
-   (assign val (reg n))
-   (goto (reg continue))
- fib-done)|}
-  in
-  let factorial_controller =
-    {|(controller
-   (assign continue (label fact-done))
- fact-loop
-   (test (op =) (reg n) (const 1))
-   (branch (label base-case))
-   (save continue)
-   (save n)
-   (assign n (op -) (reg n) (const 1))
-   (assign continue (label after-fact))
-   (goto (label fact-loop))
- after-fact
-   (restore n)
-   (restore continue)
-   (assign val (op *) (reg n) (reg val))
-   (goto (reg continue))
- base-case
-   (assign val (const 1))
-   (goto (reg continue))
- fact-done)|}
-  in
-  analysis fib_controller
-  >>= fun fib_lines ->
-  analysis factorial_controller
-  >>= fun fact_lines -> Ok ([ "fib:" ] @ fib_lines @ [ "factorial:" ] @ fact_lines)
+  let* fib_lines = analysis Sec_5_5.fib_controller in
+  let* fact_lines = analysis Sec_5_5.factorial_recursive_controller in
+  Ok (("fib:" :: fib_lines) @ ("factorial:" :: fact_lines))
 ;;

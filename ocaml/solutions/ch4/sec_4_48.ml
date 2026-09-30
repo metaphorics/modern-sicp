@@ -1,73 +1,109 @@
 (* SPDX-License-Identifier: GPL-3.0-only
    Original exercise *)
 
-(** Exercise 4.48: extending the grammar. Adjectives join the noun
-    phrase: [parse-modifiers] ambiguously produces the empty modifier
-    list or one adjective followed by more modifiers, and the simple
-    noun phrase splices the modifiers before the noun with [append].
-    The demonstration parses ``the sleepy cat eats'' -- the adjective
-    parse is found first because the empty-modifier alternative cannot
-    consume the input -- and then walks to the extension-free parse of
-    the same sentence's reordering with [try_again]. *)
+(* Exercise 4.48: extending the grammar with adjectives.
+   [parse_modifiers] ambiguously answers no modifiers, or an adjective
+   followed by more modifiers, and the simple noun phrase groups the
+   modifiers with its noun, printed as one list inside the phrase:
+   [((adj sleepy) (noun cat))]. On "the sleepy cat eats" the
+   empty-modifier alternative fails at the noun and the adjective parse
+   is the only answer; "the quick brown cat sleeps" parses with two
+   adjectives. *)
 
-module Eval = Sicp_ch4.Sec_4_3
-module Eval_error = Sicp_common.Eval_error
-module Value = Sicp_common.Value
+module Check = Sicp_common.Check
 
-let show = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
+let transcript source =
+  Sicp_ch4.Sec_4_1.transcript ~experiment:Check.Search Sicp_ch4.Sec_4_3.run source
+  |> String.split_on_char '\n'
+  |> List.filter (fun line -> line <> "")
 ;;
 
-let program =
+let program words =
   {|
-(define (require p) (if (not p) (amb)))
-(define *unparsed* '())
-(define nouns '(noun student professor cat class))
-(define verbs '(verb studies lectures eats sleeps))
-(define articles '(article the a))
-(define adjectives '(adj quick brown sleepy))
-(define prepositions '(prep for to in by with))
-(define (parse-word word-list)
-  (require (not (null? *unparsed*)))
-  (require (member (car *unparsed*) (cdr word-list)))
-  (let ((found-word (car *unparsed*)))
-    (set! *unparsed* (cdr *unparsed*))
-    (list (car word-list) found-word)))
-(define (parse-modifiers)
-  (amb '()
-       (let ((m (parse-word adjectives)))
-         (cons m (parse-modifiers)))))
-(define (parse-simple-noun-phrase)
-  (list 'simple-noun-phrase
-        (parse-word articles)
-        (append (parse-modifiers) (list (parse-word nouns)))))
-(define (parse-noun-phrase)
-  (define (maybe-extend noun-phrase)
-    (amb noun-phrase
-         (maybe-extend
-          (list 'noun-phrase noun-phrase (parse-prepositional-phrase)))))
-  (maybe-extend (parse-simple-noun-phrase)))
-(define (parse-prepositional-phrase)
-  (list 'prep-phrase (parse-word prepositions) (parse-noun-phrase)))
-(define (parse-verb-phrase)
-  (define (maybe-extend verb-phrase)
-    (amb verb-phrase
-         (maybe-extend
-          (list 'verb-phrase verb-phrase (parse-prepositional-phrase)))))
-  (maybe-extend (parse-word verbs)))
-(define (parse-sentence)
-  (list 'sentence (parse-noun-phrase) (parse-verb-phrase)))
-(define (parse input)
-  (set! *unparsed* input)
-  (let ((sent (parse-sentence))) (require (null? *unparsed*)) sent))|}
+type tree =
+  | Word of string * string
+  | Node of string * tree list
+  | Group of tree list
+
+let rec show tree =
+  match tree with
+  | Word (category, word) -> "(" ^ category ^ " " ^ word ^ ")"
+  | Node (label, parts) -> "(" ^ label ^ show_parts parts ^ ")"
+  | Group parts -> "(" ^ show_items parts ^ ")"
+
+and show_parts parts =
+  match parts with
+  | [] -> ""
+  | part :: rest -> " " ^ show part ^ show_parts rest
+
+and show_items parts =
+  match parts with
+  | [] -> ""
+  | part :: rest -> show part ^ show_parts rest
+
+let nouns = [ "student"; "professor"; "cat"; "class" ]
+let verbs = [ "studies"; "lectures"; "eats"; "sleeps" ]
+let articles = [ "the"; "a" ]
+let adjectives = [ "quick"; "brown"; "sleepy" ]
+let prepositions = [ "for"; "to"; "in"; "by"; "with" ]
+
+let parse_word category words input =
+  match !input with
+  | [] -> require false; Word (category, "")
+  | word :: rest ->
+    let rec listed candidates =
+      match candidates with
+      | [] -> false
+      | candidate :: more -> candidate = word || listed more
+    in
+    require (listed words);
+    input := rest;
+    Word (category, word)
+
+let rec parse_modifiers input =
+  amb
+    []
+    (let modifier = parse_word "adj" adjectives input in
+     modifier :: parse_modifiers input)
+
+let parse_simple_noun_phrase input =
+  let article = parse_word "article" articles input in
+  let modifiers = parse_modifiers input in
+  let noun = parse_word "noun" nouns input in
+  Node ("simple-noun-phrase", [ article; Group (List.append modifiers [ noun ]) ])
+
+let rec parse_noun_phrase input =
+  let rec maybe_extend noun_phrase =
+    amb
+      noun_phrase
+      (maybe_extend (Node ("noun-phrase", [ noun_phrase; parse_prepositional_phrase input ])))
+  in
+  maybe_extend (parse_simple_noun_phrase input)
+
+and parse_prepositional_phrase input =
+  Node ("prep-phrase", [ parse_word "prep" prepositions input; parse_noun_phrase input ])
+
+let parse_verb_phrase input =
+  let rec maybe_extend verb_phrase =
+    amb
+      verb_phrase
+      (maybe_extend (Node ("verb-phrase", [ verb_phrase; parse_prepositional_phrase input ])))
+  in
+  maybe_extend (parse_word "verb" verbs input)
+
+let parse words =
+  let input = ref words in
+  let sentence = Node ("sentence", [ parse_noun_phrase input; parse_verb_phrase input ]) in
+  require (match !input with [] -> true | _ :: _ -> false);
+  sentence
+
+let () = print_endline (show (parse |}
+  ^ words
+  ^ {|))
+|}
 ;;
 
 let ex_4_48 () =
-  let env = Eval.the_global_environment () in
-  let (_ : (Value.t, Eval_error.t) result) = Eval.run_program env program in
-  let sleepy = Eval.run env "(parse '(the sleepy cat eats))" in
-  let sleepy_pp = Eval.try_again () in
-  let brown = Eval.run env "(parse '(the quick brown cat sleeps))" in
-  List.map show [ sleepy; sleepy_pp; brown ]
+  transcript (program {|[ "the"; "sleepy"; "cat"; "eats" ]|})
+  @ transcript (program {|[ "the"; "quick"; "brown"; "cat"; "sleeps" ]|})
 ;;

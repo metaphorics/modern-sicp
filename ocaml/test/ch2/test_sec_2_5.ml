@@ -42,11 +42,7 @@ let ex_2_77_two_apply_generic_calls () =
 
 let ex_2_78_bare_num_is_its_own_tag () =
   let tag, contents_is_num_5, rational_tag = S78.ex_2_78 () in
-  Alcotest.check
-    Alcotest.string
-    "2.78: bare Num tags as scheme-number"
-    "scheme-number"
-    tag;
+  Alcotest.check Alcotest.string "2.78: bare Num tags as real" "real" tag;
   eq_bool "2.78: contents of a bare Num is itself" contents_is_num_5 true;
   Alcotest.check Alcotest.string "2.78: a real tag still wraps" "rational" rational_tag
 ;;
@@ -80,9 +76,9 @@ let ex_2_81_self_coercion_loops_then_is_fixed () =
 
 let ex_2_82_multi_arg_coercion () =
   (match S82.ex_2_82_a () with
-   | S82.Tagged { tag = "scheme-number"; contents = S82.Num n } ->
+   | S82.Tagged { tag = "real"; contents = S82.Num n } ->
      Alcotest.check feq "2.82a: 1 + 2 + 3" 6.0 n
-   | _ -> Alcotest.fail "2.82a: expected a tagged scheme-number");
+   | _ -> Alcotest.fail "2.82a: expected a tagged real");
   eq_bool "2.82b: the strategy misses a valid mixed-type entry" (S82.ex_2_82_b ()) true
 ;;
 

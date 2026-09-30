@@ -20,9 +20,9 @@ val put : string -> string list -> (value list -> value) -> unit
 val get : string -> string list -> (value list -> value) option
 val apply_generic : string -> value list -> value
 
-(** Installs ["=zero?"] for one type, across ["scheme-number"],
+(** Installs ["=zero?"] for one type, across ["real"],
     ["rational"], and ["complex"], as Exercise 2.80 asks. *)
-val install_scheme_number_package : unit -> unit
+val install_real_package : unit -> unit
 
 val install_rational_package : unit -> unit
 val install_complex_package : unit -> unit

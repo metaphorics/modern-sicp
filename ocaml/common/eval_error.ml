@@ -9,7 +9,13 @@ type t =
   | Type_error of string
   | Not_applicable of string
   | Division_by_zero
+  | Unknown_operation of string
+  | Unknown_label of string
+  | Bad_instruction of string
+  | Branch_without_test
+  | Unknown_register of string
   | Invalid_form of string
+  | Bounds_error of string
   | User_error of string
 
 let pp ppf = function
@@ -19,8 +25,14 @@ let pp ppf = function
   | Type_error detail -> Format.fprintf ppf "type error: %s" detail
   | Not_applicable printed ->
     Format.fprintf ppf "not applicable: %s is not a procedure" printed
+  | Unknown_operation name -> Format.fprintf ppf "unknown operation %s" name
+  | Unknown_label name -> Format.fprintf ppf "unknown label %s" name
+  | Bad_instruction detail -> Format.fprintf ppf "bad instruction: %s" detail
+  | Branch_without_test -> Format.fprintf ppf "branch without test"
+  | Unknown_register name -> Format.fprintf ppf "unknown register %s" name
   | Division_by_zero -> Format.fprintf ppf "division by zero"
   | Invalid_form detail -> Format.fprintf ppf "invalid form: %s" detail
+  | Bounds_error detail -> Format.fprintf ppf "bounds error: %s" detail
   | User_error message -> Format.fprintf ppf "%s" message
 ;;
 

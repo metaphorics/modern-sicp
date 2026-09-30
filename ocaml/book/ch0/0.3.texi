@@ -3,7 +3,7 @@
 
 @noindent
 @code{let} inside an expression names a value for the rest of that
-expression, exactly as Scheme's @code{let} does:
+expression:
 
 @example
 # let size = 2 in 5 + 3 + size;;
@@ -33,9 +33,7 @@ never reaches back to change what an already-built closure sees.
 
 @subsubheading Functions
 
-@code{let f @var{params} = @var{body}} defines a function exactly the way
-Scheme's @code{(define (f @var{params}) @var{body})} does, translated to
-prefix-free syntax:
+@code{let f @var{params} = @var{body}} defines a function:
 
 @example
 # let square x = x * x;;
@@ -51,8 +49,7 @@ The inferred type @code{int -> int -> int} reads as ``a function from
 @code{int} to a function from @code{int} to @code{int}'': every OCaml
 function of more than one argument is really a chain of one-argument
 functions, a fact section 0.7 puts to direct use. A function body can bind
-its own local names before producing a result, the way Scheme's internal
-@code{define} or @code{let} does:
+its own local names before producing a result:
 
 @example
 # let f x =
@@ -108,7 +105,8 @@ the call site, useful when a function's arguments could otherwise be
 confused for each other:
 
 @example
-# let pad_to ~width s = String.make (max 0 (width - String.length s)) '.' ^ s;;
+# let pad_to ~width s =
+  String.make (max 0 (width - String.length s)) '.' ^ s;;
 val pad_to : width:int -> string -> string = <fun>
 # pad_to ~width:8 "sicp";;
 - : string = "....sicp"
@@ -117,9 +115,8 @@ val pad_to : width:int -> string -> string = <fun>
 @noindent
 This book uses labeled arguments sparingly, only where a call site would
 otherwise read as an ambiguous pair of numbers or strings; most functions in
-this edition take plain positional arguments, matching Scheme's own
-convention of naming clarity through good parameter names rather than
-call-site labels.
+this edition take plain positional arguments, relying on clear parameter
+names rather than call-site labels.
 
 @subsubheading Modules and dotted names
 
@@ -140,8 +137,5 @@ definitions are visible outside it, and at what type. @file{sec_0_3.mli}
 alongside this section's @file{sec_0_3.ml} is a first example: it lists
 @code{square}, @code{sum_of_squares}, @code{f}, @code{factorial},
 @code{inc}, @code{double}, and @code{pad_to}, each with a one-line comment in
-the interface describing what it computes and how it corresponds to a
-Scheme form from the original book. An @file{.mli} is this edition's
-substitute for the comments that would otherwise sit next to a Scheme
-@code{define}: every module in this book carries one, and the interface is
-where its documentation lives.
+the interface describing what it computes. An @file{.mli} is where a
+module's documentation lives: every module in this book carries one.

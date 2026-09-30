@@ -1,199 +1,127 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Adapted from the Scheme program of SICP section 4.1 exercise 4.3 *)
+   Adapted from SICP section 4.1 exercise 4.3 *)
 
-(** Data-directed dispatch. The syntactic type of an expression indexes
-    a handler table; [eval] consults the table for every compound form
-    and falls back to the application clause for forms with no entry.
-    Every handler recurses through [Ev], so a [put] made after the fact
-    changes the behavior of the whole evaluator, at every depth, which
-    is the extensibility the exercise asks for. *)
-
-let ( >>= ) = Result.bind
+let ( let* ) = Result.bind
 
 module Ast = Sicp_common.Ast
 module Eval_error = Sicp_common.Eval_error
-module Reader = Sicp_common.Reader
 module Value = Sicp_common.Value
-module SE = Sicp_ch4.Sec_4_1
+module S = Sicp_ch4.Sec_4_1
 
-(** One handler: the whole expression and the environment, to a value
-    or an error. *)
-type handler = Ast.expr -> Value.env -> (Value.t, Eval_error.t) result
+type handler = S.eval_t -> S.eval_t
+type table = (string, handler) Hashtbl.t
 
-let table : (string, handler) Hashtbl.t = Hashtbl.create 16
-
-(** [put tag handler] installs the handler of one expression type. *)
-let put (tag : string) (handler : Ast.expr -> Value.env -> (Value.t, Eval_error.t) result)
-  : unit
-  =
-  Hashtbl.replace table tag handler
+let kind e =
+  match Ast.view e with
+  | Ast.Scalar _ -> "scalar"
+  | Ast.Var _ -> "variable"
+  | Ast.Let _ -> "let"
+  | Ast.Fun _ -> "fun"
+  | Ast.Apply _ -> "application"
+  | Ast.If _ -> "if"
+  | Ast.Match _ -> "match"
+  | Ast.Tuple _ -> "tuple"
+  | Ast.Construct _ -> "construct"
+  | Ast.Record _ -> "record"
+  | Ast.Field _ -> "field"
+  | Ast.Sequence _ -> "sequence"
+  | Ast.And _ -> "and"
+  | Ast.Or _ -> "or"
+  | Ast.Arith _ -> "arith"
+  | Ast.Compare _ -> "compare"
+  | Ast.Nil -> "nil"
+  | Ast.Cons _ -> "cons"
+  | Ast.Concat _ -> "concat"
+  | Ast.Not _ -> "not"
+  | Ast.Neg _ -> "neg"
+  | Ast.Deref _ -> "deref"
+  | Ast.Assign _ -> "assign"
+  | Ast.Make_ref _ -> "make-ref"
 ;;
 
-(** [get tag] is the installed handler of [tag], or [None]. *)
-let get (tag : string) : (Ast.expr -> Value.env -> (Value.t, Eval_error.t) result) option =
-  Hashtbl.find_opt table tag
+let put table name handler = Hashtbl.replace table name handler
+let find table name = Hashtbl.find_opt table name
+
+let wrong_kind name =
+  Error (Eval_error.Invalid_form ("the " ^ name ^ " handler got another kind"))
 ;;
 
-(** [type_name shape] is the table key of one syntactic type, or [None]
-    for the self-evaluating expressions and the application clause. *)
-let type_name = function
-  | Ast.Variable _ -> Some "variable"
-  | Ast.Quote _ -> Some "quote"
-  | Ast.Definition _ -> Some "definition"
-  | Ast.Set _ -> Some "set!"
-  | Ast.If _ -> Some "if"
-  | Ast.Lambda _ -> Some "lambda"
-  | Ast.Sequence _ -> Some "sequence"
-  | Ast.Cond _ -> Some "cond"
-  | Ast.Int _
-  | Ast.Float _
-  | Ast.Bool _
-  | Ast.String _
-  | Ast.And _
-  | Ast.Or _
-  | Ast.Let _
-  | Ast.Application _ -> None
+let truth what v =
+  match Value.view v with
+  | Value.Bool b -> Ok b
+  | _ -> Error (Eval_error.Type_error (what ^ ": operand is not a bool"))
 ;;
 
-module rec Ev : sig
-  val eval : SE.eval_t
-end = struct
-  module C = SE.Core (Ev)
-
-  let eval exp env =
-    match Ast.view exp with
-    | Ast.Int n -> Ok (Value.int n)
-    | Ast.Float f -> Ok (Value.float f)
-    | Ast.Bool b -> Ok (Value.bool b)
-    | Ast.String s -> Ok (Value.string s)
-    | Ast.Application _ -> C.eval exp env
-    | shape ->
-      (match type_name shape with
-       | None -> C.eval exp env
-       | Some tag ->
-         (match get tag with
-          | Some handler -> handler exp env
-          | None -> C.eval exp env))
-  ;;
-end
-
-let eval = Ev.eval
-
-let rec eval_sequence_exps exps env =
-  match exps with
-  | [] -> Error (Eval_error.Invalid_form "the body of the sequence is empty")
-  | [ last ] -> Ev.eval last env
-  | next :: rest -> Ev.eval next env >>= fun _ -> eval_sequence_exps rest env
+let eval_if (self : S.eval_t) e env =
+  match Ast.view e with
+  | Ast.If (condition, consequent, alternative) ->
+    let* test = self condition env in
+    let* b = truth "if" test in
+    if b then self consequent env else self alternative env
+  | _ -> wrong_kind "if"
 ;;
 
-let variable_handler exp env =
-  match Ast.view exp with
-  | Ast.Variable name -> SE.lookup_variable_value name env
-  | _ -> Error (Eval_error.Invalid_form "variable: not a variable")
+let eval_and (self : S.eval_t) e env =
+  match Ast.view e with
+  | Ast.And (left, right) ->
+    let* l = self left env in
+    let* b = truth "&&" l in
+    if b then self right env else Ok (Value.bool false)
+  | _ -> wrong_kind "and"
 ;;
 
-let quote_handler exp _env =
-  match Ast.view exp with
-  | Ast.Quote datum -> Ok (SE.datum_to_value datum)
-  | _ -> Error (Eval_error.Invalid_form "quote: not a quote")
+let eval_or (self : S.eval_t) e env =
+  match Ast.view e with
+  | Ast.Or (left, right) ->
+    let* l = self left env in
+    let* b = truth "||" l in
+    if b then Ok (Value.bool true) else self right env
+  | _ -> wrong_kind "or"
 ;;
 
-let definition_handler exp env =
-  match Ast.view exp with
-  | Ast.Definition d ->
-    (match Ast.view_definition d with
-     | Ast.Define_variable (name, value_exp) ->
-       Ev.eval value_exp env >>= fun value -> SE.define_variable_ name value env
-     | Ast.Define_function { name; parameters; body } ->
-       let proc = Value.compound ~name:(Some name) ~parameters ~body ~env in
-       SE.define_variable_ name proc env)
-  | _ -> Error (Eval_error.Invalid_form "definition: not a definition")
+let eval_sequence (self : S.eval_t) e env =
+  match Ast.view e with
+  | Ast.Sequence (first, second) ->
+    let* _ = self first env in
+    self second env
+  | _ -> wrong_kind "sequence"
 ;;
 
-let set_handler exp env =
-  match Ast.view exp with
-  | Ast.Set (name, value_exp) ->
-    Ev.eval value_exp env
-    >>= fun value ->
-    SE.set_variable_value_ name value env >>= fun () -> Ok (Value.symbol "ok")
-  | _ -> Error (Eval_error.Invalid_form "set!: not an assignment")
+let eval_fun (_ : S.eval_t) e env =
+  match Ast.view e with
+  | Ast.Fun (parameters, body) -> Ok (Value.closure ~name:None ~parameters ~body ~env)
+  | _ -> wrong_kind "fun"
 ;;
 
-let if_handler exp env =
-  match Ast.view exp with
-  | Ast.If (predicate, consequent, alternative) ->
-    Ev.eval predicate env
-    >>= fun tested ->
-    if SE.true_ tested
-    then Ev.eval consequent env
-    else (
-      match alternative with
-      | Some branch -> Ev.eval branch env
-      | None -> Ok (Value.bool false))
-  | _ -> Error (Eval_error.Invalid_form "if: not an if")
+let standard () =
+  let table = Hashtbl.create 16 in
+  put table "if" eval_if;
+  put table "and" eval_and;
+  put table "or" eval_or;
+  put table "sequence" eval_sequence;
+  put table "fun" eval_fun;
+  table
 ;;
 
-let lambda_handler exp env =
-  match Ast.view exp with
-  | Ast.Lambda (parameters, body) -> Ok (Value.compound ~name:None ~parameters ~body ~env)
-  | _ -> Error (Eval_error.Invalid_form "lambda: not a lambda")
+let eval table =
+  let rec self e env =
+    match find table (kind e) with
+    | Some handler -> handler self e env
+    | None -> S.open_eval ~self e env
+  in
+  self
 ;;
 
-let sequence_handler exp env =
-  match Ast.view exp with
-  | Ast.Sequence body -> eval_sequence_exps body env
-  | _ -> Error (Eval_error.Invalid_form "sequence: not a sequence")
-;;
-
-let cond_handler exp env = SE.cond_to_if exp >>= fun rewritten -> Ev.eval rewritten env
-
-let install_default_handlers () =
-  List.iter
-    (fun (tag, handler) -> put tag handler)
-    [ "variable", variable_handler
-    ; "quote", quote_handler
-    ; "definition", definition_handler
-    ; "set!", set_handler
-    ; "if", if_handler
-    ; "lambda", lambda_handler
-    ; "sequence", sequence_handler
-    ; "cond", cond_handler
-    ]
-;;
-
-let () = install_default_handlers ()
-
-let run env text =
-  Reader.read text
-  |> Result.map_error (fun e -> Eval_error.Invalid_form (Reader.to_string e))
-  >>= fun exp -> Ev.eval exp env
-;;
-
-let render = function
-  | Ok v -> Value.to_string v
-  | Error e -> "Error: " ^ Eval_error.to_string e
-;;
-
-(** [custom_quote_handler] answers a fixed symbol, distinguishable from
-    every ordinary quote result. *)
-let custom_quote_handler exp _env =
-  match Ast.view exp with
-  | Ast.Quote _ -> Ok (Value.symbol "custom")
-  | _ -> Error (Eval_error.Invalid_form "custom quote: not a quote")
-;;
-
-(** [ex_4_03 ()] evaluates a quote and an [if] through the table's
-      handlers, replaces the quote handler and evaluates the same quote
-      under the replacement, restores the standard handler, and applies
-      a primitive, which has no table entry. *)
 let ex_4_03 () =
-  let env = SE.the_global_environment () in
-  let through_table = run env "'(a b c)" in
-  let nested = run env "(if #t 'yes 'no)" in
-  put "quote" custom_quote_handler;
-  let replaced = run env "'marked" in
-  put "quote" quote_handler;
-  let restored = run env "'marked" in
-  let application = run env "(+ 1 2)" in
-  List.map render [ through_table; nested; replaced; restored; application ]
+  let table = standard () in
+  let count = ref 0 in
+  put table "if" (fun self e env ->
+    incr count;
+    eval_if self e env);
+  let fact = "let rec fact n = if n = 0 then 1 else n * fact (n - 1) in fact 5" in
+  let value = Sec_4_1.run_source (eval table) fact in
+  [ value
+  ; Printf.sprintf "if handled %d times" !count
+  ; Sec_4_1.run_source (eval (standard ())) "true && (false || 1 = 1)"
+  ]
 ;;

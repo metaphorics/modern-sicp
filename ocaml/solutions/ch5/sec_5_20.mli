@@ -4,8 +4,8 @@
 (** Exercise 5.20: the two drawings and the pointer answers, and the
     edition's 5.20a allocator trace. *)
 
-(** [ex_5_20 ()] is the memory-vector drawing of [(define x (cons 1 2))]
-    and [(define y (list x x))] with [free] initially [p1]: the cells
+(** [ex_5_20 ()] is the memory-vector drawing of [let x = (1, 2)] and
+    [let y = [x; x]] with [free] initially [p1]: the cells
     come out at [p1], [p2], [p3], [x] is [p1], [y] is [p3], and [free]
     ends at [p4]. *)
 val ex_5_20 : unit -> (string list, Sicp_ch5.Sec_5_3.error) result

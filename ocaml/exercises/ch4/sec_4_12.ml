@@ -1,13 +1,15 @@
 (* SPDX-License-Identifier: GPL-3.0-only
-   Original exercise *)
+   Adapted from SICP section 4.1 exercise 4.12 *)
 
-type env
+(* The pending scaffold of the solution with the same name under
+   solutions/ch4: every entry raises the pending marker until the
+   exercise is solved. *)
 
-(** Exercise 4.12: pending solution. The statement lives in
-    book/ch4/4.1.texi. *)
+type env = unit
 
-let traverse = raise Sicp_common.Pending.Pending_solution
-let lookup_variable_value = raise Sicp_common.Pending.Pending_solution
-let set_variable_value_ = raise Sicp_common.Pending.Pending_solution
-let define_variable_ = raise Sicp_common.Pending.Pending_solution
-let ex_4_12 = raise Sicp_common.Pending.Pending_solution
+let extend_environment _ = raise Sicp_common.Pending.Pending_solution
+let find_binding _ = raise Sicp_common.Pending.Pending_solution
+let lookup_variable_value _ = raise Sicp_common.Pending.Pending_solution
+let set_variable_value _ = raise Sicp_common.Pending.Pending_solution
+let define_variable _ = raise Sicp_common.Pending.Pending_solution
+let ex_4_12 _ = raise Sicp_common.Pending.Pending_solution

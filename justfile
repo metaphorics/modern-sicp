@@ -71,9 +71,11 @@ check-exercise-map:
 # Runs every host-subset case through each edition's teaching engines and
 # compares it with the native toolchain or the independent reference model.
 # The OCaml driver runs `opam exec` in OPAMSWITCH, the pinned 5.5.1 switch
-# unless the caller names another (CI names its local switch).
+# unless the caller names another (CI names its local switch). The TypeScript
+# driver runs bare `node`, so the recipe puts the pinned Node 24.21.0 first on
+# PATH exactly as typescript/justfile does for its own recipes.
 test-conformance:
-    OPAMSWITCH="${OPAMSWITCH:-5.5.1}" uv run --project tools python tools/host_conformance_check.py
+    PATH="{{env_var("HOME")}}/.local/share/mise/installs/node/24.21.0/bin:$PATH" OPAMSWITCH="${OPAMSWITCH:-5.5.1}" uv run --project tools python tools/host_conformance_check.py
 
 # CONTRIBUTING.md states that this syncs tools/ and runs its tests.
 setup-tools:

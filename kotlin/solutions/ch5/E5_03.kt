@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme program sqrt in SICP section 1.1.7
+//
 // Chapter 5, exercise 5.3: the square-root machine of 1.1.7 twice. Stage
 // one assumes `good-enough?` and `improve` are available as primitives;
 // stage two expands both in terms of the arithmetic operations, keeping
@@ -8,46 +10,54 @@
 
 package sicp.ch5.solutions
 
-import kotlin.math.abs
+import sicp.guest.GValue
+import sicp.guest.GuestError
+import sicp.guest.NO_POSITION
+import sicp.runtime.Assign
+import sicp.runtime.Branch
+import sicp.runtime.Goto
+import sicp.runtime.GotoTarget
+import sicp.runtime.Label
+import sicp.runtime.MachineOp
+import sicp.runtime.Perform
+import sicp.runtime.Stmt
+import sicp.runtime.Test
 
-private fun asReal(value: HandVal): Double =
+private fun asReal(value: GValue): Double =
     when (value) {
-        is HReal -> value.value
+        is GValue.VDouble -> value.value
+        is GValue.VLong -> value.value.toDouble()
         else -> error("the sqrt machine works on reals, found ${render(value)}")
     }
 
 /** The Newton test of 1.1.7 as a primitive: is the guess good enough for
  *  the 0.001 tolerance? */
-private fun goodEnough(
-    guess: HandVal,
-    x: HandVal,
-): HandVal {
-    val g = asReal(guess)
-    val v = asReal(x)
-    return HBool(abs(g * g - v) < 0.001)
-}
+private val goodEnoughDevice: MachineOp =
+    { args ->
+        if (args.size != 2) raise(GuestError.UnassignedRead(NO_POSITION))
+        val guess = asReal(args[0])
+        GValue.VBool(kotlin.math.abs(guess * guess - asReal(args[1])) < 0.001)
+    }
 
 /** The Newton improvement step of 1.1.7 as a primitive. */
-private fun improve(
-    guess: HandVal,
-    x: HandVal,
-): HandVal {
-    val g = asReal(guess)
-    val v = asReal(x)
-    return HReal((g + v / g) / 2.0)
-}
+private val improveDevice: MachineOp =
+    { args ->
+        if (args.size != 2) raise(GuestError.UnassignedRead(NO_POSITION))
+        val guess = asReal(args[0])
+        GValue.VDouble((guess + asReal(args[1]) / guess) / 2.0)
+    }
 
 /** Stage one: two registers, `guess` (started at 1.0) and `x`; the two
  *  primitives sit in the operations table. */
-public val sqrtStageOneController: List<HandInstruction> =
+public val sqrtStageOneController: List<Stmt> =
     listOf(
-        HLabelDef("sqrt-loop"),
-        HTest("good-enough?", listOf(argReg("guess"), argReg("x"))),
-        HBranch("sqrt-done"),
-        HAssignOp("guess", "improve", listOf(argReg("guess"), argReg("x"))),
-        HGotoLabel("sqrt-loop"),
-        HLabelDef("sqrt-done"),
-        HPerform("print", listOf(argReg("guess"))),
+        Label("sqrt-loop"),
+        Test(opCond("good-enough?", reg("guess"), reg("x"))),
+        Branch("sqrt-done"),
+        Assign("guess", opSrc("improve", reg("guess"), reg("x"))),
+        Goto(GotoTarget.Lbl("sqrt-loop")),
+        Label("sqrt-done"),
+        Perform(opAct("print", reg("guess"))),
     )
 
 /** Stage two: `good-enough?` becomes three assigns computing
@@ -55,48 +65,52 @@ public val sqrtStageOneController: List<HandInstruction> =
  *  `(const 0.001)`; `improve` becomes `(x / guess) + guess` divided by
  *  `(const 2)`. An operation's inputs are registers and constants only,
  *  so the intermediates must live in `t`. */
-public val sqrtStageTwoController: List<HandInstruction> =
+public val sqrtStageTwoController: List<Stmt> =
     listOf(
-        HLabelDef("sqrt-loop"),
-        HAssignOp("t", "*", listOf(argReg("guess"), argReg("guess"))),
-        HAssignOp("t", "-", listOf(argReg("t"), argReg("x"))),
-        HAssignOp("t", "abs", listOf(argReg("t"))),
-        HTest("<", listOf(argReg("t"), argReal(0.001))),
-        HBranch("sqrt-done"),
-        HAssignOp("t", "/", listOf(argReg("x"), argReg("guess"))),
-        HAssignOp("t", "+", listOf(argReg("t"), argReg("guess"))),
-        HAssignOp("guess", "/", listOf(argReg("t"), argReal(2.0))),
-        HGotoLabel("sqrt-loop"),
-        HLabelDef("sqrt-done"),
-        HPerform("print", listOf(argReg("guess"))),
+        Label("sqrt-loop"),
+        Assign("t", opSrc("*", reg("guess"), reg("guess"))),
+        Assign("t", opSrc("-", reg("t"), reg("x"))),
+        Assign("t", opSrc("abs", reg("t"))),
+        Test(opCond("<", reg("t"), constV(0.001))),
+        Branch("sqrt-done"),
+        Assign("t", opSrc("/", reg("x"), reg("guess"))),
+        Assign("t", opSrc("+", reg("t"), reg("guess"))),
+        Assign("guess", opSrc("/", reg("t"), constV(2.0))),
+        Goto(GotoTarget.Lbl("sqrt-loop")),
+        Label("sqrt-done"),
+        Perform(opAct("print", reg("guess"))),
     )
 
-/** Stage one's operations table: the shared arithmetic plus the two
- *  primitives the stage assumes. */
-private val stageOneOps: Map<String, HandOp> =
-    handArithOps +
-        mapOf(
-            "good-enough?" to handOp2 { guess, x -> goodEnough(guess, x) },
-            "improve" to handOp2 { guess, x -> improve(guess, x) },
-        )
+/** Stage one's devices: the shared arithmetic plus the two primitives the
+ *  stage assumes. */
+private val stageOneDevices: Map<String, MachineOp> =
+    machineArithmetic + mapOf("good-enough?" to goodEnoughDevice, "improve" to improveDevice)
 
 /** One stage's transcript for [x]: the single printed line at `sqrt-done`. */
 private fun sqrtTranscript(
-    controller: List<HandInstruction>,
-    ops: Map<String, HandOp>,
+    controller: List<Stmt>,
+    registers: Set<String>,
+    devices: Map<String, MachineOp>,
     x: Double,
 ): String {
     val out = StringBuilder()
-    val sim = HandSim(controller, ops + mapOf("print" to handPrintOp(out)))
-    sim.run(mapOf("guess" to HReal(1.0), "x" to HReal(x)))
+    val machine =
+        freshMachine(
+            registers,
+            devices + ("print" to printOp(out)),
+            controller,
+            mapOf("guess" to GValue.VDouble(1.0), "x" to GValue.VDouble(x)),
+        )
+    runToHalt(machine)
     return out.toString()
 }
 
 /** Stage one on [x]: the transcript with the two primitives assumed. */
-public fun sqrtStageOneTranscript(x: Double): String = sqrtTranscript(sqrtStageOneController, stageOneOps, x)
+public fun sqrtStageOneTranscript(x: Double): String = sqrtTranscript(sqrtStageOneController, setOf("guess", "x"), stageOneDevices, x)
 
 /** Stage two on [x]: the transcript with only arithmetic operations. */
-public fun sqrtStageTwoTranscript(x: Double): String = sqrtTranscript(sqrtStageTwoController, handArithOps, x)
+public fun sqrtStageTwoTranscript(x: Double): String =
+    sqrtTranscript(sqrtStageTwoController, setOf("guess", "x", "t"), machineArithmetic, x)
 
 /** Stage one then stage two on x = 2 and x = 9; the two transcripts agree,
  *  which is the point of the two-stage design. */

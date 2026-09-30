@@ -9,9 +9,31 @@ import io.kotest.matchers.shouldBe
 
 public class E4_72Test :
     FunSpec({
-        test("Exercise 4.72: interleave versus append").config(
+        test("Exercise 4.72: interleaving reaches the supervisor branch; appending never does").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            interleaveVersusAppend() shouldBe listOf("MEASURE")
+            interleaveVersusAppend() shouldBe
+                listOf(
+                    "interleaved, first 4 answers:",
+                    "?a = [Minnie, Mouse]",
+                    "?b = [Mickey, Mouse]",
+                    "?a = [Hacker, Alyssa, P]",
+                    "?b = [Bitdiddle, Ben]",
+                    "?a = [Mickey, Mouse]",
+                    "?b = [Minnie, Mouse]",
+                    "?a = [Fect, Cy, D]",
+                    "?b = [Bitdiddle, Ben]",
+                    "supervisor answers in the interleaved 4: 2",
+                    "appended, first 4 answers:",
+                    "?a = [Minnie, Mouse]",
+                    "?b = [Mickey, Mouse]",
+                    "?a = [Mickey, Mouse]",
+                    "?b = [Minnie, Mouse]",
+                    "?a = [Minnie, Mouse]",
+                    "?b = [Mickey, Mouse]",
+                    "?a = [Mickey, Mouse]",
+                    "?b = [Minnie, Mouse]",
+                    "supervisor answers in the appended 4: 0",
+                )
         }
     })

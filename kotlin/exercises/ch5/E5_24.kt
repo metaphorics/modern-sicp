@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.24: cond as a basic controller form, a clause loop.
+// Chapter 5, exercise 5.24: the case analysis as a basic controller form, a clause loop.
 
 package sicp.ch5.exercises
 

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.5: show that we can represent pairs of nonnegative integers
  * using only numbers and arithmetic operations if we represent the pair `a`
@@ -17,4 +15,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns `carPow(consPow(3, 4))` paired with
  * `cdrPow(consPow(3, 4))`.
  */
-public fun ex_2_05(): Pair<Long, Long> = throw PendingSolution()
+public fun ex_2_05(): Pair<Long, Long> = throw PendingExercise()

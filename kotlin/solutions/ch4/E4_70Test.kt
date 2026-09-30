@@ -11,11 +11,12 @@ public class E4_70Test :
         test("Exercise 4.70: the let-binding discipline") {
             letPurposeDemo() shouldBe
                 listOf(
-                    "ones model: take(4) = [1, 1, 1, 1]",
-                    "broken add-assertion! on (a b): add c => take(4) = [c, c, c, c]",
-                    "let-bound add-assertion! on (a b): add c => take(4) = [c, a, b]",
-                    "the book's hazard: the memoized tail reads THE-ASSERTIONS at force time, after set! has rebound the name",
-                    "the edition's addAssertion binds the old collection before appending; the hazard cannot arise",
+                    "?x = a",
+                    "?x = b",
+                    "?x = a",
+                    "?x = b",
+                    "?x = c",
+                    "snapshot unchanged: true",
                 )
         }
     })

@@ -12,6 +12,8 @@ public class E5_25Test :
         test("Exercise 5.25: the lazy evaluator's factorial, laziness, and memoization sessions").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            normalOrderRuns() shouldBe emptyList()
+            val pinned = setOf("120", "42", "(1 1)", "1")
+            normalOrderRuns().filter { it in pinned } shouldBe
+                listOf("120", "42", "(1 1)", "1")
         }
     })

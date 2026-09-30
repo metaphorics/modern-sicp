@@ -3,91 +3,59 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import arrow.core.raise.either
-import sicp.ch4.EvalStep
-import sicp.ch4.Evaluator
-import sicp.ch4.OutputSink
-import sicp.ch4.parseProgram
-import sicp.ch4.printValue
-import sicp.ch4.readProgram
-import sicp.ch4.setupEnvironment
-import sicp.runtime.DefineE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.SchemeError
-import sicp.runtime.VBool
-import sicp.runtime.VPrimitive
-import sicp.runtime.Value
+import sicp.ch4.Direct
 
-// Exercise 4.15: can `halts?` be written in the evaluator? [Bounded]
-// answers honestly what a real `halts?` cannot: it carries a step budget
-// in `step`, and a run that outlives its budget dies with the typed
-// `MachineFault` instead of hanging. The book's dialogue runs with
-// `halts?` installed as a primitive the host controls -- a stub whose
-// canned answer the test flips. With the stub answering `#f`, `(try try)`
-// takes the `'halts` branch and the run terminates: the program halted
-// though `halts?` denied it. With the stub answering `#t`, the
-// `'run-forever` branch spins until the budget fires: the program ran on
-// though `halts?` affirmed it. Either canned answer is wrong about this
-// input, which is the diagonal contradiction, stated with the budget as
-// the witness instead of an infinite loop.
+// Exercise 4.15: the halting theorem. No total decider exists -- the
+// proof is prose and lives in the rationale. The probe shows what a
+// step budget can and cannot do: a budgeted simulation answers `halts`
+// for a program that finishes inside the budget, and abstains with
+// `unknown` past it, for the diagonal at every budget. The budget
+// decides nothing; it only cuts the simulation off.
 
-/** The evaluator that refuses to run forever: every `step` round costs
- * one of [budget] steps, and running out is a typed machine fault. */
-public class Bounded(
-    global: Env,
-    /** The step budget of one run; generous for honest programs. */
-    public val budget: Int = 1000,
-) : Evaluator(global) {
-    /** The steps taken so far. */
-    public var steps: Int = 0
-        private set
+// Exercise 4.15: a step budget abstains past its limit, decides nothing.
 
-    context(r: Raise<SchemeError>)
-    override fun step(
-        expr: Expr,
-        env: Env,
-    ): EvalStep {
-        steps++
-        if (steps > budget) {
-            r.raise(SchemeError.MachineFault("step budget exhausted after $budget steps"))
+/** Budgeted simulation: `halts` inside the budget, `unknown` past it. */
+internal val HALTING_SOURCE: String =
+    """
+fun quick(limit: Long): String {
+    var depth = 0L
+    while (depth <= limit) {
+        if (depth >= 3L) {
+            return "halts"
         }
-        return super.step(expr, env)
+        depth = depth + 1L
     }
+    return "unknown after " + showLong(limit) + " steps"
 }
 
-/** The book's dialogue: `try` asks `halts?` about itself and, on yes,
- * runs forever. */
-private val HALTS_PROGRAM: String =
-    """
-    (define (run-forever) (run-forever))
-    (define (try p) (if (halts? p p) (run-forever) 'halts))
-    (try try)
+fun diagonal(limit: Long): String {
+    var depth = 0L
+    while (depth <= limit) {
+        depth = depth + 1L
+    }
+    return "unknown after " + showLong(limit) + " steps"
+}
+
+fun decide(program: Long, limit: Long): String {
+    if (program == 0L) {
+        return quick(limit)
+    }
+    return diagonal(limit)
+}
     """.trimIndent()
 
-/** Runs the dialogue with `halts?` canned to [haltsAnswer], on a
- * [Bounded] evaluator under the printer contract. */
-private fun boundedRun(haltsAnswer: Boolean): String {
-    val sink = OutputSink()
-    val env = setupEnvironment(sink)
-    env.define("halts?", VPrimitive("halts?") { _ -> VBool(haltsAnswer) })
-    val evaluator = Bounded(env)
-    either {
-        for (expr in parseProgram(readProgram(HALTS_PROGRAM))) {
-            if (expr is DefineE) {
-                evaluator.eval(expr, env) // a define prints nothing
-                continue
-            }
-            sink.line(printValue(evaluator.eval(expr, env)))
-        }
-    }.fold(
-        { e -> sink.line("Error: ${sicp.ch4.formatError(e)}") },
-        { },
-    )
-    return sink.toString()
+/** The quick program halts; the diagonal abstains at every budget.
+ * => "halts\nunknown after 200 steps\nunknown after 300 steps\n" */
+public fun haltingProbeTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + HALTING_SOURCE + "\n" +
+                """
+fun main() {
+    println(decide(0L, 200L))
+    println(decide(1L, 200L))
+    println(decide(1L, 300L))
 }
-
-/** The book's halts? dialogue on the bounded evaluator: `#f` halts,
- * `#t` exhausts the budget. */
-public fun boundedTranscript(haltsAnswer: Boolean): String = boundedRun(haltsAnswer)
+                """.trimIndent(),
+        ),
+    )

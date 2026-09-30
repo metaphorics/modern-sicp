@@ -3,14 +3,12 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
- * Exercise 3.17: a corrected `countDistinctPairs` returns the number of
- * distinct pairs in any structure, never counting a shared pair twice.
- * The host differs from Scheme here: the standard library has no
- * identity-keyed set, so the auxiliary "already counted" structure must
- * be one you scan with `===` yourself.
+ * Exercise 3.17: `countDistinctPairs` counts each `PairCell` identity only
+ * once, even when several links reach it. Scan a list with `===` so the
+ * membership check compares objects rather than their nested contents.
  */
-public fun countDistinctPairs(x: Value): Int = throw PendingSolution()
+public fun countDistinctPairs(x: Datum): Int = throw PendingSolution()

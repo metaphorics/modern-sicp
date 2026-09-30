@@ -12,6 +12,34 @@ public class E5_17Test :
         test("Exercise 5.17: traced lines with their labels").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            labelTracedGcdTrace() shouldBe emptyList()
+            labelTracedGcdTrace() shouldBe
+                listOf(
+                    "test-b: (test (op =) (reg b) (const 0))",
+                    "test-b: (branch (label gcd-done))",
+                    "test-b: (assign t (op rem) (reg a) (reg b))",
+                    "test-b: (assign a (reg b))",
+                    "test-b: (assign b (reg t))",
+                    "test-b: (goto (label test-b))",
+                    "test-b: (test (op =) (reg b) (const 0))",
+                    "test-b: (branch (label gcd-done))",
+                    "test-b: (assign t (op rem) (reg a) (reg b))",
+                    "test-b: (assign a (reg b))",
+                    "test-b: (assign b (reg t))",
+                    "test-b: (goto (label test-b))",
+                    "test-b: (test (op =) (reg b) (const 0))",
+                    "test-b: (branch (label gcd-done))",
+                    "test-b: (assign t (op rem) (reg a) (reg b))",
+                    "test-b: (assign a (reg b))",
+                    "test-b: (assign b (reg t))",
+                    "test-b: (goto (label test-b))",
+                    "test-b: (test (op =) (reg b) (const 0))",
+                    "test-b: (branch (label gcd-done))",
+                    "test-b: (assign t (op rem) (reg a) (reg b))",
+                    "test-b: (assign a (reg b))",
+                    "test-b: (assign b (reg t))",
+                    "test-b: (goto (label test-b))",
+                    "test-b: (test (op =) (reg b) (const 0))",
+                    "test-b: (branch (label gcd-done))",
+                )
         }
     })

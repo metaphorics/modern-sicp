@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.35: Redefine `countLeaves` of section 2.2.2 as an accumulation: fill in
  * `accumulateList` and `map` so that `countLeavesAccumulate(t)` counts
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns `countLeavesAccumulate` applied to the tree form of the book's
  * `(1 (2 (3 4)))`, which has four leaves.
  */
-public fun ex_2_35(): Long = throw PendingSolution()
+public fun ex_2_35(): Long = throw PendingExercise()

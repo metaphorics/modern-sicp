@@ -12,6 +12,11 @@ public class E4_66Test :
         test("Exercise 4.66: the salary sums").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            salarySums() shouldBe listOf("MEASURE")
+            salarySums() shouldBe
+                listOf(
+                    "sum over the book's query = 75000",
+                    "Ben's scheme on the wheel query = 660000 (duplicate frames count)",
+                    "salvage, distinct answers only = 210000",
+                )
         }
     })

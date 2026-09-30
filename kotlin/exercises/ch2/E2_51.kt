@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.51: define the `below` operation for painters, which takes
  * two painters as arguments. The resulting painter, given a frame, draws
@@ -18,4 +16,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns whether the two constructions paint the same
  * segments into `unitSquare` for a sample pair of painters.
  */
-public fun ex_2_51(): Boolean = throw PendingSolution()
+public fun ex_2_51(): Boolean = throw PendingExercise()

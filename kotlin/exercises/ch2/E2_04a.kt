@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.4a is added by this edition and extends exercise 2.4; SICP
  * numbers stop at 2.4. Exercise 2.4 checks the identity law
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns whether the law holds for the fixed pair `(3, 4)`;
  * the real property test lives in the solution's test file.
  */
-public fun ex_2_04a(): Boolean = throw PendingSolution()
+public fun ex_2_04a(): Boolean = throw PendingExercise()

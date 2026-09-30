@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.74: Insatiable Enterprises' divisions each keep personnel
  * files in a genuinely different internal structure. Headquarters needs
@@ -31,4 +29,4 @@ import sicp.runtime.PendingSolution
  * two employees in two divisions built with genuinely different internal
  * structures, plus whether a name absent from every division is found.
  */
-public fun ex_2_74(): Triple<String?, String?, Boolean> = throw PendingSolution()
+public fun ex_2_74(): Triple<String?, String?, Boolean> = throw PendingExercise()

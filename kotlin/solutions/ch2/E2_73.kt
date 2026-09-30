@@ -28,16 +28,6 @@ public sealed interface OperatorExpr {
     ) : OperatorExpr
 }
 
-/** Prints an [OperatorExpr] in the book's parenthesized prefix notation. */
-public fun printOperatorExpr(e: OperatorExpr): String =
-    when (e) {
-        is OperatorExpr.Num -> e.n.toString()
-        is OperatorExpr.Var -> e.name
-        is OperatorExpr.Sum -> "(+ ${printOperatorExpr(e.a1)} ${printOperatorExpr(e.a2)})"
-        is OperatorExpr.Product -> "(* ${printOperatorExpr(e.a1)} ${printOperatorExpr(e.a2)})"
-        is OperatorExpr.Pow -> "(** ${printOperatorExpr(e.base)} ${e.n})"
-    }
-
 public fun interface DerivRule {
     public fun differentiate(
         exp: OperatorExpr,
@@ -65,7 +55,7 @@ private fun dispatchRule(
     variable: String,
     table: DerivTable,
 ): OperatorExpr {
-    val rule = table.get(operator) ?: throw IllegalStateException("unknown expression type: DERIV ${printOperatorExpr(exp)}")
+    val rule = table.get(operator) ?: throw IllegalStateException("No differentiation rule installed for operator $operator")
     return rule.differentiate(exp, variable, table)
 }
 
@@ -162,14 +152,14 @@ private fun installedTable(): DerivTable {
 }
 
 /**
- * Parts (b) and (c): `deriv(x + 3, x)` is `1`, `deriv(x * y, x)` is `y`,
- * and `deriv(x ** 3, x)` is `3 x^2`, all through the installed table.
+ * Differentiate one sum, one product, and one power expression through the
+ * installed rule table, returning their typed result trees.
  */
-public fun ex_2_73(): Triple<String, String, String> {
+public fun ex_2_73(): Triple<OperatorExpr, OperatorExpr, OperatorExpr> {
     val table = installedTable()
-    val x = "x"
-    val sum = printOperatorExpr(derivDataDirected(OperatorExpr.Sum(OperatorExpr.Var("x"), OperatorExpr.Num(3)), x, table))
-    val product = printOperatorExpr(derivDataDirected(OperatorExpr.Product(OperatorExpr.Var("x"), OperatorExpr.Var("y")), x, table))
-    val pow = printOperatorExpr(derivDataDirected(OperatorExpr.Pow(OperatorExpr.Var("x"), 3L), x, table))
-    return Triple(sum, product, pow)
+    val variable = "x"
+    val sum = derivDataDirected(OperatorExpr.Sum(OperatorExpr.Var("x"), OperatorExpr.Num(3)), variable, table)
+    val product = derivDataDirected(OperatorExpr.Product(OperatorExpr.Var("x"), OperatorExpr.Var("y")), variable, table)
+    val power = derivDataDirected(OperatorExpr.Pow(OperatorExpr.Var("x"), 3L), variable, table)
+    return Triple(sum, product, power)
 }

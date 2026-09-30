@@ -12,6 +12,11 @@ public class E4_68Test :
         test("Exercise 4.68: the reverse queries").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            reverseQueries() shouldBe listOf("MEASURE")
+            reverseQueries() shouldBe
+                listOf(
+                    "?x = [3, 2, 1]",
+                    "?x = [d, c, b, a]",
+                    "?x = [3, 2, 1]",
+                )
         }
     })

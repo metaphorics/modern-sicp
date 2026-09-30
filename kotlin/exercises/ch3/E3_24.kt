@@ -3,15 +3,12 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
- * Exercise 3.24: the section's makeTable tests keys with equalv unless
- * the constructor was handed a different predicate. Design the table
- * constructor that takes the caller's sameKey predicate, so that
- * "equality" of keys is whatever the table's user says it is -- for
- * instance, numbers within some tolerance. The returned table's
- * lookup and insert use that test.
+ * Exercise 3.24 lets a table caller choose key equality instead of using
+ * structural datum equality. For example, a predicate can place nearby
+ * whole numbers in the same table slot.
  */
-public fun makeTable(sameKey: (Value, Value) -> Boolean): Table = throw PendingSolution()
+public fun makeTable(sameKey: (Datum, Datum) -> Boolean): Table = throw PendingSolution()

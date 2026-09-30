@@ -1,64 +1,228 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Chapter 4, section 4.1.5, data as programs: the evaluator as a universal
-// machine. The factorial program is ordinary list data -- the example
-// takes it apart with car and cdr, then feeds the very same structure to
-// the evaluator and watches it compute.
+// machine. The factorial program is ordinary node data -- the example
+// takes it apart field by field -- then feeds the very same structure to
+// the kernel and watches it compute.
 
 package sicp.ch4.examples
 
-import arrow.core.raise.either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.ch4.OutputSink
-import sicp.ch4.evalText
-import sicp.ch4.runProgram
-import sicp.ch4.setupEnvironment
-import sicp.runtime.VInt
-import sicp.runtime.VPair
-import sicp.runtime.VSym
+import sicp.ch4.Direct
+import sicp.guest.Mode
+import sicp.guest.RunResult
 
-private const val FACTORIAL_PROGRAM = "(define (factorial n) (if (= n 1) 1 (* n (factorial (- n 1)))))"
+/** The kernel as of this section: the node family, eval, and apply. */
+private val KERNEL: String =
+    """
+    sealed interface GExpr
 
-public class S4_1_5DataAsProgramsTest :
-    FunSpec({
-        test("the factorial program is a list: its pieces are car and cdr") {
-            val env = setupEnvironment(OutputSink())
-            either {
-                val datum = evalText("'$FACTORIAL_PROGRAM", env) as VPair
-                datum.car shouldBe VSym("define")
-                val signature = (datum.cdr as VPair).car as VPair
-                signature.car shouldBe VSym("factorial")
-                (signature.cdr as VPair).car shouldBe VSym("n")
+    data class GNum(val n: Long) : GExpr
+    data class GBool(val b: Boolean) : GExpr
+    data class GVar(val name: String) : GExpr
+    data class GLam(val param: String, val body: GExpr) : GExpr
+    data class GApp(val fn: GExpr, val arg: GExpr) : GExpr
+    data class GLet(val name: String, val value: GExpr, val body: GExpr) : GExpr
+    data class GLetRec(val name: String, val value: GExpr, val body: GExpr) : GExpr
+    data class GIf(val test: GExpr, val onTrue: GExpr, val onFalse: GExpr) : GExpr
+    data class GAdd(val left: GExpr, val right: GExpr) : GExpr
+    data class GMul(val left: GExpr, val right: GExpr) : GExpr
+    data class GLt(val left: GExpr, val right: GExpr) : GExpr
+    data class GSet(val name: String, val value: GExpr) : GExpr
+
+    sealed interface GValue
+
+    data class GNumV(val n: Long) : GValue
+    data class GBoolV(val b: Boolean) : GValue
+    data class GClosV(val param: String, val body: GExpr, val env: GFrame) : GValue
+    data object GUnassigned : GValue
+
+    class GFrame(val cells: MutableMap<String, GValue>, val parent: GFrame?) {
+        fun lookup(name: String): GValue? {
+            var here: GFrame? = this
+            while (here is GFrame) {
+                val current: GFrame = here
+                val hit = current.cells[name]
+                if (hit != null) {
+                    return hit
+                }
+                here = current.parent
+            }
+            return null
+        }
+
+        fun assign(name: String, value: GValue): Boolean {
+            var here: GFrame? = this
+            while (here is GFrame) {
+                val current: GFrame = here
+                if (current.cells.containsKey(name)) {
+                    current.cells[name] = value
+                    return true
+                }
+                here = current.parent
+            }
+            return false
+        }
+    }
+
+    fun gEval(expr: GExpr, env: GFrame): GValue? =
+        when (expr) {
+            is GNum -> GNumV(expr.n)
+            is GBool -> GBoolV(expr.b)
+            is GVar -> {
+                val found = env.lookup(expr.name)
+                if (found == null || found is GUnassigned) {
+                    null
+                } else {
+                    found
+                }
+            }
+            is GLam -> GClosV(expr.param, expr.body, env)
+            is GApp -> {
+                val fn = gEval(expr.fn, env) ?: return null
+                val arg = gEval(expr.arg, env) ?: return null
+                gApply(fn, listOf(arg))
+            }
+            is GLet -> {
+                val value = gEval(expr.value, env) ?: return null
+                val frame = GFrame(mutableMapOf(expr.name to value), env)
+                gEval(expr.body, frame)
+            }
+            is GLetRec -> {
+                val frame = GFrame(mutableMapOf(expr.name to GUnassigned), env)
+                val value = gEval(expr.value, frame) ?: return null
+                frame.cells[expr.name] = value
+                gEval(expr.body, frame)
+            }
+            is GIf -> {
+                val test = gEval(expr.test, env) ?: return null
+                if (test !is GBoolV) {
+                    null
+                } else if (test.b) {
+                    gEval(expr.onTrue, env)
+                } else {
+                    gEval(expr.onFalse, env)
+                }
+            }
+            is GAdd -> {
+                val left = gEval(expr.left, env) ?: return null
+                val right = gEval(expr.right, env) ?: return null
+                if (left is GNumV && right is GNumV) {
+                    GNumV(left.n + right.n)
+                } else {
+                    null
+                }
+            }
+            is GMul -> {
+                val left = gEval(expr.left, env) ?: return null
+                val right = gEval(expr.right, env) ?: return null
+                if (left is GNumV && right is GNumV) {
+                    GNumV(left.n * right.n)
+                } else {
+                    null
+                }
+            }
+            is GLt -> {
+                val left = gEval(expr.left, env) ?: return null
+                val right = gEval(expr.right, env) ?: return null
+                if (left is GNumV && right is GNumV) {
+                    GBoolV(left.n < right.n)
+                } else {
+                    null
+                }
+            }
+            is GSet -> {
+                val value = gEval(expr.value, env) ?: return null
+                if (env.assign(expr.name, value)) {
+                    GBoolV(true)
+                } else {
+                    null
+                }
             }
         }
 
-        test("feed the program to the evaluator and it computes") {
-            val sink = OutputSink()
-            val transcript =
-                runProgram(
-                    """
-                    $FACTORIAL_PROGRAM
-                    (factorial 5)
-                    (factorial 10)
-                    """.trimIndent(),
-                    setupEnvironment(sink),
-                    sink,
-                )
-            transcript shouldBe "120\n3628800\n"
+    fun gApply(fn: GValue, args: List<GValue>): GValue? {
+        if (fn !is GClosV) return null
+        if (args.size != 1) return null
+        val frame = GFrame(mutableMapOf(fn.param to args.get(0)), fn.env)
+        return gEval(fn.body, frame)
+    }
+
+    fun render(value: GValue): String =
+        when (value) {
+            is GNumV -> "${'$'}{value.n}"
+            is GBoolV -> "${'$'}{value.b}"
+            is GClosV -> "closure"
+            is GUnassigned -> "unassigned"
         }
 
-        test("data and programs are the same stuff, both directions") {
-            // the program read as data prints back as the same surface text
-            val sink = OutputSink()
-            val env = setupEnvironment(sink)
-            val printed =
-                either {
-                    sicp.ch4.printValue(evalText("'$FACTORIAL_PROGRAM", env))
-                }.fold({ throw AssertionError() }, { it })
-            printed shouldBe FACTORIAL_PROGRAM
-            // and evaluating the very same text as a program installs factorial
-            runProgram(FACTORIAL_PROGRAM, env, sink) shouldBe ""
-            val f = either { env.lookup("factorial") }.fold({ throw AssertionError() }, { it })
-            (f is sicp.runtime.VProc) shouldBe true
+    fun show(label: String, value: GValue?): Unit {
+        if (value == null) {
+            println(label + " = null")
+        } else {
+            println(label + " = " + render(value))
+        }
+    }
+
+    /** The factorial program as constructed data. */
+    fun factorialProgram(n: Long): GExpr =
+        GLetRec(
+            "fact",
+            GLam(
+                "n",
+                GIf(
+                    GLt(GVar("n"), GNum(2L)),
+                    GNum(1L),
+                    GMul(GVar("n"), GApp(GVar("fact"), GAdd(GVar("n"), GNum(-1L)))),
+                ),
+            ),
+            GApp(GVar("fact"), GNum(n)),
+        )
+
+    fun main() {
+        // the program is data: its pieces are node fields
+        val program = factorialProgram(5L)
+        if (program is GLetRec) {
+            println("name = " + program.name)
+            val procedure = program.value
+            if (procedure is GLam) {
+                println("param = " + procedure.param)
+            }
+        }
+        // data and programs are the same stuff, both directions: the very
+        // same structure computes
+        show("factorial-5", gEval(factorialProgram(5L), GFrame(mutableMapOf(), null)))
+        show("factorial-10", gEval(factorialProgram(10L), GFrame(mutableMapOf(), null)))
+    }
+    """.trimIndent()
+
+private fun runKernel(): RunResult =
+    Direct.run(KERNEL, Mode.CORE).fold(
+        { e -> throw AssertionError("admission rejected the kernel: ${e.category}: ${e.message}") },
+        { it },
+    )
+
+public class S4_1_5DataAsProgramsTest :
+    FunSpec({
+        test("the factorial program is data: its pieces are node fields") {
+            val output = runKernel().output
+            output.contains("name = fact") shouldBe true
+            output.contains("param = n") shouldBe true
+        }
+
+        test("feed the program to the kernel and it computes") {
+            runKernel().output shouldBe
+                "name = fact\n" +
+                "param = n\n" +
+                "factorial-5 = 120\n" +
+                "factorial-10 = 3628800\n"
+        }
+
+        test("data and programs are the same structure, both directions") {
+            val output = runKernel().output
+            // the inspected structure and the computed one are built by
+            // the same constructor call
+            output.contains("factorial-5 = 120") shouldBe true
+            output.contains("factorial-10 = 3628800") shouldBe true
         }
     })

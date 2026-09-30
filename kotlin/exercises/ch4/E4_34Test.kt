@@ -12,13 +12,13 @@ public class E4_34Test :
         test("Exercise 4.34: dotted and proper lazy pairs print in their shapes").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            lazyPairPrintTranscript() shouldBe "(1 . 2)\n(1 2)\n"
+            lazyPairPrintTranscript() shouldBe "[1 | 2]\n[1, 2]\n"
         }
 
         test("Exercise 4.34: the infinite list prints prefix plus ellipsis").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            onesBudgetPrintTranscript() shouldBe "(1 1 1 1 1 1 1 1 1 1 ...)\n"
+            onesBudgetPrintTranscript() shouldBe "[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...]\n"
         }
 
         test("Exercise 4.34: car forces only the demanded element").config(
@@ -30,6 +30,6 @@ public class E4_34Test :
         test("Exercise 4.34: nested lazy pairs print recursively").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            nestedLazyPrintTranscript() shouldBe "((1) 2)\n"
+            nestedLazyPrintTranscript() shouldBe "[[1], 2]\n"
         }
     })

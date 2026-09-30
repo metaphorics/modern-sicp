@@ -3,40 +3,34 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.pair
+import sicp.runtime.renderDatum
 
-private fun square(v: Value): Value = VInt(numOf(v) * numOf(v))
+private fun square(v: Datum): Datum = Whole(wholeNumber(v) * wholeNumber(v))
 
-/**
- * Louis's first attempt: iterative, but each square is consed onto the
- * accumulated answer, so the answer chain is built back to front.
- */
-public fun squareListIter(items: Value): Value {
+/** Reverse accumulation exposes the order error in the iterative construction. */
+public fun squareListIter(items: Datum): Datum {
     tailrec fun iter(
-        things: Value,
-        answer: Value,
-    ): Value = if (things is VNil) answer else iter(cdrOf(things), cons(square(carOf(things)), answer))
+        things: Datum,
+        answer: Datum,
+    ): Datum = if (things === Empty) answer else iter(secondPart(things), pair(square(firstPart(things)), answer))
 
-    return iter(items, VNil)
+    return iter(items, Empty)
 }
 
-/**
- * Louis's swapped-`cons` attempt: now the squares end up in order, but
- * each `cons` makes the accumulated answer the head and the square the
- * tail, so the result is an improper chain of nested pairs, not a list.
- */
-public fun squareListIterSwapped(items: Value): Value {
+/** Swapping pair arguments builds nested improper cells rather than a sequence. */
+public fun squareListIterSwapped(items: Datum): Datum {
     tailrec fun iter(
-        things: Value,
-        answer: Value,
-    ): Value = if (things is VNil) answer else iter(cdrOf(things), cons(answer, square(carOf(things))))
+        things: Datum,
+        answer: Datum,
+    ): Datum = if (things === Empty) answer else iter(secondPart(things), pair(answer, square(firstPart(things))))
 
-    return iter(items, VNil)
+    return iter(items, Empty)
 }
 
-/** Louis's first attempt applied to `(1 2 3 4)`, printed: `(16 9 4 1)`, in reverse order. */
-public fun ex_2_22(): String = squareListIter(vlist(VInt(1L), VInt(2L), VInt(3L), VInt(4L))).toString()
+/** Canonical native rendering of Louis's first construction attempt. */
+public fun ex_2_22(): String = renderDatum(squareListIter(datumList(Whole(1L), Whole(2L), Whole(3L), Whole(4L))))

@@ -3,47 +3,64 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.either
-import sicp.ch4.AmbEvaluator
-import sicp.ch4.ambDriver
+// Exercise 4.35a (added by this edition): count the search's choices per
+// triple. The counting rule is the experiment's own: one choice per
+// entered alternative -- the first alternative on entering the choice
+// point, and each later alternative a failure resumption enters, even
+// when that branch then fails. The counter is a permanent write (it must
+// survive backtracking to stay cumulative), and because the run streams
+// its answers, the probe prints the cumulative count at each delivered
+// triple: a triple's own share is the delta from the previous line. The
+// engine's own `SearchRun.choices` reports the same total at the end of
+// the run.
 
-/** The counting rule: every delivery of an alternative from a choice
- * point counts one choice -- the first alternative on entering the
- * choice point, and each later alternative a failure resumption
- * delivers. The engine's counter is cumulative, so each element of the
- * answer is the total choices taken by the time that triple is
- * delivered; a triple's own share is the delta from the previous
- * element (1386, then 1319, 260, 905, 194, 701).
+/** The triples program with the choice counter printed at each answer. */
+internal val COUNTED_TRIPLES_PROGRAM: String =
+    AMB_BASE_PRELUDE + "\n" +
+        """
+fun aCountedTriple(low: Long, high: Long): Unit {
+    val i = anIntegerBetween(low, high)
+    val j = anIntegerBetween(i, high)
+    val k = anIntegerBetween(j, high)
+    requireThat(i * i + j * j == k * k)
+    println(showLong(choicesTaken))
+}
+
+fun main() {
+    budgetCap = 1000000L
+    aCountedTriple(1L, 20L)
+}
+        """.trimIndent()
+
+/** The same generator inside 1 and 9. */
+internal val COUNTED_TRIPLES_9_PROGRAM: String =
+    AMB_BASE_PRELUDE + "\n" +
+        """
+fun aCountedTriple(low: Long, high: Long): Unit {
+    val i = anIntegerBetween(low, high)
+    val j = anIntegerBetween(i, high)
+    val k = anIntegerBetween(j, high)
+    requireThat(i * i + j * j == k * k)
+    println(showLong(choicesTaken))
+}
+
+fun main() {
+    budgetCap = 1000000L
+    aCountedTriple(1L, 9L)
+}
+        """.trimIndent()
+
+/** The cumulative choices taken by the time each triple arrives, between 1
+ * and 20. => [925, 1805, 1979, 2583, 2713, 3181]
  *
- * => [1386, 2705, 2965, 3870, 4064, 4765] */
-public fun choicesTakenWithin20(): List<Long> =
-    either {
-        val driver = ambDriver(::AmbEvaluator, "$AMB_BASE_PRELUDE\n$TRIPLES_PROGRAM")
-        val totals = mutableListOf<Long>()
-        var next = driver.solve("(a-pythagorean-triple-between 1 20)")
-        while (next != null) {
-            totals.add(driver.evaluator.choicesTaken)
-            next = driver.tryAgain()
-        }
-        totals
-    }.fold(
-        { e -> throw AssertionError(e.toString()) },
-        { it },
-    )
+ * Hand-derived, UNRUN: each `anIntegerBetween(low, H)` fully enumerated
+ * costs 2*(H-low+1) entries (one delivery plus one branch entry per
+ * value, including the final failing branch), so a completed i-row costs
+ * (H-i)(H-i+3)+1 and answer (I,J,K) totals I + completed rows +
+ * (J-I+1) j-deliveries + completed k-rows + (2(K-J)+1) k-entries.
+ * Full-run engine totals reconcile: 3540 within 20, 438 within 9. */
+public fun choicesTakenWithin20(): List<Long> = searchLines(COUNTED_TRIPLES_PROGRAM).map { it.toLong() }
 
-/** The single triple between 1 and 9 arrives after 330 choices.
- * => [330] */
-public fun choicesTakenWithin9(): List<Long> =
-    either {
-        val driver = ambDriver(::AmbEvaluator, "$AMB_BASE_PRELUDE\n$TRIPLES_PROGRAM")
-        val totals = mutableListOf<Long>()
-        var next = driver.solve("(a-pythagorean-triple-between 1 9)")
-        while (next != null) {
-            totals.add(driver.evaluator.choicesTaken)
-            next = driver.tryAgain()
-        }
-        totals
-    }.fold(
-        { e -> throw AssertionError(e.toString()) },
-        { it },
-    )
+/** The single triple between 1 and 9 arrives after 221 choices.
+ * => [221] */
+public fun choicesTakenWithin9(): List<Long> = searchLines(COUNTED_TRIPLES_9_PROGRAM).map { it.toLong() }

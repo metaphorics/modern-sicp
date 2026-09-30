@@ -5,31 +5,31 @@ package sicp.ch2.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.VSym
-import sicp.runtime.vlist
+import sicp.runtime.Empty
+import sicp.runtime.Symbol
+import sicp.runtime.Whole
+import sicp.runtime.datumList
 
 public class E2_54Test :
     FunSpec({
-        test("myEqual is true for two lists of the same symbols in the same order") {
-            val a = vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list"))
-            val b = vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list"))
-            myEqual(a, b) shouldBe true
+        test("myEqual accepts independently allocated trees with the same contents") {
+            val first = datumList(Symbol("this"), Symbol("is"), Symbol("a"), Symbol("list"))
+            val second = datumList(Symbol("this"), Symbol("is"), Symbol("a"), Symbol("list"))
+            myEqual(first, second) shouldBe true
         }
-        test("myEqual is false when the nesting shape differs") {
-            val a = vlist(VSym("this"), VSym("is"), VSym("a"), VSym("list"))
-            val b = vlist(VSym("this"), vlist(VSym("is"), VSym("a")), VSym("list"))
-            myEqual(a, b) shouldBe false
+        test("myEqual rejects a different nesting shape") {
+            val flat = datumList(Symbol("this"), Symbol("is"), Symbol("a"), Symbol("list"))
+            val nested = datumList(Symbol("this"), datumList(Symbol("is"), Symbol("a")), Symbol("list"))
+            myEqual(flat, nested) shouldBe false
         }
-        test("myEqual is true on two empty lists and false for different lengths") {
-            myEqual(VNil, VNil) shouldBe true
-            myEqual(vlist(VSym("a")), VNil) shouldBe false
+        test("myEqual compares empty and nonempty shapes consistently") {
+            myEqual(Empty, Empty) shouldBe true
+            myEqual(datumList(Symbol("a")), Empty) shouldBe false
         }
-        test("myEqual is false between a symbol and a number, even with matching text") {
-            myEqual(VSym("1"), VInt(1L)) shouldBe false
+        test("myEqual distinguishes a symbol from a whole number") {
+            myEqual(Symbol("1"), Whole(1L)) shouldBe false
         }
-        test("ex_2_54 matches the book's two worked examples") {
+        test("ex_2_54 returns equal-shape and unequal-shape results") {
             ex_2_54() shouldBe listOf(true, false)
         }
     })

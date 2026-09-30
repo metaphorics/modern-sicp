@@ -8,37 +8,36 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
 /**
- * A pair needs no data structure at all: [cons] closes over its two
- * arguments and returns a function that dispatches on a message, `0` for
- * `car` and `1` for `cdr`. [car] and [cdr] just send that message. Any
- * representation of pairs has to satisfy one condition: for any `x` and
- * `y`, `car(cons(x, y))` is `x` and `cdr(cons(x, y))` is `y`.
+ * A pair needs no record: [makeProceduralPair] closes over its two values
+ * and returns a function that dispatches on a selector, `0` for the first
+ * component and `1` for the second. The two accessor functions send that
+ * selector; either representation must recover both original values.
  */
-public fun cons(
-    x: Long,
-    y: Long,
+public fun makeProceduralPair(
+    first: Long,
+    second: Long,
 ): (Long) -> Long {
-    fun dispatch(m: Long): Long =
-        when (m) {
-            0L -> x
-            1L -> y
-            else -> error("Argument not 0 or 1: CONS $m")
+    fun dispatch(selector: Long): Long =
+        when (selector) {
+            0L -> first
+            1L -> second
+            else -> error("Pair selector must be 0 or 1, got $selector")
         }
     return ::dispatch
 }
 
-public fun car(z: (Long) -> Long): Long = z(0L)
+public fun firstFromProceduralPair(pair: (Long) -> Long): Long = pair(0L)
 
-public fun cdr(z: (Long) -> Long): Long = z(1L)
+public fun secondFromProceduralPair(pair: (Long) -> Long): Long = pair(1L)
 
 public class S2_1_3ProceduralDataTest :
     FunSpec({
-        test("car and cdr recover exactly what cons closed over") {
-            val z = cons(1L, 2L)
-            car(z) shouldBe 1L
-            cdr(z) shouldBe 2L
+        test("the procedural representation recovers both captured values") {
+            val pair = makeProceduralPair(1L, 2L)
+            firstFromProceduralPair(pair) shouldBe 1L
+            secondFromProceduralPair(pair) shouldBe 2L
         }
-        test("a dispatch function rejects any message other than 0 or 1") {
-            shouldThrow<IllegalStateException> { cons(1L, 2L)(2L) }
+        test("the dispatcher rejects an unknown selector") {
+            shouldThrow<IllegalStateException> { makeProceduralPair(1L, 2L)(2L) }
         }
     })

@@ -3,8 +3,8 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.PairCell
 import sicp.runtime.PendingSolution
-import sicp.runtime.VPair
 
 /**
  * Exercise 3.13: `makeCycle` uses `lastPair` to close the chain `x` back
@@ -12,4 +12,4 @@ import sicp.runtime.VPair
  * by `makeCycle` looks like, and what happens when `lastPair(z)` tries to
  * find an end that no longer exists.
  */
-public fun makeCycle(x: VPair): VPair = throw PendingSolution()
+public fun makeCycle(x: PairCell): PairCell = throw PendingSolution()

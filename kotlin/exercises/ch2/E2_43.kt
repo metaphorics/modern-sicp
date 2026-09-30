@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.43: Louis Reasoner is having a terrible time in Exercise 2.42. His
  * `queensSlow` procedure seems to work, but it runs extremely slowly.
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `queensSlow(6).size`; the tests check the solution set is unchanged.
  */
-public fun ex_2_43(): Int = throw PendingSolution()
+public fun ex_2_43(): Int = throw PendingExercise()

@@ -12,6 +12,6 @@ public class E5_09Test :
         test("Exercise 5.09: a label operand is an assembly error").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            labelOperandOutcome() shouldBe "MEASURE"
+            labelOperandOutcome() shouldBe "LabelOperand: b"
         }
     })

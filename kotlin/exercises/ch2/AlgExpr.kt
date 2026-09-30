@@ -87,12 +87,3 @@ public fun deriv(
             )
         }
     }
-
-/** Prints an [Expr] in the book's parenthesized prefix notation. */
-public fun printExpr(e: Expr): String =
-    when (e) {
-        is Expr.Num -> e.n.toString()
-        is Expr.Var -> e.name
-        is Expr.Sum -> "(+ ${printExpr(e.a1)} ${printExpr(e.a2)})"
-        is Expr.Product -> "(* ${printExpr(e.a1)} ${printExpr(e.a2)})"
-    }

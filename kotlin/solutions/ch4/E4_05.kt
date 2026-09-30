@@ -3,71 +3,44 @@
 
 package sicp.ch4.solutions
 
-import kotlinx.collections.immutable.PersistentList
-import kotlinx.collections.immutable.persistentListOf
-import sicp.ch4.Evaluator
-import sicp.runtime.AppE
-import sicp.runtime.BeginE
-import sicp.runtime.CondClause
-import sicp.runtime.CondE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.IfE
-import sicp.runtime.LambdaE
-import sicp.runtime.VarE
+import sicp.ch4.Direct
 
-/**
- * Exercise 4.5: cond clauses of the shape `(test => recipient)`. Taking
- * over `cond->if`, an arrow clause rewrites to
- * `((lambda (*cond-test*) (if *cond-test* (recipient *cond-test*) rest))
- * test)`, so the test evaluates exactly once and its value feeds the
- * recipient -- the naive `(if test (recipient test) rest)` would evaluate
- * the test twice. Plain clauses chain as before.
- */
-public class WithArrow(
-    global: Env,
-) : Evaluator(global) {
-    override fun condToIf(cond: CondE): Expr = arrowChain(cond.clauses)
+// Exercise 4.5: `cond` clauses of the shape `(test => recipient)`. The
+// rewrite evaluates the test exactly once: it binds the test value and
+// applies the recipient to it when true, falling through to the rest
+// otherwise. The probe test counts its own evaluations, so the printed
+// counter pins the single-evaluation contract both when the test holds
+// and when it fails.
+
+/** `(test => recipient)` with `rest` after it, as kernel data. */
+internal val ARROW_SOURCE: String =
+    """
+fun arrowToApp(test: GExpr, recipient: GExpr, rest: GExpr): GExpr =
+    GApp(GLam("arrowValue", GIf(GVar("arrowValue"), GApp(recipient, GVar("arrowValue")), rest)), test)
+
+fun countedTest(value: Boolean): GExpr =
+    GLet("u", GSet("effects", GAdd(GVar("effects"), GNum(1L))), GBool(value))
+
+fun effectFrame(): GFrame = GFrame(mutableMapOf<String, GValue>("effects" to GNumV(0L)), null)
+    """.trimIndent()
+
+/** True test answers through the recipient; false test answers the rest;
+ * both evaluate the test exactly once. => "42\n1\n7\n1\n" */
+public fun arrowClauseTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + ARROW_SOURCE + "\n" +
+                """
+fun main() {
+    val firstEnv = effectFrame()
+    val first = arrowToApp(countedTest(true), GLam("v", GNum(42L)), GNum(0L))
+    println(renderValue(gEval(first, firstEnv)))
+    println(renderValue(gEval(GVar("effects"), firstEnv)))
+    val secondEnv = effectFrame()
+    val second = arrowToApp(countedTest(false), GLam("v", GNum(42L)), GNum(7L))
+    println(renderValue(gEval(second, secondEnv)))
+    println(renderValue(gEval(GVar("effects"), secondEnv)))
 }
-
-/** The book's `cond->if` with arrow clauses folded into the chain. */
-public fun arrowChain(clauses: PersistentList<CondClause>): Expr =
-    if (clauses.isEmpty()) {
-        VarE("false") // no else clause
-    } else {
-        val first = clauses.first()
-        val rest = arrowChain(clauses.removingAt(0))
-        when (first) {
-            is CondClause.Else -> bodySequence(first.body)
-            is CondClause.Clause -> arrowClause(first, rest)
-        }
-    }
-
-/** One clause: an arrow binds the test value once and applies the
- * recipient to it; a plain clause tests as usual. */
-private fun arrowClause(
-    clause: CondClause.Clause,
-    alternative: Expr,
-): Expr =
-    if (clause.body.size == 2 && clause.body[0] == VarE("=>")) {
-        val recipient = clause.body[1]
-        AppE(
-            LambdaE(
-                persistentListOf("*cond-test*"),
-                null,
-                persistentListOf(
-                    IfE(
-                        VarE("*cond-test*"),
-                        AppE(recipient, persistentListOf(VarE("*cond-test*"))),
-                        alternative,
-                    ),
-                ),
-            ),
-            persistentListOf(clause.test),
-        )
-    } else {
-        IfE(clause.test, bodySequence(clause.body), alternative)
-    }
-
-/** The book's `sequence->exp`: one expression, `begin` when necessary. */
-private fun bodySequence(body: PersistentList<Expr>): Expr = if (body.size == 1) body.first() else BeginE(body)
+                """.trimIndent(),
+        ),
+    )

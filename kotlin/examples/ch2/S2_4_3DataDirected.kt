@@ -8,206 +8,195 @@ import arrow.core.raise.Raise
 import arrow.core.raise.either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.Key
-import sicp.runtime.OpTable
-import sicp.runtime.SchemeError
-import sicp.runtime.VReal
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.DatumError
+import sicp.runtime.DatumKey
+import sicp.runtime.DatumOpTable
+import sicp.runtime.PairCell
+import sicp.runtime.Real
+import sicp.runtime.Tagged
 
-/**
- * The one-element tag-list key the book installs selectors under --
- * `(rectangular)` rather than the bare symbol `rectangular` -- to allow
- * for operations with multiple arguments, not all of the same type.
- * [Key.Nil]-terminated, so it composes with [applyGeneric]'s multi-tag
- * lookups too.
- */
-internal fun tagListKey(vararg tags: String): Key = tags.foldRight(Key.Nil as Key) { tag, rest -> Key.Pair(Key.Sym(tag), rest) }
+/** Build an immutable operation-table key from one or more type names. */
+internal fun tagListKey(vararg tags: String): DatumKey =
+    tags.foldRight(DatumKey.Empty as DatumKey) { tag, rest -> DatumKey.Pair(DatumKey.Symbol(tag), rest) }
 
-/** The tag-list key built from tags already looked up, for [applyGeneric]. */
-internal fun keyTagList(tags: List<Key>): Key = tags.foldRight(Key.Nil as Key) { tag, rest -> Key.Pair(tag, rest) }
+/** Build a lookup key from already projected datum tags. */
+internal fun keyTagList(tags: List<DatumKey>): DatumKey =
+    tags.foldRight(DatumKey.Empty as DatumKey) { tag, rest -> DatumKey.Pair(tag, rest) }
 
-/** The single argument of a selector handler. */
-context(r: Raise<SchemeError>)
-internal fun sole(args: List<Value>): Value =
-    args.singleOrNull() ?: r.raise(SchemeError.WrongArity("operation-table handler", "1", args.size))
+/** Require exactly one argument for a selector handler. */
+context(r: Raise<DatumError>)
+internal fun sole(args: List<Datum>): Datum =
+    args.singleOrNull() ?: r.raise(DatumError.BadDatum("selector handler requires one datum", args))
 
-/** The two real arguments of a constructor handler. */
-context(r: Raise<SchemeError>)
-internal fun realPair(args: List<Value>): Pair<Double, Double> {
-    if (args.size != 2) r.raise(SchemeError.WrongArity("operation-table handler", "2", args.size))
+/** Extract the pair of real arguments used by a representation constructor. */
+context(r: Raise<DatumError>)
+internal fun realPair(args: List<Datum>): Pair<Double, Double> {
+    if (args.size != 2) r.raise(DatumError.BadDatum("complex constructor requires two datums", args))
     return realOf(args[0]) to realOf(args[1])
 }
 
-/**
- * Ben's package (2.4.3): the same internal procedures from 2.4.1 and the
- * same tagged constructors from 2.4.2, installed under the
- * operation-and-type table. No changes are necessary to interface them
- * to the rest of the system.
- */
-public fun installRectangularPackage(table: OpTable) {
+/** Install the rectangular selectors and constructors in the host table. */
+public fun installRectangularPackage(table: DatumOpTable) {
     val tag = tagListKey("rectangular")
-    table.put(Key.Sym("real-part"), tag) { args -> rectRealPart(sole(args)) }
-    table.put(Key.Sym("imag-part"), tag) { args -> rectImagPart(sole(args)) }
-    table.put(Key.Sym("magnitude"), tag) { args -> rectMagnitude(sole(args)) }
-    table.put(Key.Sym("angle"), tag) { args -> rectAngle(sole(args)) }
-    table.put(Key.Sym("make-from-real-imag"), Key.Sym("rectangular")) { args ->
+    table.put(DatumKey.Symbol("real-part"), tag) { args -> rectRealPart(sole(args)) }
+    table.put(DatumKey.Symbol("imag-part"), tag) { args -> rectImagPart(sole(args)) }
+    table.put(DatumKey.Symbol("magnitude"), tag) { args -> rectMagnitude(sole(args)) }
+    table.put(DatumKey.Symbol("angle"), tag) { args -> rectAngle(sole(args)) }
+    table.put(DatumKey.Symbol("make-from-real-imag"), DatumKey.Symbol("rectangular")) { args ->
         val (x, y) = realPair(args)
         rectMakeFromRealImagTagged(x, y)
     }
-    table.put(Key.Sym("make-from-mag-ang"), Key.Sym("rectangular")) { args ->
+    table.put(DatumKey.Symbol("make-from-mag-ang"), DatumKey.Symbol("rectangular")) { args ->
         val (mag, ang) = realPair(args)
         rectMakeFromMagAngTagged(mag, ang)
     }
 }
 
-/** Alyssa's package is analogous. */
-public fun installPolarPackage(table: OpTable) {
+/** Install the polar selectors and constructors in the host table. */
+public fun installPolarPackage(table: DatumOpTable) {
     val tag = tagListKey("polar")
-    table.put(Key.Sym("real-part"), tag) { args -> polarRealPart(sole(args)) }
-    table.put(Key.Sym("imag-part"), tag) { args -> polarImagPart(sole(args)) }
-    table.put(Key.Sym("magnitude"), tag) { args -> polarMagnitude(sole(args)) }
-    table.put(Key.Sym("angle"), tag) { args -> polarAngle(sole(args)) }
-    table.put(Key.Sym("make-from-real-imag"), Key.Sym("polar")) { args ->
+    table.put(DatumKey.Symbol("real-part"), tag) { args -> polarRealPart(sole(args)) }
+    table.put(DatumKey.Symbol("imag-part"), tag) { args -> polarImagPart(sole(args)) }
+    table.put(DatumKey.Symbol("magnitude"), tag) { args -> polarMagnitude(sole(args)) }
+    table.put(DatumKey.Symbol("angle"), tag) { args -> polarAngle(sole(args)) }
+    table.put(DatumKey.Symbol("make-from-real-imag"), DatumKey.Symbol("polar")) { args ->
         val (x, y) = realPair(args)
         polarMakeFromRealImagTagged(x, y)
     }
-    table.put(Key.Sym("make-from-mag-ang"), Key.Sym("polar")) { args ->
+    table.put(DatumKey.Symbol("make-from-mag-ang"), DatumKey.Symbol("polar")) { args ->
         val (mag, ang) = realPair(args)
         polarMakeFromMagAngTagged(mag, ang)
     }
 }
 
 /**
- * Looks up the combination of the operation name and the argument tags
- * in the table, and applies the resulting handler to the untagged
- * contents: the book's `apply-generic`. A miss raises the book's own
- * message, naming the operation and the tags that had no handler --
- * the table's own answer to what the compiler cannot catch here that it
- * would catch for a closed `when`.
+ * Find an operation handler from the operation name and argument tags, then
+ * apply it to the payload datums. An absent method is a typed data error.
  */
-context(r: Raise<SchemeError>)
+context(r: Raise<DatumError>)
 public fun applyGeneric(
-    table: OpTable,
+    table: DatumOpTable,
     op: String,
-    args: List<Value>,
-): Value {
-    val tagKeys = mutableListOf<Key>()
-    val tagValues = mutableListOf<Value>()
-    for (arg in args) {
-        val tag = typeTag(arg)
-        tagKeys += Key.Sym(tag)
-        tagValues += VSym(tag)
-    }
+    args: List<Datum>,
+): Datum {
+    val tagNames = args.map { datum -> typeTag(datum) }
+    val tags = tagNames.map { DatumKey.Symbol(it) }
     val handler =
-        table.get(Key.Sym(op), keyTagList(tagKeys))
-            ?: r.raise(
-                SchemeError.UserRaised(
-                    "No method for these types: APPLY-GENERIC",
-                    listOf(vlist(listOf(VSym(op), vlist(tagValues)))),
-                ),
-            )
-    val bare = args.map { contents(it) }
-    return r.handler(bare)
+        table.get(DatumKey.Symbol(op), keyTagList(tags))
+            ?: r.raise(DatumError.BadDatum("No operation '$op' is installed for tags ${tagNames.joinToString()}", args))
+    return r.handler(args.map { contents(it) })
 }
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DatumError>)
 public fun realPart(
-    table: OpTable,
-    z: Value,
-): Value = applyGeneric(table, "real-part", listOf(z))
+    table: DatumOpTable,
+    z: Datum,
+): Datum = applyGeneric(table, "real-part", listOf(z))
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DatumError>)
 public fun imagPart(
-    table: OpTable,
-    z: Value,
-): Value = applyGeneric(table, "imag-part", listOf(z))
+    table: DatumOpTable,
+    z: Datum,
+): Datum = applyGeneric(table, "imag-part", listOf(z))
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DatumError>)
 public fun magnitude(
-    table: OpTable,
-    z: Value,
-): Value = applyGeneric(table, "magnitude", listOf(z))
+    table: DatumOpTable,
+    z: Datum,
+): Datum = applyGeneric(table, "magnitude", listOf(z))
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DatumError>)
 public fun angle(
-    table: OpTable,
-    z: Value,
-): Value = applyGeneric(table, "angle", listOf(z))
+    table: DatumOpTable,
+    z: Datum,
+): Datum = applyGeneric(table, "angle", listOf(z))
 
-/**
- * Extracted straight from the table, since a constructor is always used
- * to make one particular type and so never needs [applyGeneric]'s
- * tag-based dispatch: the book constructs rectangular numbers from real
- * and imaginary parts, and polar numbers from magnitudes and angles.
- */
-context(r: Raise<SchemeError>)
+/** Look up one representation constructor directly by its result tag. */
+context(r: Raise<DatumError>)
 public fun makeFromRealImag(
-    table: OpTable,
+    table: DatumOpTable,
     x: Double,
     y: Double,
-): Value {
+): Datum {
     val handler =
-        table.get(Key.Sym("make-from-real-imag"), Key.Sym("rectangular"))
-            ?: r.raise(SchemeError.UserRaised("make-from-real-imag is not installed for rectangular", emptyList()))
-    return r.handler(listOf(VReal(x), VReal(y)))
+        table.get(DatumKey.Symbol("make-from-real-imag"), DatumKey.Symbol("rectangular"))
+            ?: r.raise(DatumError.BadDatum("rectangular constructor is not installed"))
+    return r.handler(listOf(Real(x), Real(y)))
 }
 
-context(r: Raise<SchemeError>)
+context(r: Raise<DatumError>)
 public fun makeFromMagAng(
-    table: OpTable,
+    table: DatumOpTable,
     mag: Double,
     ang: Double,
-): Value {
+): Datum {
     val handler =
-        table.get(Key.Sym("make-from-mag-ang"), Key.Sym("polar"))
-            ?: r.raise(SchemeError.UserRaised("make-from-mag-ang is not installed for polar", emptyList()))
-    return r.handler(listOf(VReal(mag), VReal(ang)))
+        table.get(DatumKey.Symbol("make-from-mag-ang"), DatumKey.Symbol("polar"))
+            ?: r.raise(DatumError.BadDatum("polar constructor is not installed"))
+    return r.handler(listOf(Real(mag), Real(ang)))
 }
 
 public class S2_4_3DataDirectedTest :
     FunSpec({
-        fun freshTable(): OpTable {
-            val table = OpTable()
+        fun freshTable(): DatumOpTable {
+            val table = DatumOpTable()
             installRectangularPackage(table)
             installPolarPackage(table)
             return table
         }
 
-        test("an empty table answers a miss with the absent option, never a false-ish sentinel") {
-            val table = OpTable()
-            table.get(Key.Sym("real-part"), tagListKey("rectangular")) shouldBe null
+        test("an empty table reports an absent operation option") {
+            val table = DatumOpTable()
+            table.get(DatumKey.Symbol("real-part"), tagListKey("rectangular")) shouldBe null
         }
 
-        test("makeFromRealImag and makeFromMagAng build correctly tagged numbers") {
+        test("representation constructors attach distinct tags to typed coordinate pairs") {
             val table = freshTable()
             val result =
                 either {
-                    makeFromRealImag(table, 3.0, 4.0).toString() to makeFromMagAng(table, 1.0, 0.0).toString()
+                    makeFromRealImag(table, 3.0, 4.0) to makeFromMagAng(table, 1.0, 0.0)
                 }
-            result shouldBe Either.Right("(rectangular (3.0 . 4.0))" to "(polar (1.0 . 0.0))")
+            val observations =
+                result.fold(
+                    { null },
+                    { (rectangular, polar) ->
+                        val rect = rectangular as Tagged
+                        val polarData = polar as Tagged
+                        val rectPayload = rect.payload as PairCell
+                        val polarPayload = polarData.payload as PairCell
+                        listOf(
+                            rect.tag,
+                            rectPayload.first,
+                            rectPayload.second,
+                            polarData.tag,
+                            polarPayload.first,
+                            polarPayload.second,
+                        )
+                    },
+                )
+            observations shouldBe listOf("rectangular", Real(3.0), Real(4.0), "polar", Real(1.0), Real(0.0))
         }
 
-        test("the generic selectors serve either representation") {
+        test("generic selectors dispatch across rectangular and polar data") {
             val table = freshTable()
             val result =
                 either {
-                    val z = makeFromRealImag(table, 3.0, 4.0)
-                    val w = makeFromMagAng(table, 5.0, 0.0)
-                    Triple(magnitude(table, z), realPart(table, w), imagPart(table, w))
+                    val rectangular = makeFromRealImag(table, 3.0, 4.0)
+                    val polar = makeFromMagAng(table, 5.0, 0.0)
+                    Triple(magnitude(table, rectangular), realPart(table, polar), imagPart(table, polar))
                 }
-            result shouldBe Either.Right(Triple(VReal(5.0) as Value, VReal(5.0) as Value, VReal(0.0) as Value))
+            result shouldBe Either.Right(Triple(Real(5.0), Real(5.0), Real(0.0)))
         }
 
-        test("a missing combination of operation and type raises the book's no-method error") {
-            val table = OpTable()
+        test("a missing operation-and-tag pair raises a typed error with both details") {
+            val table = DatumOpTable()
             installRectangularPackage(table)
-            val z = makeFromRealImagTaggedForTest(table)
-            val result = either { magnitude(table, z) }
-            result.leftOrNull().toString() shouldBe "No method for these types: APPLY-GENERIC (magnitude (logarithmic))"
+            val datum = attachTag("logarithmic", rectMakeFromRealImag(1.0, 1.0))
+            val result = either { magnitude(table, datum) }
+            val error = result.leftOrNull()
+            (error is DatumError.BadDatum) shouldBe true
+            error?.message shouldBe "No operation 'magnitude' is installed for tags logarithmic"
+            error?.offending shouldBe listOf(datum)
         }
     })
-
-/** A number tagged with a representation nothing in `table` installs, to probe [applyGeneric]'s miss path. */
-private fun makeFromRealImagTaggedForTest(table: OpTable): Value = attachTag("logarithmic", rectMakeFromRealImag(1.0, 1.0))

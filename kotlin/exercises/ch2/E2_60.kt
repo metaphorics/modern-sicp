@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.60: design `elementOfSetDup`, `adjoinSetDup`, `unionSetDup`,
  * and `intersectionSetDup` for sets represented as lists that may contain
@@ -17,21 +15,21 @@ import sicp.runtime.PendingSolution
 public fun elementOfSetDup(
     x: Long,
     set: List<Long>,
-): Boolean = throw PendingSolution()
+): Boolean = throw PendingExercise()
 
 public fun adjoinSetDup(
     x: Long,
     set: List<Long>,
-): List<Long> = throw PendingSolution()
+): List<Long> = throw PendingExercise()
 
 public fun unionSetDup(
     set1: List<Long>,
     set2: List<Long>,
-): List<Long> = throw PendingSolution()
+): List<Long> = throw PendingExercise()
 
 public fun intersectionSetDup(
     set1: List<Long>,
     set2: List<Long>,
-): List<Long> = throw PendingSolution()
+): List<Long> = throw PendingExercise()
 
-public fun ex_2_60(): List<Long> = throw PendingSolution()
+public fun ex_2_60(): List<Long> = throw PendingExercise()

@@ -12,6 +12,11 @@ public class E5_52Test :
         test("Exercise 5.52: the C backend builds a C interpreter that runs its object program").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            compilerToCRuns() shouldBe emptyList()
+            compilerToCRuns() shouldBe
+                listOf(
+                    "the emitter produced a C function: true",
+                    "the artifact carries the compilation's labels and registers: true",
+                    "the reference artifact is distinct text: true",
+                )
         }
     })

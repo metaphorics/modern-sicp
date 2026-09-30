@@ -12,6 +12,10 @@ public class E5_26Test :
         test("Exercise 5.26: the iterative factorial's stack table and the two answers").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            iterativeFactorialMeasurements() shouldBe emptyList()
+            iterativeFactorialMeasurements().takeLast(2) shouldBe
+                listOf(
+                    "maximum depth independent of n: true",
+                    "total pushes linear in n: true",
+                )
         }
     })

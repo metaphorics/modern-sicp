@@ -14,7 +14,7 @@ evaluation process by implementing the evaluator as a simple register machine.}
 An evaluator that is written in the same language that it evaluates is said to
 be @newterm{metacircular}.
 
-The metacircular evaluator is essentially a Scheme formulation of the
+The metacircular evaluator is essentially a Kotlin formulation of the
 environment model of evaluation described in @ref{3.2}.  Recall that
 the model has two basic parts:
 
@@ -78,7 +78,7 @@ from procedure calls.
 @end itemize
 } 
 This evaluation cycle will be embodied by the interplay between the two
-critical procedures in the evaluator, @code{eval} and @code{applyProcedure},
+critical procedures in the evaluator, @code{gEval} and @code{gApply},
 which are described in @ref{4.1.1} (see @ref{Figure 4.1}).
 
 @float
@@ -111,10 +111,10 @@ Arguments   |  8     Eval          `888888888888888888) | Environment
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap4/Fig4.1a,,147mm,Figure 4.1: The eval-apply cycle exposes the essence of a computer language.,.std.svg}
+@image{../../text/original/figures/chap4/Fig4.1a,147mm,,Figure 4.1: The eval-apply cycle exposes the essence of a computer language.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.1a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.1a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.1:} The @code{eval}-@code{apply} cycle exposes the essence of a computer language.}
@@ -123,15 +123,14 @@ Arguments   |  8     Eval          `888888888888888888) | Environment
 The implementation of the evaluator will depend upon the @newterm{syntax} of
 the expressions to be evaluated being pinned down once, in a parser.  The
 parser takes the data the given-code reader produces and maps each datum onto a
-typed node: an assignment is no longer a list that happens to begin with the
-symbol @code{set!} but a @code{SetE} value whose fields are the variable and
-the value expression.  Implementation of expressions will be described in
+typed node: an assignment is represented directly as a @code{GSet} value
+whose fields are the variable and the value expression.
+Implementation of expressions will be described in
 detail in @ref{4.1.2}.  There are also operations,
 described in @ref{4.1.3}, that specify the representation of procedures
-and environments.  For example, @code{makeProcedure} constructs compound
-procedures, @code{lookup} accesses the values of variables, and
-@code{callPrimitive} applies a primitive procedure to a given list
-of arguments.
+and environments.  For example, @code{GClosV} constructs compound
+procedures, @code{GFrame.lookup} accesses the values of variables, and
+the primitive table applies a primitive to a given list of arguments.
 
 @menu
 * 4.1.1::            The Core of the Evaluator
@@ -147,19 +146,22 @@ of arguments.
 @subsection The Core of the Evaluator
 
 The evaluation process can be described as the interplay between two
-procedures: @code{eval} and @code{applyProcedure}.
+procedures: @code{gEval} and @code{gApply}.
 
 @subsubheading Eval
 
-@code{Eval} takes as arguments an expression and an environment.  It classifies
-the expression and directs its evaluation.  @code{Eval} is structured as a case
+@code{gEval} takes as arguments an expression and an environment.  It classifies
+the expression and directs its evaluation.  @code{gEval} is structured as a case
 analysis of the syntactic type of the expression to be evaluated.  In this
-edition the syntactic type is literal: the parser has already handed @code{eval}
-one @code{Expr} value whose type @emph{is} the expression type, so the case
-analysis is a @code{when} with one arm per node, and the compiler counts the
-arms.  This @newterm{abstract syntax} is what makes it easy to see how we can
-change the syntax of the language by using the same evaluator with a different
-parser: @code{eval} never sees surface lists at all.
+edition the syntactic type is literal: admission has already parsed and
+type-checked the program text before any effect, and the translation hands
+@code{gEval} one @code{GExpr} value whose type @emph{is} the expression type, so
+the case analysis is a @code{when} with one arm per node, and the compiler
+counts the arms.  This @newterm{abstract syntax} is what makes it easy to see
+how we can change the syntax of the language: a new form extends the sealed
+family with a new node, and a derived form is rewritten in guest code into the
+forms the evaluator already has --- never by bolting on a second parser.
+@code{gEval} never sees surface text at all.
 
 @noindent
 @b{Primitive expressions}
@@ -167,11 +169,13 @@ parser: @code{eval} never sees surface lists at all.
 @itemize @bullet
 
 @item
-For self-evaluating expressions, such as numbers, @code{eval} returns the
-expression itself.
+For self-evaluating expressions --- the numeric and Boolean literals of the
+core language --- @code{gEval} returns the value the literal denotes: a
+@code{GNum} node answers its @code{GNumV}, a @code{GBool} node its
+@code{GBoolV}.
 
 @item
-@code{Eval} must look up variables in the environment to find their values.
+@code{gEval} must look up variables in the environment to find their values.
 
 @end itemize
 
@@ -181,30 +185,40 @@ expression itself.
 @itemize @bullet
 
 @item
-For quoted expressions, @code{eval} returns the expression that was quoted.
+For data forms there is nothing to quote: a literal or a constructor call is
+already the data it denotes, and an explicit syntax-tree value such as
+@code{GApp(GVar("f"), GNum(1L))} is ordinary program data, because the sealed
+family is a family of data classes (@ref{4.1.5}).
 
 @item
 An assignment to (or a definition of) a variable must recursively call
-@code{eval} to compute the new value to be associated with the variable.  The
-environment must be modified to change (or create) the binding of the variable.
+@code{gEval} to compute the new value to be associated with the variable.  The
+environment must be modified to change (or create) the binding of the variable:
+a @code{GSet} node rebinds a mutable cell, while @code{GLet} and
+@code{GLetRec} introduce the binding their initializer computed.
 
 @item
 An @code{if} expression requires special processing of its parts, so as to
 evaluate the consequent if the predicate is true, and otherwise to evaluate the
-alternative.
+alternative.  The predicate must denote a Boolean: the kernel's @code{GIf}
+continues with a @code{GBoolV} and answers nothing for any other value, which
+is the kernel-side form of the edition's Boolean-only condition rule.
 
 @item
 A @code{lambda} expression must be transformed into an applicable procedure by
-packaging together the parameters and body specified by the @code{lambda}
-expression with the environment of the evaluation.
+packaging together the parameters and body it specifies with the environment of
+the evaluation: a @code{GLam} node produces a @code{GClosV}.
 
 @item
-A @code{begin} expression requires evaluating its sequence of expressions in
-the order in which they appear.
+A sequence of expressions must be evaluated in the order in which they appear:
+@code{GBlock} runs its @code{GStmt} statements in order and answers the value
+of the final expression.
 
 @item
-A case analysis (@code{cond}) is transformed into a nest of @code{if}
-expressions and then evaluated.
+A case analysis must evaluate exactly the branch its subject selects:
+@code{GWhen} carries the optional subject, its @code{GCase} branches, and the
+fallback.  Reducing a case analysis to a nest of @code{GIf} tests in guest code
+is the derived-form exercise of @ref{4.1.2}.
 
 @end itemize
 
@@ -214,197 +228,242 @@ expressions and then evaluated.
 @itemize @bullet
 
 @item
-For a procedure application, @code{eval} must recursively evaluate the operator
+For a procedure application, @code{gEval} must recursively evaluate the operator
 part and the operands of the combination.  The resulting procedure and
-arguments are passed to @code{applyProcedure}, which handles the actual
-procedure application.
+arguments are passed to @code{gApply}, which handles the actual procedure
+application.
 
 @end itemize
 
 @noindent
-Here is the definition of @code{eval}.  Kotlin has no mutual tail-call
-elimination, so @code{eval} is a @newterm{dispatch loop}: each round runs one
-clause of the case analysis, and a clause that would recurse in a tail position
---- the chosen branch of an @code{if}, the last expression of a sequence, the
-body of an applied compound procedure --- answers the next expression to run
-instead of calling.  The book's tail positions are made explicit as the two
-alternatives of an @code{EvalStep}:
+Here is the definition of @code{gEval}.  The case analysis is the @code{when}
+over the sealed expression family introduced in @ref{4.1.2}; every arm either
+answers a value directly or recurs through @code{gEval}, so evaluation is
+ordinary recursion --- the tail-call question the book answers with an explicit
+dispatch loop is answered here instead by the machine of @ref{5.4.2}, whose
+tail calls run in constant stack.  Errors are values, not exceptions: an arm
+answers @code{null} for an unbound name, a premature read, or an ill-shaped
+operand.  The @code{null} convention belongs to one plane only: the runtime
+outcomes of the @emph{represented} program the kernel interprets.  Ill-typed
+guest @emph{source} lives on the other plane and never reaches the kernel ---
+admission rejects it statically, before any guest effect.  Within its plane the
+@code{?: return null} chain stops the evaluation at the first failure:
 
 @example kotlin
-public sealed interface EvalStep @{
-    public data class Done(
-        val v: Value,
-    ) : EvalStep
+fun gEval(expr: GExpr, env: GFrame): GValue? =
+    when (expr) @{
+        is GNum -> GNumV(expr.n)
 
-    public data class Continue(
-        val expr: Expr,
-        val env: Env,
-    ) : EvalStep
-@}
+        is GBool -> GBoolV(expr.b)
 
-context(r: Raise<SchemeError>)
-public fun eval(
-    expr: Expr,
-    env: Env,
-): Value @{
-    var e = expr
-    var en = env
-    while (true) @{
-        when (val s = step(e, en)) @{
-            is EvalStep.Done -> @{
-                return s.v
+        is GVar -> @{
+            val found = env.lookup(expr.name)
+            if (found == null || found is GUnassigned) @{
+                null
+            @} else @{
+                found
             @}
+        @}
 
-            is EvalStep.Continue -> @{
-                e = s.expr
-                en = s.env
+        is GLam -> GClosV(expr.param, expr.body, env)
+
+        is GApp -> @{
+            val fn = gEval(expr.fn, env) ?: return null
+            if (fn !is GClosV) @{
+                null
+            @} else @{
+                val arg = gEval(expr.arg,
+                    env) ?: return null
+                gApply(fn, listOf(arg))
+            @}
+        @}
+
+        is GLet -> @{
+            val value = gEval(expr.init,
+                env) ?: return null
+            val frame = GFrame(mutableMapOf(expr.name to value),
+                env)
+            gEval(expr.body, frame)
+        @}
+
+        is GLetRec -> @{
+            val frame = GFrame(mutableMapOf(expr.name to GUnassigned),
+                env)
+            val value = gEval(expr.init,
+                frame) ?: return null
+            frame.cells[expr.name] = value
+            gEval(expr.body, frame)
+        @}
+
+        is GIf -> @{
+            val test = gEval(expr.test,
+                env) ?: return null
+            if (test !is GBoolV) @{
+                null
+            @} else if (test.b) @{
+                gEval(expr.onTrue, env)
+            @} else @{
+                gEval(expr.onFalse, env)
+            @}
+        @}
+
+        is GAdd -> @{
+            val left = gEval(expr.left,
+                env) ?: return null
+            val right = gEval(expr.right,
+                env) ?: return null
+            if (left is GNumV && right is GNumV) @{
+                GNumV(left.n + right.n)
+            @} else @{
+                null
+            @}
+        @}
+
+        is GMul -> @{
+            val left = gEval(expr.left,
+                env) ?: return null
+            val right = gEval(expr.right,
+                env) ?: return null
+            if (left is GNumV && right is GNumV) @{
+                GNumV(left.n * right.n)
+            @} else @{
+                null
+            @}
+        @}
+
+        is GLt -> @{
+            val left = gEval(expr.left,
+                env) ?: return null
+            val right = gEval(expr.right,
+                env) ?: return null
+            if (left is GNumV && right is GNumV) @{
+                GBoolV(left.n < right.n)
+            @} else @{
+                null
+            @}
+        @}
+
+        is GSet -> @{
+            val value = gEval(expr.value,
+                env) ?: return null
+            if (env.assign(expr.name, value)) @{
+                GBoolV(true)
+            @} else @{
+                null
             @}
         @}
     @}
-@}
 @end example
 
 @noindent
-The clause chain lives in @code{step} and its @code{baseStep} fallback:
-
-@example kotlin
-context(r: Raise<SchemeError>)
-protected fun baseStep(
-    expr: Expr,
-    env: Env,
-): EvalStep =
-    when (expr) @{
-        is LitE -> EvalStep.Done(expr.v)
-
-        // self-evaluating?
-        is VarE -> EvalStep.Done(lookupVariable(expr.name, env))
-
-        // variable?
-        is QuoteE -> EvalStep.Done(expr.datum)
-
-        // quoted?
-        is SetE -> evalAssignment(expr, env)
-
-        // assignment?
-        is DefineE -> evalDefinition(expr, env)
-
-        // definition?
-        is IfE -> evalIf(expr, env)
-
-        // if?
-        is LambdaE -> EvalStep.Done(makeProcedure(expr.params, expr.rest, expr.body, env, null))
-
-        // lambda?
-        is BeginE -> evalSequence(expr.actions, env)
-
-        // begin?
-        is CondE -> EvalStep.Continue(condToIf(expr), env)
-
-        // cond? -> derived
-        is LetE -> EvalStep.Continue(letToCombination(expr), env)
-
-        // derived
-        is AppE -> evalApplication(expr, env) // application?
-    @}
-@end example
-
-@noindent
-For clarity, @code{eval}'s chain has been implemented as a case analysis using
-a @code{when}.  The disadvantage of this is that our evaluator handles only a
-few distinguishable types of expressions, and no new ones can be defined
-without editing @code{baseStep}.  In most Lisp implementations, dispatching on
-the type of an expression is done in a data-directed style.  This edition keeps
-one deliberate seam in its place: @code{step} is an overridable member that
-@code{eval} consults on every round, so an exercise can check for the forms it
-adds and fall back to @code{baseStep} for everything else, and the check fires
-at every nesting depth because every clause recurses through @code{eval}.  (See
-@ref{Exercise 4.3} for the data-directed alternative.)  Note also that the
-book's ``unknown expression type'' fault cannot fire here: the parser maps
-every well-formed datum onto a typed node, so a malformed form fails at parse
-time with the typed parse error of the edition's @newterm{typed errors}.
+For clarity, @code{gEval}'s chain has been implemented as a case analysis using
+a @code{when}.  The disadvantage of this is that our evaluator handles only the
+forms named by the sealed family, and no new one can be evaluated without adding a
+variant and its arm.  In many evaluators, dispatching on expression type
+uses a data-directed style; @ref{Exercise 4.3} builds that alternative as a
+@code{Map} of handlers keyed by node.
+The book's ``unknown expression type'' fault cannot fire here:
+every admitted form maps onto a typed node, so a malformed form fails at admission
+with the typed error of the edition's @newterm{typed errors} --- before any
+guest effect, as every ill-typed guest program does.
 
 @subsubheading Apply
 
-@code{ApplyProcedure} takes two arguments, a procedure and a list of arguments
+@code{gApply} takes two arguments, a procedure value and the list of arguments
 to which the procedure should be applied.  It classifies procedures into two
 kinds: a primitive applies through the runtime (we show that arm in
-@ref{4.1.4}, where the book's @code{apply-primitive-procedure} lives); it
-applies compound procedures by sequentially evaluating the expressions that
-make up the body of the procedure.  The environment for the evaluation of the
-body of a compound procedure is constructed by extending the base environment
-carried by the procedure to include a frame that binds the parameters of the
-procedure to the arguments to which the procedure is to be applied.  The
-application clause of @code{eval} feeds it:
+@ref{4.1.4}, where the primitive table of the language lives); it applies
+compound procedures by evaluating the body of the procedure.  The environment
+for the evaluation of the body of a compound procedure is constructed by
+extending the base environment carried by the procedure to include a frame
+that binds the parameter of the procedure to the argument to which the
+procedure is to be applied.  The application arm of @code{gEval} feeds it:
 
 @example kotlin
-context(r: Raise<SchemeError>)
-protected open fun evalApplication(
-    expr: AppE,
-    env: Env,
-): EvalStep @{
-    val procedure = eval(expr.operator, env)
-    val arguments = listOfValues(expr.operands, env)
-    return applyProcedure(procedure, arguments)
+fun gApply(fn: GValue, args: List<GValue>): GValue? @{
+    if (fn !is GClosV) return null
+    val frame = GFrame(mutableMapOf(fn.param to args.get(0)),
+        fn.env)
+    val result = gEval(fn.body, frame) ?: return null
+    if (result is GReturnV) return result.value
+    if (result is GBreakV) return null
+    if (result is GContinueV) return null
+    return result
 @}
 @end example
 
 @noindent
-and the compound arm of @code{applyProcedure} evaluates all but the last body
-expression and answers the last one as the next expression for the dispatch
-loop:
-
-@example kotlin
-when (procedure) @{
-    is VProc -> @{
-        val frame = extendEnvironment(procedure.params.toList(), arguments, procedure.env, procedure.rest)
-        for (i in 0 until procedure.body.size - 1) eval(procedure.body[i], frame)
-        EvalStep.Continue(procedure.body.last(), frame)
-    @}
-
-    else -> @{
-        r.raise(SchemeError.NotApplicable(procedure))
-    @}
-@}
-@end example
+A closure answers its body's value; any other value answers @code{null}, the
+kernel's not-applicable fault.  The @code{GApp} arm guards the operator before
+it evaluates the operand, so a represented call whose operator is not a
+procedure answers @code{null} without running the argument's effects --- the
+evaluation order the witness kernel pins.  Because a multi-parameter lambda desugars to
+nested one-parameter @code{GLam} closures, and a multi-argument call to nested
+@code{GApp} applications (@ref{4.1.2}), one call to @code{gApply} binds one
+parameter at a time and a curried application unwraps one closure per
+argument.  A body with several statements is a @code{GBlock}; its statements
+run in order and the block answers its final expression.
 
 @subsubheading Procedure arguments
 
-When @code{eval} processes a procedure application, it uses
-@code{listOfValues} to produce the list of arguments to which the procedure
-is to be applied. @code{listOfValues} takes as an argument the operands of
-the combination.  It evaluates each operand and returns a list of the
-corresponding values:@footnote{The book's original @code{list-of-values} was
-an explicit recursion, written (rather than using @code{map}) to emphasize the
-fact that the evaluator can be implemented without any use of higher-order
-procedures (and thus could be written in a language that doesn't have
-higher-order procedures), even though the language that it supports will
-include higher-order procedures.  In this edition @code{listOfValues} is the
-@code{map} version the book contemplated: the host's @code{map} visits the
-operands in order, which is exactly where the fixed operand order that
-exercise 4.1 discusses comes from.}
+When @code{gEval} processes a procedure application, the operator is evaluated
+before the operand --- and in the binary forms, the left operand before the
+right --- because the arm's own calls run in the order written.  That is the
+language's fixed order: the host evaluates left to right, and the kernel
+inherits the order of its statements.  The order becomes a property of the
+evaluator itself only when the evaluator's own recursion decides it.  The book
+isolates that decision in one procedure, @code{listOfValues}: it takes as an
+argument the operands of a combination, evaluates each in turn, and returns a
+list of the corresponding values:@footnote{The book's original
+@code{list-of-values} was an explicit recursion, written (rather than using
+@code{map}) to emphasize the fact that the evaluator can be implemented
+without any use of higher-order procedures (and thus could be written in a
+language that doesn't have higher-order procedures), even though the language
+that it supports will include higher-order procedures.  In this edition the
+recursion visits the operands one at a time and stops at the first one whose
+evaluation fails; the order it visits them in is exactly the choice that
+exercise 4.1 makes observable.}
 
 @example kotlin
-context(r: Raise<SchemeError>)
-protected open fun listOfValues(
-    operands: PersistentList<Expr>,
-    env: Env,
-): List<Value> = operands.map @{ eval(it, env) @}
+fun listOfValues(operands: List<GExpr>,
+    env: GFrame): List<GValue>? @{
+    if (operands.isEmpty()) return emptyList()
+    val first = gEval(operands.get(0),
+        env) ?: return null
+    val rest = listOfValues(operands.drop(1),
+        env) ?: return null
+    return listOf(first).plus(rest)
+@}
 @end example
+
+@noindent
+The kernel's unary @code{GApp} arm needs no such helper --- its order is fixed
+by the two calls in the arm --- so the recursion above stands as the direct
+formulation for any form that carries a whole operand list, such as the
+argument list of a @code{GConstruct} node in the extended family
+(@ref{4.1.2}), or the operand vector the primitive application of
+@ref{4.1.4} reconstructs from a nested-@code{GApp} spine; in the syntax a
+multi-argument call never carries such a list, because it desugars to nested
+@code{GApp}.  It is exactly the recursion that
+@ref{Exercise 4.1} rebuilds in both directions, to make the choice observable
+rather than inherited.
 
 @subsubheading Conditionals
 
-@code{evalIf} evaluates the predicate part of an @code{if} expression in the
-given environment.  If the result is true, @code{evalIf} continues with the
+The @code{GIf} arm evaluates the predicate part of an @code{if} expression in
+the given environment.  If the result is true, @code{gEval} continues with the
 consequent, otherwise it continues with the alternative:
 
 @example kotlin
-context(r: Raise<SchemeError>)
-private fun evalIf(
-    expr: IfE,
-    env: Env,
-): EvalStep @{
-    val predicate = eval(expr.predicate, env)
-    return EvalStep.Continue(if (isTrue(predicate)) expr.consequent else expr.alternative, env)
+is GIf -> @{
+    val test = gEval(expr.test, env) ?: return null
+    if (test !is GBoolV) @{
+        null
+    @} else if (test.b) @{
+        gEval(expr.onTrue, env)
+    @} else @{
+        gEval(expr.onFalse, env)
+    @}
 @}
 @end example
 
@@ -416,88 +475,89 @@ value in that language.  The interpreter predicate @code{isTrue} translates
 that value into a value that can be tested by the @code{if} in the
 implementation language: The metacircular representation of truth might not be
 the same as that of the host, Kotlin.@footnote{Here the language being
-implemented is the Scheme subset and the implementation language is Kotlin.
+implemented is the guest language and the implementation language is Kotlin.
 Contemplation of the meaning of @code{isTrue} here yields expansion of
 consciousness without the abuse of substance.}
 
 @subsubheading Sequences
 
-@code{evalSequence} is used by @code{applyProcedure} to evaluate the sequence of
-expressions in a procedure body and by @code{eval} to evaluate the sequence of
-expressions in a @code{begin} expression.  It takes as arguments a sequence of
-expressions and an environment, and evaluates the expressions in the order in
-which they occur.  The value returned is the value of the final expression ---
-in the dispatch loop, the final expression is the next tail expression, not a
-recursive call:
-
-@example kotlin
-context(r: Raise<SchemeError>)
-private fun evalSequence(
-    actions: PersistentList<Expr>,
-    env: Env,
-): EvalStep @{
-    if (actions.isEmpty()) r.raise(SchemeError.Parse("empty sequence"))
-    for (i in 0 until actions.size - 1) eval(actions[i], env)
-    return EvalStep.Continue(actions.last(), env)
-@}
-@end example
+A sequence is evaluated in the order in which its expressions occur.  The value
+returned is the value of the final expression.  In the core language a
+sequence is a chain of @code{GLet} forms whose bound name no later form reads
+--- the shape @code{sharedCellProgram} takes when it bumps the cell before
+reading it --- and the extended family gives a sequence its own node,
+@code{GBlock} over a list of @code{GStmt} statements (@ref{4.1.2}).  A
+@code{GBlock} with no statements answers @code{GUnitV}, as does one ending in a
+non-expression statement: the guest grammar types an empty block as unit, so
+the old reader's ``empty sequence'' parse error has no counterpart here.  A
+@code{GReturnStmt} evaluates its value and answers the marker
+@code{GReturnV(value)}; statement sequencing and @code{GBlock} pass any marker
+through unchanged instead of continuing, so the marker travels past any
+intermediate @code{GBlock}s to the application boundary, where @code{gApply}
+unwraps it and answers its value.  @code{GBreakV} and @code{GContinueV} are
+consumed by @code{GWhileStmt} (@ref{4.1.2}); a marker that reaches
+@code{gApply} without a consumer answers @code{null}, the kernel's error
+convention.  Where a
+sequence's final expression is a tail call, the
+kernel's plain recursion grows with the call depth --- recursion depth is a
+resource, not a contract --- and the machine of @ref{5.4.2} is what runs tail
+calls in constant stack.
 
 @subsubheading Assignments and definitions
 
-The following procedure handles assignments to variables.  It calls @code{eval}
+The assignment arm handles assignments to variables.  It calls @code{gEval}
 to find the value to be assigned and transmits the variable and the resulting
-value to @code{setVariable} to be installed in the designated
-environment.
+value to the frame's @code{assign} to be installed in the designated
+environment:
 
 @example kotlin
-context(r: Raise<SchemeError>)
-private fun evalAssignment(
-    expr: SetE,
-    env: Env,
-): EvalStep @{
-    setVariable(expr.name, eval(expr.value, env), env)
-    return EvalStep.Done(VSym("ok"))
+is GSet -> @{
+    val value = gEval(expr.value, env) ?: return null
+    if (env.assign(expr.name, value)) @{
+        GBoolV(true)
+    @} else @{
+        null
+    @}
 @}
 @end example
 
 @noindent
-Definitions of variables are handled in a similar manner.@footnote{This
-implementation of @code{define} ignores a subtle issue in the handling of
-internal definitions, although it works correctly in most cases.  We will see
-what the problem is and how to solve it in @ref{4.1.6}.}
+Definitions of variables are handled in a similar manner, as the binding forms
+@code{GLet} and @code{GLetRec}: @code{GLet} installs the initializer's value in
+a frame that extends the current one, and @code{GLetRec} --- the form for a
+definition that refers to itself --- opens the frame with the name bound to
+@code{GUnassigned}, evaluates the initializer in that frame, and patches in the
+computed value before the body runs.@footnote{This tie-the-knot discipline
+handles self-recursion, although a subtler issue remains in the handling of
+internal definitions.  We will see what the problem is and how to solve it in
+@ref{4.1.6}.}
 
 @example kotlin
-context(r: Raise<SchemeError>)
-private fun evalDefinition(
-    expr: DefineE,
-    env: Env,
-): EvalStep @{
-    val value = expr.value
-    val v =
-        if (value is LambdaE) @{
-            makeProcedure(value.params, value.rest, value.body, env, expr.name)
-        @} else @{
-            eval(value, env)
-        @}
-    defineVariable(expr.name, v, env)
-    return EvalStep.Done(VSym("ok"))
+is GLetRec -> @{
+    val frame = GFrame(mutableMapOf(expr.name to GUnassigned),
+        env)
+    val value = gEval(expr.init, frame) ?: return null
+    frame.cells[expr.name] = value
+    gEval(expr.body, frame)
 @}
 @end example
 
 @noindent
-We have chosen here to return the symbol @code{ok} as the value of an
-assignment or a definition.@footnote{As we said when we introduced
-@code{define} and @code{set!}, these values are implementation-dependent in
-Scheme---that is, the implementor can choose what value to return.}
+We have chosen here to answer @code{GBoolV(true)} as the value of an
+assignment.@footnote{As we said when we introduced definitions and
+assignments, these values are implementation-dependent --- the implementor can
+choose what value to return.  In the surface guest language an assignment or a
+declaration is a statement and yields no observable value at all, so the
+kernel's choice is visible only to represented programs that consume it.}
 
 @quotation
 @strong{@anchor{Exercise 4.1}Exercise 4.1:} This host settles the question the
 original leaves open: Kotlin always evaluates a procedure's operands from left
 to right, so the metacircular evaluator inherits a fixed order, and we can
 already tell which one --- there is nothing to observe.  The order becomes a
-property of the evaluator itself only when the evaluator's own code decides
-it: write @code{listOfValues} out by hand, as an explicit recursion, and the
-host stops deciding for us.  Write a version of @code{listOfValues} that
+property of the evaluator itself only when the evaluator's own recursion
+decides it: the explicit recursion of @code{listOfValues} is what stops the
+host from deciding for us.  Write a version of @code{listOfValues} that
 evaluates operands from left to right by construction, and a version that
 evaluates them from right to left, and run the same operand-recording program
 under both to see exactly what the host order had been deciding for us.
@@ -519,158 +579,187 @@ evaluator, this means that the syntax of the language being evaluated is
 determined solely by the parser that classifies each datum and carries its
 pieces in a typed node.
 
-Here is the specification of the syntax of our language:
+Here is the specification of the syntax of our language --- the sealed family
+of nodes the kernel evaluates, grown one form at a time from the core of
+@ref{4.1.1}:
+
+@example kotlin
+sealed interface GExpr
+
+// literals
+data class GNum(val n: Long) : GExpr
+data class GStr(val s: String) : GExpr
+data class GDouble(val d: Double) : GExpr
+data class GBool(val b: Boolean) : GExpr
+data object GNull : GExpr
+
+// names, bindings, and mutation
+data class GVar(val name: String) : GExpr
+data class GLam(val param: String,
+    val body: GExpr) : GExpr
+data class GApp(val fn: GExpr, val arg: GExpr) : GExpr
+data class GLet(val name: String, val value: GExpr,
+    val body: GExpr) : GExpr
+data class GLetRec(val name: String, val value: GExpr,
+    val body: GExpr) : GExpr
+data class GSet(val name: String,
+    val value: GExpr) : GExpr
+
+// conditionals and type tests
+data class GIf(val test: GExpr, val onTrue: GExpr,
+    val onFalse: GExpr) : GExpr
+data class GWhen(
+    val subject: GExpr?,
+    val cases: List<GCase>,
+    val otherwise: GExpr?,
+) : GExpr
+data class GCase(val pattern: GExpr?, val body: GExpr)
+data class GIs(val value: GExpr,
+    val typeName: String) : GExpr
+
+// primitive operations
+data class GAdd(val left: GExpr,
+    val right: GExpr) : GExpr
+data class GSub(val left: GExpr,
+    val right: GExpr) : GExpr
+data class GMul(val left: GExpr,
+    val right: GExpr) : GExpr
+data class GDiv(val left: GExpr,
+    val right: GExpr) : GExpr
+data class GMod(val left: GExpr,
+    val right: GExpr) : GExpr
+data class GLt(val left: GExpr,
+    val right: GExpr) : GExpr
+data class GEq(val left: GExpr,
+    val right: GExpr) : GExpr
+
+// structured data and access
+data class GConstruct(val className: String,
+    val args: List<GExpr>) : GExpr
+data class GMember(val target: GExpr,
+    val name: String) : GExpr
+data class GIndex(val target: GExpr,
+    val index: GExpr) : GExpr
+
+// statements and blocks
+data class GBlock(val statements: List<GStmt>) : GExpr
+
+sealed interface GStmt
+data class GExprStmt(val expression: GExpr) : GStmt
+data class GVarStmt(val name: String,
+    val init: GExpr) : GStmt
+data class GAssignStmt(val name: String,
+    val value: GExpr) : GStmt
+data class GWhileStmt(val cond: GExpr,
+    val body: GBlock) : GStmt
+data class GReturnStmt(val value: GExpr) : GStmt
+data object GBreakStmt : GStmt
+data object GContinueStmt : GStmt
+@end example
+
+@noindent
+Every form of the object language is one of these nodes, and every node names
+its pieces as typed fields --- so a malformed form is unrepresentable, and the
+``unknown expression type'' fault of the book has nothing to catch.  The
+object language of this evaluator is the guest language itself: a program
+reaches the evaluator as these values after admission has parsed and
+type-checked its source.
 
 @itemize
 
 @item
-The only self-evaluating items are numbers and strings:
+The only self-evaluating items are literals --- numbers, strings, doubles,
+Booleans, and the null value.  The kernel answers the value each literal
+denotes: a @code{GNum} node answers its @code{GNumV}, a @code{GBool} node its
+@code{GBoolV}, and so on down the literal family.
+
+@item
+Variables are represented by names:
 
 @example kotlin
-// the parser's self-evaluating arms: a string, and the numbers
-// and booleans that fall through to the literal node
-is VStr -> LitE(v)
-else -> LitE(v) // numbers, booleans, and, for safety, the empty list
+// the variable node: GVar carries the name to look up
+data class GVar(val name: String) : GExpr
 @end example
 
 @item
-Variables are represented by symbols:
-
-@example kotlin
-// a symbol parses to the variable node
-is VSym -> VarE(v.name)
-@end example
-
-@item
-Quotations have the form @code{(quote ⟨@var{text-of-quotation}⟩)}:@footnote{As
-mentioned in @ref{2.3.1}, the reader sees a quoted expression as a
-quotation, even if the expression is typed with the
-quotation mark.  For example, the expression @code{'a} is read as the
-quotation of the symbol @code{a}, the same datum as @code{(quote a)}.  See
+Data need no quotation: a literal or a constructor call is already the datum
+it denotes, and an explicit syntax-tree value such as
+@code{GApp(GVar("f"), GNum(1L))} is ordinary program data, because the sealed
+family is a family of data classes (@ref{4.1.5}).@footnote{In the original the
+reader sees a quoted expression as a quotation even when it is typed with the
+quotation mark: @code{'a} is read as the quotation of the symbol
+@code{a}.  As in @ref{2.3.1}, where data as values was introduced, the datum
+here is simply a value built by constructors.  See
 @ref{Exercise 2.55}.}
 
+@item
+Assignments rebind a mutable cell; the node carries the name and the value
+expression:
+
 @example kotlin
-// the quotation node: QuoteE carries the quoted datum
-"quote" -> QuoteE(operandOf(v, "quote"))
+// the assignment node: GSet carries
+// the name and the value expression
+data class GSet(val name: String,
+    val value: GExpr) : GExpr
+@end example
+
+@item
+Definitions introduce bindings.  The declarations of the guest language
+translate onto the two binding nodes: @code{GLet} for a plain binding, and
+@code{GLetRec} for a binding whose initializer refers to the name being
+bound.  A named function is syntactic sugar for a recursive binding of a
+lambda:
+
+@example kotlin
+fun square(x: Long): Long = x * x
+// the translation builds the same node as
+// GLetRec("square", GLam("x", GMul(GVar("x"),
+// GVar("x"))), <body>)
 @end example
 
 @noindent
-The parser has already identified each list beginning with the symbol
-@code{quote} by its head symbol, and the evaluator matches on the node.
+The translation builds that node when it expands the function-definition
+sugar, which is what the book's @code{make-lambda} constructor did.
 
 @item
-Assignments have the form @code{(set! ⟨@var{var}⟩ ⟨@var{value}⟩)}:
+Conditionals test a predicate and continue with the consequent or the
+alternative:@footnote{The value of an @code{if} expression when the predicate
+is false and there is no alternative is unspecified in the original; the guest
+grammar settles the question in its type rules rather than leaving it to the
+implementor: an @code{if} with no alternative has type unit and answers
+@code{GUnitV}.  We will support the use of @code{true} and @code{false} as
+literals --- @code{GBool} nodes --- rather than as variables bound in the
+global environment.  See @ref{4.1.4}.}
 
 @example kotlin
-// the assignment node: SetE carries the name and the value expression
-"set!" -> parseSet(v)
-@end example
-
-@item
-Definitions have the form
-
-@example
-(define ⟨@var{var}⟩ ⟨@var{value}⟩)
-@end example
-
-@noindent
-or the form
-
-@example
-(define (⟨@var{var}⟩ ⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
-  ⟨@var{body}⟩)
-@end example
-
-The latter form (standard procedure definition) is syntactic sugar for
-
-@example
-(define ⟨@var{var}⟩
-  (lambda (⟨@var{param₁}⟩ @r{…} ⟨@var{paramₙ}⟩)
-    ⟨@var{body}⟩))
-@end example
-
-The parser handles both shapes:
-
-@example kotlin
-context(r: Raise<SchemeError>)
-private fun parseDefine(v: VPair): Expr @{
-    val items = cdrList(v, "define")
-    if (items.isEmpty()) r.raise(SchemeError.Parse("bad define form: $v"))
-    val target = items[0]
-    return if (target is VSym) @{
-        if (items.size != 2) r.raise(SchemeError.Parse("bad define form: $v"))
-        DefineE(target.name, parseExpr(items[1]))
-    @} else @{
-        val signature = target as? VPair ?: r.raise(SchemeError.Parse("bad define form: $v"))
-        val name = signature.car as? VSym ?: r.raise(SchemeError.Parse("bad define name: $v"))
-        val (params, rest) = parseParamList(signature.cdr)
-        val lambda = LambdaE(params, rest, parseBody(items.drop(1), "define"))
-        DefineE(name.name, lambda)
-    @}
-@}
+data class GIf(val test: GExpr, val onTrue: GExpr,
+    val onFalse: GExpr) : GExpr
 @end example
 
 @item
-@code{Lambda} expressions are the lambda node:
+A block packages a sequence of statements into a single expression.  The node
+carries the actual sequence, and ordinary list operations give the first
+statement and the rest.@footnote{These selectors for a list of
+statements --- and the corresponding ones for a list of operands --- are not
+intended as a data abstraction.  They are introduced as mnemonic names for the
+basic list operations in order to make it easier to understand the
+explicit-control evaluator in @ref{5.4}.}
 
 @example kotlin
-// the lambda node: LambdaE carries the parameters, an optional
-// rest parameter, and the body
-"lambda" -> parseLambda(v)
-@end example
-
-The parser builds the same node when it expands the procedure-definition sugar
-above, which is what the book's @code{make-lambda} constructor did.
-
-@item
-Conditionals begin with @code{if} and have a predicate, a consequent, and an
-(optional) alternative.  If the expression has no alternative part, we provide
-@code{false} as the alternative.@footnote{The value of an @code{if} expression
-when the predicate is false and there is no alternative is unspecified in
-Scheme; we have chosen here to make it false.  We will support the use of the
-variables @code{true} and @code{false} in expressions to be evaluated by
-binding them in the global environment.  See @ref{4.1.4}.}
-
-@example kotlin
-// a missing alternative parses as the false variable, the book's choice
-val alternative = if (items.size == 3) parseExpr(items[2]) else VarE("false")
-return IfE(parseExpr(items[0]), parseExpr(items[1]), alternative)
-@end example
-
-The @code{IfE} constructor is the node's own; the derived-expression lowering
-of @ref{4.1.2} builds @code{IfE} values when it transforms @code{cond}
-expressions into @code{if} expressions.
-
-@item
-@code{Begin} packages a sequence of expressions into a single expression.  The
-node carries the actual sequence, and ordinary list operations give the first
-expression and the rest of the expressions.@footnote{These selectors for a
-list of expressions---and the
-corresponding ones for a list of operands---are not intended as a data
-abstraction.  They are introduced as mnemonic names for the basic list
-operations in order to make it easier to understand the explicit-control
-evaluator in @ref{5.4}.}
-
-@example kotlin
-// the sequence node: BeginE carries the actions in order
-"begin" -> BeginE(parseBody(cdrList(v, "begin"), "begin"))
-@end example
-
-We also include a constructor @code{sequenceToExp} (for use by
-@code{condToIfChain}) that transforms a sequence into a single expression,
-using @code{begin} if necessary:
-
-@example kotlin
-internal fun sequenceToExp(actions: PersistentList<Expr>): Expr = if (actions.size == 1) actions.first() else BeginE(actions)
+// the block node: GBlock carries the statements in
+// order
+data class GBlock(val statements: List<GStmt>) : GExpr
 @end example
 
 @item
-A procedure application is any compound expression that is not one of the above
-expression types.  The node carries the operator and the list of operands:
+A procedure application applies an operator to its operand.  Every other
+compound form of the language reaches the evaluator through one of the nodes
+above or through an application:
 
 @example kotlin
-// every other compound form is an application: AppE(operator, operands)
-else -> parseApplication(v)
+// the application node: GApp carries the operator and
+// the operand
+data class GApp(val fn: GExpr, val arg: GExpr) : GExpr
 @end example
 
 @end itemize
@@ -679,251 +768,317 @@ else -> parseApplication(v)
 
 Some special forms in our language can be defined in terms of expressions
 involving other special forms, rather than being implemented directly.  One
-example is @code{cond}, which can be implemented as a nest of @code{if}
+example is a case analysis, which can be implemented as a nest of @code{GIf}
 expressions.  For example, we can reduce the problem of evaluating the
 expression
 
-@example
-(cond ((> x 0) x)
-      ((= x 0) (display 'zero) 0)
-      (else (- x)))
-@end example
-
-@noindent
-to the problem of evaluating the following expression involving @code{if} and
-@code{begin} expressions:
-
-@example
-(if (> x 0)
-    x
-    (if (= x 0)
-        (begin (display 'zero) 0)
-        (- x)))
-@end example
-
-@noindent
-Implementing the evaluation of @code{cond} in this way simplifies the evaluator
-because it reduces the number of special forms for which the evaluation process
-must be explicitly specified.
-
-The parser carries the clauses of a @code{cond} expression as typed
-@code{CondClause} values --- an ordinary clause or the @code{Else} clause --- and
-the function @code{condToIfChain} transforms @code{cond} expressions into
-@code{if} expressions.  A case analysis begins with
-@code{cond} and has a list of predicate-action clauses.  A clause is an
-@code{else} clause if its predicate is the symbol @code{else}.@footnote{The
-value of a @code{cond} expression when all the predicates are false and there
-is no @code{else} clause is unspecified in Scheme; we have chosen here to make
-it false.}
-
 @example kotlin
-public fun condToIfChain(clauses: PersistentList<CondClause>): Expr @{
-    if (clauses.isEmpty()) return VarE("false") // no else clause
-    val first = clauses.first()
-    val rest = clauses.removingAt(0)
-    val alternative = condToIfChain(rest)
-    return when (first) @{
-        is CondClause.Else -> sequenceToExp(first.body)
-        is CondClause.Clause -> IfE(first.test, sequenceToExp(first.body), alternative)
-    @}
+when @{
+    x > 0L -> x
+    x == 0L -> @{ println("zero"); 0L @}
+    else -> -x
 @}
 @end example
 
 @noindent
-Expressions (such as @code{cond}) that we choose to implement as syntactic
-transformations are called @newterm{derived expressions}.  @code{Let}
-expressions are also derived expressions (see 
-@ref{Exercise 4.6}).@footnote{Practical Lisp systems provide a mechanism that allows a user
-to add new derived expressions and specify their implementation as syntactic
-transformations without modifying the evaluator.  Such a user-defined
-transformation is called a @newterm{macro}.  Although it is easy to add an
-elementary mechanism for defining macros, the resulting language has subtle
-name-conflict problems.  There has been much research on mechanisms for macro
-definition that do not cause these difficulties.  See, for example, @ref{Kohlbecker 1986}, 
+to the problem of evaluating the following expression involving @code{GIf}
+expressions and a block:
+
+@example kotlin
+if (x > 0L) @{
+    x
+@} else if (x == 0L) @{
+    println("zero")
+    0L
+@} else @{
+    -x
+@}
+@end example
+
+@noindent
+Implementing the evaluation of a case analysis in this way simplifies the
+evaluator because it reduces the number of special forms for which the
+evaluation process must be explicitly specified.
+
+The translation carries the clauses of a @code{when} expression as typed
+@code{GCase} values, and the function @code{whenToIfChain} transforms case
+analyses into @code{GIf} nests.  A case analysis may carry a subject, and each
+clause is a pattern to match against it, or --- in a subject-less
+@code{when} --- a guard expression.  A subject pattern is either a type test
+(a @code{GIs} node, which is how sealed dispatch selects a variant) or a value
+the subject must equal; the rewrite honors that difference.  A clause is an
+@code{else} clause when the case analysis carries its fallback in
+@code{otherwise}.@footnote{The original conditional form leaves the
+no-matching-case result unspecified.  This edition's guest grammar settles
+the question in its type rules: a @code{GWhen} over a sealed subject must be
+exhaustive, and a subjectless conditional dispatch must include a fallback.
+Adding a sealed variant makes an incomplete dispatch a compile-time error.}
+
+@example kotlin
+fun whenToIfChain(expr: GWhen): GExpr @{
+    val cases = expr.cases
+    val subject = expr.subject
+    if (cases.isEmpty()) return expr.otherwise ?: GBool(false)
+    val first = cases.get(0)
+    val rest = cases.drop(1)
+    val pattern = first.pattern
+    val test = when @{
+        pattern == null -> GBool(true)
+        pattern is GIs &&
+            subject != null -> GIs(subject,
+            pattern.typeName)
+        subject != null -> GEq(subject, pattern)
+        else -> pattern
+    @}
+    val alternative =
+        if (rest.isEmpty()) expr.otherwise ?: GBool(false)
+        else whenToIfChain(GWhen(subject,
+                rest,
+            expr.otherwise))
+    return GIf(test, first.body, alternative)
+@}
+@end example
+
+@noindent
+Some guest forms, such as the @code{GWhen} node, can be implemented by syntax
+transformations; these are called @newterm{derived expressions}.  The
+@code{GLet} binding node is also derived (see @ref{Exercise 4.6}).@footnote{Some
+language systems provide a mechanism that allows a user to add derived
+expressions as syntax transformations without
+modifying the evaluator.  Such a user-defined transformation is called a
+@newterm{macro}.  Although it is easy to add an elementary mechanism for
+defining macros, the resulting language has subtle name-conflict problems.
+There has been much research on mechanisms for macro definition that do not
+cause these difficulties.  See, for example, @ref{Kohlbecker 1986},
 @ref{Clinger and Rees 1991}, and @ref{Hanson 1991}.}
 
 @quotation
 @strong{@anchor{Exercise 4.2}Exercise 4.2:} Louis Reasoner plans to reorder the
-clauses in @code{step}'s @code{when} so that the clause for procedure
-applications appears before the clause for assignments.  He argues that this
+arms of @code{gEval}'s @code{when} so that the arm for procedure
+applications appears before the arm for assignments.  He argues that this
 will make the interpreter more efficient: Since programs usually contain more
 applications than assignments, definitions, and so on, his modified evaluator
-will usually check fewer clauses than the original before
+will usually check fewer arms than the original before
 identifying the type of an expression.
 
 @enumerate a
 
 @item
-What is wrong with Louis's plan?  (Hint: What will Louis's evaluator do with
-the expression @code{(define x 3)}?)
+What is wrong with Louis's plan?  In the original untyped tree model, the
+evaluator could mistake a binding form for a call with a familiar name.  Ask
+the same question of this typed node family: what will his evaluator do with a
+@code{GLet} node, which introduces a binding, and a @code{GSet} node, which
+updates one?  What does this tell you about why the plan is harmless here,
+or whether it still has a problem?
 
 @item
 Louis is upset that his plan didn't work.  He is willing to go to any lengths
 to make his evaluator recognize procedure applications before it checks for
 most other kinds of expressions.  Help him by changing the syntax of the
-evaluated language so that procedure applications start with @code{call}.  For
-example, instead of @code{(factorial 3)} we will now have to write @code{(call
-factorial 3)} and instead of @code{(+ 1 2)} we will have to write @code{(call +
-1 2)}.
+evaluated language so that procedure applications are explicitly marked ---
+extend the sealed family with a marked application node and give the
+translation the case that builds it --- so that an application can never be
+mistaken for any other form, whatever order the arms are checked in.
 
 @end enumerate
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.3}Exercise 4.3:} Rewrite @code{eval} so that the
-dispatch is done in data-directed style, using the runtime's @code{OpTable} of
-@ref{2.4.3}, keyed by the head symbol of a compound expression.  Compare this
-with the data-directed
-differentiation procedure of @ref{Exercise 2.73}.  (You may use the operator
-of a compound expression as the type of the expression, as is appropriate for
-the syntax implemented in this section.)
+@strong{@anchor{Exercise 4.3}Exercise 4.3:} Rewrite @code{gEval} so that the
+dispatch is done in data-directed style, using a table keyed by an
+@emph{explicit kind tag} --- a tag field added to the sealed family, or a
+hand-written @code{kindOf} function that answers one --- instead of one arm
+per variant in a @code{when}.  The tag must be ordinary data: the grammar
+rejects reflection, so no @code{::class} or @code{KClass} can name the
+variant for you.  The runtime's @code{OpTable} of @ref{2.4.3} carries the same
+get-and-put discipline.  Compare this with the data-directed
+differentiation procedure of @ref{Exercise 2.73}, and say what the sealed
+family's exhaustiveness check buys you that a table does not.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.4}Exercise 4.4:} Recall the definitions of the
-special forms @code{and} and @code{or} from @ref{Chapter 1}:
+@strong{@anchor{Exercise 4.4}Exercise 4.4:} Recall the logical composition
+operations of @ref{Chapter 1} --- @code{&&}, @code{||}, and @code{!} ---
+and install the language's actual @code{&&} and @code{||} as special forms
+for the evaluator.  These are binary Boolean operators: every operand must
+be a Boolean expression, a chain nests them, and they short-circuit where the
+source says they do --- the right operand of @code{&&} is evaluated only when
+the left is true, and the right operand of @code{||} only when the left is
+false.  Left to right, no operand evaluated after the decisive one: that
+evaluation rule is the whole content of the forms, and the evaluator must
+reproduce it exactly.
 
-@itemize @bullet
-
-@item
-@code{and}: The expressions are evaluated from left to right.  If any
-expression evaluates to false, false is returned; any remaining expressions are
-not evaluated.  If all the expressions evaluate to true values, the value of
-the last expression is returned.  If there are no expressions then true is
-returned.
-
-@item
-@code{or}: The expressions are evaluated from left to right.  If any expression
-evaluates to a true value, that value is returned; any remaining expressions
-are not evaluated.  If all expressions evaluate to false, or if there are no
-expressions, then false is returned.
-
-@end itemize
-
-Install @code{and} and @code{or} as new special forms for the evaluator by
-defining appropriate syntax procedures and evaluation procedures
-@code{evalAnd} and @code{evalOr}.  Alternatively, show how to implement
-@code{and} and @code{or} as derived expressions.
+Define appropriate translation and evaluation procedures for the operators,
+either as dedicated nodes of the sealed family or as derived expressions over
+@code{GIf} --- which is how the translation of @ref{4.1.2} already rewrites
+them.  Which of the two designs do you prefer, and why?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.5}Exercise 4.5:} Scheme allows an additional syntax
-for @code{cond} clauses, @code{(⟨@var{test}⟩ => ⟨@var{recipient}⟩)}.  If
-@code{⟨}@var{test}@code{⟩} evaluates to a true value, then @code{⟨}@var{recipient}@code{⟩} is evaluated.
-Its value must be a procedure of one argument; this procedure is then invoked
-on the value of the @code{⟨}@var{test}@code{⟩}, and the result is returned as the value of
-the @code{cond} expression.  For example
+@strong{@anchor{Exercise 4.5}Exercise 4.5:} The case analysis of
+@ref{4.1.2} allows an additional clause form, the @newterm{recipient}
+clause: if the clause's test matches, then the clause's recipient is
+evaluated.  Its value must be a procedure of one argument; this procedure is
+then invoked on the value the test produced, and the result is returned as
+the value of the case analysis.  The lookup-and-take-second query the
+original applies through a recipient clause computes this directly:
 
-@example
-(cond ((assoc 'b '((a 1) (b 2))) => cadr)
-      (else false))
+@example kotlin
+fun secondOf(entry: Pair<String,
+    Long>): Long = entry.second
+
+fun findEntry(
+    table: Map<String, Long>,
+    key: String,
+): Pair<String, Long>? @{
+    if (table.containsKey(key)) @{
+        return key to (table.get(key) ?: 0L)
+    @}
+    return null
+@}
+
+fun main() @{
+    val table = mapOf("a" to 1L, "b" to 2L)
+    val found = findEntry(table, "b")
+    val answer: Long? =
+        if (found == null) null else secondOf(found)
+    if (answer == null) @{
+        println(false)
+    @} else @{
+        println(answer)
+    @}
+@}
+// => 2
 @end example
 
 @noindent
-returns 2.  Modify the handling of @code{cond} so that it supports this
-extended syntax.
+Modify the handling of the case analysis --- @code{whenToIfChain} and the
+case-analysis nodes --- so that this computation is one clause with a
+recipient: the test is the lookup, the recipient is @code{secondOf}, and the
+fallback is @code{false}.  You may add the clause shape beside @code{GCase}
+(for example a data class carrying the pattern and the recipient expression)
+or teach the chain to apply a function-valued case body to the matched value;
+either way the recipient is applied to the value the test produced, never to
+the test expression itself.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.6}Exercise 4.6:} @code{Let} expressions are derived
+@strong{@anchor{Exercise 4.6}Exercise 4.6:} Binding expressions are derived
 expressions, because
 
-@example
-(let ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
-  ⟨@var{body}⟩)
+@example kotlin
+GLet(name, value, body)
 @end example
 
 @noindent
 is equivalent to
 
-@example
-((lambda (⟨@var{var₁}⟩ @r{…} ⟨@var{varₙ}⟩)
-   ⟨@var{body}⟩)
- ⟨@var{exp₁}⟩
- @r{…}
- ⟨@var{expₙ}⟩)
+@example kotlin
+GApp(GLam(name, body), value)
 @end example
 
-Implement a syntactic transformation @code{letToCombinationExpr} that reduces
-evaluating @code{let} expressions to evaluating combinations of the type shown
-above, and add the appropriate clause to @code{step} to handle @code{let}
-expressions.
+Implement a syntactic transformation @code{letToCombination} that reduces
+evaluating @code{GLet} expressions to evaluating applications of the type
+shown above, and add the appropriate arm to @code{gEval} to handle
+@code{GLet} --- or show the translation performing the rewrite, so that
+@code{gEval} never sees a @code{GLet} node at all.  (The single-operand
+@code{GApp} makes the one-binding case exact; a multi-binding binding form
+desugars to nested one-binding forms, as in @ref{Exercise 4.7}.)
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.7}Exercise 4.7:} @code{Let*} is similar to
-@code{let}, except that the bindings of the @code{let*} variables are performed
-sequentially from left to right, and each binding is made in an environment in
+@strong{@anchor{Exercise 4.7}Exercise 4.7:} Sequential bindings are similar to
+a single binding, except that the bindings of the successive variables are
+performed from left to right, and each binding is made in an environment in
 which all of the preceding bindings are visible.  For example
 
-@example
-(let* ((x 3)
-       (y (+ x 2))
-       (z (+ x y 5)))
-  (* x z))
+@example kotlin
+fun main() @{
+    val x = 3L
+    val y = x + 2L
+    val z = x + y + 5L
+    println(x * z)
+@}
+// => 39
 @end example
 
 @noindent
-returns 39.  Explain how a @code{let*} expression can be rewritten as a set of
-nested @code{let} expressions, and write a procedure @code{letStarToNestedLets}
-that performs this transformation.  If we have already implemented @code{let}
-(@ref{Exercise 4.6}) and we want to extend the evaluator to handle @code{let*},
-is it sufficient to add a clause to @code{step} whose action is
+Explain how a block of sequential bindings can be rewritten as a set of
+nested single bindings, and write a procedure @code{varsToNestedLets} that
+performs this transformation on a @code{GBlock} of @code{GVarStmt}
+statements.  If we have already implemented @code{GLet} (@ref{Exercise 4.6})
+and we want to extend the evaluator to handle sequential bindings, is it
+sufficient to add an arm to @code{gEval} whose action is
 
 @example kotlin
-// a step override clause: let* parses to your own node, and the
-// clause continues with the rewrite
-is LetStarE -> EvalStep.Continue(letStarToNestedLets(expr), env)
+// one arm of your extended evaluator: your node carries
+// the
+// sequential bindings, and the arm continues with the
+// rewrite
+is GLetStar -> gEval(varsToNestedLets(expr), env)
 @end example
 
 @noindent
-or must we explicitly expand @code{let*} in terms of non-derived expressions?
+or must we explicitly expand the sequential form in terms of non-derived
+expressions?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.8}Exercise 4.8:} ``Named @code{let}'' is a variant
-of @code{let} that has the form 
+@strong{@anchor{Exercise 4.8}Exercise 4.8:} A @newterm{named binding} is a
+recursive variant of the binding form: the bound name is visible inside its
+own value, so the value can be a procedure that calls the name.  Thus, one
+can repeatedly execute the body by invoking the procedure named by the
+binding --- which is exactly the tie-the-knot discipline of @code{GLetRec}
+(@ref{4.1.6}).  For example, the iterative Fibonacci procedure
+(@ref{1.2.2}) uses a local named function as its loop:
 
-@example
-(let ⟨@var{var}⟩ ⟨@var{bindings}⟩ ⟨@var{body}⟩)
+@example kotlin
+fun fib(n: Long): Long @{
+    fun loop(a: Long, b: Long, count: Long): Long =
+        if (count == 0L) b else loop(a + b,
+            a,
+            count - 1L)
+    return loop(1L, 0L, n)
+@}
+
+fun main() @{
+    println(fib(6L))
+@}
+// => 8
 @end example
 
-The @code{⟨}@var{bindings}@code{⟩} and @code{⟨}@var{body}@code{⟩} are just as in ordinary @code{let},
-except that @code{⟨}@var{var}@code{⟩} is bound within @code{⟨}@var{body}@code{⟩} to a procedure whose body
-is @code{⟨}@var{body}@code{⟩} and whose parameters are the variables in the @code{⟨}@var{bindings}@code{⟩}.
-Thus, one can repeatedly execute the @code{⟨}@var{body}@code{⟩} by invoking the procedure
-named @code{⟨}@var{var}@code{⟩}.  For example, the iterative Fibonacci procedure 
-(@ref{1.2.2}) can be rewritten using named @code{let} as follows:
-
-@example
-(define (fib n)
-  (let fib-iter ((a 1) (b 0) (count n))
-    (if (= count 0)
-        b
-        (fib-iter (+ a b) a (- count 1)))))
-@end example
-
-Modify @code{letToCombinationExpr} of @ref{Exercise 4.6} to also support named
-@code{let}.
+Modify @code{letToCombination} of @ref{Exercise 4.6} to also support the
+named form: where an ordinary binding rewrites to
+@code{GApp(GLam(name, body), value)}, the named form must keep the name
+visible inside @code{value}, so the rewrite lands on @code{GLetRec} rather
+than @code{GLet}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.9}Exercise 4.9:} Many languages support a variety of
 iteration constructs, such as @code{do}, @code{for}, @code{while}, and
-@code{until}.  In Scheme, iterative processes can be expressed in terms of
-ordinary procedure calls, so special iteration constructs provide no essential
-gain in computational power.  On the other hand, such constructs are often
-convenient.  Design some iteration constructs, give examples of their use, and
-show how to implement them as derived expressions.
+@code{until}.  In this edition, iterative processes can be expressed in terms
+of ordinary calls --- the kernel's own @code{GLetRec} loop of
+@ref{Exercise 4.8} is one --- and the language ships @code{while} and
+@code{for} (whose desugaring to a @code{GWhileStmt} over an index variable is
+pinned in @ref{4.1.2}).  On the other hand, more constructs are often
+convenient.  Design some further iteration constructs --- an @code{until}, say,
+or a repeat-a-fixed-number-of-times loop --- give examples of their use, and
+show how to implement them as derived expressions over the forms the
+evaluator already has.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.10}Exercise 4.10:} By using data abstraction, we
-were able to write an @code{eval} procedure that is independent of the
+were able to write a @code{gEval} procedure that is independent of the
 particular syntax of the language to be evaluated.  To illustrate this, design
-and implement a new syntax for Scheme by editing the parser of this
-section, without changing @code{Evaluator}'s @code{step} or
-@code{applyProcedure}.
+and implement a new surface syntax for the object language --- and keep
+@code{gEval} and @code{gApply} unchanged.  The seam is the translation: the
+new syntax must map onto the @emph{existing} sealed family of
+@ref{4.1.2}, the way every derived form already does.  If your design truly
+needs a node the family cannot express, say which one and what
+@code{gEval} would owe it --- but then the evaluator has changed, and the
+data-abstraction claim of this exercise no longer holds.
 @end quotation
 
 @node	4.1.3, 4.1.4, 4.1.2, 4.1
@@ -937,59 +1092,73 @@ and false.
 
 @subsubheading Testing of predicates
 
-For conditionals, we accept anything to be true that is not the explicit
-@code{false} object --- in this edition, the boolean value @code{VBool(false)}:
+In the original, anything that is not the explicit false object counts as
+true.  This edition has no truthiness: the guest grammar's Boolean-only
+condition rule (the same rule its own @code{if} obeys) makes truth exactly
+one value, and the kernel's @code{GIf} arm narrows on it:
 
 @example kotlin
-public fun isTrue(v: Value): Boolean = v != VBool(false)
+// the helper the GIf arm of 4.1.1 inlines: truth in the
+// object language
+// is the value GBoolV(true), which wraps --- but is not
+// --- a Boolean
+public fun isTrue(v: GValue): Boolean = v is GBoolV &&
+    v.b
 @end example
+
+@noindent
+The @code{GIf} arm of @ref{4.1.1} inlines exactly this test: it narrows the
+predicate's value to @code{GBoolV} and reads its @code{b}.  The metacircular
+representation of truth is therefore @emph{not} the host's truth: the object
+language's true is the guest value @code{GBoolV(true)}, and the host only
+meets it as the Kotlin @code{Boolean} that @code{isTrue} extracts.  A
+represented program whose condition holds any other value --- a number, a
+closure, @code{GUnitV} --- answers @code{null} rather than choosing a branch.
 
 @subsubheading Representing procedures
 
-To handle primitives, we assume that we have available the following
-procedures:
+To handle primitives, we assume that we have available the primitive table
+described in @ref{4.1.4}:
 
 @itemize @bullet
 
 @item
-@code{callPrimitive ⟨@var{proc}⟩ ⟨@var{args}⟩}
+the entry @code{defaultPrimitives.get(@var{name})}
 
 @noindent
-applies the given primitive procedure to the argument values in the list
-@code{⟨}@var{args}@code{⟩} and returns the result of the application.
+is the primitive procedure itself: a function that takes the list of
+argument values and returns the result of the application.
 
 @item
-the test @code{v is VPrimitive}
+the test that the name misses the frame chain,
+@code{env.lookup(@var{name}) == null}
 
 @noindent
-tests whether @code{⟨}@var{v}@code{⟩} is a primitive procedure.
+settles whether the name falls through to the table at all --- an
+environment binding wins over any primitive of the same spelling
+(@ref{3.4}).
 
 @end itemize
 
 @noindent
-These mechanisms for handling primitives are further described in 
+These mechanisms for handling primitives are further described in
 @ref{4.1.4}.
 
-Compound procedures are constructed from parameters, procedure bodies, and
-environments using the constructor @code{makeProcedure}:
+Compound procedures are constructed from a parameter, a body, and an
+environment using the constructor @code{GClosV}:
 
 @example kotlin
-protected open fun makeProcedure(
-    params: PersistentList<String>,
-    rest: String?,
-    body: PersistentList<Expr>,
-    env: Env,
-    name: String?,
-): Value = VProc(params, rest, body, env, name)
+data class GClosV(val param: String, val body: GExpr,
+    val env: GFrame) : GValue
 @end example
 
 @noindent
-The value is a @code{VProc}: the parameter names, the body expressions, the
-environment the @code{lambda} captured, and the definition name, if any.  The
-printer keeps the environment part out of sight, the way the book's
-@code{user-print} does (see @ref{4.1.4}): a named procedure prints as
-@code{#[compound-procedure name]}, an anonymous one as
-@code{#[compound-procedure]}.
+The value is a @code{GClosV}: the parameter name, the body expression, and
+the environment the lambda captured.  The printer keeps the environment part
+out of sight, the way the book's @code{user-print} does (see
+@ref{4.1.4}): a procedure prints by its own rendering function, never by
+dumping the captured @code{GFrame} --- which may be a very large structure,
+or may even contain cycles.
 
 @subsubheading Operations on Environments
 
@@ -1034,112 +1203,87 @@ To implement these operations we use the environments of @ref{3.2}: an
 environment is a chain of frames, each frame a name-to-value table, and the
 enclosing environment of an environment is the frame's parent.  There is no
 empty-environment sentinel: the chain simply ends at the global frame, where
-the parent is absent.  The four operations are thin members of @code{Env},
+the parent is absent.  The four operations are thin members of @code{GFrame},
 each a single step over that representation.
 
 To extend an environment by a new frame that associates variables with values,
 we make a frame binding each name to the value at the same position, and we
-adjoin this to the environment.  We signal a typed error if the number of
-variables does not match the number of values.
+adjoin this to the environment.  Arity mismatches never reach this code in the
+core: a multi-argument call desugars to nested one-argument applications
+(@ref{4.1.2}), so exactly one name meets exactly one value per binding step.
 
 @example kotlin
-context(r: Raise<SchemeError>)
-public fun extend(
-    names: List<String>,
-    values: List<Value>,
-    parent: Env,
-    rest: String? = null,
-): Env @{
-    if (rest == null && names.size != values.size) @{
-        r.raise(SchemeError.WrongArity("extend", names.size.toString(), values.size))
-    @}
-    if (rest != null && values.size < names.size) @{
-        r.raise(SchemeError.WrongArity("extend", "at least $@{names.size@}", values.size))
-    @}
-    val bound = names.zip(values).toMap(persistentMapOf<String, Value>().builder())
-    val env = Env(bound.build(), parent)
-    if (rest != null) @{
-        env.frame = env.frame.putting(rest, vlist(values.drop(names.size)))
-    @}
-    return env
-@}
+val frame = GFrame(mutableMapOf(name to value), env)
 @end example
 
 @noindent
 To look up a variable in an environment, we search the table of the first
 frame.  If we find the desired variable, we return its value.  If we do not
 find the variable in the current frame, we search the enclosing environment,
-and so on.  If the chain runs out, we raise the edition's ``unbound variable''
-error.
+and so on.  If the chain runs out, the lookup answers @code{null} --- the
+kernel's unbound-name convention on its error plane (@ref{4.1.1}).
 
 @example kotlin
-context(r: Raise<SchemeError>)
-public fun lookup(name: String): Value @{
-    var cursor: Env? = this
-    while (cursor != null) @{
-        val hit = cursor.frame[name]
-        if (hit != null) return hit
-        cursor = cursor.parent
+fun lookup(name: String): GValue? @{
+    var here: GFrame? = this
+    while (here != null) @{
+        val hit = here.cells[name]
+        if (hit != null) @{
+            return hit
+        @}
+        here = here.parent
     @}
-    r.raise(SchemeError.Unbound(name))
+    return null
 @}
 @end example
 
 @noindent
 To set a variable to a new value in a specified environment, we search for the
 variable, just as in @code{lookup}, and change the corresponding value when we
-find it.
+find it.  If the chain runs out, the assignment answers false.
 
 @example kotlin
-context(r: Raise<SchemeError>)
-public fun set(
-    name: String,
-    value: Value,
-) @{
-    var cursor: Env? = this
-    while (cursor != null) @{
-        if (cursor.frame.containsKey(name)) @{
-            cursor.frame = cursor.frame.putting(name, value)
-            return
+fun assign(name: String, value: GValue): Boolean @{
+    var here: GFrame? = this
+    while (here != null) @{
+        if (here.cells.containsKey(name)) @{
+            here.cells[name] = value
+            return true
         @}
-        cursor = cursor.parent
+        here = here.parent
     @}
-    r.raise(SchemeError.Unbound(name))
+    return false
 @}
 @end example
 
 @noindent
 To define a variable, we add the binding to the first frame's table, shadowing
-any outer binding of the same name without touching it.
-
-@example kotlin
-public fun define(
-    name: String,
-    value: Value,
-) @{
-    frame = frame.putting(name, value)
-@}
-@end example
+any outer binding of the same name without touching it --- which is what the
+@code{GLet} arm of @code{gEval} does when it builds
+@code{GFrame(mutableMapOf(name to value), env)}.
 
 @noindent
-Each frame is a persistent map behind a @code{var}, the frame model of the
-re-cut @ref{3.2}: @code{define} rebinds the frame's map on the same node, so
-every holder of the node sees the new binding, while @code{set} rebinds the map
-of the frame that owns the name.@footnote{Frames are not really a data
-abstraction in the following code: @code{set} and @code{define} rewrite the
-frame's map directly.  The purpose of the @code{Env} operations is to make the
-environment-manipulation procedures easy to read.}
+Each frame is a mutable map behind a @code{val}, the frame model of the
+re-cut @ref{3.2}: defining --- the @code{GLet} arm --- allocates a child
+frame whose map holds the new binding, so an inner name shadows an outer one
+without touching it, while assignment rewrites the entry of the frame that
+owns the name and is visible through every closure sharing it
+(@ref{3.4}).  The kernel's @code{lookup} and @code{assign} walk the parent
+chain; everything else about the representation is deliberately invisible to
+the evaluator.@footnote{Frames are not really a data abstraction in the
+following code: @code{assign} and the @code{GLet} arm write the frame's map
+directly.  The purpose of the @code{GFrame} operations is to make the
+environment-manipulation parts easy to read.}
 
 The method described here is only one of many plausible ways to represent
 environments.  Since we used data abstraction to isolate the rest of the
 evaluator from the detailed choice of representation, we could change the
-environment representation if we wanted to.  (See @ref{Exercise 4.11}.)  In a
-production-quality Lisp system, the speed of the evaluator's environment
-operations---especially that of variable lookup---has a major impact on the
-performance of the system.  The representation described here, although
-conceptually simple, is not efficient and would not ordinarily be used in a
-production system.@footnote{The drawback of this representation (as well as the
-variant in @ref{Exercise 4.11}) is that the evaluator may have to search
+environment representation if we wanted to.  (See @ref{Exercise 4.11}.)  A
+production evaluator must consider lookup speed, especially in deeply nested
+scopes.  This representation is conceptually simple but inefficient for deep
+frame chains and would not ordinarily be used in production.@footnote{The
+drawback of this representation (and the variant in @ref{Exercise 4.11}) is
+that the evaluator may have to search
 through many frames in order to find the binding for a given variable.  (Such
 an approach is referred to as @newterm{deep binding}.)  One way to avoid this
 inefficiency is to make use of a strategy called @newterm{lexical addressing},
@@ -1154,18 +1298,19 @@ alternative representation.
 
 @quotation
 @strong{@anchor{Exercise 4.12}Exercise 4.12:} The operations
-@code{define}, @code{set} and
-@code{lookup} can be expressed in terms of more abstract
+--- binding a name (@code{GLet}), @code{assign} and
+@code{lookup} --- can be expressed in terms of more abstract
 procedures for traversing the environment structure.  Define abstractions that
 capture the common patterns and redefine the three operations in terms of these
 abstractions.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.13}Exercise 4.13:} Scheme allows us to create new
-bindings for variables by means of @code{define}, but provides no way to get
-rid of bindings.  Implement for the evaluator a special form
-@code{make-unbound!} that removes the binding of a given symbol from the
+@strong{@anchor{Exercise 4.13}Exercise 4.13:} The guest language allows us to
+create new bindings for variables --- with declarations and the binding forms
+of @ref{4.1.2} --- but provides no way to get rid of bindings.  Implement for
+the evaluator a special form
+@code{make-unbound!} that removes the binding of a given name from the
 environment in which the @code{make-unbound!} expression is evaluated.  This
 problem is not completely specified.  For example, should we remove only the
 binding in the first frame of the environment?  Complete the specification and
@@ -1188,175 +1333,203 @@ create a mechanism that calls on the underlying Kotlin runtime to model the
 application of primitive procedures.
 
 There must be a binding for each primitive procedure name, so that when
-@code{eval} evaluates the operator of an application of a primitive, it will
-find an object to pass to @code{applyProcedure}.  We thus set up a global environment
-that associates unique objects with the names of the primitive procedures that
-can appear in the expressions we will be evaluating.  The global environment
-also includes bindings for the symbols @code{true} and @code{false}, so that
-they can be used as variables in expressions to be evaluated.
+@code{gEval} evaluates the operator of an application of a primitive, it will
+find something to apply.  We thus set up a table that associates the name of
+each primitive with the Kotlin function that implements it.  The literals
+@code{true} and @code{false} need no entries at all: they are @code{GBool}
+nodes, and the object language has no variables spelled after them.
 
 @example kotlin
-public fun setupEnvironment(out: OutputSink): Env @{
-    val env = Env.global()
-    for (entry in defaultPrimitives(out)) @{
-        env.define(entry.name, entry.toValue())
-    @}
-    env.define("true", VBool(true))
-    env.define("false", VBool(false))
-    return env
-@}
-@end example
-
-@noindent
-It does not matter how we represent the primitive procedure objects, so long as
-@code{applyProcedure} can identify and apply them.  We have chosen to represent
-a primitive procedure as a value carrying its printed name and the Kotlin
-function that implements it:
-
-@example kotlin
-// a primitive procedure value: VPrimitive(name, f), where f is the
-// Kotlin function applied to the argument values
-@end example
-
-@noindent
-@code{setupEnvironment} will get the primitive names and implementation
-functions from a table:@footnote{Any function written in Kotlin
-can be used as a primitive for the metacircular evaluator.  The name of a
-primitive installed in the evaluator need not be the same as the name of its
-implementation in Kotlin; the names are the same here because the
-metacircular evaluator implements Scheme itself.  Thus, for example, we could
-put an entry named @code{first} for the function of @code{car}, or an entry
-named @code{square} for a squaring function, in the table of
-@code{defaultPrimitives}.}
-
-@example kotlin
-public fun defaultPrimitives(out: OutputSink): List<PrimitiveEntry> =
-    listOf(
-        PrimitiveEntry("car") @{ args -> pairOf("car", one("car", args)).car @},
-        PrimitiveEntry("cdr") @{ args -> pairOf("cdr", one("cdr", args)).cdr @},
-        PrimitiveEntry("cons") @{ args ->
-            val (a, b) = two("cons", args)
-            cons(a, b)
-        @},
-        PrimitiveEntry("null?") @{ args -> VBool(one("null?", args) is VNil) @},
+// a primitive entry: its name, and the Kotlin function
+// applied to
+// the argument values
+public val defaultPrimitives: Map<String,
+    (List<GValue>) -> GValue?> =
+    mapOf(
+        "map" to ::mapPrimitive,
         // ⟨more primitives⟩
     )
 @end example
 
 @noindent
-To apply a primitive procedure, we simply apply the implementation function to
-the arguments --- an ordinary Kotlin call, the role the book's
-@code{apply-in-underlying-scheme} played:@footnote{The book needed
-@code{apply-in-underlying-scheme} because its metacircular @code{apply} and
-the host's @code{apply} shared one name, and the definition of the former
-masked the latter.  In Kotlin the two never share a name: the host's
-application is an ordinary call, and the metacircular @code{applyProcedure}
-(@ref{4.1.1}) models its working.  There is one twist: the object language's
-@code{apply} and @code{map} must apply procedure values, which a plain
-primitive function cannot do, so @code{applyProcedure} intercepts those two
-names and re-enters itself before the plain handler call would run.}
+The table is consulted by name at the application step, and only after the
+frame chain has had its say: a name bound in the environment wins over any
+primitive of the same spelling, because an inner binding shadows an outer one
+(@ref{3.4}).  Only a name that resolves nowhere in the chain falls through to
+the table.  User-defined and primitive mapping sit side by side, which is
+what @ref{Exercise 4.14} probes.@footnote{Any function written in Kotlin can be used as a primitive
+for the metacircular evaluator.  The name of a primitive installed in the
+evaluator need not be the same as the name of its implementation in Kotlin;
+the names are the same here because the metacircular evaluator implements the
+guest language itself.  Thus, for example, we could put an entry named
+@code{first} for a head function, or an entry named @code{square} for a
+squaring function, in the table of @code{defaultPrimitives}.}
+
+@noindent
+The extended application step consults that table first.  A call of a
+primitive names it directly, while a multi-argument call has already desugared
+to a spine of nested @code{GApp} nodes (@ref{4.1.2}); the step flattens the
+spine back into one operand vector so a primitive can see all of its arguments
+at once.  The vector is evaluated left to right by the @code{listOfValues}
+recursion of @ref{4.1.1} --- exactly where the operand order of
+@ref{Exercise 4.1} lives:
 
 @example kotlin
-is VPrimitive -> @{
-    when (procedure.name) @{
-        "apply" -> @{
-            if (arguments.size != 2) @{
-                r.raise(SchemeError.WrongArity("apply", "2", arguments.size))
-            @}
-            applyProcedure(arguments[0], listItems(arguments[1]))
-        @}
+fun head(expr: GExpr): GExpr = if (expr is GApp) head(expr.fn) else expr
 
-        "map" -> @{
-            if (arguments.size != 2) @{
-                r.raise(SchemeError.WrongArity("map", "2", arguments.size))
-            @}
-            val items = listItems(arguments[1])
-            EvalStep.Done(vlist(items.map @{ applyFully(arguments[0], listOf(it)) @}))
-        @}
+fun operands(expr: GExpr): List<GExpr> =
+    if (expr is GApp) operands(expr.fn).plus(expr.arg) else emptyList()
 
-        else -> @{
-            EvalStep.Done(callPrimitive(procedure, arguments))
+fun gApplyExpr(expr: GApp, env: GFrame): GValue? @{
+    val name = head(expr)
+    if (name is GVar && env.lookup(name.name) == null) @{
+        val primitive = defaultPrimitives.get(name.name)
+        if (primitive != null) @{
+            val args = listOfValues(operands(expr),
+                env) ?: return null
+            return primitive(args)
         @}
     @}
+    val fn = gEval(expr.fn, env) ?: return null
+    if (fn !is GClosV) return null
+    val arg = gEval(expr.arg, env) ?: return null
+    return gApply(fn, listOf(arg))
 @}
 @end example
 
 @noindent
-where the helper @code{applyFully} runs the dispatch loop to a value when an
-intercepted application lands in a tail position.
+The @code{GApp} arm of @code{gEval} delegates here.  Its fallback is the arm
+of @ref{4.1.1} verbatim --- operator narrowed to @code{GClosV} before the
+operand is evaluated --- so a name that is bound in the environment, or that
+misses the table entirely, resolves through the frame chain exactly as a
+user-defined procedure does.
 
-For convenience in running the metacircular evaluator, we provide a
-@newterm{driver loop} that models the read-eval-print loop of a Lisp
-system: it prints a @newterm{prompt}, reads an input expression,
-evaluates this expression in the global environment, and prints the result,
-preceding each printed result by an @newterm{output prompt} so as to
-distinguish the value of the expression from other output.  An interleaved
-prompt would bury a program's own output, so this edition's driver records a
-bare transcript instead, under the one-transcript contract: a definition prints
-nothing, @code{display} and @code{newline} applications write their side effect
-with no value line, every other expression contributes one value line, and an
-@code{Error:} line stops the program.@footnote{The reader is given code, like
-the book's @code{read}: @code{readProgram} takes the program text and returns
-the sequence of data the forms denote.  For example, if the text is
-@code{(+ 23 x)}, the reader produces an application whose operator is the
-symbol @code{+} and whose operands are the number 23 and the symbol @code{x}.
-If the text is @code{'x}, it produces the quotation of the symbol @code{x}.}
+@noindent
+To apply a primitive procedure, we simply call the host implementation
+function with the argument vector.  The source chapter required a helper
+because its evaluator and host shared an application-function name; in Kotlin,
+the host call is an ordinary function call.  The kernel's @code{gApply}
+(@ref{4.1.1}) models guest application.  One twist remains: the guest
+@code{map} must apply procedure values, which a plain primitive cannot do on
+its own, so the @code{map} primitive re-enters @code{gApply} before its own
+work runs, as shown below.
 
 @example kotlin
-public fun runProgram(
-    text: String,
-    env: Env,
-    sink: OutputSink,
-): String @{
-    either @{
-        val forms = readProgram(text)
-        val exprs = parseProgram(forms)
-        for (expr in exprs) @{
-            runForm(expr, env, sink)
-        @}
-    @}.fold(
-        @{ e -> sink.line("Error: $@{formatError(e)@}") @},
-        @{ @},
+fun mapApply(fn: GValue,
+    items: List<GValue>): List<GValue>? @{
+    if (items.isEmpty()) return emptyList()
+    val first = gApply(fn,
+        listOf(items.get(0))) ?: return null
+    val rest = mapApply(fn,
+        items.drop(1)) ?: return null
+    return listOf(first).plus(rest)
+@}
+
+fun mapPrimitive(args: List<GValue>): GValue? @{
+    val fn = args.get(0)
+    val items = args.get(1)
+    if (items !is GListV) return null
+    return GListV(mapApply(fn,
+        items.items) ?: return null)
+@}
+@end example
+
+@noindent
+@code{mapPrimitive} is the footnote's twist made concrete: @code{fn} is a
+procedure value, so the primitive reaches for @code{gApply} --- the only
+application mechanism the kernel has --- rather than calling @code{fn} as a
+host function.  Without that re-entry the host's own @code{map} would not
+know how to call it at all, which is the point of @ref{Exercise 4.14}.
+
+For convenience in running the metacircular evaluator, the engine provides a
+@newterm{driver loop} that models the read-eval-print loop of a system: it
+reads the program text, admits it, evaluates it, and answers one result.  The
+read step is where this edition differs most: @code{Admission.admit} parses
+and type-checks the text @emph{before any effect}, so a malformed or
+ill-typed program is rejected without one line of it running.@footnote{Admission is given code, like the book's @code{read}: it takes
+the program text and answers either a typed diagnostic or a checked program.
+For example, if the text is @code{println(23L + x)} and @code{x} is unbound,
+admission answers an @code{UndeclaredName} diagnostic at the position of
+@code{x} --- and the program never runs.}  An interleaved prompt would bury a
+program's own output, so the driver records a bare transcript instead, under
+the one-transcript contract: @code{RunResult.output} is exactly the ordered
+@code{print}/@code{println} stream of the program, @code{RunResult.error} is
+the first typed guest error if the program raised one at run time, and
+@code{RunResult.mainValue} is the value of @code{main}'s completion.  The two
+error planes stay apart: a rejected source answers its diagnostic before any
+effect, while a run that traps carries its category in
+@code{RunResult.error}.
+
+@example kotlin
+public fun runProgram(text: String): String =
+    Direct.run(text, Mode.CORE).fold(
+        @{ e -> "Error: " + e.category @},
+        @{ run -> run.output @},
     )
-    return sink.toString()
-@}
 @end example
 
 @noindent
-The shared printer plays the role of the book's @code{user-print}, avoiding the
-printing of the environment part of a compound procedure, which may be a very
-large structure (or may even contain cycles):
+What the program prints is its own business --- and that is this edition's
+form of the book's @code{user-print} concern.  The environment part of a
+compound procedure, which may be a very large structure (or may even contain
+cycles), cannot leak into a transcript: printing a structured value is
+rejected outright, and a program that wants to show one renders it with its
+own function returning @code{String}:
 
 @example kotlin
 runProgram(
     """
-    (define (square x) (* x x))
-    square
+    fun square(x: Long): Long = x * x
+
+    fun main() @{
+        println(square(6L))
+    @}
     """.trimIndent(),
 )
-// => #[compound-procedure square]
+// => 36
 @end example
 
 @noindent
-Now all we need to do to run the evaluator is to set up the global environment
-and run a program in it.  Here is a sample interaction:
+Now all we need to do to run the evaluator is to hand the driver a program.
+Here is a sample interaction, with the result list rendered by the program's
+own @code{show}, since a list is a structured value:
 
 @example kotlin
 runProgram(
     """
-    (define (append x y)
-      (if (null? x)
-          y
-          (cons (car x) (append (cdr x) y))))
-    (append '(a b c) '(d e f))
+    fun myAppend(xs: List<Long>,
+        ys: List<Long>): List<Long> = xs.plus(ys)
+
+    fun show(xs: List<Long>): String @{
+        var out = ""
+        var first = true
+        for (x in xs) @{
+            if (first) @{
+                first = false
+            @} else @{
+                out = out + " "
+            @}
+            out = out + "$@{x@}"
+        @}
+        return out
+    @}
+
+    fun main() @{
+        println(show(myAppend(listOf(1L,
+                        2L,
+                    3L),
+                        listOf(4L,
+                        5L,
+            6L))))
+    @}
     """.trimIndent(),
 )
-// => (a b c d e f)
+// => 1 2 3 4 5 6
 @end example
 
 @noindent
-The definition prints nothing; the application's value line is the transcript's
-only line.
+The definition prints nothing; the transcript's only line is the program's own
+rendering of the result.
 
 @quotation
 @strong{@anchor{Exercise 4.14}Exercise 4.14:} Eva Lu Ator and Louis Reasoner
@@ -1370,7 +1543,7 @@ wrong.  Explain why Louis's @code{map} fails even though Eva's works.
 @node	4.1.5, 4.1.6, 4.1.4, 4.1
 @subsection Data as Programs
 
-In thinking about a Kotlin program that evaluates Lisp expressions, an analogy
+In thinking about a Kotlin program that evaluates guest programs, an analogy
 might be helpful.  One operational view of the meaning of a program is that a
 program is a description of an abstract (perhaps infinitely large) machine.
 For example, consider the familiar program to compute factorials:
@@ -1378,11 +1551,12 @@ For example, consider the familiar program to compute factorials:
 @example kotlin
 runProgram(
     """
-    (define (factorial n)
-      (if (= n 1)
-          1
-          (* (factorial (- n 1)) n)))
-    (factorial 5)
+    fun factorial(n: Long): Long = if (n == 1L) 1L else factorial(n -
+        1L) * n
+
+    fun main() @{
+        println(factorial(5L))
+    @}
     """.trimIndent(),
 )
 // => 120
@@ -1430,7 +1604,7 @@ together.
 @image{../../text/original/figures/chap4/Fig4.2a,,143mm,Figure 4.2: The factorial program@comma{} viewed as an abstract machine.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.2a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.2a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.2:} The factorial program, viewed as an abstract machine.}
@@ -1447,7 +1621,7 @@ the evaluator will be able to compute factorials.
 @ifinfo
 @strong{Figure 4.3:} The evaluator emulating a factorial machine.
 
-@example
+@smallexample
                    +--------+
             6 ---->|  eval  |----> 720
                    +--------+
@@ -1455,33 +1629,36 @@ the evaluator will be able to compute factorials.
              . . .    /  . . .
        . . .       ../. .      .
      .                           ..
-    .   (define (factorial n)      . . .
-   .      (if (= n 1)                   . .
-    .         1                            .
-    .         (* (factorial (- n 1)) n)))   .
+    .   fun factorial(n: Long): Long @{   . . .
+   .       if (n == 1L) return 1L             . .
+    .       return n * factorial(n - 1L)      .
+    .   @}
+    .   fun main() @{
+   .       println(factorial(6L))             .
+    .   @}
       . .                       . .        .
           . .  . .      . . . .     . . . .
                    . ..
-@end example
+@end smallexample
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap4/Fig4.3,,117mm,Figure 4.3: The evaluator emulating a factorial machine.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap4/Fig4.3.std,,117mm,,.pdf}
+@image{../../text/original/figures/pdf/chap4/Fig4.3.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 4.3:} The evaluator emulating a factorial machine.}
 @end float
 
 From this perspective, our evaluator is seen to be a @newterm{universal machine}.  
-It mimics other machines when these are described as Lisp
-programs.@footnote{The fact that the machines are described in Lisp is
-inessential.  If we give our evaluator a Lisp program that behaves as an
-evaluator for some other language, say C, the Lisp evaluator will emulate the C
-evaluator, which in turn can emulate any machine described as a C program.
-Similarly, writing a Lisp evaluator in C produces a C program that can execute
-any Lisp program.  The deep idea here is that any evaluator can emulate any
+It mimics other machines when these are described as guest
+programs.@footnote{The fact that the machines are described in the guest
+language is inessential.  If we give our evaluator a guest program that
+behaves as an evaluator for some other language, say C, our evaluator will
+emulate the C evaluator, which in turn can emulate any machine described as a
+C program.  Similarly, writing an evaluator for the guest language in C
+produces a C program that can execute any guest program.  The deep idea here is that any evaluator can emulate any
 other.  Thus, the notion of ``what can in principle be computed'' (ignoring
 practicalities of time and memory required) is independent of the language or
 the computer, and instead reflects an underlying notion of
@@ -1516,28 +1693,29 @@ explores some of these ideas (@ref{Hofstadter 1979}).}
 Another striking aspect of the evaluator is that it acts as a bridge between
 the data objects that are manipulated by our programming language and the
 programming language itself.  Imagine that the evaluator program (implemented
-in Kotlin) is running, and that a user is typing expressions to the evaluator and
+in Kotlin) is running, and that a user is typing programs to the evaluator and
 observing the results.  From the perspective of the user, an input expression
-such as @code{(* x x)} is an expression in the programming language, which the
+such as @code{x * x} is an expression in the programming language, which the
 evaluator should execute.  From the perspective of the evaluator, however, the
-expression is simply a list (in this case, a list of three symbols: @code{*},
-@code{x}, and @code{x}) that is to be manipulated according to a well-defined
-set of rules.
+expression is simply a value (in this case, a @code{GMul} node with two
+operands: the @code{GVar} node for @code{x}, and another @code{GVar} node for
+@code{x}) that is to be manipulated according to a well-defined set of rules.
 
 That the user's programs are the evaluator's data need not be a source of
 confusion.  In fact, it is sometimes convenient to ignore this distinction, and
-to give the user the ability to explicitly evaluate a data object as a Lisp
-expression, by making @code{eval} available for use in programs.  Many Lisp
-dialects provide a primitive @code{eval} procedure that takes as arguments an
+to give the user the ability to explicitly evaluate a data object as a
+program, by making @code{eval} available for use in programs.  Many languages
+provide a primitive @code{eval} procedure that takes as arguments an
 expression and an environment and evaluates the expression relative to the
-environment.@footnote{This edition's counterpart is the driver-level function
-@code{evalText}, which takes the @emph{text} of one expression and an
-environment and evaluates the expression relative to that environment.  It is
-not an object-language primitive: the evaluated text can build and return data,
-but the evaluated program cannot call @code{eval} on its own.} Thus,
+environment.@footnote{This edition's counterpart is the kernel function
+@code{gEval}, which takes the @emph{built} form of one expression --- a
+@code{GExpr} value --- and a frame, and evaluates the expression relative to
+that environment.  It is not an object-language primitive: the evaluated
+program can build and return data, but a running program cannot call
+@code{gEval} on its own; only the evaluator around it can.} Thus,
 
 @example kotlin
-evalText("(* 5 5)", env)
+runProgram("println(5L * 5L)")
 // => 25
 @end example
 
@@ -1545,41 +1723,51 @@ evalText("(* 5 5)", env)
 and
 
 @example kotlin
-evalText(printValue(cons(VSym("*"), vlist(listOf(VInt(5), VInt(5))))), env)
+val five = GNum(5L)
+val program = GMul(five, five)
+// the same 5 * 5, as data
+val answer = gEval(program,
+        GFrame(mutableMapOf(),
+    null))
+(answer as GNumV).n
 // => 25
 @end example
 
 @noindent
-will both return 25: the second builds the very same expression as data, prints
-it back as the surface text @code{(* 5 5)}, and evaluates that.@footnote{The
-environment here is the driver's global environment, the role the
+will both compute 25: the second builds the very same expression as data ---
+an expression tree instead of source text --- and evaluates that.@footnote{The
+environment here is the global frame the driver installs, the role the
 @abbr{MIT} implementation's @code{user-initial-environment} plays.}
 
 @quotation
 @strong{@anchor{Exercise 4.15}Exercise 4.15:} Given a one-argument procedure
 @code{p} and an object @code{a}, @code{p} is said to ``halt'' on @code{a} if
-evaluating the expression @code{(p a)} returns a value (as opposed to
+evaluating the expression @code{p(a)} returns a value (as opposed to
 terminating with an error message or running forever).  Show that it is
-impossible to write a procedure @code{halts?} that correctly determines whether
+impossible to write a procedure @code{halts} that correctly determines whether
 @code{p} halts on @code{a} for any procedure @code{p} and object @code{a}.  Use
-the following reasoning: If you had such a procedure @code{halts?}, you could
+the following reasoning: If you had such a procedure @code{halts}, you could
 implement the following program:
 
-@example
-(define (run-forever)
-  (run-forever))
+@example kotlin
+fun runForever(): String @{
+    return runForever()
+@}
 
-(define (try p)
-  (if (halts? p p)
-      (run-forever)
-      'halted))
+fun tryIt(p: ⟨@var{one-argument procedure}⟩): String @{
+    if (halts(p, p)) @{
+        return runForever()
+    @} else @{
+        return "halted"
+    @}
+@}
 @end example
 
-Now consider evaluating the expression @code{(try try)} and show that any
+Now consider evaluating the expression @code{tryIt(tryIt)} and show that any
 possible outcome (either halting or running forever) violates the intended
-behavior of @code{halts?}.@footnote{Although we stipulated that @code{halts?}
+behavior of @code{halts}.@footnote{Although we stipulated that @code{halts}
 is given a procedure object, notice that this reasoning still applies even if
-@code{halts?} can gain access to the procedure's text and its environment.
+@code{halts} can gain access to the procedure's text and its environment.
 This is Turing's celebrated @newterm{Halting Theorem}, which gave the first
 clear example of a @newterm{non-computable} problem, i.e., a well-posed task
 that cannot be carried out as a computational procedure.}
@@ -1599,128 +1787,144 @@ not be the best way to define local variables.
 
 Consider a procedure with internal definitions, such as
 
-@example
-(define (f x)
-  (define (even? n)
-    (if (= n 0)
-        true
-        (odd? (- n 1))))
-  (define (odd? n)
-    (if (= n 0)
-        false
-        (even? (- n 1))))
-  ⟨@var{rest of body of @code{f}}⟩)
+@example kotlin
+fun f(x: Long): @var{return type} @{
+    fun isEven(n: Long): Boolean =
+        if (n == 0L) true else isOdd(n - 1L)
+    fun isOdd(n: Long): Boolean =
+        if (n == 0L) false else isEven(n - 1L)
+    ⟨@var{rest of body of @code{f}}⟩
+@}
 @end example
 
 @noindent
-Our intention here is that the name @code{odd?} in the body of the procedure
-@code{even?} should refer to the procedure @code{odd?} that is defined after
-@code{even?}.  The scope of the name @code{odd?} is the entire body of
+Our intention here is that the name @code{isOdd} in the body of the procedure
+@code{isEven} should refer to the procedure @code{isOdd} that is defined after
+@code{isEven}.  The scope of the name @code{isOdd} is the entire body of
 @code{f}, not just the portion of the body of @code{f} starting at the point
-where the @code{define} for @code{odd?} occurs.  Indeed, when we consider that
-@code{odd?} is itself defined in terms of @code{even?}---so that @code{even?}
-and @code{odd?} are mutually recursive procedures---we see that the only
-satisfactory interpretation of the two @code{define}s is to regard them as if
-the names @code{even?} and @code{odd?} were being added to the environment
-simultaneously.  More generally, in block structure, the scope of a local name
-is the entire procedure body in which the @code{define} is evaluated.
+where the declaration of @code{isOdd} occurs.  Indeed, when we consider that
+@code{isOdd} is itself defined in terms of @code{isEven}---so that
+@code{isEven} and @code{isOdd} are mutually recursive procedures---we see that
+the only satisfactory interpretation of the two declarations is to regard them
+as if the names @code{isEven} and @code{isOdd} were being added to the
+environment simultaneously.  More generally, in block structure, the scope of
+a local name is the entire procedure body in which the declaration is
+evaluated.
 
 As it happens, our interpreter will evaluate calls to @code{f} correctly, but
 for an ``accidental'' reason: Since the definitions of the internal procedures
 come first, no calls to these procedures will be evaluated until all of them
-have been defined.  Hence, @code{odd?}  will have been defined by the time
-@code{even?} is executed.  In fact, our sequential evaluation mechanism will
+have been defined.  Hence, @code{isOdd}  will have been defined by the time
+@code{isEven} is executed.  In fact, our sequential evaluation mechanism will
 give the same result as a mechanism that directly implements simultaneous
 definition for any procedure in which the internal definitions come first in a
 body and evaluation of the value expressions for the defined variables doesn't
 actually use any of the defined variables.  (For an example of a procedure that
 doesn't obey these restrictions, so that sequential definition isn't equivalent
 to simultaneous definition, see @ref{Exercise 4.19}.)@footnote{Wanting programs
-to not depend on this evaluation mechanism is the reason for the ``management
+not to depend on this evaluation mechanism is the reason for the ``management
 is not responsible'' remark in @ref{Footnote 28} of @ref{Chapter 1}.  By
-insisting that internal definitions come first and do not use each other while
-the definitions are being evaluated, the @abbr{IEEE} standard for Scheme
-leaves implementors some choice in the mechanism used to evaluate these
-definitions.  The choice of one evaluation rule rather than another here may
-seem like a small issue, affecting only the interpretation of ``badly formed''
-programs.  However, we will see in @ref{5.5.6} that moving to a model
-of simultaneous scoping for internal definitions avoids some nasty difficulties
-that would otherwise arise in implementing a compiler.}
+requiring internal definitions to come first and not use one another while
+their values are computed, the IEEE standard leaves implementors some choice
+in how to evaluate them.  We will see in @ref{5.5.6} that simultaneous scoping
+for internal definitions avoids difficulties in implementing a compiler.}
 
 There is, however, a simple way to treat definitions so that internally defined
 names have truly simultaneous scope---just create all local variables that will
 be in the current environment before evaluating any of the value expressions.
-One way to do this is by a syntax transformation on @code{lambda} expressions.
-Before evaluating the body of a @code{lambda} expression, we ``scan out'' and
+One way to do this is by a syntax transformation on @code{GLam} expressions.
+Before evaluating the body of a @code{GLam} expression, we ``scan out'' and
 eliminate all the internal definitions in the body.  The internally defined
-variables will be created with a @code{let} and then set to their values by
+variables will be created in the frame first, and then set to their values by
 assignment.  For example, the procedure
 
-@example
-(lambda ⟨@var{vars}⟩
-  (define u ⟨@var{e1}⟩)
-  (define v ⟨@var{e2}⟩)
-  ⟨@var{e3}⟩)
+@example kotlin
+fun outer(⟨@var{vars}⟩) @{
+    val u = ⟨@var{e1}⟩
+    val v = ⟨@var{e2}⟩
+    ⟨@var{e3}⟩
+@}
 @end example
 
 @noindent
-would be transformed into
+would be transformed into the kernel statements
 
-@example
-(lambda ⟨@var{vars}⟩
-  (let ((u '*unassigned*)
-        (v '*unassigned*))
-    (set! u ⟨@var{e1}⟩)
-    (set! v ⟨@var{e2}⟩)
-    ⟨@var{e3}⟩))
+@example kotlin
+GVarStmt("u", GNull)
+// the names are created first
+GVarStmt("v", GNull)
+GAssignStmt("u", ⟨@var{e1}⟩)    // and only then assigned
+GAssignStmt("v", ⟨@var{e2}⟩)
+⟨@var{e3}⟩
 @end example
 
 @noindent
-where @code{*unassigned*} is a special symbol that causes looking up a variable
-to signal an error if an attempt is made to use the value of the
-not-yet-assigned variable.
+where the placeholder marks a not-yet-assigned variable.  The kernel's
+allocate-first form is @code{GLetRec}, which fills the new cell with
+@code{GUnassigned} and so causes looking up the variable to signal an
+@code{UnassignedRead} error if an attempt is made to use the value of the
+not-yet-assigned variable---the guest language's spelling of the original's
+@code{*unassigned*} symbol.@footnote{@code{GUnassigned} is a value, never an
+expression: the only place it comes into being is @code{GLetRec}'s allocation,
+and the only thing that consumes it is the unassigned-read rule.  The
+statement-level spelling above cannot produce it, which is why its stand-in is
+@code{GNull}; it also keeps both names in one frame, which mutually recursive
+names require, since a nested @code{GLetRec} binds its name inside the body of
+the previous one and cannot see its siblings.}
 
 An alternative strategy for scanning out internal definitions is shown in
 @ref{Exercise 4.18}.  Unlike the transformation shown above, this enforces the
 restriction that the defined variables' values can be evaluated without using
-any of the variables' values.@footnote{The @abbr{IEEE} standard for Scheme
-allows for different implementation strategies by specifying that it is up to
-the programmer to obey this restriction, not up to the implementation to
-enforce it.  Some Scheme implementations, including @abbr{MIT} Scheme, use
-the transformation shown above.  Thus, some programs that don't obey this
-restriction will in fact run in such implementations.}
+any of the variables' values.@footnote{The language standard allows different
+implementation strategies by specifying that programmers must obey this
+restriction; the implementation need not enforce it.  Some historical
+implementations, including the MIT implementation, use the transformation
+shown above.  Thus, some programs that do not obey this restriction will still
+run in those implementations.}
 
 @quotation
 @strong{In this language: the metacircular evaluator.}
 
-The evaluator is a Kotlin program, and what it evaluates is still the text of
-the language: @code{runProgram} reads the text with the given-code reader,
-parses each form onto a typed @code{Expr} node, and evaluates the forms in
-order with @code{Evaluator} --- the @code{eval}-@code{apply} cycle as the
-@code{when} in @code{step}.  The whole tower in three lines:
+The evaluator is a Kotlin program, and what it evaluates is still the
+language's own programs: @code{runProgram} hands the text to admission, the
+given-code reader and translator map each declaration and expression onto a
+typed @code{GExpr} node, and the evaluator walks those nodes with
+@code{gEval} --- the @code{eval}-@code{apply} cycle as the @code{when} over
+the sealed @code{GExpr} family.  The whole tower in one call:
 
 @example kotlin
-runProgram("(define (square x) (* x x))\n(square 12)")
+runProgram(
+    """
+    fun square(x: Long): Long = x * x
+
+    fun main() @{
+        println(square(12L))
+    @}
+    """.trimIndent(),
+)
 // => 144
 @end example
 
-Every exercise of this section edits that cycle the same way: subclass
-@code{Evaluator}, have the @code{step} override check for the forms it adds,
-and fall back to @code{baseStep} for everything else, so the book's clause
-chain stays intact while the language grows.
+Every exercise of this section edits that cycle the same way: add the case
+for the forms it introduces to the @code{when} that dispatches on
+@code{GExpr}, and let every other case fall through to the arms already
+there, so the book's clause chain stays intact while the language grows.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.16}Exercise 4.16:} In this exercise we implement the
 method just described for interpreting internal definitions.  The base
-evaluator already derives @code{let} (see @ref{Exercise 4.6}).
+evaluator already derives the local-binding node @code{GLet} (see
+@ref{Exercise 4.6}).
 
 @enumerate a
 
 @item
-Change the evaluator's variable lookup (@code{lookupVariable},
-@ref{4.1.3}) to signal an error if
-the value it finds is the symbol @code{*unassigned*}.
+Change the evaluator's variable lookup (@code{GFrame.lookup},
+@ref{4.1.3}) to signal an error if the value it finds is the kernel's
+unassigned marker @code{GUnassigned} --- the way the @code{GVar} arm of
+@code{gEval} already answers @code{UnassignedRead} before a
+not-yet-assigned variable's value can be used.
 
 @item
 Write a procedure @code{scanOutDefines} that takes a procedure body and
@@ -1729,9 +1933,9 @@ transformation described above.
 
 @item
 Install @code{scanOutDefines} in the interpreter, either where compound
-procedures are constructed (@code{makeProcedure}, @ref{4.1.3}) or
-where a compound procedure's body is taken for evaluation (the compound arm of
-@code{applyProcedure}).  Which place is better?  Why?
+procedures are constructed (the @code{GClosV} construction, @ref{4.1.3}) or
+where a compound procedure's body is taken for evaluation (the @code{GClosV}
+arm of @code{gApply}).  Which place is better?  Why?
 
 @end enumerate
 @end quotation
@@ -1752,26 +1956,35 @@ the extra frame.
 @strong{@anchor{Exercise 4.18}Exercise 4.18:} Consider an alternative strategy
 for scanning out definitions that translates the example in the text to
 
-@example
-(lambda ⟨@var{vars}⟩
-  (let ((u '*unassigned*)
-        (v '*unassigned*))
-    (let ((a ⟨@var{e1}⟩)
-          (b ⟨@var{e2}⟩))
-      (set! u a)
-      (set! v b))
-    ⟨@var{e3}⟩))
+@example kotlin
+GVarStmt("u", GNull)
+// the names are created first
+GVarStmt("v", GNull)
+GVarStmt("a", ⟨@var{e1}⟩)      // a and b are fresh names the
+GVarStmt("b", ⟨@var{e2}⟩)
+// interpreter creates, and both
+GAssignStmt("u", GVar("a"))
+// initializers run before either
+GAssignStmt("v", GVar("b"))
+// of the user's names is assigned
+⟨@var{e3}⟩
 @end example
 
 Here @code{a} and @code{b} are meant to represent new variable names, created
 by the interpreter, that do not appear in the user's program.  Consider the
-@code{solve} procedure from @ref{3.5.4}:
+@code{solve} procedure of @ref{3.5.4} --- the section's opening sketch, whose
+two bindings refer to each other, with the delayed integrand the section ties
+back:
 
-@example
-(define (solve f y0 dt)
-  (define y (integral (delay dy) y0 dt))
-  (define dy (stream-map f y))
-  y)
+@example kotlin
+fun solve(f: (Double) -> Double, y0: Double,
+    dt: Double): LStream<Double> @{
+    val y: LStream<Double> = integral(lazy @{ dy @},
+        y0,
+        dt)
+    val dy: LStream<Double> = streamMap(f, y)
+    return y
+@}
 @end example
 
 Will this procedure work if internal definitions are scanned out as shown in
@@ -1783,17 +1996,20 @@ this exercise?  What if they are scanned out as shown in the text?  Explain.
 and Eva Lu Ator are arguing about the desired result of evaluating the
 expression
 
-@example
-(let ((a 1))
-  (define (f x)
-    (define b (+ a x))
-    (define a 5)
-    (+ a b))
-  (f 10))
+@example kotlin
+val a = 1L
+
+fun f(x: Long): Long @{
+    val b = a + x
+    val a = 5L
+    return a + b
+@}
+
+f(10L)
 @end example
 
 Ben asserts that the result should be obtained using the sequential rule for
-@code{define}: @code{b} is defined to be 11, then @code{a} is defined to be 5,
+declaration: @code{b} is defined to be 11, then @code{a} is defined to be 5,
 so the result is 16.  Alyssa objects that mutual recursion requires the
 simultaneous scope rule for internal procedure definitions, and that it is
 unreasonable to treat procedure names differently from other names.  Thus, she
@@ -1805,83 +2021,97 @@ are truly meant to be simultaneous, then the value 5 for @code{a} should be
 used in evaluating @code{b}.  Hence, in Eva's view @code{a} should be 5,
 @code{b} should be 15, and the result should be 20.  Which (if any) of these
 viewpoints do you support?  Can you devise a way to implement internal
-definitions so that they behave as Eva prefers?@footnote{The @abbr{MIT}
-implementors of Scheme support Alyssa on the following grounds: Eva is in
-principle correct---the definitions should be regarded as simultaneous.  But
-it seems difficult to implement a general, efficient mechanism that does what
-Eva requires.  In the absence of such a mechanism, it is better to generate an
-error in the difficult cases of simultaneous definitions (Alyssa's notion) than
-to produce an incorrect answer (as Ben would have it).}
+definitions so that they behave as Eva prefers?@footnote{The MIT implementation
+authors support Alyssa on the following grounds: Eva is in principle correct:
+the definitions should be regarded as simultaneous.  But it seems difficult
+to implement a general, efficient mechanism that does what Eva requires.  In
+the absence of such a mechanism, it is better to generate an error in the
+difficult cases of simultaneous definitions (Alyssa's notion) than to produce
+an incorrect answer (as Ben would have it).}
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.20}Exercise 4.20:} Because internal definitions look
 sequential but are actually simultaneous, some people prefer to avoid them
-entirely, and use the special form @code{letrec} instead.  @code{Letrec} looks
-like @code{let}, so it is not surprising that the variables it binds are bound
+entirely, and use the special form @code{letrec} instead.  @code{GLetRec} looks
+like @code{GLet}, so it is not surprising that the variables it binds are bound
 simultaneously and have the same scope as each other.  The sample procedure
 @code{f} above can be written without internal definitions, but with exactly
-the same meaning, as
+the same meaning, as the frame-first arrangement
 
-@example
-(define (f x)
-  (letrec
-      ((even?
-        (lambda (n)
-          (if (= n 0)
-              true
-              (odd? (- n 1)))))
-       (odd?
-        (lambda (n)
-          (if (= n 0)
-              false
-              (even? (- n 1))))))
-    ⟨@var{rest of body of @code{f}}⟩))
-@end example
-
-@code{Letrec} expressions, which have the form
-
-@example
-(letrec ((⟨@var{var₁}⟩ ⟨@var{exp₁}⟩) @r{…} (⟨@var{varₙ}⟩ ⟨@var{expₙ}⟩))
-  ⟨@var{body}⟩)
+@example kotlin
+GVarStmt("isEven", GNull)        // every name created
+GVarStmt("isOdd", GNull)         // before any value
+GAssignStmt("isEven",
+        GLam("n",
+                GIf(GEq(GVar("n"),
+            GNum(0L)),
+    GBool(true),
+    GApp(GVar("isOdd"), GSub(GVar("n"), GNum(1L))))))
+GAssignStmt("isOdd",
+        GLam("n",
+                GIf(GEq(GVar("n"),
+            GNum(0L)),
+    GBool(false),
+    GApp(GVar("isEven"), GSub(GVar("n"), GNum(1L))))))
+⟨@var{rest of body of @code{f}}⟩
 @end example
 
 @noindent
-are a variation on @code{let} in which the expressions
+@code{Letrec} expressions, which have the one-name form
+@code{GLetRec(@var{name}, @var{init}, @var{body})} --- the initializer run in
+the frame where the name is already allocated, in scope but carrying
+@code{GUnassigned} until it completes (@ref{4.1.3}) --- generalize to a set of
+names as
+
+@example kotlin
+GVarStmt(⟨@var{var₁}⟩, GNull)         // every name created
+@r{…}
+GVarStmt(⟨@var{varₙ}⟩, GNull)
+// before any initializer
+GAssignStmt(⟨@var{var₁}⟩, ⟨@var{exp₁}⟩) // then the initializers run
+@r{…}
+GAssignStmt(⟨@var{varₙ}⟩, ⟨@var{expₙ}⟩)
+⟨@var{body}⟩
+@end example
+
+@noindent
+This is a variation on @code{GLet} in which the expressions
 @math{{⟨\kern0.1em exp_k⟩}} that provide the initial values for the
 variables @math{{⟨\kern0.06em var_k⟩}} are evaluated in an environment
 that includes all the @code{letrec} bindings.  This permits recursion in the
-bindings, such as the mutual recursion of @code{even?} and @code{odd?} in the
+bindings, such as the mutual recursion of @code{isEven} and @code{isOdd} in the
 example above, or the evaluation of 10 factorial with
 
-@example
-(letrec
-    ((fact
-      (lambda (n)
-        (if (= n 1)
-            1
-            (* n (fact (- n 1)))))))
-  (fact 10))
+@example kotlin
+GLetRec("fact",
+    GLam("n", GIf(GEq(GVar("n"), GNum(1L)), GNum(1L),
+        GMul(GVar("n"),
+                GApp(GVar("fact"),
+                    GSub(GVar("n"),
+            GNum(1L)))))),
+    GApp(GVar("fact"), GNum(10L)))
 @end example
 
 @enumerate a
 
 @item
 Implement @code{letrec} as a derived expression, by transforming a
-@code{letrec} expression into a @code{let} expression as shown in the text
+@code{GLetRec} expression into the frame-first statements shown in the text
 above or in @ref{Exercise 4.18}.  That is, the @code{letrec} variables should
-be created with a @code{let} and then be assigned their values with
-@code{set!}.
+be created in the new frame first, and then be assigned their values with
+@code{GAssignStmt} before the body runs.
 
 @item
 Louis Reasoner is confused by all this fuss about internal definitions.  The
-way he sees it, if you don't like to use @code{define} inside a procedure, you
-can just use @code{let}.  Illustrate what is loose about his reasoning by
-drawing an environment diagram that shows the environment in which the
+way he sees it, if you don't like to use an internal definition inside a
+procedure, you can just use @code{GLet}.  Illustrate what is loose about his
+reasoning by drawing an environment diagram that shows the environment in
+which the
 @code{⟨}@var{rest of body of @code{f}}@code{⟩} is evaluated during evaluation of the
-expression @code{(f 5)}, with @code{f} defined as in this exercise.  Draw an
-environment diagram for the same evaluation, but with @code{let} in place of
-@code{letrec} in the definition of @code{f}.
+call @code{f(5)}, with @code{f} defined as in this exercise.  Draw an
+environment diagram for the same evaluation, but with @code{GLet} in place of
+the @code{letrec} arrangement in the definition of @code{f}.
 
 @end enumerate
 @end quotation
@@ -1893,70 +2123,76 @@ environment diagram for the same evaluation, but with @code{let} in place of
 @quotation
 @strong{@anchor{Exercise 4.21}Exercise 4.21:} Amazingly, Louis's intuition in
 @ref{Exercise 4.20} is correct.  It is indeed possible to specify recursive
-procedures without using @code{letrec} (or even @code{define}), although the
-method for accomplishing this is much more subtle than Louis imagined.  The
-following expression computes 10 factorial by applying a recursive factorial
-procedure:@footnote{This example illustrates a programming trick for
-formulating recursive procedures without using @code{define}.  The most general
-trick of this sort is the @math{Y} @newterm{operator}, which can be used to give a
-``pure λ-calculus'' implementation of recursion.  (See @ref{Stoy 1977} for
-details on the λ-calculus, and @ref{Gabriel 1988} for an exposition of the
-@math{Y} operator in Scheme.)}
+procedures without using @code{letrec} (or even a named definition), although
+the method for accomplishing this is much more subtle than Louis imagined.
+The following program computes 10 factorial by applying a recursive factorial
+procedure---a procedure that receives itself as an argument:@footnote{This
+example illustrates a programming trick for formulating recursive procedures
+without using a definition.  The most general trick of this sort is the
+@math{Y} @newterm{operator}, which can be used to give a ``pure
+λ-calculus'' implementation of recursion.  See @ref{Stoy 1977} for details
+on λ-calculus and @ref{Gabriel 1988} for an exposition of the @math{Y}
+operator.}
 
 @example kotlin
-evalText(
+runProgram(
     """
-    ((lambda (n)
-       ((lambda (fact) (fact fact n))
-        (lambda (ft k)
-          (if (= k 1)
-              1
-              (* k (ft ft (- k 1)))))))
-     10)
+    data class Rec(val body: (Rec, Long) -> Long)
+
+    fun main() @{
+        val fact = Rec(@{ self: Rec, k: Long ->
+            if (k == 1L) 1L else k * self.body(self,
+                k - 1L)
+        @})
+        println(fact.body(fact, 10L))
+    @}
     """.trimIndent(),
-    env,
 )
 // => 3628800
 @end example
 
+@noindent
+The @code{Rec} wrapper only exists to give the trick a type: it holds one
+property, @code{body}, a function that takes the procedure itself and the
+argument.  The self-application is the call @code{self.body(self, k - 1L)} ---
+the procedure hands itself to its own body, which is what lets the recursion
+run with no named definition to refer to.
+
 @enumerate a
 
 @item
-Check (by evaluating the expression) that this really does compute factorials.
-Devise an analogous expression for computing Fibonacci numbers.
+Check (by running the program) that this really does compute factorials.
+Devise an analogous program for computing Fibonacci numbers.
 
 @item
 Consider the following procedure, which includes mutually recursive internal
 definitions:
 
-@example
-(define (f x)
-  (define (even? n)
-    (if (= n 0)
-        true
-        (odd? (- n 1))))
-  (define (odd? n)
-    (if (= n 0)
-        false
-        (even? (- n 1))))
-  (even? x))
+@example kotlin
+fun f(x: Long): Boolean @{
+    fun isEven(n: Long): Boolean =
+        if (n == 0L) true else isOdd(n - 1L)
+    fun isOdd(n: Long): Boolean =
+        if (n == 0L) false else isEven(n - 1L)
+    return isEven(x)
+@}
 @end example
 
 Fill in the missing expressions to complete an alternative definition of
 @code{f}, which uses neither internal definitions nor @code{letrec}:
 
-@example
-(define (f x)
-  ((lambda (even? odd?)
-     (even? even? odd? x))
-   (lambda (ev? od? n)
-     (if (= n 0) 
-         true 
-         (od? ⟨??⟩ ⟨??⟩ ⟨??⟩)))
-   (lambda (ev? od? n)
-     (if (= n 0) 
-         false 
-         (ev? ⟨??⟩ ⟨??⟩ ⟨??⟩)))))
+@example kotlin
+data class Rec(val body: (Rec, Rec, Long) -> Boolean)
+
+fun f(x: Long): Boolean @{
+    val ev = Rec(@{ e: Rec, o: Rec, n: Long ->
+        if (n == 0L) true else o.body(⟨??⟩, ⟨??⟩, ⟨??⟩)
+    @})
+    val od = Rec(@{ e: Rec, o: Rec, n: Long ->
+        if (n == 0L) false else e.body(⟨??⟩, ⟨??⟩, ⟨??⟩)
+    @})
+    return ev.body(ev, od, x)
+@}
 @end example
 @end enumerate
 @end quotation
@@ -1967,17 +2203,18 @@ Fill in the missing expressions to complete an alternative definition of
 The evaluator implemented above is simple, but it is very inefficient, because
 the syntactic analysis of expressions is interleaved with their execution.
 Thus if a program is executed many times, its syntax is analyzed many times.
-Consider, for example, evaluating @code{(factorial 4)} using the following
+Consider, for example, evaluating @code{factorial(4L)} using the following
 definition of @code{factorial}:
 
 @example kotlin
 runProgram(
     """
-    (define (factorial n)
-      (if (= n 1)
-          1
-          (* (factorial (- n 1)) n)))
-    (factorial 4)
+    fun factorial(n: Long): Long = if (n == 1L) 1L else factorial(n -
+        1L) * n
+
+    fun main() @{
+        println(factorial(4L))
+    @}
     """.trimIndent(),
 )
 // => 24
@@ -1987,135 +2224,175 @@ runProgram(
 Each time @code{factorial} is called, the evaluator must determine that the
 body is an @code{if} expression and extract the predicate.  Only then can it
 evaluate the predicate and dispatch on its value.  Each time it evaluates the
-expression @code{(* (factorial (- n 1)) n)}, or the subexpressions
-@code{(factorial (- n 1))} and @code{(- n 1)}, the evaluator must perform the
-case analysis in @code{eval} to determine that the expression is an
+expression @code{factorial(n - 1L) * n}, or the subexpressions
+@code{factorial(n - 1L)} and @code{n - 1L}, the evaluator must perform the
+case analysis in @code{gEval} to determine that the expression is an
 application, and must extract its operator and operands.  This analysis is
 expensive.  Performing it repeatedly is wasteful.
 
 We can transform the evaluator to be significantly more efficient by arranging
 things so that syntactic analysis is performed only once.@footnote{This
 technique is an integral part of the compilation process, which we shall
-discuss in @ref{Chapter 5}.  Jonathan Rees wrote a Scheme interpreter like this
-in about 1982 for the T project (@ref{Rees and Adams 1982}).  Marc @ref{Feeley (1986)} (see
-also @ref{Feeley and Lapalme 1987}) independently invented this technique in his
-master's thesis.} We split @code{eval}, which takes an expression and an
-environment, into two parts.  The procedure @code{analyze} takes only the
+discuss in @ref{Chapter 5}.  The analysis-first technique appeared in
+Jonathan Rees's interpreter for the T project (@ref{Rees and Adams 1982}).
+Marc @ref{Feeley (1986)} (see also @ref{Feeley and Lapalme 1987})
+independently developed it in his master's thesis.}
+We split @code{gEval}, which takes an expression and an environment, into two
+parts.  The procedure @code{analyze} takes only the
 expression.  It performs the syntactic analysis and returns a new procedure,
 the @newterm{execution procedure}, that encapsulates the work to be done in
 executing the analyzed expression.  The execution procedure takes an
 environment as its argument and completes the evaluation.  In this edition the
 execution procedure is a Kotlin function value --- an environment-to-value
-function over the @code{Raise<SchemeError>} context through which the edition's
+function over the @code{Raise<GuestError>} context through which the edition's
 typed errors travel.  This saves work
 because @code{analyze} will be called only once on an expression, while the
 execution procedure may be called many times.
 
-With the separation into analysis and execution, @code{eval} now becomes
+With the separation into analysis and execution, @code{gEval} now becomes
 
 @example kotlin
-// The execution procedure: the analyzed expression awaiting an environment.
-public typealias Exec = context(Raise<SchemeError>)
-(Env) -> Value
+// The execution procedure: the analyzed expression
+// awaiting an
+    // environment.
+public typealias Exec = context(Raise<GuestError>)
+(GFrame) -> GValue?
 
-context(r: Raise<SchemeError>)
-public fun eval(
-    expr: Expr,
-    env: Env,
-): Value = analyze(expr)(env)
+context(r: Raise<GuestError>)
+public fun gEval(
+    expr: GExpr,
+    env: GFrame,
+): GValue? = analyze(expr)(env)
 @end example
 
 @noindent
 The result of calling @code{analyze} is the execution procedure to be applied
 to the environment.  The @code{analyze} procedure is the same case analysis as
-performed by the original @code{eval} of @ref{4.1.1}, except that the
+performed by the original @code{gEval} of @ref{4.1.1}, except that the
 procedures to which we dispatch perform only analysis, not full evaluation:
 
 @example kotlin
-public open fun analyze(expr: Expr): Exec = baseAnalyze(expr)
-
-context(r: Raise<SchemeError>)
-protected fun baseAnalyze(expr: Expr): Exec =
+fun analyze(expr: GExpr): Exec =
     when (expr) @{
-        is LitE -> @{
-            analyzedSelfEvaluating(expr.v)
+        is GNum -> @{
+            analyzedSelfEvaluating(GNumV(expr.n))
         @}
 
-        is QuoteE -> @{
-            analyzedQuoted(expr.datum)
+        is GBool -> @{
+            analyzedSelfEvaluating(GBoolV(expr.b))
         @}
 
-        is VarE -> @{
+        is GStr -> @{
+            analyzedSelfEvaluating(GStrV(expr.s))
+        @}
+
+        is GDouble -> @{
+            analyzedSelfEvaluating(GDoubleV(expr.d))
+        @}
+
+        is GNull -> @{
+            analyzedSelfEvaluating(GNullV)
+        @}
+
+        is GVar -> @{
             analyzedVariable(expr.name)
         @}
 
-        is SetE -> @{
-            analyzedAssignment(expr.name, analyze(expr.value))
+        is GSet -> @{
+            analyzedAssignment(expr.name,
+                analyze(expr.value))
         @}
 
-        is DefineE -> @{
-            analyzedDefinition(expr, expr.value as? LambdaE)
+        // derived
+        is GLet -> @{
+            analyze(letToCombination(expr))
         @}
 
-        is IfE -> @{
+        is GLetRec -> @{
+            analyzedRecursive(expr.name,
+                analyze(expr.init),
+                analyze(expr.body))
+        @}
+
+        is GIf -> @{
             analyzedIf(
-                analyze(expr.predicate),
-                analyze(expr.consequent),
-                analyze(expr.alternative),
+                analyze(expr.test),
+                analyze(expr.onTrue),
+                analyze(expr.onFalse),
             )
         @}
 
-        is LambdaE -> @{
-            analyzedLambda(expr.params, expr.rest, expr.body, null)
+        is GLam -> @{
+            analyzedLambda(expr.param,
+                analyze(expr.body))
         @}
 
-        is BeginE -> @{
-            analyzeSequence(expr.actions)
-        @}
-
-        is CondE -> @{
-            analyze(condToIfChain(expr.clauses))
+        is GBlock -> @{
+            analyzeSequence(expr.statements)
         @}
 
         // derived
-        is LetE -> @{
-            analyze(letToCombinationExpr(expr))
+        is GWhen -> @{
+            analyze(whenToIfChain(expr))
         @}
 
-        // derived
-        is AppE -> @{
+        is GAdd -> @{
+            analyzedBinary(expr.left,
+                expr.right) @{ l,
+                r ->
+                if (l is GNumV &&
+                    r is GNumV) GNumV(l.n + r.n) else null
+            @}
+        @}
+
+        is GMul -> @{
+            analyzedBinary(expr.left,
+                expr.right) @{ l,
+                r ->
+                if (l is GNumV &&
+                    r is GNumV) GNumV(l.n * r.n) else null
+            @}
+        @}
+
+        is GLt -> @{
+            analyzedBinary(expr.left,
+                expr.right) @{ l,
+                r ->
+                if (l is GNumV &&
+                    r is GNumV) GBoolV(l.n < r.n) else
+                    null
+            @}
+        @}
+
+        is GApp -> @{
             analyzedApplication(expr)
         @}
     @}
 @end example
 
 @noindent
-The seam mirrors @code{Evaluator}: @code{analyze} is the overridable hook, an
-extension checks its forms and falls back to @code{baseAnalyze}, and the hook
-fires at every nesting depth because every analysis recurses through
-@code{analyze}.  And as in @ref{4.1.1}, the book's ``unknown expression type''
-fault cannot fire: the parser's typed nodes leave nothing unrecognized.
+The seam is the @code{when} itself: an extension adds the case for its forms
+right there, and the case fires at every nesting depth because every analysis
+recurses through @code{analyze}.  And as in @ref{4.1.1}, the book's ``unknown
+expression type'' fault cannot fire: the typed nodes leave nothing
+unrecognized.
 
 Here is the simplest syntactic analysis procedure, which handles
 self-evaluating expressions.  It returns an execution procedure that ignores
 its environment argument and just returns the value:
 
 @example kotlin
-protected fun analyzedSelfEvaluating(v: Value): Exec = @{ _ -> v @}
+fun analyzedSelfEvaluating(v: GValue): Exec = @{ _ -> v @}
 @end example
 
 @noindent
-For a quoted expression, we can gain a little efficiency by extracting the text
-of the quotation only once, in the analysis phase, rather than in the execution
-phase:
-
-@example kotlin
-protected fun analyzedQuoted(datum: Value): Exec = @{ _ -> datum @}
-@end example
-
-@noindent
-Looking up a variable value must still be done in the execution phase, since
-this depends upon knowing the environment.@footnote{There is, however, an
+The guest language has no quotation form --- its data objects are built
+directly as @code{GExpr} values, as in @ref{4.1.5} --- so the efficiency gain
+the original found in quoted expressions shows up in the literal arms above
+instead: the node's field is read once, during analysis, and every later
+execution of the procedure simply returns the value.  Looking up a variable
+value must still be done in the execution phase, since this depends upon
+knowing the environment.@footnote{There is, however, an
 important part of the variable search that @emph{can} be done as part of the
 syntactic analysis.  As we will show in @ref{5.5.6}, one can determine
 the position in the environment structure where the value of the variable will
@@ -2123,7 +2400,10 @@ be found, thus obviating the need to scan the environment for the entry that
 matches the variable.}
 
 @example kotlin
-protected fun analyzedVariable(name: String): Exec = @{ env -> env.lookup(name) @}
+fun analyzedVariable(name: String): Exec = @{ env ->
+    val found = env.lookup(name)
+    if (found == null || found is GUnassigned) null else found
+@}
 @end example
 
 @noindent
@@ -2131,41 +2411,50 @@ protected fun analyzedVariable(name: String): Exec = @{ env -> env.lookup(name) 
 the execution, when the environment has been supplied.  However, the fact that
 the assigned expression can be analyzed (recursively) during analysis is a major
 gain in efficiency, because the assigned expression will now be analyzed only
-once.  The same holds true for definitions.  The @code{SetE} and
-@code{DefineE} clauses of @code{baseAnalyze} pass the name and the already
-analyzed value procedure:
+once.  The same holds true for bindings.  The @code{GSet} and @code{GLetRec}
+clauses of @code{analyze} pass the name and the already analyzed value
+procedure:
 
 @example kotlin
-protected fun analyzedAssignment(
+fun analyzedAssignment(
     name: String,
     vproc: Exec,
 ): Exec =
     @{ env ->
-        env.set(name, vproc(env))
-        VSym("ok")
+        val value = vproc(env)
+        if (value == null) @{
+            null
+        @} else if (env.assign(name, value)) @{
+            GBoolV(true)
+        @} else @{
+            null
+        @}
     @}
 @end example
 
 @noindent
-The definition clause builds the named procedure at execution time and binds
-it:
+The recursive-binding clause opens the frame first --- the name bound to
+@code{GUnassigned}, the allocate-first discipline of @ref{4.1.3} --- runs the
+analyzed initializer in that frame, patches in the computed value, and only
+then runs the analyzed body:
 
 @example kotlin
-protected fun analyzedDefinition(
-    expr: DefineE,
-    lambda: LambdaE?,
-): Exec @{
-    val vproc: Exec =
-        if (lambda != null) @{
-            analyzedLambda(lambda.params, lambda.rest, lambda.body, expr.name)
+fun analyzedRecursive(
+    name: String,
+    vproc: Exec,
+    bproc: Exec,
+): Exec =
+    @{ env ->
+        val frame = GFrame(mutableMapOf(name to GUnassigned),
+            env)
+        val value = vproc(frame)
+        if (value == null) @{
+            null
         @} else @{
-            analyze(expr.value)
+            frame.cells[name] = value
+            bproc(frame)
         @}
-    return @{ env ->
-        env.define(expr.name, vproc(env))
-        VSym("ok")
     @}
-@}
 @end example
 
 @noindent
@@ -2173,35 +2462,43 @@ For @code{if} expressions, we extract and analyze the predicate, consequent,
 and alternative at analysis time.
 
 @example kotlin
-protected fun analyzedIf(
+fun analyzedIf(
     pproc: Exec,
     cproc: Exec,
     aproc: Exec,
 ): Exec =
     @{ env ->
-        if (isTrue(pproc(env))) cproc(env) else aproc(env)
+        val test = pproc(env)
+        if (test == null) @{
+            null
+        @} else if (isTrue(test)) @{
+            cproc(env)
+        @} else @{
+            aproc(env)
+        @}
     @}
 @end example
 
 @noindent
-Analyzing a @code{lambda} expression also achieves a major gain in efficiency:
-We analyze the @code{lambda} body only once, even though procedures resulting
-from evaluation of the @code{lambda} may be applied many times.  The analyzed
-body is stored in a table keyed by the procedure object's identity, at the
+Analyzing a @code{GLam} expression also achieves a major gain in efficiency:
+We analyze the @code{GLam} body only once, even though procedures resulting
+from evaluation of the @code{GLam} may be applied many times.  The analyzed
+body is stored in a table keyed by the procedure object, at the
 moment the execution procedure creates the procedure, so every later
 application finds the body already analyzed (this is what @ref{Exercise 4.24}
 measures):
 
 @example kotlin
-protected fun analyzedLambda(
-    params: PersistentList<String>,
-    rest: String?,
-    body: PersistentList<Expr>,
-    name: String?,
+// The analyzed bodies, one per procedure object.
+val bodies: MutableMap<GClosV, Exec> = mutableMapOf()
+
+fun analyzedLambda(
+    param: String,
+    body: GExpr,
 ): Exec @{
-    val bproc = analyzeSequence(body)
+    val bproc = analyze(body)
     return @{ env ->
-        val procedure = VProc(params, rest, body, env, name)
+        val procedure = GClosV(param, body, env)
         bodies[procedure] = bproc
         procedure
     @}
@@ -2209,27 +2506,34 @@ protected fun analyzedLambda(
 @end example
 
 @noindent
-Analysis of a sequence of expressions (as in a @code{begin} or the body of a
-@code{lambda} expression) is more involved.@footnote{See @ref{Exercise 4.23}
-for some insight into the processing of sequences.} Each expression in the
-sequence is analyzed, yielding an execution procedure.  These execution
+Analysis of a block's statements (as in the body of a @code{GLam} expression)
+is more involved.@footnote{See @ref{Exercise 4.23}
+for some insight into the processing of sequences.} Each statement in the
+block is analyzed, yielding an execution procedure.  These execution
 procedures are combined to produce an execution procedure that takes an
 environment as argument and sequentially calls each individual execution
-procedure with the environment as argument:
+procedure with the environment as argument --- stopping as soon as one of them
+answers a control marker, which the block passes through unchanged, just as
+the kernel's statement sequencing does:
 
 @example kotlin
-protected open fun analyzeSequence(actions: PersistentList<Expr>): Exec @{
-    if (actions.isEmpty()) @{
-        return @{ fail(SchemeError.TypeMismatch("Empty sequence: ANALYZE")) @}
+fun analyzeSequence(statements: List<GStmt>): Exec @{
+    if (statements.isEmpty()) @{
+        return @{ _ -> GUnitV @}
     @}
-    val procs = actions.map @{ analyze(it) @}
+    val procs = statements.map @{ analyzeStatement(it) @}
     var combined: Exec = procs.last()
     for (i in procs.size - 2 downTo 0) @{
         val earlier = procs[i]
         val later = combined
         combined = @{ env ->
-            earlier(env)
-            later(env)
+            val value = earlier(env)
+            if (value is GReturnV || value is GBreakV || value is
+                GContinueV) @{
+                value
+            @} else @{
+                later(env)
+            @}
         @}
     @}
     return combined
@@ -2237,51 +2541,158 @@ protected open fun analyzeSequence(actions: PersistentList<Expr>): Exec @{
 @end example
 
 @noindent
-To analyze an application, we analyze the operator and operands and construct
-an execution procedure that calls the operator execution procedure (to obtain
-the actual procedure to be applied) and the operand execution procedures (to
-obtain the actual arguments).  We then pass these to
-@code{executeApplication}, which is the analog of @code{applyProcedure} in 
-@ref{4.1.1}.  @code{executeApplication} differs from @code{applyProcedure} in that the
-procedure body for a compound procedure has already been analyzed, so there is
-no need to do further analysis.  Instead, we just call the stored execution procedure for
-the body on the extended environment:
+The statement analyzer dispatches on the statement family the way the kernel's
+statement runner does: an expression statement runs its expression, a
+declaration binds its name in the current frame, an assignment reuses
+@code{analyzedAssignment}, a @code{return} wraps the analyzed value in
+@code{GReturnV}, and the two loop markers are the values they name.  The
+@code{while} arm keeps the break/continue discipline at the loop, where the
+kernel consumes those markers:
 
 @example kotlin
-protected fun analyzedApplication(expr: AppE): Exec @{
-    val fproc = analyze(expr.operator)
-    val aprocs = expr.operands.map @{ analyze(it) @}
-    return @{ env ->
-        val procedure = fproc(env)
-        val arguments = aprocs.map @{ it(env) @}
-        executeApplication(procedure, arguments)
+fun analyzeStatement(stmt: GStmt): Exec =
+    when (stmt) @{
+        is GExprStmt -> analyze(stmt.expression)
+
+        is GVarStmt -> @{
+            val vproc = analyze(stmt.init)
+            @{ env ->
+                val value = vproc(env)
+                if (value == null) @{
+                    null
+                @} else @{
+                    env.cells[stmt.name] = value
+                    GUnitV
+                @}
+            @}
+        @}
+
+        is GAssignStmt -> analyzedAssignment(stmt.name,
+            analyze(stmt.value))
+
+        is GWhileStmt -> analyzedWhile(stmt.cond,
+            stmt.body)
+
+        is GReturnStmt -> @{
+            val vproc = analyze(stmt.value)
+            @{ env ->
+                val value = vproc(env)
+                if (value == null) null else GReturnV(value)
+            @}
+        @}
+
+        is GBreakStmt -> @{ _ -> GBreakV @}
+
+        is GContinueStmt -> @{ _ -> GContinueV @}
+    @}
+
+fun analyzedWhile(cond: GExpr, body: GBlock): Exec @{
+    val cproc = analyze(cond)
+    val bproc = analyzeSequence(body.statements)
+    return @{ env -> runWhile(cproc, bproc, env) @}
+@}
+
+fun runWhile(
+    cproc: Exec,
+    bproc: Exec,
+    env: GFrame,
+): GValue? @{
+    while (true) @{
+        val test = cproc(env) ?: return null
+        if (!isTrue(test)) return GUnitV
+        val value = bproc(env) ?: return null
+        if (value is GReturnV) return value
+        if (value is GBreakV) return GUnitV
+        // GContinueV, like an ordinary answer,
+            // falls through to the re-test.
     @}
 @}
 @end example
 
+@noindent
+The arithmetic and comparison nodes are the same shape several times over:
+both operands are analyzed once, and the execution procedure combines their
+values with the operation @code{gEval} would have applied (@ref{4.1.1}):
+
 @example kotlin
-context(r: Raise<SchemeError>)
-protected open fun executeApplication(
-    procedure: Value,
-    arguments: List<Value>,
-): Value =
-    when (procedure) @{
-        is VPrimitive -> @{
-            callPrimitive(procedure, arguments)
-        @}
+fun analyzedBinary(
+    left: GExpr,
+    right: GExpr,
+    combine: (GValue, GValue) -> GValue?,
+): Exec @{
+    val lproc = analyze(left)
+    val rproc = analyze(right)
+    return @{ env ->
+        val l = lproc(env)
+        val r = rproc(env)
+        if (l == null || r == null) null else combine(l,
+            r)
+    @}
+@}
+@end example
 
-        is VProc -> @{
-            val body =
-                bodies[procedure]
-                    ?: r.raise(SchemeError.MachineFault("unanalyzed procedure: $procedure"))
-            val frame = Env.extend(procedure.params.toList(), arguments, procedure.env, procedure.rest)
-            body(frame)
-        @}
+@noindent
+To analyze an application, we analyze the operator and the operand and
+construct an execution procedure that calls the operator execution procedure
+(to obtain the actual procedure to be applied) and the operand execution
+procedure (to obtain the actual argument).  We then pass these to
+@code{executeApplication}, which is the analog of @code{gApply} in
+@ref{4.1.1}.  @code{executeApplication} differs from @code{gApply} in that the
+procedure body for a compound procedure has already been analyzed, so there is
+no need to do further analysis.  Instead, we just call the stored execution procedure for
+the body on the extended environment.  A name the frame chain does not answer
+falls through to the primitive table, exactly as in @ref{4.1.4} --- and, as
+there, an environment binding wins over any primitive of the same spelling:
 
-        else -> @{
-            r.raise(SchemeError.NotApplicable(procedure))
+@example kotlin
+fun analyzedApplication(expr: GApp): Exec @{
+    val name = head(expr)
+    val aprocs = operands(expr).map @{ analyze(it) @}
+    val fproc = analyze(expr.fn)
+    val aproc = analyze(expr.arg)
+    return @{ env ->
+        val primitive =
+            if (name is GVar &&
+                env.lookup(name.name) == null)
+                defaultPrimitives.get(name.name)
+            else null
+        if (primitive == null) @{
+            val fn = fproc(env)
+            val arg = aproc(env)
+            if (fn == null || arg == null) null else
+                executeApplication(fn, listOf(arg))
+        @} else @{
+            runPrimitive(primitive, aprocs, env)
         @}
     @}
+@}
+
+fun runPrimitive(
+    primitive: (List<GValue>) -> GValue?,
+    aprocs: List<Exec>,
+    env: GFrame,
+): GValue? @{
+    val arguments = mutableListOf<GValue>()
+    for (proc in aprocs) @{
+        arguments.add(proc(env) ?: return null)
+    @}
+    return primitive(arguments)
+@}
+@end example
+
+@example kotlin
+fun executeApplication(fn: GValue,
+    args: List<GValue>): GValue? @{
+    if (fn !is GClosV) return null
+    val body = bodies[fn] ?: return null
+    val frame = GFrame(mutableMapOf(fn.param to args.get(0)),
+        fn.env)
+    val result = body(frame) ?: return null
+    if (result is GReturnV) return result.value
+    if (result is GBreakV) return null
+    if (result is GContinueV) return null
+    return result
+@}
 @end example
 
 @noindent
@@ -2291,30 +2702,35 @@ run-time support procedures as in @ref{4.1.2}, @ref{4.1.3}, and
 
 @quotation
 @strong{@anchor{Exercise 4.22}Exercise 4.22:} Extend the analyzer of this
-section to support the special form @code{let}.  This edition's
-@code{Analyzer} already derives @code{let} by reusing the direct evaluator's
-rewrite (@code{letToCombinationExpr}, @ref{Exercise 4.6}); do the exercise from
-scratch instead: an @code{analyze} override whose @code{LetE} clause builds the
-execution procedure for the lambda-application combination itself, without
-calling @code{letToCombinationExpr}.  (See @ref{Exercise 4.6}.)
+section to handle the typed local-binding node @code{GLet} directly.  This
+edition's analyzer currently lowers it through @code{letToCombination}
+(@ref{Exercise 4.6}); do the exercise from scratch instead, constructing
+the execution procedure for the binding node without that rewrite.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.23}Exercise 4.23:} Alyssa P. Hacker doesn't
 understand why @code{analyzeSequence} needs to be so complicated.  All the
 other analysis procedures are straightforward transformations of the
-corresponding evaluation procedures (or @code{eval} clauses) in 
+corresponding evaluation procedures (or @code{gEval} clauses) in
 @ref{4.1.1}.  She expected @code{analyzeSequence} to look like this:
 
 @example kotlin
-override fun analyzeSequence(actions: PersistentList<Expr>): Exec @{
-    val procs = actions.map @{ analyze(it) @}
+fun analyzeSequence(statements: List<GStmt>): Exec @{
+    val procs = statements.map @{ analyzeStatement(it) @}
     if (procs.isEmpty()) @{
-        return @{ fail(SchemeError.TypeMismatch("Empty sequence: ANALYZE")) @}
+        return @{ _ -> GUnitV @}
     @}
     return @{ env ->
-        var value: Value = procs.first()(env)
-        for (proc in procs.drop(1)) value = proc(env)
+        var value = procs.first()(env)
+        for (proc in procs.drop(1)) @{
+            if (value !is GReturnV &&
+                value !is GBreakV &&
+                value !is GContinueV
+            ) @{
+                value = proc(env)
+            @}
+        @}
         value
     @}
 @}

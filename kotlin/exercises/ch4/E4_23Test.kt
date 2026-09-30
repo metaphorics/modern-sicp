@@ -16,17 +16,17 @@ public class E4_23Test :
             alyssaSequenceTranscript() shouldBe "20\n60\n"
         }
 
-        test("Exercise 4.23: on a two-expression body Alyssa analyzes less at definition and one more per call").config(
+        test("Exercise 4.23: on a two-statement body Alyssa analyzes less at definition and one more per call").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            textSequenceProfile().twoExpressions shouldBe AnalysisProfile(atDefinition = 3, perCall = 3)
-            alyssaSequenceProfile().twoExpressions shouldBe AnalysisProfile(atDefinition = 2, perCall = 4)
+            textSequenceProfile().twoStatements shouldBe AnalysisProfile(atDefinition = 3, perCall = 3)
+            alyssaSequenceProfile().twoStatements shouldBe AnalysisProfile(atDefinition = 2, perCall = 4)
         }
 
-        test("Exercise 4.23: on a one-expression body the two versions do identical work").config(
+        test("Exercise 4.23: on a one-statement body the two versions do identical work").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            textSequenceProfile().oneExpression shouldBe AnalysisProfile(atDefinition = 2, perCall = 3)
-            alyssaSequenceProfile().oneExpression shouldBe AnalysisProfile(atDefinition = 2, perCall = 3)
+            textSequenceProfile().oneStatement shouldBe AnalysisProfile(atDefinition = 2, perCall = 3)
+            alyssaSequenceProfile().oneStatement shouldBe AnalysisProfile(atDefinition = 2, perCall = 3)
         }
     })

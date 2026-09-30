@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.70: let in add-assertion.
+// Chapter 4, exercise 4.70: the bind-then-append discipline in `assertFact`.
 
 package sicp.ch4.exercises
 

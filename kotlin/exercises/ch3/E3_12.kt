@@ -3,28 +3,26 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.Datum
+import sicp.runtime.PairCell
 import sicp.runtime.PendingSolution
-import sicp.runtime.VPair
-import sicp.runtime.Value
 
 /**
- * Exercise 3.12: `append` is the constructor from 2.2.1 -- it builds a
- * fresh list by consing the elements of `x` onto `y`, touching no pair of
- * `x`. `appendBang` is the mutator version: it splices `y` in after the
- * last pair of `x` and returns `x` itself. The question is which pairs
- * `z = append(x, y)` shares with `x` and which pairs `w =
- * appendBang(x, y)` shares, read off what `x.cdr` prints after each call.
+ * Exercise 3.12: `append` builds a fresh pair spine in front of `y`, leaving
+ * every pair in `x` untouched. `appendBang` changes the final cell of `x`
+ * to point at `y` and returns the original head. Compare their sharing by
+ * following `PairCell.second` references and checking object identity.
  */
 public fun append(
-    x: Value,
-    y: Value,
-): Value = throw PendingSolution()
+    x: Datum,
+    y: Datum,
+): Datum = throw PendingSolution()
 
-/** The last pair of the nonempty chain `x`. */
-public fun lastPair(x: VPair): VPair = throw PendingSolution()
+/** The last pair of a nonempty proper list. */
+public fun lastPair(x: PairCell): PairCell = throw PendingSolution()
 
-/** The book's append!: splice `y` onto the end of `x` by mutation. */
+/** Splice [y] onto the end of [x] by mutation. */
 public fun appendBang(
-    x: VPair,
-    y: VPair,
-): VPair = throw PendingSolution()
+    x: PairCell,
+    y: Datum,
+): PairCell = throw PendingSolution()

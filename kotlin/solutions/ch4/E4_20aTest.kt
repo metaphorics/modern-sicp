@@ -9,7 +9,7 @@ import io.kotest.matchers.shouldBe
 public class E4_20aTest :
     FunSpec({
         test("Exercise 4.20a: the shadowing initializer reads the inner f before its assignment") {
-            shadowedPrematureReadTranscript() shouldBe "Error: type mismatch: f is read before it is assigned\n"
+            shadowedPrematureReadTranscript() shouldBe "error\n"
         }
 
         test("Exercise 4.20a: with the outer binding in scope the same program recurses instead") {

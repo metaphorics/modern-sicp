@@ -62,7 +62,8 @@ sealed interface WithdrawError @{
 
 var balance: Long = 100L
 
-fun withdraw(amount: Long): Either<WithdrawError, Long> =
+fun withdraw(amount: Long): Either<WithdrawError,
+    Long> =
     if (amount > balance) @{
         Either.Left(WithdrawError.InsufficientFunds)
     @} else @{
@@ -120,7 +121,7 @@ the @code{var} named @code{balance}.  @code{Balance -= amount} changes
 @code{balance} so that its new value is the result obtained by evaluating
 @code{balance - amount}: the previous value of @code{balance} minus
 @code{amount}.@footnote{Kotlin needs no special naming convention for
-mutation the way Scheme's @code{set!} does: assigning to a @code{var} is
+mutation the way the original book's assignment form does: assigning to a @code{var} is
 visibly different from an ordinary call, and the compiler itself refuses the
 assignment unless the name was declared @code{var}.  Data structures that
 mutate their own fields, as we will see in @ref{3.3}, follow the same
@@ -131,9 +132,9 @@ balance suffices: first decrementing @code{balance} and then returning the new
 value of @code{balance}.  In general, a Kotlin block already sequences its
 statements this way: @code{@{ balance -= amount; balance @}} runs the first
 statement for its effect and returns the second as the block's
-value.@footnote{Scheme needs a separate @code{begin} form to sequence
-side-effecting expressions, because the body of a Scheme procedure and each
-clause of a @code{cond} are themselves single expressions.  Kotlin's function
+value.@footnote{The original book needs a separate sequencing form for
+side-effecting expressions, because the body of one of its procedures and
+each clause of its conditionals are themselves single expressions.  Kotlin's function
 bodies and each branch of a @code{when} are blocks of statements already, so
 no equivalent form is needed anywhere in this book.}
 
@@ -152,7 +153,8 @@ We can make @code{balance} internal to @code{withdraw} by rewriting the
 definition as follows:
 
 @example kotlin
-fun newWithdraw(): (Long) -> Either<WithdrawError, Long> @{
+fun newWithdraw(): (Long) -> Either<WithdrawError,
+    Long> @{
     var b = 100L
     return @{ amount ->
         if (amount > b) @{
@@ -207,7 +209,8 @@ local.  This will be clearer after the discussion of the environment model of
 evaluation in @ref{3.2}.  (See also @ref{Exercise 3.10}.)}
 
 @example kotlin
-fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> @{
+fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError,
+    Long> @{
     var b = balance
     return @{ amount ->
         if (amount > b) @{
@@ -248,17 +251,18 @@ affect the other.
 
 We can also create objects that handle deposits as well as withdrawals, and
 thus we can represent simple bank accounts.  Here is a function that returns a
-``bank-account object'' with a specified initial balance.  Scheme's
-@code{dispatch} procedure, which hands back the @code{withdraw} or
-@code{deposit} closure for a message symbol, becomes this edition's
-@code{Account} interface: the dispatch the book's @code{cond} approximates is
+``bank-account object'' with a specified initial balance.  The original book's
+dispatch procedure, which hands back the withdraw or
+deposit closure for a message symbol, becomes this edition's
+@code{Account} interface: the dispatch the book's conditional approximates is
 an ordinary method call in Kotlin, and @code{makeAccount} returns an object
 implementing that interface directly, rather than a bare closure, because the
 book has now given the object a real protocol of named operations.
 
 @example kotlin
 interface Account @{
-    fun withdraw(amount: Long): Either<WithdrawError, Long>
+    fun withdraw(amount: Long): Either<WithdrawError,
+        Long>
 
     fun deposit(amount: Long): Long
 @}
@@ -266,7 +270,9 @@ interface Account @{
 fun makeAccount(balance: Long): Account @{
     var b = balance
     return object : Account @{
-        override fun withdraw(amount: Long): Either<WithdrawError, Long> =
+        override fun withdraw(
+            amount: Long,
+        ): Either<WithdrawError, Long> =
             if (amount > b) @{
                 Either.Left(WithdrawError.InsufficientFunds)
             @} else @{
@@ -500,13 +506,17 @@ trials in which the experiment was found to be true.
 fun estimatePi(trials: Int, rand: () -> ULong): Double =
     sqrt(6.0 / monteCarlo(trials) @{ cesaroTest(rand) @})
 
-fun cesaroTest(rand: () -> ULong): Boolean = gcd(rand(), rand()) == 1UL
+fun cesaroTest(rand: () -> ULong): Boolean = gcd(rand(),
+    rand()) == 1UL
 
-fun monteCarlo(trials: Int, experiment: () -> Boolean): Double @{
-    tailrec fun iter(remaining: Int, passed: Int): Double =
+fun monteCarlo(trials: Int,
+    experiment: () -> Boolean): Double @{
+    tailrec fun iter(remaining: Int,
+        passed: Int): Double =
         when @{
             remaining == 0 -> passed.toDouble() / trials
-            experiment() -> iter(remaining - 1, passed + 1)
+            experiment() -> iter(remaining - 1,
+                passed + 1)
             else -> iter(remaining - 1, passed)
         @}
     return iter(trials, 0)
@@ -519,16 +529,23 @@ than a closure over @code{rand}, the way we would be forced to proceed if we did
 assignment to model local state:
 
 @example kotlin
-fun estimatePiStateless(trials: Int, initialX: ULong): Double =
+fun estimatePiStateless(trials: Int,
+    initialX: ULong): Double =
     sqrt(6.0 / randomGcdTest(trials, initialX))
 
-fun randomGcdTest(trials: Int, initialX: ULong): Double @{
-    tailrec fun iter(remaining: Int, passed: Int, x: ULong): Double @{
+fun randomGcdTest(trials: Int,
+    initialX: ULong): Double @{
+    tailrec fun iter(remaining: Int,
+        passed: Int,
+        x: ULong): Double @{
         val x1 = randUpdate(x)
         val x2 = randUpdate(x1)
         return when @{
             remaining == 0 -> passed.toDouble() / trials
-            gcd(x1, x2) == 1UL -> iter(remaining - 1, passed + 1, x2)
+            gcd(x1,
+                x2) == 1UL -> iter(remaining - 1,
+                passed + 1,
+                x2)
             else -> iter(remaining - 1, passed, x2)
         @}
     @}
@@ -606,13 +623,15 @@ implements this in terms of the generator used in
 edition's generator, the same seeded xorshift64* generator introduced in
 @ref{1.2.6}, always returns a raw word regardless of the range
 requested; @code{randomInRange} does the scaling to a @code{Double}
-itself, so there is no separate exact-versus-decimal case the way MIT
-Scheme's @code{random} has.}
+itself, so there is no separate exact-versus-decimal case the way the
+original's random primitive had.}
 
 @example kotlin
-fun randomInRange(low: Double, high: Double, next: () -> ULong): Double @{
+fun randomInRange(low: Double, high: Double, next: () ->
+    ULong): Double @{
     val range = high - low
-    return low + range * (next().toDouble() / ULong.MAX_VALUE.toDouble())
+    return low + range *
+        (next().toDouble() / ULong.MAX_VALUE.toDouble())
 @}
 @end example
 @end quotation
@@ -673,7 +692,8 @@ Compare this function with the following @code{makeDecrementer} function,
 which closes over no @code{var}:
 
 @example kotlin
-fun makeDecrementer(balance: Long): (Long) -> Long = @{ amount -> balance - amount @}
+fun makeDecrementer(balance: Long): (Long) -> Long = @{ amount ->
+    balance - amount @}
 @end example
 
 @noindent
@@ -909,8 +929,11 @@ programs.  For example, recall the iterative factorial program from
 
 @example kotlin
 fun factorial(n: Long): Long @{
-    tailrec fun iter(product: Long, counter: Long): Long =
-        if (counter > n) product else iter(product * counter, counter + 1)
+    tailrec fun iter(product: Long,
+        counter: Long): Long =
+        if (counter > n) product else iter(product * counter,
+            counter +
+            1)
     return iter(1L, 1L)
 @}
 @end example
@@ -978,7 +1001,9 @@ example, if @code{peterAcc} is a bank account with password
 @code{"open-sesame"}, then
 
 @example kotlin
-val paulAcc = makeJoint(peterAcc, "open-sesame", "rosebud")
+val paulAcc = makeJoint(peterAcc,
+    "open-sesame",
+    "rosebud")
 @end example
 
 @noindent
@@ -990,7 +1015,7 @@ solution to @ref{Exercise 3.3} to accommodate this new feature.
 @quotation
 @strong{@anchor{Exercise 3.8}Exercise 3.8:} When we defined the evaluation
 model in @ref{1.1.3}, we said that the first step in evaluating an
-expression is to evaluate its subexpressions.  Scheme never specifies the order
+expression is to evaluate its subexpressions.  The original book's language never specifies the order
 in which the subexpressions should be evaluated (e.g., left to right or right
 to left), and when we introduce assignment, the order in which the arguments to a
 procedure are evaluated can make a difference to the result; SICP's original
@@ -1015,5 +1040,5 @@ f(1) + f(0)
 @noindent
 always evaluates to 1, deterministically on every conformant Kotlin
 implementation, because the order is specified rather than left open the way
-Scheme leaves it.
+the original leaves it.
 @end quotation

@@ -4,7 +4,7 @@
 package sicp.ch3.exercises
 
 import arrow.core.Either
-import sicp.runtime.Value
+import sicp.runtime.Datum
 
 public sealed interface DequeError {
     public data object EmptyDeque : DequeError
@@ -17,27 +17,22 @@ public sealed interface DequeError {
  * the deque are one pointer away from the class's two end pointers.
  */
 public class DPair(
-    public var item: Value,
+    public var item: Datum,
     public var prev: DPair?,
     public var next: DPair?,
 )
 
-/**
- * The book's deque of 3.3.2's exercise: make-deque, empty-deque?,
- * front-deque, rear-deque, and the four mutators as members, each a
- * constant number of pointer writes.
- */
 public class Deque {
     private var front: DPair? = null
     private var rear: DPair? = null
 
     public fun emptyDeque(): Boolean = front == null
 
-    public fun frontDeque(): Value? = front?.item
+    public fun frontDeque(): Datum? = front?.item
 
-    public fun rearDeque(): Value? = rear?.item
+    public fun rearDeque(): Datum? = rear?.item
 
-    public fun frontInsert(item: Value) {
+    public fun frontInsert(item: Datum) {
         val cell = DPair(item, prev = null, next = front)
         val head = front
         if (head == null) {
@@ -48,7 +43,7 @@ public class Deque {
         front = cell
     }
 
-    public fun rearInsert(item: Value) {
+    public fun rearInsert(item: Datum) {
         val cell = DPair(item, prev = rear, next = null)
         val tail = rear
         if (tail == null) {
@@ -59,7 +54,7 @@ public class Deque {
         rear = cell
     }
 
-    public fun frontDelete(): Either<DequeError, Value> {
+    public fun frontDelete(): Either<DequeError, Datum> {
         val head = front ?: return Either.Left(DequeError.EmptyDeque)
         front = head.next
         if (front == null) {
@@ -70,7 +65,7 @@ public class Deque {
         return Either.Right(head.item)
     }
 
-    public fun rearDelete(): Either<DequeError, Value> {
+    public fun rearDelete(): Either<DequeError, Datum> {
         val tail = rear ?: return Either.Left(DequeError.EmptyDeque)
         rear = tail.prev
         if (rear == null) {

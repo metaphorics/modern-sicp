@@ -12,6 +12,6 @@ public class E5_32Test :
         test("Exercise 5.32: the fast path runs the session and the base factorial cost is reported").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            symbolOperatorRuns() shouldBe emptyList()
+            symbolOperatorRuns().last() shouldBe "the two runs answer alike: true"
         }
     })

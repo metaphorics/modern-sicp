@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.8: using reasoning analogous to Alyssa's for `addInterval`,
  * describe how the difference of two intervals may be computed. Define a
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns `subInterval(makeInterval(6.0, 8.0),
  * makeInterval(3.0, 5.0))`.
  */
-public fun ex_2_08(): Interval = throw PendingSolution()
+public fun ex_2_08(): Interval = throw PendingExercise()

@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
+//
 // Chapter 5, exercise 5.22: register machines for append and append!
 // over the list-structure memory. The append machine copies x cell by
 // cell and shares y: the recursion of exercise 3.12's procedure with
@@ -11,21 +13,8 @@
 package sicp.ch5.solutions
 
 import arrow.core.raise.Raise
-import sicp.ch5.MachineError
-import sicp.ch5.Memory
-import sicp.ch5.cons
-import sicp.ch5.dump
-import sicp.ch5.getRegisterContents
-import sicp.ch5.labelSrc
-import sicp.ch5.listOperations
-import sicp.ch5.makeMachine
-import sicp.ch5.opCond
-import sicp.ch5.opSrc
-import sicp.ch5.pairPointer
-import sicp.ch5.reg
-import sicp.ch5.setRegisterContents
-import sicp.ch5.wordToString
-import sicp.ch5.write
+import sicp.guest.GValue
+import sicp.guest.GuestError
 import sicp.runtime.Assign
 import sicp.runtime.Branch
 import sicp.runtime.Goto
@@ -37,19 +26,16 @@ import sicp.runtime.Restore
 import sicp.runtime.Save
 import sicp.runtime.Stmt
 import sicp.runtime.Test
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.Value
 
 /** Plants a proper list of numbers through the allocation path. */
-context(r: Raise<MachineError>)
+context(r: Raise<GuestError>)
 private fun plantList(
     memory: Memory,
     ns: List<Long>,
-): Value {
-    var acc: Value = VNil
+): GValue {
+    var acc: GValue = GValue.VNull
     for (n in ns.asReversed()) {
-        acc = memory.cons(VInt(n), acc)
+        acc = memory.cons(numberWord(n), acc)
     }
     return acc
 }
@@ -98,20 +84,19 @@ public val appendBangController: List<Stmt> =
  *  then append! on a fresh copy, with the memory drawn before and
  *  after the splice. */
 public fun appendRuns(): List<String> =
-    machineRun {
+    machineScope {
         val memory = Memory(size = 16)
         val x = plantList(memory, listOf(1, 2, 3))
         val y = plantList(memory, listOf(4, 5))
         val machine =
-            makeMachine(
-                listOf("x", "y", "z", "temp", "continue"),
+            freshMachine(
+                setOf("x", "y", "z", "temp", "continue"),
                 listOperations(memory),
                 appendController,
+                mapOf("x" to x, "y" to y),
             )
-        machine.setRegisterContents("x", x)
-        machine.setRegisterContents("y", y)
-        machine.start()
-        val z = machine.getRegisterContents("z")
+        runToHalt(machine)
+        val z = machine.registers.getValue("z").content
         val appendLines =
             listOf(
                 "append: z = ${wordToString(z)} = ${memory.write(z)}",
@@ -124,15 +109,14 @@ public fun appendRuns(): List<String> =
         val y2 = plantList(memory2, listOf(4, 5))
         val before = memory2.dump()
         val machine2 =
-            makeMachine(
-                listOf("x", "y", "temp", "cand"),
+            freshMachine(
+                setOf("x", "y", "temp", "cand"),
                 listOperations(memory2),
                 appendBangController,
+                mapOf("x" to x2, "y" to y2),
             )
-        machine2.setRegisterContents("x", x2)
-        machine2.setRegisterContents("y", y2)
-        machine2.start()
-        val xSpliced = machine2.getRegisterContents("x")
+        runToHalt(machine2)
+        val xSpliced = machine2.registers.getValue("x").content
         appendLines +
             listOf(
                 "append!: before, the last pair of x points at e0:",

@@ -9,9 +9,10 @@ import io.kotest.matchers.shouldBe
 
 public class E2_30Test :
     FunSpec({
-        test("Exercise 2.30: squareTree squares every leaf of (1 (2 (3 4) 5) (6 7))").config(
+        test("Exercise 2.30 squares leaves while preserving the shared tree shape").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_30() shouldBe "(1 (4 (9 16) 25) (36 49))"
+            ex_2_30() shouldBe
+                tree(leaf(1L), tree(leaf(4L), tree(leaf(9L), leaf(16L)), leaf(25L)), tree(leaf(36L), leaf(49L)))
         }
     })

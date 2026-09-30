@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.49: use `segments->painter` to define the following
  * primitive painters: (a) the painter that draws the outline of the
@@ -17,4 +15,4 @@ import sicp.runtime.PendingSolution
  * `xPainter`, and `diamondPainter` painted into `unitSquare`, in that
  * order.
  */
-public fun ex_2_49(): List<Int> = throw PendingSolution()
+public fun ex_2_49(): List<Int> = throw PendingExercise()

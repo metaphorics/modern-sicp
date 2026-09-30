@@ -12,6 +12,6 @@ public class E5_35Test :
         test("Exercise 5.35: the seeded compilation replays Figure 5.18 statement for statement").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            figure5_18Compilation() shouldBe emptyList()
+            figure5_18Compilation().last() shouldBe "recompiling reproduces the same statements: true"
         }
     })

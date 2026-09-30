@@ -46,7 +46,9 @@ the block the context argument is supplied by the scope itself, so calls
 read as plain calls:
 
 @example kotlin
-public fun parsePortEither(s: String): Either<PortError, Int> = either @{ parsePort(s) @}
+public fun parsePortEither(s: String): Either<PortError,
+    Int> =
+    either @{ parsePort(s) @}
 
 parsePortEither(" 8080 ")
 // => Either.Right(8080)
@@ -66,20 +68,21 @@ mode, so a caller can dispatch on errors with the exhaustive @code{when} of
 @ref{0.4}. This book keeps error sets per domain: the account of
 @ref{3.1} raises @code{AccountError}, the interval arithmetic of @ref{2.1.4}
 raises @code{IntervalError}, and so on. One error set is shared by every
-chapter that runs interpreted programs: the runtime's @code{SchemeError},
-whose variants carry the book's runtime faults, from @code{Unbound} for a
-name lookup that walked the whole environment chain, through
-@code{TypeMismatch} and @code{DivisionByZero}, to @code{Overflow} for
-checked arithmetic past the @code{Long} width. The book's own
-@code{(error "message" irritant ...)} calls raise @code{UserRaised}, so
-user programs of @ref{4.1} fail with values too.
+chapter that runs interpreted programs: a typed error whose categories
+carry the book's runtime faults, from an unbound name that walked the whole
+environment chain, through type mismatches and division by zero, to
+checked arithmetic past the @code{Long} width. A user program signals
+failure by raising a typed error: a named category with a message and the
+offending values. The runtime reports the category; a raw host exception
+never escapes, so user programs of @ref{4.1} fail with values too.
 
 @heading What this buys
 
 Three consequences follow and are used without further comment later.
 Errors compose: a helper that raises composes with any other raising
 helper, and no try-and-rethrow plumbing appears. Errors stay typed all the
-way to the driver: @code{Either.Left(InsufficientFunds)} is a value that
+way to the driver: an @code{Either.Left} carrying the failure---say an
+insufficient-funds refusal from the account of @ref{3.1}---is a value that
 tests can compare, which is how the exercises of @ref{3.1} and @ref{4.3}
 pin failure behavior. And test failure paths cost the same as success
 paths: a probe asserts @code{Either.Left(NotDigits("1x"))} where an
@@ -107,4 +110,4 @@ throws where your version returns a value.
 
 @cindex Either
 @cindex Raise
-@cindex SchemeError
+@cindex typed errors

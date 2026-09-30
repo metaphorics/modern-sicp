@@ -91,5 +91,5 @@ private fun parseFactor(tokens: Tokens): Expr {
 /** Part b): parses an infix expression with standard `*`-over-`+` precedence into this section's [Expr]. */
 public fun parseWithPrecedence(s: String): Expr = parseSum(Tokens(tokenize(s)))
 
-/** The derivative of `"x + 3 * (x + y + 2)"` w.r.t. `x`, parsed with part b)'s precedence-aware parser. */
-public fun ex_2_58(): String = printExpr(deriv(parseWithPrecedence("x + 3 * (x + y + 2)"), "x"))
+/** The derivative tree of the example expression parsed with standard precedence. */
+public fun ex_2_58(): Expr = deriv(parseWithPrecedence("x + 3 * (x + y + 2)"), "x")

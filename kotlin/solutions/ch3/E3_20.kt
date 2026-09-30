@@ -3,44 +3,39 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.Value
+import sicp.runtime.Datum
 
 /**
- * The procedural pair of 3.3.1: four operations over the two slots
- * captured by `proceduralCons`.
+ * A procedural pair of 3.3.1: two mutable slots captured by the selectors
+ * and updates, demonstrating shared state through aliases.
  */
 public interface PairProc {
-    public fun car(): Value
+    public fun first(): Datum
 
-    public fun cdr(): Value
+    public fun second(): Datum
 
-    public fun setCar(v: Value)
+    public fun setFirst(v: Datum)
 
-    public fun setCdr(v: Value)
+    public fun setSecond(v: Datum)
 }
 
-/**
- * The book's mutable `cons` as a closure: two captured `var` slots, read
- * by the selectors and written by the mutators, exactly the way the bank
- * account of 3.1.1 kept its balance in a captured local.
- */
-public fun proceduralCons(
-    x: Value,
-    y: Value,
+public fun proceduralPair(
+    x: Datum,
+    y: Datum,
 ): PairProc {
-    var carCell = x
-    var cdrCell = y
+    var firstSlot = x
+    var secondSlot = y
     return object : PairProc {
-        override fun car(): Value = carCell
+        override fun first(): Datum = firstSlot
 
-        override fun cdr(): Value = cdrCell
+        override fun second(): Datum = secondSlot
 
-        override fun setCar(v: Value) {
-            carCell = v
+        override fun setFirst(v: Datum) {
+            firstSlot = v
         }
 
-        override fun setCdr(v: Value) {
-            cdrCell = v
+        override fun setSecond(v: Datum) {
+            secondSlot = v
         }
     }
 }

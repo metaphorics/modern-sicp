@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.45: `rightSplit` and `upSplit` can be expressed as instances
  * of a general splitting operation. Define a procedure `split` with the
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the segment count `split(::beside, ::below)(wave,
  * 1)` paints into [unitSquare].
  */
-public fun ex_2_45(): Int = throw PendingSolution()
+public fun ex_2_45(): Int = throw PendingExercise()

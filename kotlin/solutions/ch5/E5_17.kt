@@ -1,62 +1,54 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
+//
 // Chapter 5, exercise 5.17: traced lines with their labels. The tracing
 // machine keeps the label currently in effect -- the most recently passed
 // label definition -- and prints it ahead of each traced instruction, so
-// the trace reads like the controller listing.
+// the trace reads like the controller listing. Label definitions
+// themselves take no trace line and never disturb the instruction count.
 
 package sicp.ch5.solutions
 
-import arrow.core.raise.Raise
-import sicp.ch5.Machine
-import sicp.ch5.MachineError
-import sicp.ch5.Op
-import sicp.ch5.arithOperations
-import sicp.ch5.setRegisterContents
-import sicp.runtime.Reg
-import sicp.runtime.VInt
+import sicp.guest.GValue
+import sicp.runtime.Label
+import sicp.runtime.MachineOp
+import sicp.runtime.Stmt
 
 /** The label-aware tracing machine: a label at the current address is
  *  printed before the instruction text. */
 public class LabelTracingMachine(
-    registerNames: List<Reg>,
-    userOperations: Map<String, Op>,
-) : Machine(registerNames, userOperations) {
+    registerNames: Set<String>,
+    ops: Map<String, MachineOp>,
+    controller: List<Stmt>,
+    initial: Map<String, GValue> = emptyMap(),
+) {
     /** The trace switch. */
     public var traceOn: Boolean = false
 
-    private var labelAt: Map<Int, String> = emptyMap()
-    private var currentLabel: String? = null
+    private val machine = freshMachine(registerNames, ops, controller, initial)
 
-    context(r: Raise<MachineError>)
-    override fun execute() {
-        labelAt = labels.entries.associate { (name, address) -> address to name }
-        currentLabel = null
-        while (pc < insts.size) {
-            labelAt[pc]?.let { currentLabel = it }
-            if (traceOn) {
+    /** Runs the machine, answering the labeled trace lines. */
+    public fun run(): List<String> {
+        var currentLabel: String? = null
+        return traceDrive(machine, { traceOn }) { instruction ->
+            if (instruction is Label) {
+                currentLabel = instruction.name
+                null
+            } else {
                 val label = currentLabel
-                transcript.appendLine(
-                    if (label == null) insts[pc].text else "$label: ${insts[pc].text}",
-                )
+                if (label == null) instructionText(instruction) else "$label: ${instructionText(instruction)}"
             }
-            insts[pc].exec(r)
         }
     }
 }
 
 /** The traced gcd run with labels: every executed line is named by the
- *  label in effect, `test-b` for the loop, `gcd-done` for nothing (the
- *  machine halts on reaching it). */
+ *  label in effect, `test-b` for the loop; `gcd-done` never takes a line,
+ *  because the machine halts on reaching it. */
 public fun labelTracedGcdTrace(): List<String> =
-    machineRun {
-        val machine = LabelTracingMachine(listOf("a", "b", "t"), arithOperations)
-        machine.install(gcdController)
-        machine.setRegisterContents("a", VInt(206))
-        machine.setRegisterContents("b", VInt(40))
-        machine.traceOn = true
-        machine.start()
-        machine.transcript
-            .toString()
-            .trimEnd()
-            .lines()
-    }
+    LabelTracingMachine(
+        setOf("a", "b", "t"),
+        machineArithmetic,
+        gcdController,
+        mapOf("a" to GValue.VLong(206), "b" to GValue.VLong(40)),
+    ).apply { traceOn = true }.run()

@@ -3,138 +3,98 @@
 
 package sicp.runtime
 
-import arrow.core.Either
 import arrow.core.raise.either
+import io.kotest.assertions.assertSoftly
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import kotlinx.collections.immutable.persistentMapOf
+import sicp.guest.GValue
+import sicp.runtime.Source.ConstSrc
+import sicp.runtime.Source.LabelSrc
+import sicp.runtime.Source.OpSrc
+import sicp.runtime.Source.RegSrc
 
 public class MachineTest :
     FunSpec({
-        val ops: kotlinx.collections.immutable.PersistentMap<String, Op> =
-            persistentMapOf(
-                "=" to
-                    { args ->
-                        val (a, b) = args
-                        VBool((a as VInt).n == (b as VInt).n)
-                    },
-                "rem" to
-                    { args ->
-                        val (a, b) = args
-                        VInt((a as VInt).n % (b as VInt).n)
-                    },
-                "print" to { args -> args.firstOrNull() ?: VNil },
-            )
+        test("assemble rejects duplicate labels") {
+            val program = listOf(Label("top"), Assign("a", ConstSrc(GValue.VInt(1))), Label("top"))
+            assemble(program).isLeft() shouldBe true
+        }
 
-        fun gcdMachine(): Machine =
-            Machine(
-                regs = setOf("a", "b", "t"),
-                ops = ops,
-                controller =
-                    listOf(
-                        Label("test-b"),
-                        Test(OpCond("=", listOf(Source.RegSrc("b"), Source.ConstSrc(VInt(0))))),
-                        Branch("gcd-done"),
-                        Assign("t", Source.OpSrc("rem", listOf(Source.RegSrc("a"), Source.RegSrc("b")))),
-                        Assign("a", Source.RegSrc("b")),
-                        Assign("b", Source.RegSrc("t")),
-                        Goto(GotoTarget.Lbl("test-b")),
-                        Label("gcd-done"),
-                    ),
-            )
+        test("assemble rejects unknown branch targets") {
+            val program = listOf(Test(OpCond("truth", emptyList())), Branch("nowhere"))
+            assemble(program).isLeft() shouldBe true
+        }
 
-        test("the gcd machine computes gcd(40, 6) = 2") {
-            val m = gcdMachine()
-            either {
-                m.reg("a").content = VInt(40)
-                m.reg("b").content = VInt(6)
-                m.run()
-            }.isRight() shouldBe true
-            m.registers.getValue("a").content shouldBe VInt(2)
+        test("assemble rejects label operands inside operation arguments") {
+            val program = listOf(Assign("a", OpSrc("combine", listOf(LabelSrc("later")))), Label("later"))
+            assemble(program).isLeft() shouldBe true
+        }
+
+        test("reading a register before any write raises UnassignedRegister") {
+            val machine = Machine(setOf("a"), emptyMap(), listOf(Assign("b", RegSrc("a"))))
+            either { machine.run() }.isLeft() shouldBe true
+        }
+
+        test("test and branch dispatch on the flag and run halts past the end") {
+            val ops = mapOf<String, MachineOp>("even" to { args -> GValue.VBool((args[0] as GValue.VInt).value % 2 == 0) })
+            val program =
+                listOf(
+                    Assign("a", ConstSrc(GValue.VInt(4))),
+                    Test(OpCond("even", listOf(RegSrc("a")))),
+                    Branch("hit"),
+                    Assign("b", ConstSrc(GValue.VInt(0))),
+                    Goto(GotoTarget.Lbl("done")),
+                    Label("hit"),
+                    Assign("b", ConstSrc(GValue.VInt(1))),
+                    Label("done"),
+                )
+            val machine = Machine(setOf("a", "b"), ops, program)
+            either { machine.run() }.isRight() shouldBe true
+            machine.halted() shouldBe true
+            machine.registers["b"]?.content shouldBe GValue.VInt(1)
         }
 
         test("save and restore move values through the monitored stack") {
-            val m =
-                Machine(
-                    regs = setOf("x", "y"),
-                    ops = Machine.noOps,
-                    controller =
-                        listOf(
-                            Assign("x", Source.ConstSrc(VInt(1))),
-                            Save("x"),
-                            Assign("x", Source.ConstSrc(VInt(2))),
-                            Save("x"),
-                            Restore("y"),
-                            Restore("x"),
-                        ),
+            val program =
+                listOf(
+                    Assign("a", ConstSrc(GValue.VInt(7))),
+                    Save("a"),
+                    Assign("a", ConstSrc(GValue.VInt(0))),
+                    Restore("a"),
                 )
-            either { m.run() }.isRight() shouldBe true
-            m.registers.getValue("x").content shouldBe VInt(1)
-            m.registers.getValue("y").content shouldBe VInt(2)
-            m.stack.pushes shouldBe 2
-            m.stack.maxDepth shouldBe 2
-            m.stack.depth shouldBe 0
+            val machine = Machine(setOf("a"), emptyMap(), program)
+            either { machine.run() }.isRight() shouldBe true
+            assertSoftly {
+                machine.registers["a"]?.content shouldBe GValue.VInt(7)
+                machine.stack.pushes shouldBe 1L
+                machine.stack.maxDepth shouldBe 1L
+                machine.stack.depth shouldBe 0
+            }
         }
 
-        test("restore on an empty stack raises StackUnderflow") {
-            val m =
-                Machine(
-                    regs = setOf("x"),
-                    ops = Machine.noOps,
-                    controller = listOf(Restore("x")),
+        test("continue holds a label index and goto-by-reg jumps to it") {
+            val program =
+                listOf(
+                    Assign("continue", LabelSrc("done")),
+                    Assign("a", ConstSrc(GValue.VInt(1))),
+                    Goto(GotoTarget.ByReg("continue")),
+                    Assign("a", ConstSrc(GValue.VInt(2))),
+                    Label("done"),
                 )
-            either { m.run() } shouldBe Either.Left(SchemeError.StackUnderflow)
-        }
-
-        test("a goto through a register jumps to the stored label") {
-            val m =
-                Machine(
-                    regs = setOf("continue", "val"),
-                    ops = Machine.noOps,
-                    controller =
-                        listOf(
-                            Assign("continue", Source.LabelSrc("done")),
-                            Assign("val", Source.ConstSrc(VInt(1))),
-                            Goto(GotoTarget.ByReg("continue")),
-                            Assign("val", Source.ConstSrc(VInt(99))),
-                            Label("done"),
-                        ),
-                )
-            either { m.run() }.isRight() shouldBe true
-            m.registers.getValue("val").content shouldBe VInt(1)
-        }
-
-        test("an unknown label raises UnknownLabel") {
-            val m =
-                Machine(
-                    regs = setOf("x"),
-                    ops = Machine.noOps,
-                    controller = listOf(Goto(GotoTarget.Lbl("nowhere"))),
-                )
-            either { m.run() } shouldBe Either.Left(SchemeError.UnknownLabel("nowhere"))
-        }
-
-        test("an unknown operation raises MachineFault") {
-            val m =
-                Machine(
-                    regs = setOf("x"),
-                    ops = Machine.noOps,
-                    controller = listOf(Assign("x", Source.OpSrc("nope", emptyList()))),
-                )
-            either { m.run() } shouldBe Either.Left(SchemeError.MachineFault("unknown operation: nope"))
+            val machine = Machine(setOf("a", "continue"), emptyMap(), program)
+            either { machine.run() }.isRight() shouldBe true
+            machine.registers["a"]?.content shouldBe GValue.VInt(1)
         }
 
         test("step executes one instruction at a time") {
-            val m = gcdMachine()
-            either {
-                m.reg("a").content = VInt(40)
-                m.reg("b").content = VInt(6)
-                m.step()
-                m.pc shouldBe 1
-                m.step()
-                m.testFlag shouldBe false
-                while (!m.halted()) m.step()
-            }.isRight() shouldBe true
-            m.registers.getValue("a").content shouldBe VInt(2)
+            val program = listOf(Assign("a", ConstSrc(GValue.VInt(1))), Assign("a", ConstSrc(GValue.VInt(2))))
+            val machine = Machine(setOf("a"), emptyMap(), program)
+            either { machine.step() }.isRight() shouldBe true
+            assertSoftly {
+                machine.instructions shouldBe 1L
+                machine.halted() shouldBe false
+            }
+            either { machine.run() }.isRight() shouldBe true
+            machine.instructions shouldBe 2L
         }
     })

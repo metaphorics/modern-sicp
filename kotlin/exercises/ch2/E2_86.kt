@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.86: complex numbers whose real parts, imaginary parts,
  * magnitudes, and angles may themselves be any tower value. The
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  * the part arithmetic rides the raising dispatch of exercise 2.84, so
  * mixed-level parts combine.
  */
-public fun ex_2_86(): Boolean = throw PendingSolution()
+public fun ex_2_86(): Boolean = throw PendingExercise()

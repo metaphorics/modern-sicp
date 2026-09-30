@@ -3,57 +3,89 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.either
-import sicp.ch4.AmbEvaluator
-import sicp.ch4.printValue
+import sicp.ch4.SearchModule
+import sicp.ch4.SearchRun
 
-private val louisPrelude: String = "$AMB_BASE_PRELUDE\n$PARSER_PROGRAM\n$LOUIS_VERB_PHRASE"
+// Exercise 4.47: Louis Reasoner's `parse-verb-phrase`. Louis puts the
+// recursion inside the first alternative's construction, so the search
+// tries to build the extension before it has a verb phrase to extend.
+// Its first parse still arrives, but the next answers recurse without
+// consuming input; interchanging the alternatives recurses even before
+// that first parse. The host sets a choice horizon rather than forcing
+// an unbounded run or fabricating a guest budget line.
 
-/** Louis's version delivers the text's first parse for "The cat eats".
- * The generous budget never fires for the first parse (two choices); it
- * exists so the divergent variants of this exercise stay bounded. */
+/** The section's parser with Louis's verb phrase. */
+internal val LOUIS_PARSER_SOURCE: String =
+    PARSER_SOURCE +
+        """
+
+fun louisVerbPhrase(): String =
+    choose(parseWord("verb", verbs), "(verb-phrase " + louisVerbPhrase() + " " + parsePrepositionalPhrase() + ")")
+        """.trimIndent()
+
+/** The interchanged order: the recursion is the first alternative. */
+internal val LOUIS_INTERCHANGED_SOURCE: String =
+    PARSER_SOURCE +
+        """
+
+fun interchangedVerbPhrase(): String =
+    choose("(verb-phrase " + interchangedVerbPhrase() + " " + parsePrepositionalPhrase() + ")", parseWord("verb", verbs))
+        """.trimIndent()
+
+/** Louis's session: the text's input, one complete parse, then the dive. */
+internal val LOUIS_PROBE: String =
+    """
+fun main() {
+    unparsed = listOf("the", "cat", "eats")
+    val noun = parseNounPhrase()
+    val verb = louisVerbPhrase()
+    requireThat(unparsed.size == 0)
+    println("(sentence " + noun + " " + verb + ")")
+}
+    """.trimIndent()
+
+/** The interchanged session: the dive comes before any parse. */
+internal val INTERCHANGED_PROBE: String =
+    """
+fun main() {
+    unparsed = listOf("the", "cat", "eats")
+    val noun = parseNounPhrase()
+    val verb = interchangedVerbPhrase()
+    requireThat(unparsed.size == 0)
+    println("(sentence " + noun + " " + verb + ")")
+}
+    """.trimIndent()
+
+/** Louis's first parse arrives within the 500-choice horizon. */
 public fun louisFirstParse(): String =
-    try {
-        either {
-            val driver = newDriver({ env, _ -> BudgetAmb(env, 5000) }, louisPrelude)
-            val answer = driver.solve("(parse '(the cat eats))")
-            printValue(answer ?: throw AssertionError("no parse"))
-        }.fold(
-            { e -> "scheme error: $e" },
-            { it },
-        )
-    } catch (budget: BudgetExhausted) {
-        "BUDGET FIRED: ${budget.message}"
-    }
+    boundedParse(LOUIS_PARSER_SOURCE + "\n" + LOUIS_PROBE, 1, 500)
+        .result.output
+        .lineSequence()
+        .first { it.isNotEmpty() }
 
-/** Its try-again diverges once the input is spent: the second
- * alternative recurses before anything is consumed. => "choice budget
- * exhausted after 500 choices" */
-public fun louisTryAgainFault(): String =
-    try {
-        either {
-            val driver = newDriver({ env, _ -> BudgetAmb(env, 500) }, louisPrelude)
-            val answers = mutableListOf<String>()
-            var next = driver.solve("(parse '(the cat eats))")
-            while (next != null && answers.size < 8) {
-                answers.add(printValue(next))
-                next = driver.tryAgain()
-            }
-            "no fault in ${answers.size} answers"
-        }.fold(
-            { e -> e.toString() },
-            { it },
-        )
-    } catch (budget: BudgetExhausted) {
-        budget.message ?: "budget exhausted"
-    }
+/** A further search after Louis's first parse reaches the host horizon. */
+public fun louisTryAgainFault(): String = horizon(boundedParse(LOUIS_PARSER_SOURCE + "\n" + LOUIS_PROBE, 2, 500))
 
-/** The interchanged order diverges on the first parse: the recursion
- * runs before any word is consumed. => "choice budget exhausted after
- * 300 choices" */
-public fun interchangedFault(): String =
-    budgetedFault(
-        "$AMB_BASE_PRELUDE\n$PARSER_PROGRAM\n$LOUIS_INTERCHANGED",
-        "(parse '(the cat eats))",
-        cap = 300,
+/** Recursion-first order reaches the host horizon without a parse. */
+public fun interchangedFault(): String = horizon(boundedParse(LOUIS_INTERCHANGED_SOURCE + "\n" + INTERCHANGED_PROBE, 1, 300))
+
+private fun boundedParse(
+    source: String,
+    maxAnswers: Int,
+    maxChoices: Int,
+): SearchRun =
+    SearchModule.run(source, maxAnswers, maxChoices).fold(
+        { error -> throw AssertionError(error.toString()) },
+        { run ->
+            check(run.result.error == null) { run.result.error.toString() }
+            run
+        },
     )
+
+private fun horizon(run: SearchRun): String {
+    val answers =
+        run.result.output
+            .lineSequence()
+            .count { it.isNotEmpty() }
+    return "answers: " + answers + ", choices: " + run.choices
+}

@@ -12,6 +12,12 @@ public class E5_03Test :
         test("Exercise 5.03: the sqrt machine in two stages").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            sqrtMachineTranscripts() shouldBe listOf("MEASURE")
+            sqrtMachineTranscripts() shouldBe
+                listOf(
+                    "1.4142156862745097",
+                    "1.4142156862745097",
+                    "3.00009155413138",
+                    "3.00009155413138",
+                )
         }
     })

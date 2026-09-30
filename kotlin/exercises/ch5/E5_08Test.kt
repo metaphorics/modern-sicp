@@ -12,6 +12,6 @@ public class E5_08Test :
         test("Exercise 5.08: a doubly defined label is an assembly error").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            duplicateLabelOutcome() shouldBe "MEASURE"
+            duplicateLabelOutcome() shouldBe "DuplicateLabel: here"
         }
     })

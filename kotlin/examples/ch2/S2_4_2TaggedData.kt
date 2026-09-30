@@ -8,138 +8,143 @@ import arrow.core.raise.Raise
 import arrow.core.raise.either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.SchemeError
-import sicp.runtime.VInt
-import sicp.runtime.VReal
-import sicp.runtime.VTagged
-import sicp.runtime.Value
+import sicp.runtime.Datum
+import sicp.runtime.DatumError
+import sicp.runtime.PairCell
+import sicp.runtime.Real
+import sicp.runtime.Tagged
+import sicp.runtime.Whole
 
-/**
- * Tags `contents` with `typeTag`: the book's `attach-tag`. The runtime's
- * [VTagged] already is the tag-and-contents pairing; this is the named
- * constructor the section's listings call.
- */
+/** Attach a representation name to a native datum payload. */
 public fun attachTag(
     typeTag: String,
-    contents: Value,
-): Value = VTagged(typeTag, contents)
+    contents: Datum,
+): Datum = Tagged(typeTag, contents)
 
-/** The tag of a tagged datum: the book's `type-tag`. */
-context(r: Raise<SchemeError>)
-public fun typeTag(datum: Value): String =
+/** Read the representation name from a tagged datum. */
+context(r: Raise<DatumError>)
+public fun typeTag(datum: Datum): String =
     when (datum) {
-        is VTagged -> datum.tag
-        else -> r.raise(SchemeError.UserRaised("Bad tagged datum: TYPE-TAG", listOf(datum)))
+        is Tagged -> datum.tag
+        else -> r.raise(DatumError.BadDatum("datum has no representation tag", listOf(datum)))
     }
 
-/** The contents of a tagged datum: the book's `contents`. */
-context(r: Raise<SchemeError>)
-public fun contents(datum: Value): Value =
+/** Read the payload without changing its underlying pair structure. */
+context(r: Raise<DatumError>)
+public fun contents(datum: Datum): Datum =
     when (datum) {
-        is VTagged -> datum.data
-        else -> r.raise(SchemeError.UserRaised("Bad tagged datum: CONTENTS", listOf(datum)))
+        is Tagged -> datum.payload
+        else -> r.raise(DatumError.BadDatum("datum has no tagged payload", listOf(datum)))
     }
 
-/** Recognizes rectangular numbers: the book's `rectangular?`. A datum
- * with no tag at all is simply neither, not an error. */
-public fun isRectangular(z: Value): Boolean = z is VTagged && z.tag == "rectangular"
+/** Recognize rectangular representation data without raising on other values. */
+public fun isRectangular(z: Datum): Boolean = z is Tagged && z.tag == "rectangular"
 
-/** Recognizes polar numbers: the book's `polar?`. */
-public fun isPolar(z: Value): Boolean = z is VTagged && z.tag == "polar"
+/** Recognize polar representation data without raising on other values. */
+public fun isPolar(z: Datum): Boolean = z is Tagged && z.tag == "polar"
 
-/** Ben's tagged constructors: identical to [rectMakeFromRealImag] and
- * [rectMakeFromMagAng], except that they attach the tag. */
+/** Attach the rectangular tag to either rectangular construction. */
 public fun rectMakeFromRealImagTagged(
     x: Double,
     y: Double,
-): Value = attachTag("rectangular", rectMakeFromRealImag(x, y))
+): Datum = attachTag("rectangular", rectMakeFromRealImag(x, y))
 
 public fun rectMakeFromMagAngTagged(
     mag: Double,
     ang: Double,
-): Value = attachTag("rectangular", rectMakeFromMagAng(mag, ang))
+): Datum = attachTag("rectangular", rectMakeFromMagAng(mag, ang))
 
-/** Alyssa's tagged constructors. */
+/** Attach the polar tag to either polar construction. */
 public fun polarMakeFromRealImagTagged(
     x: Double,
     y: Double,
-): Value = attachTag("polar", polarMakeFromRealImag(x, y))
+): Datum = attachTag("polar", polarMakeFromRealImag(x, y))
 
 public fun polarMakeFromMagAngTagged(
     mag: Double,
     ang: Double,
-): Value = attachTag("polar", polarMakeFromMagAng(mag, ang))
+): Datum = attachTag("polar", polarMakeFromMagAng(mag, ang))
 
-/**
- * Each generic selector dispatches explicitly on the tag: the book's
- * `real-part`, `imag-part`, `magnitude`, and `angle` of 2.4.2, in terms
- * of Ben's and Alyssa's untagged selectors from 2.4.1. Section 2.4.3
- * replaces this `when` with a table lookup, keeping the same names; both
- * versions live in this section under distinct ones.
- */
-context(r: Raise<SchemeError>)
-public fun realPartDispatch(z: Value): Value =
+/** Dispatch a complex selector on the representation tag. */
+context(r: Raise<DatumError>)
+public fun realPartDispatch(z: Datum): Datum =
     when {
         isRectangular(z) -> rectRealPart(contents(z))
         isPolar(z) -> polarRealPart(contents(z))
-        else -> r.raise(SchemeError.UserRaised("Unknown type: REAL-PART", listOf(z)))
+        else -> r.raise(DatumError.BadDatum("unknown real-part representation", listOf(z)))
     }
 
-context(r: Raise<SchemeError>)
-public fun imagPartDispatch(z: Value): Value =
+context(r: Raise<DatumError>)
+public fun imagPartDispatch(z: Datum): Datum =
     when {
         isRectangular(z) -> rectImagPart(contents(z))
         isPolar(z) -> polarImagPart(contents(z))
-        else -> r.raise(SchemeError.UserRaised("Unknown type: IMAG-PART", listOf(z)))
+        else -> r.raise(DatumError.BadDatum("unknown imaginary-part representation", listOf(z)))
     }
 
-context(r: Raise<SchemeError>)
-public fun magnitudeDispatch(z: Value): Value =
+context(r: Raise<DatumError>)
+public fun magnitudeDispatch(z: Datum): Datum =
     when {
         isRectangular(z) -> rectMagnitude(contents(z))
         isPolar(z) -> polarMagnitude(contents(z))
-        else -> r.raise(SchemeError.UserRaised("Unknown type: MAGNITUDE", listOf(z)))
+        else -> r.raise(DatumError.BadDatum("unknown magnitude representation", listOf(z)))
     }
 
-context(r: Raise<SchemeError>)
-public fun angleDispatch(z: Value): Value =
+context(r: Raise<DatumError>)
+public fun angleDispatch(z: Datum): Datum =
     when {
         isRectangular(z) -> rectAngle(contents(z))
         isPolar(z) -> polarAngle(contents(z))
-        else -> r.raise(SchemeError.UserRaised("Unknown type: ANGLE", listOf(z)))
+        else -> r.raise(DatumError.BadDatum("unknown angle representation", listOf(z)))
     }
 
 public class S2_4_2TaggedDataTest :
     FunSpec({
-        test("a tagged rectangular number prints its tag and its untagged contents") {
-            val z = rectMakeFromRealImagTagged(3.0, 4.0)
-            z.toString() shouldBe "(rectangular (3.0 . 4.0))"
+        test("rectangular data preserves its tag and coordinate pair") {
+            val z = rectMakeFromRealImagTagged(3.0, 4.0) as Tagged
+            z.tag shouldBe "rectangular"
+            val coordinates = z.payload as PairCell
+            coordinates.first shouldBe Real(3.0)
+            coordinates.second shouldBe Real(4.0)
+            z.toString() shouldBe
+                "Tagged(tag=\"rectangular\", payload=PairCell(first=Real(value=3.0), second=Real(value=4.0)))"
         }
 
-        test("a tagged polar number prints its tag and its untagged contents") {
-            val z = polarMakeFromMagAngTagged(1.0, 0.0)
-            z.toString() shouldBe "(polar (1.0 . 0.0))"
+        test("polar data preserves its tag and magnitude-angle pair") {
+            val z = polarMakeFromMagAngTagged(1.0, 0.0) as Tagged
+            z.tag shouldBe "polar"
+            val coordinates = z.payload as PairCell
+            coordinates.first shouldBe Real(1.0)
+            coordinates.second shouldBe Real(0.0)
         }
 
-        test("the dispatch selectors serve either tag, stripping and never leaking the tag") {
+        test("generic dispatch returns components and removes the representation tag") {
             val result =
                 either {
-                    val rect = rectMakeFromRealImagTagged(3.0, 4.0)
+                    val rectangular = rectMakeFromRealImagTagged(3.0, 4.0)
                     val polar = polarMakeFromMagAngTagged(5.0, 0.0)
-                    Triple(magnitudeDispatch(rect), realPartDispatch(polar), isRectangular(rect) to isPolar(rect))
+                    Triple(
+                        realOf(magnitudeDispatch(rectangular)),
+                        realOf(realPartDispatch(polar)),
+                        isRectangular(rectangular) to isPolar(rectangular),
+                    )
                 }
-            result shouldBe Either.Right(Triple(VReal(5.0) as Value, VReal(5.0) as Value, true to false))
+            result shouldBe Either.Right(Triple(5.0, 5.0, true to false))
         }
 
-        test("an untagged datum raises the book's unknown-type error") {
-            val z = rectMakeFromRealImag(3.0, 4.0)
-            val result = either { realPartDispatch(z) }
-            result shouldBe Either.Left(SchemeError.UserRaised("Unknown type: REAL-PART", listOf(z)))
+        test("an untagged complex datum raises a typed dispatch error") {
+            val datum = rectMakeFromRealImag(3.0, 4.0)
+            val result = either { realPartDispatch(datum) }
+            val error = result.leftOrNull()
+            (error is DatumError.BadDatum) shouldBe true
+            error?.offending shouldBe listOf(datum)
         }
 
-        test("a non-tagged, non-pair datum raises the book's bad-tagged-datum error") {
-            val notTagged = VInt(1)
-            val result = either { typeTag(notTagged) }
-            result shouldBe Either.Left(SchemeError.UserRaised("Bad tagged datum: TYPE-TAG", listOf(notTagged)))
+        test("a non-tagged scalar raises a typed tag-access error") {
+            val datum = Whole(1L)
+            val result = either { typeTag(datum) }
+            val error = result.leftOrNull()
+            (error is DatumError.BadDatum) shouldBe true
+            error?.offending shouldBe listOf(datum)
         }
     })

@@ -12,6 +12,9 @@ public class E5_31Test :
         test("Exercise 5.31: the four combinations report their surviving save/restore pairs").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            superfluousSaves() shouldBe emptyList()
+            val report = superfluousSaves()
+            report.size shouldBe 6
+            report[4] shouldBe "every save pairs with one restore: true"
+            report[5] shouldBe "compiled and direct runs agree: true"
         }
     })

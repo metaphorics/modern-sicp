@@ -6,7 +6,7 @@ package sicp.ch3.exercises
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VSym
+import sicp.runtime.Symbol
 
 public class E3_23Test :
     FunSpec({
@@ -14,10 +14,10 @@ public class E3_23Test :
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             val d = makeDeque()
-            d.rearInsert(VSym("a"))
-            d.frontInsert(VSym("z"))
-            d.frontDeque() shouldBe VSym("z")
-            d.rearDeque() shouldBe VSym("a")
+            d.rearInsert(Symbol("a"))
+            d.frontInsert(Symbol("z"))
+            d.frontDeque() shouldBe Symbol("z")
+            d.rearDeque() shouldBe Symbol("a")
             d.frontDelete()
             d.rearDelete()
             d.emptyDeque() shouldBe true

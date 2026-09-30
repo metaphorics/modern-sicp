@@ -9,7 +9,7 @@ import io.kotest.matchers.shouldBe
 
 public class E2_28Test :
     FunSpec({
-        test("Exercise 2.28: fringe of ((1 2) (3 4)) is the four leaves").config(
+        test("Exercise 2.28 returns leaves in left-to-right order").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             ex_2_28() shouldBe listOf(1L, 2L, 3L, 4L)

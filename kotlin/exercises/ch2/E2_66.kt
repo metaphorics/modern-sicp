@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.66: implement `lookup` for the case where the set of records
  * is structured as a binary tree ordered by the numerical value of each
@@ -12,4 +10,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `lookup` of key `7` in a small sample database.
  */
-public fun ex_2_66(): String? = throw PendingSolution()
+public fun ex_2_66(): String? = throw PendingExercise()

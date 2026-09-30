@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.4: here is an alternative procedural representation of pairs.
  * For this representation, verify that `carFn(consFn(x, y))` yields `x` for
@@ -21,4 +19,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `cdrFn(consFn(3L, 4L))`.
  */
-public fun ex_2_04(): Long = throw PendingSolution()
+public fun ex_2_04(): Long = throw PendingExercise()

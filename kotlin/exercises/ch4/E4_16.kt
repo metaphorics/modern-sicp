@@ -3,33 +3,29 @@
 
 package sicp.ch4.exercises
 
-import sicp.runtime.Expr
 import sicp.runtime.PendingSolution
 
 /**
  * Exercise 4.16: scan out internal definitions. Alyssa P. Hacker proposes
- * `scan-out-defines`: a procedure body containing `define` forms is
- * rewritten into one `let` that reserves every defined name with the
- * section's `*unassigned*` marker, followed by `set!` assignments in
- * source order and the rest of the body; a body without internal defines
- * is unchanged. Part (b): installing the scan in `make-procedure` scans
- * once per procedure creation, while installing it in `apply` would
- * re-scan the body on every call -- `make-procedure` is the better place.
- * Part (c): the evaluator raises the typed premature-read fault when a
- * name still holding the marker is read: this edition picks
- * `TypeMismatch`, since the binding exists and what failed is reading a
- * value no proper operation accepts.
+ * `scanOutDefines`: a procedure body containing definition statements is
+ * rewritten into one binding form that reserves every defined name with
+ * the unassigned marker, followed by assignments in source order and the
+ * rest of the body; a body without internal definitions is unchanged.
+ * Part (b): installing the scan at procedure creation scans once per
+ * procedure, while installing it at application would re-scan the body on
+ * every call -- creation is the better place. Part (c): reading a name
+ * still holding the marker raises the typed premature-read fault (this
+ * edition's `UnassignedRead`), while the unscanned kernel answers its
+ * null for the same read.
  *
- * Expected answers: the statement's mutual even?/odd? recursion answers
- * `#t` on 10 under the scan-out; a body whose eager initializer reads a
- * later define fails with `Error: type mismatch: a is read before it is
- * assigned`, while the base evaluator fails the same program with
- * `Error: unbound variable: a`.
+ * Expected answers: the mutual even?/odd? recursion answers `true` on 10
+ * under the scan-out; the premature read answers `UnassignedRead`; the
+ * unscanned probe answers `null`.
  */
 public fun mutualRecursionTranscript(): String = throw PendingSolution()
 
-public fun prematureReadTranscript(): String = throw PendingSolution()
+/** The scanned premature read raises the typed fault. => "UnassignedRead" */
+public fun prematureReadCategory(): String = throw PendingSolution()
 
-public fun basePrematureTranscript(): String = throw PendingSolution()
-
-public fun scanOutDefines(body: List<Expr>): List<Expr> = throw PendingSolution()
+/** The unscanned kernel answers its own fault convention. => "null" */
+public fun basePrematureCategory(): String = throw PendingSolution()

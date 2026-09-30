@@ -12,6 +12,10 @@ public class E4_65aTest :
         test("Exercise 4.65a: the deduplicated wheel listing").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            deduplicatedWheel() shouldBe listOf("MEASURE")
+            deduplicatedWheel() shouldBe
+                listOf(
+                    "?who = [Bitdiddle, Ben]",
+                    "?who = [Warbucks, Oliver]",
+                )
         }
     })

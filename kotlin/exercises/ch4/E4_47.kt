@@ -6,11 +6,11 @@ package sicp.ch4.exercises
 import sicp.runtime.PendingSolution
 
 /**
- * Exercise 4.47: Louis Reasoner's `parse-verb-phrase`. Louis's version
+ * Exercise 4.47: Louis Reasoner's `parseVerbPhrase`. Louis's version
  * delivers the same first parse as the text's -- the verb word is
- * parsed inside the first alternative -- but its try-again behavior
+ * parsed inside the first alternative -- but its resumption behavior
  * diverges: once the input is spent, the second alternative recurses
- * into `parse-verb-phrase` before anything is consumed, so the search
+ * into `parseVerbPhrase` before anything is consumed, so the search
  * descends forever (measured under a 500-choice budget). Interchanging
  * the alternatives makes even the first parse diverge, measured under a
  * 300-choice budget, because the recursion then runs before any word is

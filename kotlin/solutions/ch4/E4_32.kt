@@ -3,71 +3,96 @@
 
 package sicp.ch4.solutions
 
-import sicp.ch4.Evaluator
-import sicp.ch4.LazyEvaluator
-import sicp.ch4.lazyTranscriptOn
+import sicp.ch4.Direct
+import sicp.ch4.LazyModule
 
-// Exercise 4.32: the extra laziness. Under the procedural pairs of the
-// section -- `cons` delaying both slots -- `(car (cons 7 (/ 1 0)))`
-// answers 7 because the delayed second slot is never demanded, and asking
-// for the `cdr` is the moment the danger finally fires. The chapter-3
-// streams cannot do this: a stream node computes its head eagerly and only
-// delays the tail (the runtime's `LStream.Cons` holds a computed `head`),
-// so the chapter-3 analog -- the strict constructor -- dies at
-// construction, exactly what the base evaluator's strict `cons` primitive
-// shows. The self-referential `ones` pins the payoff from the other side:
-// under delayed construction the definition closes in one step; under the
-// strict primitive the same definition reads `ones` before the frame
-// binds it.
+// Exercise 4.32: the extra laziness. A cell carries its head directly
+// and delays its tail in a thunk. The guest List accessors materialize
+// the entire list, so a head-only observation walks this spine and
+// never calls force on an undemanded tail. A self-reference is one
+// cell whose tail closes over the shared `onesData` binding.
 
-/** The section's procedural pairs, as object-language definitions. */
-private const val PROCEDURAL_PAIRS: String =
-    """(define (cons x y) (lambda (m) (m x y)))
-(define (car z) (z (lambda (p q) p)))
-(define (cdr z) (z (lambda (p q) q)))"""
-
-/** Both slots delayed: the armed second slot is skipped. => "7\nError:
- * division by zero\n" */
-public fun lazyPairSlotsTranscript(): String =
-    lazyTranscriptOn(
-        ::LazyEvaluator,
+/** An armed tail is skipped until the spine walk forces it. */
+internal val LAZY_SLOTS_PROGRAM: String =
+    LAZY_DATA_SOURCE + "\n" +
         """
-        ${PROCEDURAL_PAIRS}
-        (car (cons 7 (/ 1 0)))
-        (cdr (cons 7 (/ 1 0)))
-        """.trimIndent(),
-    )
+fun main() {
+    val pair = LazyCell(LazyAtom("7"), thunk { explode() })
+    println(renderAtom(pair.head))
+    force(pair.tail)
+}
+        """.trimIndent()
 
-/** The chapter-3 shape on this substrate: the strict constructor forces
- * its slot at construction. => "Error: division by zero\n" */
-public fun eagerConstructorTranscript(): String =
-    transcriptOn(
-        ::Evaluator,
-        """
-        ${PROCEDURAL_PAIRS}
-        (car (cons 7 (/ 1 0)))
-        """.trimIndent(),
-    )
+/** The strict constructor evaluates every slot at construction. */
+internal val EAGER_CONSTRUCTOR_PROGRAM: String =
+    """
+fun main() {
+    val pair = listOf(7L, 1L / 0L)
+    println(pair.get(0))
+}
+    """.trimIndent()
 
-/** Delayed construction closes the self-reference in one step and `car`
- * forces only the head slot. => "1\n" */
-public fun onesOneStepTranscript(): String =
-    lazyTranscriptOn(
-        ::LazyEvaluator,
+/** The infinite list's head answers without forcing its cyclic tail. */
+internal val ONES_PROGRAM: String =
+    LAZY_DATA_SOURCE + "\n" +
         """
-        ${PROCEDURAL_PAIRS}
-        (define ones (cons 1 ones))
-        (car ones)
-        """.trimIndent(),
-    )
+var onesData: LazyData = LazyEnd
 
-/** The same definition under the strict constructor reads `ones` before
- * the frame binds it. => "Error: unbound variable: ones\n" */
-public fun strictOnesTranscript(): String =
-    transcriptOn(
-        ::Evaluator,
+fun main() {
+    val first = LazyCell(LazyAtom("1"), thunk { onesData })
+    onesData = first
+    println(renderAtom(first.head))
+}
+        """.trimIndent()
+
+/** Ten heads of the infinite list, forcing tails only between heads. */
+internal val ONES_HEADS_PROGRAM: String =
+    LAZY_DATA_SOURCE + "\n" +
         """
-        ${PROCEDURAL_PAIRS}
-        (define ones (cons 1 ones))
-        """.trimIndent(),
-    )
+var onesData: LazyData = LazyEnd
+
+fun showHeads(node: LazyData, count: Int): String {
+    var current = node
+    var index = 0
+    var out = "["
+    while (index < count) {
+        if (current !is LazyCell) {
+            return out + "]"
+        }
+        if (index > 0) {
+            out = out + ", "
+        }
+        out = out + renderAtom(current.head)
+        index = index + 1
+        if (index < count) {
+            current = force(current.tail)
+        }
+    }
+    return out + "]"
+}
+
+fun main() {
+    val first = LazyCell(LazyAtom("1"), thunk { onesData })
+    onesData = first
+    println(showHeads(first, 10))
+}
+        """.trimIndent()
+
+/** A strict self-reference is outside the admitted core subset. */
+internal val STRICT_ONES_PROGRAM: String =
+    """
+fun main() {
+    val ones: List<Long> = listOf(1L) + ones
+    println(ones.get(0))
+}
+    """.trimIndent()
+
+public fun lazyPairSlotsTranscript(): String = outcomeText(LazyModule.run(LAZY_SLOTS_PROGRAM).map { it.result })
+
+public fun eagerConstructorTranscript(): String = outcomeText(Direct.run(EAGER_CONSTRUCTOR_PROGRAM))
+
+public fun onesOneStepTranscript(): String = outcomeText(LazyModule.run(ONES_PROGRAM).map { it.result })
+
+public fun onesHeadsTranscript(): String = outcomeText(LazyModule.run(ONES_HEADS_PROGRAM).map { it.result })
+
+public fun strictOnesTranscript(): String = outcomeText(Direct.run(STRICT_ONES_PROGRAM))

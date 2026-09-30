@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.65: use the results of exercises 2.63 (`treeToList1`) and
  * 2.64 (`listToTree`) to give `Θ(n)` implementations of `unionSetTree` and
@@ -18,11 +16,11 @@ import sicp.runtime.PendingSolution
 public fun unionSetTree(
     t1: SetTree,
     t2: SetTree,
-): SetTree = throw PendingSolution()
+): SetTree = throw PendingExercise()
 
 public fun intersectionSetTree(
     t1: SetTree,
     t2: SetTree,
-): SetTree = throw PendingSolution()
+): SetTree = throw PendingExercise()
 
-public fun ex_2_65(): Pair<List<Long>, List<Long>> = throw PendingSolution()
+public fun ex_2_65(): Pair<List<Long>, List<Long>> = throw PendingExercise()

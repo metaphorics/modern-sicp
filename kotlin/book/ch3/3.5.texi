@@ -94,7 +94,10 @@ The second program performs the same computation in the signal-flow style of
 
 @example kotlin
 fun sumPrimes(a: Long, b: Long): Long =
-    streamFold(streamFilter(::isPrime, streamEnumerateInterval(a, b)), 0L, Long::plus)
+    streamFold(streamFilter(::isPrime,
+                streamEnumerateInterval(a,
+        b)),
+        0L, Long::plus)
 
 sumPrimes(10000L, 1000000L)
 // => 37544665627
@@ -114,7 +117,9 @@ sequence paradigm to compute the second prime in the interval from 10,000 to
 1,000,000 by evaluating the expression
 
 @example kotlin
-filterSeq(::isPrime, enumerateInterval(10000L, 1000000L))[1]
+filterSeq(::isPrime,
+        enumerateInterval(10000L,
+    1000000L))[1]
 @end example
 
 @noindent
@@ -170,16 +175,22 @@ streams.}
 public fun <T> streamRef(s: LStream<T>, n: Int): T @{
     var cursor = s
     repeat(n) @{ cursor = cursor.streamTail() @}
-    return checkNotNull(cursor.streamHead()) @{ "stream-ref $n past the end of the stream" @}
+    return checkNotNull(cursor.streamHead()) @{
+        "stream-ref $n past the end of the stream"
+    @}
 @}
 
-public fun <T, R> streamMap(f: (T) -> R, s: LStream<T>): LStream<R> =
+public fun <T,
+    R> streamMap(f: (T) -> R,
+    s: LStream<T>): LStream<R> =
     when (s) @{
         is LStream.Empty -> LStream.Empty
-        is LStream.Cons -> consStream(f(s.head)) @{ streamMap(f, s.tail) @}
+        is LStream.Cons -> consStream(f(s.head)) @{ streamMap(f,
+            s.tail) @}
     @}
 
-public fun <T> streamForEach(action: (T) -> Unit, s: LStream<T>) @{
+public fun <T> streamForEach(action: (T) -> Unit,
+    s: LStream<T>) @{
     var cursor = s
     while (cursor is LStream.Cons) @{
         action(cursor.head)
@@ -272,7 +283,8 @@ public sealed interface LStream<out T> @{
         public val head: T,
         tailThunk: () -> LStream<T>,
     ) : LStream<T> @{
-        public val tail: LStream<T> by lazy(LazyThreadSafetyMode.NONE, tailThunk)
+        public val tail: LStream<T> by lazy(LazyThreadSafetyMode.NONE,
+            tailThunk)
     @}
 @}
 @end example
@@ -286,7 +298,8 @@ the computed node.  @code{streamHead} and @code{streamTail} can now be defined
 as functions:
 
 @example kotlin
-public fun <T> LStream<T>.streamHead(): T? = (this as? LStream.Cons)?.head
+public fun <T> LStream<T>.streamHead(): T? =
+    (this as? LStream.Cons)?.head
 
 public fun <T> LStream<T>.streamTail(): LStream<T> =
     when (this) @{
@@ -311,7 +324,9 @@ To see how this implementation behaves, let us analyze the ``outrageous'' prime
 computation we saw above, reformulated in terms of streams:
 
 @example kotlin
-streamFilter(::isPrime, streamEnumerateInterval(10000L, 1000000L))
+streamFilter(::isPrime,
+        streamEnumerateInterval(10000L,
+    1000000L))
     .streamTail()
     .streamHead()
 // => 10009
@@ -325,8 +340,11 @@ and 1,000,000.  @code{streamEnumerateInterval} is the stream analog of
 @code{enumerateInterval} (@ref{2.2.3}):
 
 @example kotlin
-public fun streamEnumerateInterval(low: Long, high: Long): LStream<Long> =
-    if (low > high) LStream.Empty else consStream(low) @{ streamEnumerateInterval(low + 1L, high) @}
+public fun streamEnumerateInterval(low: Long,
+    high: Long): LStream<Long> =
+    if (low > high) LStream.Empty else
+        consStream(low) @{ streamEnumerateInterval(low + 1L,
+            high) @}
 @end example
 
 @noindent
@@ -338,7 +356,8 @@ For example, @code{low + 1L} with @code{low} bound to 10,000 actually appears
 where @code{10001L} is shown.}
 
 @example kotlin
-consStream(10000L) @{ streamEnumerateInterval(10001L, 1000000L) @}
+consStream(10000L) @{ streamEnumerateInterval(10001L,
+    1000000L) @}
 @end example
 
 @noindent
@@ -348,12 +367,14 @@ This stream is now filtered for primes, using the stream analog of the
 @code{filter} procedure (@ref{2.2.3}):
 
 @example kotlin
-public fun <T> streamFilter(p: (T) -> Boolean, s: LStream<T>): LStream<T> =
+public fun <T> streamFilter(p: (T) -> Boolean,
+    s: LStream<T>): LStream<T> =
     when (s) @{
         is LStream.Empty -> LStream.Empty
         is LStream.Cons ->
             if (p(s.head)) @{
-                consStream(s.head) @{ streamFilter(p, s.tail) @}
+                consStream(s.head) @{ streamFilter(p,
+                    s.tail) @}
             @} else @{
                 streamFilter(p, s.tail)
             @}
@@ -367,7 +388,8 @@ its input stream.  The call to @code{streamTail} forces the delayed
 @code{streamEnumerateInterval}, which now returns
 
 @example kotlin
-consStream(10001L) @{ streamEnumerateInterval(10002L, 1000000L) @}
+consStream(10001L) @{ streamEnumerateInterval(10002L,
+    1000000L) @}
 @end example
 
 @noindent
@@ -387,7 +409,8 @@ which in this case is
 consStream(10007L) @{
     streamFilter(
         ::isPrime,
-        consStream(10008L) @{ streamEnumerateInterval(10009L, 1000000L) @},
+        consStream(10008L) @{ streamEnumerateInterval(10009L,
+            1000000L) @},
     )
 @}
 @end example
@@ -403,7 +426,8 @@ expression is
 consStream(10009L) @{
     streamFilter(
         ::isPrime,
-        consStream(10010L) @{ streamEnumerateInterval(10011L, 1000000L) @},
+        consStream(10010L) @{ streamEnumerateInterval(10011L,
+            1000000L) @},
     )
 @}
 @end example
@@ -510,7 +534,8 @@ multiple arguments, analogous to @code{map} in @ref{2.2.1},
 cold @code{Sequence}s.
 
 @example kotlin
-fun <T, R> streamMapN(proc: (List<T>) -> R, streams: List<Sequence<T>>): Sequence<R> =
+fun <T, R> streamMapN(proc: (List<T>) -> R,
+    streams: List<Sequence<T>>): Sequence<R> =
     if (streams.first().⟨??⟩)
         emptySequence()
     else
@@ -548,7 +573,10 @@ forces us to be concerned with time and change.}
 @example kotlin
 val log = mutableListOf<String>()
 
-val x = streamMap(@{ n -> show(n, log) @}, streamEnumerateInterval(0L, 10L))
+val x = streamMap(
+    @{ n -> show(n, log) @},
+    streamEnumerateInterval(0L, 10L),
+)
 // -- 0
 
 streamRef(x, 5)
@@ -584,7 +612,9 @@ fun accum(x: Long): Long @{
     return sum
 @}
 
-val seq = streamMap(::accum, streamEnumerateInterval(1L, 20L))
+val seq = streamMap(::accum,
+        streamEnumerateInterval(1L,
+    20L))
 
 val y = streamFilter(@{ it % 2L == 0L @}, seq)
 
@@ -612,7 +642,9 @@ For instance, consider the following definition of the stream of positive
 integers:
 
 @example kotlin
-fun integersStartingFrom(n: Long): LStream<Long> = consStream(n) @{ integersStartingFrom(Math.addExact(n, 1L)) @}
+fun integersStartingFrom(n: Long): LStream<Long> =
+    consStream(n) @{ integersStartingFrom(Math.addExact(n,
+        1L)) @}
 
 val integers: LStream<Long> = integersStartingFrom(1L)
 @end example
@@ -630,7 +662,9 @@ of integers that are not divisible by 7:
 @example kotlin
 fun divisible(x: Long, y: Long): Boolean = x % y == 0L
 
-val noSevens: LStream<Long> = streamFilter(@{ x -> !divisible(x, 7L) @}, integers)
+val noSevens: LStream<Long> = streamFilter(@{ x -> !divisible(x,
+    7L) @},
+    integers)
 @end example
 
 @noindent
@@ -646,7 +680,9 @@ In analogy with @code{integers}, we can define the infinite stream of Fibonacci
 numbers:
 
 @example kotlin
-fun fibGen(a: Long, b: Long): LStream<Long> = consStream(a) @{ fibGen(b, Math.addExact(a, b)) @}
+fun fibGen(a: Long,
+    b: Long): LStream<Long> = consStream(a) @{ fibGen(b,
+    Math.addExact(a, b)) @}
 
 val fibs: LStream<Long> = fibGen(0L, 1L)
 @end example
@@ -726,7 +762,7 @@ infinite, because the sieve contains a sieve within it.
 @ifinfo
 @strong{Figure 3.31:} The prime sieve viewed as a signal-processing system.
 
-@example
+@smallexample
   +---------------------------------------------------------------+
   | sieve                                                         |
   |                                                               |
@@ -741,13 +777,13 @@ infinite, because the sieve contains a sieve within it.
   |                | != 0L      |    |            |               |
   |                +------------+    +------------+               |
   +---------------------------------------------------------------+
-@end example
+@end smallexample
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.31a,,132mm,Figure 3.31: The prime sieve viewed as a signal-processing system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.31a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.31:} The prime sieve viewed as a signal-processing system.}
@@ -778,7 +814,8 @@ generalized @code{streamMap} of @ref{Exercise 3.50} completes; the edition also
 carries the same sum over @code{Double} streams.}
 
 @example kotlin
-fun addStreams(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> =
+fun addStreams(s1: LStream<Long>,
+    s2: LStream<Long>): LStream<Long> =
     zipStream(s1, s2) @{ a, b -> Math.addExact(a, b) @}
 @end example
 
@@ -786,7 +823,8 @@ fun addStreams(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> =
 Now we can define the integers as follows:
 
 @example kotlin
-val integers: LStream<Long> = consStream(1L) @{ addStreams(integers, ones) @}
+val integers: LStream<Long> = consStream(1L) @{ addStreams(integers,
+    ones) @}
 @end example
 
 @noindent
@@ -808,7 +846,10 @@ We can define the Fibonacci numbers in the same style:
 @example kotlin
 val fibs: LStream<Long> =
     consStream(0L) @{
-        consStream(1L) @{ zipStream(fibs, fibs.streamTail()) @{ a, b -> Math.addExact(a, b) @} @}
+        consStream(1L) @{ zipStream(fibs,
+            fibs.streamTail()) @{ a,
+            b ->
+            Math.addExact(a, b) @} @}
     @}
 @end example
 
@@ -838,7 +879,8 @@ fibs.streamTail().take(10)
 definitions.  This multiplies each item in a stream by a given constant:
 
 @example kotlin
-fun scaleStream(s: LStream<Long>, factor: Long): LStream<Long> =
+fun scaleStream(s: LStream<Long>,
+    factor: Long): LStream<Long> =
     streamMap(@{ Math.multiplyExact(factor, it) @}, s)
 @end example
 
@@ -846,7 +888,8 @@ fun scaleStream(s: LStream<Long>, factor: Long): LStream<Long> =
 For example,
 
 @example kotlin
-val double: LStream<Long> = consStream(1L) @{ scaleStream(double, 2L) @}
+val double: LStream<Long> = consStream(1L) @{ scaleStream(double,
+    2L) @}
 @end example
 
 @noindent
@@ -859,7 +902,8 @@ above and names this construction @code{primesAlt}:
 
 @example kotlin
 val primesAlt: LStream<Long> = consStream(2L) @{
-    streamFilter(::isPrimeByPrimes, integersStartingFrom(3L))
+    streamFilter(::isPrimeByPrimes,
+        integersStartingFrom(3L))
 @}
 @end example
 
@@ -900,7 +944,8 @@ A proof can be found in section 22.3 of @ref{Hardy and Wright 1960}.}
 describe the elements of the stream defined by
 
 @example kotlin
-val s: LStream<Long> = consStream(1L) @{ addStreams(s, s) @}
+val s: LStream<Long> = consStream(1L) @{ addStreams(s,
+    s) @}
 @end example
 @end quotation
 
@@ -912,7 +957,8 @@ stream of @code{integers} to complete the following definition of the stream
 whose @math{n^{\hbox{th}}} element (counting from 0) is @math{{n + 1}} factorial:
 
 @example kotlin
-val factorials: LStream<Long> = consStream(1L) @{ mulStreams(⟨??⟩, ⟨??⟩) @}
+val factorials: LStream<Long> =
+    consStream(1L) @{ mulStreams(⟨??⟩, ⟨??⟩) @}
 @end example
 @end quotation
 
@@ -957,13 +1003,21 @@ define a function @code{merge} that combines two ordered streams into one
 ordered result stream, eliminating repetitions:
 
 @example kotlin
-fun merge(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> @{
+fun merge(
+    s1: LStream<Long>,
+    s2: LStream<Long>,
+): LStream<Long> @{
     val s1car = s1.streamHead() ?: return s2
     val s2car = s2.streamHead() ?: return s1
     return when @{
-        s1car < s2car -> consStream(s1car) @{ merge(s1.streamTail(), s2) @}
-        s1car > s2car -> consStream(s2car) @{ merge(s1, s2.streamTail()) @}
-        else -> consStream(s1car) @{ merge(s1.streamTail(), s2.streamTail()) @}
+        s1car < s2car ->
+            consStream(s1car) @{
+                merge(s1.streamTail(), s2)
+            @}
+        s1car > s2car -> consStream(s2car) @{ merge(s1,
+            s2.streamTail()) @}
+        else -> consStream(s1car) @{ merge(s1.streamTail(),
+            s2.streamTail()) @}
     @}
 @}
 @end example
@@ -971,7 +1025,8 @@ fun merge(s1: LStream<Long>, s2: LStream<Long>): LStream<Long> @{
 Then the required stream may be constructed with @code{merge}, as follows:
 
 @example kotlin
-val s: LStream<Long> = consStream(1L) @{ merge(⟨??⟩, ⟨??⟩) @}
+val s: LStream<Long> = consStream(1L) @{ merge(⟨??⟩,
+    ⟨??⟩) @}
 @end example
 
 Fill in the missing expressions in the places marked @code{⟨??⟩} above.
@@ -996,7 +1051,9 @@ values in the previously forced parts of the stream.}
 stream computed by the following function:
 
 @example kotlin
-fun expand(num: Long, den: Long, radix: Long): LStream<Long> =
+fun expand(num: Long,
+    den: Long,
+    radix: Long): LStream<Long> =
     consStream(num * radix / den) @{
         expand(num * radix % den, den, radix)
     @}
@@ -1074,7 +1131,8 @@ constant term, which is @math{{e^0 = 1}}.  Accordingly, we can generate the seri
 for @math{e^x} as
 
 @example kotlin
-val expSeries: LStream<Rat> = consStream(Rat.ONE) @{ integrateSeries(expSeries) @}
+val expSeries: LStream<Rat> =
+    consStream(Rat.ONE) @{ integrateSeries(expSeries) @}
 @end example
 
 Show how to generate the series for sine and cosine, starting from the facts
@@ -1082,9 +1140,11 @@ that the derivative of sine is cosine and the derivative of cosine is the
 negative of sine:
 
 @example kotlin
-val cosineSeries: LStream<Rat> = consStream(Rat.ONE) @{ ⟨??⟩ @}
+val cosineSeries: LStream<Rat> =
+    consStream(Rat.ONE) @{ ⟨??⟩ @}
 
-val sineSeries: LStream<Rat> = consStream(Rat.ZERO) @{ ⟨??⟩ @}
+val sineSeries: LStream<Rat> =
+    consStream(Rat.ZERO) @{ ⟨??⟩ @}
 @end example
 @end enumerate
 @end quotation
@@ -1103,8 +1163,13 @@ by @code{zipStream} with @code{Rat} addition, the elementwise sum that
 following function for multiplying series:
 
 @example kotlin
-fun mulSeries(s1: LStream<Rat>, s2: LStream<Rat>): LStream<Rat> =
-    consStream(⟨??⟩) @{ zipStream(⟨??⟩, ⟨??⟩) @{ a, b -> a + b @} @}
+fun mulSeries(
+    s1: LStream<Rat>,
+    s2: LStream<Rat>,
+): LStream<Rat> =
+    consStream(⟨??⟩) @{
+        zipStream(⟨??⟩, ⟨??⟩) @{ a, b -> a + b @}
+    @}
 @end example
 
 You can test your function by verifying that @math{{\sin^2x + \cos^2x = 1,}}
@@ -1178,7 +1243,9 @@ and better guesses for the square root of @math{x} by applying over and over aga
 the function that improves guesses:
 
 @example kotlin
-fun sqrtImprove(guess: Double, x: Double): Double = (guess + x / guess) / 2.0
+fun sqrtImprove(guess: Double,
+    x: Double): Double = (guess +
+    x / guess) / 2.0
 @end example
 
 @noindent
@@ -1195,15 +1262,18 @@ fun sqrtStream(x: Double): LStream<Double> @{
     var guesses: LStream<Double>? = null
     val tied: LStream<Double> =
         consStream(1.0) @{
-            streamMap(@{ g -> sqrtImprove(g, x) @}, checkNotNull(guesses) @{ "guesses not yet tied" @})
+            streamMap(@{ g -> sqrtImprove(g, x) @},
+                checkNotNull(guesses) @{ "guesses not yet tied" @})
         @}
     guesses = tied
     return tied
 @}
 
 sqrtStream(2.0).take(5)
-// => [1.0, 1.5, 1.4166666666666665, 1.4142156862745097, 1.4142135623746899]
 @end example
+@smallexample
+// => [1.0, 1.5, 1.4166666666666665, 1.4142156862745097, 1.4142135623746899]
+@end smallexample
 
 @noindent
 We can generate more and more terms of the stream to get better and better
@@ -1232,13 +1302,21 @@ and scale the result by 4:
 
 @example kotlin
 fun piSummands(n: Long): LStream<Double> =
-    consStream(1.0 / n) @{ streamMap(@{ x -> -x @}, piSummands(n + 2L)) @}
+    consStream(1.0 / n) @{ streamMap(@{ x -> -x @},
+            piSummands(n +
+        2L)) @}
 
-val piStream: LStream<Double> = scaleStream(partialSums(piSummands(1L)), 4.0)
+val piStream: LStream<Double> = scaleStream(partialSums(piSummands(1L)),
+    4.0)
 
 piStream.take(8)
-// => [4.0, 2.666666666666667, 3.466666666666667, 2.8952380952380956, 3.3396825396825403, 2.9760461760461765, 3.2837384837384844, 3.017071817071818]
 @end example
+@smallexample
+// => [4.0, 2.666666666666667, 3.466666666666667,
+//     2.8952380952380956, 3.3396825396825403,
+//     2.9760461760461765, 3.2837384837384844,
+//     3.017071817071818]
+@end smallexample
 
 @noindent
 This gives us a stream of better and better approximations to @math{\pi},
@@ -1291,8 +1369,13 @@ We can demonstrate Euler acceleration with our sequence of approximations to
 
 @example kotlin
 eulerTransform(piStream).take(8)
-// => [3.166666666666667, 3.1333333333333337, 3.1452380952380956, 3.13968253968254, 3.1427128427128435, 3.1408813408813416, 3.142071817071818, 3.1412548236077655]
 @end example
+@smallexample
+// => [3.166666666666667, 3.1333333333333337,
+//     3.1452380952380956, 3.13968253968254,
+//     3.1427128427128435, 3.1408813408813416,
+//     3.142071817071818, 3.1412548236077655]
+@end smallexample
 
 @noindent
 Even better, we can accelerate the accelerated sequence, and recursively
@@ -1305,7 +1388,8 @@ fun makeTableau(
     transform: (LStream<Double>) -> LStream<Double>,
     s: LStream<Double>,
 ): LStream<LStream<Double>> =
-    consStream(s) @{ makeTableau(transform, transform(s)) @}
+    consStream(s) @{ makeTableau(transform,
+        transform(s)) @}
 @end example
 
 @noindent
@@ -1348,8 +1432,13 @@ sequence:
 
 @example kotlin
 acceleratedSequence(::eulerTransform, piStream).take(8)
-// => [4.0, 3.166666666666667, 3.142105263157895, 3.141599357319005, 3.1415927140337785, 3.1415926539752927, 3.1415926535911765, 3.141592653589778]
 @end example
+@smallexample
+// => [4.0, 3.166666666666667, 3.142105263157895,
+//     3.141599357319005, 3.1415927140337785,
+//     3.1415926539752927, 3.1415926535911765,
+//     3.141592653589778]
+@end smallexample
 
 @noindent
 The result is impressive.  Taking eight terms of the sequence yields the
@@ -1371,7 +1460,10 @@ straightforward way, without the local variable @code{guesses}:
 @example kotlin
 fun sqrtStream(x: Double): LStream<Double> =
     consStream(1.0) @{
-        streamMap(@{ guess -> sqrtImprove(guess, x) @}, sqrtStream(x))
+        streamMap(
+            @{ guess -> sqrtImprove(guess, x) @},
+            sqrtStream(x),
+        )
     @}
 @end example
 
@@ -1432,7 +1524,8 @@ of @ref{2.2.3} to produce the stream of pairs of @emph{all} integers
 cons pair.}
 
 @example kotlin
-streamFilter(@{ pair -> isPrime(pair.first + pair.second) @}, intPairs)
+streamFilter(@{ pair -> isPrime(pair.first + pair.second) @},
+    intPairs)
 @end example
 
 @noindent
@@ -1518,7 +1611,10 @@ streamMap(@{ x -> streamRef(s, 0) to x @}, t.streamTail())
 Thus we can form our stream of pairs as follows:
 
 @example kotlin
-fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> @{
+fun pairs(
+    s: LStream<Long>,
+    t: LStream<Long>,
+): LStream<Pair<Long, Long>> @{
     val sh = s.streamHead() ?: return LStream.Empty
     val th = t.streamHead() ?: return LStream.Empty
     return consStream(sh to th) @{
@@ -1536,10 +1632,12 @@ inner streams.  One idea is to use the stream analog of the @code{append}
 function from @ref{2.2.1}:
 
 @example kotlin
-fun <T> streamAppend(s1: LStream<T>, s2: LStream<T>): LStream<T> =
+fun <T> streamAppend(s1: LStream<T>,
+    s2: LStream<T>): LStream<T> =
     when (s1) @{
         is LStream.Empty -> s2
-        is LStream.Cons -> consStream(s1.head) @{ streamAppend(s1.tail, s2) @}
+        is LStream.Cons -> consStream(s1.head) @{ streamAppend(s1.tail,
+            s2) @}
     @}
 @end example
 
@@ -1569,10 +1667,12 @@ number @math{{f(i, j)}} of the output stream.  The trick of using
 employed it in the language KRC (@ref{Turner 1981}).}
 
 @example kotlin
-fun <T> interleave(s1: LStream<T>, s2: LStream<T>): LStream<T> =
+fun <T> interleave(s1: LStream<T>,
+    s2: LStream<T>): LStream<T> =
     when (s1) @{
         is LStream.Empty -> s2
-        is LStream.Cons -> consStream(s1.head) @{ interleave(s2, s1.tail) @}
+        is LStream.Cons -> consStream(s1.head) @{ interleave(s2,
+            s1.tail) @}
     @}
 @end example
 
@@ -1584,7 +1684,10 @@ stream, even if the first stream is infinite.
 We can thus generate the required stream of pairs as
 
 @example kotlin
-fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> @{
+fun pairs(
+    s: LStream<Long>,
+    t: LStream<Long>,
+): LStream<Pair<Long, Long>> @{
     val sh = s.streamHead() ?: return LStream.Empty
     val th = t.streamHead() ?: return LStream.Empty
     return consStream(sh to th) @{
@@ -1619,7 +1722,10 @@ Instead of separating the pair @math{{(S_0, T_0)}} from the rest of the pairs in
 the first row, he proposes to work with the whole first row, as follows:
 
 @example kotlin
-fun pairs(s: LStream<Long>, t: LStream<Long>): LStream<Pair<Long, Long>> =
+fun pairs(
+    s: LStream<Long>,
+    t: LStream<Long>,
+): LStream<Pair<Long, Long>> =
     interleave(
         streamMap(@{ x -> streamRef(s, 0) to x @}, t),
         pairs(s.streamTail(), t.streamTail()),
@@ -1729,11 +1835,14 @@ and returns the stream of values @math{{S = (S_i)}}.  The following
 of the stream of integers (@ref{3.5.2}):
 
 @example kotlin
-fun integral(integrand: LStream<Double>, initialValue: Double, dt: Double): LStream<Double> @{
+fun integral(integrand: LStream<Double>,
+    initialValue: Double,
+    dt: Double): LStream<Double> @{
     var int: LStream<Double>? = null
     val tied: LStream<Double> =
         consStream(initialValue) @{
-            addStreams(scaleStream(integrand, dt), checkNotNull(int) @{ "int not yet tied" @})
+            addStreams(scaleStream(integrand, dt),
+                checkNotNull(int) @{ "int not yet tied" @})
         @}
     int = tied
     return tied
@@ -1773,7 +1882,7 @@ input  |                 |      |\__    +-->|   \_  integral
 @image{../../text/original/figures/chap3/Fig3.32a,,143mm,Figure 3.32: The integral procedure viewed as a signal-processing system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.32a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.32:} The @code{integral} function viewed as a signal-processing system.}
@@ -1822,7 +1931,7 @@ accompanying signal-flow diagram.
 @image{../../text/original/figures/chap3/Fig3.33a,,125mm,Figure 3.33: An RC circuit and the associated signal-flow diagram.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.33a.std,120mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.33:} An RC circuit and the associated signal-flow diagram.}
@@ -1862,10 +1971,14 @@ signs of the values to produce an appropriate @math{0}, @math{1}, or @math{{-1}}
 constructs her zero-crossing stream as follows:
 
 @example kotlin
-fun makeZeroCrossings(inputStream: LStream<Double>, lastValue: Double): LStream<Double> @{
-    val head = inputStream.streamHead() ?: return LStream.Empty
-    return consStream(signChangeDetector(head, lastValue)) @{
-        makeZeroCrossings(inputStream.streamTail(), head)
+fun makeZeroCrossings(inputStream: LStream<Double>,
+    lastValue: Double): LStream<Double> @{
+    val head =
+        inputStream.streamHead() ?: return LStream.Empty
+    return consStream(signChangeDetector(head,
+        lastValue)) @{
+        makeZeroCrossings(inputStream.streamTail(),
+            head)
     @}
 @}
 
@@ -1877,7 +1990,8 @@ approximately equivalent to the following one, which uses the two-stream
 @code{zipStream}, the generalization of @code{streamMap} from @ref{Exercise 3.50}:
 
 @example kotlin
-val zeroCrossings = zipStream(senseData, ⟨expression⟩, ::signChangeDetector)
+val zeroCrossings = zipStream(senseData, ⟨expression⟩,
+    ::signChangeDetector)
 @end example
 
 Complete the program by supplying the indicated @code{⟨}@var{expression}@code{⟩}.
@@ -1895,11 +2009,15 @@ the problem to her assistant, Louis Reasoner, who attempts to implement the
 idea, altering Alyssa's program as follows:
 
 @example kotlin
-fun makeZeroCrossings(inputStream: LStream<Double>, lastValue: Double): LStream<Double> @{
-    val head = inputStream.streamHead() ?: return LStream.Empty
+fun makeZeroCrossings(inputStream: LStream<Double>,
+    lastValue: Double): LStream<Double> @{
+    val head =
+        inputStream.streamHead() ?: return LStream.Empty
     val avpt = (head + lastValue) / 2
-    return consStream(signChangeDetector(avpt, lastValue)) @{
-        makeZeroCrossings(inputStream.streamTail(), avpt)
+    return consStream(signChangeDetector(avpt,
+        lastValue)) @{
+        makeZeroCrossings(inputStream.streamTail(),
+            avpt)
     @}
 @}
 @end example
@@ -1934,7 +2052,8 @@ itself:
 var int: LStream<Double>? = null
 val tied: LStream<Double> =
     consStream(initialValue) @{
-        addStreams(scaleStream(integrand, dt), checkNotNull(int) @{ "int not yet tied" @})
+        addStreams(scaleStream(integrand, dt),
+            checkNotNull(int) @{ "int not yet tied" @})
     @}
 int = tied
 @end example
@@ -1982,7 +2101,7 @@ such equations.
 @image{../../text/original/figures/chap3/Fig3.34,,110mm,Figure 3.34: An ``analog computer circuit'' that solves the equation dy / dt = f(y).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.34.std,,110mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.34.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.34:} An ``analog computer circuit'' that solves the equation @math{{dy / dt = f(y)}}.}
@@ -1992,7 +2111,8 @@ Assuming we are given an initial value @math{y_0} for @math{y}, we could try to 
 this system using the function
 
 @example kotlin
-fun solve(f: (Double) -> Double, y0: Double, dt: Double): LStream<Double> @{
+fun solve(f: (Double) -> Double, y0: Double,
+    dt: Double): LStream<Double> @{
     val y: LStream<Double> = integral(dy, y0, dt)
     val dy: LStream<Double> = streamMap(f, y)
     return y
@@ -2028,7 +2148,9 @@ fun integral(
     var int: LStream<Double>? = null
     val tied: LStream<Double> =
         consStream(initialValue) @{
-            addStreams(scaleStream(delayedIntegrand.value, dt), checkNotNull(int) @{ "int not yet tied" @})
+            addStreams(scaleStream(delayedIntegrand.value,
+                dt),
+                checkNotNull(int) @{ "int not yet tied" @})
         @}
     int = tied
     return tied
@@ -2042,7 +2164,7 @@ nullable cell that the tail lambda reads, and the last line ties the cell
 before anything can force a tail.  Now we can implement our @code{solve}
 function, tying the integrand lazily in the definition of
 @code{y}:@footnote{The book's version depends on the order of internal
-definitions, and Scheme implementations differ on whether it works.  Kotlin's
+definitions, and the original's implementations differ on whether it works.  Kotlin's
 lazy tie replaces that order dependence: the @code{lazy} value is not read
 until @code{integral} forces it past the first element, so the definition
 order of @code{y} and its integrand no longer matters.  Because a local may
@@ -2057,7 +2179,9 @@ fun solve(
     dt: Double,
 ): LStream<Double> @{
     var dy: LStream<Double>? = null
-    val y: LStream<Double> = integral(lazy @{ checkNotNull(dy) @{ "dy not yet tied" @} @}, y0, dt)
+    val y: LStream<Double> =
+        integral(lazy @{ checkNotNull(dy) @{ "dy not yet tied" @} @},
+            y0, dt)
     dy = streamMap(f, y)
     return y
 @}
@@ -2098,7 +2222,11 @@ fun integral(
         if (head == null) @{
             LStream.Empty
         @} else @{
-            integral(integrand.streamTail(), dt * head + initialValue, dt)
+            integral(
+                integrand.streamTail(),
+                dt * head + initialValue,
+                dt,
+            )
         @}
     @}
 @end example
@@ -2201,7 +2329,7 @@ v_C -+- C                     _)  v_L
 @image{../../text/original/figures/chap3/Fig3.36,,102mm,Figure 3.36: A series RLC circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.36.std,,102mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.36.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.36:} A series RLC circuit.}
@@ -2416,7 +2544,8 @@ just a stream of random numbers produced by successive applications of
 
 @example kotlin
 val randomNumbers: LStream<ULong> =
-    consStream(RANDOM_INIT) @{ streamMap(::randNext, randomNumbers) @}
+    consStream(RANDOM_INIT) @{ streamMap(::randNext,
+        randomNumbers) @}
 @end example
 
 @noindent
@@ -2425,7 +2554,10 @@ performed on consecutive pairs in the @code{randomNumbers} stream:
 
 @example kotlin
 val cesaroStream: LStream<Boolean> =
-    mapSuccessivePairs(@{ r1, r2 -> gcdULong(r1, r2) == 1UL @}, randomNumbers)
+    mapSuccessivePairs(@{ r1,
+            r2 -> gcdULong(r1,
+        r2) == 1UL @},
+        randomNumbers)
 
 fun <A, R> mapSuccessivePairs(
     f: (A, A) -> R,
@@ -2433,7 +2565,8 @@ fun <A, R> mapSuccessivePairs(
 ): LStream<R> @{
     val a0 = s.streamHead() ?: return LStream.Empty
     val a1 = s.streamTail().streamHead() ?: return LStream.Empty
-    return consStream(f(a0, a1)) @{ mapSuccessivePairs(f, s.streamTail().streamTail()) @}
+    return consStream(f(a0, a1)) @{ mapSuccessivePairs(f,
+        s.streamTail().streamTail()) @}
 @}
 @end example
 
@@ -2468,7 +2601,9 @@ fun monteCarloStream(
 @}
 
 val pi: LStream<Double> =
-    streamMap(@{ p -> sqrt(6.0 / p) @}, monteCarloStream(cesaroStream, 0, 0))
+    streamMap(@{ p -> sqrt(6.0 / p) @},
+            monteCarloStream(cesaroStream,
+        0, 0))
 @end example
 
 @noindent
@@ -2545,7 +2680,8 @@ fun streamWithdraw(
     amountStream: LStream<Long>,
 ): LStream<Long> =
     consStream(balance) @{
-        streamWithdraw(balance - (amountStream.streamHead() ?: 0L), amountStream.streamTail())
+        streamWithdraw(balance - (amountStream.streamHead() ?: 0L),
+            amountStream.streamTail())
     @}
 @end example
 
@@ -2629,10 +2765,10 @@ Paul's requests    |  merge  |---->| bank    |---->
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.38a,,143mm,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.38a,147mm,,Figure 3.38: A joint bank account@comma{} modeled by merging two streams of transaction requests.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,,143mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.38a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.38:} A joint bank account, modeled by merging two streams of transaction requests.}
@@ -2701,10 +2837,10 @@ the complexity of their designs with the same general techniques used by
 designers of all complex systems.  They combine primitive elements to form
 compound objects, they abstract compound objects to form higher-level building
 blocks, and they preserve modularity by adopting appropriate large-scale views
-of system structure.  In illustrating these techniques, we have used Lisp as a
+of system structure.  In illustrating these techniques, we have used Kotlin as a
 language for describing processes and for constructing computational data
 objects and processes to model complex phenomena in the real world.  However,
-as we confront increasingly complex problems, we will find that Lisp, or indeed
+as we confront increasingly complex problems, we will find that Kotlin, or indeed
 any fixed programming language, is not sufficient for our needs.  We must
 constantly turn to new languages in order to express our ideas more
 effectively.  Establishing new languages is a powerful strategy for controlling
@@ -2781,19 +2917,21 @@ itself becomes no more (and no less) than the discipline of constructing
 appropriate descriptive languages.
 
 We now embark on a tour of the technology by which languages are established in
-terms of other languages.  In this chapter we shall use Lisp as a base,
-implementing evaluators as Lisp procedures.  Lisp is particularly well suited
-to this task, because of its ability to represent and manipulate symbolic
-expressions.  We will take the first step in understanding how languages are
-implemented by building an evaluator for Lisp itself.  The language implemented
-by our evaluator will be a subset of the Scheme dialect of Lisp that we use in
-this book.  Although the evaluator described in this chapter is written for a
-particular dialect of Lisp, it contains the essential structure of an evaluator
+terms of other languages.  In this chapter we shall use Kotlin as a base,
+implementing evaluators as Kotlin functions.  Kotlin is well suited
+to this task, because a program in this edition is ordinary checked source that
+the reader lowers to a typed syntax tree the evaluator can manipulate as data.
+We will take the first step in understanding how languages are implemented by
+building an evaluator for a real subset of Kotlin: the language implemented
+by our evaluator is the edition's own guest language, admitted Kotlin
+source in the grammar this book uses throughout.  Although the evaluator
+described in this chapter is written for that typed subset, it contains the
+essential structure of an evaluator
 for any expression-oriented language designed for writing programs for a
 sequential machine.  (In fact, most language processors contain, deep within
-them, a little ``Lisp'' evaluator.)  The evaluator has been simplified for the
+them, a small core evaluator.)  The evaluator has been simplified for the
 purposes of illustration and discussion, and some features have been left out
-that would be important to include in a production-quality Lisp system.
+that would be important to include in a production-quality language system.
 Nevertheless, this simple evaluator is adequate to execute most of the programs
 in this book.@footnote{The most important features that our evaluator leaves
 out are mechanisms for handling errors and supporting debugging.  For a more
@@ -2801,7 +2939,7 @@ extensive discussion of evaluators, see @ref{Friedman et al. 1992}, which
 gives an exposition of programming languages that proceeds via a sequence of
 evaluators written in Scheme.}
 
-An important advantage of making the evaluator accessible as a Lisp program is
+An important advantage of making the evaluator accessible as a Kotlin program is
 that we can implement alternative evaluation rules by describing these as
 modifications to the evaluator program.  One place where we can use this power
 to good effect is to gain extra control over the ways in which computational
@@ -2809,8 +2947,8 @@ models embody the notion of time, which was so central to the discussion in
 @ref{Chapter 3}.  There, we mitigated some of the complexities of state and
 assignment by using streams to decouple the representation of time in the world
 from time in the computer.  Our stream programs, however, were sometimes
-cumbersome, because they were constrained by the applicative-order evaluation
-of Scheme.  In @ref{4.2}, we'll change the underlying language to
+cumbersome, because they were constrained by the strict, applicative-order
+evaluation of the core language.  In @ref{4.2}, we'll change the underlying language to
 provide for a more elegant approach, by modifying the evaluator to provide for
 @newterm{normal-order evaluation}.
 
@@ -2827,14 +2965,14 @@ searches are handled automatically by the underlying mechanism of the language.
 In @ref{4.4} we implement a @newterm{logic-programming} language in
 which knowledge is expressed in terms of relations, rather than in terms of
 computations with inputs and outputs.  Even though this makes the language
-drastically different from Lisp, or indeed from any conventional language, we
+drastically different from Kotlin, or indeed from any conventional language, we
 will see that the logic-programming evaluator shares the essential structure of
-the Lisp evaluator.
+the evaluator of @ref{4.1}.
 
 @menu
 * 4.1::              The Metacircular Evaluator
-* 4.2::              Variations on a Scheme: Lazy Evaluation
-* 4.3::              Variations on a Scheme: Nondeterministic Computing
+* 4.2::              Variations on the Guest Language --- Lazy Evaluation
+* 4.3::              Variations on the Guest Language --- Nondeterministic Computing
 * 4.4::              Logic Programming
 @end menu
 

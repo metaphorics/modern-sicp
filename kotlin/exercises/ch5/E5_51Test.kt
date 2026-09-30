@@ -12,6 +12,10 @@ public class E5_51Test :
         test("Exercise 5.51: the C translation builds and runs the factorial session").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            evaluatorInC() shouldBe emptyList()
+            evaluatorInC() shouldBe
+                listOf(
+                    "120",
+                    "the C evaluator agrees with the explicit-control run: true",
+                )
         }
     })

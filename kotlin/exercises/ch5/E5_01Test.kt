@@ -12,6 +12,12 @@ public class E5_01Test :
         test("Exercise 5.01: the iterative factorial machine").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            factorialMachineRuns() shouldBe listOf("MEASURE")
+            factorialMachineRuns() shouldBe
+                listOf(
+                    "1",
+                    "1",
+                    "120",
+                    "3628800",
+                )
         }
     })

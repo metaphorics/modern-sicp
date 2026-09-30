@@ -12,6 +12,11 @@ public class E5_39Test :
         test("Exercise 5.39: the lexical machine runs the closure and cell program to one value").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            lexicalMachineRuns() shouldBe emptyList()
+            lexicalMachineRuns() shouldBe
+                listOf(
+                    "(0, 0) -> 1",
+                    "(1, 1) -> 3",
+                    "(2, 0) -> *unassigned*",
+                )
         }
     })

@@ -1,19 +1,50 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.47: compiled procedures call interpreted procedures.
+// Original exercise
+//
+// Chapter 5, exercise 5.47: compiled code calls an interpreted
+// procedure. Direct builds a closure capturing a lexical binding; the
+// compiler's mixed-call interface substitutes that closure for the
+// checked program's same-signature declaration before the machine runs.
 
 package sicp.ch5.solutions
 
-import sicp.ch5.CompilerConfig
+import sicp.ch4.Direct
+import sicp.ch5.Compiler
+import sicp.guest.GValue
 
-private const val COMPILED_CALLER = "(define (f x) (g x))"
-private const val INTERPRETED_CALLEE_AND_CALL = "(define (g x) (+ x 1)) (f 41)"
+/** A compiled caller reaches an interpreter-created closure, rather
+ * than the compiled declaration it would ordinarily resolve. */
+public fun mixedCallsRun(): List<String> {
+    val interpreterSource =
+        """
+        fun main(): (Long) -> Long {
+            val increment: Long = 1L
+            return { x: Long -> x + increment }
+        }
+        """.trimIndent()
+    val closure =
+        Direct.run(admitProgram(interpreterSource)).mainValue as? GValue.VFunction
+            ?: error("the direct evaluator did not return an interpreted closure")
+    val compiledSource =
+        """
+        fun interpreted(x: Long): Long {
+            return x + 100L
+        }
 
-/** Runs a compiled caller against a procedure defined later by the evaluator. */
-public fun compoundCallRuns(): List<String> =
-    valuesOf(
-        runCompiled(
-            cfg = CompilerConfig(compoundCalls = true),
-            compiled = COMPILED_CALLER,
-            driver = INTERPRETED_CALLEE_AND_CALL,
-        ),
+        fun compiledCaller(x: Long): Long {
+            return interpreted(x)
+        }
+
+        fun main() {
+            println(compiledCaller(41L))
+        }
+        """.trimIndent()
+    val checked = admitProgram(compiledSource)
+    val compiledOnly = outputLines(Compiler.compileAndRun(checked))
+    val mixed = outputLines(Compiler.compileAndRun(checked, interpretedBindings = mapOf("interpreted" to closure)))
+    return listOf(
+        "the compiled declaration answers: ${compiledOnly.joinToString(" ")}",
+        "the interpreted binding answers: ${mixed.joinToString(" ")}",
+        "the mixed call reached the interpreted closure: ${compiledOnly == listOf("141") && mixed == listOf("42")}",
     )
+}

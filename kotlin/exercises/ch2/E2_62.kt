@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.62: give a `Θ(n)` implementation of `unionSetOrdered` for
  * sets represented as ordered lists, walking both lists in step by
@@ -15,6 +13,6 @@ import sicp.runtime.PendingSolution
 public fun unionSetOrdered(
     set1: List<Long>,
     set2: List<Long>,
-): List<Long> = throw PendingSolution()
+): List<Long> = throw PendingExercise()
 
-public fun ex_2_62(): List<Long> = throw PendingSolution()
+public fun ex_2_62(): List<Long> = throw PendingExercise()

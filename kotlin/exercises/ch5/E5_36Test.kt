@@ -12,6 +12,6 @@ public class E5_36Test :
         test("Exercise 5.36: the two orders record their operands and the counts compare equal").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            operandOrderRuns() shouldBe emptyList()
+            operandOrderRuns().last() shouldBe "compiled and direct runs agree: true"
         }
     })

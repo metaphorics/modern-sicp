@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.48
+// Chapter 5, exercise 5_48
 
 package sicp.ch5.solutions
 
@@ -8,11 +8,12 @@ import io.kotest.matchers.shouldBe
 
 public class E5_48Test :
     FunSpec({
-        test("compile-and-run compiles once and the block answers the session") {
-            compileAndRunSession() shouldBe
+        test("Exercise 5.48: the two-phase compile and run agrees with the direct run") {
+            compileAndRunReport() shouldBe
                 listOf(
-                    "compile-and-run answers: ok",
-                    "compiled block answers: ok 120",
+                    "the compiled run answers: 120",
+                    "the direct run answers: 120",
+                    "the two runs agree: true",
                 )
         }
     })

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.18
+// Chapter 4, exercise 4.18: tests.
 
 package sicp.ch4.solutions
 
@@ -8,11 +8,11 @@ import io.kotest.matchers.shouldBe
 
 public class E4_18Test :
     FunSpec({
-        test("Exercise 4.18: the text strategy assigns in source order and the forced read succeeds") {
+        test("Exercise 4.18: source-order assignment serves the fellow read") {
             textStrategyTranscript() shouldBe "3\n"
         }
 
-        test("Exercise 4.18: the alternative strategy reads the reserved name at initializer time") {
-            altStrategyTranscript() shouldBe "Error: type mismatch: dy is read before it is assigned\n"
+        test("Exercise 4.18: initializers-first leaves the fellow read empty") {
+            altStrategyTranscript() shouldBe "error\n"
         }
     })

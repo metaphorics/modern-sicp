@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.61: implement `adjoinSetOrdered` for the ordered-list
  * representation of sets, taking advantage of the ordering to average
@@ -17,6 +15,6 @@ import sicp.runtime.PendingSolution
 public fun adjoinSetOrdered(
     x: Long,
     set: List<Long>,
-): List<Long> = throw PendingSolution()
+): List<Long> = throw PendingExercise()
 
-public fun ex_2_61(): List<Long> = throw PendingSolution()
+public fun ex_2_61(): List<Long> = throw PendingExercise()

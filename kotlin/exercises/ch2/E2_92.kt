@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.92: impose an ordering on variables so polynomial addition
  * and multiplication work for polynomials in different variables. The
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * integer constant meets a polynomial by becoming a constant polynomial
  * in the same variable, the coercion the section's footnote asks for.
  */
-public fun ex_2_92(): Pair<Boolean, Boolean> = throw PendingSolution()
+public fun ex_2_92(): Pair<Boolean, Boolean> = throw PendingExercise()

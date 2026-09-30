@@ -13,6 +13,6 @@ public class E4_42Test :
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             liarsSolutions() shouldBe
-                listOf("((betty 3) (ethel 5) (joan 2) (kitty 1) (mary 4))")
+                listOf("([betty, 3] [ethel, 5] [joan, 2] [kitty, 1] [mary, 4])")
         }
     })

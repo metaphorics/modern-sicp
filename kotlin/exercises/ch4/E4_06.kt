@@ -3,26 +3,34 @@
 
 package sicp.ch4.exercises
 
-import sicp.ch4.Evaluator
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.LetE
 import sicp.runtime.PendingSolution
 
 /**
- * Exercise 4.6: `let` as a derived expression. [letRewrite] rewrites
- * `(let ((x 3) (y 4)) body)` to `((lambda (x y) body) 3 4)` and the
- * evaluator derives every `let` through it. The rewrite fixes the scoping
- * rule: the application evaluates the inits as operands, in the outer
- * environment -- with x bound to 5 outside, `(let ((x 3) (y x)) y)` is 5,
- * not 3.
+ * Exercise 4.6: `let` as a derived expression over the kernel's `GLam`
+ * and `GApp`. The rewrite turns the bindings into the parameters of a
+ * lambda applied to the initializers, so the initializers evaluate in the
+ * outer environment as operands do -- with x bound to 5 outside,
+ * `let(x = 3, y = x)` reads y as 5, not 3. The rewritten form and the
+ * `let` form answer the same value.
+ *
+ * Expected: the equivalence probe prints 7 twice; the body probe prints
+ * 7; the outer-init probe prints 5; the shadow probe prints 2 then 5; the
+ * nested probe prints 3; a malformed binding list is rejected at
+ * admission with the `Syntax` category before any effect.
  */
-public class WithLetDerived(
-    global: Env,
-) : Evaluator(global) {
-    override fun letToCombination(expr: LetE): Expr = throw PendingSolution()
-}
+public fun letEquivalenceTranscript(): String = throw PendingSolution()
 
-/** The book's `let->combination`: parameters, body, then the inits as the
- * operands of the application. */
-public fun letRewrite(expr: LetE): Expr = throw PendingSolution()
+/** The derived let computes the body in the new frame. => "7\n" */
+public fun letBodyTranscript(): String = throw PendingSolution()
+
+/** The inits evaluate in the outer environment. => "5\n" */
+public fun letInitsOuterTranscript(): String = throw PendingSolution()
+
+/** An inner let shadows and leaves the outer binding. => "2\n5\n" */
+public fun letShadowTranscript(): String = throw PendingSolution()
+
+/** Lets nest as derived expressions at every depth. => "3\n" */
+public fun letNestedTranscript(): String = throw PendingSolution()
+
+/** A malformed binding list fails typed at admission. => "Syntax" */
+public fun malformedLetRejection(): String = throw PendingSolution()

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4_71
+// Chapter 4, exercise 4.71
 
 package sicp.ch4.solutions
 
@@ -11,17 +11,15 @@ public class E4_71Test :
         test("Exercise 4.71: the delay debate") {
             delayDebate() shouldBe
                 listOf(
-                    "delayed engine, first three answers of the unanchored query:",
-                    "(outranked-by (Hacker Alyssa P) (Bitdiddle Ben))",
-                    "(outranked-by (Hacker Alyssa P) (Warbucks Oliver))",
-                    "(outranked-by (Fect Cy D) (Bitdiddle Ben))",
-                    "louis (plain stream-append in simple_query, plain interleave in disjoin): 1 answer(s)",
-                    "constructing the first answer reached 3 rule applications -- returned",
-                    "married cycle, delayed engine, first three answers:",
-                    "(married Mickey Minnie)",
-                    "(married Mickey Minnie)",
-                    "(married Mickey Minnie)",
-                    "married cycle under louis: -1 answer(s) -- the construction diverges before any answer (engine recursion exhausted)",
+                    "delayed engine, first three of the unanchored outranked query:",
+                    "?staff-person = [Hacker, Alyssa, P]",
+                    "?boss = [Bitdiddle, Ben]",
+                    "?staff-person = [Hacker, Alyssa, P]",
+                    "?boss = [Warbucks, Oliver]",
+                    "?staff-person = [Fect, Cy, D]",
+                    "?boss = [Bitdiddle, Ben]",
+                    "married cycle, first answer:",
+                    "?who = Minnie",
                 )
         }
     })

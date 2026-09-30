@@ -16,15 +16,15 @@ public class E4_47Test :
                 "(sentence (simple-noun-phrase (article the) (noun cat)) (verb eats))"
         }
 
-        test("Exercise 4.47: Louis's try-again diverges once the input is spent").config(
+        test("Exercise 4.47: Louis's resumption diverges once the input is spent").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            louisTryAgainFault() shouldBe "choice budget exhausted after 500 choices"
+            louisTryAgainFault() shouldBe "BudgetExhausted after 500 choices"
         }
 
         test("Exercise 4.47: the interchanged order diverges outright").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            interchangedFault() shouldBe "choice budget exhausted after 300 choices"
+            interchangedFault() shouldBe "BudgetExhausted after 300 choices"
         }
     })

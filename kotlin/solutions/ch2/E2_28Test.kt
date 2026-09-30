@@ -8,13 +8,14 @@ import io.kotest.matchers.shouldBe
 
 public class E2_28Test :
     FunSpec({
-        test("fringe of ((1 2) (3 4)) is the four leaves") {
+        test("fringe lists every leaf in left-to-right order") {
             ex_2_28() shouldBe listOf(1L, 2L, 3L, 4L)
         }
-        test("fringe of (list x x) repeats the four leaves") {
-            fringe(tree(bookPairTree(), bookPairTree())) shouldBe listOf(1L, 2L, 3L, 4L, 1L, 2L, 3L, 4L)
+        test("reusing a subtree repeats its leaves in place") {
+            fringe(tree(twoBranchTree(), twoBranchTree())) shouldBe
+                listOf(1L, 2L, 3L, 4L, 1L, 2L, 3L, 4L)
         }
-        test("fringe of a single leaf is the leaf") {
+        test("a leaf has itself as its fringe") {
             fringe(leaf(9L)) shouldBe listOf(9L)
         }
     })

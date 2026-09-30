@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.46: a two-dimensional vector v running from the origin to a
  * point can be represented as a pair consisting of an x-coordinate and a
@@ -17,4 +15,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `addVect(makeVect(1.0, 2.0), makeVect(3.0, 4.5))`.
  */
-public fun ex_2_46(): Vect = throw PendingSolution()
+public fun ex_2_46(): Vect = throw PendingExercise()

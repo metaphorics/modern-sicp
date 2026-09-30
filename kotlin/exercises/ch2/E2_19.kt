@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.19: Rewrite the change-counting program of section 1.2.2 so that its
  * second argument is a list of the values of the coins to use rather
@@ -17,4 +15,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `cc(100, usCoins)`.
  */
-public fun ex_2_19(): Long = throw PendingSolution()
+public fun ex_2_19(): Long = throw PendingExercise()

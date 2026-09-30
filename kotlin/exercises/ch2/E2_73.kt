@@ -3,16 +3,14 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.73: 2.3.2 performed symbolic differentiation by dispatching
  * on the type of the expression, where the algebraic operator is the
  * "type tag" and the operation is `deriv`. This exercise rewrites that
  * dispatch in data-directed style, given as the starting skeleton below:
- * [OperatorExpr] carries its own operator, [printOperatorExpr] prints it,
- * and [derivDataDirected] is the book's rewritten `deriv`, dispatching
- * through a [DerivTable] instead of a `when` over the operator.
+ * [OperatorExpr] stores operators as typed tree nodes, and [derivDataDirected]
+ * routes those nodes through a [DerivTable] instead of selecting all rules
+ * in one central `when`.
  *
  * (a) `Num` and `Var` cannot join the data-directed dispatch: a number or
  * a variable carries no operator to index the table by, so [derivDataDirected]
@@ -28,8 +26,9 @@ import sicp.runtime.PendingSolution
  * or the rules it calls needs to change, only the argument order every
  * `put`/`get` call passes.
  *
- * The scaffold returns the printed derivative of `x + 3`, `x * y`, and
- * `x ** 3`, each with respect to `x`.
+ * The scaffold returns typed derivative trees for the sum, product, and power
+ * examples, differentiated with respect to `x`: `Num(1L)`, `Var("y")`, and
+ * `Product(Num(3L), Pow(Var("x"), 2L))`.
  */
 public sealed interface OperatorExpr {
     public data class Num(
@@ -55,16 +54,6 @@ public sealed interface OperatorExpr {
         val n: Long,
     ) : OperatorExpr
 }
-
-/** Prints an [OperatorExpr] in the book's parenthesized prefix notation. */
-public fun printOperatorExpr(e: OperatorExpr): String =
-    when (e) {
-        is OperatorExpr.Num -> e.n.toString()
-        is OperatorExpr.Var -> e.name
-        is OperatorExpr.Sum -> "(+ ${printOperatorExpr(e.a1)} ${printOperatorExpr(e.a2)})"
-        is OperatorExpr.Product -> "(* ${printOperatorExpr(e.a1)} ${printOperatorExpr(e.a2)})"
-        is OperatorExpr.Pow -> "(** ${printOperatorExpr(e.base)} ${e.n})"
-    }
 
 /** A single differentiation rule: given the whole expression node it was
  * installed under and the variable, returns the derivative. */
@@ -99,7 +88,7 @@ private fun dispatchRule(
     variable: String,
     table: DerivTable,
 ): OperatorExpr {
-    val rule = table.get(operator) ?: throw IllegalStateException("unknown expression type: DERIV ${printOperatorExpr(exp)}")
+    val rule = table.get(operator) ?: throw IllegalStateException("missing differentiation rule for operator $operator")
     return rule.differentiate(exp, variable, table)
 }
 
@@ -119,4 +108,4 @@ public fun derivDataDirected(
         is OperatorExpr.Pow -> dispatchRule("**", exp, variable, table)
     }
 
-public fun ex_2_73(): Triple<String, String, String> = throw PendingSolution()
+public fun ex_2_73(): Triple<OperatorExpr, OperatorExpr, OperatorExpr> = throw PendingExercise()

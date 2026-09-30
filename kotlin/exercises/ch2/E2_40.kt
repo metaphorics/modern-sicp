@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.40: Define a procedure `uniquePairs` that generates the sequence of pairs
  * (i, j) with 1 <= j < i <= n, and use it to simplify the definition of
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `uniquePairs(6)`, the fifteen pairs with 1 <= j < i <= 6.
  */
-public fun ex_2_40(): List<List<Long>> = throw PendingSolution()
+public fun ex_2_40(): List<List<Long>> = throw PendingExercise()

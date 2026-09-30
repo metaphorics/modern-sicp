@@ -12,7 +12,7 @@ public class E4_41Test :
         test("Exercise 4.41: the ordinary solver answers the puzzle").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            kotlinSolverAnswer() shouldBe "((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))"
+            kotlinSolverAnswer() shouldBe "[[baker, 3], [cooper, 2], [fletcher, 4], [miller, 5], [smith, 1]]"
         }
 
         test("Exercise 4.41: the plain solver tests the whole floor grid").config(

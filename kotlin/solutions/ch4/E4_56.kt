@@ -1,29 +1,59 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.56: compound queries over the Microshaft data base.
+// Chapter 4, exercise 4.56
 
 package sicp.ch4.solutions
 
-import sicp.ch4.QuerySystem
+import sicp.ch4.QAnd
+import sicp.ch4.QGuard
+import sicp.ch4.QNot
+import sicp.ch4.QPattern
+import sicp.ch4.QVar
+import sicp.ch4.QueryDriver
 
-/** (a) Ben's supervisees with their addresses; (b) the lower-paid with
- * their salaries; (c) the supervisees whose supervisor works outside the
- * computer division, reached with a dotted-tail not-filter. */
-public fun compoundQueries(system: QuerySystem): List<String> {
-    val out = mutableListOf<String>()
-    for (
-    query in
-    listOf(
-        "(and (supervisor ?person (Bitdiddle Ben)) (address ?person ?where))",
-        "(and (salary ?person ?amount) (salary (Bitdiddle Ben) ?ben-amount)" +
-            " (lisp-value < ?amount ?ben-amount))",
-        "(and (supervisor ?person ?supervisor) (job ?supervisor ?job)" +
-            " (not (job ?supervisor (computer . ?type))))",
-    )
-    ) {
-        out.add("query: $query")
-        out.addAll(answersOf(system, query))
-    }
-    return out
+// Exercise 4.56: compound queries. The conjunction retrieves one frame per
+// match, the guard runs its host predicate over bound terms, and the
+// negation filters frames the subquery cannot extend.
+
+/** The three compound queries with their answers. */
+public fun compoundQueries(): List<String> {
+    val db = microshaftSystem()
+    val driver = QueryDriver.streaming(db)
+    val person = listOf(v("person"))
+    val personWhere = listOf(v("person"), v("where"))
+    val salary = listOf(v("person"), v("amount"))
+    val underBen =
+        answerLines(
+            driver,
+            QAnd(
+                listOf(
+                    QPattern(list(sym("supervisor"), v("person"), list(sym("Bitdiddle"), sym("Ben")))),
+                    QPattern(list(sym("address"), v("person"), v("where"))),
+                ),
+            ),
+            personWhere,
+        )
+    val belowBen =
+        answerLines(
+            driver,
+            QAnd(
+                listOf(
+                    QPattern(list(sym("salary"), v("person"), v("amount"))),
+                    QPattern(list(sym("salary"), list(sym("Bitdiddle"), sym("Ben")), v("ben-amount"))),
+                    QGuard({ terms -> termLong(terms[0]) < termLong(terms[1]) }, listOf(v("amount"), v("ben-amount"))),
+                ),
+            ),
+            salary,
+        )
+    val notComputerBoss =
+        answerLines(
+            driver,
+            QAnd(
+                listOf(
+                    QPattern(list(sym("supervisor"), v("person"), v("boss"))),
+                    QNot(QPattern(list(sym("job"), v("boss"), improper(listOf(sym("computer")), v("type"))))),
+                ),
+            ),
+            person,
+        )
+    return underBen + belowBen + notComputerBoss
 }
-
-public fun compoundQueries(): List<String> = compoundQueries(microshaftSystem())

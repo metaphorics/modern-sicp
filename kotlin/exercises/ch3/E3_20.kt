@@ -3,30 +3,27 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
- * Exercise 3.20: the procedural pair of 3.3.1 as an interface over
- * captured slots. SICP's exercise traces environment diagrams for the
- * Scheme dispatch version; this edition traces the same shared state in
- * Kotlin terms: after `alias = x` and `alias.setCar(VInt(17))`, `x.car()`
- * answers 17 because both names hold the same object over the same
- * captured `var` slots, while a fresh `proceduralCons` pair has slots of
- * its own.
+ * Exercise 3.20 represents a pair with an object whose methods close over
+ * two mutable slots. After `alias = x` and `alias.setFirst(Whole(17L))`,
+ * `x.first()` returns 17 because both names refer to the same object.
+ * A fresh `proceduralPair` has independent captured slots.
  */
 public interface PairProc {
-    public fun car(): Value
+    public fun first(): Datum
 
-    public fun cdr(): Value
+    public fun second(): Datum
 
-    public fun setCar(v: Value)
+    public fun setFirst(v: Datum)
 
-    public fun setCdr(v: Value)
+    public fun setSecond(v: Datum)
 }
 
-/** The book's mutable cons: two captured slots behind one object. */
-public fun proceduralCons(
-    x: Value,
-    y: Value,
+/** A pair object whose two slots are mutable locals captured by its methods. */
+public fun proceduralPair(
+    x: Datum,
+    y: Datum,
 ): PairProc = throw PendingSolution()

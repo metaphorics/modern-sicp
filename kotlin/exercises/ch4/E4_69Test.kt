@@ -12,6 +12,23 @@ public class E4_69Test :
         test("Exercise 4.69: the greats queries").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            greatsQueries() shouldBe listOf("MEASURE")
+            greatsQueries() shouldBe
+                listOf(
+                    "?g = Adam",
+                    "?ggs = Irad",
+                    "?g = Cain",
+                    "?ggs = Mehujael",
+                    "?g = Enoch",
+                    "?ggs = Methushael",
+                    "?g = Irad",
+                    "?ggs = Lamech",
+                    "?g = Mehujael",
+                    "?ggs = Jabal",
+                    "?g = Mehujael",
+                    "?ggs = Jubal",
+                    "?d = Jabal",
+                    "?d = Jubal",
+                    "?relationship = [great, grandson]",
+                )
         }
     })

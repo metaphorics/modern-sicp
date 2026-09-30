@@ -11,12 +11,10 @@ public class E4_59Test :
         test("Exercise 4.59: the meeting queries") {
             meetingQueries() shouldBe
                 listOf(
-                    "query: (meeting ?division (Friday ?time))",
-                    "(meeting administration (Friday 1pm))",
-                    "query: (meeting-time (Hacker Alyssa P) (Wednesday ?time))",
-                    "(meeting-time (Hacker Alyssa P) (Wednesday 4pm))",
-                    "(meeting-time (Hacker Alyssa P) (Wednesday 3pm))",
-                    "query: (meeting-time (Hacker Alyssa P) (Friday ?time))",
+                    "?division = administration",
+                    "?time = 1pm",
+                    "?time = 4pm",
+                    "?time = 3pm",
                 )
         }
     })

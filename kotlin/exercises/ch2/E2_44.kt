@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.44: define the procedure `up-split`, which is used by
  * `corner-split`. `up-split` is like `right-split`, except that it
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns the number of line segments `upSplit(wave, 1)`
  * paints into [unitSquare].
  */
-public fun ex_2_44(): Int = throw PendingSolution()
+public fun ex_2_44(): Int = throw PendingExercise()

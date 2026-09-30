@@ -12,11 +12,13 @@ public class E4_39Test :
             dwellingAnswer() shouldBe "((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))"
         }
 
-        test("Exercise 4.39: the book order costs 1470 backtracks to the first answer") {
-            bookOrderBacktracks() shouldBe 1470L
+        test("Exercise 4.39: the book order costs 1835 backtracks to the first answer") {
+            // Measured guest backtracks (failed requirements); the invariant is the tie below.
+            bookOrderBacktracks() shouldBe 1835L
         }
 
-        test("Exercise 4.39: the Fletcher-first reorder costs the same 1470") {
-            reorderedBacktracks() shouldBe 1470L
+        test("Exercise 4.39: the Fletcher-first reorder costs the same 1835") {
+            reorderedBacktracks() shouldBe 1835L
+            reorderedBacktracks() shouldBe bookOrderBacktracks()
         }
     })

@@ -3,190 +3,105 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import arrow.core.raise.either
-import kotlinx.collections.immutable.persistentMapOf
-import sicp.ch4.Evaluator
-import sicp.ch4.OutputSink
-import sicp.ch4.parseProgram
-import sicp.ch4.printValue
-import sicp.ch4.readProgram
-import sicp.ch4.setupEnvironment
-import sicp.runtime.DefineE
-import sicp.runtime.Env
-import sicp.runtime.SchemeError
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.setCdr
-import sicp.runtime.vlist
+import sicp.ch4.Direct
 
-// Exercise 4.12: the book asks for abstractions that capture the pattern
-// beneath `lookup-variable-value` and `set-variable-value!`: one per-frame
-// search and one frame-chain walk, with the environment operations
-// redefined on top. [frameScan] is the `assoc` over one frame's alist
-// alist representation (Exercise 4.11's), [envScan] walks the chain to
-// the first frame whose [frameScan] hits, and [ScannedFrames] defines
-// lookup and `set!` purely on the two scans. `define` conses without
-// scanning, matching the book's define-variable!, and extend-environment
-// keeps the runtime's arity contract.
+// Exercise 4.12: the scan abstractions beneath lookup and `set!`.
+// `frameScan` is the per-frame search -- the first `(name . value)`
+// pair of one frame's alist, reusing the association-list operations
+// of 4.11. `envScan` walks the chain to the first frame whose per-frame
+// search hits. Lookup and `set!` become clients of the two scans, and
+// the same three demos pin that nothing observable changed.
 
-/** The frame slot key under which each [Env] carries its alist frame. */
-private const val FRAME_KEY: String = "*frame-alist*"
-
-/** The book's per-frame search: the first `(name . value)` pair of
- * [env]'s alist frame, or null when this frame has no binding. */
-public fun frameScan(
-    name: String,
-    env: Env,
-): VPair? {
-    var cursor: Value = env.frame[FRAME_KEY] ?: VNil
-    while (cursor is VPair) {
-        val binding = cursor.car
-        if (binding is VPair && binding.car == VSym(name)) return binding
-        cursor = cursor.cdr
-    }
-    return null
-}
-
-/** The book's frame-chain walk: the nearest `(name . value)` pair on the
- * chain, or null when no frame holds `name`. */
-public fun envScan(
-    name: String,
-    env: Env,
-): VPair? {
-    var cursor: Env? = env
-    while (cursor != null) {
-        val binding = frameScan(name, cursor)
-        if (binding != null) return binding
-        cursor = cursor.parent
-    }
-    return null
-}
-
-/** The setupEnvironment bindings, moved into the global alist frame so
- * the whole chain speaks the alist representation. */
-private fun scannedGlobal(sink: OutputSink): Env {
-    val env = setupEnvironment(sink)
-    var alist: Value = VNil
-    for ((name, v) in env.frame) {
-        alist = cons(cons(VSym(name), v), alist)
-    }
-    env.frame = persistentMapOf(FRAME_KEY to alist)
-    return env
-}
-
-/** The evaluator whose lookup and set! are [frameScan]/[envScan] clients. */
-public class ScannedFrames(
-    sink: OutputSink,
-) : Evaluator(scannedGlobal(sink)) {
-    /** The nearest binding's value, found by [envScan]. */
-    context(r: Raise<SchemeError>)
-    override fun lookupVariable(
-        name: String,
-        env: Env,
-    ): Value = envScan(name, env)?.cdr ?: r.raise(SchemeError.Unbound(name))
-
-    /** Rewrites the nearest binding's value slot, found by [envScan]. */
-    context(r: Raise<SchemeError>)
-    override fun setVariable(
-        name: String,
-        value: Value,
-        env: Env,
-    ) {
-        val binding = envScan(name, env) ?: r.raise(SchemeError.Unbound(name))
-        binding.setCdr(value)
-    }
-
-    /** `define` conses a fresh pair onto the frame's alist front. */
-    override fun defineVariable(
-        name: String,
-        value: Value,
-        env: Env,
-    ) {
-        val alist = env.frame[FRAME_KEY] ?: VNil
-        env.frame = env.frame.putting(FRAME_KEY, cons(cons(VSym(name), value), alist))
-    }
-
-    /** A fresh alist frame over [parent]; the runtime's arity contract. */
-    context(r: Raise<SchemeError>)
-    override fun extendEnvironment(
-        names: List<String>,
-        values: List<Value>,
-        parent: Env,
-        rest: String?,
-    ): Env {
-        if (rest == null && names.size != values.size) {
-            r.raise(SchemeError.WrongArity("extend", names.size.toString(), values.size))
-        }
-        if (rest != null && values.size < names.size) {
-            r.raise(SchemeError.WrongArity("extend", "at least ${names.size}", values.size))
-        }
-        val frame = Env.child(parent)
-        var alist: Value = VNil
-        for (i in names.indices.reversed()) {
-            alist = cons(cons(VSym(names[i]), values[i]), alist)
-        }
-        if (rest != null) {
-            alist = cons(cons(VSym(rest), vlist(values.drop(names.size))), alist)
-        }
-        frame.frame = persistentMapOf(FRAME_KEY to alist)
-        return frame
-    }
-}
-
-/** The define/lookup/set! demo: `bump`'s own frame has no `z`, so the
- * `set!` walks to the global alist frame and rewrites its pair. */
-private val DEFINE_PROGRAM: String =
+/** One per-frame search and one chain walk, over the 4.11 operations. */
+internal val SCANS_SOURCE: String =
     """
-    (define z 2)
-    z
-    (define (bump) (set! z 10) z)
-    (bump)
-    z
+fun frameScan(name: String, frame: GFrame): GValue? = alistLookup(frame.cells["alist"], name)
+
+fun envScan(name: String, env: GFrame?): GValue? {
+    if (env == null) {
+        return null
+    }
+    val found = frameScan(name, env)
+    if (found != null) {
+        return found
+    }
+    return envScan(name, env.parent)
+}
+
+fun scannedLookup(name: String, env: GFrame?): GValue? = envScan(name, env)
+
+fun scannedSet(env: GFrame?, name: String, value: GValue): Boolean = chainSet(env, name, value)
     """.trimIndent()
 
-/** A binding that lives only in a call frame dies with the call. */
-private val FRESH_PROGRAM: String =
-    """
-    (define (stash) (define z 2) z)
-    (stash)
-    z
-    """.trimIndent()
-
-/** The arity contract of extend-environment, re-checked on the scans. */
-private const val ARITY_PROGRAM: String = "((lambda (x y) x) 1)"
-
-/** Runs [text] on a [ScannedFrames] evaluator under the printer contract. */
-private fun runScanned(text: String): String {
-    val sink = OutputSink()
-    val evaluator = ScannedFrames(sink)
-    val env = evaluator.global
-    either {
-        for (expr in parseProgram(readProgram(text))) {
-            if (expr is DefineE) {
-                evaluator.eval(expr, env) // a define prints nothing
-                continue
-            }
-            sink.line(printValue(evaluator.eval(expr, env)))
-        }
-    }.fold(
-        { e -> sink.line("Error: ${sicp.ch4.formatError(e)}") },
-        { },
-    )
-    return sink.toString()
-}
-
-/** The define/lookup/set! demo through the scan abstractions.
+/** Define, lookup, and outward `set!` through the scan abstractions.
  * => "2\n10\n10\n" */
-public fun scannedTranscript(): String = runScanned(DEFINE_PROGRAM)
+public fun scannedTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + ALIST_SOURCE + "\n" + SCANS_SOURCE + "\n" +
+                """
+fun main() {
+    val global = alistExtend(emptyList(), emptyList(), null)
+    if (global == null) {
+        println("error")
+    } else {
+        alistDefine(global, "z", GNumV(2L))
+        println(renderValue(scannedLookup("z", global)))
+        val call = alistExtend(emptyList(), emptyList(), global)
+        if (call == null) {
+            println("error")
+        } else {
+            scannedSet(call, "z", GNumV(10L))
+            println(renderValue(scannedLookup("z", call)))
+            println(renderValue(scannedLookup("z", global)))
+        }
+    }
+}
+                """.trimIndent(),
+        ),
+    )
 
-/** `z` died with its call frame; the walk stops without a hit.
- * => "2\nError: unbound variable: z\n" */
-public fun scannedFreshFrameTranscript(): String = runScanned(FRESH_PROGRAM)
+/** A call-frame binding dies with the call; the walk stops without a hit.
+ * => "2\nerror\n" */
+public fun scannedFreshFrameTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + ALIST_SOURCE + "\n" + SCANS_SOURCE + "\n" +
+                """
+fun main() {
+    val global = alistExtend(emptyList(), emptyList(), null)
+    if (global == null) {
+        println("error")
+    } else {
+        val call = alistExtend(emptyList(), emptyList(), global)
+        if (call == null) {
+            println("error")
+        } else {
+            alistDefine(call, "z", GNumV(2L))
+            println(renderValue(scannedLookup("z", call)))
+            println(renderValue(scannedLookup("z", global)))
+        }
+    }
+}
+                """.trimIndent(),
+        ),
+    )
 
-/** extend-environment still refuses an arity mismatch.
- * => "Error: extend: wrong number of arguments, expected 2, got 1\n" */
-public fun scannedArityTranscript(): String = runScanned(ARITY_PROGRAM)
+/** Extension still refuses an arity mismatch. => "error\n" */
+public fun scannedArityTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + ALIST_SOURCE + "\n" + SCANS_SOURCE + "\n" +
+                """
+fun main() {
+    val global = alistExtend(emptyList(), emptyList(), null)
+    val bad = alistExtend(listOf("x", "y"), listOf(GNumV(1L)), global)
+    if (bad == null) {
+        println("error")
+    } else {
+        println("accepted")
+    }
+}
+                """.trimIndent(),
+        ),
+    )

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.33: Fill in the missing expressions to define `mapViaAccumulate`,
  * `filterViaAccumulate`, and `appendViaAccumulate` in terms of
@@ -15,4 +13,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `mapViaAccumulate` squaring the list built from `1, 2, 3, 4`.
  */
-public fun ex_2_33(): List<Long> = throw PendingSolution()
+public fun ex_2_33(): List<Long> = throw PendingExercise()

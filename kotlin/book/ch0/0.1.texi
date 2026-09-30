@@ -35,16 +35,16 @@ visibility and return types in full.
 The @file{kotlin/} tree holds one @code{runtime} module and six chapter
 modules, @code{ch0} through @code{ch5}. The runtime module is the package
 @code{sicp.runtime}: the value type @code{Value}, the memoized stream type
-@code{LStream}, the operation registry @code{OpTable}, the environment chain
-@code{Env}, the register machine of chapter 5, the seeded random generator,
-and the one typed error @code{SchemeError}. Chapters 1 to 3 host their
-programs in plain Kotlin; the interpreters of chapters 4 and 5 run on the
-runtime types.
+@code{LStream}, the operation registry @code{OpTable}, the register machine
+of chapter 5, the seeded random generator, and the typed data error
+@code{DataError} that a fallible data operation raises. Chapters 1 to 3 host
+their programs in plain Kotlin; the interpreters of chapters 4 and 5 run
+on the runtime types.
 
 Each chapter module wires three source sets beyond @code{main}, and each
 of the three reads one top-level directory:
 
-@multitable @columnfractions .25 .25 .50
+@multitable @columnfractions .20 .32 .48
 @item Source set @tab Directory @tab Contents
 @item @code{examples} @tab @file{kotlin/examples/ch@var{N}/} @tab one file per book listing, @code{S@var{N}_@var{M}<Name>.kt}, with Kotest tests
 @item @code{exercises} @tab @file{kotlin/exercises/ch@var{N}/} @tab one scaffold per exercise, @code{E@var{N}_@var{MM}.kt}, statement as KDoc
@@ -93,7 +93,8 @@ package sicp.ch0.examples
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
-/** The tour listing of section 0.1: one definition, the book's `square`. */
+/** The tour listing of section 0.1: one definition,
+ * the book's `square`. */
 public fun tourSquare(x: Long): Long = x * x
 
 public class S0_1TourTest :

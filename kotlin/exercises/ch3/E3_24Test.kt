@@ -6,7 +6,7 @@ package sicp.ch3.exercises
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
+import sicp.runtime.Whole
 
 public class E3_24Test :
     FunSpec({
@@ -14,8 +14,8 @@ public class E3_24Test :
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             val near =
-                makeTable { a, b -> a is VInt && b is VInt && kotlin.math.abs(a.n - b.n) <= 5 }
-            near.insert(VInt(40), VInt(1))
-            near.lookup(VInt(41)) shouldBe VInt(1)
+                makeTable { a, b -> a is Whole && b is Whole && kotlin.math.abs(a.value - b.value) <= 5 }
+            near.insert(Whole(40), Whole(1))
+            near.lookup(Whole(41)) shouldBe Whole(1)
         }
     })

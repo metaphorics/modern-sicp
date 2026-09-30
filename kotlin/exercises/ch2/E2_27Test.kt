@@ -9,9 +9,9 @@ import io.kotest.matchers.shouldBe
 
 public class E2_27Test :
     FunSpec({
-        test("Exercise 2.27: deepReverse of ((1 2) (3 4)) is ((4 3) (2 1))").config(
+        test("Exercise 2.27 reverses children at every node").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_27() shouldBe "((4 3) (2 1))"
+            ex_2_27() shouldBe tree(tree(leaf(4L), leaf(3L)), tree(leaf(2L), leaf(1L)))
         }
     })

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.63 (parts a and b): `treeToList1` and `treeToList2` both
  * convert a [SetTree] (`Sets23.kt`) to a sorted list by an in-order walk, but
@@ -17,8 +15,8 @@ import sicp.runtime.PendingSolution
  * Figure 2.16 trees representing `{1, 3, 5, 7, 9, 11}`, six lists in
  * total.
  */
-public fun treeToList1(tree: SetTree): List<Long> = throw PendingSolution()
+public fun treeToList1(tree: SetTree): List<Long> = throw PendingExercise()
 
-public fun treeToList2(tree: SetTree): List<Long> = throw PendingSolution()
+public fun treeToList2(tree: SetTree): List<Long> = throw PendingExercise()
 
-public fun ex_2_63(): List<List<Long>> = throw PendingSolution()
+public fun ex_2_63(): List<List<Long>> = throw PendingExercise()

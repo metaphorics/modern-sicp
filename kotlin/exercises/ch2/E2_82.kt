@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.82: generalize `apply-generic` to coerce in the multi-
  * argument case by trying, in turn, to coerce every argument to the type
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  * suitable mixed-type operation that the strategy never tries, because it
  * coerces all arguments uniformly or not at all -- never a subset.
  */
-public fun ex_2_82(): Pair<Boolean, Boolean> = throw PendingSolution()
+public fun ex_2_82(): Pair<Boolean, Boolean> = throw PendingExercise()

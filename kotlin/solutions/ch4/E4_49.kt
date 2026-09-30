@@ -3,16 +3,47 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.either
-import sicp.ch4.AmbEvaluator
+import sicp.ch4.SearchModule
 
-/** The first six generated sentences: the footnote's boring descent
- * through the grammar's first alternatives, left to right. */
-public fun generatedSentences(): List<String> =
-    either {
-        val driver = newDriver({ env, _ -> BudgetAmb(env, 500) }, "$AMB_BASE_PRELUDE\n$PARSER_PROGRAM\n$GENERATOR_PROGRAM")
-        answerLines(driver, "(parse '(any input at all))", limit = 6)
-    }.fold(
-        { e -> throw AssertionError(e.toString()) },
-        { it },
+// Exercise 4.49: sentences by generation. The generator is the parser
+// with one change -- `parseWord` draws a word from its list instead of
+// consuming input -- so the same grammar now enumerates sentences. The
+// first sentences "bore their way down one recursion": the choices stop
+// extending at the first opportunity, so the first answer is the smallest
+// sentence and the next one grows exactly one extension.
+
+/** The generating `parseWord` of the exercise. */
+internal val PARSE_WORD_GENERATING_SOURCE: String =
+    """
+fun parseWord(kind: String, words: List<String>): String = "(" + kind + " " + anElementOfString(words) + ")"
+    """.trimIndent()
+
+/** The generator program: the section's grammar over drawn words. */
+internal val GENERATOR_PROGRAM: String =
+    AMB_BASE_PRELUDE + "\n" + PARSER_WORDS_SOURCE + "\n" + PARSE_WORD_GENERATING_SOURCE + "\n" + PARSER_PHRASES_SOURCE
+
+/** The first six generated sentences. sentences[0] is the smallest
+ * sentence; sentences[1] grows one extension.
+ * => [(sentence (simple-noun-phrase (article the) (noun student)) (verb studies)),
+ * (sentence (simple-noun-phrase (article the) (noun student)) (verb-phrase
+ * (verb studies) (prep-phrase (prep for) (simple-noun-phrase (article the)
+ * (noun student)))))] */
+public fun generatedSentences(): List<String> {
+    val source =
+        GENERATOR_PROGRAM + "\n" +
+            """
+fun main() {
+    budgetCap = 1000000L
+    println(parseSentence())
+}
+            """.trimIndent()
+    return SearchModule.run(source, 6).fold(
+        { error -> throw AssertionError(error.toString()) },
+        { run ->
+            check(run.result.error == null) { run.result.error.toString() }
+            run.result.output
+                .lines()
+                .filter { line -> line.isNotEmpty() }
+        },
     )
+}

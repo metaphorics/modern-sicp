@@ -5,117 +5,121 @@ package sicp.ch2.examples
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.pair
+import sicp.runtime.structurallyEqual
 
 /**
- * The sequence 1, 2, 3, 4 as a chain of pairs, exactly the book's
- * box-and-pointer picture: `cons(1, cons(2, cons(3, cons(4, VNil))))`.
- * `vlist` builds the same chain from a flat argument list, and its
- * `toString` prints the book's own `(1 2 3 4)`.
+ * Proper sequences as mutable pair cells terminated by [Empty]. The hand-built
+ * chain and [datumList] use the same native data representation.
  */
-public fun oneThroughFourByHand(): Value = cons(VInt(1L), cons(VInt(2L), cons(VInt(3L), cons(VInt(4L), VNil))))
+public fun oneThroughFourByHand(): Datum = pair(Whole(1L), pair(Whole(2L), pair(Whole(3L), pair(Whole(4L), Empty))))
 
-public fun oneThroughFourByVlist(): Value = vlist(VInt(1L), VInt(2L), VInt(3L), VInt(4L))
+public fun oneThroughFourByDatumList(): Datum = datumList(Whole(1L), Whole(2L), Whole(3L), Whole(4L))
 
-private fun carOf(v: Value): Value = (v as VPair).car
+private fun firstOf(value: Datum): Datum = (value as PairCell).first
 
-private fun cdrOf(v: Value): Value = (v as VPair).cdr
+private fun restOf(value: Datum): Datum = (value as PairCell).second
 
-private fun numOf(v: Value): Long = (v as VInt).n
+private fun numberOf(value: Datum): Long = (value as Whole).value
 
 /**
- * The book's `list-ref`, hand-rolled by walking `n` `cdr`s and taking the
- * `car`: this is the chain-of-pairs representation the section opens
- * with. Everyday Kotlin work represents a sequence as `List<T>`, whose
- * indexing does the same walk under `get`; 2.2.3 switches to that
- * representation for the sequence-operation pipelines.
+ * Walks a pair chain to select the item at [index]. Native Kotlin sequences
+ * use `List<T>` and indexing; this exercise makes the pair-by-pair traversal
+ * explicit.
  */
 public fun listRef(
-    items: Value,
-    n: Long,
-): Value = if (n == 0L) carOf(items) else listRef(cdrOf(items), n - 1L)
+    items: Datum,
+    index: Long,
+): Datum = if (index == 0L) firstOf(items) else listRef(restOf(items), index - 1L)
 
-/** The book's `length`, recursive over the chain. */
-public fun lengthList(items: Value): Long = if (items is VNil) 0L else 1L + lengthList(cdrOf(items))
+/** Count elements recursively until the proper-list terminator. */
+public fun lengthList(items: Datum): Long = if (items === Empty) 0L else 1L + lengthList(restOf(items))
 
-/** The book's `append`, recursive over the first chain. */
+/** Copy the first chain onto the second chain. */
 public fun appendList(
-    list1: Value,
-    list2: Value,
-): Value = if (list1 is VNil) list2 else cons(carOf(list1), appendList(cdrOf(list1), list2))
+    list1: Datum,
+    list2: Datum,
+): Datum = if (list1 === Empty) list2 else pair(firstOf(list1), appendList(restOf(list1), list2))
 
-/** The book's `scale-list`, multiplying every element by `factor`. */
+/** Multiply every whole-number element by [factor]. */
 public fun scaleList(
-    items: Value,
+    items: Datum,
     factor: Long,
-): Value =
-    if (items is VNil) {
-        VNil
+): Datum =
+    if (items === Empty) {
+        Empty
     } else {
-        cons(VInt(numOf(carOf(items)) * factor), scaleList(cdrOf(items), factor))
+        pair(Whole(numberOf(firstOf(items)) * factor), scaleList(restOf(items), factor))
     }
 
-/**
- * The book's `map`: applies [f] to every element, building a new chain.
- * `scaleListViaMap` redefines `scale-list` in terms of it, the book's own
- * next step.
- */
+/** Apply [f] to every element and build a new pair chain. */
 public fun mapList(
-    f: (Value) -> Value,
-    items: Value,
-): Value = if (items is VNil) VNil else cons(f(carOf(items)), mapList(f, cdrOf(items)))
+    f: (Datum) -> Datum,
+    items: Datum,
+): Datum = if (items === Empty) Empty else pair(f(firstOf(items)), mapList(f, restOf(items)))
 
 public fun scaleListViaMap(
-    items: Value,
+    items: Datum,
     factor: Long,
-): Value = mapList({ v -> VInt(numOf(v) * factor) }, items)
+): Datum = mapList({ value -> Whole(numberOf(value) * factor) }, items)
 
-/** The book's `for-each`: applies [action] to every element, for its side effects, returning nothing useful. */
+/** Visit every element in order for its side effects. */
 public fun forEachValue(
-    items: Value,
-    action: (Value) -> Unit,
+    items: Datum,
+    action: (Datum) -> Unit,
 ) {
     var cursor = items
-    while (cursor is VPair) {
-        action(cursor.car)
-        cursor = cursor.cdr
+    while (cursor is PairCell) {
+        action(cursor.first)
+        cursor = cursor.second
     }
 }
 
 public class S2_2_1RepresentingSequencesTest :
     FunSpec({
-        test("cons chains and vlist build the same sequence, and print the book's own surface syntax") {
-            oneThroughFourByHand().toString() shouldBe "(1 2 3 4)"
-            oneThroughFourByVlist().toString() shouldBe "(1 2 3 4)"
+        test("hand-built and variadic construction preserve the whole proper sequence") {
+            structurallyEqual(oneThroughFourByHand(), oneThroughFourByDatumList()) shouldBe true
+            structurallyEqual(
+                oneThroughFourByDatumList(),
+                datumList(Whole(1L), Whole(2L), Whole(3L), Whole(4L)),
+            ) shouldBe true
         }
-        test("listRef walks n cdrs then takes a car") {
-            val squares = vlist(VInt(1L), VInt(4L), VInt(9L), VInt(16L), VInt(25L))
-            listRef(squares, 0L) shouldBe VInt(1L)
-            listRef(squares, 3L) shouldBe VInt(16L)
+        test("native rendering exposes the pair-cell structure") {
+            oneThroughFourByHand().toString() shouldBe
+                "PairCell(first=Whole(value=1), second=PairCell(first=Whole(value=2), second=PairCell(first=Whole(value=3), second=PairCell(first=Whole(value=4), second=Empty))))"
         }
-        test("lengthList counts the empty-list-terminated chain") {
-            lengthList(vlist(VInt(1L), VInt(3L), VInt(5L))) shouldBe 3L
-            lengthList(VNil) shouldBe 0L
+        test("listRef follows pair links to the requested element") {
+            val squares = datumList(Whole(1L), Whole(4L), Whole(9L), Whole(16L), Whole(25L))
+            listRef(squares, 0L) shouldBe Whole(1L)
+            listRef(squares, 3L) shouldBe Whole(16L)
         }
-        test("appendList glues the first chain's elements onto the second") {
-            appendList(vlist(VInt(1L), VInt(2L)), vlist(VInt(3L), VInt(4L))).toString() shouldBe "(1 2 3 4)"
+        test("lengthList counts the Empty-terminated chain") {
+            lengthList(datumList(Whole(1L), Whole(3L), Whole(5L))) shouldBe 3L
+            lengthList(Empty) shouldBe 0L
         }
-        test("scaleList multiplies every element by the factor: the book's (10 20 30 40 50)") {
-            val list = vlist(VInt(1L), VInt(2L), VInt(3L), VInt(4L), VInt(5L))
-            scaleList(list, 10L).toString() shouldBe "(10 20 30 40 50)"
+        test("appendList keeps the first chain's order before the second") {
+            val result = appendList(datumList(Whole(1L), Whole(2L)), datumList(Whole(3L), Whole(4L)))
+            structurallyEqual(result, datumList(Whole(1L), Whole(2L), Whole(3L), Whole(4L))) shouldBe true
         }
-        test("scaleListViaMap agrees with the hand-rolled scaleList") {
-            val list = vlist(VInt(1L), VInt(2L), VInt(3L), VInt(4L), VInt(5L))
-            scaleListViaMap(list, 10L).toString() shouldBe scaleList(list, 10L).toString()
+        test("scaleList multiplies every whole-number element") {
+            val list = datumList(Whole(1L), Whole(2L), Whole(3L), Whole(4L), Whole(5L))
+            structurallyEqual(
+                scaleList(list, 10L),
+                datumList(Whole(10L), Whole(20L), Whole(30L), Whole(40L), Whole(50L)),
+            ) shouldBe true
         }
-        test("forEachValue visits every element in order, for its side effects") {
+        test("scaleListViaMap agrees structurally with the hand-rolled traversal") {
+            val list = datumList(Whole(1L), Whole(2L), Whole(3L), Whole(4L), Whole(5L))
+            structurallyEqual(scaleListViaMap(list, 10L), scaleList(list, 10L)) shouldBe true
+        }
+        test("forEachValue visits every element in order") {
             val seen = mutableListOf<Long>()
-            forEachValue(vlist(VInt(57L), VInt(321L), VInt(88L))) { v -> seen.add(numOf(v)) }
+            forEachValue(datumList(Whole(57L), Whole(321L), Whole(88L))) { value -> seen.add(numberOf(value)) }
             seen shouldBe listOf(57L, 321L, 88L)
         }
     })

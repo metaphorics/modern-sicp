@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.84: using the `raise` operation of exercise 2.83, revise
  * `apply-generic` so it coerces its arguments to a common type by
@@ -13,4 +11,4 @@ import sicp.runtime.PendingSolution
  * -- so adding a new level to the tower needs no new central table, only
  * that level's own `raise` install.
  */
-public fun ex_2_84(): Boolean = throw PendingSolution()
+public fun ex_2_84(): Boolean = throw PendingExercise()

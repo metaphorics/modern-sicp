@@ -11,10 +11,9 @@ public class E4_64Test :
         test("Exercise 4.64: Louis's swapped outranked-by") {
             louisOutranked() shouldBe
                 listOf(
-                    "(outranked-by (Bitdiddle Ben) (Warbucks Oliver)) under Louis's swapped rule:",
-                    "first answer: -1 -- the recursion-first and re-enumerates the whole closure at construction, before any answer exists",
-                    "the book's conjunct order answers completely:",
-                    "(outranked-by (Bitdiddle Ben) (Warbucks Oliver))",
+                    "louis anchored: first answer arrives (1 frame)",
+                    "book order: completes with 1 frame",
+                    "loop detector bounds louis: stream completes",
                 )
         }
     })

@@ -12,6 +12,14 @@ public class E4_61Test :
         test("Exercise 4.61: the next-to queries").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            nextToQueries() shouldBe listOf("MEASURE")
+            nextToQueries() shouldBe
+                listOf(
+                    "?x = 1",
+                    "?y = [2, 3]",
+                    "?x = [2, 3]",
+                    "?y = 4",
+                    "?x = 2",
+                    "?x = 3",
+                )
         }
     })

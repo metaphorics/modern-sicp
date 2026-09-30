@@ -3,16 +3,9 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
- * Exercise 2.78: the book's ordinary numbers carry a `scheme-number` tag
- * because Lisp data is untyped pairs; exercise 2.78 rewrites `type-tag`,
- * `contents`, and `attach-tag` so ordinary numbers ride bare. This
- * edition's tower went further from the start -- a [Num] presents its
- * level as its own type, so there was never a wrapper to strip. What the
- * exercise still teaches here is the bare case: [typeTagOfAny] reads the
- * level off the host's own `Long` and `Double` too, and the bare integer
- * package computes on `Long` values directly, returning bare results.
+ * Exercise 2.78: extend the numeric-tower tag query to recognize native
+ * `Long` and `Double` values directly. The host representation uses a sealed
+ * numeric hierarchy, so those primitive inputs need no wrapper conversion.
  */
-public fun ex_2_78(): Boolean = throw PendingSolution()
+public fun ex_2_78(): Boolean = throw PendingExercise()

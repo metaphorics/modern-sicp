@@ -3,82 +3,82 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.Raise
-import arrow.core.raise.either
-import kotlinx.collections.immutable.PersistentList
-import sicp.ch4.Evaluator
-import sicp.ch4.OutputSink
-import sicp.ch4.parseProgram
-import sicp.ch4.printValue
-import sicp.ch4.readProgram
-import sicp.ch4.setupEnvironment
-import sicp.runtime.DefineE
-import sicp.runtime.Env
-import sicp.runtime.Expr
-import sicp.runtime.SchemeError
-import sicp.runtime.Value
+import sicp.ch4.Direct
 
-// Exercise 4.1: operand evaluation order. Kotlin already fixes the host
-// order -- operands evaluate left to right -- so the base evaluator's
-// `listOfValues` maps the operands in order and the question the Scheme
-// text leaves open has a definite answer here. The exercise still
-// matters: writing the operand walk ourselves makes the order a property
-// of the evaluator's code, and the right-to-left variant shows exactly
-// what the host had been deciding. The probe is the book's device:
-// `(cons (note 1) (note 2))` with `note` pushing onto a recorded list.
+// Exercise 4.1: operand evaluation order. The host fixes the order --
+// operands evaluate left to right -- so the question the book leaves open
+// has a definite answer here. The exercise still matters: the kernel's
+// [listOfValues] is the order made explicit in code (one value per operand
+// expression, stopping at the first failure), and the right-to-left
+// variant shows exactly what the host had been deciding. The probe is the
+// book's device: two `note` recorders that stamp a shared first/second
+// cell, so the printed stamps pin which operand ran first. The opening
+// pair shows the kernel's dotted rendering on the way through.
 
-/** The probe program: the cons prints `(1 . 2)`; `order` records the run. */
-private val PROBE: String =
+/** A recorder: stamps the first cell still holding 0, else the second. */
+internal val NOTE_SOURCE: String =
     """
-    (define order '())
-    (define (note x) (set! order (cons x order)) x)
-    (cons (note 1) (note 2))
-    order
+fun note(n: Long): GExpr =
+    GIf(
+        GEq(GVar("first"), GNum(0L)),
+        GSet("first", GNum(n)),
+        GSet("second", GNum(n)),
+    )
     """.trimIndent()
 
-/** Runs [text] on [evaluatorFactory]'s evaluator and returns the printer-
- * contract transcript: defines print nothing, values print one line each. */
-private fun runOn(
-    evaluatorFactory: (Env) -> Evaluator,
-    text: String,
-): String {
-    val sink = OutputSink()
-    val env = setupEnvironment(sink)
-    val evaluator = evaluatorFactory(env)
-    either {
-        for (expr in parseProgram(readProgram(text))) {
-            if (expr is DefineE) {
-                evaluator.eval(expr, env) // a define prints nothing
-                continue
-            }
-            sink.line(printValue(evaluator.eval(expr, env)))
-        }
-    }.fold(
-        { e -> sink.line("Error: ${sicp.ch4.formatError(e)}") },
-        { },
+/** The right-to-left operand walk: last operand first. */
+internal val RIGHT_TO_LEFT_SOURCE: String =
+    """
+fun listOfValuesRight(operands: List<GExpr>, env: GFrame): List<GValue>? {
+    var out: List<GValue> = emptyList()
+    var index = operands.size - 1
+    while (index >= 0) {
+        val value = gEval(operands.get(index), env) ?: return null
+        out = listOf(value) + out
+        index = index - 1
+    }
+    return out
+}
+    """.trimIndent()
+
+/** A fresh recorder frame: both stamps start at 0. */
+internal val RECORDER_SOURCE: String =
+    """
+fun recorder(): GFrame = GFrame(mutableMapOf<String, GValue>("first" to GNumV(0L), "second" to GNumV(0L)), null)
+    """.trimIndent()
+
+/** Left to right: the kernel walk stamps 1 then 2.
+ * => "(1 . 2)\n1\n2\n" */
+public fun leftToRightTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + NOTE_SOURCE + "\n" + RECORDER_SOURCE + "\n" +
+                """
+fun main() {
+    val env = recorder()
+    println(renderValue(gEval(GConstruct("Pair", listOf(GNum(1L), GNum(2L))), env)))
+    listOfValues(listOf(note(1L), note(2L)), env)
+    println(renderValue(gEval(GVar("first"), env)))
+    println(renderValue(gEval(GVar("second"), env)))
+}
+                """.trimIndent(),
+        ),
     )
-    return sink.toString()
+
+/** Right to left: the variant walk stamps 2 then 1.
+ * => "(1 . 2)\n2\n1\n" */
+public fun rightToLeftTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + NOTE_SOURCE + "\n" + RECORDER_SOURCE + "\n" + RIGHT_TO_LEFT_SOURCE + "\n" +
+                """
+fun main() {
+    val env = recorder()
+    println(renderValue(gEval(GConstruct("Pair", listOf(GNum(1L), GNum(2L))), env)))
+    listOfValuesRight(listOf(note(1L), note(2L)), env)
+    println(renderValue(gEval(GVar("first"), env)))
+    println(renderValue(gEval(GVar("second"), env)))
 }
-
-/** The base evaluator's operand walk: the host's fixed left-to-right order.
- * => (1 . 2) then (2 1) */
-public fun leftToRightTranscript(): String = runOn(::Evaluator, PROBE)
-
-/**
- * The exercise's right-to-left `list-of-values`: [kotlin.collections.foldRight]
- * runs the operands last-first, consing each value onto the front of the
- * already-evaluated rest, so the operator's argument list ends up identical
- * while the evaluation order inverts.
- */
-public class RightToLeft(
-    global: Env,
-) : Evaluator(global) {
-    context(r: Raise<SchemeError>)
-    override fun listOfValues(
-        operands: PersistentList<Expr>,
-        env: Env,
-    ): List<Value> = operands.foldRight(emptyList()) { operand, acc -> listOf(eval(operand, env)) + acc }
-}
-
-/** The right-to-left evaluator on the probe. => (1 . 2) then (1 2) */
-public fun rightToLeftTranscript(): String = runOn(::RightToLeft, PROBE)
+                """.trimIndent(),
+        ),
+    )

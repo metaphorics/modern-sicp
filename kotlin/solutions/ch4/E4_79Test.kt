@@ -9,15 +9,6 @@ import io.kotest.matchers.shouldBe
 public class E4_79Test :
     FunSpec({
         test("Exercise 4.79: scoped versus renaming") {
-            scopedVersusRenaming() shouldBe
-                listOf(
-                    "query: (outranked-by (Bitdiddle Ben) ?who)",
-                    "renaming answers=1 scoped answers=1 equal=true",
-                    "(outranked-by (Bitdiddle Ben) (Warbucks Oliver))",
-                    "query: (outranked-by ?staff-person ?boss)",
-                    "renaming answers=14 scoped answers=14 equal=true",
-                    "query: (and (salary ?staff-person ?amount) (outranked-by ?staff-person ?boss))",
-                    "renaming answers=14 scoped answers=14 equal=true",
-                )
+            scopedVersusRenaming() shouldBe listOf("Hacker", "programmer", "Fect", "programmer")
         }
     })

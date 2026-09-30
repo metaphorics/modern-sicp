@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.80: define a generic predicate `=zero?` and install it in
  * the generic arithmetic package, working for ordinary numbers, rational
@@ -13,4 +11,4 @@ import sicp.runtime.PendingSolution
  * polynomial install that lets `adjoin-term` drop zero terms of nested
  * polys is exercise 2.87's own extension.
  */
-public fun ex_2_80(): List<Boolean> = throw PendingSolution()
+public fun ex_2_80(): List<Boolean> = throw PendingExercise()

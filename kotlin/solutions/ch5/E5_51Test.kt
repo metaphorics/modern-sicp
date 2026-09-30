@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.51
+// Chapter 5, exercise 5_51
 
 package sicp.ch5.solutions
 
@@ -8,7 +8,11 @@ import io.kotest.matchers.shouldBe
 
 public class E5_51Test :
     FunSpec({
-        test("the C evaluator builds and answers the factorial session") {
-            translatedEvaluatorRuns() shouldBe listOf("ok", "120")
+        test("Exercise 5.51: the C translation of the explicit-control evaluator runs the factorial session") {
+            translatedEvaluatorRuns() shouldBe
+                listOf(
+                    "120",
+                    "the C evaluator agrees with the explicit-control run: true",
+                )
         }
     })

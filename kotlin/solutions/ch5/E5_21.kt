@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
+//
 // Chapter 5, exercise 5.21: register machines for both count-leaves
 // variants of the statement, running on the 5.2 simulator with the
 // list-structure memory operations of 5.3.1 as primitives. The tree
@@ -14,20 +16,8 @@
 package sicp.ch5.solutions
 
 import arrow.core.raise.Raise
-import sicp.ch5.MachineError
-import sicp.ch5.Memory
-import sicp.ch5.arithOperations
-import sicp.ch5.cons
-import sicp.ch5.constV
-import sicp.ch5.getRegisterContents
-import sicp.ch5.labelSrc
-import sicp.ch5.listOperations
-import sicp.ch5.makeMachine
-import sicp.ch5.opCond
-import sicp.ch5.opSrc
-import sicp.ch5.reg
-import sicp.ch5.setRegisterContents
-import sicp.ch5.wordToString
+import sicp.guest.GValue
+import sicp.guest.GuestError
 import sicp.runtime.Assign
 import sicp.runtime.Branch
 import sicp.runtime.Goto
@@ -38,9 +28,6 @@ import sicp.runtime.Restore
 import sicp.runtime.Save
 import sicp.runtime.Stmt
 import sicp.runtime.Test
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.Value
 
 /** The object-language tree the machines count: a leaf is a number, a
  *  node a list of subtrees. */
@@ -58,18 +45,18 @@ public sealed class Tree {
 
 /** Plants the tree's cells through the same allocation path the
  *  machine's `cons` uses, and answers the pointer to the root. */
-context(r: Raise<MachineError>)
+context(r: Raise<GuestError>)
 public fun plantTree(
     memory: Memory,
     tree: Tree,
-): Value =
+): GValue =
     when (tree) {
         is Tree.Leaf -> {
-            VInt(tree.n)
+            numberWord(tree.n)
         }
 
         is Tree.Node -> {
-            var acc: Value = VNil
+            var acc: GValue = GValue.VNull
             for (sub in tree.subtrees.asReversed()) {
                 acc = memory.cons(plantTree(memory, sub), acc)
             }
@@ -161,18 +148,18 @@ private fun runCountLeaves(
     answerReg: Reg,
     tree: Tree,
 ): CountRun =
-    machineRun {
+    machineScope {
         val memory = Memory(size = 64)
         val root = plantTree(memory, tree)
         val machine =
-            makeMachine(
-                listOf("tree", "val", "n", "continue", "temp"),
-                listOperations(memory) + arithOperations,
+            freshMachine(
+                setOf("tree", "val", "n", "continue", "temp"),
+                listOperations(memory) + machineArithmetic,
                 controller,
+                mapOf("tree" to root),
             )
-        machine.setRegisterContents("tree", root)
-        machine.start()
-        CountRun(wordToString(machine.getRegisterContents(answerReg)), machine.stack.statistics())
+        runToHalt(machine)
+        CountRun(wordToString(machine.registers.getValue(answerReg).content), statisticsLine(machine))
     }
 
 /** Both machines over three planted trees, each line reading the two

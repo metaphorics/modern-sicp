@@ -12,6 +12,6 @@ public class E5_37Test :
         test("Exercise 5.37: the counts and the monitored session show the blind saves").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            preservingComparison() shouldBe emptyList()
+            preservingComparison().last() shouldBe "every save pairs with one restore: true"
         }
     })

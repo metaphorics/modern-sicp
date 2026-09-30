@@ -9,10 +9,10 @@ import io.kotest.matchers.shouldBe
 
 public class E4_13Test :
     FunSpec({
-        test("Exercise 4.13: make-unbound! removes the binding and the next lookup faults").config(
+        test("Exercise 4.13: unbind removes the binding and the next read faults").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            unboundTranscript() shouldBe "3\nok\nError: unbound variable: x\n"
+            unboundTranscript() shouldBe "3\ntrue\nnull\n"
         }
 
         test("Exercise 4.13: unbinding a shadow restores the outer binding").config(
@@ -21,9 +21,9 @@ public class E4_13Test :
             unboundShadowTranscript() shouldBe "1\n1\n"
         }
 
-        test("Exercise 4.13: unbinding an absent name is a no-op answering ok").config(
+        test("Exercise 4.13: unbinding an absent name is a no-op answering the success value").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            unboundAbsentTranscript() shouldBe "ok\n"
+            unboundAbsentTranscript() shouldBe "true\n"
         }
     })

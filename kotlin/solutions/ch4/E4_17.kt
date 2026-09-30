@@ -3,65 +3,72 @@
 
 package sicp.ch4.solutions
 
-import sicp.ch4.Evaluator
-import sicp.runtime.Env
-import sicp.runtime.SchemeError
-import sicp.runtime.VInt
-import sicp.runtime.VPrimitive
-import sicp.runtime.VProc
-import sicp.runtime.Value
+import sicp.ch4.Direct
 
-// Exercise 4.17: the extra frame. The scanned body of 4.16 lowers the
-// internal defines into one `let`, and that `let`'s application pushes one
-// more frame than the plain sequential rule, which defines directly in the
-// parameter frame. This exercise makes the difference observable by
-// counting frames live: a `frame-depth` primitive walks the environment
-// chain a compound procedure captured, and the probe closes a lambda over
-// the frame the body's definitions ran in. Both evaluators answer the same
-// value -- the extra frame only relocates the bindings -- but the scanned
-// chain is one frame longer.
+// Exercise 4.17: the extra frame the scan-out installs. A closure
+// carries the frame its body ran in, so counting the captured chain
+// tells the two strategies apart: sequential defines run in the call
+// frame itself, while the scan-out moves them one frame down into a
+// fresh binding frame. Both answer the same value -- the extra frame
+// only relocates the bindings -- but the scanned chain is one longer.
 
-/** The number of frames on the chain [procedure] captured, root included. */
-private fun frameDepth(procedure: VProc): Int {
-    var count = 0
-    var cursor: Env? = procedure.env
-    while (cursor != null) {
-        count += 1
-        cursor = cursor.parent
+// Exercise 4.17: the scan-out lengthens the captured chain by one.
+
+/** Frame-chain depth over captured closure environments. */
+internal val DEPTH_SOURCE: String =
+    """
+fun frameDepthOf(env: GFrame?): Long {
+    if (env == null) {
+        return 0L
     }
-    return count
+    return 1L + frameDepthOf(env.parent)
 }
 
-/** The environment-inspection primitive: `(frame-depth procedure)` answers
- * the frame count of the chain the procedure captured. */
-private fun frameDepthPrimitive(): Value =
-    VPrimitive("frame-depth") { args ->
-        val procedure =
-            args.firstOrNull() as? VProc
-                ?: raise(SchemeError.TypeMismatch("frame-depth of a non-procedure"))
-        VInt(frameDepth(procedure).toLong())
+fun closureDepth(closure: GValue?): Long {
+    if (closure is GClosV) {
+        return frameDepthOf(closure.env)
     }
-
-/** The probe: `f` defines `b`, closes a lambda over the frame the defines
- * ran in, and returns it; the caller checks the value and both frame
- * depths, the closure's own and a top-level lambda's anchor.
- * => 21 then 3 then 1 under the scan-out; 21 then 2 then 1 sequential */
-private val PROBE: String =
-    """
-    (define (f x)
-      (define b (+ x 1))
-      (lambda () b))
-    (define g (f 20))
-    (g)
-    (frame-depth g)
-    (frame-depth (lambda () 0))
+    return 0L - 1L
+}
     """.trimIndent()
 
-/** The 4.16 scan-out evaluator on the probe: the closure captures the `let`
- * frame above the parameter frame. => "21\n3\n1\n" */
+/** The scan-out probe: the closure captures the fresh binding frame.
+ * => "21\n3\n1\n" */
 public fun scannedFramesTranscript(): String =
-    transcriptOn(::WithScanOut, PROBE) { env -> env.define("frame-depth", frameDepthPrimitive()) }
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + DEPTH_SOURCE + "\n" +
+                """
+fun main() {
+    val global = GFrame(mutableMapOf<String, GValue>(), null)
+    val f = GLam("x", GLet("b", GAdd(GVar("x"), GNum(1L)), GLam("u", GVar("b"))))
+    val g = gEval(GApp(f, GNum(20L)), global)
+    println(renderValue(gApply(g, GNumV(0L))))
+    println(showLong(closureDepth(g)))
+    val anchor = gEval(GLam("u", GNum(0L)), global)
+    println(showLong(closureDepth(anchor)))
+}
+                """.trimIndent(),
+        ),
+    )
 
-/** The plain evaluator on the probe: the closure captures the parameter
- * frame alone. => "21\n2\n1\n" */
-public fun plainFramesTranscript(): String = transcriptOn(::Evaluator, PROBE) { env -> env.define("frame-depth", frameDepthPrimitive()) }
+/** The sequential probe: the closure captures the call frame alone.
+ * => "21\n2\n1\n" */
+public fun plainFramesTranscript(): String =
+    outcomeText(
+        Direct.run(
+            KERNEL_SOURCE + "\n" + DEPTH_SOURCE + "\n" +
+                """
+fun main() {
+    val global = GFrame(mutableMapOf<String, GValue>(), null)
+    val body = GBlock(listOf(GVarStmt("b", GAdd(GVar("x"), GNum(1L))), GExprStmt(GLam("u", GVar("b")))))
+    val f = GLam("x", body)
+    val g = gEval(GApp(f, GNum(20L)), global)
+    println(renderValue(gApply(g, GNumV(0L))))
+    println(showLong(closureDepth(g)))
+    val anchor = gEval(GLam("u", GNum(0L)), global)
+    println(showLong(closureDepth(anchor)))
+}
+                """.trimIndent(),
+        ),
+    )

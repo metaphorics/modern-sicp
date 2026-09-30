@@ -1,5 +1,5 @@
 @node	4.3, 4.4, 4.2, Chapter 4
-@section Variations on a Scheme --- Nondeterministic Computing
+@section Variations on the Guest Language --- Nondeterministic Computing
 
 In this section, we extend the evaluator to support a programming
 paradigm called @newterm{nondeterministic computing} by building into the
@@ -23,24 +23,45 @@ choose (in some way) a number from the first list and a number from the second
 list and require (using some mechanism) that their sum be prime.  This is
 expressed by following procedure:
 
-@example
-(define (prime-sum-pair list1 list2)
-  (let ((a (an-element-of list1))
-        (b (an-element-of list2)))
-    (require (prime? (+ a b)))
-    (list a b)))
+@example kotlin
+fun isPrime(n: Long): Boolean @{
+    if (n < 2L) return false
+    var d = 2L
+    while (d * d <= n) @{
+        if (n % d == 0L) return false
+        d = d + 1L
+    @}
+    return true
+@}
+
+fun anElementOf(items: List<Long>): Long @{
+    demand(!items.isEmpty())
+    val first = items.get(0)
+    val rest = items.drop(1)
+    if (rest.isEmpty()) return first
+    return choose(first, anElementOf(rest))
+@}
+
+fun primeSumPair(list1: List<Long>,
+    list2: List<Long>): Pair<Long,
+    Long> @{
+    val a = anElementOf(list1)
+    val b = anElementOf(list2)
+    demand(isPrime(a + b))
+    return a to b
+@}
 @end example
 
 @noindent
 It might seem as if this procedure merely restates the problem, rather than
 specifying a way to solve it.  Nevertheless, this is a legitimate
-nondeterministic program.@footnote{We assume that we have previously defined a
-procedure @code{prime?} that tests whether numbers are prime.  Even with
-@code{prime?} defined, the @code{prime-sum-pair} procedure may look
-suspiciously like the unhelpful ``pseudo-Lisp'' attempt to define the
-square-root function, which we described at the beginning of 
+nondeterministic program.@footnote{We assume that @code{isPrime} tests whether
+numbers are prime, as above.  Even with
+@code{isPrime} defined, the @code{primeSumPair} procedure may look
+suspiciously like the unhelpful ``pseudo'' attempt to define the
+square-root function, which we described at the beginning of
 @ref{1.1.7}.  In fact, a square-root procedure along those lines can actually
-be formulated as a nondeterministic program.  By incorporating a search
+be formulated as a search-mode guest program.  By incorporating a search
 mechanism into the evaluator, we are eroding the distinction between purely
 declarative descriptions and imperative specifications of how to compute
 answers.  We'll go even farther in this direction in @ref{4.4}.}
@@ -69,107 +90,154 @@ supports the illusion that time branches, and that our programs have different
 possible execution histories.  When we reach a dead end, we can revisit a
 previous choice point and proceed along a different branch.
 
-The nondeterministic program evaluator implemented below is called the
-@code{amb} evaluator because it is based on a new special form called
-@code{amb}.  We can type the above definition of @code{prime-sum-pair} at the
-@code{amb} evaluator driver loop (along with definitions of @code{prime?},
-@code{an-element-of}, and @code{require}) and run the procedure as follows:
+The nondeterministic program evaluator runs complete guest source through
+@code{SearchModule} in Search mode.  The program below defines
+@code{isPrime}, @code{anElementOf}, and @code{primeSumPair}; @code{choose}
+and @code{demand} are mode intrinsics:
 
 @example kotlin
-val driver = ambDriver(::AmbEvaluator, nondeterministicPrelude)
-driver.input("(prime-sum-pair '(1 3 5 8) '(20 35 110))")
-// ;;; Starting a new problem
-// ;;; Amb-Eval value:
-// => (3 20)
+val source = """
+    fun isPrime(n: Long): Boolean @{
+        if (n < 2L) return false
+        var d = 2L
+        while (d * d <= n) @{
+            if (n % d == 0L) return false
+            d = d + 1L
+        @}
+        return true
+    @}
+
+    fun anElementOf(items: List<Long>): Long @{
+        demand(!items.isEmpty())
+        val first = items.get(0)
+        val rest = items.drop(1)
+        if (rest.isEmpty()) return first
+        return choose(first, anElementOf(rest))
+    @}
+
+    fun primeSumPair(list1: List<Long>,
+        list2: List<Long>): Pair<Long,
+        Long> @{
+        val a = anElementOf(list1)
+        val b = anElementOf(list2)
+        demand(isPrime(a + b))
+        return a to b
+    @}
+
+    fun main() @{
+        val pair = primeSumPair(listOf(1L,
+                3L,
+                5L,
+            8L),
+                listOf(20L,
+                35L,
+            110L))
+        println("$@{pair.first@} $@{pair.second@}")
+    @}
+""".trimIndent()
+val result = SearchModule.run(source)
 @end example
 
 @noindent
-The value returned was obtained after the evaluator repeatedly chose elements
-from each of the lists, until a successful choice was made.
+The expected @code{SearchRun.result.output} has one line per successful
+execution in search order: @code{3 20}, @code{3 110}, and @code{8 35}.
+The run's @code{mainValue} is separate from the transcript; here it is the
+unit value returned by the first successful @code{main} completion.
 
-Section @ref{4.3.1} introduces @code{amb} and explains how it supports
-nondeterminism through the evaluator's automatic search mechanism.  
-@ref{4.3.2} presents examples of nondeterministic programs, and 
-@ref{4.3.3} gives the details of how to implement the @code{amb} evaluator by
-modifying the ordinary Scheme evaluator.
+Section @ref{4.3.1} introduces @code{choose} and explains how it supports
+nondeterminism through the evaluator's automatic search mechanism.
+@ref{4.3.2} presents examples of nondeterministic programs, and
+@ref{4.3.3} describes the continuation-based @code{SearchEvaluator}, which
+traverses the shared checked syntax while exploring alternatives.
 
 @menu
-* 4.3.1::            Amb and Search
+* 4.3.1::            Choose and Search
 * 4.3.2::            Examples of Nondeterministic Programs
-* 4.3.3::            Implementing the @code{Amb} Evaluator
+* 4.3.3::            Implementing the Search Evaluator
 @end menu
 
 @node	4.3.1, 4.3.2, 4.3, 4.3
-@subsection Amb and Search
+@subsection Choose and Search
 
-To extend Scheme to support nondeterminism, we introduce a new special form
-called @code{amb}.@footnote{The idea of @code{amb} for nondeterministic
-programming was first described in 1961 by John McCarthy (see @ref{McCarthy 1963}).}
+To support nondeterminism, the search language introduces the
+@code{choose} form.@footnote{The idea of @code{choose} for nondeterministic
+programming was first described in 1961 by John McCarthy (see @ref{McCarthy 1963});
+@code{choose} is this edition's spelling of that form.}
 The expression
 
-@example
-(amb ⟨@var{e₁}⟩ ⟨@var{e₂}⟩ @r{…} ⟨@var{eₙ}⟩)
+@example kotlin
+choose(⟨@var{e₁}⟩, ⟨@var{e₂}⟩, @r{…}, ⟨@var{eₙ}⟩)
 @end example
 
 @noindent
 returns the value of one of the @math{n} expressions @math{{⟨\kern0.03em e_i⟩}}
-``ambiguously.''  For example, the expression
+``ambiguously.''  For example, the program
 
-@example
-(list (amb 1 2 3) (amb 'a 'b))
+@example kotlin
+fun main() @{
+    val a = choose(1L, 2L, 3L)
+    val b = choose(10L, 20L)
+    println("$a $b")
+@}
+// => 1 10
+// => 1 20
+// => 2 10
+// => 2 20
+// => 3 10
+// => 3 20
 @end example
 
 @noindent
-can have six possible values:
-
-@example
-@code{(1 a)} @code{(1 b)} @code{(2 a)} @code{(2 b)} @code{(3 a)} @code{(3 b)}
-@end example
+has six successful executions, one per pair.
 
 @noindent
-@code{Amb} with a single choice produces an ordinary (single) value.
+@code{choose} with a single choice produces an ordinary (single) value.
 
-@code{Amb} with no choices---the expression @code{(amb)}---is an expression
-with no acceptable values.  Operationally, we can think of @code{(amb)} as an
+@code{choose} with no choices---the expression @code{choose()}---is an expression
+with no acceptable values.  Operationally, we can think of @code{choose()} as an
 expression that when evaluated causes the computation to ``fail'': The
-computation aborts and no value is produced.  Using this idea, we can express
-the requirement that a particular predicate expression @code{p} must be true as
-follows:
+computation abandons that branch and no value is produced on it.  Using this
+idea, the requirement that a particular predicate expression @code{p} must hold
+is the @code{demand} form: @code{demand(p)} proceeds when @code{p} is true and
+fails the branch otherwise --- the search language's spelling of ``proceed, or
+fail'':
 
-@example
-(define (require p)
-  (if (not p) (amb)))
+@example kotlin
+if (!p) choose()
 @end example
 
 @noindent
-With @code{amb} and @code{require}, we can implement the @code{an-element-of}
+With @code{choose} and @code{demand}, we can implement the @code{anElementOf}
 procedure used above:
 
-@example
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) 
-       (an-element-of (cdr items))))
+@example kotlin
+fun anElementOf(items: List<Long>): Long @{
+    demand(!items.isEmpty())
+    val first = items.get(0)
+    val rest = items.drop(1)
+    if (rest.isEmpty()) return first
+    return choose(first, anElementOf(rest))
+@}
 @end example
 
 @noindent
-@code{An-element-of} fails if the list is empty.  Otherwise it ambiguously
+@code{anElementOf} fails if the list is empty.  Otherwise it ambiguously
 returns either the first element of the list or an element chosen from the rest
 of the list.
 
 We can also express infinite ranges of choices.  The following procedure
 potentially returns any integer greater than or equal to some given @math{n}:
 
-@example
-(define (an-integer-starting-from n)
-  (amb n (an-integer-starting-from (+ n 1))))
+@example kotlin
+fun anIntegerStartingFrom(n: Long): Long =
+    choose(n, anIntegerStartingFrom(n + 1L))
 @end example
 
 @noindent
 This is like the stream procedure @code{integers-starting-from} described in
 @ref{3.5.2}, but with an important difference: The stream procedure
 returns an object that represents the sequence of all integers beginning with
-@math{n}, whereas the @code{amb} procedure returns a single integer.@footnote{In
+@math{n}, whereas the @code{choose} procedure returns a single integer.@footnote{In
 actuality, the distinction between nondeterministically returning a single
 choice and returning all choices depends somewhat on our point of view.  From
 the perspective of the code that uses the value, the nondeterministic choice
@@ -177,13 +245,13 @@ returns a single value.  From the perspective of the programmer designing the
 code, the nondeterministic choice potentially returns all possible values, and
 the computation branches so that each value is investigated separately.}
 
-Abstractly, we can imagine that evaluating an @code{amb} expression causes time
+Abstractly, we can imagine that evaluating an @code{choose} expression causes time
 to split into branches, where the computation continues on each branch with one
-of the possible values of the expression.  We say that @code{amb} represents a
+of the possible values of the expression.  We say that @code{choose} represents a
 @newterm{nondeterministic choice point}.  If we had a machine with a sufficient
 number of processors that could be dynamically allocated, we could implement
 the search in a straightforward way.  Execution would proceed as in a
-sequential machine, until an @code{amb} expression is encountered.  At this
+sequential machine, until an @code{choose} expression is encountered.  At this
 point, more processors would be allocated and initialized to continue all of
 the parallel executions implied by the choice.  Each processor would proceed
 sequentially as if it were the only choice, until it either terminates by
@@ -203,10 +271,10 @@ could imagine modifying an evaluator to pick at random a branch to follow
 whenever it encounters a choice point.  Random choice, however, can easily lead
 to failing values.  We might try running the evaluator over and over, making
 random choices and hoping to find a non-failing value, but it is better to
-@newterm{systematically search} all possible execution paths.  The @code{amb}
+@newterm{systematically search} all possible execution paths.  The @code{choose}
 evaluator that we will develop and work with in this section implements a
 systematic search as follows: When the evaluator encounters an application of
-@code{amb}, it initially selects the first alternative.  This selection may
+@code{choose}, it initially selects the first alternative.  This selection may
 itself lead to a further choice.  The evaluator will always initially choose
 the first alternative at each choice point.  If a choice results in a failure,
 then the evaluator automagically@footnote{@anchor{Footnote 250}Automagically: ``Automatically, but
@@ -244,56 +312,34 @@ search that is now called @newterm{truth maintenance}.  Modern problem-solving
 systems all use some form of truth-maintenance system as a substrate.  See
 @ref{Forbus and deKleer 1993} for a discussion of elegant ways to build
 truth-maintenance systems and applications using truth maintenance.  
-@ref{Zabih et al. 1987} describes a nondeterministic extension to Scheme
-that is based on @code{amb}; it is similar to the interpreter described in this
-section, but more sophisticated, because it uses dependency-directed
-backtracking rather than chronological backtracking.  @ref{Winston 1992} gives an
+@ref{Zabih et al. 1987} describes a nondeterministic extension based on
+@code{choose}; it is similar to the interpreter described in this section,
+but more sophisticated because it uses dependency-directed backtracking
+rather than chronological backtracking.  @ref{Winston 1992} gives an
 introduction to both kinds of backtracking.}
 
-@subsubheading Driver loop
+@subsubheading Running the search
 
-The driver loop for the @code{amb} evaluator has some unusual properties.  It
-reads an expression and prints the value of the first non-failing execution, as
-in the @code{prime-sum-pair} example shown above.  If we want to see the value
-of the next successful execution, we can ask the interpreter to backtrack and
-attempt to generate a second non-failing execution.  This is signaled by typing
-the symbol @code{try-again}.  If any expression except @code{try-again} is
-given, the interpreter will start a new problem, discarding the unexplored
-alternatives in the previous problem.  Here is a sample interaction:
-
-@example kotlin
-driver.input("(prime-sum-pair '(1 3 5 8) '(20 35 110))")
-// ;;; Starting a new problem
-// ;;; Amb-Eval value:
-// => (3 20)
-driver.input("try-again")
-// ;;; Amb-Eval value:
-// => (3 110)
-driver.input("try-again")
-// ;;; Amb-Eval value:
-// => (8 35)
-driver.input("try-again")
-// ;;; There are no more values of
-// => the pending problem
-driver.input("(prime-sum-pair '(19 27 30) '(11 36 58))")
-// ;;; Starting a new problem
-// ;;; Amb-Eval value:
-// => (30 11)
-@end example
+One host call runs a complete source unit to search exhaustion; there is no
+prompt loop or retry command.  The public API is
+@code{SearchModule.run(source)}, which returns
+@code{Either<AdmissionError, SearchRun>}.  A successful @code{SearchRun}
+contains a @code{RunResult} with the output transcript, typed runtime error
+if one occurred, and first successful @code{mainValue}; its @code{choices}
+counts entered alternatives.  Effects from failed attempts remain in the
+transcript.  A later program requires a separate call with its own complete
+source; the module does not retain definitions between calls.
 
 @quotation
-@strong{In this language: the amb evaluator.}
+@strong{In this language: the search evaluator.}
 
-The section rides the same analyzed seam the exercises of @ref{4.1} used:
-@code{AmbEvaluator} analyzes each expression once into an execution procedure
-that takes the environment and a success continuation.  Failure is the
-edition's @code{Fail} signal; a dead end throws it, unwinding the branch, and the engine keeps the choice stack of resumable frames, so the drive loop
-and the engine keeps the choice stack of resumable frames, so the drive loop
-always resumes the deepest pending choice.  Assignment commits through an undo
-trail that the loop rolls back on backtrack.  The driver exposes the first
-answer and a @code{tryAgain} entry point, and every drive runs in a fresh
-typed-error scope, so an object fault anywhere in the search aborts it as one
-@code{Error} line.
+The direct @code{SearchEvaluator} traverses the checked syntax and threads
+success and failure continuations.  @code{evalCall} routes the search
+intrinsics through @code{evalIntrinsic}: choices try alternatives from left
+to right, and a failing @code{demand} invokes the failure continuation.
+Ordinary binding writes are restored on backtracking; writes in
+@code{setPermanent} survive.  The run explores every alternative, and
+@code{SearchRun.choices} counts each entered alternative.
 @end quotation
 
 @quotation
@@ -303,19 +349,22 @@ This can be used to implement a procedure that finds Pythagorean triples, i.e.,
 triples of integers @math{{(i, j, k)}} between the given bounds such that
 @math{{i \le j}} and @math{{i^2 + j^2 = k^2}}, as follows:
 
-@example
-(define (a-pythagorean-triple-between low high)
-  (let ((i (an-integer-between low high)))
-    (let ((j (an-integer-between i high)))
-      (let ((k (an-integer-between j high)))
-        (require (= (+ (* i i) (* j j)) 
-                    (* k k)))
-        (list i j k)))))
+@example kotlin
+fun aPythagoreanTripleBetween(
+    low: Long,
+    high: Long,
+): List<Long> @{
+    val i = anIntegerBetween(low, high)
+    val j = anIntegerBetween(i, high)
+    val k = anIntegerBetween(j, high)
+    demand(i * i + j * j == k * k)
+    return listOf(i, j, k)
+@}
 @end example
 @end quotation
 
 @quotation
-@emph{Exercise 4.35a is added by this edition and extends exercise 4.35; SICP numbers stop at 4.35.} @strong{@anchor{Exercise 4.35a}Exercise 4.35a:} Instrument the choice engine with a choice counter, state precisely what counts as one choice, and report the choices the triples search has taken by the time it delivers each triple between 1 and 20.  Run the same search between 1 and 9, where a single triple survives, and report its total cost in choices.
+@emph{Exercise 4.35a is added by this edition; SICP numbers stop at 4.35.} @strong{@anchor{Exercise 4.35a}Exercise 4.35a:} Instrument the choice engine with a choice counter, state precisely what counts as one choice, and report the choices the triples search has taken by the time it delivers each triple between 1 and 20.  Run the same search between 1 and 9, where a single triple survives, and report its total cost in choices.
 @end quotation
 
 @quotation
@@ -325,8 +374,8 @@ on the size of the integers to be searched.  Explain why simply replacing
 @code{an-integer-between} by @code{an-integer-starting-from} in the procedure
 in @ref{Exercise 4.35} is not an adequate way to generate arbit@-rary Py@-tha@-go@-rean
 triples.  Write a procedure that actually will accomplish this.  (That is,
-write a procedure for which repeatedly typing @code{try-again} would in
-principle eventually generate all Py@-tha@-go@-rean triples.)
+write a procedure whose search would in principle eventually reach every
+Py@-tha@-go@-rean triple.)
 @end quotation
 
 @quotation
@@ -335,27 +384,36 @@ following method for generating Pythagorean triples is more efficient than the
 one in @ref{Exercise 4.35}.  Is he correct?  (Hint: Consider the number of
 possibilities that must be explored.)
 
-@example
-(define (a-pythagorean-triple-between low high)
-  (let ((i (an-integer-between low high))
-        (hsq (* high high)))
-    (let ((j (an-integer-between i high)))
-      (let ((ksq (+ (* i i) (* j j))))
-        (require (>= hsq ksq))
-        (let ((k (sqrt ksq)))
-          (require (integer? k))
-          (list i j k))))))
+@example kotlin
+fun aPythagoreanTripleBetween(
+    low: Long,
+    high: Long,
+): List<Long> @{
+    val i = anIntegerBetween(low, high)
+    val hsq = high * high
+    val j = anIntegerBetween(i, high)
+    val ksq = i * i + j * j
+    demand(hsq >= ksq)
+    val k = sqrt(ksq.toDouble())
+    demand(k == floor(k))
+    return listOf(i, j, k.toLong())
+@}
 @end example
 @end quotation
 
 @node	4.3.2, 4.3.3, 4.3.1, 4.3
 @subsection Examples of Nondeterministic Programs
 
-Section @ref{4.3.3} describes the implementation of the @code{amb} evaluator.
+Section @ref{4.3.3} describes the implementation of the @code{choose} evaluator.
 First, however, we give some examples of how it can be used.  The advantage of
 nondeterministic programming is that we can suppress the details of how search
 is carried out, thereby expressing our programs at a higher level of
 abstraction.
+
+The Kotlin definitions below are source fragments; combine each example's
+declarations with its @code{main} before calling @code{SearchModule.run}.
+Each call admits one complete source unit and does not retain definitions for
+the next example.
 
 @subsubheading Logic Puzzles
 
@@ -377,52 +435,77 @@ enumerating all the possibilities and imposing the given
 restrictions:@footnote{Our program uses the following procedure to determine if
 the elements of a list are distinct:
 
-@example
-(define (distinct? items)
-  (cond ((null? items) true)
-        ((null? (cdr items)) true)
-        ((member (car items) (cdr items)) false)
-        (else (distinct? (cdr items)))))
-@end example
-
-@code{Member} is like @code{memq} except that it uses @code{equal?} instead
-of @code{eq?} to test for equality.}
-
-@example
-(define (multiple-dwelling)
-  (let ((baker (amb 1 2 3 4 5))
-        (cooper (amb 1 2 3 4 5))
-        (fletcher (amb 1 2 3 4 5))
-        (miller (amb 1 2 3 4 5))
-        (smith (amb 1 2 3 4 5)))
-    (require
-     (distinct? (list baker cooper fletcher 
-                      miller smith)))
-    (require (not (= baker 5)))
-    (require (not (= cooper 1)))
-    (require (not (= fletcher 5)))
-    (require (not (= fletcher 1)))
-    (require (> miller cooper))
-    (require
-     (not (= (abs (- smith fletcher)) 1)))
-    (require 
-     (not (= (abs (- fletcher cooper)) 1)))
-    (list (list 'baker baker)
-          (list 'cooper cooper)
-          (list 'fletcher fletcher)
-          (list 'miller miller)
-          (list 'smith smith))))
+@example kotlin
+fun isDistinct(items: List<Long>): Boolean @{
+    if (items.isEmpty() || items.size == 1) return true
+    val first = items.get(0)
+    val rest = items.drop(1)
+    if (rest.contains(first)) return false
+    return isDistinct(rest)
+@}
 @end example
 
 @noindent
-Evaluating the expression @code{(multiple-dwelling)} produces the result
+@code{contains} tests for equality structurally, over the values themselves.}
 
 @example kotlin
-driver.input("(multiple-dwelling)")
-// ;;; Starting a new problem
-// ;;; Amb-Eval value:
-// => ((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+fun multipleDwelling(): List<Pair<String, Long>> @{
+    val baker = choose(1L, 2L, 3L, 4L, 5L)
+    val cooper = choose(1L, 2L, 3L, 4L, 5L)
+    val fletcher = choose(1L, 2L, 3L, 4L, 5L)
+    val miller = choose(1L, 2L, 3L, 4L, 5L)
+    val smith = choose(1L, 2L, 3L, 4L, 5L)
+    demand(isDistinct(listOf(baker,
+                cooper,
+                fletcher,
+                miller,
+        smith)))
+    demand(baker != 5L)
+    demand(cooper != 1L)
+    demand(fletcher != 5L)
+    demand(fletcher != 1L)
+    demand(miller > cooper)
+    demand(abs(smith - fletcher) != 1L)
+    demand(abs(fletcher - cooper) != 1L)
+    return listOf(
+        "baker" to baker,
+        "cooper" to cooper,
+        "fletcher" to fletcher,
+        "miller" to miller,
+        "smith" to smith,
+    )
+@}
+
+fun show(d: List<Pair<String, Long>>): String @{
+    var out = ""
+    var first = true
+    for (p in d) @{
+        if (first) @{
+            first = false
+        @} else @{
+            out = out + " "
+        @}
+        out = out + "($@{p.first@} $@{p.second@})"
+    @}
+    return "(" + out + ")"
+@}
 @end example
+
+@noindent
+The @code{show} function is the program's own renderer, since a structured
+value like the result list is not printed directly by the runtime.  Add this
+@code{main} to the preceding declarations and run the complete source with
+@code{SearchModule.run}:
+
+@example kotlin
+fun main() @{
+    println(show(multipleDwelling()))
+@}
+@end example
+
+@noindent
+The expected output is
+@code{((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))}.
 
 @noindent
 Although this simple procedure works, it is very slow.  @ref{Exercise 4.39} and
@@ -452,8 +535,8 @@ restrictions depend on only one or two of the person-floor variables, and can
 thus be imposed before floors have been selected for all the people.  Write and
 demonstrate a much more efficient nondeterministic procedure that solves this
 problem based upon generating only those possibilities that are not already
-ruled out by previous restrictions.  (Hint: This will require a nest of
-@code{let} expressions.)
+ruled out by previous restrictions.  Bind each partial assignment in a nested
+guest block before generating the next choice.
 @end quotation
 
 @quotation
@@ -496,7 +579,7 @@ What in fact was the order in which the five girls were placed?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.43}Exercise 4.43:} Use the @code{amb} evaluator to
+@strong{@anchor{Exercise 4.43}Exercise 4.43:} Use the @code{choose} evaluator to
 solve the following puzzle:@footnote{This is taken from a booklet called
 ``Problematical Recreations,'' published in the 1960s by Litton Industries,
 where it is attributed to the @cite{Kansas State Engineer}.}
@@ -519,7 +602,7 @@ last name is Moore.
 @quotation
 @strong{@anchor{Exercise 4.44}Exercise 4.44:} @ref{Exercise 2.42} described the
 ``eight-queens puzzle'' of placing queens on a chessboard so that no two attack
-each other.  Write a nondeterministic program to solve this puzzle.
+each other.  Write a search-mode guest program to solve this puzzle.
 @end quotation
 
 @subsubheading Parsing natural language
@@ -535,13 +618,11 @@ first element of each list designates the part of speech for the rest of the
 words in the list.}
 
 @example
-(define nouns 
-  '(noun student professor cat class))
+val nouns = listOf("noun", "student", "professor", "cat", "class")
 
-(define verbs 
-  '(verb studies lectures eats sleeps))
+val verbs = listOf("verb", "studies", "lectures", "eats", "sleeps")
 
-(define articles '(article the a))
+val articles = listOf("article", "the", "a")
 @end example
 
 @noindent
@@ -560,25 +641,41 @@ a noun.  With this grammar, the sentence ``The cat eats'' is parsed as follows:
 @noindent
 We can generate such a parse with a simple program that has separate procedures
 for each of the grammatical rules.  To parse a sentence, we identify its two
-constituent pieces and return a list of these two elements, tagged with the
-symbol @code{sentence}:
+constituent pieces and return a node holding these two elements, tagged with
+the label @code{sentence}.  A parse tree is a @code{Parsed} node --- a tag, a
+word, and its subtrees --- and the program renders it in the usual parenthesized
+notation:
 
-@example
-(define (parse-sentence)
-  (list 'sentence
-         (parse-noun-phrase)
-         (parse-word verbs)))
+@example kotlin
+data class Parsed(val tag: String, val word: String,
+    val parts: List<Parsed>)
+
+fun showParsed(t: Parsed): String @{
+    if (t.parts.isEmpty()) return "(" + t.tag + " " + t.word + ")"
+    var out = "(" + t.tag
+    for (p in t.parts) @{
+        out = out + " " + showParsed(p)
+    @}
+    return out + ")"
+@}
+
+fun parseSentence(): Parsed =
+    Parsed("sentence",
+        "",
+            listOf(parseNounPhrase(),
+        parseWord(verbs)))
 @end example
 
 @noindent
 A noun phrase, similarly, is parsed by finding an article followed by a
 noun:
 
-@example
-(define (parse-noun-phrase)
-  (list 'noun-phrase
-        (parse-word articles)
-        (parse-word nouns)))
+@example kotlin
+fun parseNounPhrase(): Parsed =
+    Parsed("noun-phrase",
+        "",
+            listOf(parseWord(articles),
+        parseWord(nouns)))
 @end example
 
 @noindent
@@ -589,70 +686,76 @@ the input that has not yet been parsed.  Each time we check a word, we require
 that @code{*unparsed*} must be non-empty and that it should begin with a word
 from the designated list.  If so, we remove that word from @code{*unparsed*}
 and return the word together with its part of speech (which is found at the
-head of the list):@footnote{Notice that @code{parse-word} uses @code{set!} to
-modify the unparsed input list.  For this to work, our @code{amb} evaluator
-must undo the effects of @code{set!} operations when it backtracks.}
+head of the list):@footnote{Notice that @code{parseWord} assigns to the
+@code{unparsed} binding to consume the input.  For this to work, the search
+evaluator must undo the effects of assignment when it backtracks.}
 
-@example
-(define (parse-word word-list)
-  (require (not (null? *unparsed*)))
-  (require (memq (car *unparsed*) 
-                 (cdr word-list)))
-  (let ((found-word (car *unparsed*)))
-    (set! *unparsed* (cdr *unparsed*))
-    (list (car word-list) found-word)))
+@example kotlin
+fun parseWord(wordList: List<String>): Parsed @{
+    demand(!unparsed.isEmpty())
+    demand(wordList.drop(1).contains(unparsed.get(0)))
+    val foundWord = unparsed.get(0)
+    unparsed = unparsed.drop(1)
+    return Parsed(wordList.get(0),
+        foundWord,
+        emptyList())
+@}
 @end example
 
 @noindent
 To start the parsing, all we need to do is set @code{*unparsed*} to be the
 entire input, try to parse a sentence, and check that nothing is left over:
 
-@example
-(define *unparsed* '())
-(define (parse input)
-  (set! *unparsed* input)
-  (let ((sent (parse-sentence)))
-    (require (null? *unparsed*))
-    sent))
+@example kotlin
+var unparsed: List<String> = emptyList()
+
+fun parse(input: List<String>): Parsed @{
+    unparsed = input
+    val sent = parseSentence()
+    demand(unparsed.isEmpty())
+    return sent
+@}
 @end example
 
 @noindent
 We can now try the parser and verify that it works for our simple test
 sentence:
 
-@example
-@i{;;; Amb-Eval input:}
-(parse '(the cat eats))
-
-@i{;;; Starting a new problem}
-@i{;;; Amb-Eval value:}
-@i{(sentence 
- (noun-phrase (article the) (noun cat))
- (verb eats))}
+@example kotlin
+fun main() @{
+    println(showParsed(parse(listOf("the",
+                    "cat",
+        "eats"))))
+@}
 @end example
 
 @noindent
-The @code{amb} evaluator is useful here because it is convenient to express the
-parsing constraints with the aid of @code{require}.  Automatic search and
-backtracking really pay off, however, when we consider more complex grammars
-where there are choices for how the units can be decomposed.
+The expected output is @code{(sentence (noun-phrase (article the) (noun cat))
+(verb eats))}.  Search is useful because the parser expresses its
+constraints with @code{demand}; it becomes still more useful when a grammar
+admits multiple decompositions.
 
 Let's add to our grammar a list of prepositions:
 
-@example
-(define prepositions 
-  '(prep for to in by with))
+@example kotlin
+val prepositions = listOf("prep",
+    "for",
+    "to",
+    "in",
+    "by",
+    "with")
 @end example
 
 @noindent
 and define a prepositional phrase (e.g., ``for the cat'') to be a preposition
 followed by a noun phrase:
 
-@example
-(define (parse-prepositional-phrase)
-  (list 'prep-phrase
-        (parse-word prepositions)
-        (parse-noun-phrase)))
+@example kotlin
+fun parsePrepositionalPhrase(): Parsed =
+    Parsed("prep-phrase",
+        "",
+            listOf(parseWord(prepositions),
+        parseNounPhrase()))
 @end example
 
 @noindent
@@ -661,21 +764,26 @@ where a verb phrase can be either a verb or a verb phrase extended by a
 prepositional phrase:@footnote{Observe that this definition is recursive---a
 verb may be followed by any number of prepositional phrases.}
 
-@example
-(define (parse-sentence)
-  (list 'sentence
-         (parse-noun-phrase)
-         (parse-verb-phrase)))
+@example kotlin
+fun parseSentence(): Parsed =
+    Parsed("sentence",
+        "",
+            listOf(parseNounPhrase(),
+        parseVerbPhrase()))
 
-(define (parse-verb-phrase)
-  (define (maybe-extend verb-phrase)
-    (amb 
-     verb-phrase
-     (maybe-extend 
-      (list 'verb-phrase
-            verb-phrase
-            (parse-prepositional-phrase)))))
-  (maybe-extend (parse-word verbs)))
+fun parseVerbPhrase(): Parsed @{
+    fun maybeExtend(verbPhrase: Parsed): Parsed =
+        choose(
+            verbPhrase,
+            maybeExtend(
+                Parsed("verb-phrase",
+                    "",
+                        listOf(verbPhrase,
+                    parsePrepositionalPhrase()))
+            ),
+        )
+    return maybeExtend(parseWord(verbs))
+@}
 @end example
 
 @noindent
@@ -685,35 +793,39 @@ phrase, we'll now call a simple noun phrase, and a noun phrase will now be
 either a simple noun phrase or a noun phrase extended by a prepositional
 phrase:
 
-@example
-(define (parse-simple-noun-phrase)
-  (list 'simple-noun-phrase
-        (parse-word articles)
-        (parse-word nouns)))
+@example kotlin
+fun parseSimpleNounPhrase(): Parsed =
+    Parsed("simple-noun-phrase",
+        "",
+            listOf(parseWord(articles),
+        parseWord(nouns)))
 
-(define (parse-noun-phrase)
-  (define (maybe-extend noun-phrase)
-    (amb 
-     noun-phrase
-     (maybe-extend 
-      (list 'noun-phrase
-            noun-phrase
-            (parse-prepositional-phrase)))))
-  (maybe-extend (parse-simple-noun-phrase)))
+fun parseNounPhrase(): Parsed @{
+    fun maybeExtend(nounPhrase: Parsed): Parsed =
+        choose(
+            nounPhrase,
+            maybeExtend(
+                Parsed("noun-phrase",
+                    "",
+                        listOf(nounPhrase,
+                    parsePrepositionalPhrase()))
+            ),
+        )
+    return maybeExtend(parseSimpleNounPhrase())
+@}
 @end example
 
 @noindent
 Our new grammar lets us parse more complex sentences.  For example
 
 @example kotlin
-driver.input("(parse '(the student with the cat sleeps in the class))")
-// ;;; Starting a new problem
-// ;;; Amb-Eval value:
-// => (sentence (noun-phrase (simple-noun-phrase (article the)
-//     (noun student)) (prep-phrase (prep with) (simple-noun-phrase
-//     (article the) (noun cat)))) (verb-phrase (verb sleeps)
-//     (prep-phrase (prep in) (simple-noun-phrase (article the)
-//     (noun class)))))
+fun main() @{
+    println(showParsed(parse(listOf("the",
+                    "student",
+                    "with",
+                    "the",
+        "cat", "sleeps", "in", "the", "class"))))
+@}
 @end example
 
 @noindent
@@ -743,14 +855,12 @@ professor is lecturing with the cat, or that the student has the cat.  Our
 nondeterministic program finds both possibilities:
 
 @example kotlin
-driver.input("(parse '(the professor lectures to the student with the cat))")
-// ;;; Starting a new problem
-// ;;; Amb-Eval value:
-// => (sentence (simple-noun-phrase (article the) (noun professor))
-//     (verb-phrase (verb-phrase (verb lectures) (prep-phrase (prep to)
-//     (simple-noun-phrase (article the) (noun student))))
-//     (prep-phrase (prep with) (simple-noun-phrase (article the)
-//     (noun cat)))))
+fun main() @{
+    println(showParsed(parse(listOf("the",
+                    "professor",
+                    "lectures",
+        "to", "the", "student", "with", "the", "cat"))))
+@}
 @end example
 
 @noindent
@@ -774,20 +884,8 @@ produces
 @end example
 
 @noindent
-Asking the evaluator to try again yields
+The same run's transcript includes the next success, shown below:
 
-@example kotlin
-driver.input("try-again")
-// ;;; Amb-Eval value:
-// => (sentence (simple-noun-phrase (article the) (noun professor))
-//     (verb-phrase (verb lectures) (prep-phrase (prep to)
-//     (noun-phrase (simple-noun-phrase (article the) (noun student))
-//     (prep-phrase (prep with) (simple-noun-phrase (article the)
-//     (noun cat)))))))
-@end example
-
-@noindent
-produces
 
 @example
 (sentence
@@ -817,7 +915,7 @@ explain the differences in shades of meaning among them.
 @quotation
 @strong{@anchor{Exercise 4.46}Exercise 4.46:} The evaluators in 
 @ref{4.1} and @ref{4.2} do not determine what order operands are evaluated in.
-We will see that the @code{amb} evaluator evaluates them from left to right.
+We will see that the search evaluator evaluates them from left to right.
 Explain why our parsing program wouldn't work if the operands were evaluated in
 some other order.
 @end quotation
@@ -828,17 +926,20 @@ since a verb phrase is either a verb or a verb phrase followed by a
 prepositional phrase, it would be much more straightforward to define the
 procedure @code{parse-verb-phrase} as follows (and similarly for noun phrases):
 
-@example
-(define (parse-verb-phrase)
-  (amb (parse-word verbs)
-       (list 
-        'verb-phrase
-        (parse-verb-phrase)
-        (parse-prepositional-phrase))))
+@example kotlin
+fun parseVerbPhrase(): Parsed @{
+    return choose(
+        parseWord(verbs),
+        Parsed("verb-phrase",
+            "",
+                listOf(parseVerbPhrase(),
+            parsePrepositionalPhrase())),
+    )
+@}
 @end example
 
 Does this work?  Does the program's behavior change if we interchange the order
-of expressions in the @code{amb}?
+of expressions in the @code{choose}?
 @end quotation
 
 @quotation
@@ -871,50 +972,45 @@ for a way to deal with this.}
 @end quotation
 
 @node	4.3.3, 4.4, 4.2, 4.3
-@subsection Implementing the @code{Amb} Evaluator
+@subsection Implementing the Search Evaluator
 
-The evaluation of an ordinary Scheme expression may return a value, may never
-terminate, or may signal an error.  In nondeterministic Scheme the evaluation
-of an expression may in addition result in the discovery of a dead end, in
-which case evaluation must backtrack to a previous choice point.  The
-interpretation of nondeterministic Scheme is complicated by this extra case.
+The evaluation of an ordinary guest expression may return a value, may never
+terminate, or may signal a typed guest error.  In the search language of
+@ref{4.3.1} the evaluation of an expression may in addition result in the
+discovery of a dead end, in which case evaluation must backtrack to a previous
+choice point.  The interpretation of the search language is complicated by
+this extra case.
 
-We will construct the @code{amb} evaluator for nondeterministic Scheme by
-modifying the analyzing evaluator of @ref{4.1.7}.@footnote{We chose to
-implement the lazy evaluator in @ref{4.2} as a modification of the
-ordinary metacircular evaluator of @ref{4.1.1}.  In contrast, we will
-base the @code{amb} evaluator on the analyzing evaluator of 
-@ref{4.1.7}, because the execution procedures in that evaluator provide a
-convenient framework for implementing backtracking.}  As in the analyzing
-evaluator, evaluation of an expression is accomplished by calling an execution
-procedure produced by analysis of that expression.  The difference between the
-interpretation of ordinary Scheme and the interpretation of nondeterministic
-Scheme will be entirely in the execution procedures, and in the engine that
-drives them: this host has no re-entrant continuations, so instead of calling a
-failure continuation in place, a dead end throws a @code{Fail} signal that
-unwinds the branch, and the engine resumes the deepest pending frame from its
-choice stack.
+The @code{SearchModule} is a direct evaluator for the admitted guest syntax.
+Its recursive evaluator threads two continuations: success receives the value
+and the failure continuation for another answer; failure resumes the latest
+untried choice.  Unlike the preceding analyzed evaluator, it does not first
+compile expressions to execution closures.
 
 @subsubheading Execution procedures and continuations
 
 Recall that the execution procedures for the ordinary evaluator take one
-argument: the environment of execution.  In the book's design, the execution
-procedures in the @code{amb} evaluator take three arguments: the environment,
-and two procedures called @newterm{continuation procedures}.  This host cannot
-re-enter a suspended continuation, so the execution procedures here take two
-arguments: the environment, and a procedure called the
-@newterm{success continuation}.  The evaluation of an expression will finish by
-calling the success continuation with the value it produced, or by signaling
-the @code{Fail} signal---the role the second continuation procedure, the
-@newterm{failure continuation}, plays in the book's design---if the evaluation
-results in the discovery of a dead end.  Constructing appropriate success
-continuations, and signaling failures, is the mechanism by which the
-nondeterministic evaluator implements backtracking.
+argument: the environment of execution.  The execution procedures in the
+search evaluator take three arguments: the environment, and two procedures
+called @newterm{continuation procedures}.  The evaluation of an expression
+will finish by calling the @newterm{success continuation} with the value it
+produced and the @newterm{failure continuation} that resumes the search, or
+by calling the failure continuation at once if the evaluation results in the
+discovery of a dead end.  Constructing appropriate success continuations, and
+chaining failures, is the mechanism by which the nondeterministic evaluator
+implements backtracking.  In the engine these are plain function values over
+guest values:
 
-It is the job of the success continuation to receive a value and proceed with
-the computation.  If the use of that value leads to a dead end, the @code{Fail}
-signal unwinds the branch; the frames that the branch pushed on the choice
-stack are exactly the places the search can resume.
+@example kotlin
+private typealias Ok = (GValue, Fail) -> Unit
+
+private typealias Fail = () -> Unit
+@end example
+
+It is the job of the success continuation to receive a value and the failure
+continuation that resumes the search, and proceed with the computation.  If
+the use of that value leads to a dead end, the failure continuation runs; the
+pending choices it closes over are exactly the places the search can resume.
 
 It is the job of a failure to try another branch of the nondeterministic
 process.  The essence of the nondeterministic language is in the fact that
@@ -922,37 +1018,37 @@ expressions may represent choices among alternatives.  The evaluation of such
 an expression must proceed with one of the indicated alternative choices, even
 though it is not known in advance which choices will lead to acceptable
 results.  To deal with this, the evaluator picks one of the alternatives and
-passes this value to the success continuation, leaving a frame on the choice
-stack that can deliver the remaining alternatives.
+passes this value to the success continuation, closing over the remaining
+alternatives in the failure continuation.
 
-A failure is signaled during evaluation when a user program explicitly rejects
-the current line of attack (for example, a call to @code{require} may result in
-execution of @code{(amb)}, an expression that always fails---see 
-@ref{4.3.1}).  The @code{Fail} signal unwinds to the drive loop, which resumes
-the deepest pending choice frame.  If there are no more alternatives to be
-considered at that frame, the loop moves on to the frame pushed by an earlier
-choice point, and so on.  Failures are also signaled by the driver loop in
-response to a @code{try-again} request, to find another value of the
-expression.
+A failure is called during evaluation when a user program explicitly rejects
+the current line of attack (for example, a call to @code{demand} may result in
+execution of @code{choose()}, an expression that always fails---see
+@ref{4.3.1}).  Calling the failure continuation resumes the deepest pending
+choice.  If there are no more alternatives to be considered at that choice,
+the failure propagates to the choice made by an earlier choice point, and so
+on.  One @code{SearchModule.run} explores every alternative this way: the
+output accumulates the effects of all attempts in search order, the first
+success becomes the run's value, and the choice count reports one choice per
+entered alternative.
 
-In addition, if a side-effect operation (such as assignment to a variable)
-occurs on a branch of the process resulting from a choice, it may be necessary,
-when the process finds a dead end, to undo the side effect before making a new
-choice.  This is accomplished by an undo trail: the assignment records the old
-value on the trail, and the drive loop rolls the trail back to the mark of the
-frame it is about to resume.
+In addition, if an assignment occurs on a branch, a later failure must undo
+that branch's writes before another alternative runs.  At each choice the
+engine snapshots visible cells and marks its mutation log; on backtracking it
+restores mutations to that mark and then replays writes enclosed by
+@code{setPermanent} (@ref{Exercise 4.51}).
 
 In summary, failures are constructed by
 
 @itemize @bullet
 
 @item
-@code{amb} expressions---an exhausted choice frame fails outright, and an
-empty @code{amb} fails immediately;
+@code{choose} expressions---an exhausted choice fails outright, and an
+empty @code{choose()} fails immediately;
 
 @item
-the top-level driver---to report that the choices are exhausted when the user
-types @code{try-again} and no frame is left.
+the top-level run---when the last pending choice is exhausted, the search
+ends with no further answers.
 
 @end itemize
 
@@ -962,10 +1058,10 @@ Failures are initiated only when a dead end is encountered.  This occurs
 @itemize @bullet
 
 @item
-if the user program executes @code{(amb)};
+if the user program executes @code{choose()};
 
 @item
-if the user types @code{try-again} at the top-level driver.
+if a @code{demand} test is false.
 
 @end itemize
 
@@ -975,454 +1071,588 @@ Failures are also processed during backtracking:
 @itemize @bullet
 
 @item
-When the drive loop resumes a choice frame, it first rolls the undo trail back
-to that frame's mark, so a @code{set!} performed inside an abandoned branch is
-undone before the branch's alternative runs.
+When the engine resumes a pending choice, it restores the cell snapshot and
+mutation mark, so assignments performed inside an abandoned branch are undone
+before the branch's alternative runs.
 
 @item
-When the failure continuation for an @code{amb} runs out of choices, the frame
-fails too, propagating the failure back to the previous choice point or to the
-top level.
+When the failure continuation for a @code{choose} runs out of choices, the
+failure propagates back to the previous choice point or to the top level.
 
 @end itemize
 
 @subsubheading Structure of the evaluator
 
-The syntax- and data-representation procedures for the @code{amb} evaluator,
-and also the basic @code{analyze} procedure, are identical to those in the
-evaluator of @ref{4.1.7}, except for the fact that the dispatch must pass
-applications whose head names a reserved form to the @code{amb} clause; the
-book's tagged-list recognition becomes a check of the application
-head.@footnote{We assume that the evaluator supports @code{let} (see @ref{Exercise 4.22}), which we have
-used in our nondeterministic programs.}
+The syntax- and data-representation procedures for the search evaluator
+use the same admitted guest AST as the evaluator of @ref{4.1.7}; the direct
+CPS evaluator recognizes
+the search intrinsics (@code{choose}, @code{chooseRandom}, @code{demand},
+@code{setPermanent}, @code{ifFail}) where the book's tagged-list recognition
+checked for @code{choose}.@footnote{Our search programs use local functions
+(see @ref{Exercise 4.22}), which the guest language admits directly.}
 
 @example kotlin
-protected open fun reservedClause(expr: AppE): AmbExec? @{
-    val head = expr.operator as? VarE ?: return null
-    return when (head.name) @{
-        "amb" -> analyzedAmb(analyzedOperands(expr))
-        else -> null
+private val searchIntrinsics: Set<String> =
+    setOf("choose",
+        "chooseRandom",
+        "demand",
+        "setPermanent",
+        "ifFail",
+        "seededRandom")
+
+context(r: Raise<GuestError>)
+private fun evalIntrinsic(name: String,
+    expression: Call,
+    env: Env,
+    ok: Ok, fail: Fail) @{
+    when (name) @{
+        "choose" -> evalChoose(expression,
+            env,
+            ok,
+            fail,
+            randomized = false)
+        "chooseRandom" -> evalChoose(expression,
+            env,
+            ok,
+            fail,
+            randomized = true)
+        "demand" -> evalDemand(expression,
+            env,
+            ok,
+            fail)
+        "setPermanent" -> evalSetPermanent(expression,
+            env,
+            ok,
+            fail)
+        "ifFail" -> evalIfFail(expression,
+            env,
+            ok,
+            fail)
+        else -> evalSeededRandom(expression,
+            env,
+            ok,
+            fail)
     @}
 @}
 @end example
 
 @noindent
-Exercise extensions widen this clause with their own reserved heads
-(@code{ramb}, @code{permanent-set!}, @code{if-fail}, and, in
-@ref{Exercise 4.54}, @code{require}).
+The extension names follow the admitted surface exactly: @code{chooseRandom},
+@code{setPermanent}, @code{ifFail}, and @code{seededRandom}.
 
-The top-level procedure @code{ambeval} (similar to the version of @code{eval}
-given in @ref{4.1.7}) analyzes the given expression and applies
-the resulting execution procedure to the given environment and
-success continuation:
+The public entry point admits guest source in @code{Mode.SEARCH}, then
+explores all alternatives:
 
 @example kotlin
-public typealias Succeed = context(Raise<SchemeError>) (Value) -> Unit
-
-public typealias AmbExec = context(Raise<SchemeError>) (Env, Succeed) -> Unit
+public fun run(source: String): Either<AdmissionError,
+    SearchRun> =
+    either @{ execute(Admission.admitOrRaise(source,
+        Mode.SEARCH)) @}
 @end example
 
 @noindent
-A success continuation is a procedure of one argument: the value just
-obtained.  A failure is no longer a procedure in the chain but the @code{Fail}
-signal.  So the general form of an execution procedure is
-
-@example
-(lambda (env succeed)
-  ;; succeed is (lambda (value) ...)
-  ;; a dead end throws Fail
-  …)
-@end example
-
-@noindent
-For example, executing
-
-@example kotlin
-ambDriver(::AmbEvaluator, prelude).solve("(amb 1 2 3)")
-@end example
-
-@noindent
-will attempt to evaluate the given expression and will return either the
-expression's first value (if the evaluation succeeds) or @code{null} (if the
-evaluation fails).  The calls the driver makes in its protocol rounds use the
-same continuations to deliver answers and to support the @code{try-again}
-request.
+The continuation aliases are the engine's actual private types.  A
+@code{SearchRun} carries the run observation and the number of alternatives
+entered; effects from failed branches remain in the output, and
+@code{mainValue} is the first successful result or null when search exhausts.
 
 @subsubheading Simple expressions
 
-The execution procedures for the simplest kinds of expressions are essentially
-the same as those for the ordinary evaluator, except for the need to hand the
-value to the success continuation:
+The direct evaluator delivers a literal or a variable value to the success
+continuation together with the failure continuation that remains available:
 
 @example kotlin
-protected fun succeedWith(v: Value): AmbExec = @{ _, succeed -> succeed(v) @}
-
-protected fun succeedVariable(name: String): AmbExec = @{ env, succeed ->
-    succeed(env.lookup(name))
-@}
+is Literal -> ok(literalValue(expression), fail)
+is Name -> ok(readName(expression.text,
+        expression,
+    env),
+    fail)
 @end example
 
 @noindent
-Definitions evaluate their value first and install it when the value arrives:
+A variable read checks the lexical environment and then the global frame;
+an unbound or unassigned read raises a guest error, not a search failure:
 
 @example kotlin
-return @{ env, succeed ->
-    vproc(env) @{ value ->
-        env.define(expr.name, value)
-        succeed(VSym("ok"))
-    @}
+private fun readName(name: String,
+    at: Expression,
+    env: Env): GValue @{
+    val cell = env.lookup(name) ?: globals.lookup(name)
+        ?: r.raise(GuestError.UnassignedRead(at.span))
+    val value = cell.value
+    if (value is GValue.VUnassigned)
+        r.raise(GuestError.UnassignedRead(at.span))
+    return value
 @}
 @end example
-
-@noindent
-Notice that looking up a variable always `succeeds.'  If
-the lookup fails to find the variable, it signals an error,
-as usual.  Such a ``failure'' indicates a program bug---a reference to
-an unbound variable; it is not an indication that we should try another
-nondeterministic choice instead of the one that is currently being tried.
 
 @subsubheading Conditionals and sequences
 
-Conditionals are also handled in a similar way as in the ordinary evaluator.
-The execution procedure generated for an @code{if} invokes the predicate
-execution procedure @code{pproc} with a success continuation that checks
-whether the predicate value is true and goes on to execute either the
-consequent or the alternative.  If the execution of @code{pproc} fails, the
-@code{Fail} signal unwinds, exactly as it would past any other pending
-computation.
+A conditional evaluates its Boolean test, then follows only the selected
+branch.  A statement sequence threads the failure continuation from one
+statement to the next, so a later failed choice resumes an earlier one:
 
 @example kotlin
-protected fun analyzedIf(
-    pproc: AmbExec,
-    cproc: AmbExec,
-    aproc: AmbExec,
-): AmbExec = @{ env, succeed ->
-    pproc(env) @{ predValue ->
-        if (isTrue(predValue)) cproc(env, succeed) else aproc(env, succeed)
-    @}
+context(r: Raise<GuestError>)
+private fun evalIf(expression: If,
+    env: Env,
+    ok: Ok,
+    fail: Fail) @{
+    eval(expression.condition, env, @{ condition, _ ->
+        val branch = if (Primitives.truth(condition,
+            expression.condition.span)) @{
+            expression.yes
+        @} else @{
+            expression.no
+        @}
+        if (branch != null) eval(branch, env, ok, fail)
+        else ok(GValue.VUnit, fail)
+    @}, fail)
 @}
-@end example
 
-@noindent
-Sequences are handled in the same way as in the previous evaluator, except that
-the composition of the execution procedures happens at analysis time: to
-sequentially execute @code{a} and then @code{b}, we call @code{a} with a
-success continuation that calls @code{b}.
-
-@example kotlin
-var combined: AmbExec = analyze(actions.last())
-for (i in actions.size - 2 downTo 0) @{
-    val earlier = analyze(actions[i])
-    val later = combined
-    combined = @{ env, succeed ->
-        earlier(env) @{ later(env, succeed) @}
+context(r: Raise<GuestError>)
+private fun runStatements(statements: List<Statement>,
+    env: Env,
+    ok: Ok,
+    fail: Fail) @{
+    fun step(index: Int, currentFail: Fail) @{
+        if (index == statements.size) @{
+            ok(GValue.VUnit, currentFail)
+            return
+        @}
+        execStatement(statements[index], env,
+            @{ _,
+                more -> step(index + 1,
+                more) @},
+                currentFail)
     @}
+    step(0, fail)
 @}
 @end example
 
 @subsubheading Definitions and assignments
 
-Definitions are another case where we must go to some trouble to manage the
-success continuation, because it is necessary to evaluate the
-definition-value expression before actually defining the new variable.
-
-Assignments are more interesting.  This is the first place where we really use
-the engine's bookkeeping, rather than just passing continuations around.  The
-execution procedure for assignments first attempts to obtain the new value to
-be assigned to the variable. If this evaluation fails, the assignment fails.
-
-If the value computation succeeds, however, and we go on to make the
-assignment, we must consider the possibility that this branch of the
-computation might later fail, which will require us to backtrack out of the
-assignment.  Thus, we must arrange to undo the assignment as part of the
-backtracking process.@footnote{We
-didn't worry about undoing definitions, since we can assume that internal
-definitions are scanned out (@ref{4.1.6}).}
-
-This is accomplished by the undo trail: the assignment saves the old value of
-the variable together with the assignment itself on the trail before
-proceeding, and the drive loop rolls the trail back to the mark of the frame it
-is about to resume.  That is, a successful assignment commits a trail entry
-that will intercept any subsequent unwinding of the branch; whatever failure
-would otherwise abandon the branch first restores the old value.
+Definitions evaluate their initializer and install its value in the current
+environment.  An assignment evaluates its right side first, then writes to
+the resolved target.  Search rollback is handled by the mutation log at
+choice points; @code{setPermanent} records writes for replay.  A missing
+binding raises @code{GuestError.UnassignedRead}, not failure:
 
 @example kotlin
-protected fun analyzedAssignment(
-    name: String,
-    vproc: AmbExec,
-): AmbExec = @{ env, succeed ->
-    vproc(env) @{ value ->
-        val oldValue = env.lookup(name)
-        env.set(name, value)
-        trail.addLast(Undo(env, name, oldValue))
-        succeed(VSym("ok"))
+is Assignment -> eval(statement.value,
+    env,
+    @{ value,
+    more ->
+    writeAssignment(statement, value, env)
+    ok(GValue.VUnit, more)
+@}, fail)
+
+context(r: Raise<GuestError>)
+private fun writeAssignment(
+    statement: Assignment,
+    value: GValue,
+    env: Env,
+) @{
+    val target = statement.target
+    if (target is Name) @{
+        val cell = env.lookup(target.text)
+            ?: globals.lookup(target.text)
+            ?: r.raise(GuestError.UnassignedRead(target.span))
+        if (permanentDepth > 0) permanent.add(cell to value)
+        cell.value = value
+        return
     @}
+    if (target is Member) @{
+        val receiver =
+            evalDirect(target.receiver,
+                env) as? GValue.VObject
+                ?: r.raise(GuestError.UnassignedRead(target.span))
+        val before = FieldsState(
+            receiver,
+            LinkedHashMap(receiver.fields),
+        )
+        receiver.fields[target.name] = value
+        recordWrite(
+            before,
+            FieldsState(receiver,
+                LinkedHashMap(receiver.fields)),
+        )
+        return
+    @}
+    if (target is Index) @{
+        val receiver = evalDirect(target.receiver, env)
+        val index = evalDirect(target.index, env)
+        val before = storeState(receiver,
+            statement.span)
+        Primitives.writeIndex(receiver,
+            index,
+            value,
+            statement.span)
+        recordWrite(before,
+                storeState(receiver,
+            statement.span))
+        return
+    @}
+    r.raise(GuestError.UnassignedRead(statement.span))
 @}
 @end example
 
 @subsubheading Procedure applications
 
-The execution procedure for applications contains no new ideas except for the
-technical complexity of managing the continuations.  This complexity arises in
-application analysis, due to the need to keep track of the success continuation
-as we evaluate the operands.  We use a procedure that delivers the arguments
-one at a time, rather than a simple
-@code{map} as in the ordinary evaluator:
+Applications first dispatch search intrinsics.  Other name calls resolve a
+bound guest function, a constructor, or a primitive; member calls resolve a
+guest method or a primitive operation.  Arguments are evaluated left to right:
 
 @example kotlin
-private fun deliverArgs(
-    aprocs: List<AmbExec>,
-    index: Int,
+context(r: Raise<GuestError>)
+private fun evalCall(
+    expression: Call,
     env: Env,
-    collected: List<Value>,
-    procedure: Value,
-    succeed: Succeed,
+    ok: Ok,
+    fail: Fail,
 ) @{
-    if (index >= aprocs.size) @{
-        executeApplication(procedure, collected, succeed)
+    val callee = expression.callee
+    if (callee is Name &&
+        callee.text in searchIntrinsics) @{
+        evalIntrinsic(callee.text,
+            expression,
+            env,
+            ok,
+            fail)
         return
     @}
-    aprocs[index](env) @{ arg ->
-        deliverArgs(aprocs, index + 1, env, collected + arg, procedure, succeed)
+    if (callee is Name) @{
+        val bound = env.lookup(callee.text)
+            ?: globals.lookup(callee.text)
+        if (bound != null &&
+            bound.value !is GValue.VUnassigned) @{
+            evalArguments(expression,
+                env,
+                @{ arguments,
+                more ->
+                applyFunction(bound.value,
+                    arguments,
+                    ok,
+                    more)
+            @}, fail)
+            return
+        @}
+        val shape = classTable[callee.text]
+        if (shape != null) @{
+            evalArguments(expression,
+                env,
+                @{ arguments,
+                more ->
+                val fields = linkedMapOf<String,
+                    GValue>()
+                for (
+                    (property,
+                        value) in shape.properties.zip(arguments)
+                ) @{
+                    fields[property.name] = value
+                @}
+                ok(
+                    GValue.VObject(
+                        shape.name,
+                        structural = shape.data,
+                        fields = fields,
+                    ),
+                    more,
+                )
+            @}, fail)
+            return
+        @}
+        evalArguments(expression,
+            env,
+            @{ arguments,
+            more ->
+            ok(
+                Primitives.call(
+                    callee.text,
+                    arguments,
+                    sink,
+                    expression.span,
+                ),
+                more,
+            )
+        @}, fail)
+        return
     @}
+    if (callee is Member) @{
+        eval(callee.receiver, env, @{ receiver, _ ->
+            evalArguments(expression,
+                env,
+                @{ arguments,
+                more ->
+                val shape = (receiver as? GValue.VObject)
+                    ?.let @{ classTable[it.className] @}
+                val method = shape?.methods?.get(callee.name)
+                if (method != null) @{
+                    applyFunction(
+                        functionValue(method, globals),
+                        arguments,
+                        ok,
+                        more,
+                    )
+                @} else @{
+                    memberCallCps(
+                        receiver,
+                        callee.name,
+                        arguments,
+                        ok,
+                        more,
+                        expression.span,
+                    )
+                @}
+            @}, fail)
+        @}, fail)
+        return
+    @}
+    eval(callee, env, @{ fn, _ ->
+        evalArguments(expression,
+            env,
+            @{ arguments,
+            more ->
+            applyFunction(fn, arguments, ok, more)
+        @}, fail)
+    @}, fail)
 @}
-@end example
 
-@noindent
-Notice how consuming the operand execution procedures and collecting the
-resulting list of arguments is accomplished by calling each one with a success
-continuation that recursively continues the delivery.  The collected list is
-rebuilt for each branch, so a backtrack never sees an argument collected for an
-abandoned branch.
-
-The actual procedure application is performed in the same way as for the
-ordinary evaluator, except for the need to manage the continuation:
-
-@example kotlin
-context(r: Raise<SchemeError>)
-protected fun executeApplication(
-    procedure: Value,
-    arguments: List<Value>,
-    succeed: Succeed,
+context(r: Raise<GuestError>)
+private fun applyFunction(
+    fn: GValue,
+    arguments: List<GValue>,
+    ok: Ok,
+    fail: Fail,
 ) @{
-    when (procedure) @{
-        is VPrimitive -> succeed(callPrimitive(procedure, arguments))
-        is VProc -> applyCompound(procedure, arguments, succeed)
-        else -> r.raise(SchemeError.NotApplicable(procedure))
+    val closure = closures[fn]
+    if (closure != null) @{
+        runClosureStreaming(closure,
+            arguments,
+            ok,
+            fail)
+        return
     @}
+    if (fn !is GValue.VFunction) @{
+        ok(Primitives.invoke(fn,
+                arguments,
+            NO_POSITION),
+            fail)
+        return
+    @}
+    ok(fn.apply(r, arguments), fail)
 @}
 @end example
 
-@subsubheading Evaluating @code{amb} expressions
+@subsubheading Evaluating @code{choose} expressions
 
-The @code{amb} special form is the key element in the nondeterministic
-language.  Here we see the essence of the interpretation process and the reason
-for the choice stack.  The execution procedure for @code{amb} counts one
-choice, delivers the first alternative at once, and pushes a frame that holds
-the remaining alternatives together with the environment, the success
-continuation, and the trail mark.  When the branch dies, the drive loop pops
-the deepest frame, rolls the trail back, and delivers the next alternative; an
-empty @code{amb} fails outright.
+The @code{choose} intrinsic evaluates alternatives one at a time.  At a
+choice point, the engine snapshots visible cells and marks the mutation log.
+Failure restores that state before entering the next alternative; each
+entered alternative increments the run's choice count.  An empty choice
+fails immediately:
 
 @example kotlin
-protected open fun analyzedAmb(alternatives: List<AmbExec>): AmbExec = @{ env, succeed ->
-    choicesTaken++
-    deliverChoice(visitOrder(alternatives), env, succeed)
-@}
-
-protected fun deliverChoice(
-    alternatives: List<AmbExec>,
+context(r: Raise<GuestError>)
+private fun evalChoose(
+    expression: Call,
     env: Env,
-    succeed: Succeed,
+    ok: Ok,
+    fail: Fail,
+    randomized: Boolean,
 ) @{
+    val alternatives = expression.arguments.map @{ it.value @}
     if (alternatives.isEmpty()) @{
-        throw AmbFail
+        fail()
+        return
     @}
-    frames.addLast(ChoiceFrame(alternatives, 1, env, succeed, trail.size))
-    alternatives[0](env, succeed)
+    val order = if (randomized) @{
+        val generator = random ?: GValue.VRandom(0L).also @{ random = it
+            @}
+        shuffledIndices(alternatives.size, generator)
+    @} else alternatives.indices.toList()
+    val snapshot = snapshotCells(env)
+    val mark = mutations.size
+    fun tryAt(position: Int) @{
+        if (position == order.size) @{
+            fail()
+            return
+        @}
+        restoreMutated(mark)
+        restoreCells(snapshot)
+        replayPermanent()
+        state.choices++
+        eval(alternatives[order[position]], env,
+            ok) @{ tryAt(position + 1) @}
+    @}
+    tryAt(0)
 @}
 @end example
 
 @subsubheading Driver loop
 
-The driver loop for the @code{amb} evaluator is complex, due to the mechanism
-that permits the user to try again in evaluating an expression.  A problem runs
-to its first answer; the success continuation throws the answer and the pending
-frames out to the drive loop, which retains the choice stack.  A
-@code{try-again} request resumes the loop, which pops the deepest frame, rolls
-its trail back, and delivers the next alternative; when no frame is left, the
-problem is exhausted.  Any other input starts a new problem, clearing the
-frames and the trail of the old one.
+The public driver admits source in search mode, explores it to exhaustion,
+and returns the run result plus the choice count.  Effects are captured in
+program order; the first successful value is retained, while later failures
+continue the search:
 
 @example kotlin
-context(r: Raise<SchemeError>)
-internal fun startDrive(
-    exec: AmbExec,
-    env: Env,
-): Value? = keepDriving(exec, env)
+public fun run(source: String): Either<AdmissionError,
+    SearchRun> =
+    either @{ execute(Admission.admitOrRaise(source,
+        Mode.SEARCH)) @}
 
-context(r: Raise<SchemeError>)
-internal fun resumeDrive(): Value? = keepDriving(null, null)
-
-private fun keepDriving(
-    first: AmbExec?,
-    firstEnv: Env?,
-): Value? @{
-    val sink: Succeed = @{ value -> throw AmbDeliver(value) @}
-    var pending: AmbExec? = first
-    var pendingEnv: Env? = firstEnv
-    var pendingSucceed: Succeed = sink
-    while (true) @{
-        val exec = pending
-        val env = pendingEnv
-        if (exec != null && env != null) @{
-            try @{
-                exec(env, pendingSucceed)
-            @} catch (deliver: AmbDeliver) @{
-                return deliver.value
-            @} catch (deadEnd: AmbFail) @{
-                // the branch died; resume the deepest pending frame
-            @}
-            pending = null
-        @}
-        val frame = frames.removeLastOrNull() ?: return null
-        unwindTrailTo(frame.mark)
-        if (frame.index >= frame.alternatives.size) continue
-        val alternative = frame.alternatives[frame.index]
-        frame.index += 1
-        if (frame.index < frame.alternatives.size) frames.addLast(frame)
-        choicesTaken++
-        backtracks++
-        pending = alternative
-        pendingEnv = frame.env
-        pendingSucceed = frame.succeed
-    @}
+private fun execute(checked: CheckedProgram): SearchRun @{
+    val sink = OutputSink()
+    val outcome: Either<GuestError, SearchState> =
+        either @{ SearchEvaluator(checked,
+            sink).explore() @}
+    return outcome.fold(
+        @{ error -> SearchRun(RunResult(sink.contents(),
+                error,
+            null),
+            0L) @},
+        @{ state -> SearchRun(
+            RunResult(sink.contents(),
+                null,
+                state.firstAnswer),
+            state.choices,
+        ) @},
+    )
 @}
 @end example
 
 @quotation
-@strong{@anchor{Exercise 4.50}Exercise 4.50:} Implement a new special form
-@code{ramb} that is like @code{amb} except that it searches alternatives in a
-random order, rather than from left to right.  Show how this can help with
-Alyssa's problem in @ref{Exercise 4.49}.
+@strong{@anchor{Exercise 4.50}Exercise 4.50:} The search mode admits the
+@code{chooseRandom} intrinsic, which is like @code{choose} except that it
+searches alternatives in the order of the program's seeded generator
+(@code{seededRandom}) rather than from left to right.  Show how this can help
+with Alyssa's problem in @ref{Exercise 4.49}.  A run that uses
+@code{chooseRandom} is reproducible from its seed.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.51}Exercise 4.51:} Implement a new kind of
-assignment called @code{permanent-set!} that is not undone upon failure.  For
+@strong{@anchor{Exercise 4.51}Exercise 4.51:} The search mode admits a
+@code{setPermanent} block whose writes are not undone upon failure.  For
 example, we can choose two distinct elements from a list and count the number
 of trials required to make a successful choice as follows:
 
-@example
-(define count 0)
-(let ((x (an-element-of '(a b c)))
-      (y (an-element-of '(a b c))))
-  (permanent-set! count (+ count 1))
-  (require (not (eq? x y)))
-  (list x y count))
+@example kotlin
+var count: Long = 0L
 
-@i{;;; Starting a new problem}
-@i{;;; Amb-Eval value:}
-@i{(a b 2)}
+fun elementOf(items: List<String>): String @{
+    demand(!items.isEmpty())
+    val first = items.get(0)
+    if (items.size == 1) @{
+        return first
+    @}
+    return choose(first, elementOf(items.drop(1)))
+@}
 
-@i{;;; Amb-Eval input:}
-try-again
-
-@i{;;; Amb-Eval value:}
-@i{(a c 3)}
+fun main() @{
+    val x = elementOf(listOf("a", "b", "c"))
+    val y = elementOf(listOf("a", "b", "c"))
+    setPermanent @{ count = count + 1L @}
+    demand(x != y)
+    println("$x $y $count")
+@}
 @end example
 
-What values would have been displayed if we had used @code{set!} here
-rather than @code{permanent-set!}?
+@noindent
+The run prints @code{a b 2} for the first success and @code{a c 3} for the
+next: the counter survives backtracking, so it counts trials, not just the
+choices behind one answer.
+
+What values would have been displayed if we had used an ordinary assignment
+here rather than @code{setPermanent}?
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.52}Exercise 4.52:} Implement a new construct called
-@code{if-fail} that permits the user to catch the failure of an expression.
-@code{If-fail} takes two expressions.  It evaluates the first expression as
-usual and returns as usual if the evaluation succeeds.  If the evaluation
-fails, however, the value of the second expression is returned, as in the
-following example:
+@strong{@anchor{Exercise 4.52}Exercise 4.52:} The search mode admits
+@code{ifFail}, which takes two zero-argument blocks.  It evaluates the first
+block and returns its answers; if that block exhausts its choices, it evaluates
+the second block.  For example:
 
-@example
-@i{;;; Amb-Eval input:}
-(if-fail 
- (let ((x (an-element-of '(1 3 5))))
-   (require (even? x))
-   x)
- 'all-odd)
+@example kotlin
+fun elementOfLong(items: List<Long>): Long @{
+    demand(!items.isEmpty())
+    val first = items.get(0)
+    val rest = items.drop(1)
+    if (rest.isEmpty()) return first
+    return choose(first, elementOfLong(rest))
+@}
+@end example
 
-@i{;;; Starting a new problem}
-@i{;;; Amb-Eval value:}
-@i{all-odd}
+@example kotlin
+fun firstEven(items: List<Long>): String @{
+    return ifFail(
+        @{
+            val x = elementOfLong(items)
+            demand(x % 2L == 0L)
+            "$x"
+        @},
+        @{ "all-odd" @},
+    )
+@}
 
-@i{;;; Amb-Eval input:}
-(if-fail
- (let ((x (an-element-of '(1 3 5 8))))
-   (require (even? x))
-   x)
- 'all-odd)
-
-@i{;;; Starting a new problem}
-@i{;;; Amb-Eval value:}
-@i{8}
+fun main() @{
+    println(firstEven(listOf(1L, 3L, 5L)))
+    println(firstEven(listOf(1L, 3L, 5L, 8L)))
+@}
+// all-odd
+// 8
 @end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.53}Exercise 4.53:} With @code{permanent-set!} as
-described in @ref{Exercise 4.51} and @code{if-fail} as in @ref{Exercise 4.52},
+@strong{@anchor{Exercise 4.53}Exercise 4.53:} With @code{setPermanent} as
+described in @ref{Exercise 4.51} and @code{ifFail} as in @ref{Exercise 4.52},
 what will be the result of evaluating
 
-@example
-(let ((pairs '()))
-  (if-fail 
-   (let ((p (prime-sum-pair 
-             '(1 3 5 8) 
-             '(20 35 110))))
-     (permanent-set! pairs 
-                     (cons p pairs))
-     (amb))
-   pairs))
+@example kotlin
+fun main() @{
+    var pairs: List<Pair<Long, Long>> = listOf()
+    ifFail(
+        @{
+            val p = primeSumPair(
+                listOf(1L, 3L, 5L, 8L),
+                listOf(20L, 35L, 110L),
+            )
+            setPermanent @{ pairs = listOf(p) + pairs @}
+            choose()
+        @},
+        @{ println(pairs.size) @},
+    )
+@}
 @end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.54}Exercise 4.54:} If we had not realized that
-@code{require} could be implemented as an ordinary procedure that uses
-@code{amb}, to be defined by the user as part of a nondeterministic program, we
-would have had to implement it as a special form.  This would require syntax
-procedures
+@strong{@anchor{Exercise 4.54}Exercise 4.54:} In this edition,
+@code{demand} is an intrinsic form rather than an ordinary guest function.
+Its evaluator clause evaluates one Boolean expression; when true it passes
+@code{GValue.VUnit} and the current success continuation onward, and when
+false it invokes the continuation for trying another choice.  Explain why
+implementing @code{demand} as an ordinary function would not provide this
+backtracking behavior.  Then identify the corresponding dispatch branch in
+@code{evalIntrinsic} and complete this direct evaluator clause:
 
-@example
-(define (require? exp) 
-  (tagged-list? exp 'require))
-
-(define (require-predicate exp) 
-  (cadr exp))
-@end example
-
-@noindent
-and a new clause in the dispatch in @code{analyze}
-
-@example
-((require? exp) (analyze-require exp))
-@end example
-
-@noindent
-as well the procedure @code{analyze-require} that handles @code{require}
-expressions.  Complete the following definition of @code{analyze-require}.
-
-@example
-(define (analyze-require exp)
-  (let ((pproc (analyze 
-                (require-predicate exp))))
-    (lambda (env succeed fail)
-      (pproc env
-             (lambda (pred-value fail2)
-               (if ⟨??⟩
-                   ⟨??⟩
-                   (succeed 'ok fail2)))
-             fail))))
+@example kotlin
+context(r: Raise<GuestError>)
+private fun evalDemand(
+    expression: Call, env: Env, ok: Ok, fail: Fail,
+) @{
+    val condition = expression.arguments.single().value
+    eval(condition, env, @{ value, more ->
+        if (Primitives.truth(value, condition.span)) @{
+            ok(
+                GValue.VUnit,
+                more,
+            )
+        @} else @{
+            more()
+        @}
+    @}, fail)
+@}
 @end example
 @end quotation

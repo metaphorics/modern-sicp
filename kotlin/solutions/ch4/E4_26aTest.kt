@@ -1,26 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.26a
+// Chapter 4, exercise 4.26a: tests.
 
 package sicp.ch4.solutions
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
-public class E4_26aTest :
+public class E426aTest :
     FunSpec({
-        test("Exercise 4.26a: before the derivation, when is an unbound application") {
-            whenBeforeTranscript() shouldBe "Error: unbound variable: when\n"
+        test("Exercise 4.26a: before the derivation the name is unbound") {
+            whenBeforeTranscript() shouldBe "error\n"
         }
 
-        test("Exercise 4.26a: after the derivation, when evaluates") {
+        test("Exercise 4.26a: the derived when evaluates") {
             whenAfterTranscript() shouldBe "yes\n"
         }
 
-        test("Exercise 4.26a: a false condition answers the missing alternative") {
-            whenNoElseTranscript() shouldBe "#f\n"
+        test("Exercise 4.26a: a false condition with no else arm answers the derived false") {
+            whenNoElseTranscript() shouldBe "false\n"
         }
 
-        test("Exercise 4.26a: a multi-expression body answers the last expression") {
+        test("Exercise 4.26a: a multi-expression body answers its last expression") {
             whenBodySequenceTranscript() shouldBe "3\n"
+        }
+
+        test("Exercise 4.26a: the lazy mirror leaves the unchosen arm unforced") {
+            whenLazyTranscript() shouldBe "42\n"
         }
     })

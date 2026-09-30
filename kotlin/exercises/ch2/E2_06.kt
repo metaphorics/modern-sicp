@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /** A Church numeral: a function that applies its argument `n` times. Given by the exercise statement. */
 public typealias Church<T> = ((T) -> T) -> (T) -> T
 
@@ -30,4 +28,4 @@ public fun churchToLong(n: Church<Long>): Long = n({ x -> x + 1L })(0L)
  *
  * The scaffold returns `churchToLong(plusChurch(churchOne(), churchTwo()))`.
  */
-public fun ex_2_06(): Long = throw PendingSolution()
+public fun ex_2_06(): Long = throw PendingExercise()

@@ -3,71 +3,74 @@
 
 package sicp.ch4.solutions
 
-import arrow.core.raise.either
-import sicp.ch4.AmbEvaluator
-import sicp.ch4.AmbExec
-import sicp.ch4.ambDriver
-import sicp.ch4.printValue
-import sicp.runtime.AppE
-import sicp.runtime.Env
-import sicp.runtime.Random
-import sicp.runtime.VarE
+import sicp.ch4.SearchModule
 
-/** The `ramb` special form: `amb` with the alternatives visited in the
- * seeded xorshift's order. The seed rides in through the driver (D31);
- * [visitOrder] shuffles one choice-point visit Fisher-Yates style, so a
- * fixed seed makes the session reproducible. */
-internal class WithRamb(
-    global: Env,
-    random: Random?,
-) : AmbEvaluator(global, random) {
-    override fun reservedClause(expr: AppE): AmbExec? {
-        val head = expr.operator as? VarE ?: return null
-        if (head.name == "ramb") {
-            return analyzedAmb(analyzedOperands(expr))
-        }
-        return super.reservedClause(expr)
-    }
+// Exercise 4.50: `ramb`, random choice. The search experiment's
+// `chooseRandom` permutes its alternatives by the program's explicit
+// seeded stream and is reproducible from its seed, so the enumeration of
+// 1 to 5 under seed 20260925 is a fixed order and the sentence generator
+// escapes the plain generator's boring first words. The pins are the
+// experiment's own permutation, derived from its shuffle; the removed
+// engine's ramb drew from a different generator and its orders are
+// provenance in the rationale.
 
-    override fun visitOrder(alternatives: List<AmbExec>): List<AmbExec> {
-        val rng = random ?: throw IllegalStateException("ramb needs a seeded driver")
-        val shuffled = alternatives.toMutableList()
-        for (i in shuffled.size - 1 downTo 1) {
-            val j = rng.random(i + 1L).toInt()
-            val held = shuffled[i]
-            shuffled[i] = shuffled[j]
-            shuffled[j] = held
-        }
-        return shuffled
-    }
+/** The seeded enumeration of five alternatives. */
+internal val RAMB_ENUM_PROGRAM: String =
+    AMB_BASE_PRELUDE + "\n" +
+        """
+fun main() {
+    budgetCap = 1000000L
+    seededRandom(20260925L)
+    val x = chooseRandom(1L, 2L, 3L, 4L, 5L)
+    println("(" + showLong(x) + ")")
 }
+        """.trimIndent()
 
-private val seed: ULong = 20260925UL
+/** The random word pickers of the exercise. */
+internal val RAMB_PICKERS_SOURCE: String =
+    """
+fun rambPick(kind: String): String =
+    if (kind == "article") {
+        chooseRandom("the", "a")
+    } else if (kind == "noun") {
+        chooseRandom("student", "professor", "cat", "class")
+    } else if (kind == "verb") {
+        chooseRandom("studies", "lectures", "eats", "sleeps")
+    } else {
+        chooseRandom("for", "to", "in", "by", "with")
+    }
 
-/** The seeded shuffle's enumeration of one five-way choice.
- * => [(3), (2), (5), (1), (4)] */
-public fun rambEnumeration(): List<String> =
-    either {
-        val driver = ambDriver(::WithRamb, AMB_BASE_PRELUDE, seed)
-        answerLines(driver, "(list (ramb 1 2 3 4 5))")
-    }.fold(
-        { e -> throw AssertionError(e.toString()) },
-        { it },
+fun parseWord(kind: String, words: List<String>): String = "(" + kind + " " + rambPick(kind) + ")"
+    """.trimIndent()
+
+/** The generator with random word choice. */
+internal val RAMB_GENERATOR_PROGRAM: String =
+    AMB_BASE_PRELUDE + "\n" + PARSER_WORDS_SOURCE + "\n" + RAMB_PICKERS_SOURCE + "\n" + PARSER_PHRASES_SOURCE
+
+/** The seeded shuffle enumerates 4, 2, 3, 5, 1.
+ * => [(4), (2), (3), (5), (1)] */
+public fun rambEnumeration(): List<String> = searchLines(RAMB_ENUM_PROGRAM)
+
+/** The ramb generator escapes the boring first words.
+ * => "(sentence (simple-noun-phrase (article a) (noun class)) (verb lectures))" */
+public fun rambGeneratedFirst(): String {
+    val source =
+        RAMB_GENERATOR_PROGRAM + "\n" +
+            """
+fun main() {
+    budgetCap = 1000000L
+    seededRandom(20260925L)
+    println(parseSentence())
+}
+            """.trimIndent()
+    return SearchModule.run(source, 1).fold(
+        { error -> throw AssertionError(error.toString()) },
+        { run ->
+            check(run.result.error == null) { run.result.error.toString() }
+            run.result.output
+                .lines()
+                .filter { line -> line.isNotEmpty() }
+                .first()
+        },
     )
-
-/** Mixed into Alyssa's generator, ramb escapes the first-alternative
- * recursion that made 4.49's sentences boring: the first sentence
- * already picks words the depth-first search never reached. */
-public fun rambGeneratedFirst(): String =
-    either {
-        val driver =
-            ambDriver(
-                ::WithRamb,
-                "$AMB_BASE_PRELUDE\n$PARSER_PROGRAM\n$RAMB_GENERATOR_PROGRAM",
-                seed,
-            )
-        printValue(driver.solve("(parse '(any input at all))") ?: throw AssertionError("no sentence"))
-    }.fold(
-        { e -> throw AssertionError(e.toString()) },
-        { it },
-    )
+}

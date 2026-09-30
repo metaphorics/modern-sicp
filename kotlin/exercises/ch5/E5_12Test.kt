@@ -12,6 +12,14 @@ public class E5_12Test :
         test("Exercise 5.12: the assembler's summary of the gcd machine").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            gcdMachineSummary() shouldBe "MEASURE"
+            gcdMachineSummary() shouldBe
+                "(instructions (test (test (op =) (reg b) (const 0))) (branch (branch (label gcd-done)))" +
+                " (assign (assign a (reg b)) (assign b (reg t)) (assign t (op rem) (reg a) (reg b)))" +
+                " (goto (goto (label test-b))))\n" +
+                "(registers a b t)\n" +
+                "(entry-point registers )\n" +
+                "(stack registers )\n" +
+                "(sources (t ((op rem) (reg a) (reg b))) (a (reg b)) (b (reg t)))\n" +
+                "(labels test-b gcd-done)"
         }
     })

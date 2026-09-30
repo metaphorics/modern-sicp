@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.96: pseudodivision. Before any polynomial division in the
  * GCD computation, multiply the dividend by the integerizing factor
@@ -15,4 +13,4 @@ import sicp.runtime.PendingSolution
  * pseudoremainder, not only to the final answer, which keeps the `Long`
  * coefficients in range and lands on the same reduced result.
  */
-public fun ex_2_96(): String = throw PendingSolution()
+public fun ex_2_96(): String = throw PendingExercise()

@@ -2,6 +2,16 @@
 
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 
+plugins {
+    application
+}
+
+application {
+    mainClass = "sicp.ch5.Driver"
+    // The conformance driver runs the core corpus, which recurses 1000 deep.
+    applicationDefaultJvmArgs = listOf("-Xss16m")
+}
+
 // A chapter unit of decision 0001: the three root-level code directories are
 // this project's examples, exercises, and solutions source sets. `check`
 // compiles all three (D28: exercises are compile-only) and runs the examples
@@ -62,6 +72,8 @@ val examplesTest =
         group = "verification"
         testClassesDirs = sourceSets.getByName("examples").output.classesDirs
         classpath = sourceSets.getByName("examples").runtimeClasspath
+        // The core corpus recurses 1000 deep; tree-walking engines need it.
+        jvmArgs("-Xss16m")
     }
 
 val solutionsTest =

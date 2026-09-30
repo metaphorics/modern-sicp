@@ -3,11 +3,7 @@
 
 package sicp.ch2.exercises
 
-/**
- * The book's `same-parity`, over a vararg: [first] is the named first
- * parameter and [rest] collects every remaining argument, Kotlin's
- * replacement for Scheme's dotted-tail notation.
- */
+/** Use the named first value and remaining vararg values to select one parity. */
 public fun sameParity(
     first: Long,
     vararg rest: Long,

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.95: with `P1 = x^2 - 2x + 1`, `P2 = 11x^2 + 7`, and
  * `P3 = 13x + 5`, let `Q1 = P1*P2` and `Q2 = P1*P3` and compute their
@@ -15,4 +13,4 @@ import sicp.runtime.PendingSolution
  * [traceGcdTerms] records each step so the failure stays observable --
  * exactly the "try tracing gcd-terms" the exercise asks for.
  */
-public fun ex_2_95(): List<String> = throw PendingSolution()
+public fun ex_2_95(): List<String> = throw PendingExercise()

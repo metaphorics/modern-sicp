@@ -5,21 +5,24 @@ package sicp.ch2.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VInt
-import sicp.runtime.vlist
+import sicp.runtime.Whole
+import sicp.runtime.datumList
+import sicp.runtime.renderDatum
+import sicp.runtime.structurallyEqual
 
 public class E2_21Test :
     FunSpec({
-        test("both squareList definitions turn (1 2 3 4) into (1 4 9 16)") {
-            val items = vlist(VInt(1L), VInt(2L), VInt(3L), VInt(4L))
-            squareList(items).toString() shouldBe "(1 4 9 16)"
-            squareListViaMap(items).toString() shouldBe "(1 4 9 16)"
+        test("both squareList definitions preserve the input order") {
+            val input = datumList(Whole(1L), Whole(2L), Whole(3L), Whole(4L))
+            val expected = datumList(Whole(1L), Whole(4L), Whole(9L), Whole(16L))
+            structurallyEqual(squareList(input), expected) shouldBe true
+            structurallyEqual(squareListViaMap(input), expected) shouldBe true
         }
-        test("the two definitions agree on negatives") {
-            val items = vlist(VInt(-10L), VInt(2L), VInt(-11L), VInt(17L))
-            squareList(items).toString() shouldBe squareListViaMap(items).toString()
+        test("the two definitions agree on negative values") {
+            val input = datumList(Whole(-10L), Whole(2L), Whole(-11L), Whole(17L))
+            structurallyEqual(squareList(input), squareListViaMap(input)) shouldBe true
         }
-        test("ex_2_21 prints (1 4 9 16)") {
-            ex_2_21() shouldBe "(1 4 9 16)"
+        test("ex_2_21 returns the canonical native rendering") {
+            ex_2_21() shouldBe renderDatum(datumList(Whole(1L), Whole(4L), Whole(9L), Whole(16L)))
         }
     })

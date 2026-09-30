@@ -98,8 +98,8 @@ lambda opens while the program runs, and they hold parameters, local
 declarations, and captured variables.  The idea that @code{+} is the operator
 for addition needs no binding at all: it is part of the language itself,
 outside every frame.  Chapter 4's evaluator gives this model a concrete data
-structure: a chain of @code{Env} frames, each a map from name to value plus a
-pointer to the frame it extends. Every captured @code{var} in this
+structure: a chain of frames, each a set of bindings from name to value plus a
+link to the frame it extends. Every captured @code{var} in this
 section is what that structure realizes.
 
 @menu
@@ -174,7 +174,7 @@ Kotlin refuses a second declaration of @code{square} in one scope.
 
 @ref{Figure 3.2} shows the result of evaluating this @code{fun} declaration.
 The function object is a pair whose code specifies that the function has one
-formal parameter, namely @code{x}, and a function body @code{(* x x)}.  The
+formal parameter, namely @code{x}, and a function body @code{x * x}.  The
 environment part of the function is a pointer to the global environment, since
 that is the environment in which the lambda expression was evaluated to
 produce the function.  A new binding, which associates the function object
@@ -186,7 +186,7 @@ a top-level declaration creates a binding by adding it to a frame.
 @ifinfo
 @quotation
 @strong{Figure 3.2:} Environment structure produced by
-evaluating @code{(define (square x) (* x x))} in the global environment.
+evaluating @code{fun square(x: Long): Long = x * x} in the global environment.
 
 @example
            +----------------------+
@@ -195,26 +195,26 @@ global --->|                      |
 env        | square: --+          |
            +-----------|----------+
                        |       ^
-(define (square x)     |       |
-  (* x x))             V       |
+fun square(x: Long):  |       |
+Long = x * x          V       |
                    .---.---.   |
                    | O | O-+---+
                    `-|-^---'
                      |
                      V
                    parameters: x
-                   body: (* x x)
+                   body: x * x
 @end example
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.2b,,81mm,Figure 3.2: Environment structure produced by evaluating (define (square x) (* x x)) in the global environment.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.2b,,81mm,Figure 3.2: Environment structure produced by evaluating fun square(x: Long): Long = x * x in the global environment.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap3/Fig3.2b.std,,81mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.2:} Environment structure produced by evaluating @code{(define (square x) (* x x))} in the global environment.}
+@caption{@strong{Figure 3.2:} Environment structure produced by evaluating @code{fun square(x: Long): Long = x * x} in the global environment.}
 @end float
 
 @noindent
@@ -242,7 +242,7 @@ Since the value of @code{x} in E1 is 5, the result is @code{5 * 5}, or 25.
 @ifinfo
 @quotation
 @strong{Figure 3.3:} Environment created by evaluating
-@code{(square 5)} in the global environment.
+@code{square(5L)} in the global environment.
 
 @example
           +------------------------------------+
@@ -251,7 +251,7 @@ global -->|                                    |
 env       | square: --+                        |
           +-----------|---------------------+--+
                       |       ^             ^
-(square 5)            |       |             |
+square(5L)           |       |             |
                       V       |             |
                   .---.---.   |         +---+--+
                   | O | O-+---+   E1 -->| x: 5 |
@@ -259,18 +259,18 @@ env       | square: --+                        |
                     |
                     V
                   parameters: x
-                  body: (* x x)
+                  body: x * x
 @end example
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.3b,,129mm,Figure 3.3: Environment created by evaluating (square 5) in the global environment.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.3b,,129mm,Figure 3.3: Environment created by evaluating square(5L) in the global environment.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.3b.std,,129mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.3b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.3:} Environment created by evaluating @code{(square 5)} in the global environment.}
+@caption{@strong{Figure 3.3:} Environment created by evaluating @code{square(5L)} in the global environment.}
 @end float
 
 @noindent
@@ -296,7 +296,7 @@ the function was created.
 @noindent
 We also specify that declaring a name with @code{val} or @code{fun} creates a
 binding in the current environment frame and assigns to the name the indicated
-value.@footnote{Kotlin, unlike Scheme's @code{define}, refuses a second
+value.@footnote{Kotlin, unlike the original book's definition form, refuses a second
 declaration of the same name in the same frame outright: the compiler
 reports a redeclaration error rather than silently changing the existing
 binding.  Where the book's footnote here notes that some people prefer
@@ -313,7 +313,7 @@ the new value.  That is, one finds the first frame in the environment that
 contains a binding for the variable and modifies that frame.  Kotlin checks
 this at compile time rather than at the moment of assignment: a name that
 was declared @code{val}, or that has no visible declaration at all, is a
-compile error, so the analogue of ``@code{set!} signals an error'' for an
+compile error, so the analogue of ``assignment signals an error'' for an
 unbound variable can never happen at run time in Kotlin: the program that
 would trigger it does not compile.
 
@@ -321,8 +321,8 @@ These evaluation rules, though considerably more complex than the substitution
 model, are still reasonably straightforward.  Moreover, the evaluation model,
 though abstract, provides a correct description of how the interpreter
 evaluates expressions.  In @ref{Chapter 4} we shall see how this model can
-serve as a blueprint for implementing a working interpreter: the runtime's
-@code{Env} class, a frame of bindings plus a pointer to the frame it extends,
+serve as a blueprint for implementing a working interpreter: the evaluator's
+environment structure, a frame of bindings plus a link to the frame it extends,
 is that blueprint made concrete.  The following
 sections elaborate the details of the model by analyzing some illustrative
 programs.
@@ -337,7 +337,8 @@ declarations:
 @example kotlin
 fun square(x: Long): Long = x * x
 
-fun sumOfSquares(x: Long, y: Long): Long = square(x) + square(y)
+fun sumOfSquares(x: Long, y: Long): Long =
+    square(x) + square(y)
 
 fun f(a: Long): Long = sumOfSquares(a + 1, a * 2)
 @end example
@@ -356,7 +357,7 @@ global environment.
 
 @example
           +--------------------------------------------+
-          | sum-of-squares:                            |
+          | sumOfSquares:                              |
 global -->| square:                                    |
 env       | f: --+                                     |
           +------|--------------+--------------+-------+
@@ -369,16 +370,16 @@ env       | f: --+                                     |
                |              |              |
                V              V              V
    parameters: a          parameters: x  parameters: x, y
-   body: (sum-of-squares  body: (* x x)  body: (+ (square x)
-           (+ a 1)                                (square y))
-           (* a 2))
+   body: sumOfSquares(   body: x * x   body: square(x) +
+           a + 1,                             square(y)
+             a * 2)
 @end example
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.4b,,132mm,Figure 3.4: Procedure objects in the global frame.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.4b.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.4b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.4:} Procedure objects in the global frame.}
@@ -398,31 +399,31 @@ sumOfSquares(a + 1, a * 2)
 @anchor{Figure 3.5}
 @ifinfo
 @strong{Figure 3.5:} Environments created by evaluating
-@code{(f 5)} using the procedures in @ref{Figure 3.4}.
+@code{f(5L)} using the procedures in @ref{Figure 3.4}.
 
 @example
           +-----------------------------------------------------+
 global -->|                                                     |
 env       +-----------------------------------------------------+
             ^              ^                ^               ^
-(f 5)       |              |                |               |
+f(5L)       |              |                |               |
         +------+       +-------+        +------+        +-------+
   E1 -->| a: 5 |  E2 ->| x: 6  |  E3 -->| x: 6 |  E4 -->| x: 10 |
         |      |       | y: 10 |        |      |        |       |
         +------+       +-------+        +------+        +-------+
-   (sum-of-squares   (+ (square x)       (* x x)         (* x x)
-     (+ a 1)            (square u))
-     (+ a 2))
+   sumOfSquares(     square(x) +       x * x           x * x
+     a + 1,            square(y))
+     a * 2)
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.5b,,142mm,Figure 3.5: Environments created by evaluating (f 5) using the procedures in Figure 3.4.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.5b,,142mm,Figure 3.5: Environments created by evaluating f(5L) using the procedures in Figure 3.4.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.5b.std,,142mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.5b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.5:} Environments created by evaluating @code{(f 5)} @w{using} the procedures in @ref{Figure 3.4}.}
+@caption{@strong{Figure 3.5:} Environments created by evaluating @code{f(5L)} @w{using} the procedures in @ref{Figure 3.4}.}
 @end float
 
 @noindent
@@ -464,9 +465,7 @@ passed from call to call; however, this is also an important aspect of the
 evaluation process, and we will return to it in detail in @ref{Chapter 5}.
 
 @quotation
-@strong{@anchor{Exercise 3.9}Exercise 3.9:} @emph{SICP exercise 3.9 is about
-Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.} In @ref{1.2.1} we used the
+@strong{@anchor{Exercise 3.9}Exercise 3.9:} @emph{This edition replaces SICP exercise 3.9 with a host-language exercise that keeps its number and teaching objective.} In @ref{1.2.1} we used the
 substitution model to analyze two functions for computing factorials, a
 recursive version
 
@@ -479,8 +478,20 @@ fun factorial(n: Long): Long =
 and an iterative version
 
 @example kotlin
-tailrec fun factIter(product: Long, counter: Long, maxCount: Long): Long =
-    if (counter > maxCount) product else factIter(counter * product, counter + 1, maxCount)
+tailrec fun factIter(
+    product: Long,
+    counter: Long,
+    maxCount: Long,
+): Long =
+    if (counter > maxCount) @{
+        product
+    @} else @{
+        factIter(
+            counter * product,
+            counter + 1,
+            maxCount,
+        )
+    @}
 
 fun factorialIter(n: Long): Long = factIter(1L, 1L, n)
 @end example
@@ -523,7 +534,8 @@ be used to represent objects with local state.  As an example, consider the
 function
 
 @example kotlin
-fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError, Long> @{
+fun makeWithdraw(balance: Long): (Long) -> Either<WithdrawError,
+    Long> @{
     var b = balance
     return @{ amount ->
         if (amount > b) @{
@@ -562,11 +574,11 @@ is itself a lambda expression.
 @anchor{Figure 3.6}
 @ifinfo
 @quotation
-@strong{Figure 3.6:} Result of defining @code{make-withdraw} in the global environment.
+@strong{Figure 3.6:} Result of defining @code{makeWithdraw} in the global environment.
 
 @example
           +---------------------------+
-global -->| make-withdraw: --+        |
+global -->| makeWithdraw:  --+        |
 env       +------------------|--------+
                              |      ^
                              V      |
@@ -576,23 +588,26 @@ env       +------------------|--------+
                            |
                            V
          parameters: balance
-         body: (lambda (amount)
-                 (if (>= balance amount)
-                     (begin (set! balance
-                                  (- balance amount))
-                            balance)
-                     "Insufficient funds"))
+         body: var b = balance
+               return @{ amount ->
+                   if (amount > b)
+                       Either.Left(WithdrawError.InsufficientFunds)
+                   else @{
+                       b -= amount
+                       Either.Right(b)
+                   @}
+               @}
 @end example
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.6c,,128mm,Figure 3.6: Result of defining make-withdraw in the global environment.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.6c,,128mm,Figure 3.6: Result of defining makeWithdraw in the global environment.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.6c.std,,128mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.6c.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.6:} Result of defining @code{make-withdraw} in the global environment.}
+@caption{@strong{Figure 3.6:} Result of defining @code{makeWithdraw} in the global environment.}
 @end float
 
 @noindent
@@ -604,53 +619,60 @@ val w1 = makeWithdraw(100L)
 @end example
 
 @noindent
-We begin, as usual, by setting up an environment E1 in which the formal
-parameter @code{balance} is bound to the argument 100.  Within this
-environment, we evaluate the body of @code{makeWithdraw}, namely the
-lambda expression.  This constructs a new function object, whose code
-is as specified by the lambda and whose environment is E1, the
-environment in which the lambda was evaluated to produce the function.
+We begin, as usual, by setting up an environment E1 in which the immutable
+parameter @code{balance} is bound to the argument 100.  The body first copies
+that value into the mutable local @code{b}.  Evaluating the lambda then
+constructs a function object that captures @code{b}.  Its code is the lambda
+body, and its environment is E1.
 The resulting function object is the value returned by the call to
 @code{makeWithdraw}.  This is bound to @code{w1} in the global environment,
 since the @code{val} declaration itself is being evaluated in the global
 environment.  @ref{Figure 3.7} shows the resulting environment structure.
 
+The shared artwork in Figures 3.7--3.10 labels the stored account state
+@code{balance}.  In this Kotlin implementation, that label denotes the captured
+@code{b} cell, not the immutable parameter.  The artwork omits the parameter
+after initialization; the text diagrams show both bindings.
+
 @float
 @anchor{Figure 3.7}
 @ifinfo
-@strong{Figure 3.7:} Result of evaluating @code{(define W1 (make-withdraw 100))}.
+@strong{Figure 3.7:} Result of evaluating @code{val w1 = makeWithdraw(100L)}.
 
 @example
           +-----------------------------------------------+
-          | make-withdraw: -----------------------+       |
+          | makeWithdraw: ------------------------+       |
 global -->|                                       |       |
-          | W1: --+                               |       |
+          | w1: --+                               |       |
           +-------|-------------------------------|-------+
                   |                ^              |     ^
                   |                |              V     |
                   |        +-------+------+   .---.---. |
                   |  E1 -->| balance: 100 |   | O | O-+-+
-                  |        +--------------+   `-|-^---'
-                  V                ^            |
-              .---.---.            |            V
-            +-+-O | O-+------------+    parameters: balance
-            | `---^---'                 body: ...
+                  |        | b: 100       |   `-|-^---'
+                  |        +--------------+        |
+                  V                ^               V
+              .---.---.            |         parameters: balance
+            +-+-O | O-+------------+         body: ...
+            | `---^---'
             V
     parameters: amount
-    body: (if (>= balance amount)
-              (begin (set! balance (- balance amount))
-                     balance)
-              "Insufficient funds")
+    body: if (amount > b)
+              Either.Left(WithdrawError.InsufficientFunds)
+          else @{
+              b -= amount
+              Either.Right(b)
+          @}
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.7b,,145mm,Figure 3.7: Result of evaluating (define W1 (make-withdraw 100)).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.7b,,145mm,Figure 3.7: Result of evaluating val w1 = makeWithdraw(100L).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.7b.std,,145mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.7b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.7:} Result of evaluating @code{(define W1 (make-withdraw 100))}.}
+@caption{@strong{Figure 3.7:} Result of evaluating @code{val w1 = makeWithdraw(100L)}.}
 @end float
 
 @noindent
@@ -688,40 +710,43 @@ E1.
 @float
 @anchor{Figure 3.8}
 @ifinfo
-@strong{Figure 3.8:} Environments created by applying the procedure object @code{W1}.
+@strong{Figure 3.8:} Environments created by applying the procedure object @code{w1}.
 
 @example
           +---------------------------------------------------+
-          | make-withdraw: ...                                |
+          | makeWithdraw: ...                                 |
 global -->|                                                   |
-env       | W1: --+                                           |
+env       | w1: --+                                           |
           +-------|-------------------------------------------+
                   |               ^
                   |               |
-                  |       +-------+------+ Here is the balance
+                  |       +-------+------+ Here is the cell
                   | E1 -->| balance: 100 | that will be changed
-                  |       +--------------+ by the set!.
+                  |       | b: 100       | by the assignment.
+                  |       +--------------+
                   V               ^   ^
               .---.---.           |   +----+
               | O | O-+-----------+        |
               `-|-^---'             +------+-----+
                 |                   | amount: 50 |
                 V                   +------------+
-      parameters: amount   (if (>= balance amount)
-      body: ...                (begin (set! balance
-                                            (- balance amount))
-                                      balance)
-                               "Insufficient funds")
+      parameters: amount   if (amount > b)
+      body: ...                Either.Left(WithdrawError.
+                                   InsufficientFunds)
+                           else @{
+                               b -= amount
+                               Either.Right(b)
+                           @}
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.8c,,145mm,Figure 3.8: Environments created by applying the procedure object W1.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.8c,,145mm,Figure 3.8: Environments created by applying the procedure object w1.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.8c.std,,145mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.8c.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.8:} Environments created by applying the procedure object @code{W1}.}
+@caption{@strong{Figure 3.8:} Environments created by applying the procedure object @code{w1}.}
 @end float
 
 @noindent
@@ -740,19 +765,20 @@ situation after the call to @code{w1}.
 @float
 @anchor{Figure 3.9}
 @ifinfo
-@strong{Figure 3.9:} Environments after the call to @code{W1}.
+@strong{Figure 3.9:} Environments after the call to @code{w1}.
 
 @example
            +------------------------------------+
-           | make-withdraw: ...                 |
+           | makeWithdraw: ...                  |
 global --->|                                    |
-env        | W1: --+                            |
+env        | w1: --+                            |
            +-------|----------------------------+
                    |                   ^
                    |                   |
-                   |            +------+------+
-                   |     E1 --->| balance: 50 |
-                   |            +-------------+
+                   |            +--------------+
+                   |     E1 --->| balance: 100 |
+                   |            | b: 50        |
+                   |            +--------------+
                    V                   ^
                .---.---.               |
                | O | O-+---------------+
@@ -764,13 +790,13 @@ env        | W1: --+                            |
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.9b,,147mm,Figure 3.9: Environments after the call to W1.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.9b,,147mm,Figure 3.9: Environments after the call to w1. The artwork's balance label denotes the captured b cell.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.9b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.9b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.9:} Environments after the call to @code{W1}.}
+@caption{@strong{Figure 3.9:} Environments after the call to @code{w1}.  The artwork's @code{balance} label denotes the captured @code{b} cell, now 50; the immutable parameter remains 100.}
 @end float
 
 @noindent
@@ -802,19 +828,20 @@ object do not affect the other object.
 @float
 @anchor{Figure 3.10}
 @ifinfo
-@strong{Figure 3.10:} Using @code{(define W2 (make-withdraw 100))} to create a second object.
+@strong{Figure 3.10:} Using @code{val w2 = makeWithdraw(100L)} to create a second object.
 
 @example
          +-------------------------------------------------+
-         | make-withdraw: ...                              |
-global ->| W2: ---------------------------+                |
-env      | W1: --+                        |                |
+         | makeWithdraw: ...                               |
+global ->| w2: ---------------------------+                |
+env      | w1: --+                        |                |
          +-------|------------------------|----------------+
                  |              ^         |              ^
                  |              |         |              |
-                 |       +------+------+  |       +------+-------+
-                 |  E1 ->| balance: 50 |  |  E2 ->| balance: 100 |
-                 |       +-------------+  |       +--------------+
+                 |       +--------------+  |       +--------------+
+                 |  E1 ->| balance: 100 |  |  E2 ->| balance: 100 |
+                 |       | b: 50        |  |       | b: 100       |
+                 |       +--------------+  |       +--------------+
                  V              ^         V              ^
              .---.---.          |     .---.---.          |
              | O | O-+----------+     | O | O-+----------+
@@ -826,25 +853,24 @@ env      | W1: --+                        |                |
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.10b,,147mm,Figure 3.10: Using (define W2 (make-withdraw 100)) to create a second object.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.10b,,147mm,Figure 3.10: Using val w2 = makeWithdraw(100L) to create a second object.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.10b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.10b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.10:} Using @code{(define W2 (make-withdraw 100))} to create a second object.}
+@caption{@strong{Figure 3.10:} Using @code{val w2 = makeWithdraw(100L)} to create a second object.}
 @end float
 
 @quotation
-@strong{@anchor{Exercise 3.10}Exercise 3.10:} @emph{SICP exercise 3.10 is
-about Scheme itself, so this edition replaces it; the exercise below keeps
-the number and teaches the same section material.} In the @code{makeWithdraw}
+@strong{@anchor{Exercise 3.10}Exercise 3.10:} @emph{This edition replaces SICP exercise 3.10 with a host-language exercise that keeps its number and teaching objective.} In the @code{makeWithdraw}
 function, the local variable @code{balance} is created as a parameter of
 @code{makeWithdraw}.  We could also create the local state variable
 explicitly, as a local declaration:
 
 @example kotlin
-fun makeWithdrawLet(initialAmount: Long): (Long) -> Either<WithdrawError, Long> @{
+fun makeWithdrawLet(initialAmount: Long): (Long) ->
+    Either<WithdrawError, Long> @{
     var balance = initialAmount
     return @{ amount ->
         if (amount > balance) @{
@@ -857,9 +883,10 @@ fun makeWithdrawLet(initialAmount: Long): (Long) -> Either<WithdrawError, Long> 
 @}
 @end example
 
-Recall from @ref{1.3.2} that Scheme's @code{let} is simply syntactic sugar for
-a procedure call, which is why the book's alternate version of
-@code{make-withdraw} builds one more frame than the version above.  A Kotlin
+Recall from @ref{1.3.2} that the original book's local binding form is
+syntactic sugar for a procedure call, which is why the book's alternate
+version of
+@code{makeWithdraw} builds one more frame than the version above.  A Kotlin
 local @code{var} declaration is not a call at all, so it adds no frame of its
 own; it binds in the frame the enclosing function call already built.
 
@@ -889,10 +916,11 @@ compute square roots:
 
 @example kotlin
 fun sqrt(x: Double): Double @{
-    fun goodEnough(guess: Double): Boolean = abs(guess * guess - x) < 0.001
+    fun goodEnough(guess: Double): Boolean =
+        abs(guess * guess - x) < 0.001
 
-    fun improve(guess: Double): Double = (guess + x / guess) / 2.0
-
+    fun improve(guess: Double): Double =
+        (guess + x / guess) / 2.0
     tailrec fun sqrtIter(guess: Double): Double =
         if (goodEnough(guess)) guess else sqrtIter(improve(guess))
 
@@ -909,7 +937,7 @@ been called for the first time with @code{guess} equal to 1.
 @float
 @anchor{Figure 3.11}
 @ifinfo
-@strong{Figure 3.11:} @code{Sqrt} procedure with internal definitions.
+@strong{Figure 3.11:} @code{sqrt} procedure with internal definitions.
 
 @example
           +--------------------------------------------------+
@@ -920,35 +948,35 @@ env       |         |                                        |
                 .---.---.   |                   |
      +----------+-O | O-+---+        +----------+------------+
      |          `---^---'            | x: 2                  |
-     V                         E1 -->| good-enough?: -+      |
-parameters: x                        | improve: ...   |      |
-body: (define good-enough? ...)      | sqrt-iter: ... |      |
-      (define improve ...)           +----------------|------+
-      (define sqrt-iter ...)          ^  ^            |     ^
-      (sqrt-iter 1.0)                 |  |            V     |
+     V                         E1 -->| goodEnough: -+       |
+parameters: x                        | improve: ... |       |
+body: fun goodEnough(guess) ...      | sqrtIter: ...|       |
+      fun improve(guess) ...         +----------------|------+
+      tailrec fun sqrtIter(guess) ... ^  ^            |     ^
+      sqrtIter(1.0)                   |  |            V     |
                             +---------++ |        .---.---. |
                       E2 -->| guess: 1 | |        | O | O-+-+
                             +----------+ |        `-|-^---'
-                      call to sqrt-iter  |          |
+                      call to sqrtIter   |          |
                                          |          V
                                +---------++    parameters: guess
-                         E3 -->| guess: 1 |    body: (< (abs ...)
-                               +----------+             ...)
-                         call to good-enough?
+                         E3 -->| guess: 1 |    body: abs(guess *
+                               +----------+      guess - x) < 0.001
+                         call to goodEnough?
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.11b,,147mm,Figure 3.11: Sqrt procedure with internal definitions.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.11b,,147mm,Figure 3.11: sqrt procedure with internal definitions.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.11b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.11b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.11:} @code{Sqrt} procedure with internal definitions.}
+@caption{@strong{Figure 3.11:} @code{sqrt} procedure with internal definitions.}
 @end float
 
 @noindent
-Observe the structure of the environment.  @code{Sqrt} is a name in the global
+Observe the structure of the environment.  @code{sqrt} is a name in the global
 environment that is bound to a function object whose associated environment
 is the global environment.  When @code{sqrt} was called, a new environment E1
 was formed, subordinate to the global environment, in which the parameter
@@ -970,9 +998,9 @@ only the function object for @code{goodEnough}.
 Kotlin binds local declarations in the order they are written, so a local
 function can call only the names declared above it in the same block --
 @code{sqrtIter}, which calls both @code{goodEnough} and @code{improve}, is
-declared last for exactly this reason.@footnote{This differs from Scheme's
+declared last for exactly this reason.@footnote{This differs from the original book's
 internal-definitions rule, which scans the whole body before evaluating any
-of it, so a Scheme internal @code{define} may appear in any order and two
+of it, so an internal definition there may appear in any order and two
 internal procedures may call each other.  A Kotlin local function that needs
 to call one declared after it needs a different shape, such as a mutable
 property holding a lambda, assigned after both are ready.}
@@ -982,7 +1010,7 @@ After the local declarations, the expression @code{sqrtIter(1.0)} was
 evaluated, still in environment E1.  So the function object bound to
 @code{sqrtIter} in E1 was called with 1.0 as an argument.  This created an
 environment E2 in which @code{guess}, the parameter of @code{sqrtIter}, is
-bound to 1.0.  @code{SqrtIter} in turn called @code{goodEnough} with the value
+bound to 1.0.  @code{sqrtIter} in turn called @code{goodEnough} with the value
 of @code{guess} (from E2) as the argument for @code{goodEnough}.  This set up
 another environment, E3, in which @code{guess} (the parameter of
 @code{goodEnough}) is bound to 1.0.  Although @code{sqrtIter} and
@@ -1015,9 +1043,7 @@ the evaluation environment for the enclosing function.
 @end itemize
 
 @quotation
-@strong{@anchor{Exercise 3.11}Exercise 3.11:} @emph{SICP exercise 3.11 is
-about Scheme itself, so this edition replaces it; the exercise below keeps
-the number and teaches the same section material.} In @ref{3.2.3} we saw how
+@strong{@anchor{Exercise 3.11}Exercise 3.11:} @emph{This edition replaces SICP exercise 3.11 with a host-language exercise that keeps its number and teaching objective.} In @ref{3.2.3} we saw how
 the environment model described the behavior of functions with local state.
 Now we have seen how internal definitions work.  A typical message-passing
 object contains both of these aspects.  Consider the bank account function of
@@ -1025,14 +1051,17 @@ object contains both of these aspects.  Consider the bank account function of
 
 @example kotlin
 interface BankAccount @{
-    fun withdraw(amount: Long): Either<WithdrawError, Long>
+    fun withdraw(amount: Long): Either<WithdrawError,
+        Long>
     fun deposit(amount: Long): Long
 @}
 
 fun makeBankAccount(balance: Long): BankAccount @{
     var b = balance
     return object : BankAccount @{
-        override fun withdraw(amount: Long): Either<WithdrawError, Long> =
+        override fun withdraw(
+            amount: Long,
+        ): Either<WithdrawError, Long> =
             if (amount > b) @{
                 Either.Left(WithdrawError.InsufficientFunds)
             @} else @{

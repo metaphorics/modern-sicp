@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.76a (this edition's addition, extends exercise 2.76): add a
  * third representation, storing the angle in degrees, to the data-directed
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  * handler is still the exact object it was before the new package
  * installs, and whether the new package itself answers correctly.
  */
-public fun ex_2_76a(): Boolean = throw PendingSolution()
+public fun ex_2_76a(): Boolean = throw PendingExercise()

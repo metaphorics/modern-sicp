@@ -1,25 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.65: the wheel rule's fourfold listing.
+// Chapter 4, exercise 4.65
 
 package sicp.ch4.solutions
 
-import sicp.ch4.QuerySystem
+import sicp.ch4.QPattern
+import sicp.ch4.QVar
+import sicp.ch4.QueryDriver
 
-/** Cy D. Fect's query under the chronological data base: Ben once, then
- * Warbucks four times. The four Warbucks frames are the four deduction
- * routes: middle-manager Ben (3 supervisees) and middle-manager Scrooge
- * (0 supervisees beyond Cratchet? -- exactly: Scrooge's supervisee is
- * Cratchet, Aull's is none), each route a distinct (middle-manager, x)
- * frame the rule body passes. Ben's single frame comes from
- * middle-manager Alyssa with supervisee Louis. */
-public fun wheelQuery(system: QuerySystem): List<String> {
-    val out = mutableListOf<String>()
-    out.add("query: (wheel ?who)")
-    val answers = answersOf(system, "(wheel ?who)")
-    out.addAll(answers)
-    out.add("Warbucks appears ${answers.count { it.contains("(Warbucks Oliver)") }} times")
-    out.add("Ben appears ${answers.count { it.contains("(Bitdiddle Ben)") }} time")
-    return out
+// Exercise 4.65: the wheel query. The prose wheel rule says a wheel is
+// anyone who supervises a supervisor; the query answers Warbucks once per
+// qualifying chain, so Warbucks arrives four times and Ben once. The
+// stream carries every frame the rules produce, and that is the lesson:
+// the query is a stream of frames, not a set of answers.
+
+/** The wheel listing with its multiplicities. */
+public fun wheelQuery(): List<String> {
+    val driver = QueryDriver.streaming(microshaftSystem())
+    val who = listOf(v("who"))
+    val answers = answerLines(driver, QPattern(list(sym("wheel"), v("who"))), who)
+    val warbucks = answers.count { it.contains("Warbucks") }
+    val ben = answers.count { it.contains("Bitdiddle") }
+    return answers + "Warbucks appears $warbucks times" + "Ben appears $ben times"
 }
-
-public fun wheelQuery(): List<String> = wheelQuery(microshaftSystem())

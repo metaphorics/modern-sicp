@@ -3,17 +3,10 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
- * Exercise 2.21: The procedure `squareList` takes a list of numbers as argument and
- * returns a list of the squares of those numbers. Define it in two
- * ways, directly with `cons` and via `mapList`, filling in the missing
- * expressions of the book's two definitions.
- *
- * The statement lives in the section 2.2 chapter text.
- *
- * The scaffold returns the printed form of the direct `squareList` applied to the chain
- * built from `1, 2, 3, 4`.
+ * Exercise 2.21: define `squareList` over a proper datum sequence in two
+ * ways: by direct pair-cell recursion and by reusing `mapList`. The scaffold
+ * applies the direct definition to whole-number values 1, 2, 3, and 4 and
+ * asks for its canonical native rendering.
  */
-public fun ex_2_21(): String = throw PendingSolution()
+public fun ex_2_21(): String = throw PendingExercise()

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.46a is added by this edition and extends exercise 2.46;
  * SICP numbers stop at 2.46. Give `Vect` the operator functions `+`,
@@ -14,4 +12,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `makeVect(1.0, 2.0) + makeVect(3.0, 4.0)`.
  */
-public fun ex_2_46a(): Vect = throw PendingSolution()
+public fun ex_2_46a(): Vect = throw PendingExercise()

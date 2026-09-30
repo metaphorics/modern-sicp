@@ -8,12 +8,12 @@ import sicp.runtime.PendingSolution
 /**
  * Exercise 4.26a (added by this edition): `when` as a derived expression,
  * the mirror of 4.26's `unless`. One macro-style rewrite to forms the
- * evaluator already has -- `(when condition body ...)` lowers to
- * `(if condition (begin body ...) false)` -- pinned by a before/after
+ * evaluator already has -- the `when` form lowers to
+ * the `GIf` nest with a `GBlock` body and a `false` fallback -- pinned by a before/after
  * trace.
  *
  * Expected answers: before the derivation the name is unbound; after, the
- * true condition answers `yes`, the false condition answers `#f`, and a
+ * true condition answers `yes`, the false condition answers `false`, and a
  * multi-expression body answers `3`.
  */
 public fun whenBeforeTranscript(): String = throw PendingSolution()

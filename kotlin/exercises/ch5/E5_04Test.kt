@@ -12,6 +12,12 @@ public class E5_04Test :
         test("Exercise 5.04: the two exponentiation machines").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            exptMachineRuns() shouldBe listOf("MEASURE")
+            exptMachineRuns() shouldBe
+                listOf(
+                    "1024",
+                    "243",
+                    "1024",
+                    "243",
+                )
         }
     })

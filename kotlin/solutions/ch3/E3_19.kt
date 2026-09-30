@@ -3,25 +3,24 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.VPair
-import sicp.runtime.Value
+import sicp.runtime.Datum
+import sicp.runtime.PairCell
 
 /**
- * Cycle detection in constant space (Floyd's tortoise and hare): the hare
- * takes two cdr steps for the tortoise's one. If a cycle exists, the two
- * cursors meet inside it; if the hare falls off the end onto `VNil`, the
- * chain is acyclic. No memory of visited pairs at all.
+ * Floyd's cycle detector advances `hare` twice and `tortoise` once along
+ * the second-field chain. They meet inside a loop; if `hare` reaches a
+ * non-pair datum, the chain is finite. The algorithm keeps constant space.
  */
-public fun containsCycleConstantSpace(x: Value): Boolean {
-    var tortoise: Value = x
-    var hare: Value = x
-    while (hare is VPair) {
-        hare = hare.cdr
-        if (hare !is VPair) {
+public fun containsCycleConstantSpace(x: Datum): Boolean {
+    var tortoise: Datum = x
+    var hare: Datum = x
+    while (hare is PairCell) {
+        hare = hare.second
+        if (hare !is PairCell) {
             return false
         }
-        hare = hare.cdr
-        tortoise = (tortoise as VPair).cdr
+        hare = hare.second
+        tortoise = (tortoise as PairCell).second
         if (hare === tortoise) {
             return true
         }

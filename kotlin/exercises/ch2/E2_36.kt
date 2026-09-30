@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.36: `accumulateN` is similar to `accumulateList` except that it takes as
  * its third argument a list of lists, all of the same length, and
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `accumulateN(+, 0, ...)` on the book's four sequences.
  */
-public fun ex_2_36(): List<Long> = throw PendingSolution()
+public fun ex_2_36(): List<Long> = throw PendingExercise()

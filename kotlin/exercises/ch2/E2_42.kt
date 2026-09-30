@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.42: The "eight-queens puzzle" asks how to place eight queens on a
  * chessboard so that no queen is in check from any other. One way to
@@ -16,4 +14,4 @@ import sicp.runtime.PendingSolution
  *
  * The scaffold returns `queens(8).size`, the number of solutions to the eight-queens puzzle.
  */
-public fun ex_2_42(): Int = throw PendingSolution()
+public fun ex_2_42(): Int = throw PendingExercise()

@@ -9,9 +9,9 @@ import io.kotest.matchers.shouldBe
 
 public class E2_58Test :
     FunSpec({
-        test("Exercise 2.58: the precedence-aware derivative of x + 3 * (x + y + 2) with respect to x is 4").config(
+        test("Exercise 2.58 returns the simplified derivative expression tree").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            ex_2_58() shouldBe "4"
+            ex_2_58() shouldBe Expr.Num(4)
         }
     })

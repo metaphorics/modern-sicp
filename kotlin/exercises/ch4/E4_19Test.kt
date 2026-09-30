@@ -18,7 +18,7 @@ public class E4_19Test :
         test("Exercise 4.19: Alyssa's scan-out rejects the read before assignment").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            alyssaRuleTranscript() shouldBe "Error: type mismatch: a is read before it is assigned\n"
+            alyssaRuleTranscript() shouldBe "UnassignedRead"
         }
 
         test("Exercise 4.19: Eva's simultaneous rule initializes b against the final a and answers 20").config(

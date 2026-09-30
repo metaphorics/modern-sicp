@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.37: Suppose we represent vectors v = (v_i) as lists of numbers and
  * matrices m = (m_ij) as lists of vector rows. Define `dotProduct`,
@@ -17,4 +15,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns `matrixStarVector` applied to the book's matrix and the vector
  * `(1 1 1 1)`, giving the row sums.
  */
-public fun ex_2_37(): List<Long> = throw PendingSolution()
+public fun ex_2_37(): List<Long> = throw PendingExercise()

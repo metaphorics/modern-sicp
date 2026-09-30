@@ -3,26 +3,25 @@
 
 package sicp.ch3.exercises
 
-import sicp.runtime.VPair
-import sicp.runtime.Value
+import sicp.runtime.Datum
+import sicp.runtime.PairCell
 
 /**
- * A corrected `count-pairs`: the same traversal as Ben's, but a shared
- * pair is counted the first time only. Kotlin's standard library has no
- * identity-keyed set, so the auxiliary structure is a plain list scanned
- * with `===` (the book's `eq?`).
+ * A corrected `countDistinctPairs`: the same traversal as the visit count,
+ * but a shared pair is counted on its first visit only. A local list is
+ * scanned with `===`, so identity membership stays explicit.
  */
-public fun countDistinctPairs(x: Value): Int {
-    val seen = mutableListOf<VPair>()
+public fun countDistinctPairs(x: Datum): Int {
+    val seen = mutableListOf<PairCell>()
 
-    fun walk(v: Value): Int =
-        if (v !is VPair) {
+    fun walk(v: Datum): Int =
+        if (v !is PairCell) {
             0
         } else if (seen.any { it === v }) {
             0
         } else {
             seen.add(v)
-            walk(v.car) + walk(v.cdr) + 1
+            walk(v.first) + walk(v.second) + 1
         }
 
     return walk(x)

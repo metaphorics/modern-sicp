@@ -3,15 +3,13 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
- * Exercise 2.26: Suppose we define `x` and `y` to be the lists `(1 2 3)` and `(4 5 6)`.
- * Predict the printed result of evaluating each of `appendList(x, y)`,
- * `cons(x, y)`, and `vlist(x, y)`.
+ * Exercise 2.26: let `x` and `y` be proper lists of whole-number datums,
+ * constructed with `datumList`. Predict the canonical native renderings of
+ * `appendList(x, y)`, `pair(x, y)`, and `datumList(x, y)`. Distinguish
+ * concatenation from a single pair containing two lists and from a proper
+ * two-element list. The statement is adapted from the section 2.2 lesson.
  *
- * The statement lives in the section 2.2 chapter text.
- *
- * The scaffold returns the three printed results, in order.
+ * The scaffold returns those three predicted native strings in order.
  */
-public fun ex_2_26(): List<String> = throw PendingSolution()
+public fun ex_2_26(): List<String> = throw PendingExercise()

@@ -13,8 +13,8 @@ import sicp.runtime.PendingSolution
  * and `apply` because the unchosen arm is never forced.
  *
  * Expected answers: the derived `unless` answers 42 on the armed call and
- * fails `Error: unbound variable: unless` as a value; the lazy procedure
- * answers 42, maps to `(42 7)`, and `apply`s to 7.
+ * fails `null` as a value; the lazy procedure
+ * answers 42, maps to `[42, 7]`, and applies to 7.
  */
 public fun unlessDerivedTranscript(): String = throw PendingSolution()
 

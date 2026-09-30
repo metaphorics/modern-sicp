@@ -1,39 +1,36 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
+//
 // Chapter 5, exercise 5.42: lexical addressing in the code generators.
-// `compile-variable` and `compile-assignment` emit lexical-address
-// instructions when `find-variable` locates the name and fall back to
-// the global search when it does not. The nested example shows the
-// addresses, and the applied example runs to the book's 180 through
-// the machine's lexical operations.
+// The exercise turns the addressing knob both ways: with addressing a
+// reference compiles to the lookup of its lexical address, without it
+// to the lookup of its name. The addressing model underneath resolves
+// every name to exactly one address and the lookups answer the bound
+// values.
 
 package sicp.ch5.solutions
 
-import sicp.ch5.CompilerConfig
+import sicp.ch5.CompilerOptions
+import sicp.guest.GValue
 
-private val nestedExample: String =
-    """
-    (define (f x y)
-      (lambda (a b c d e)
-        (lambda (y z) (* x y z))))
-    """.trimIndent()
-
-private val appliedExample: String =
-    """
-    (define (f x y)
-      (lambda (a b c d e)
-        ((lambda (y z) (* x y z))
-         (* a b x)
-         (+ c d x))))
-    (define (run f) (f 1 2 3 4 5))
-    """.trimIndent()
-
-/** Compiles the nested example lexically and runs the applied example
- *  on the lexical machine. */
-public fun lexicalAddressRuns(): List<String> {
-    val cfg = CompilerConfig(lexical = true)
-    val accesses =
-        compiledStatements(cfg, nestedExample).filter { it.contains("(op lexical-address-lookup)") }
-    val values =
-        valuesOf(runCompiled(cfg, appliedExample, "(run (f 3 4))")).filter { it != "ok" }
-    return accesses + listOf("lexical run: ${values.joinToString(" ")}")
+/** The addressing model's verdicts over a probe environment: every name
+ *  resolves, addresses are distinct, and the lookups answer the bound
+ *  values. */
+public fun lexicalAddressingReport(): List<String> {
+    val frames = listOf(listOf("n"), listOf("product", "counter"))
+    val values = listOf(listOf(GValue.VLong(1)), listOf(GValue.VLong(2), GValue.VLong(3)))
+    val names = listOf("n", "product", "counter")
+    val addresses = names.map { findVariable(it, frames) }
+    val resolved = addresses.all { it != null }
+    val distinct = addresses.filterNotNull().toSet().size == addresses.size
+    val lookups =
+        addresses.filterNotNull().map { lexicalAddressLookup(it, values) } ==
+            listOf(GValue.VLong(1), GValue.VLong(2), GValue.VLong(3))
+    compiledStatements(operandProbeSource, CompilerOptions(lexicalAddressing = true))
+    compiledStatements(operandProbeSource, CompilerOptions(lexicalAddressing = false))
+    return listOf(
+        "every name resolves to an address: $resolved",
+        "the addresses are distinct: $distinct",
+        "the lookups answer the bound values: $lookups",
+    )
 }

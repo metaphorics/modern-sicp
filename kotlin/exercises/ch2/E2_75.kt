@@ -3,7 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
@@ -41,4 +40,4 @@ public fun applyGenericMessagePassing(
     arg: ComplexObject,
 ): Double? = arg.send(op)
 
-public fun ex_2_75(): Pair<Double?, Double?> = throw PendingSolution()
+public fun ex_2_75(): Pair<Double?, Double?> = throw PendingExercise()

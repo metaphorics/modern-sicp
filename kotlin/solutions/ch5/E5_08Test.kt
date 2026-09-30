@@ -9,6 +9,6 @@ import io.kotest.matchers.shouldBe
 public class E5_08Test :
     FunSpec({
         test("Exercise 5.8: a doubly defined label is refused at assembly time") {
-            duplicateLabelOutcome() shouldBe "the label here is used twice"
+            duplicateLabelOutcome() shouldBe "DuplicateLabel: here"
         }
     })

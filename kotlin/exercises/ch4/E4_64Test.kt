@@ -12,6 +12,11 @@ public class E4_64Test :
         test("Exercise 4.64: Louis's swapped outranked-by").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            louisOutranked() shouldBe listOf("MEASURE")
+            louisOutranked() shouldBe
+                listOf(
+                    "louis anchored: first answer arrives (1 frame)",
+                    "book order: completes with 1 frame",
+                    "loop detector bounds louis: stream completes",
+                )
         }
     })

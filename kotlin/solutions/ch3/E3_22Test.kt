@@ -6,41 +6,42 @@ package sicp.ch3.exercises
 import arrow.core.Either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VSym
+import sicp.runtime.Datum
+import sicp.runtime.Symbol
 
 public class E3_22Test :
     FunSpec({
-        test("the book's session through the closure queue") {
-            val q1 = makeQueue()
-            q1.insert(VSym("a"))
-            q1.insert(VSym("b"))
-            q1.delete() shouldBe Either.Right(VSym("a"))
-            q1.printQueue() shouldBe "(b)"
-            q1.delete() shouldBe Either.Right(VSym("b"))
-            q1.printQueue() shouldBe "()"
+        test("the closure queue session updates its host-data view") {
+            val queue = makeQueue()
+            queue.insert(Symbol("a"))
+            queue.insert(Symbol("b"))
+            queue.delete() shouldBe Either.Right(Symbol("a"))
+            queue.items() shouldBe listOf(Symbol("b"))
+            queue.delete() shouldBe Either.Right(Symbol("b"))
+            queue.items() shouldBe emptyList<Datum>()
         }
 
         test("delete on an empty closure queue is Left(EmptyQueue)") {
-            val q1 = makeQueue()
-            q1.delete() shouldBe Either.Left(QueueError.EmptyQueue)
+            val queue = makeQueue()
+            queue.delete() shouldBe Either.Left(QueueError.EmptyQueue)
         }
 
-        test("two makeQueue calls give two queues with independent state") {
-            val q1 = makeQueue()
-            val q2 = makeQueue()
-            q1.insert(VSym("a"))
-            q2.printQueue() shouldBe "()"
-            q1.printQueue() shouldBe "(a)"
-            (q1 === q2) shouldBe false
+        test("two makeQueue calls have independent captured state") {
+            val first = makeQueue()
+            val second = makeQueue()
+            first.insert(Symbol("a"))
+            second.items() shouldBe emptyList<Datum>()
+            first.items() shouldBe listOf(Symbol("a"))
+            (first === second) shouldBe false
         }
 
         test("the closure queue is reusable after emptying") {
-            val q1 = makeQueue()
-            q1.insert(VSym("a"))
-            q1.delete() shouldBe Either.Right(VSym("a"))
-            q1.emptyQueue() shouldBe true
-            q1.insert(VSym("b"))
-            q1.delete() shouldBe Either.Right(VSym("b"))
-            q1.emptyQueue() shouldBe true
+            val queue = makeQueue()
+            queue.insert(Symbol("a"))
+            queue.delete() shouldBe Either.Right(Symbol("a"))
+            queue.emptyQueue() shouldBe true
+            queue.insert(Symbol("b"))
+            queue.delete() shouldBe Either.Right(Symbol("b"))
+            queue.emptyQueue() shouldBe true
         }
     })

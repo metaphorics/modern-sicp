@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.72: for the encoding procedure of exercise 2.68, count the
  * number of steps needed to encode a symbol, including the cost of
@@ -18,6 +16,6 @@ import sicp.runtime.PendingSolution
 public fun encodeSymbolSteps(
     symbol: String,
     tree: HuffmanTree,
-): Int = throw PendingSolution()
+): Int = throw PendingExercise()
 
-public fun ex_2_72(n: Int): Pair<Int, Int> = throw PendingSolution()
+public fun ex_2_72(n: Int): Pair<Int, Int> = throw PendingExercise()

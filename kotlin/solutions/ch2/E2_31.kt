@@ -3,7 +3,7 @@
 
 package sicp.ch2.exercises
 
-/** The book's `tree-map`: applies [f] to every leaf, keeping the shape. */
+/** Map [f] over every leaf while preserving the tree's shape. */
 public fun treeMap(
     f: (Long) -> Long,
     t: Tree,
@@ -13,8 +13,8 @@ public fun treeMap(
         is Tree.Node -> Tree.Node(t.subtrees.map { treeMap(f, it) })
     }
 
-/** `squareTree` defined as `treeMap` with a squaring function. */
-public fun squareTreeViaTreeMap(t: Tree): Tree = treeMap({ x -> x * x }, t)
+/** Square every leaf by applying [treeMap] recursively. */
+public fun squareTreeViaTreeMap(t: Tree): Tree = treeMap({ value -> value * value }, t)
 
-/** The book-syntax rendering of the `treeMap`-based `squareTree` result. */
-public fun ex_2_31(): String = toBookString(squareTreeViaTreeMap(nestedTree()))
+/** Return the sample tree after each leaf value is squared. */
+public fun ex_2_31(): Tree = squareTreeViaTreeMap(nestedTree())

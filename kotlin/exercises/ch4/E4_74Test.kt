@@ -12,6 +12,6 @@ public class E4_74Test :
         test("Exercise 4.74: the simple flatmap").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            simpleFlatmapDemo() shouldBe listOf("MEASURE")
+            simpleFlatmapDemo() shouldBe listOf("?y = [Minnie, Mouse]")
         }
     })

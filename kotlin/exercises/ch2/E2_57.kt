@@ -3,18 +3,30 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
+/** An expression tree whose sums and products hold any number of terms. */
+public sealed interface NaryExpr {
+    public data class Num(
+        val n: Long,
+    ) : NaryExpr
+
+    public data class Var(
+        val name: String,
+    ) : NaryExpr
+
+    public data class Sum(
+        val terms: List<NaryExpr>,
+    ) : NaryExpr
+
+    public data class Product(
+        val factors: List<NaryExpr>,
+    ) : NaryExpr
+}
 
 /**
- * Exercise 2.57 (Class A): extend the differentiator to handle sums and
- * products of two or more terms, without changing `deriv`'s own shape at
- * all: only `addend`/`augend` and `multiplier`/`multiplicand` change, so
- * that the augend of a sum is the sum of the rest of the terms (a single
- * remaining term stands for itself) and likewise for a product's
- * multiplicand. Kept as its own local `NaryExpr`/`derivN`, per the
- * section's one-representation-per-exercise convention.
+ * Exercise 2.57: extend differentiation to sums and products with two or more
+ * terms. Preserve the derivative dispatcher by changing only how a sum's
+ * remaining terms and a product's remaining factors are represented.
  *
- * The scaffold returns the printed derivative of `(* x y (+ x 3))` with
- * respect to `x`.
+ * The scaffold returns the derivative tree for a three-factor product.
  */
-public fun ex_2_57(): String = throw PendingSolution()
+public fun ex_2_57(): NaryExpr = throw PendingExercise()

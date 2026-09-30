@@ -75,7 +75,10 @@ memory-management systems include a @newterm{garbage collector}, which
 identifies and recycles the memory space used by unneeded pairs.}
 
 @example kotlin
-val x = cons(vlist(VSym("a"), VSym("b")), vlist(VSym("c"), VSym("d")))
+val x = cons(vlist(VSym("a"),
+    VSym("b")),
+        vlist(VSym("c"),
+    VSym("d")))
 val y = vlist(VSym("e"), VSym("f"))
 
 x.setCar(y)
@@ -119,7 +122,7 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @image{../../text/original/figures/chap3/Fig3.12b,,123mm,Figure 3.12: Lists x: ((a b) c d) and y: (e f).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.}
@@ -135,7 +138,7 @@ bound to a new pair created by the @code{cons} operation; the list to which
 @anchor{Figure 3.13}
 @ifinfo
 @quotation
-@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.13:} Effect of @code{x.setCar(y)} on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -163,13 +166,13 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of (set-car! x y) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of x.setCar(y) on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.13:} Effect of @code{x.setCar(y)} on the lists in @ref{Figure 3.12}.}
 @end float
 
 The @code{setCdr} operation is similar to @code{setCar}.  The only
@@ -185,7 +188,7 @@ is now detached from the structure; @code{x} would now print as
 @anchor{Figure 3.14}
 @ifinfo
 @quotation
-@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.14:} Effect of @code{val z = cons(y, x.cdr)} on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -213,20 +216,20 @@ z -->| * | *-+-+   +---+         +---+
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of (define z (cons y (cdr x))) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of val z = cons(y@comma{} x.cdr) on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.14:} Effect of @code{val z = cons(y, x.cdr)} on the lists in @ref{Figure 3.12}.}
 @end float
 
 @float
 @anchor{Figure 3.15}
 @ifinfo
 @quotation
-@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.15:} Effect of @code{x.setCdr(y)} on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -254,13 +257,13 @@ x -->| * | * |     | * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of (set-cdr! x y) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of x.setCdr(y) on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.15:} Effect of @code{x.setCdr(y)} on the lists in @ref{Figure 3.12}.}
 @end float
 
 @noindent
@@ -362,7 +365,9 @@ fun makeCycle(x: VPair): VPair @{
 Draw a box-and-pointer diagram that shows the structure @code{z} created by
 
 @example kotlin
-val z = makeCycle(vlist(VSym("a"), VSym("b"), VSym("c")) as VPair)
+val z = makeCycle(
+    vlist(VSym("a"), VSym("b"), VSym("c")) as VPair,
+)
 @end example
 
 What happens if we try to compute @code{lastPair(z)}?
@@ -392,7 +397,12 @@ destroys the @code{cdr}.  Explain what @code{mystery} does in general.  Suppose
 @code{v} is defined by
 
 @example kotlin
-val v = vlist(VSym("a"), VSym("b"), VSym("c"), VSym("d")) as VPair
+val v = vlist(
+    VSym("a"),
+    VSym("b"),
+    VSym("c"),
+    VSym("d"),
+) as VPair
 @end example
 
 Draw the box-and-pointer diagram that represents the list to which @code{v} is
@@ -431,7 +441,7 @@ in which many individual pairs are shared by many different structures.
 @anchor{Figure 3.16}
 @ifinfo
 @quotation
-@strong{Figure 3.16:} The list @code{z1} formed by @code{(cons x x)}.
+@strong{Figure 3.16:} The list @code{z1} formed by @code{cons(x, x)}.
 
 @example
       +---+---+
@@ -449,13 +459,13 @@ z1 -->| * | * |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by (cons x x).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by cons(x@comma{} x).,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap3/Fig3.16b.std,,78mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.16:} The list @code{z1} formed by @code{(cons x x)}.}
+@caption{@strong{Figure 3.16:} The list @code{z1} formed by @code{cons(x, x)}.}
 @end float
 
 In contrast to @ref{Figure 3.16}, @ref{Figure 3.17} shows the structure created
@@ -463,14 +473,17 @@ by
 
 @example kotlin
 val z2 =
-    cons(vlist(VSym("a"), VSym("b")), vlist(VSym("a"), VSym("b")))
+    cons(vlist(VSym("a"),
+        VSym("b")),
+            vlist(VSym("a"),
+        VSym("b")))
 @end example
 
 @float
 @anchor{Figure 3.17}
 @ifinfo
 @quotation
-@strong{Figure 3.17:} The list @code{z2} formed by @code{(cons (list 'a 'b) (list 'a 'b))}.
+@strong{Figure 3.17:} The list @code{z2} formed by @code{cons(vlist(VSym("a"), VSym("b")), vlist(VSym("a"), VSym("b")))}.
 
 @example
       +---+---+     +---+---+     +---+---+
@@ -489,13 +502,13 @@ z2 -->| * | *-+---->| * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by (cons (list 'a 'b) (list 'a 'b)).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by cons(vlist(VSym("a")@comma{} VSym("b"))@comma{} vlist(VSym("a")@comma{} VSym("b"))).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,,121mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.17:} The list @code{z2} formed by @code{(cons (list 'a 'b) (list 'a 'b))}.}
+@caption{@strong{Figure 3.17:} The list @code{z2} formed by @code{cons(vlist(VSym("a"), VSym("b")), vlist(VSym("a"), VSym("b")))}.}
 @end float
 
 @noindent
@@ -546,7 +559,7 @@ setToWow(z2)
 
 @noindent
 One way to detect sharing in list structures is to use the identity operator
-@code{===}, the counterpart of the @code{eq?} we introduced in @ref{2.3.1}
+@code{===}, the counterpart of the pointer-equality test we introduced in @ref{2.3.1}
 as a way to test whether two symbols are equal.  More generally,
 @code{x === y} tests whether @code{x} and @code{y} are the same object (that
 is, whether they are equal as references).  Thus, with @code{z1} and
@@ -572,13 +585,13 @@ dealing with sharing of mutable data objects reflect the underlying issues of
 ``sameness'' and ``change'' that were raised in @ref{3.1.3}.  We
 mentioned there that admitting change to our language requires that a compound
 object must have an ``identity'' that is something different from the pieces
-from which it is composed.  In Lisp, we consider this ``identity'' to be the
-quality that is tested by @code{eq?}, i.e., by equality of pointers, and
-Kotlin spells the same test @code{===}.  Since in most Lisp implementations a
+from which it is composed.  In the original book's language, we consider this ``identity'' to be the
+quality that is tested by pointer equality, and
+Kotlin spells the same test @code{===}.  Since in most implementations a
 pointer is essentially a memory address, we are ``solving the problem'' of
 defining the identity of objects by stipulating that a data object ``itself''
 is the information stored in some particular set of memory locations in the
-computer.  This suffices for simple Lisp programs, but is hardly a general way
+computer.  This suffices for simple programs, but is hardly a general way
 to resolve the issue of ``sameness'' in computational models.}
 
 @quotation
@@ -687,7 +700,7 @@ assignment and mutation are equipotent: Each can be implemented in terms of the
 other.}
 
 @quotation
-@strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{SICP exercise 3.20 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
+@strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{This edition replaces SICP exercise 3.20 with a host-language exercise that keeps its number and teaching objective.}
 
 Suppose we evaluate the following sequence against the
 @code{proceduralCons} implementation above:
@@ -734,13 +747,13 @@ called a @newterm{FIFO} (first in, first out) buffer.
 
 @example
 Operation                Resulting Queue
-(define q (make-queue))
-(insert-queue! q 'a)     a
-(insert-queue! q 'b)     a b
-(delete-queue! q)        b
-(insert-queue! q 'c)     b c
-(insert-queue! q 'd)     b c d
-(delete-queue! q)        c d
+val q = Queue()
+q.insert(VSym("a"))      a
+q.insert(VSym("b"))      a b
+q.delete()               b
+q.insert(VSym("c"))      b c
+q.insert(VSym("d"))      b c d
+q.delete()               c d
 @end example
 @end quotation
 @end ifinfo
@@ -748,7 +761,7 @@ Operation                Resulting Queue
 @image{../../text/original/figures/chap3/Fig3.18,,119mm,Figure 3.18: Queue operations.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.18.std,,119mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.18.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.18:} Queue operations.}
@@ -866,7 +879,7 @@ representation.
 @image{../../text/original/figures/chap3/Fig3.19b,,118mm,Figure 3.19: Implementation of a queue as a list with front and rear pointers.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,,118mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.}
@@ -949,7 +962,7 @@ also set the rear pointer to the new pair.
 @image{../../text/original/figures/chap3/Fig3.20c,,141mm,Figure 3.20: Result of using (insert-queue! q 'd) on the queue of Figure 3.19.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,,141mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.20:} Result of using @code{(insert-queue! q 'd)} on the queue of @ref{Figure 3.19}.}
@@ -1035,7 +1048,7 @@ definition of it:
 @image{../../text/original/figures/chap3/Fig3.21c,,141mm,Figure 3.21: Result of using (delete-queue! q) on the queue of Figure 3.20.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,,141mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.21:} Result of using @code{(delete-queue!  q)} on the queue of @ref{Figure 3.20}.}
@@ -1159,7 +1172,8 @@ Thus, the @code{makeQueue} function will have the form
 fun makeQueue(): MessagePassingQueue @{
     var front: VPair? = ⟨…⟩
     var rear: VPair? = ⟨…⟩
-    ⟨the queue operations, as members of the object expression⟩
+    ⟨the queue operations,
+        as members of the object expression⟩
     return ⟨the object expression⟩
 @}
 @end example
@@ -1252,7 +1266,7 @@ V   V       V   V       V   V
 @image{../../text/original/figures/chap3/Fig3.22c,,138mm,Figure 3.22: A table represented as a headed list.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,,138mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.22:} A table represented as a headed list.}
@@ -1265,7 +1279,7 @@ original wrote false.  @code{Lookup} is defined in terms of the
 @code{assoc} operation, which expects a key and a list of records as arguments.
 Note that @code{assoc} never sees the dummy record.  @code{Assoc} returns the
 record that has the given key as its @code{car}.@footnote{Because @code{assoc}
-uses @code{equal?}, it can recognize keys that are symbols, numbers, or list
+uses structural equality, it can recognize keys that are symbols, numbers, or list
 structure.}  @code{Lookup} then checks to see that the resulting record
 returned by @code{assoc} is not null, and returns the value (the @code{cdr})
 of the record.
@@ -1273,28 +1287,32 @@ of the record.
 The table is a class.  Its first field is the header pair the representation
 needs --- a fixed location the operations can mutate through --- and its
 constructor carries the table's key test, @code{sameKey}: the default is
-@code{equalv}, the book's @code{equal?}, and exercise 3.24 hands the
+@code{equalv}, the original book's structural equality, and exercise 3.24 hands the
 constructor a different one.
 
 @example kotlin
 class Table(
     val sameKey: (Value, Value) -> Boolean = ::equalv,
 ) @{
-    private val header: VPair = VPair(VSym("*table*"), VNil)
+    private val header: VPair = VPair(VSym("*table*"),
+        VNil)
 
     fun assoc(key: Value, records: Value): VPair? @{
         if (records !is VPair) @{
             return null
         @}
         val record = records.car
-        return if (record is VPair && sameKey(key, record.car)) @{
+        return if (record is VPair &&
+                sameKey(key,
+            record.car)) @{
             record
         @} else @{
             this.assoc(key, records.cdr)
         @}
     @}
 
-    fun lookup(key: Value): Value? = this.assoc(key, header.cdr)?.cdr
+    fun lookup(key: Value): Value? = this.assoc(key,
+        header.cdr)?.cdr
 @end example
 
 @noindent
@@ -1315,7 +1333,9 @@ record.}
     fun insert(key: Value, value: Value) @{
         val record = this.assoc(key, header.cdr)
         if (record == null) @{
-            header.setCdr(cons(VPair(key, value), header.cdr))
+            header.setCdr(cons(VPair(key,
+                    value),
+                header.cdr))
             return
         @}
         record.setCdr(value)
@@ -1406,7 +1426,8 @@ Then we use the second key to identify the record within the subtable:
 
 @example kotlin
     fun lookup2d(key1: Value, key2: Value): Value? @{
-        val subtable = this.assoc(key1, header.cdr) ?: return null
+        val subtable = this.assoc(key1,
+            header.cdr) ?: return null
         return this.assoc(key2, subtable.cdr)?.cdr
     @}
 @end example
@@ -1423,11 +1444,16 @@ record into this subtable, using the insertion method for one-dimensional
 tables described above:
 
 @example kotlin
-    fun insert2d(key1: Value, key2: Value, value: Value) @{
+    fun insert2d(key1: Value,
+        key2: Value,
+        value: Value) @{
         val subtable = this.assoc(key1, header.cdr)
         if (subtable == null) @{
             header.setCdr(
-                cons(VPair(key1, vlist(VPair(key2, value))), header.cdr),
+                cons(VPair(key1,
+                                vlist(VPair(key2,
+                    value))),
+                header.cdr),
             )
             return
         @}
@@ -1436,7 +1462,9 @@ tables described above:
             record.setCdr(value)
             return
         @}
-        subtable.setCdr(cons(VPair(key2, value), subtable.cdr))
+        subtable.setCdr(cons(VPair(key2,
+                value),
+            subtable.cdr))
     @}
 @}
 @end example
@@ -1480,7 +1508,9 @@ operations are its members.  When a program wants the book's two-name shape,
 @example kotlin
 val operationTable = makeTable()
 
-val get = @{ key1: Value, key2: Value -> operationTable.lookup2d(key1, key2) @}
+val get = @{ key1: Value,
+    key2: Value -> operationTable.lookup2d(key1,
+    key2) @}
 val put = @{ key1: Value, key2: Value, value: Value ->
     operationTable.insert2d(key1, key2, value)
 @}
@@ -1514,8 +1544,8 @@ hash-map speed.
 
 @quotation
 @strong{@anchor{Exercise 3.24}Exercise 3.24:} In the table implementations
-above, the keys are tested for equality using @code{equalv}, the Kotlin
-@code{equal?}, unless the constructor was handed a different @code{sameKey}
+above, the keys are tested for equality using @code{equalv}, the runtime's
+structural equality, unless the constructor was handed a different @code{sameKey}
 predicate.  This is not always the appropriate test.  For instance, we
 might have a table with numeric keys in which we don't need an exact match to
 the number we're looking up, but only a number within some tolerance of it.
@@ -1598,7 +1628,10 @@ fun makeMemoFib(): (Long) -> Long @{
         @} else @{
             val recurse =
                 memoFib
-                    ?: error("memoFib consulted before makeMemoFib finished building it")
+                    ?: error(
+                        "memoFib consulted before " +
+                            "makeMemoFib finished building it"
+                    )
             recurse(n - 1) + recurse(n - 2)
         @}
     val memoized = memoize(::fibStep)
@@ -1698,7 +1731,7 @@ Inverter    And-gate     Or-gate
 @image{../../text/original/figures/chap3/Fig3.24a,,110mm,Figure 3.24: Primitive functions in the digital logic simulator.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,,110mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.24:} Primitive functions in the digital logic simulator.}
@@ -1742,7 +1775,7 @@ B -----*------|___/                        |
 @image{../../text/original/figures/chap3/Fig3.25c,,122mm,Figure 3.25: A half-adder circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,,122mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.25:} A half-adder circuit.}
@@ -1860,7 +1893,7 @@ C -----+       +---------------/___/   |
 @image{../../text/original/figures/chap3/Fig3.26,,129mm,Figure 3.26: A full-adder circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.26.std,,129mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.26.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.26:} A full-adder circuit.}
@@ -1963,7 +1996,8 @@ fun andGate(
     output: Wire,
 ) @{
     val andAction = @{
-        val newValue = logicalAnd(a1.getSignal(), a2.getSignal())
+        val newValue = logicalAnd(a1.getSignal(),
+            a2.getSignal())
         afterDelay(andGateDelay) @{ output.setSignal(newValue) @}
     @}
     a1.addAction(andAction)
@@ -2052,7 +2086,7 @@ C ------+   |     +-----+   |     +-----+   |     :  ------+   |
 @image{../../text/original/figures/chap3/Fig3.27b,,132mm,Figure 3.27: A ripple-carry adder for n-bit numbers.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.27:} A ripple-carry adder for @math{n}-bit numbers.}
@@ -2079,8 +2113,10 @@ public class Wire @{
     public fun getSignal(): Long = signalValue
 
     /**
-     * The book's `set-signal!`: store the new value and, when it differs
-     * from the old, call every action in the order the actions were
+     * The book's `set-signal!`: store the new value and,
+         when it differs
+     * from the old,
+         call every action in the order the actions were
      * added. The loop walks a snapshot so an action may add actions to
      * other wires while it runs.
      */
@@ -2096,7 +2132,8 @@ public class Wire @{
 
     /**
      * The book's `add-action!`: register the action and run it once
-     * immediately, so a device attached to a wire learns the signal the
+     * immediately,
+         so a device attached to a wire learns the signal the
      * wire already carries (exercise 3.31).
      */
     public fun addAction(action: () -> Unit) @{
@@ -2192,7 +2229,8 @@ fun afterDelay(
     delay: Long,
     action: () -> Unit,
 ) @{
-    agenda.addToAgenda(currentTime + delay.toInt(), action)
+    agenda.addToAgenda(currentTime + delay.toInt(),
+        action)
 @}
 @end example
 
@@ -2237,7 +2275,10 @@ fun probe(
     wire: Wire,
 ) @{
     wire.addAction @{
-        probeLog.add("-- $name = $@{wire.getSignal()@}, current-time = $currentTime")
+        probeLog.add(
+            "-- $name = $@{wire.getSignal()@}, " +
+                "current-time = $currentTime"
+        )
     @}
 @}
 @end example
@@ -2346,14 +2387,15 @@ public class TimeSegment(
 @noindent
 We will operate on the time-segment queues with the same front/rear discipline
 the queue of @ref{3.3.2} keeps.  The book could reuse its one queue type
-because a Scheme list holds procedures and pairs alike; Kotlin's segment
+because a list in the original book holds procedures and pairs alike; Kotlin's segment
 queues hold no-argument actions, so the simulator carries its own queue with
 the same two pointers:
 
 @example kotlin
 /**
  * The agenda's segment queue: the front/rear pointer discipline of the
- * 3.3.2 queue, typed for the no-argument actions an agenda schedules.
+ * 3.3.2 queue,
+     typed for the no-argument actions an agenda schedules.
  * `delete` answers null for an empty queue instead of a typed error,
  * because the agenda removes an item only after confirming one exists.
  */
@@ -2369,7 +2411,8 @@ public class ActionQueue @{
     /** Whether the queue holds no actions. */
     public fun emptyQueue(): Boolean = front == null
 
-    /** The front action, still queued; null exactly when empty. */
+    /** The front action,
+        still queued; null exactly when empty. */
     public fun frontItem(): (() -> Unit)? = front?.item
 
     /** The book's `insert-queue!`: hang the new cell off the rear. */
@@ -2385,7 +2428,8 @@ public class ActionQueue @{
     @}
 
     /** The book's `delete-queue!`: advance the front pointer and answer
-     * the removed action, or null when the queue is empty. */
+     * the removed action,
+         or null when the queue is empty. */
     public fun delete(): (() -> Unit)? @{
         val head = front ?: return null
         front = head.next
@@ -2412,17 +2456,20 @@ tables).  Kotlin's list carries no header cell either, and the current time
 lives one level up, in the @code{Simulation}.}
 
 @example kotlin
-/** Where the book's agenda procedures raised, this edition answers
+/** Where the book's agenda procedures raised,
+    this edition answers
  * `Either.Left`. */
 public sealed interface AgendaError @{
     public data object EmptyAgenda : AgendaError
 @}
 
 /**
- * The book's agenda: the time segments sorted by increasing time, one
+ * The book's agenda: the time segments sorted by increasing time,
+     one
  * queue of actions per time. The book kept the current time at the head
  * of its agenda list; this edition keeps it in the [Simulation] that
- * drives the agenda, where [Simulation.propagate] sets it from each
+ * drives the agenda,
+     where [Simulation.propagate] sets it from each
  * first item before running it.
  */
 public class Agenda @{
@@ -2431,12 +2478,14 @@ public class Agenda @{
     /** The book's `empty-agenda?`. */
     public fun emptyAgenda(): Boolean = segments.isEmpty()
 
-    /** The time of the first segment, 0 when the agenda is empty. */
+    /** The time of the first segment,
+        0 when the agenda is empty. */
     public fun currentTime(): Int = segments.firstOrNull()?.time ?: 0
 
     /**
      * The book's `add-to-agenda!`: add the action to the queue of its
-     * time, creating that segment in sorted position when no segment
+     * time,
+         creating that segment in sorted position when no segment
      * holds the time yet. Actions added to one time queue off behind
      * the actions already waiting there.
      */
@@ -2445,7 +2494,8 @@ public class Agenda @{
         action: () -> Unit,
     ) @{
         val index = segments.indexOfFirst @{ it.time >= time @}
-        if (index >= 0 && segments[index].time == time) @{
+        if (index >= 0 &&
+            segments[index].time == time) @{
             segments[index].queue.insert(action)
             return
         @}
@@ -2459,7 +2509,8 @@ public class Agenda @{
     @}
 
     /** The book's `remove-first-agenda-item!`: delete the first action
-     * of the first segment, and drop the segment when its queue
+     * of the first segment,
+         and drop the segment when its queue
      * empties. */
     public fun removeFirstAgendaItem() @{
         val first = segments.first()
@@ -2472,7 +2523,10 @@ public class Agenda @{
     /** The book's `first-agenda-item`: the first segment's time paired
      * with the action at its queue's head; `Either.Left(EmptyAgenda)`
      * where the book raised. */
-    public fun firstAgendaItem(): Either<AgendaError, Pair<Int, () -> Unit>> @{
+    public fun firstAgendaItem(): Either<AgendaError,
+        Pair<Int,
+        () ->
+        Unit>> @{
         val first = segments.firstOrNull()
         val item = first?.queue?.frontItem()
         return if (first == null || item == null) @{
@@ -2617,7 +2671,7 @@ C -----+ m1      |  u  |      m1 +-------+ a1      |
 @image{../../text/original/figures/chap3/Fig3.28,,142mm,Figure 3.28: The relation 9C = 5(F - 32) expressed as a constraint network.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.28.std,,142mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.28.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.28:} The relation @math{{9C = 5(F - 32)}} expressed as a constraint network.}
@@ -2656,7 +2710,8 @@ celsiusFahrenheitConverter(c, f)
 The function that creates the network is defined as follows:
 
 @example kotlin
-fun celsiusFahrenheitConverter(c: Connector, f: Connector) @{
+fun celsiusFahrenheitConverter(c: Connector,
+    f: Connector) @{
     val u = Connector()
     val v = Connector()
     val w = Connector()
@@ -2815,7 +2870,9 @@ connects the new adder to the designated connectors and returns the constraint
 it installed:
 
 @example kotlin
-fun adder(a1: Connector, a2: Connector, sum: Connector): Constraint @{
+fun adder(a1: Connector,
+    a2: Connector,
+    sum: Connector): Constraint @{
     val me = Adder(a1, a2, sum)
     a1.connect(me)
     a2.connect(me)
@@ -2833,9 +2890,15 @@ private class Adder(
         val y = a2.value()
         val total = sum.value()
         when @{
-            x != null && y != null -> sum.setValue(x + y, this)
-            x != null && total != null -> a2.setValue(total - x, this)
-            y != null && total != null -> a1.setValue(total - y, this)
+            x != null &&
+                y != null -> sum.setValue(x + y,
+                this)
+            x != null &&
+                total != null -> a2.setValue(total - x,
+                this)
+            y != null &&
+                total != null -> a1.setValue(total - y,
+                this)
         @}
     @}
 
@@ -2880,7 +2943,8 @@ network that infers a factor must hand the box a quotient it can divide
 exactly.
 
 @example kotlin
-fun multiplier(m1: Connector, m2: Connector, product: Connector): Constraint @{
+fun multiplier(m1: Connector, m2: Connector,
+    product: Connector): Constraint @{
     val me = Multiplier(m1, m2, product)
     m1.connect(me)
     m2.connect(me)
@@ -2898,10 +2962,17 @@ private class Multiplier(
         val y = m2.value()
         val total = product.value()
         when @{
-            x == 0L || y == 0L -> product.setValue(0L, this)
-            x != null && y != null -> product.setValue(x * y, this)
-            total != null && x != null -> m2.setValue(total / x, this)
-            total != null && y != null -> m1.setValue(total / y, this)
+            x == 0L || y == 0L -> product.setValue(0L,
+                this)
+            x != null &&
+                y != null -> product.setValue(x * y,
+                this)
+            total != null &&
+                x != null -> m2.setValue(total / x,
+                this)
+            total != null &&
+                y != null -> m1.setValue(total / y,
+                this)
         @}
     @}
 
@@ -2922,7 +2993,8 @@ book's error for a stray @code{I-have-a-value} or @code{I-lost-my-value}
 message has nothing to answer, and the box's two methods stay empty.
 
 @example kotlin
-fun constant(v: Long, connector: Connector): Constraint @{
+fun constant(v: Long,
+    connector: Connector): Constraint @{
     val box = ConstantBox()
     connector.connect(box)
     connector.setValue(v, box)
@@ -2985,7 +3057,9 @@ class Connector @{
 
     fun value(): Long? = value
 
-    fun setValue(newValue: Long, setter: Constraint): Either<ConstraintError, Unit> @{
+    fun setValue(newValue: Long,
+        setter: Constraint): Either<ConstraintError,
+            Unit> @{
         val current = value
         if (current == null) @{
             value = newValue
@@ -2996,7 +3070,8 @@ class Connector @{
         if (current == newValue) @{
             return Either.Right(Unit)
         @}
-        return Either.Left(ConstraintError.Contradiction(current, newValue))
+        return Either.Left(ConstraintError.Contradiction(current,
+            newValue))
     @}
 
     fun forgetValue(retractor: Constraint) @{
@@ -3123,7 +3198,8 @@ value @code{a} on the first terminal.  He proposes the following simple device
 made from a multiplier:
 
 @example kotlin
-fun louisSquarer(a: Connector, b: Connector): Constraint =
+fun louisSquarer(a: Connector,
+    b: Connector): Constraint =
     multiplier(a, a, b)
 @end example
 
@@ -3138,7 +3214,7 @@ one way to avoid the trouble in @ref{Exercise 3.34} is to define a squarer as a
 new primitive constraint.  Fill in the missing portions in Ben's outline for a
 function to implement such a constraint:
 
-@example kotlin
+@smallexample kotlin
 fun squarer(a: Connector, b: Connector): Constraint @{
     val me = object : Constraint @{
         override fun newValue() @{
@@ -3160,13 +3236,11 @@ fun squarer(a: Connector, b: Connector): Constraint @{
     ⟨@var{rest of definition}⟩
     return me
 @}
-@end example
+@end smallexample
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.36}Exercise 3.36:} @emph{SICP exercise 3.36 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Suppose we evaluate
+@strong{@anchor{Exercise 3.36}Exercise 3.36:} @emph{This edition replaces SICP exercise 3.36 with a host-language exercise that keeps its number and teaching objective.}  Suppose we evaluate
 
 @example kotlin
 val a = Connector()
@@ -3211,7 +3285,10 @@ more expression-oriented style of definition, such as
 
 @example kotlin
 fun celsiusFahrenheit(x: Connector): Connector =
-    cPlus(cDiv(cMul(cConst(9L), x), cConst(5L)), cConst(32L))
+    cPlus(cDiv(cMul(cConst(9L),
+            x),
+        cConst(5L)),
+        cConst(32L))
 
 val c = Connector()
 val f = celsiusFahrenheit(c)

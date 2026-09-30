@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.16: explain, in general, why equivalent algebraic expressions
  * may lead to different answers. Can you devise an interval-arithmetic
@@ -18,4 +16,4 @@ import sicp.runtime.PendingSolution
  * `subInterval`, the simplest possible repeated-variable expression: `a -
  * a`, which is exactly zero for every real number `a` could be.
  */
-public fun ex_2_16(): Interval = throw PendingSolution()
+public fun ex_2_16(): Interval = throw PendingExercise()

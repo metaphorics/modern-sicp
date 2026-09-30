@@ -13,11 +13,11 @@ public class E4_47Test :
                 "(sentence (simple-noun-phrase (article the) (noun cat)) (verb eats))"
         }
 
-        test("Exercise 4.47: Louis's try-again diverges once the input is spent") {
-            louisTryAgainFault() shouldBe "choice budget exhausted after 500 choices"
+        test("Exercise 4.47: try-again reaches the host search horizon after one parse") {
+            louisTryAgainFault() shouldBe "answers: 1, choices: 500"
         }
 
-        test("Exercise 4.47: the interchanged order diverges outright") {
-            interchangedFault() shouldBe "choice budget exhausted after 300 choices"
+        test("Exercise 4.47: recursion-first reaches the horizon before a parse") {
+            interchangedFault() shouldBe "answers: 0, choices: 300"
         }
     })

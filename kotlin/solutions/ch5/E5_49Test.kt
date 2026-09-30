@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.49
+// Chapter 5, exercise 5_49
 
 package sicp.ch5.solutions
 
@@ -8,13 +8,12 @@ import io.kotest.matchers.shouldBe
 
 public class E5_49Test :
     FunSpec({
-        test("the loop compiles every form and prints each value") {
-            readCompileExecutePrint() shouldBe
+        test("Exercise 5.49: a compiled definition survives a second turn on the same machine") {
+            readCompileExecutePrintRuns() shouldBe
                 listOf(
-                    ";;; EC-Eval input: ;;; EC-Eval value: ok",
-                    ";;; EC-Eval input: ;;; EC-Eval value: 144",
-                    ";;; EC-Eval input: ;;; EC-Eval value: ok",
-                    ";;; EC-Eval input: ;;; EC-Eval value: 882",
+                    "first turn: 144",
+                    "second turn: 882",
+                    "the two turns share one machine: true",
                 )
         }
     })

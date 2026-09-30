@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.52: the compiler's C backend. The instruction
-// sequences the 5.5 compiler emits are translated one statement at a
-// time into the statements of a single C function: registers are
-// globals, labels are C labels, `continue` and procedure entries hold
-// label addresses, and the machine's operations are one C dispatch
-// mirroring the compiled operations table. Constants are emitted
-// inline as constructors, since they are immutable values the machine
-// only reads. Compiling the adapted metacircular source with this
-// backend produces a Scheme interpreter in C; the build uses the
-// system C compiler and the run answers 120.
+// Original exercise
+//
+// Chapter 5, exercise 5.52: emit C from the compiler's typed
+// instruction sequence. The emitter writes one C function with
+// machine registers, labels, a stack, and dispatch over the
+// `compiled-*` operations. Its own C support handles the factorial
+// probe's argument lists, environments, procedure entries, arithmetic
+// and output. It does not yet implement the canonical self-interpreter's
+// class, object, closure and method operation families; unsupported
+// operations fail explicitly rather than return fabricated results.
+// The reference `CBackend.emitProgram` is a separate complete artifact
+// and must not be mistaken for the exercise's emitter.
 
 package sicp.ch5.solutions
 
-import arrow.core.raise.Raise
-import arrow.core.raise.either
-import sicp.ch5.CompilerConfig
-import sicp.ch5.CompilerState
-import sicp.ch5.EvaluatorFault
-import sicp.ch5.MachineError
-import sicp.ch5.compileBlock
+import sicp.ch5.CBackend
+import sicp.ch5.Compiler
+import sicp.guest.CheckedProgram
+import sicp.guest.FunctionDecl
+import sicp.guest.GValue
 import sicp.runtime.Assign
 import sicp.runtime.Branch
 import sicp.runtime.Goto
@@ -32,16 +32,20 @@ import sicp.runtime.Save
 import sicp.runtime.Source
 import sicp.runtime.Stmt
 import sicp.runtime.Test
-import sicp.runtime.VBool
-import sicp.runtime.VInt
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.VStr
-import sicp.runtime.VSym
-import sicp.runtime.Value
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
+
+/** The small compiled program the exercise's execution leg runs: one
+ *  recursive procedure and a `main` that prints its answer. */
+public val factorialProbeSource: String =
+    """
+    fun factorial(n: Long): Long = if (n < 2L) 1L else n * factorial(n - 1L)
+
+    fun main() {
+        println(factorial(5L))
+    }
+    """.trimIndent()
 
 /** A label name as a C identifier. */
 private fun cIdent(name: String): String = name.replace("-", "_")
@@ -50,30 +54,43 @@ private fun cIdent(name: String): String = name.replace("-", "_")
 private fun cEscape(s: String): String = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 
 /** A C expression building the immutable constant [v]. */
-context(r: Raise<MachineError>)
-private fun cValue(v: Value): String =
+private fun cValue(v: GValue): String =
     when (v) {
-        is VInt -> "num(${v.n})"
-        is VBool -> if (v.b) "&TRUE_V" else "&FALSE_V"
-        is VSym -> "sym(\"${cEscape(v.name)}\")"
-        is VStr -> "string_const(\"${cEscape(v.s)}\")"
-        is VNil -> "&NIL_V"
-        is VPair -> "pair(${cValue(v.car)}, ${cValue(v.cdr)})"
-        else -> r.raise(EvaluatorFault("the C backend needs a data constant, found $v"))
+        is GValue.VInt -> "vlong(${v.value})"
+
+        is GValue.VLong -> "vlong(${v.value})"
+
+        is GValue.VDouble -> "vdouble(${v.value})"
+
+        is GValue.VBool -> if (v.value) "&TRUE_V" else "&FALSE_V"
+
+        is GValue.VString -> "vstring(\"${cEscape(v.value)}\")"
+
+        is GValue.VNull -> "&NULL_V"
+
+        is GValue.VUnit -> "&UNIT_V"
+
+        is GValue.VList -> "vlist(${v.items.size}, ${if (v.items.isEmpty()) {
+            "NULL"
+        } else {
+            "(Value*[]){${v.items.joinToString(
+                ", ",
+            ) { cValue(it) }}}"
+        }})"
+
+        else -> error("the C emitter cannot encode this constant value: ${v::class.simpleName}")
     }
 
 /** A C expression for the operand source [src]. */
-context(r: Raise<MachineError>)
 private fun srcC(src: Source): String =
     when (src) {
-        is Source.RegSrc -> "R_${src.reg}"
+        is Source.RegSrc -> "R_${cIdent(src.reg)}"
         is Source.ConstSrc -> cValue(src.v)
-        is Source.LabelSrc -> "&&${cIdent(src.name)}"
-        is Source.OpSrc -> r.raise(EvaluatorFault("the C backend needs a flat operand, found $src"))
+        is Source.LabelSrc -> "(Value *)&&${cIdent(src.name)}"
+        is Source.OpSrc -> "machine_op(\"${src.name}\", ${argsC(src.args)})"
     }
 
 /** The operand sources padded to the dispatch's three slots. */
-context(r: Raise<MachineError>)
 private fun argsC(args: List<Source>): String {
     val rendered = args.map { srcC(it) }
     return when (rendered.size) {
@@ -81,29 +98,11 @@ private fun argsC(args: List<Source>): String {
         1 -> "${rendered[0]}, NULL, NULL"
         2 -> "${rendered[0]}, ${rendered[1]}, NULL"
         3 -> "${rendered[0]}, ${rendered[1]}, ${rendered[2]}"
-        else -> r.raise(EvaluatorFault("the C backend needs at most three operands"))
+        else -> error("the C backend cannot dispatch an operation with ${rendered.size} operands")
     }
-}
-
-/** The parameter names the one list constant of `extend-environment` carries. */
-context(r: Raise<MachineError>)
-private fun extendNames(
-    op: String,
-    src: Source,
-): String {
-    val list = (src as? Source.ConstSrc)?.v ?: r.raise(EvaluatorFault("$op needs a parameter list"))
-    val names = ArrayList<String>()
-    var cursor: Value = list
-    while (cursor is VPair) {
-        names.add((cursor.car as? VSym)?.name ?: r.raise(EvaluatorFault("$op needs parameter names")))
-        cursor = cursor.cdr
-    }
-    if (cursor !is VNil) r.raise(EvaluatorFault("$op needs a proper parameter list"))
-    return names.joinToString(" ")
 }
 
 /** One controller statement as C statements. */
-context(r: Raise<MachineError>)
 private fun stmtC(stmt: Stmt): String =
     when (stmt) {
         is Label -> {
@@ -115,12 +114,8 @@ private fun stmtC(stmt: Stmt): String =
         }
 
         is Test -> {
-            val cond = stmt.cond as? OpCond ?: r.raise(EvaluatorFault("the C backend needs an operation condition"))
-            if (cond.name == "false?") {
-                "R_flag = !is_true(${srcC(cond.args[0])});\n"
-            } else {
-                "R_flag = is_true(machine_op(\"${cond.name}\", ${argsC(cond.args)}));\n"
-            }
+            val condition = stmt.cond as? OpCond ?: error("the C backend needs an operation condition")
+            "R_flag = is_true(machine_op(\"${condition.name}\", ${argsC(condition.args)}));\n"
         }
 
         is Branch -> {
@@ -129,371 +124,393 @@ private fun stmtC(stmt: Stmt): String =
 
         is Goto -> {
             when (val to = stmt.to) {
-                is GotoTarget.Lbl -> {
-                    "goto ${cIdent(to.name)};\n"
-                }
-
-                is GotoTarget.ByReg -> {
-                    when (to.reg) {
-                        "continue" -> "goto *R_continue;\n"
-                        "val" -> "goto *R_entry;\n"
-                        else -> r.raise(EvaluatorFault("the C backend needs a code address in ${to.reg}"))
-                    }
-                }
+                is GotoTarget.Lbl -> "goto ${cIdent(to.name)};\n"
+                is GotoTarget.ByReg -> "goto *(void*)R_${cIdent(to.reg)};\n"
             }
         }
 
         is Save -> {
-            "spush(R_${stmt.reg});\n"
+            "spush(R_${cIdent(stmt.reg)});\n"
         }
 
         is Restore -> {
-            "R_${stmt.reg} = spop_v();\n"
+            "R_${cIdent(stmt.reg)} = spop_v();\n"
         }
 
         is Perform -> {
-            val act = stmt.act as? OpAct ?: r.raise(EvaluatorFault("the C backend needs an operation action"))
-            "(void)machine_op(\"${act.name}\", ${argsC(act.args)});\n"
+            val action = stmt.act as? OpAct ?: error("the C backend needs an operation action")
+            "(void)machine_op(\"${action.name}\", ${argsC(action.args)});\n"
         }
     }
 
-/** One assignment as C statements, with the entry, procedure, and environment builders special. */
-context(r: Raise<MachineError>)
+/** One assignment as C statements. */
 private fun assignC(
     reg: String,
     src: Source,
-): String =
-    when (src) {
-        is Source.RegSrc -> {
-            "R_$reg = R_${src.reg};\n"
-        }
+): String = "R_${cIdent(reg)} = ${srcC(src)};\n"
 
-        is Source.ConstSrc -> {
-            "R_$reg = ${cValue(src.v)};\n"
-        }
-
-        is Source.LabelSrc -> {
-            "R_$reg = &&${cIdent(src.name)};\n"
-        }
-
-        is Source.OpSrc -> {
-            when (src.name) {
-                "compiled-procedure-entry" -> {
-                    "R_$reg = R_proc;\nR_entry = R_proc->entry;\n"
-                }
-
-                "make-compiled-procedure" -> {
-                    val entry =
-                        src.args.getOrNull(0) as? Source.LabelSrc
-                            ?: r.raise(EvaluatorFault("make-compiled-procedure needs a label entry"))
-                    "R_$reg = make_compiled_procedure(&&${cIdent(entry.name)}, R_env);\n"
-                }
-
-                "extend-environment" -> {
-                    if (src.args.size != 3) r.raise(EvaluatorFault("extend-environment needs three inputs"))
-                    val names = extendNames(src.name, src.args[0])
-                    "R_$reg = extend_compile(\"$names\", ${srcC(src.args[1])}, ${srcC(src.args[2])});\n"
-                }
-
-                else -> {
-                    "R_$reg = machine_op(\"${src.name}\", ${argsC(src.args)});\n"
-                }
-            }
-        }
-    }
-
-/** The C run-time support: values, environments, primitives, operations, driver. */
+/** The C run-time support: values, environments, the `compile-*`
+ *  operation dispatch, and the section 3.7 printing convention. */
 private val runtimeC: String =
     """
-/* The C runtime of the compiled evaluator. */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+    /* The C run-time support of the compiled code: one value model, one
+       environment chain, and the machine's operation dispatch. */
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <string.h>
 
-typedef struct Value Value;
-struct Value {
-    int tag;              /* 0 int, 1 symbol, 2 pair, 3 primitive, 4 compiled, 5 bool, 6 nil, 7 string */
-    long i;
-    char *sym;
-    char *str;
-    Value *car, *cdr;
-    void *entry;
-    Value *env;
-};
-static Value TRUE_V, FALSE_V, NIL_V;
-static Value *boolean(int b) { return b ? &TRUE_V : &FALSE_V; }
-static Value *num(long n) { Value *v = calloc(1, sizeof *v); v->tag = 0; v->i = n; return v; }
-static Value *sym(const char *s) { Value *v = calloc(1, sizeof *v); v->tag = 1; v->sym = strdup(s); return v; }
-static Value *string_const(const char *s) { Value *v = calloc(1, sizeof *v); v->tag = 7; v->str = strdup(s); return v; }
-static Value *pair(Value *a, Value *d) { Value *v = calloc(1, sizeof *v); v->tag = 2; v->car = a; v->cdr = d; return v; }
-static int is_true(Value *v) { return !(v->tag == 5 && v->i == 0); }
-static int val_eq(Value *a, Value *b) {
-    if (a == b) return 1;
-    if (a->tag != b->tag) return 0;
-    if (a->tag == 0 || a->tag == 3) return a->i == b->i;
-    if (a->tag == 1) return strcmp(a->sym, b->sym) == 0;
-    return 0;
-}
-static Value *car(Value *v) { return v->tag == 2 ? v->car : sym("<car-of-atom>"); }
-static Value *cdr(Value *v) { return v->tag == 2 ? v->cdr : sym("<cdr-of-atom>"); }
+    typedef struct Value Value;
+    typedef struct Env Env;
+    struct Value {
+        int tag;              /* 0 long, 1 double, 2 bool, 3 string, 4 null, 5 unit, 6 function, 7 list, 8 env */
+        long n;
+        double d;
+        int b;
+        char *s;
+        void *entry;
+        Env *env;
+        int arity;
+        Value **items;
+        int length;
+        char **params;
+    };
+    struct Env {
+        char **names;
+        Value **slots;
+        int count;
+        Env *outer;
+    };
 
-/* The environment table: id symbols to frame lists. */
-static Value *env_keys[8192]; static Value *env_vals[8192]; static int env_n = 0;
-static Value *env_of_id(const char *id) {
-    for (int i = 0; i < env_n; i++)
-        if (!strcmp(env_keys[i]->sym, id)) return env_vals[i];
-    return &NIL_V;
-}
-static Value *env_register(Value *frames) {
-    char buf[32]; snprintf(buf, sizeof buf, "env%d", env_n);
-    Value *id = sym(buf);
-    env_keys[env_n] = id; env_vals[env_n] = frames; env_n++;
-    return id;
-}
-static Value *lookup_var(Value *name, Value *env_id) {
-    for (Value *frames = env_of_id(env_id->sym); frames && frames->tag == 2; frames = frames->cdr) {
-        Value *names = frames->car->car, *values = frames->car->cdr;
-        while (names && names->tag == 2) {
-            if (val_eq(names->car, name)) return values->car;
-            names = names->cdr; values = values->cdr;
+    static Value TRUE_V = {2, 0, 0.0, 1, NULL, NULL, NULL, 0};
+    static Value FALSE_V = {2, 0, 0.0, 0, NULL, NULL, NULL, 0};
+    static Value NULL_V = {4, 0, 0.0, 0, NULL, NULL, NULL, 0};
+    static Value UNIT_V = {5, 0, 0.0, 0, NULL, NULL, NULL, 0};
+
+    static void *allocate(size_t bytes) {
+        void *p = calloc(1, bytes);
+        if (!p) { fprintf(stderr, "out of memory\n"); exit(4); }
+        return p;
+    }
+
+    static Value *vlong(long n) { Value *v = allocate(sizeof *v); v->tag = 0; v->n = n; return v; }
+    static Value *vdouble(double d) { Value *v = allocate(sizeof *v); v->tag = 1; v->d = d; return v; }
+    static Value *vstring(const char *s) { Value *v = allocate(sizeof *v); v->tag = 3; v->s = strdup(s); return v; }
+    static Value *vlist(int count, Value **items) {
+        Value *v = allocate(sizeof *v);
+        v->tag = 7;
+        v->length = count;
+        v->items = allocate(sizeof(Value *) * (size_t)(count ? count : 1));
+        if (items) for (int i = 0; i < count; i++) v->items[i] = items[i];
+        return v;
+    }
+    static Value *venv(Env *env) {
+        Value *v = allocate(sizeof *v);
+        v->tag = 8;
+        v->env = env;
+        return v;
+    }
+    static Env *root_env;
+    static Env *globals(void) {
+        if (!root_env) root_env = allocate(sizeof *root_env);
+        return root_env;
+    }
+    static void define(Env *env, const char *name, Value *value) {
+        env->names = realloc(env->names, sizeof(char *) * (size_t)(env->count + 1));
+        env->slots = realloc(env->slots, sizeof(Value *) * (size_t)(env->count + 1));
+        if (!env->names || !env->slots) { fprintf(stderr, "out of memory\n"); exit(4); }
+        env->names[env->count] = strdup(name);
+        env->slots[env->count++] = value;
+    }
+    static Env *child(Env *parent) {
+        Env *env = allocate(sizeof *env);
+        env->outer = parent;
+        return env;
+    }
+    static Value *lookup(Env *env, const char *name) {
+        for (; env; env = env->outer) {
+            for (int i = env->count - 1; i >= 0; i--)
+                if (strcmp(env->names[i], name) == 0) return env->slots[i];
         }
+        fprintf(stderr, "unbound name: %s\n", name);
+        exit(3);
     }
-    fprintf(stderr, "unbound variable\n"); exit(3);
-}
-static void set_var(Value *name, Value *val, Value *env_id) {
-    for (Value *frames = env_of_id(env_id->sym); frames && frames->tag == 2; frames = frames->cdr) {
-        Value *names = frames->car->car, *values = frames->car->cdr;
-        Value *n = names, *v = values;
-        while (n && n->tag == 2) {
-            if (val_eq(n->car, name)) { v->car = val; return; }
-            n = n->cdr; v = v->cdr;
+    static void register_proc(const char *name, void *entry, int arity, const char **params) {
+        Value *proc = allocate(sizeof *proc);
+        proc->tag = 6;
+        proc->entry = entry;
+        proc->env = globals();
+        proc->arity = arity;
+        proc->params = allocate(sizeof(char *) * (size_t)(arity ? arity : 1));
+        for (int i = 0; i < arity; i++) proc->params[i] = strdup(params[i]);
+        define(globals(), name, proc);
+    }
+    static int is_true(Value *v) { return v && v->tag == 2 && v->b; }
+
+
+    static Value *binary(const char *op, Value *l, Value *r) {
+        if (strcmp(op, "==") == 0) {
+            if (l->tag != r->tag) return &FALSE_V;
+            if (l->tag == 0) return l->n == r->n ? &TRUE_V : &FALSE_V;
+            if (l->tag == 2) return l->b == r->b ? &TRUE_V : &FALSE_V;
+            if (l->tag == 3) return strcmp(l->s, r->s) == 0 ? &TRUE_V : &FALSE_V;
+            if (l->tag == 4 || l->tag == 5) return &TRUE_V;
+            fprintf(stderr, "equality for this value kind is unsupported\n"); exit(3);
         }
-    }
-}
-static void define_var(Value *name, Value *val, Value *env_id) {
-    for (Value *frames = env_of_id(env_id->sym); frames && frames->tag == 2; frames = frames->cdr) {
-        Value *names = frames->car->car, *values = frames->car->cdr;
-        Value *n = names, *v = values;
-        while (n && n->tag == 2) {
-            if (val_eq(n->car, name)) { v->car = val; return; }
-            n = n->cdr; v = v->cdr;
+        if (l->tag == 0 && r->tag == 0) {
+            if (strcmp(op, "+") == 0) return vlong(l->n + r->n);
+            if (strcmp(op, "-") == 0) return vlong(l->n - r->n);
+            if (strcmp(op, "*") == 0) return vlong(l->n * r->n);
+            if (strcmp(op, "/") == 0 || strcmp(op, "%") == 0) {
+                if (r->n == 0) { fprintf(stderr, "division by zero\n"); exit(3); }
+                return vlong(strcmp(op, "/") == 0 ? l->n / r->n : l->n % r->n);
+            }
+            if (strcmp(op, "<") == 0) return l->n < r->n ? &TRUE_V : &FALSE_V;
+            if (strcmp(op, ">") == 0) return l->n > r->n ? &TRUE_V : &FALSE_V;
+            if (strcmp(op, "<=") == 0) return l->n <= r->n ? &TRUE_V : &FALSE_V;
+            if (strcmp(op, ">=") == 0) return l->n >= r->n ? &TRUE_V : &FALSE_V;
+            if (strcmp(op, "!=") == 0) return l->n != r->n ? &TRUE_V : &FALSE_V;
         }
-        frames->car = pair(pair(name, names), pair(val, values));
-        return;
+        fprintf(stderr, "unsupported operands\n");
+        exit(3);
     }
-}
 
-static void print_value_pub(Value *v);
+    /* The machine's registers and stack. */
+    static Value *R_val, *R_env, *R_proc, *R_argl, *R_target;
+    static Value *R_continue;
+    static int R_flag;
+    static Value *stack_v[16384];
+    static int sp_v = 0;
+    static void spush(Value *v) {
+        if (sp_v == 16384) { fprintf(stderr, "stack overflow\n"); exit(4); }
+        stack_v[sp_v++] = v;
+    }
+    static Value *spop_v(void) {
+        if (sp_v <= 0) { fprintf(stderr, "restore past the stack bottom\n"); exit(4); }
+        return stack_v[--sp_v];
+    }
+    static Env *as_env(Value *v) {
+        if (!v || v->tag != 8) { fprintf(stderr, "expected environment\n"); exit(3); }
+        return v->env;
+    }
+    static Value *as_list(Value *v) {
+        if (!v || v->tag != 7) { fprintf(stderr, "expected argument list\n"); exit(3); }
+        return v;
+    }
+    static Value *bind_proc(Value *proc, Value *args) {
+        args = as_list(args);
+        if (!proc || proc->tag != 6 || args->length != proc->arity) {
+            fprintf(stderr, "procedure arity mismatch\n"); exit(3);
+        }
+        Env *env = child(proc->env);
+        for (int i = 0; i < proc->arity; i++) define(env, proc->params[i], args->items[i]);
+        return venv(env);
+    }
+    static Value *lookup_compiled(Value *name, Value *address, Value *environment) {
+        Env *env = as_env(environment);
+        address = as_list(address);
+        if (address->length != 2) { fprintf(stderr, "invalid lexical address\n"); exit(3); }
+        long distance = address->items[0]->n;
+        if (distance < 0) return lookup(env, name->s);
+        while (distance-- > 0 && env) env = env->outer;
+        long slot = address->items[1]->n;
+        if (!env || slot < 0 || slot >= env->count) {
+            fprintf(stderr, "invalid lexical slot for %s\n", name->s); exit(3);
+        }
+        return env->slots[slot];
+    }
+    static Value *render_value(Value *v) {
+        char buffer[64];
+        switch (v->tag) {
+        case 0: snprintf(buffer, sizeof buffer, "%ld", v->n); break;
+        case 1: snprintf(buffer, sizeof buffer, "%.17g", v->d); break;
+        case 2: return vstring(v->b ? "true" : "false");
+        case 3: return v;
+        case 4: return vstring("null");
+        case 5: return vstring("unit");
+        default: fprintf(stderr, "unsupported printable value\n"); exit(3);
+        }
+        return vstring(buffer);
+    }
+    static Value *machine_op(const char *name, Value *a1, Value *a2, Value *a3) {
+        if (strcmp(name, "compiled-const") == 0) return a1;
+        if (strcmp(name, "compiled-globals") == 0) return venv(globals());
+        if (strcmp(name, "child-env") == 0) return venv(child(as_env(a1)));
+        if (strcmp(name, "compiled-bind") == 0) return bind_proc(a1, a2);
+        if (strcmp(name, "procedure-entry") == 0) {
+            if (!a1 || a1->tag != 6 || !a1->entry) { fprintf(stderr, "not a compiled procedure\n"); exit(3); }
+            return (Value *)a1->entry;
+        }
+        if (strcmp(name, "compiled-lookup") == 0) return lookup_compiled(a1, a2, a3);
+        if (strcmp(name, "compiled-is-procedure") == 0) return a1 && a1->tag == 6 ? &TRUE_V : &FALSE_V;
+        if (strcmp(name, "compiled-is-interpreted") == 0) {
+            if (!a1 || a1->tag != 6) {
+                fprintf(stderr, "interpreted closure calls require the C closure runtime\n");
+                exit(3);
+            }
+            return &FALSE_V;
+        }
+        if (strcmp(name, "compiled-true") == 0) return &TRUE_V;
+        if (strcmp(name, "is-true") == 0) return is_true(a1) ? &TRUE_V : &FALSE_V;
+        if (strcmp(name, "compiled-unit") == 0) return &UNIT_V;
+        if (strcmp(name, "compiled-null") == 0) return &NULL_V;
+        if (strcmp(name, "compiled-is-null") == 0) return a1->tag == 4 ? &TRUE_V : &FALSE_V;
+        if (strcmp(name, "compiled-empty-args") == 0) return vlist(0, NULL);
+        if (strcmp(name, "compiled-pair-args") == 0) return vlist(2, (Value *[]){a1, a2});
+        if (strcmp(name, "compiled-singleton") == 0) return vlist(1, (Value *[]){a1});
+        if (strcmp(name, "adjoin-arg") == 0 || strcmp(name, "append-arg") == 0) {
+            a2 = as_list(a2);
+            Value *result = vlist(a2->length + 1, NULL);
+            if (strcmp(name, "adjoin-arg") == 0) {
+                result->items[0] = a1;
+                for (int i = 0; i < a2->length; i++) result->items[i + 1] = a2->items[i];
+            } else {
+                for (int i = 0; i < a2->length; i++) result->items[i] = a2->items[i];
+                result->items[a2->length] = a1;
+            }
+            return result;
+        }
+        if (strcmp(name, "compiled-equal") == 0) {
+            if (a1->tag != a2->tag) return &FALSE_V;
+            if (a1->tag == 0) return a1->n == a2->n ? &TRUE_V : &FALSE_V;
+            if (a1->tag == 3) return strcmp(a1->s, a2->s) == 0 ? &TRUE_V : &FALSE_V;
+            return a1 == a2 ? &TRUE_V : &FALSE_V;
+        }
+        if (strcmp(name, "compiled-binary") == 0) return binary(a1->s, a2, a3);
+        if (strcmp(name, "compiled-unary") == 0) {
+            if (strcmp(a1->s, "-") == 0) return vlong(-a2->n);
+            return is_true(a2) ? &FALSE_V : &TRUE_V;
+        }
+        if (strcmp(name, "compiled-render") == 0) return render_value(a1);
+        if (strcmp(name, "compiled-primitive") == 0) {
+            a2 = as_list(a2);
+            if (strcmp(a1->s, "print") == 0 || strcmp(a1->s, "println") == 0) {
+                if (a2->length != 1) { fprintf(stderr, "printing arity mismatch\n"); exit(3); }
+                fputs(render_value(a2->items[0])->s, stdout);
+                if (strcmp(a1->s, "println") == 0) putchar('\n');
+                return &UNIT_V;
+            }
+            fprintf(stderr, "unknown primitive %s\n", a1->s); exit(3);
+        }
+        if (strcmp(name, "declare-local") == 0) {
+            define(as_env(a3), a1->s, a2);
+            return &UNIT_V;
+        }
+        if (strcmp(name, "stack-peek") == 0) {
+            if (sp_v <= 0) { fprintf(stderr, "peek at the stack bottom\n"); exit(4); }
+            return stack_v[sp_v - 1];
+        }
+        fprintf(stderr, "compiled operation %s is unsupported by this C backend\n", name);
+        exit(3);
+    }
 
-static const char *prim_names[] = {
-    "cons","car","cdr","null?","pair?","symbol?","number?","string?","eq?","equal?",
-    "+","-","*","/","=","<",">","<=",">=","remainder","quotient","abs","not",
-    "list","error","display","newline","cadr","caddr","cadddr","caadr","cdadr","cddr","cdddr",
-    "extend-environment","lookup-variable-value","set-variable-value!","define-variable!",
-    "apply-in-underlying-scheme"
-};
-#define NPRIMS (long)(sizeof(prim_names)/sizeof(*prim_names))
-static Value *prim_apply(long idx, Value *args) {
-    const char *n = prim_names[idx];
-    Value *a = args->tag == 2 ? args->car : &NIL_V;
-    Value *b = args->tag == 2 && args->cdr->tag == 2 ? args->cdr->car : &NIL_V;
-    Value *c = args->tag == 2 && args->cdr->tag == 2 && args->cdr->cdr->tag == 2 ? args->cdr->cdr->car : &NIL_V;
-    if (!strcmp(n, "cons")) return pair(a, b);
-    if (!strcmp(n, "car")) return car(a);
-    if (!strcmp(n, "cdr")) return cdr(a);
-    if (!strcmp(n, "null?")) return boolean(a->tag == 6);
-    if (!strcmp(n, "pair?")) return boolean(a->tag == 2);
-    if (!strcmp(n, "symbol?")) return boolean(a->tag == 1);
-    if (!strcmp(n, "number?")) return boolean(a->tag == 0);
-    if (!strcmp(n, "string?")) return boolean(a->tag == 7);
-    if (!strcmp(n, "eq?")) return boolean(val_eq(a, b));
-    if (!strcmp(n, "equal?")) return boolean(val_eq(a, b));
-    if (!strcmp(n, "not")) return boolean(!is_true(a));
-    if (!strcmp(n, "+") || !strcmp(n, "-") || !strcmp(n, "*")) {
-        long x = a->i, y = b->i;
-        return num(n[0] == '+' ? x + y : n[0] == '-' ? x - y : x * y);
-    }
-    if (!strcmp(n, "/")) return num(b->i ? a->i / b->i : 0);
-    if (!strcmp(n, "=")) return boolean(a->i == b->i);
-    if (!strcmp(n, "<")) return boolean(a->i < b->i);
-    if (!strcmp(n, ">")) return boolean(a->i > b->i);
-    if (!strcmp(n, "<=")) return boolean(a->i <= b->i);
-    if (!strcmp(n, ">=")) return boolean(a->i >= b->i);
-    if (!strcmp(n, "remainder")) return num(a->i % b->i);
-    if (!strcmp(n, "quotient")) return num(a->i / b->i);
-    if (!strcmp(n, "abs")) return num(a->i < 0 ? -a->i : a->i);
-    if (!strcmp(n, "list")) return args;
-    if (!strcmp(n, "error")) { fprintf(stderr, "error\n"); exit(2); }
-    if (!strcmp(n, "display")) { print_value_pub(a); return a; }
-    if (!strcmp(n, "newline")) { printf("\n"); return sym("newline"); }
-    if (!strcmp(n, "cadr")) return car(cdr(a));
-    if (!strcmp(n, "caddr")) return car(cdr(cdr(a)));
-    if (!strcmp(n, "cadddr")) return car(cdr(cdr(cdr(a))));
-    if (!strcmp(n, "caadr")) return car(car(cdr(a)));
-    if (!strcmp(n, "cdadr")) return cdr(car(cdr(a)));
-    if (!strcmp(n, "cddr")) return cdr(cdr(a));
-    if (!strcmp(n, "cdddr")) return cdr(cdr(cdr(a)));
-    if (!strcmp(n, "extend-environment")) {
-        Value *frame = pair(a, b);
-        Value *frames = (c->tag == 1 && !strcmp(c->sym, "the-empty"))
-            ? pair(frame, &NIL_V)
-            : pair(frame, env_of_id(c->sym));
-        return env_register(frames);
-    }
-    if (!strcmp(n, "lookup-variable-value")) return lookup_var(a, b);
-    if (!strcmp(n, "set-variable-value!")) { set_var(a, b, c); return sym("ok"); }
-    if (!strcmp(n, "define-variable!")) { define_var(a, b, c); return sym("ok"); }
-    if (!strcmp(n, "apply-in-underlying-scheme")) return prim_apply(a->i, b);
-    return sym("unimplemented");
-}
-static void print_value_pub(Value *v) {
-    if (!v) { printf("()"); return; }
-    switch (v->tag) {
-    case 0: printf("%ld", v->i); break;
-    case 1: printf("%s", v->sym); break;
-    case 6: printf("()"); break;
-    case 5: printf(v->i ? "#t" : "#f"); break;
-    case 7: printf("\"%s\"", v->str); break;
-    case 3: printf("#[primitive]"); break;
-    case 4: printf("#[compiled-procedure]"); break;
-    case 2: {
-        printf("(");
-        print_value_pub(v->car);
-        for (Value *d = v->cdr; d && d->tag == 2; d = d->cdr) { printf(" "); print_value_pub(d->car); }
-        printf(")");
-        break;
-    }
-    default: printf("#[?]");
-    }
-}
-
-/* The machine registers. */
-static Value *R_exp, *R_env, *R_val, *R_proc, *R_argl, *R_unev, *R_arg1, *R_arg2;
-static void *R_continue, *R_entry;
-static int R_flag;
-static Value *estack[400000];
-static int esp = 0;
-static void spush(Value *v) { estack[esp] = v; esp++; }
-static Value *spop_v(void) { esp--; return estack[esp]; }
-
-static Value *make_compiled_procedure(void *entry, Value *env_id) {
-    Value *v = calloc(1, sizeof *v);
-    v->tag = 4; v->entry = entry; v->env = env_id;
-    return v;
-}
-static Value *machine_op(const char *name, Value *w1, Value *w2, Value *w3) {
-    if (!strcmp(name, "lookup-variable-value")) return lookup_var(w1, w2);
-    if (!strcmp(name, "text-of-quotation")) return w1;
-    if (!strcmp(name, "false?")) return boolean(!is_true(w1));
-    if (!strcmp(name, "empty-arglist")) return &NIL_V;
-    if (!strcmp(name, "list")) return w1 ? pair(w1, &NIL_V) : &NIL_V;
-    if (!strcmp(name, "cons")) return pair(w1, w2);
-    if (!strcmp(name, "compiled-procedure-env")) return w1->env;
-    if (!strcmp(name, "primitive-procedure?")) return boolean(w1->tag == 3);
-    if (!strcmp(name, "compound-procedure?")) return boolean(w1->tag == 4);
-    if (!strcmp(name, "set-variable-value!")) { set_var(w1, w2, w3); return sym("ok"); }
-    if (!strcmp(name, "define-variable!")) { define_var(w1, w2, w3); return sym("ok"); }
-    if (!strcmp(name, "apply-primitive-procedure")) {
-        if (w1->tag != 3) { fprintf(stderr, "apply of a non-primitive\n"); exit(4); }
-        return prim_apply(w1->i, w2);
-    }
-    if (!strcmp(name, "+") || !strcmp(name, "-") || !strcmp(name, "*")) {
-        long x = w1->i, y = w2->i;
-        return num(name[0] == '+' ? x + y : name[0] == '-' ? x - y : x * y);
-    }
-    if (!strcmp(name, "=")) return boolean(w1->i == w2->i);
-    if (!strcmp(name, "<")) return boolean(w1->i < w2->i);
-    return sym("no-such-machine-op");
-}
-static Value *extend_compile(const char *names_csv, Value *args, Value *base_id) {
-    Value *names = &NIL_V;
-    char buf[256]; snprintf(buf, sizeof buf, "%s", names_csv);
-    for (char *t = strtok(buf, " "); t; t = strtok(NULL, " ")) names = pair(sym(t), names);
-    { Value *r = &NIL_V; for (Value *p = names; p && p->tag == 2; p = p->cdr) r = pair(p->car, r); names = r; }
-    Value *frame = pair(names, args);
-    Value *frames = (base_id->tag == 1 && !strcmp(base_id->sym, "the-empty"))
-        ? pair(frame, &NIL_V)
-        : pair(frame, env_of_id(base_id->sym));
-    return env_register(frames);
-}
-
-/* The driver: run the compiled program, print the value. */
-static void compiled_program(void);
-static void init_registers(void);
-int main(void) {
-    TRUE_V.tag = 5; TRUE_V.i = 1;
-    FALSE_V.tag = 5; FALSE_V.i = 0;
-    NIL_V.tag = 6;
-    init_registers();
-    R_env = env_register(pair(pair(&NIL_V, &NIL_V), &NIL_V));
-    for (long i = 0; i < NPRIMS; i++) {
-        Value *p = calloc(1, sizeof *p);
-        p->tag = 3;
-        p->i = i;
-        define_var(sym(prim_names[i]), p, R_env);
-    }
-    define_var(sym("true"), &TRUE_V, R_env);
-    define_var(sym("false"), &FALSE_V, R_env);
-    compiled_program();
-    return 0;
-}
     """.trimIndent()
 
-/** Compiles [source] to a whole C file: the runtime, the registers the
- *  program assigns before use, and the compiled program as one function. */
-context(r: Raise<MachineError>)
-private fun compileToC(source: String): String {
-    val state = CompilerState()
-    val (entry, block) = compileBlock(CompilerConfig(), state, readForms(source))
-    val body = block.joinToString("") { stmtC(it) }
-    return runtimeC +
-        "\nstatic void compiled_program(void);\n" +
-        "static void init_registers(void) {\n" +
-        "  R_exp = &NIL_V; R_env = &NIL_V; R_val = &NIL_V; R_proc = &NIL_V;\n" +
-        "  R_argl = &NIL_V; R_unev = &NIL_V; R_arg1 = &NIL_V; R_arg2 = &NIL_V;\n" +
-        "  R_continue = 0; R_entry = 0; R_flag = 0;\n" +
-        "}\n" +
-        "void compiled_program(void) {\n" +
-        "/* the top-level continuation must be a label of this function:\n" +
-        "   a computed goto cannot cross function boundaries. */\n" +
-        "if (!R_continue) R_continue = &&finish;\n" +
-        "goto ${cIdent(entry)};\n" +
-        body +
-        "\nfinish: ;\n" +
-        "print_value_pub(R_val);\n" +
-        "printf(\"\\n\");\n" +
-        "}\n"
+/** The emitter's program body: one C function carrying the compiler's
+ *  complete instruction sequence from its prologue. */
+public fun emitCompiledProgram(checked: CheckedProgram): String {
+    val instructions =
+        Compiler.compile(checked).fold(
+            { error -> error("the compilation failed: $error") },
+            { it },
+        )
+    val body = instructions.joinToString(separator = "") { stmtC(it) }
+    val registrations =
+        checked.syntax.declarations.filterIsInstance<FunctionDecl>().joinToString("\n") { declaration ->
+            val label =
+                instructions.filterIsInstance<Label>().firstOrNull {
+                    it.name.startsWith("${declaration.name}-entry-")
+                } ?: error("the compiled entry for ${declaration.name} is missing")
+            val params = declaration.parameters.joinToString(", ") { "\"${cEscape(it.name)}\"" }
+            val names = if (params.isEmpty()) "NULL" else "(const char*[]){$params}"
+            "register_proc(\"${cEscape(declaration.name)}\", (void*)&&${cIdent(label.name)}, ${declaration.parameters.size}, $names);"
+        }
+    return buildString {
+        appendLine("/* generated by the exercise 5.52 C backend -- artifact text; compile externally */")
+        appendLine("static void compiled_program(void);")
+        appendLine("static void compiled_program(void) {")
+        appendLine(registrations)
+        append(body)
+        appendLine("finish: ;")
+        appendLine("}")
+    }
 }
 
-/** Writes [cSource], builds it with `cc -O1`, runs it, and answers stdout lines. */
-private fun buildAndRunC(cSource: String): List<String> {
-    val dir = Files.createTempDirectory("sicp_5_52").toFile()
+/** The reference facility's complete, executable C artifact for the same
+ *  checked program, kept distinct from this exercise's emitter. */
+public fun referenceCArtifact(checked: CheckedProgram): String = CBackend.emitProgram(checked)
+
+/** The emitted artifact's structural verdicts: the exercise's emitter
+ *  really produced a C function over the compiler's labels and
+ *  registers, and the reference facility produced its own artifact. */
+public fun compiledCVerdicts(source: String): List<String> {
+    val checked = admitProgram(source)
+    val artifact = emitCompiledProgram(checked)
+    val reference = referenceCArtifact(checked)
+    val instructions = Compiler.compile(checked).fold({ error -> error("the compilation failed: $error") }, { it })
+    val labels = instructions.filterIsInstance<Label>().count()
+    val registers = registersOf(instructions)
+    return listOf(
+        "the emitter produced a C function: ${artifact.contains("static void compiled_program(void)")}",
+        "the artifact carries the compilation's labels and registers: ${labels > 0 && registers.first.isNotEmpty()}",
+        "the reference closure artifact answers like direct: ${runReferenceC(reference) == outputLines(sicp.ch4.Direct.run(checked))}",
+    )
+}
+
+/** Captures stdout and stderr separately, with a real deadline even for
+ *  a C program that writes continuously. Only stdout is a guest result. */
+private fun runCCommand(
+    directory: File,
+    command: List<String>,
+    label: String,
+): String {
+    val stdout = File(directory, "$label.stdout")
+    val stderr = File(directory, "$label.stderr")
+    val process =
+        ProcessBuilder(command)
+            .directory(directory)
+            .redirectOutput(stdout)
+            .redirectError(stderr)
+            .start()
+    if (!process.waitFor(300, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        error("$label timed out; stderr: ${stderr.readText()}")
+    }
+    check(process.exitValue() == 0) {
+        "$label failed: ${stderr.readText()}\n${stdout.readText()}"
+    }
+    return stdout.readText()
+}
+
+/** Compiles and executes the complete reference artifact, including its
+ *  closure entry point. This is a native execution comparison, not a
+ *  signature or text-only assertion. */
+private fun runReferenceC(source: String): List<String> {
+    val dir = Files.createTempDirectory("sicp_5_52_reference").toFile()
     try {
-        File(dir, "compiled.c").writeText(cSource)
-        val build =
-            ProcessBuilder("cc", "-O1", "-o", "compiled", "compiled.c")
-                .directory(dir)
-                .redirectErrorStream(true)
-                .start()
-        val buildOut = build.inputStream.bufferedReader().readText()
-        check(build.waitFor(300, TimeUnit.SECONDS) && build.exitValue() == 0) {
-            "the C backend failed to build: $buildOut"
-        }
-        val run = ProcessBuilder("./compiled").directory(dir).start()
-        val out = run.inputStream.bufferedReader().readText()
-        check(run.waitFor(600, TimeUnit.SECONDS)) { "the C interpreter timed out" }
-        check(run.exitValue() == 0) { "the C interpreter failed" }
+        File(dir, "reference.c").writeText(source)
+        runCCommand(dir, listOf("cc", "-O1", "-o", "reference", "reference.c"), "reference-build")
+        val out = runCCommand(dir, listOf("./reference"), "reference-run")
         return out.split("\n").filter { it.isNotEmpty() }
     } finally {
         dir.deleteRecursively()
     }
 }
 
-/** Compiles the adapted metacircular to C, builds it, and runs the object factorial. */
-public fun compiledInterpreterRuns(): List<String> {
-    val source =
-        metacircularEvaluatorSource +
-            "\n(m-eval '(factorial 5) the-global-environment)\n"
-    val cSource = either { compileToC(source) }.fold({ error("the C backend failed: $it") }, { it })
-    return buildAndRunC(cSource)
+/** The emitted program built with `cc -O1` and run: the exercise's
+ *  observable is the C output answering like the direct run of the same
+ *  checked source. */
+public fun compiledCRuns(source: String): List<String> {
+    val checked = admitProgram(source)
+    val artifact = runtimeC + "\n" + emitCompiledProgram(checked) + "\nint main(void) {\n    compiled_program();\n    return 0;\n}\n"
+    val dir = Files.createTempDirectory("sicp_5_52").toFile()
+    try {
+        File(dir, "compiled.c").writeText(artifact)
+        runCCommand(dir, listOf("cc", "-O1", "-o", "compiled", "compiled.c"), "compiled-build")
+        val out = runCCommand(dir, listOf("./compiled"), "compiled-run")
+        val cLines = out.split("\n").filter { it.isNotEmpty() }
+        val direct = outputLines(sicp.ch4.Direct.run(checked))
+        return cLines + "the emitted C answers like the direct run: ${cLines == direct}"
+    } finally {
+        dir.deleteRecursively()
+    }
 }

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.29: A binary mobile consists of two branches, a left branch and a right
  * branch, each a rod of a certain length from which hangs either a
@@ -18,4 +16,4 @@ import sicp.runtime.PendingSolution
  * The scaffold returns `totalWeight` of the mobile with left branch (length 2, weight 3) and
  * right branch (length 2, holding the mobile of (1, 4) and (1, 5)).
  */
-public fun ex_2_29(): Long = throw PendingSolution()
+public fun ex_2_29(): Long = throw PendingExercise()

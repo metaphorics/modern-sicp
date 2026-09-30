@@ -5,18 +5,19 @@ package sicp.ch3.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
-import sicp.runtime.VSym
-import sicp.runtime.vlist
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.datumList
 
 public class E3_18Test :
     FunSpec({
         test("Exercise 3.18: a made cycle is found, a plain chain is not").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            val z = sicp.ch3.exercises.makeCycle(vlist(VSym("a"), VSym("b"), VSym("c")) as sicp.runtime.VPair)
+            val cycle = makeCycle(datumList(Symbol("a"), Symbol("b"), Symbol("c")) as PairCell)
             org.junit.jupiter.api.Assertions
-                .assertEquals(true, containsCycle(z))
+                .assertTrue(containsCycle(cycle))
             org.junit.jupiter.api.Assertions
-                .assertEquals(false, containsCycle(vlist(VSym("a"), VSym("b"), VSym("c"))))
+                .assertFalse(containsCycle(datumList(Symbol("a"), Symbol("b"), Symbol("c"))))
         }
     })

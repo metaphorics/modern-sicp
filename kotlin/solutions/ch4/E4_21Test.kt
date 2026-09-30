@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 4, exercise 4.21
+// Chapter 4, exercise 4.21: tests.
 
 package sicp.ch4.solutions
 
@@ -8,15 +8,15 @@ import io.kotest.matchers.shouldBe
 
 public class E4_21Test :
     FunSpec({
-        test("Exercise 4.21: the book's self-application expression computes 10!") {
+        test("Exercise 4.21: factorial by self-application") {
             selfApplicationFactTranscript() shouldBe "3628800\n"
         }
 
-        test("Exercise 4.21: the same trick drives fib 10") {
+        test("Exercise 4.21: Fibonacci by self-application") {
             selfApplicationFibTranscript() shouldBe "55\n"
         }
 
-        test("Exercise 4.21: the filled blanks answer (f 7) and (f 10)") {
-            mutualEvenOddWithoutDefineTranscript() shouldBe "#f\n#t\n"
+        test("Exercise 4.21: even and odd with no definition in force") {
+            mutualEvenOddWithoutDefineTranscript() shouldBe "false\ntrue\n"
         }
     })

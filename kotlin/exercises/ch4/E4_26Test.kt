@@ -18,7 +18,7 @@ public class E4_26Test :
         test("Exercise 4.26: the derived unless is syntax, not a value").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            unlessDerivedValueUseTranscript() shouldBe "Error: unbound variable: unless\n"
+            unlessDerivedValueUseTranscript() shouldBe "null"
         }
 
         test("Exercise 4.26: the lazy procedure skips the unchosen arm").config(
@@ -30,7 +30,7 @@ public class E4_26Test :
         test("Exercise 4.26: the lazy procedure composes with map").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            unlessLazyMappedTranscript() shouldBe "(42 7)\n"
+            unlessLazyMappedTranscript() shouldBe "[42, 7]\n"
         }
 
         test("Exercise 4.26: the lazy procedure composes with apply").config(

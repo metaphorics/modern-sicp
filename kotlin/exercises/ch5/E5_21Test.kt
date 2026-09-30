@@ -12,6 +12,17 @@ public class E5_21Test :
         test("Exercise 5.21: the recursive and explicit-counter count-leaves machines").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            countLeavesRuns() shouldBe emptyList()
+            countLeavesRuns() shouldBe
+                listOf(
+                    "(1 2 (3 (4 5))): recursive n5, iterative n5, oracle 5; " +
+                        "recursive stack (total-pushes = 21 maximum-depth = 14), " +
+                        "iterative stack (total-pushes = 14 maximum-depth = 10)",
+                    "((7)): recursive n1, iterative n1, oracle 1; " +
+                        "recursive stack (total-pushes = 6 maximum-depth = 4), " +
+                        "iterative stack (total-pushes = 4 maximum-depth = 4)",
+                    "(): recursive n0, iterative n0, oracle 0; " +
+                        "recursive stack (total-pushes = 0 maximum-depth = 0), " +
+                        "iterative stack (total-pushes = 0 maximum-depth = 0)",
+                )
         }
     })

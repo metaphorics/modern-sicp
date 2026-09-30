@@ -9,8 +9,8 @@ import sicp.runtime.PendingSolution
  * Exercise 4.46: the amb evaluator evaluates operands left to right.
  * The enumeration order of a two-choice list pins the order: the first
  * choice cycles only after the second has been exhausted, which is the
- * only order under which `parse` works -- `parse-word` consumes
- * `*unparsed*` left to right, so a right-to-left evaluator would consume
+ * only order under which the parse works -- `parseWord` consumes
+ * `unparsed` left to right, so a right-to-left evaluator would consume
  * the sentence backwards and fail.
  *
  * Expected answer: ((1 3), (1 4), (2 3), (2 4)) -- the left operand's

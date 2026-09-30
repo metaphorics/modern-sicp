@@ -3,57 +3,78 @@
 
 package sicp.ch4.solutions
 
-import sicp.ch4.AmbEvaluator
-import sicp.ch4.AmbExec
-import sicp.ch4.ambDriver
-import sicp.runtime.AppE
-import sicp.runtime.Env
-import sicp.runtime.VSym
-import sicp.runtime.VarE
+// Exercise 4.51: `permanent-set!`. The book's session asks what survives
+// backtracking: with an ordinary assignment each failed trial rolls its
+// write back and every answer shows the same count; with a permanent
+// write the count accumulates across failed trials and survives. The
+// probes take the book's three answers and then observe the count, which
+// the run reports after the search exhausts. (The driver-loop transcript
+// of the removed evaluator -- its prompts and `try-again` lines -- is
+// gone with it: engines emit no prompts, so the observable is the answer
+// stream itself.)
 
-/** `permanent-set!`: the assignment commits with no undo trail entry,
- * so backtracking never rolls it back. */
-internal class WithPermanentSet(
-    global: Env,
-) : AmbEvaluator(global) {
-    override fun reservedClause(expr: AppE): AmbExec? {
-        val head = expr.operator as? VarE ?: return null
-        if (head.name != "permanent-set!") {
-            return super.reservedClause(expr)
-        }
-        val name = (expr.operands[0] as VarE).name
-        val vproc = analyzedOperands(expr)[1]
-        return { env, succeed ->
-            vproc(env) { value ->
-                env.set(name, value)
-                succeed(VSym("ok"))
-            }
-        }
+/** The counting session shared by both assignments. */
+internal val COUNTING_PRELUDE: String =
+    AMB_BASE_PRELUDE + "\n" +
+        """
+var count: Long = 0L
+
+var delivered: Long = 0L
+
+fun recordAnswer(x: String, y: String): Unit {
+    requireThat(x != y)
+    requireThat(delivered < 3L)
+    setPermanent { delivered = delivered + 1L }
+    println("(" + x + " " + y + " " + showLong(count) + ")")
+}
+
+fun pairedCountsPermanent(): Unit {
+    val x = anElementOfString(listOf("a", "b", "c"))
+    val y = anElementOfString(listOf("a", "b", "c"))
+    if (delivered < 3L) {
+        setPermanent { count = count + 1L }
     }
+    recordAnswer(x, y)
 }
 
-private val countingPrelude: String = "$AMB_BASE_PRELUDE\n(define count 0)"
-
-private fun countingQuery(form: String): String =
-    "(let ((x (an-element-of '(a b c)))\n      (y (an-element-of '(a b c))))\n  $form\n  (require (not (eq? x y)))\n  (list x y count))"
-
-/** The `permanent-set!` session: every trial accumulates, and the
- * counter the driver reads back afterward keeps the total 4. */
-public fun permanentSetTranscript(): String {
-    val driver = ambDriver({ env, _ -> WithPermanentSet(env) }, countingPrelude)
-    return driver.input(countingQuery("(permanent-set! count (+ count 1))")) +
-        driver.input("try-again") +
-        driver.input("try-again") +
-        driver.input("count")
+fun pairedCountsOrdinary(): Unit {
+    val x = anElementOfString(listOf("a", "b", "c"))
+    val y = anElementOfString(listOf("a", "b", "c"))
+    count = count + 1L
+    recordAnswer(x, y)
 }
+        """.trimIndent()
 
-/** The `set!` session: each failed trial is rolled back, every answer
- * shows its own branch's single count, and the counter reads 0 once the
- * problem ends and the trail unwinds. */
-public fun setBangTranscript(): String {
-    val driver = ambDriver(::AmbEvaluator, countingPrelude)
-    return driver.input(countingQuery("(set! count (+ count 1))")) +
-        driver.input("try-again") +
-        driver.input("try-again") +
-        driver.input("count")
+/** The permanent-write session and its final count. */
+private fun permanentProbe(): String =
+    COUNTING_PRELUDE + "\n" +
+        """
+fun main() {
+    budgetCap = 1000000L
+    ifFail(
+        { pairedCountsPermanent() },
+        { println(showLong(count)) },
+    )
 }
+        """.trimIndent()
+
+/** The ordinary-assignment session and its final count. */
+private fun setBangProbe(): String =
+    COUNTING_PRELUDE + "\n" +
+        """
+fun main() {
+    budgetCap = 1000000L
+    ifFail(
+        { pairedCountsOrdinary() },
+        { println(showLong(count)) },
+    )
+}
+        """.trimIndent()
+
+/** The book's three answers and the count they leave behind.
+ * => "(a b 2)\n(a c 3)\n(b a 4)\n4\n" */
+public fun permanentSetTranscript(): String = searchLines(permanentProbe()).joinToString(separator = "\n", postfix = "\n")
+
+/** The ordinary assignment rolls every failed trial back.
+ * => "(a b 1)\n(a c 1)\n(b a 1)\n0\n" */
+public fun setBangTranscript(): String = searchLines(setBangProbe()).joinToString(separator = "\n", postfix = "\n")

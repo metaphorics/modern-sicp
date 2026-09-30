@@ -14,9 +14,9 @@ import sicp.runtime.PendingSolution
  * as an unbounded descent (budgeted honestly rather than hung).
  *
  * Expected answers: the lazy `(factorial 5)` answers 120; the strict armed
- * `(unless (= 1 1) (/ 1 0) 42)` fails with `Error: division by zero`; the
- * strict factorial under a 200-step budget fails with `Error: machine
- * fault: step budget exhausted after 200 steps`.
+ * the armed call `unless(true, 1 / 0, 42)` raises `DivisionByZero`; the
+ * strict factorial under a 200-step budget fails with `BudgetExhausted
+ * after 200 steps`.
  */
 public fun lazyFactorialTranscript(): String = throw PendingSolution()
 

@@ -77,7 +77,7 @@ numbers 1, 2, 3, and 4.
 @image{../../text/original/figures/chap2/Fig2.3e,,147mm,Figure 2.3: Two ways to combine 1@comma{} 2@comma{} 3@comma{} and 4 using pairs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.3e.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.3e.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.3:} Two ways to combine 1, 2, 3, and 4 using pairs.}
@@ -160,7 +160,11 @@ programs as the runtime's end-of-chain value @code{VNil}.  The entire sequence
 is constructed by nested pair constructions:
 
 @example kotlin
-cons(VInt(1), cons(VInt(2), cons(VInt(3), cons(VInt(4), VNil))))
+cons(VInt(1),
+        cons(VInt(2),
+            cons(VInt(3),
+                cons(VInt(4),
+    VNil))))
 @end example
 
 @float
@@ -185,7 +189,7 @@ cons(VInt(1), cons(VInt(2), cons(VInt(3), cons(VInt(4), VNil))))
 @image{../../text/original/figures/chap2/Fig2.4e,,125mm,Figure 2.4: The sequence 1@comma{} 2@comma{} 3@comma{} 4 represented as a chain of pairs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.4e.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.4e.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.4:} The sequence 1, 2, 3, 4 represented as a chain of pairs.}
@@ -209,7 +213,10 @@ vlist(VInt(a1), VInt(a2), ..., VInt(an))
 is equivalent to
 
 @example kotlin
-cons(VInt(a1), cons(VInt(a2), ... cons(VInt(an), VNil) ...))
+cons(VInt(a1),
+        cons(VInt(a2),
+            ... cons(VInt(an),
+    VNil) ...))
 @end example
 
 @noindent
@@ -219,7 +226,10 @@ parentheses.  Thus, the data object in @ref{Figure 2.4} is printed
 as @code{(1 2 3 4)}:
 
 @example kotlin
-val oneThroughFour = vlist(VInt(1), VInt(2), VInt(3), VInt(4))
+val oneThroughFour = vlist(VInt(1),
+    VInt(2),
+    VInt(3),
+    VInt(4))
 
 oneThroughFour
 // => (1 2 3 4)
@@ -236,11 +246,8 @@ We can think of the first element of a pair as selecting the head of the
 list, and of the second element as selecting the sublist consisting of all but
 the first item.  Nested selections can be used to extract the second, third,
 and subsequent items in the list.@footnote{Since nested selections are
-cumbersome to write, Lisp dialects provide abbreviations for them---for
-instance, the @code{cadr} of a list is the @code{car} of its @code{cdr}.  The
-names of all such procedures start with @code{c} and end with @code{r}, and
-each @code{a} or @code{d} between them stands for one selection, applied in
-the order in which it appears in the name.  Kotlin code simply nests the two
+cumbersome to write, the original's dialects abbreviate a whole selection
+chain into one composed accessor name.  Kotlin code simply nests the two
 calls: the second item of a chain is @code{carOf(cdrOf(items))}.} The pair
 construction makes a list like the original one, but with an additional item at
 the beginning.  The runtime stores its pairs as the dynamic value @code{VPair},
@@ -313,9 +320,14 @@ rest of the list.
 fun listRef(
     items: Value,
     n: Long,
-): Value = if (n == 0L) carOf(items) else listRef(cdrOf(items), n - 1L)
+): Value = if (n == 0L) carOf(items) else listRef(cdrOf(items),
+    n - 1L)
 
-val squares = vlist(VInt(1), VInt(4), VInt(9), VInt(16), VInt(25))
+val squares = vlist(VInt(1),
+    VInt(4),
+    VInt(9),
+    VInt(16),
+    VInt(25))
 
 listRef(squares, 3)
 // => 16
@@ -324,12 +336,13 @@ listRef(squares, 3)
 @noindent
 Often we cdr down the whole list.  To aid in this, the chain representation
 includes the end-of-list marker itself, and testing against it---the role
-Scheme's @code{null?} plays---tells us whether the argument is the empty list.
+the original book's empty-list test plays---tells us whether the argument is the empty list.
 The procedure @code{lengthList}, which returns the number of items in a
 list, illustrates this typical pattern of use:
 
 @example kotlin
-fun lengthList(items: Value): Long = if (items is VNil) 0L else 1L + lengthList(cdrOf(items))
+fun lengthList(items: Value): Long = if (items is VNil) 0L else 1L +
+    lengthList(cdrOf(items))
 
 val odds = vlist(VInt(1), VInt(3), VInt(5), VInt(7))
 
@@ -368,7 +381,8 @@ fun lengthListIter(items: Value): Long @{
     tailrec fun iter(
         a: Value,
         count: Long,
-    ): Long = if (a is VNil) count else iter(cdrOf(a), count + 1L)
+    ): Long = if (a is VNil) count else iter(cdrOf(a),
+        count + 1L)
 
     return iter(items, 0L)
 @}
@@ -406,7 +420,8 @@ cons the head of @code{list1} onto the result:
 fun appendList(
     list1: Value,
     list2: Value,
-): Value = if (list1 is VNil) list2 else cons(carOf(list1), appendList(cdrOf(list1), list2))
+): Value = if (list1 is VNil) list2 else cons(carOf(list1),
+    appendList(cdrOf(list1), list2))
 @end example
 
 @quotation
@@ -426,7 +441,13 @@ that takes a list as argument and returns a list of the same elements in
 reverse order:
 
 @example kotlin
-reverseList(vlist(VInt(1), VInt(4), VInt(9), VInt(16), VInt(25)))
+reverseList(
+    vlist(VInt(1),
+        VInt(4),
+        VInt(9),
+        VInt(16),
+        VInt(25)),
+)
 // => (25 16 9 4 1)
 @end example
 @end quotation
@@ -448,8 +469,9 @@ coins to use.  We could then have lists that defined each kind of currency:
 @example kotlin
 val usCoins = listOf(50L, 25L, 10L, 5L, 1L)
 
-// the half-penny of the book's pound is not a whole number of cents,
-// so this edition's pound carries seven denominations, not eight
+// the half-penny of the book's pound is not
+// a whole number of cents, so this edition's
+// pound carries seven denominations, not eight
 val ukCoins = listOf(100L, 50L, 20L, 10L, 5L, 2L, 1L)
 @end example
 
@@ -473,8 +495,12 @@ fun cc(
         amount == 0L -> 1L
         amount < 0L || noMore(coinValues) -> 0L
         else ->
-            cc(amount, exceptFirstDenomination(coinValues)) +
-                cc(amount - firstDenomination(coinValues), coinValues)
+            cc(amount,
+                exceptFirstDenomination(coinValues)) +
+                cc(
+                    amount - firstDenomination(coinValues),
+                    coinValues,
+                )
     @}
 @end example
 
@@ -488,7 +514,7 @@ affect the answer produced by @code{cc}?  Why or why not?
 @strong{@anchor{Exercise 2.20}Exercise 2.20:} The procedures @code{+},
 @code{*}, and @code{listOf} take arbitrary numbers of arguments. One way to
 define such procedures is to declare the last parameter @code{vararg}, Kotlin's
-replacement for Scheme's @newterm{dotted-tail notation}.
+replacement for the original book's @newterm{dotted-tail notation}.
 In a function declaration, a parameter marked @code{vararg} indicates that,
 when the function is called, the initial parameters (if any) will receive the
 initial arguments, as usual, while the @code{vararg} parameter will hold all
@@ -559,10 +585,17 @@ fun scaleList(
     if (items is VNil) @{
         VNil
     @} else @{
-        cons(VInt(numOf(carOf(items)) * factor), scaleList(cdrOf(items), factor))
+        cons(VInt(numOf(carOf(items)) * factor),
+                scaleList(cdrOf(items),
+            factor))
     @}
 
-scaleList(vlist(VInt(1), VInt(2), VInt(3), VInt(4), VInt(5)), 10)
+scaleList(vlist(VInt(1),
+        VInt(2),
+        VInt(3),
+        VInt(4),
+    VInt(5)),
+    10)
 // => (10 20 30 40 50)
 @end example
 
@@ -573,17 +606,28 @@ procedure here is called @code{mapList}.  @code{MapList} takes as arguments a
 function of one argument and a list, and returns a list of the results produced by
 applying the function to each element in the list:@footnote{@anchor{Footnote 78}
 Kotlin's own @code{map} on lists is the everyday twin of the one described
-here.  The standard library's @code{zip} plays the role of Scheme's
-@math{n}-ary @code{map}, which takes a function of @math{n} arguments, together
+here.  The standard library's @code{zip} plays the role of the original book's
+@math{n}-ary map, which takes a function of @math{n} arguments, together
 with @math{n} lists, and applies the function to all the first elements of the
 lists, all the second elements of the lists, and so on, returning a list of the
 results.  For example:
 
 @example kotlin
-listOf(1L, 2L, 3L).zip(listOf(40L, 50L, 60L)).zip(listOf(700L, 800L, 900L)) @{ ab, c -> ab.first + ab.second + c @}
+listOf(1L,
+    2L,
+        3L).zip(listOf(40L,
+        50L,
+        60L)).zip(listOf(700L,
+        800L,
+    900L)) @{ ab, c -> ab.first + ab.second + c @}
 // => [741, 852, 963]
 
-listOf(1L, 2L, 3L).zip(listOf(4L, 5L, 6L)) @{ x, y -> x + 2L * y @}
+listOf(1L,
+    2L,
+        3L).zip(listOf(4L,
+        5L,
+    6L)) @{ x,
+    y -> x + 2L * y @}
 // => [9, 12, 15]
 @end example
 }
@@ -592,24 +636,34 @@ listOf(1L, 2L, 3L).zip(listOf(4L, 5L, 6L)) @{ x, y -> x + 2L * y @}
 fun mapList(
     f: (Long) -> Long,
     items: Value,
-): Value = if (items is VNil) VNil else cons(VInt(f(numOf(carOf(items)))), mapList(f, cdrOf(items)))
+): Value = if (items is VNil) VNil else
+    cons(VInt(f(numOf(carOf(items)))),
+            mapList(f,
+        cdrOf(items)))
 @end example
 
 @noindent
 For example:
 
 @example kotlin
-mapList(@{ x -> kotlin.math.abs(x) @}, vlist(VInt(-10), VInt(2), VInt(-11), VInt(17)))
+mapList(@{ x -> kotlin.math.abs(x) @},
+        vlist(VInt(-10),
+        VInt(2),
+    VInt(-11), VInt(17)))
 // => (10 2 11 17)
 
-mapList(@{ x -> x * x @}, vlist(VInt(1), VInt(2), VInt(3), VInt(4)))
+mapList(@{ x -> x * x @},
+        vlist(VInt(1),
+        VInt(2),
+        VInt(3),
+    VInt(4)))
 // => (1 4 9 16)
 @end example
 
 @noindent
 Now we can give a new definition of @code{scaleList} in terms of @code{mapList}.
 Kotlin cannot rebind the top-level name @code{scaleList} the way a second
-Scheme @code{define} would, so this edition names the new definition
+definition in the original book would, so this edition names the new definition
 @code{scaleListViaMap}:
 
 @example kotlin
@@ -654,7 +708,8 @@ them by filling in the missing expressions:
 fun squareList(items: Value): Value =
     if (items is VNil) VNil else cons(⟨??⟩, ⟨??⟩)
 
-fun squareList(items: Value): Value = mapList(⟨??⟩, ⟨??⟩)
+fun squareList(items: Value): Value = mapList(⟨??⟩,
+    ⟨??⟩)
 @end example
 @end quotation
 
@@ -672,7 +727,13 @@ fun squareList(items: Value): Value @{
         if (things is VNil) @{
             answer
         @} else @{
-            iter(cdrOf(things), cons(VInt(square(numOf(carOf(things)))), answer))
+            iter(
+                cdrOf(things),
+                cons(
+                    VInt(square(numOf(carOf(things)))),
+                    answer,
+                ),
+            )
         @}
 
     return iter(items, VNil)
@@ -693,7 +754,8 @@ fun squareList(items: Value): Value @{
         if (things is VNil) @{
             answer
         @} else @{
-            iter(cdrOf(things), cons(answer, VInt(square(numOf(carOf(things))))))
+            iter(cdrOf(things), cons(answer,
+                VInt(square(numOf(carOf(things))))))
         @}
 
     return iter(items, VNil)
@@ -713,7 +775,9 @@ all---@code{forEachValue} is used with functions that perform an action, such as
 printing.  For example,
 
 @example kotlin
-forEachValue(vlist(VInt(57), VInt(321), VInt(88))) @{ v ->
+forEachValue(vlist(VInt(57),
+        VInt(321),
+    VInt(88))) @{ v ->
     println(v)
 @}
 // 57
@@ -750,7 +814,7 @@ this structure in terms of pairs.
 @anchor{Figure 2.5}
 @ifinfo
 @quotation
-@strong{Figure 2.5:} Structure formed by @code{(cons (list 1 2) (list 3 4))}.
+@strong{Figure 2.5:} Structure formed by @code{cons(vlist(VInt(1), VInt(2)), vlist(VInt(3), VInt(4)))}.
 
 @example
                                           (3 4)
@@ -773,10 +837,10 @@ this structure in terms of pairs.
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap2/Fig2.5e,,140mm,Figure 2.5: Structure formed by (cons (list 1 2) (list 3 4)).,.std.svg}
+@image{../../text/original/figures/chap2/Fig2.5e,,140mm,Figure 2.5: Structure formed by cons(vlist(VInt(1)@comma{} VInt(2))@comma{} vlist(VInt(3)@comma{} VInt(4))).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.5e.std,,140mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.5e.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.5:} Structure formed by @code{cons(vlist(VInt(1), VInt(2)), vlist(VInt(3), VInt(4)))}.}
@@ -841,7 +905,10 @@ returns the total number of leaves of a tree.  The chain
 @code{((1 2) 3 4)} has length 3:
 
 @example kotlin
-val x = cons(vlist(VInt(1), VInt(2)), vlist(VInt(3), VInt(4)))
+val x = cons(vlist(VInt(1),
+    VInt(2)),
+        vlist(VInt(3),
+    VInt(4)))
 
 lengthList(x)
 // => 3
@@ -851,13 +918,16 @@ lengthList(x)
 while the same structure as a tree has four leaves:
 
 @example kotlin
-val xAsTree = tree(tree(leaf(1), leaf(2)), leaf(3), leaf(4))
+val xAsTree = tree(tree(leaf(1),
+    leaf(2)),
+    leaf(3),
+    leaf(4))
 
 countLeaves(xAsTree)
 // => 4
 
 val doubleX = tree(xAsTree, xAsTree)
-// the book's (list x x): two branches, eight leaves
+// two branches over the same leaf tree: eight leaves
 
 doubleX.subtrees.size
 // => 2
@@ -916,13 +986,14 @@ case:
 @end itemize
 
 @noindent
-To aid in writing recursive procedures on trees, Scheme provides the primitive
-predicate @code{pair?}, which tests whether its argument is a pair.  In this
+To aid in writing recursive procedures on trees, the original book provides
+a primitive pair test, which reports whether its argument is a pair.  In this
 edition the check is a type test, and the compiler enforces it: a @code{when}
 over the sealed @code{Tree} must cover both the leaf and the node case, and it
 cannot miss either.  Here is
 the complete procedure:@footnote{The order of the first two clauses in the
-book's @code{cond} matters, since the empty list satisfies @code{null?} and also is
+book's original clause order matters, since the empty list passes the
+empty-list test and also is
 not a pair.  The sealed hierarchy dissolves that ordering question: a
 @code{Leaf} and a @code{Node} are different types, so no case can shadow
 another.}
@@ -936,25 +1007,33 @@ fun countLeaves(t: Tree): Long =
 @end example
 
 @quotation
-@emph{SICP exercise 2.24 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.24}Exercise 2.24:} Suppose we evaluate the
+@emph{This edition replaces SICP exercise 2.24 with a host-language exercise that keeps its number and teaching objective.} @strong{@anchor{Exercise 2.24}Exercise 2.24:} Suppose we evaluate the
 expression @code{vlist(VInt(1), vlist(VInt(2), vlist(VInt(3), VInt(4))))}.  Give the result printed by
 @code{toString}, the corresponding box-and-pointer structure, and the
 interpretation of this structure as a tree (as in @ref{Figure 2.6}).
 @end quotation
 
 @quotation
-@emph{SICP exercise 2.25 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.25}Exercise 2.25:} Give combinations of @code{carOf}
+@emph{This edition replaces SICP exercise 2.25 with a host-language exercise that keeps its number and teaching objective.} @strong{@anchor{Exercise 2.25}Exercise 2.25:} Give combinations of @code{carOf}
 and @code{cdrOf} calls that will pick 7 from each of the following lists:
 
 @example kotlin
-vlist(VInt(1), VInt(3), vlist(VInt(5), VInt(7)), VInt(9))
+vlist(VInt(1),
+    VInt(3),
+        vlist(VInt(5),
+    VInt(7)),
+    VInt(9))
 vlist(vlist(VInt(7)))
-vlist(VInt(1), vlist(VInt(2), vlist(VInt(3), vlist(VInt(4), vlist(VInt(5), vlist(VInt(6), VInt(7)))))))
+vlist(VInt(1),
+        vlist(VInt(2),
+            vlist(VInt(3),
+                vlist(VInt(4),
+    vlist(VInt(5), vlist(VInt(6), VInt(7)))))))
 @end example
 @end quotation
 
 @quotation
-@emph{SICP exercise 2.26 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} @strong{@anchor{Exercise 2.26}Exercise 2.26:} Suppose we define @code{x} and
+@emph{This edition replaces SICP exercise 2.26 with a host-language exercise that keeps its number and teaching objective.} @strong{@anchor{Exercise 2.26}Exercise 2.26:} Suppose we define @code{x} and
 @code{y} to be two lists:
 
 @example kotlin
@@ -981,7 +1060,10 @@ subtrees deep-reversed as well.  For example, on the book's
 @code{deepReverse} reverses at every level:
 
 @example kotlin
-val x = tree(tree(leaf(1), leaf(2)), tree(leaf(3), leaf(4)))
+val x = tree(tree(leaf(1),
+    leaf(2)),
+        tree(leaf(3),
+    leaf(4)))
 
 reverseTree(x)
 // => ((3 4) (1 2)) in book syntax
@@ -998,7 +1080,10 @@ elements are all the leaves of the tree arranged in left-to-right order.  For
 example,
 
 @example kotlin
-val x = tree(tree(leaf(1), leaf(2)), tree(leaf(3), leaf(4)))
+val x = tree(tree(leaf(1),
+    leaf(2)),
+        tree(leaf(3),
+    leaf(4)))
 
 fringe(x)
 // => [1, 2, 3, 4]
@@ -1016,22 +1101,34 @@ represent a binary mobile using compound data by constructing it from two
 branches (for example, with a sealed hierarchy of the section's own):
 
 @example kotlin
-data class Branch(val length: Long, val structure: MobileStructure)
+data class Branch(
+    val length: Long,
+    val structure: MobileStructure,
+)
 
 sealed interface MobileStructure
 
 data class Weight(val value: Long) : MobileStructure
 
-data class Mobile(val left: Branch, val right: Branch) : MobileStructure
+data class Mobile(
+    val left: Branch,
+    val right: Branch,
+) : MobileStructure
 @end example
 
 @noindent
 with the constructors
 
 @example kotlin
-fun makeMobile(left: Branch, right: Branch): Mobile = Mobile(left, right)
+fun makeMobile(
+    left: Branch,
+    right: Branch,
+): Mobile = Mobile(left, right)
 
-fun makeBranch(length: Long, structure: MobileStructure): Branch = Branch(length, structure)
+fun makeBranch(
+    length: Long,
+    structure: MobileStructure,
+): Branch = Branch(length, structure)
 @end example
 
 @enumerate a
@@ -1057,9 +1154,15 @@ mobile is balanced.
 Suppose we change the representation of mobiles so that the constructors are
 
 @example kotlin
-fun makeMobile(left: ConsBranch, right: ConsBranch): ConsMobile = left to right
+fun makeMobile(
+    left: ConsBranch,
+    right: ConsBranch,
+): ConsMobile = left to right
 
-fun makeBranch(length: Long, structure: ConsStructure): ConsBranch = length to structure
+fun makeBranch(
+    length: Long,
+    structure: ConsStructure,
+): ConsBranch = length to structure
 @end example
 
 How much do you need to change your programs to convert to the new
@@ -1079,7 +1182,11 @@ where each number is multiplied by the factor.  The recursive plan for
 @code{scaleTree} is similar to the one for @code{countLeaves}:
 
 @example kotlin
-val bookTree = tree(leaf(1), tree(leaf(2), tree(leaf(3), leaf(4)), leaf(5)), tree(leaf(6), leaf(7)))
+val bookTree = tree(leaf(1),
+        tree(leaf(2),
+            tree(leaf(3),
+        leaf(4)),
+    leaf(5)), tree(leaf(6), leaf(7)))
 
 fun scaleTree(
     t: Tree,
@@ -1087,12 +1194,15 @@ fun scaleTree(
 ): Tree =
     when (t) @{
         is Tree.Leaf -> Tree.Leaf(t.value * factor)
-        is Tree.Node -> Tree.Node(t.subtrees.map @{ scaleTree(it, factor) @})
+        is Tree.Node -> Tree.Node(t.subtrees.map @{ scaleTree(it,
+            factor) @})
     @}
 
 scaleTree(bookTree, 10)
-// => (10 (20 (30 40) 50) (60 70)) in book syntax: same shape, every leaf times 10
 @end example
+@smallexample
+// => (10 (20 (30 40) 50) (60 70)) in book syntax: same shape, every leaf times 10
+@end smallexample
 
 @noindent
 Another way to implement @code{scaleTree} is to regard the tree as a sequence
@@ -1107,7 +1217,8 @@ fun scaleTreeViaMap(
 ): Tree =
     when (t) @{
         is Tree.Leaf -> Tree.Leaf(t.value * factor)
-        is Tree.Node -> Tree.Node(t.subtrees.map @{ scaleTreeViaMap(it, factor) @})
+        is Tree.Node -> Tree.Node(t.subtrees.map @{ scaleTreeViaMap(it,
+            factor) @})
     @}
 @end example
 
@@ -1135,7 +1246,8 @@ procedures) and also by using @code{map} and recursion.
 that @code{squareTree} could be defined as
 
 @example kotlin
-fun squareTree(tree: Tree): Tree = treeMap(@{ x -> x * x @}, tree)
+fun squareTree(tree: Tree): Tree =
+    treeMap(@{ x -> x * x @}, tree)
 @end example
 @end quotation
 
@@ -1179,7 +1291,8 @@ argument and computes the sum of the squares of the leaves that are odd:
 @example kotlin
 fun sumOddSquaresDirect(t: Tree): Long =
     when (t) @{
-        is Tree.Leaf -> if (t.value % 2L != 0L) t.value * t.value else 0L
+        is Tree.Leaf -> if (t.value % 2L != 0L) t.value * t.value else
+            0L
         is Tree.Node -> t.subtrees.sumOf(::sumOddSquaresDirect)
     @}
 @end example
@@ -1282,7 +1395,7 @@ the commonality between the two programs.
 @image{../../text/original/figures/chap2/Fig2.7e,,147mm,Figure 2.7: The signal-flow plans for the procedures sum-odd-squares (top) and even-fibs (bottom) reveal the commonality between the two programs.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.7e.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.7e.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.7:} The signal-flow plans for the procedures @code{sumOddSquaresDirect} (top) and @code{evenFibsDirect} (bottom) reveal the commonality between the two programs.}
@@ -1331,7 +1444,8 @@ fun <T> filterSeq(
 ): List<T> =
     when @{
         sequence.isEmpty() -> emptyList()
-        predicate(sequence.first()) -> listOf(sequence.first()) + filterSeq(predicate, sequence.drop(1))
+        predicate(sequence.first()) -> listOf(sequence.first()) +
+            filterSeq(predicate, sequence.drop(1))
         else -> filterSeq(predicate, sequence.drop(1))
     @}
 @end example
@@ -1352,17 +1466,35 @@ fun <T, R> accumulateSeq(
     op: (T, R) -> R,
     initial: R,
     sequence: List<T>,
-): R = if (sequence.isEmpty()) initial else op(sequence.first(), accumulateSeq(op, initial, sequence.drop(1)))
+): R = if (sequence.isEmpty()) initial else op(sequence.first(),
+    accumulateSeq(op, initial, sequence.drop(1)))
 @end example
 
 @example kotlin
-accumulateSeq(@{ x, acc -> x + acc @}, 0L, listOf(1, 2, 3, 4, 5))
+accumulateSeq(@{ x,
+    acc -> x + acc @},
+    0L,
+        listOf(1,
+        2,
+        3,
+        4,
+    5))
 // => 15
 
-accumulateSeq(@{ x, acc -> x * acc @}, 1L, listOf(1, 2, 3, 4, 5))
+accumulateSeq(@{ x,
+    acc -> x * acc @},
+    1L,
+        listOf(1,
+        2,
+        3,
+        4,
+    5))
 // => 120
 
-accumulateSeq(@{ x, acc -> listOf(x) + acc @}, emptyList<Long>(), listOf(1, 2, 3, 4, 5))
+accumulateSeq(@{ x,
+    acc -> listOf(x) + acc @},
+    emptyList<Long>(),
+    listOf(1, 2, 3, 4, 5))
 // => [1, 2, 3, 4, 5]
 @end example
 
@@ -1375,7 +1507,8 @@ sequence of integers in a given range, which we can do as follows:
 fun enumerateInterval(
     low: Long,
     high: Long,
-): List<Long> = if (low > high) emptyList() else listOf(low) + enumerateInterval(low + 1L, high)
+): List<Long> = if (low > high) emptyList() else listOf(low) +
+    enumerateInterval(low + 1L, high)
 
 enumerateInterval(2, 7)
 // => [2, 3, 4, 5, 6, 7]
@@ -1394,7 +1527,11 @@ fun enumerateTree(t: Tree): List<Long> =
         is Tree.Node -> t.subtrees.flatMap(::enumerateTree)
     @}
 
-enumerateTree(tree(leaf(1), tree(leaf(2), leaf(3), leaf(4)), leaf(5)))
+enumerateTree(tree(leaf(1),
+            tree(leaf(2),
+            leaf(3),
+        leaf(4)),
+    leaf(5)))
 // => [1, 2, 3, 4, 5]
 @end example
 
@@ -1409,7 +1546,9 @@ fun sumOddSquares(t: Tree): Long =
     accumulateSeq(
         @{ x: Long, acc: Long -> x + acc @},
         0L,
-        mapSeq(@{ x -> x * x @}, filterSeq(@{ x -> x % 2L != 0L @}, enumerateTree(t))),
+        mapSeq(@{ x -> x * x @},
+                filterSeq(@{ x -> x % 2L != 0L @},
+            enumerateTree(t))),
     )
 @end example
 
@@ -1429,7 +1568,8 @@ fun evenFibs(n: Long): List<Long> =
     accumulateSeq(
         @{ x: Long, acc: List<Long> -> listOf(x) + acc @},
         emptyList(),
-        filterSeq(@{ x -> x % 2L == 0L @}, mapSeq(::fib, enumerateInterval(0L, n))),
+        filterSeq(@{ x -> x % 2L == 0L @}, mapSeq(::fib,
+            enumerateInterval(0L, n))),
     )
 @end example
 
@@ -1450,7 +1590,8 @@ match.  For instance, we can reuse pieces from the @code{sumOddSquares} and
 of the first @math{{n + 1}} Fibonacci numbers:
 
 @example kotlin
-fun listFibSquares(n: Long): List<Long> = mapSeq(@{ x -> x * x @}, mapSeq(::fib, enumerateInterval(0L, n)))
+fun listFibSquares(n: Long): List<Long> = mapSeq(@{ x -> x * x @},
+    mapSeq(::fib, enumerateInterval(0L, n)))
 
 listFibSquares(10)
 // => [0, 1, 1, 4, 9, 25, 64, 169, 441, 1156, 3025]
@@ -1465,7 +1606,9 @@ fun productOfSquaresOfOddElements(sequence: List<Long>): Long =
     accumulateSeq(
         @{ x: Long, acc: Long -> x * acc @},
         1L,
-        mapSeq(@{ x -> x * x @}, filterSeq(@{ x -> x % 2L != 0L @}, sequence)),
+        mapSeq(@{ x -> x * x @},
+                filterSeq(@{ x -> x % 2L != 0L @},
+            sequence)),
     )
 
 productOfSquaresOfOddElements(listOf(1, 2, 3, 4, 5))
@@ -1490,7 +1633,9 @@ fun salaryOfHighestPaidProgrammer(records: List<Record>): Long =
     accumulateSeq(
         @{ x: Long, acc: Long -> maxOf(x, acc) @},
         0L,
-        mapSeq(Record::salary, filterSeq(Record::isProgrammer, records)),
+        mapSeq(Record::salary,
+                filterSeq(Record::isProgrammer,
+            records)),
     )
 @end example
 
@@ -1525,14 +1670,23 @@ operations as accumulations:
 fun mapViaAccumulate(
     p: (Long) -> Long,
     sequence: List<Long>,
-): List<Long> = accumulateList(@{ x, acc -> ⟨??⟩ @}, emptyList(), sequence)
+): List<Long> = accumulateList(@{ x,
+    acc -> ⟨??⟩ @},
+    emptyList(),
+    sequence)
 
 fun appendViaAccumulate(
     seq1: List<Long>,
     seq2: List<Long>,
-): List<Long> = accumulateList(@{ x, acc -> listOf(x) + acc @}, ⟨??⟩, ⟨??⟩)
+): List<Long> =
+    accumulateList(
+        @{ x, acc -> listOf(x) + acc @},
+        ⟨??⟩,
+        ⟨??⟩,
+    )
 
-fun lengthViaAccumulate(sequence: List<Long>): Long = accumulateList(⟨??⟩, 0L, sequence)
+fun lengthViaAccumulate(sequence: List<Long>): Long =
+    accumulateList(⟨??⟩, 0L, sequence)
 @end example
 @end quotation
 
@@ -1589,7 +1743,10 @@ are arranged in a sequence, from @math{a_0} through @math{a_n}.
 fun hornerEval(
     x: Long,
     coefficientSequence: List<Long>,
-): Long = accumulateList(@{ coeff, higher -> ⟨??⟩ @}, ⟨??⟩, coefficientSequence)
+): Long = accumulateList(@{ coeff,
+    higher -> ⟨??⟩ @},
+    ⟨??⟩,
+    coefficientSequence)
 @end example
 
 @noindent
@@ -1605,7 +1762,12 @@ hornerEval(2, listOf(1, 3, 0, 5, 0, 1))
 @strong{@anchor{Exercise 2.35}Exercise 2.35:} Redefine @code{countLeaves} from @ref{2.2.2} as an accumulation:
 
 @example kotlin
-fun countLeavesAccumulate(t: Tree): Long = accumulateList(⟨??⟩, ⟨??⟩, mapSeq(⟨??⟩, enumerateTree(t)))
+fun countLeavesAccumulate(t: Tree): Long =
+    accumulateList(
+        ⟨??⟩,
+        ⟨??⟩,
+        mapSeq(⟨??⟩, enumerateTree(t)),
+    )
 @end example
 @end quotation
 
@@ -1629,7 +1791,10 @@ fun accumulateN(
     if (seqs.any @{ it.isEmpty() @}) @{
         emptyList()
     @} else @{
-        listOf(accumulateList(op, init, seqs.map @{ ⟨??⟩ @})) + accumulateN(op, init, seqs.map @{ ⟨??⟩ @})
+        listOf(accumulateList(op,
+                init,
+            seqs.map @{ ⟨??⟩ @})) +
+            accumulateN(op, init, seqs.map @{ ⟨??⟩ @})
     @}
 @end example
 @end quotation
@@ -1698,7 +1863,12 @@ We can define the dot product as@footnote{This definition uses Kotlin's
 fun dotProduct(
     v: List<Long>,
     w: List<Long>,
-): Long = accumulateList(@{ x, acc -> x + acc @}, 0L, v.zip(w) @{ a, b -> a * b @})
+): Long =
+    accumulateList(
+        @{ x, acc -> x + acc @},
+        0L,
+        v.zip(w) @{ a, b -> a * b @},
+    )
 @end example
 
 @noindent
@@ -1713,9 +1883,15 @@ fun matrixStarVector(
 ): List<Long> = mapSeq(@{ row -> ⟨??⟩ @}, m)
 
 fun transpose(m: Matrix): List<List<Long>> =
-    if (m.any @{ it.isEmpty() @}) emptyList() else m.map @{ ⟨??⟩ @} + transpose(m.map @{ ⟨??⟩ @})
+    if (m.any @{ it.isEmpty() @}) @{
+        emptyList()
+    @} else @{
+        m.map @{ ⟨??⟩ @} +
+            transpose(m.map @{ ⟨??⟩ @})
+    @}
 
-fun matrixStarMatrix(m: Matrix, n: Matrix): List<List<Long>> @{
+fun matrixStarMatrix(m: Matrix,
+    n: Matrix): List<List<Long>> @{
     val cols = transpose(n)
     return m.map @{ row -> cols.map @{ column -> ⟨??⟩ @} @}
 @}
@@ -1738,7 +1914,8 @@ fun <T, R> foldLeft(
     tailrec fun iter(
         result: R,
         rest: List<T>,
-    ): R = if (rest.isEmpty()) result else iter(op(result, rest.first()), rest.drop(1))
+    ): R = if (rest.isEmpty()) result else iter(op(result,
+        rest.first()), rest.drop(1))
 
     return iter(initial, sequence)
 @}
@@ -1752,9 +1929,17 @@ foldRight(@{ x, acc -> x / acc @}, 1.0, listOf(1, 2, 3))
 
 foldLeft(@{ acc, x -> acc / x @}, 1.0, listOf(1, 2, 3))
 
-foldRight(@{ x, acc -> listOf(x) + acc @}, emptyList<Long>(), listOf(1, 2, 3))
+foldRight(
+    @{ x, acc -> listOf(x) + acc @},
+    emptyList<Long>(),
+    listOf(1, 2, 3),
+)
 
-foldLeft(@{ acc, x -> listOf(x) + acc @}, emptyList<Long>(), listOf(1, 2, 3))
+foldLeft(
+    @{ acc, x -> listOf(x) + acc @},
+    emptyList<Long>(),
+    listOf(1, 2, 3),
+)
 @end example
 
 @noindent
@@ -1768,9 +1953,19 @@ sequence.
 @ref{Exercise 2.38}:
 
 @example kotlin
-fun reverseRight(sequence: List<Long>): List<Long> = foldRight(@{ x, acc -> ⟨??⟩ @}, emptyList(), sequence)
+fun reverseRight(sequence: List<Long>): List<Long> =
+    foldRight(
+        @{ x, acc -> ⟨??⟩ @},
+        emptyList(),
+        sequence,
+    )
 
-fun reverseLeft(sequence: List<Long>): List<Long> = foldLeft(@{ acc, x -> ⟨??⟩ @}, emptyList(), sequence)
+fun reverseLeft(sequence: List<Long>): List<Long> =
+    foldLeft(
+        @{ acc, x -> ⟨??⟩ @},
+        emptyList(),
+        sequence,
+    )
 @end example
 @end quotation
 
@@ -1823,9 +2018,13 @@ represented as @code{listOf(i, j)}, not @code{cons(VInt(i), VInt(j))}.}
 
 @example kotlin
 accumulateSeq(
-    @{ pairs: List<List<Long>>, acc: List<List<Long>> -> pairs + acc @},
+    @{ pairs: List<List<Long>>,
+        acc: List<List<Long>> -> pairs + acc @},
     emptyList(),
-    mapSeq(@{ i -> mapSeq(@{ j -> listOf(i, j) @}, enumerateInterval(1L, i - 1L)) @}, enumerateInterval(1L, n)),
+    mapSeq(@{ i -> mapSeq(@{ j -> listOf(i,
+            j) @},
+                enumerateInterval(1L,
+        i - 1L)) @}, enumerateInterval(1L, n)),
 )
 @end example
 
@@ -1837,7 +2036,9 @@ this sort of program that we will isolate it as a separate procedure:
 fun <T, R> flatMapSeq(
     proc: (T) -> List<R>,
     sequence: List<T>,
-): List<R> = accumulateSeq(@{ x: List<R>, acc: List<R> -> x + acc @}, emptyList(), mapSeq(proc, sequence))
+): List<R> = accumulateSeq(@{ x: List<R>,
+    acc: List<R> -> x + acc @},
+    emptyList(), mapSeq(proc, sequence))
 @end example
 
 @noindent
@@ -1868,7 +2069,9 @@ using the following procedure, which constructs a triple consisting of the two
 elements of the pair along with their sum:
 
 @example kotlin
-fun makePairSum(pair: List<Long>): List<Long> = listOf(pair[0], pair[1], pair[0] + pair[1])
+fun makePairSum(pair: List<Long>): List<Long> = listOf(pair[0],
+    pair[1],
+    pair[0] + pair[1])
 @end example
 
 @noindent
@@ -1881,7 +2084,8 @@ fun primeSumPairs(n: Long): List<List<Long>> =
         filterSeq(
             ::primeSum,
             flatMapSeq(
-                @{ i -> mapSeq(@{ j -> listOf(i, j) @}, enumerateInterval(1L, i - 1L)) @},
+                @{ i -> mapSeq(@{ j -> listOf(i, j) @},
+                enumerateInterval(1L, i - 1L)) @},
                 enumerateInterval(1L, n),
             ),
         ),
@@ -1899,9 +2103,9 @@ permutations of @math{{S - x}},@footnote{The set @math{{S - x}} is the set of al
 elements of @math{S}, excluding @math{x}.} and adjoin @math{x} to the front of each one.
 This yields, for each @math{x} in @math{S}, the sequence of permutations of @math{S}
 that begin with @math{x}.  Combining these sequences for all @math{x} gives all the
-permutations of @math{S}:@footnote{Semicolons in Scheme code are used to introduce
-@newterm{comments}.  Everything from the semicolon to the end of the line is
-ignored by the interpreter.  In this book we don't use many comments; we try to
+permutations of @math{S}:@footnote{In the original book's code, a semicolon
+introduces @newterm{comments}: everything from the semicolon to the end of the
+line is ignored by the interpreter.  In this book we don't use many comments; we try to
 make our programs self-documenting by using descriptive names.  Kotlin's
 @code{//} introduces a comment, and everything to the end of the line is
 ignored by the compiler.}
@@ -1909,9 +2113,11 @@ ignored by the compiler.}
 @example kotlin
 fun permutations(s: List<Long>): List<List<Long>> =
     if (s.isEmpty()) @{ // empty set?
-        listOf(emptyList()) // sequence containing empty set
+        listOf(emptyList())
+        // sequence containing empty set
     @} else @{
-        flatMapSeq(@{ x -> mapSeq(@{ p -> listOf(x) + p @}, permutations(removeItem(x, s))) @}, s)
+        flatMapSeq(@{ x -> mapSeq(@{ p -> listOf(x) + p @},
+            permutations(removeItem(x, s))) @}, s)
     @}
 @end example
 
@@ -2010,7 +2216,8 @@ fun queens(boardSize: Int): List<List<Int>> @{
             listOf(emptyBoard())
         @} else @{
             flatMapSeq(
-                @{ rest -> (1..boardSize).map @{ newRow -> adjoinPosition(newRow, k, rest) @} @},
+                @{ rest -> (1..boardSize).map @{ newRow ->
+                adjoinPosition(newRow, k, rest) @} @},
                 queenCols(k - 1),
             ).filter @{ safeCol(k, it) @}
         @}
@@ -2042,7 +2249,15 @@ in the @code{flatMapSeq}, writing it as
 
 @example kotlin
 flatMapSeq(
-    @{ newRow -> queenCols(k - 1).map @{ rest -> adjoinPosition(newRow, k, rest) @} @},
+    @{ newRow ->
+        queenCols(k - 1).map @{ rest ->
+            adjoinPosition(
+                newRow,
+                k,
+                rest,
+            )
+        @}
+    @},
     (1..boardSize).toList(),
 )
 @end example
@@ -2052,7 +2267,15 @@ instead of
 
 @example kotlin
 flatMapSeq(
-    @{ rest -> (1..boardSize).map @{ newRow -> adjoinPosition(newRow, k, rest) @} @},
+    @{ rest ->
+        (1..boardSize).map @{ newRow ->
+            adjoinPosition(
+                newRow,
+                k,
+                rest,
+            )
+        @}
+    @},
     queenCols(k - 1),
 )
 @end example
@@ -2248,7 +2471,7 @@ val wave4 = below(wave2, wave2)
 @image{../../text/original/figures/chap2/Fig2.12,,118mm,Figure 2.12: Creating a complex figure@comma{} starting from the wave painter of Figure 2.10.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.12.std,,118mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.12.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.12:} Creating a complex figure, starting from the @code{wave} painter of @ref{Figure 2.10}.}
@@ -2356,7 +2579,10 @@ fun cornerSplit(
         val topLeft = beside(up, up)
         val bottomRight = below(right, right)
         val corner = cornerSplit(painter, n - 1)
-        beside(below(painter, topLeft), below(bottomRight, corner))
+        beside(below(painter,
+            topLeft),
+                below(bottomRight,
+            corner))
     @}
 @end example
 
@@ -2450,13 +2676,19 @@ Then @code{flippedPairs} can be defined in terms of @code{squareOfFour} as
 follows:@footnote{Equivalently, we could write
 
 @example kotlin
-val flippedPairs = squareOfFour(@{ p -> p @}, ::flipVert, @{ p -> p @}, ::flipVert)
+val flippedPairs = squareOfFour(@{ p -> p @},
+    ::flipVert,
+    @{ p -> p @},
+    ::flipVert)
 @end example
 }
 
 @example kotlin
 fun flippedPairs(painter: Painter): Painter @{
-    val combine4 = squareOfFour(@{ p -> p @}, ::flipVert, @{ p -> p @}, ::flipVert)
+    val combine4 = squareOfFour(@{ p -> p @},
+        ::flipVert,
+        @{ p -> p @},
+        ::flipVert)
 
     return combine4(painter)
 @}
@@ -2474,7 +2706,10 @@ fun squareLimitViaSquareOfFour(
     painter: Painter,
     n: Int,
 ): Painter @{
-    val combine4 = squareOfFour(::flipHoriz, @{ p -> p @}, ::rotate180, ::flipVert)
+    val combine4 = squareOfFour(::flipHoriz,
+        @{ p -> p @},
+        ::rotate180,
+        ::flipVert)
 
     return combine4(cornerSplit(painter, n))
 @}
@@ -2642,9 +2877,16 @@ commutative while scaling distributes over it.
 constructors for frames:
 
 @example kotlin
-fun makeFrame(origin: Vect, edge1: Vect, edge2: Vect): Frame = Frame(origin, edge1, edge2)
+fun makeFrame(origin: Vect,
+    edge1: Vect,
+    edge2: Vect): Frame =
+    Frame(origin, edge1, edge2)
 
-fun makeFramePair(origin: Vect, edge1: Vect, edge2: Vect): FramePair = origin to (edge1 to edge2)
+fun makeFramePair(
+    origin: Vect,
+    edge1: Vect,
+    edge2: Vect,
+): FramePair = origin to (edge1 to edge2)
 @end example
 
 For each constructor supply the appropriate selectors to produce an
@@ -2670,11 +2912,13 @@ argument, so a picture is a plain string of SVG elements, and the drawing walk
 is a plain @code{for} loop.}
 
 @example kotlin
-fun segmentsToPainter(segmentList: List<Segment>): Painter = @{ frame, out ->
+fun segmentsToPainter(segmentList: List<Segment>): Painter = @{ frame,
+    out ->
     val map = frameCoordMap(frame)
 
     for (segment in segmentList) @{
-        drawLine(out, map(startSegment(segment)), map(endSegment(segment)))
+        drawLine(out, map(startSegment(segment)),
+            map(endSegment(segment)))
     @}
 @}
 @end example
@@ -2792,7 +3036,12 @@ upper-right quarter of the frame it is given:
 
 @example kotlin
 fun shrinkToUpperRight(painter: Painter): Painter =
-    transformPainter(painter, makeVect(0.5, 0.5), makeVect(1.0, 0.5), makeVect(0.5, 1.0))
+    transformPainter(painter,
+            makeVect(0.5,
+        0.5),
+            makeVect(1.0,
+        0.5),
+        makeVect(0.5, 1.0))
 @end example
 
 @noindent
@@ -2802,7 +3051,12 @@ because it also stretches and shrinks the image to fit into the rotated frame.}
 
 @example kotlin
 fun rotate90(painter: Painter): Painter =
-    transformPainter(painter, makeVect(1.0, 0.0), makeVect(1.0, 1.0), makeVect(0.0, 0.0))
+    transformPainter(painter,
+            makeVect(1.0,
+        0.0),
+            makeVect(1.0,
+        1.0),
+        makeVect(0.0, 0.0))
 @end example
 
 @noindent
@@ -2812,7 +3066,12 @@ images in @ref{Figure 2.10} and @ref{Figure 2.11} were created with
 
 @example kotlin
 fun squashInwards(painter: Painter): Painter =
-    transformPainter(painter, makeVect(0.0, 0.0), makeVect(0.65, 0.35), makeVect(0.35, 0.65))
+    transformPainter(painter,
+            makeVect(0.0,
+        0.0),
+            makeVect(0.65,
+        0.35),
+        makeVect(0.35, 0.65))
 @end example
 
 @noindent
@@ -2830,8 +3089,13 @@ fun beside(
     painter2: Painter,
 ): Painter @{
     val splitPoint = makeVect(0.5, 0.0)
-    val paintLeft = transformPainter(painter1, makeVect(0.0, 0.0), splitPoint, makeVect(0.0, 1.0))
-    val paintRight = transformPainter(painter2, splitPoint, makeVect(1.0, 0.0), makeVect(0.5, 1.0))
+    val paintLeft = transformPainter(painter1,
+            makeVect(0.0,
+        0.0),
+        splitPoint, makeVect(0.0, 1.0))
+    val paintRight = transformPainter(painter2,
+        splitPoint,
+        makeVect(1.0, 0.0), makeVect(0.5, 1.0))
 
     return @{ frame, out ->
         paintLeft(frame, out)

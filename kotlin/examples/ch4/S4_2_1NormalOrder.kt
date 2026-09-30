@@ -1,75 +1,80 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Chapter 4, section 4.2.1, normal order and applicative order: the
-// section's `try` and `unless` procedures under delayed arguments, with
-// the strict base evaluator as the applicative-order contrast.
+// section's `try` and `unless` under delayed arguments, with the strict
+// core run as the applicative-order contrast -- under delay the armed
+// argument is never evaluated, under strictness it faults first.
 
 package sicp.ch4.examples
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.ch4.LazyEvaluator
-import sicp.ch4.OutputSink
-import sicp.ch4.lazyTranscriptOn
-import sicp.ch4.runProgram
-import sicp.ch4.setupEnvironment
+import sicp.ch4.Direct
+import sicp.ch4.LazyModule
+import sicp.guest.Mode
+import sicp.guest.RunResult
+
+private val TRY_SESSION: String =
+    """
+    fun tryCall(a: Long, b: Long): Long = if (a == 0L) 1L else b
+
+    fun main() {
+        println(tryCall(0L, 1L / 0L))
+    }
+    """.trimIndent()
+
+private val UNLESS_SESSION: String =
+    """
+    var a: Long = 12L
+    var b: Long = 0L
+
+    fun unless(condition: Boolean, usual: Long, exceptional: Long): Long =
+        if (condition) exceptional else usual
+
+    fun exceptional(): Long {
+        print("exception: returning 0")
+        return 0L
+    }
+
+    fun main() {
+        println(unless(b == 0L, a / b, exceptional()))
+    }
+    """.trimIndent()
+
+private fun runLazy(source: String): RunResult =
+    LazyModule.run(source).fold(
+        { e -> throw AssertionError("admission rejected the unit: ${e.category}: ${e.message}") },
+        { run -> run.result },
+    )
+
+private fun runStrict(source: String): RunResult =
+    Direct.run(source, Mode.CORE).fold(
+        { e -> throw AssertionError("admission rejected the unit: ${e.category}: ${e.message}") },
+        { it },
+    )
 
 public class S4_2_1NormalOrderTest :
     FunSpec({
         test("the try session: the armed argument is never evaluated") {
-            lazyTranscriptOn(
-                ::LazyEvaluator,
-                """
-                (define (try a b)
-                  (if (= a 0) 1 b))
-                (try 0 (/ 1 0))
-                """.trimIndent(),
-            ) shouldBe "1\n"
+            val result = runLazy(TRY_SESSION)
+            result.output shouldBe "1\n"
+            result.error shouldBe null
         }
 
-        test("the same call in an applicative-order language raises") {
-            val sink = OutputSink()
-            runProgram(
-                """
-                (define (try a b)
-                  (if (= a 0) 1 b))
-                (try 0 (/ 1 0))
-                """.trimIndent(),
-                setupEnvironment(sink),
-                sink,
-            ) shouldBe "Error: division by zero\n"
+        test("the same call under applicative order faults first") {
+            val result = runStrict(TRY_SESSION)
+            result.output shouldBe ""
+            result.error?.category shouldBe "DivisionByZero"
         }
 
         test("unless does useful work past an argument that would fault") {
-            lazyTranscriptOn(
-                ::LazyEvaluator,
-                """
-                (define a 12)
-                (define b 0)
-                (define (unless condition usual-value exceptional-value)
-                  (if condition exceptional-value usual-value))
-                (unless (= b 0)
-                        (/ a b)
-                        (begin (display "exception: returning 0")
-                               0))
-                """.trimIndent(),
-            ) shouldBe "exception: returning 00\n"
+            val result = runLazy(UNLESS_SESSION)
+            result.output shouldBe "exception: returning 00\n"
+            result.error shouldBe null
         }
 
-        test("the same unless under applicative order evaluates both arms") {
-            val sink = OutputSink()
-            runProgram(
-                """
-                (define a 12)
-                (define b 0)
-                (define (unless condition usual-value exceptional-value)
-                  (if condition exceptional-value usual-value))
-                (unless (= b 0)
-                        (/ a b)
-                        (begin (display "exception: returning 0")
-                               0))
-                """.trimIndent(),
-                setupEnvironment(sink),
-                sink,
-            ) shouldBe "Error: division by zero\n"
+        test("the same unless under applicative order evaluates the faulting arm") {
+            val result = runStrict(UNLESS_SESSION)
+            result.output shouldBe ""
+            result.error?.category shouldBe "DivisionByZero"
         }
     })

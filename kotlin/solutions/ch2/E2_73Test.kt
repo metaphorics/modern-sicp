@@ -8,23 +8,32 @@ import io.kotest.matchers.shouldBe
 
 public class E2_73Test :
     FunSpec({
-        test("ex_2_73 differentiates a sum, a product, and a power, all through the table") {
-            ex_2_73() shouldBe Triple("1", "y", "(* 3 (** x 2))")
+        test("the installed table differentiates sums, products, and powers") {
+            ex_2_73() shouldBe
+                Triple(
+                    OperatorExpr.Num(1),
+                    OperatorExpr.Var("y"),
+                    OperatorExpr.Product(OperatorExpr.Num(3), OperatorExpr.Pow(OperatorExpr.Var("x"), 2L)),
+                )
         }
 
-        test("adding a rule is one put; deriving the same expressions before and after installing the power rule agrees where both apply") {
+        test("installing another rule leaves existing rule results unchanged") {
             val table = DerivTable()
             installSumRule(table)
             installProductRule(table)
-            val sumBefore = printOperatorExpr(derivDataDirected(OperatorExpr.Sum(OperatorExpr.Var("x"), OperatorExpr.Num(3)), "x", table))
+            val sum = OperatorExpr.Sum(OperatorExpr.Var("x"), OperatorExpr.Num(3))
+            val sumBefore = derivDataDirected(sum, "x", table)
             installPowRule(table)
-            val sumAfter = printOperatorExpr(derivDataDirected(OperatorExpr.Sum(OperatorExpr.Var("x"), OperatorExpr.Num(3)), "x", table))
+            val sumAfter = derivDataDirected(sum, "x", table)
             sumBefore shouldBe sumAfter
         }
 
-        test("an expression whose operator has no installed rule fails loudly, not silently") {
+        test("a missing operator rule fails with a typed host error") {
             val table = DerivTable()
-            val failure = runCatching { derivDataDirected(OperatorExpr.Product(OperatorExpr.Var("x"), OperatorExpr.Num(2)), "x", table) }
-            failure.isFailure shouldBe true
+            val failure =
+                runCatching {
+                    derivDataDirected(OperatorExpr.Product(OperatorExpr.Var("x"), OperatorExpr.Num(2)), "x", table)
+                }.exceptionOrNull()
+            (failure is IllegalStateException) shouldBe true
         }
     })

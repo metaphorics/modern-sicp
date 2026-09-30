@@ -96,8 +96,8 @@ public class Connector {
     /**
      * The book's `connect`: join [source] once (membership, like the
      * exception test below, is object identity), then bring it up to
-     * date. New members join at the front, the book's `cons` onto the
-     * list, so the most recently wired constraint is consulted first.
+     * date. New members join at index 0, so the newest constraint is
+     * consulted first.
      */
     public fun connect(source: Constraint) {
         if (source !in constraints) {
@@ -111,8 +111,8 @@ public class Connector {
     /**
      * The book's `for-each-except`: applies [inform] to every constraint
      * in the list except [exception], the one that just spoke. The test
-     * is physical: `!==` is the book's `not-eq?`, so two constraints
-     * that merely look alike are never confused.
+     * is physical: `!==` checks reference identity, so lookalike
+     * constraints remain distinct.
      */
     private fun informExcept(
         exception: Constraint,

@@ -4,148 +4,127 @@
 package sicp.ch3.exercises
 
 import arrow.core.Either
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.cons
-import sicp.runtime.equalv
-import sicp.runtime.setCdr
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.datumList
+import sicp.runtime.pair
+import sicp.runtime.structurallyEqual
 
 public sealed interface QueueError {
     public data object EmptyQueue : QueueError
 }
 
-/** The book's queue of 3.3.2: two mutable pointers into one chain of
- * mutable pairs, plus the operations insert-queue!, delete-queue!, and
- * print-queue as methods. */
+/** A mutable linked queue over host datum pairs. */
 public class Queue {
-    private var front: VPair? = null
-    private var rear: VPair? = null
+    private var front: PairCell? = null
+    private var rear: PairCell? = null
 
-    /** Whether the queue holds no items. */
     public fun emptyQueue(): Boolean = front == null
 
-    /** The front pointer cell; null exactly when the queue is empty.
-     * Exercise 3.21 observes the hidden pair through this. */
-    public fun frontCell(): VPair? = front
+    public fun frontCell(): PairCell? = front
 
-    /** The rear pointer cell; null exactly when the queue is empty. */
-    public fun rearCell(): VPair? = rear
+    public fun rearCell(): PairCell? = rear
 
-    /** The book's insert-queue!: hang the new cell off the rear pointer. */
-    public fun insert(item: Value) {
-        val cell = VPair(item, VNil)
+    public fun insert(item: Datum) {
+        val cell = pair(item, Empty)
         val tail = rear
         if (tail == null) {
             front = cell
             rear = cell
         } else {
-            tail.setCdr(cell)
+            tail.second = cell
             rear = cell
         }
     }
 
-    /** The book's delete-queue!: advance the front pointer; Left of
-     * EmptyQueue when the queue is empty, as the book's error was. */
-    public fun delete(): Either<QueueError, Value> {
+    public fun delete(): Either<QueueError, Datum> {
         val head = front
         return if (head == null) {
             Either.Left(QueueError.EmptyQueue)
         } else {
-            front = head.cdr as? VPair
+            front = head.second as? PairCell
             if (front == null) {
                 rear = null
             }
-            Either.Right(head.car)
+            Either.Right(head.first)
         }
     }
 
-    /** The book's print-queue: the front chain, rendered like the book's list. */
-    public fun printQueue(): String = front?.toString() ?: "()"
+    public fun items(): List<Datum> {
+        val result = mutableListOf<Datum>()
+        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<PairCell, Boolean>())
+        var cursor = front
+        while (cursor != null && seen.add(cursor)) {
+            result.add(cursor.first)
+            cursor = cursor.second as? PairCell
+        }
+        return result
+    }
 }
 
-/** The book's one-dimensional table of 3.3.3: a headed list of records
- * over the mutable pair. The first backbone pair is the object that
- * represents the table itself: its car holds the dummy `*table*` marker
- * (a subtable carries its own key there), its cdr the chain of records. */
+/** A table backed by a headed chain of host datum pairs. */
 public class Table(
-    /** The book's ``equality'' test for keys; the default is `equal?`,
-     * and exercise 3.24 hands the constructor a different one. */
-    public val sameKey: (Value, Value) -> Boolean = ::equalv,
+    public val sameKey: (Datum, Datum) -> Boolean = ::structurallyEqual,
 ) {
-    private val header: VPair = VPair(VSym("*table*"), VNil)
+    private val header: PairCell = pair(Symbol("*table*"), Empty)
 
-    /** The book's assoc: the first record whose key passes the table's
-     * key test, or null. The scan runs over the records it is handed,
-     * so it never sees the dummy record. */
-    public fun assoc(
-        key: Value,
-        records: Value,
-    ): VPair? {
-        if (records !is VPair) {
+    public fun findRecord(
+        key: Datum,
+        records: Datum,
+    ): PairCell? {
+        if (records !is PairCell) {
             return null
         }
-        val record = records.car
-        return if (record is VPair && sameKey(key, record.car)) {
+        val record = records.first
+        return if (record is PairCell && sameKey(key, record.first)) {
             record
         } else {
-            assoc(key, records.cdr)
+            findRecord(key, records.second)
         }
     }
 
-    /** The book's lookup: the value stored under key, or null (the
-     * book's false). */
-    public fun lookup(key: Value): Value? = assoc(key, header.cdr)?.cdr
+    public fun lookup(key: Datum): Datum? = findRecord(key, header.second)?.second
 
-    /** The book's insert!: an existing record gets the new value in
-     * place; a fresh record is spliced in right after the header, the
-     * fixed location the header exists to provide. */
     public fun insert(
-        key: Value,
-        value: Value,
+        key: Datum,
+        value: Datum,
     ) {
-        val record = assoc(key, header.cdr)
+        val record = findRecord(key, header.second)
         if (record == null) {
-            header.setCdr(cons(VPair(key, value), header.cdr))
+            header.second = pair(pair(key, value), header.second)
             return
         }
-        record.setCdr(value)
+        record.second = value
     }
 
-    /** The book's two-dimensional lookup: key1 names a subtable on the
-     * backbone, key2 a record within it. */
     public fun lookup2d(
-        key1: Value,
-        key2: Value,
-    ): Value? {
-        val subtable = assoc(key1, header.cdr) ?: return null
-        return assoc(key2, subtable.cdr)?.cdr
+        key1: Datum,
+        key2: Datum,
+    ): Datum? {
+        val subtable = findRecord(key1, header.second) ?: return null
+        return findRecord(key2, subtable.second)?.second
     }
 
-    /** The book's two-dimensional insert!: a subtable is a headed list
-     * whose header carries key1 where the top table carries `*table*`. */
     public fun insert2d(
-        key1: Value,
-        key2: Value,
-        value: Value,
+        key1: Datum,
+        key2: Datum,
+        value: Datum,
     ) {
-        val subtable = assoc(key1, header.cdr)
+        val subtable = findRecord(key1, header.second)
         if (subtable == null) {
-            header.setCdr(
-                cons(VPair(key1, vlist(VPair(key2, value))), header.cdr),
-            )
+            header.second = pair(pair(key1, datumList(pair(key2, value))), header.second)
             return
         }
-        val record = assoc(key2, subtable.cdr)
+        val record = findRecord(key2, subtable.second)
         if (record != null) {
-            record.setCdr(value)
+            record.second = value
             return
         }
-        subtable.setCdr(cons(VPair(key2, value), subtable.cdr))
+        subtable.second = pair(pair(key2, value), subtable.second)
     }
 }
 
-/** The book's make-table. */
+/** Build a table with structural equality as its key comparison. */
 public fun makeTable(): Table = Table()

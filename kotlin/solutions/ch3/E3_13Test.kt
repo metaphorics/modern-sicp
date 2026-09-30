@@ -5,31 +5,31 @@ package sicp.ch3.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VNil
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.Value
-import sicp.runtime.vlist
+import sicp.runtime.Datum
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.datumList
 
 public class E3_13Test :
     FunSpec({
-        test("z closes back onto its first pair after exactly three cdrs") {
-            val z = makeCycle(vlist(VSym("a"), VSym("b"), VSym("c")) as VPair)
-            val second = z.cdr as VPair
-            val third = second.cdr as VPair
+        test("z closes back onto its first pair after exactly three links") {
+            val z = makeCycle(datumList(Symbol("a"), Symbol("b"), Symbol("c")) as PairCell)
+            val second = z.second as PairCell
+            val third = second.second as PairCell
 
-            (third.cdr === z) shouldBe true
+            (third.second === z) shouldBe true
             (second === z) shouldBe false
             (third === z) shouldBe false
         }
 
-        test("the cycle never reaches VNil, so lastPair would spin forever") {
-            val z = makeCycle(vlist(VSym("a"), VSym("b"), VSym("c")) as VPair)
+        test("the cycle does not reach the empty-list terminator") {
+            val z = makeCycle(datumList(Symbol("a"), Symbol("b"), Symbol("c")) as PairCell)
 
-            var cursor: Value = z
+            var cursor: Datum = z
             repeat(9) {
-                cursor = (cursor as VPair).cdr
-                (cursor === VNil) shouldBe false
+                cursor = (cursor as PairCell).second
+                (cursor === Empty) shouldBe false
             }
             (cursor === z) shouldBe true
         }

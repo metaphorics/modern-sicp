@@ -3,8 +3,8 @@
 
 package sicp.ch3.exercises
 
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
  * Exercise 3.25: a table whose lookup and insert take a whole list of
@@ -14,10 +14,10 @@ import sicp.runtime.Value
  * either a value or a subtable, following the book.
  */
 public class KeyListTable {
-    public fun lookup(keys: List<Value>): Value? = throw PendingSolution()
+    public fun lookup(keys: List<Datum>): Datum? = throw PendingSolution()
 
     public fun insert(
-        keys: List<Value>,
-        value: Value,
+        keys: List<Datum>,
+        value: Datum,
     ): Unit = throw PendingSolution()
 }

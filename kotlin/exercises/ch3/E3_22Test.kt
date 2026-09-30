@@ -6,7 +6,7 @@ package sicp.ch3.exercises
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VSym
+import sicp.runtime.Symbol
 
 public class E3_22Test :
     FunSpec({
@@ -14,9 +14,9 @@ public class E3_22Test :
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             val q1 = makeQueue()
-            q1.insert(VSym("a"))
-            q1.insert(VSym("b"))
+            q1.insert(Symbol("a"))
+            q1.insert(Symbol("b"))
             q1.delete()
-            q1.printQueue() shouldBe "(b)"
+            q1.items() shouldBe listOf(Symbol("b"))
         }
     })

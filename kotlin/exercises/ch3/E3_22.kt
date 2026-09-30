@@ -4,8 +4,8 @@
 package sicp.ch3.exercises
 
 import arrow.core.Either
+import sicp.runtime.Datum
 import sicp.runtime.PendingSolution
-import sicp.runtime.Value
 
 /**
  * Exercise 3.22: a queue as a message-passing object with no state of
@@ -17,11 +17,11 @@ import sicp.runtime.Value
 public interface MessagePassingQueue {
     public fun emptyQueue(): Boolean
 
-    public fun insert(item: Value)
+    public fun insert(item: Datum)
 
-    public fun delete(): Either<QueueError, Value>
+    public fun delete(): Either<QueueError, Datum>
 
-    public fun printQueue(): String
+    public fun items(): List<Datum>
 }
 
 public fun makeQueue(): MessagePassingQueue = throw PendingSolution()

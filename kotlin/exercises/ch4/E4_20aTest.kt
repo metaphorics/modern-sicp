@@ -12,7 +12,7 @@ public class E4_20aTest :
         test("Exercise 4.20a: the shadowing initializer reads the inner f before its assignment").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            shadowedPrematureReadTranscript() shouldBe "Error: type mismatch: f is read before it is assigned\n"
+            shadowedPrematureReadTranscript() shouldBe "UnassignedRead"
         }
 
         test("Exercise 4.20a: with the outer binding in scope the same program recurses instead").config(

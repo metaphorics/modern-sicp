@@ -1,33 +1,31 @@
 @node	5.3, 5.4, 5.2, Chapter 5
 @section Storage Allocation and Garbage Collection
 
-In section @ref{5.4}, we will show how to implement a Scheme evaluator as a
+In section @ref{5.4}, we will show how to implement the guest evaluator as a
 register machine.  In order to simplify the discussion, we will assume that our
 register machines can be equipped with a @newterm{list-structured memory}, in
 which the basic operations for manipulating list-structured data are primitive.
 Postulating the existence of such a memory is a useful abstraction when one is
-focusing on the mechanisms of control in a Scheme interpreter, but this does
+focusing on the mechanisms of control in the guest evaluator, but this does
 not reflect a realistic view of the actual primitive data operations of
-contemporary computers.  To obtain a more complete picture of how a Lisp system
-operates, we must investigate how list structure can be represented in a way
+contemporary computers.  To obtain a more complete picture of how the guest runtime operates, we must investigate how list structure can be represented in a way
 that is compatible with conventional computer memories.
 
 There are two considerations in implementing list structure.  The first is
 purely an issue of representation: how to represent the ``box-and-pointer''
-structure of Lisp pairs, using only the storage and addressing capabilities of
+structure of guest pairs, using only the storage and addressing capabilities of
 typical computer memories.  The second issue concerns the management of memory
-as a computation proceeds.  The operation of a Lisp system depends crucially on
+as a computation proceeds.  The operation of an evaluator depends crucially on
 the ability to continually create new data objects.  These include objects that
-are explicitly created by the Lisp procedures being interpreted as well as
+are explicitly created by the guest procedures being interpreted as well as
 structures created by the interpreter itself, such as environments and argument
 lists.  Although the constant creation of new data objects would pose no
 problem on a computer with an infinite amount of rapidly addressable memory,
-computer memories are available only in finite sizes (more's the pity).  Lisp
-systems thus provide an @newterm{automatic storage allocation} facility to
-support the illusion of an infinite memory.  When a data object is no longer
-needed, the memory allocated to it is automatically recycled and used to
-construct new data objects.  There are various techniques for providing such
-automatic storage allocation.  The method we shall discuss in this section is
+computer memories are available only in finite sizes (more's the pity).
+Runtimes that continually create data objects therefore provide
+@newterm{automatic storage allocation} to support the illusion of infinite
+memory.  When an object is no longer needed, its memory is recycled for new
+objects.  There are various allocation techniques; the one discussed here is
 called @newterm{garbage collection}.
 In this edition the list-structured memory of @ref{5.3.1} is the class
 @code{Memory} in the chapter's source set beside the 5.2 simulator: the two
@@ -60,25 +58,21 @@ individual elements can be accessed by means of an integer index in an amount
 of time that is independent of the index.@footnote{We could represent memory as
 lists of items.  However, the access time would then not be independent of the
 index, since accessing the @math{n^{\hbox{th}}} element of a list requires @math{{n - 1}}
-@code{cdr} operations.} In order to describe memory operations, we use two
-primitive Scheme procedures for manipulating vectors:
+steps through its tail.} The memory API exposes indexed reads and writes:
 
 @itemize @bullet
 
 @item
-@code{(vector-ref ⟨@var{vector}⟩ ⟨@var{n}⟩)} returns the @math{n^{\hbox{th}}}
-element of the vector.
+@code{vector[n]} reads the element at the requested index.
 
 @item
-@code{(vector-set! ⟨@var{vector}⟩ ⟨@var{n}⟩ ⟨@var{value}⟩)}
-sets the @math{n^{\hbox{th}}} element of the vector to the designated value.
+@code{vector[n] = value} writes the element at the requested index.
 
 @end itemize
 
 @noindent
-For example, if @code{v} is a vector, then @code{(vector-ref v 5)} gets the
-fifth entry in the vector @code{v} and @code{(vector-set! v 5 7)} changes the
-value of the fifth entry of the vector @code{v} to 7.@footnote{For
+For example, if @code{v} is an array, then @code{v[5]} gets the sixth entry
+and @code{v[5] = 7} changes that entry to 7.@footnote{For
 completeness, we should specify a @code{make-vector} operation that constructs
 vectors.  However, in the present application we will use vectors only to model
 fixed divisions of the computer memory.}  For computer memory, this access can
@@ -86,10 +80,13 @@ be implemented through the use of address arithmetic to combine a @newterm{base 
 that specifies the beginning location of a vector in memory with an
 @newterm{index} that specifies the offset of a particular element of the
 vector. In this edition the memory vectors are the arrays @code{theCars} and
-@code{theCdrs} of the class @code{Memory}, and @code{vector-ref} and
-@code{vector-set!} are bounds-checked array reads and writes.
+@code{theCdrs} of @code{sicp.ch5.solutions.Memory}.  Their reads and writes
+use explicit indices: a non-pair word raises @code{GuestError.UnassignedRead},
+but a malformed pair index is not bounds-checked and may raise the host array
+exception.  Allocation checks capacity and raises
+@code{GuestError.IndexOutOfBounds}.
 
-@subsubheading Representing Lisp data
+@subsubheading Representing guest data
 
 We can use vectors to implement the basic pair structures required for a
 list-structured memory.  Let us imagine that computer memory is divided into
@@ -98,7 +95,7 @@ structure as follows: A pointer to a pair is an index into the two vectors.
 The @code{car} of the pair is the entry in @code{the-cars} with the designated
 index, and the @code{cdr} of the pair is the entry in @code{the-cdrs} with the
 designated index.  We also need a representation for objects other than pairs
-(such as numbers and symbols) and a way to distinguish one kind of data from
+(such as numbers and strings) and a way to distinguish one kind of data from
 another.  There are many methods of accomplishing this, but they all reduce to
 using @newterm{typed pointers}, that is, to extending the notion of ``pointer''
 to include information on data type.@footnote{This is precisely the same
@@ -108,24 +105,21 @@ machine level rather than constructed through the use of lists.} The data type
 enables the system to distinguish a pointer to a pair (which consists of the
 ``pair'' data type and an index into the memory vectors) from pointers to other
 kinds of data (which consist of some other data type and whatever is being used
-to represent data of that type).  Two data objects are considered to be the
-same (@code{eq?}) if their pointers are identical.@footnote{Type information
-may be encoded in a variety of ways, depending on the details of the machine on
-which the Lisp system is to be implemented.  The execution efficiency of Lisp
-programs will be strongly dependent on how cleverly this choice is made, but it
-is difficult to formulate general design rules for good choices.  The most
-straightforward way to implement typed pointers is to allocate a fixed set of
-bits in each pointer to be a @newterm{type field} that encodes the data type.
-Important questions to be addressed in designing such a representation include
-the following: How many type bits are required?  How large must the vector
-indices be?  How efficiently can the primitive machine instructions be used to
-manipulate the type fields of pointers?  Machines that include special hardware
-for the efficient handling of type fields are said to have @newterm{tagged architectures}.} 
-In this edition the typed pointers are tagged words: the pointer to the
-pair with index 5 is @code{VTagged("p", VInt(5))}, drawn @code{p5} in the
-table; the number 4 is the exact word @code{VInt(4)}, drawn @code{n4}; the
-empty list is the pointer @code{e0}; and a symbol is the runtime's symbol
-word, drawn as its name.  @ref{Figure 5.14} illustrates the use of this method to
+to represent data of that type).  Two pair data objects are considered identical when their typed pointers
+refer to the same pair index.@footnote{Type information may be encoded in a
+variety of ways, depending on the machine.  Runtime efficiency depends on
+this choice, but it is difficult to formulate general design rules.  A
+straightforward representation allocates a fixed set of bits in each pointer
+as a @newterm{type field}.  Important design questions include: How many type
+bits are required? How large must vector indices be? How efficiently can
+primitive machine instructions manipulate pointer type fields?  Machines with
+special hardware for type fields are called @newterm{tagged architectures}.}
+In this edition pair pointers are @code{GValue.VObject("pair", ...)}
+records whose @code{index} field selects a memory cell.  A pointer with index
+5 is drawn @code{p5}; the number 4 is @code{GValue.VLong(4L)}, drawn
+@code{n4}; the empty list is @code{GValue.VNull}, drawn @code{e0}.  The
+memory lesson's executable data therefore uses pairs, Longs, and the empty
+list; there is no symbol-valued @code{GValue}.  @ref{Figure 5.14} illustrates the use of this method to
 represent the list @code{((1 2) 3 4)}, whose box-and-pointer diagram is also
 shown.  We use letter prefixes to denote the data-type information.  Thus, a
 pointer to the pair with index 5 is denoted @code{p5}, the empty list is
@@ -168,7 +162,7 @@ the-cdrs |    | p2 | p4 |    | e0 | p7 |    | e0 |    | ...
 @image{../../text/original/figures/chap5/Fig5.14b,,137mm,Figure 5.14: Box-and-pointer and memory-vector representations of the list ((1 2) 3 4).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/Fig5.14b.std,,137mm,,.pdf}
+@image{../../text/original/figures/pdf/chap5/Fig5.14b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 5.14:} Box-and-pointer and memory-vector representations of the list @code{((1 2) 3 4)}.}
@@ -190,83 +184,107 @@ the parts of the number are stored.@footnote{This is just like writing a number
 as a sequence of digits, except that each ``digit'' is a number between 0 and
 the largest number that can be stored in a single pointer.}
 
-A symbol might be represented as a typed pointer that designates a sequence of
-the characters that form the symbol's printed representation.  This sequence is
-constructed by the Lisp reader when the character string is initially
-encountered in input.  Since we want two instances of a symbol to be recognized
-as the ``same'' symbol by @code{eq?} and we want @code{eq?} to be a simple test
-for equality of pointers, we must ensure that if the reader sees the same
-character string twice, it will use the same pointer (to the same sequence of
-characters) to represent both occurrences.  To accomplish this, the reader
-maintains a table, traditionally called the @newterm{obarray}, of all the
-symbols it has ever encountered.  When the reader encounters a character string
-and is about to construct a symbol, it checks the obarray to see if it has ever
-before seen the same character string.  If it has not, it uses the characters
-to construct a new symbol (a typed pointer to a new character sequence) and
-enters this pointer in the obarray.  If the reader has seen the string before,
-it returns the symbol pointer stored in the obarray.  This process of replacing
-character strings by unique pointers is called @newterm{interning} symbols.
+The original model also discusses interned symbol pointers.  The Kotlin guest
+subset has no symbol-valued @code{GValue}, so this memory model represents
+pairs, Long integers, and the empty list; textual names in examples are host
+strings, not guest symbols.  The historical interning discussion belongs to
+the source language's runtime and is not an executable feature of this unit.
 
 @subsubheading Implementing the primitive list operations
 
-Given the above representation scheme, we can replace each ``primitive'' list
-operation of a register machine with one or more primitive vector operations.
-We will use two registers, @code{the-cars} and @code{the-cdrs}, to identify the
-memory vectors, and will assume that @code{vector-ref} and @code{vector-set!}
-are available as primitive operations.  We also assume that numeric operations
-on pointers (such as incrementing a pointer, using a pair pointer to index a
-vector, or adding two numbers) use only the index portion of the typed pointer.
+Given the representation scheme, each primitive list operation uses the
+@code{Memory} object's two arrays and a typed pair pointer.  The methods
+@code{car}, @code{cdr}, @code{setCar}, and @code{setCdr} extract the pointer
+index and access the corresponding array slot.  Allocation stores both fields
+at @code{free} and advances that index.  This edition exposes memory
+operations as a @code{Map<String, MachineOp>} for the register machine:
 
+The actual operation map is:
+
+@example kotlin
+public fun listOperations(memory: Memory): Map<String,
+    MachineOp> =
+    mapOf(
+        "null?" to @{ args -> GValue.VBool(argAt(args,
+            0) is GValue.VNull) @},
+        "pair?" to @{ args -> GValue.VBool(isPair(argAt(args,
+            0))) @},
+        "number?" to @{ args ->
+            GValue.VBool(isNumber(argAt(args, 0)))
+        @},
+        "car" to @{ args -> memory.car(argAt(args, 0)) @},
+        "cdr" to @{ args -> memory.cdr(argAt(args, 0)) @},
+        "cons" to @{ args -> memory.cons(argAt(args,
+            0),
+                argAt(args,
+            1)) @},
+        "set-car!" to @{ args ->
+            memory.setCar(argAt(args,
+                0),
+                    argAt(args,
+                1))
+            GValue.VUnit
+        @},
+        "set-cdr!" to @{ args ->
+            memory.setCdr(argAt(args,
+                0),
+                    argAt(args,
+                1))
+            GValue.VUnit
+        @},
+    )
+@end example
+
+@noindent
 For example, we can make a register machine support the instructions
 
-@example
-(assign ⟨@var{reg₁}⟩ (op car) (reg ⟨@var{reg₂}⟩))
-(assign ⟨@var{reg₁}⟩ (op cdr) (reg ⟨@var{reg₂}⟩))
+@example kotlin
+Assign(⟨@var{reg₁}⟩, Source.OpSrc("car",
+    listOf(Source.RegSrc(⟨@var{reg₂}⟩))))
+Assign(⟨@var{reg₁}⟩, Source.OpSrc("cdr",
+    listOf(Source.RegSrc(⟨@var{reg₂}⟩))))
 @end example
 
 @noindent
 if we implement these, respectively, as
 
 @example kotlin
-context(r: Raise<MachineError>)
-public fun Memory.car(word: Value): Value =
-    pairIndexOf(word)?.let @{ readTheCars(it) @} ?: r.raise(NotAPair("car", word))
+context(r: Raise<GuestError>)
+public fun car(word: GValue): GValue = theCars[pairSlot(word,
+    "car")]
 
-context(r: Raise<MachineError>)
-public fun Memory.cdr(word: Value): Value =
-    pairIndexOf(word)?.let @{ readTheCdrs(it) @} ?: r.raise(NotAPair("cdr", word))
+context(r: Raise<GuestError>)
+public fun cdr(word: GValue): GValue = theCdrs[pairSlot(word,
+    "cdr")]
+
+context(r: Raise<GuestError>)
+private fun pairSlot(word: GValue,
+    operation: String): Int =
+    pairIndexOf(word) ?: r.raise(GuestError.UnassignedRead(NO_POSITION))
 @end example
 
 @noindent
 The instructions
 
-@example
-(perform (op set-car!) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩))
-(perform (op set-cdr!) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩))
+@example kotlin
+Perform(OpAct("set-car!", listOf(Source.RegSrc(⟨@var{reg₁}⟩),
+    Source.RegSrc(⟨@var{reg₂}⟩))))
+Perform(OpAct("set-cdr!", listOf(Source.RegSrc(⟨@var{reg₁}⟩),
+    Source.RegSrc(⟨@var{reg₂}⟩))))
 @end example
 
 @noindent
 are implemented as
 
 @example kotlin
-context(r: Raise<MachineError>)
-public fun Memory.setCar(
-    word: Value,
-    value: Value,
-): Value @{
-    val index = pairIndexOf(word) ?: r.raise(NotAPair("set-car!", word))
-    storeTheCars(index, value)
-    return VNil
+context(r: Raise<GuestError>)
+public fun setCar(word: GValue, value: GValue) @{
+    theCars[pairSlot(word, "set-car!")] = value
 @}
 
-context(r: Raise<MachineError>)
-public fun Memory.setCdr(
-    word: Value,
-    value: Value,
-): Value @{
-    val index = pairIndexOf(word) ?: r.raise(NotAPair("set-cdr!", word))
-    storeTheCdrs(index, value)
-    return VNil
+context(r: Raise<GuestError>)
+public fun setCdr(word: GValue, value: GValue) @{
+    theCdrs[pairSlot(word, "set-cdr!")] = value
 @}
 @end example
 
@@ -282,11 +300,12 @@ free locations are consecutive (and hence can be accessed by incrementing a
 pointer) because we are using a compacting garbage collector, as we will see in
 @ref{5.3.2}.}  For example, the instruction
 
-@example
-(assign ⟨@var{reg₁}⟩
-        (op cons)
-        (reg ⟨@var{reg₂}⟩)
-        (reg ⟨@var{reg₃}⟩))
+@example kotlin
+Assign(
+    ⟨@var{reg₁}⟩,
+    Source.OpSrc("cons", listOf(Source.RegSrc(⟨@var{reg₂}⟩),
+        Source.RegSrc(⟨@var{reg₃}⟩))),
+)
 @end example
 
 @noindent
@@ -297,76 +316,66 @@ essentially the implementation of @code{cons} in terms of @code{set-car!} and
 @code{free} pointer.}
 
 @example kotlin
-context(r: Raise<MachineError>)
-public fun Memory.cons(
-    carValue: Value,
-    cdrValue: Value,
-): Value @{
-    if (free >= size) r.raise(MemoryExhausted(free, size))
-    val index = free
-    theCars[index] = carValue
-    theCdrs[index] = cdrValue
-    free = index + 1
-    return pairPointer(index)
+context(r: Raise<GuestError>)
+public fun Memory.cons(car: GValue,
+    cdr: GValue): GValue @{
+    if (free >= size) r.raise(GuestError.IndexOutOfBounds(NO_POSITION))
+    theCars[free] = car
+    theCdrs[free] = cdr
+    return pairPointer(free++)
 @}
-// on a fresh memory, cons(memory, VInt(1), VInt(2)) answers p0, the
-// cell holds (n1 n2), and the free pointer moves on to p1
+// On fresh memory, cons(VLong(1L), VLong(2L)) returns
+// pair p0.
+// The cell contains (n1 n2); the free index advances to
+// 1.
 @end example
 
 @noindent
-The @code{eq?} operation
-
-@example
-(op eq?) (reg ⟨@var{reg₁}⟩) (reg ⟨@var{reg₂}⟩)
-@end example
-
-@noindent
-simply tests the equality of all fields in the registers, and predicates such
-as @code{pair?}, @code{null?}, @code{symbol?}, and @code{number?} need only
-check the type field.
+Equality and the @code{null?}, @code{pair?}, and @code{number?} predicates
+are ordinary machine operations over @code{GValue}; the memory module
+provides the latter two predicates and stores the empty list as
+@code{GValue.VNull}.  It does not provide a symbol predicate, because there
+is no symbol-valued @code{GValue} in this guest runtime.
 
 @example kotlin
-public fun eqWords(
-    a: Value,
-    b: Value,
-): Boolean = a == b
+public fun isPair(word: GValue): Boolean = pairIndexOf(word) != null
 
-public fun isPair(word: Value): Boolean = word is VTagged && word.tag == "p"
-
-public fun isNull(word: Value): Boolean = word is VNil
-
-public fun isSymbol(word: Value): Boolean = word is VSym
-
-public fun isNumber(word: Value): Boolean = word is VInt || word is VReal
+public fun isNumber(word: GValue): Boolean = word is GValue.VLong
 @end example
+
+@noindent
 
 @subsubheading Implementing stacks
 
 Although our register machines use stacks, we need do nothing special here,
 since stacks can be modeled in terms of lists.  The stack can be a list of the
 saved values, pointed to by a special register @code{the-stack}.  Thus, 
-@code{(save ⟨@var{reg}⟩)} can be implemented as
+@code{Save(⟨@var{reg}⟩)} can be implemented as
 
-@example
-(assign the-stack 
-        (op cons)
-        (reg ⟨@var{reg}⟩)
-        (reg the-stack))
+@example kotlin
+Assign(
+    "the-stack",
+    Source.OpSrc("cons", listOf(Source.RegSrc(⟨@var{reg}⟩),
+        Source.RegSrc("the-stack"))),
+)
 @end example
 
 @noindent
-Similarly, @code{(restore ⟨@var{reg}⟩)} can be implemented as
+Similarly, @code{Restore(⟨@var{reg}⟩)} can be implemented as
 
-@example
-(assign ⟨@var{reg}⟩ (op car) (reg the-stack))
-(assign the-stack (op cdr) (reg the-stack))
+@example kotlin
+Assign(⟨@var{reg}⟩, Source.OpSrc("car",
+    listOf(Source.RegSrc("the-stack"))))
+Assign("the-stack", Source.OpSrc("cdr",
+    listOf(Source.RegSrc("the-stack"))))
 @end example
 
 @noindent
-and @code{(perform (op initialize-stack))} can be implemented as
+A list-backed design can represent an empty stack by storing the guest
+empty-list value:
 
-@example
-(assign the-stack (const ()))
+@example kotlin
+Assign("the-stack", Source.ConstSrc(GValue.VNull))
 @end example
 
 @noindent
@@ -375,23 +384,35 @@ given above.  In conventional computer architectures, however, it is usually
 advantageous to allocate the stack as a separate vector.  Then pushing and
 popping the stack can be accomplished by incrementing or decrementing an index
 into that vector. In this edition the machines of the exercises run on the 5.2 simulator,
-whose save and restore already push and pop its monitored stack; the stack
-is not list structure here, and the three expansions above stay the book's
-register-machine text.
+whose @code{Save} and @code{Restore} already push and pop its monitored
+@code{Stack}; the simulated stack is not list structure.  The constructor
+snippets above express the book's lower-level design using the typed
+@code{Stmt} family.
 
 @quotation
 @strong{@anchor{Exercise 5.20}Exercise 5.20:} Draw the box-and-pointer
 representation and the memory-vector representation (as in @ref{Figure 5.14})
 of the list structure produced by
 
-@example
-(define x (cons 1 2))
-(define y (list x x))
+@example kotlin
+val memory = Memory(size = 4, free = 1)
+either @{
+    val x = memory.cons(GValue.VLong(1L),
+        GValue.VLong(2L))
+    val yTail = memory.cons(x, GValue.VNull)
+    val y = memory.cons(x, yTail)
+    println(memory.dump())
+    val summary = "$@{memory.free@} " +
+        "$@{wordToString(x)@} $@{wordToString(y)@}"
+    println(summary)
+@}
 @end example
 
 @noindent
-with the @code{free} pointer initially @code{p1}.  What is the final value of
-@code{free}?  What pointers represent the values of @code{x} and @code{y}?
+This constructs the same shared-pair shape directly through the edition's
+@code{Memory} API.  Draw the box-and-pointer representation and the
+memory-vector representation (as in @ref{Figure 5.14}); then state the final
+@code{free} index and the words that represent @code{x} and @code{y}.
 @end quotation
 
 @quotation
@@ -402,41 +423,47 @@ available as machine primitives.
 @enumerate a
 
 @item
-Recursive @code{count-leaves}:
+Recursive @code{countLeaves} over the typed memory words:
 
-@example
-(define (count-leaves tree)
-  (cond ((null? tree) 0)
-        ((not (pair? tree)) 1)
-        (else 
-         (+ (count-leaves (car tree))
-            (count-leaves (cdr tree))))))
+@example kotlin
+context(r: Raise<GuestError>)
+fun countLeaves(tree: GValue, memory: Memory): Long =
+    if (tree is GValue.VNull) 0L
+    else if (isPair(tree))
+        countLeaves(memory.car(tree),
+            memory) + countLeaves(memory.cdr(tree),
+                memory)
+    else 1L
 @end example
 
 @item
-Recursive @code{count-leaves} with explicit counter:
+Recursive @code{countLeaves} with an explicit counter:
 
-@example
-(define (count-leaves tree)
-  (define (count-iter tree n)
-    (cond ((null? tree) n)
-          ((not (pair? tree)) (+ n 1))
-          (else 
-           (count-iter 
-            (cdr tree)
-            (count-iter (car tree) 
-                        n)))))
-  (count-iter tree 0))
+@example kotlin
+context(r: Raise<GuestError>)
+fun countLeavesIter(tree: GValue,
+    memory: Memory,
+    n: Long): Long =
+    if (tree is GValue.VNull) n
+    else if (!isPair(tree)) n + 1L
+    else countLeavesIter(
+        memory.cdr(tree),
+        memory,
+        countLeavesIter(memory.car(tree), memory, n),
+    )
 @end example
 @end enumerate
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.22}Exercise 5.22:} @ref{Exercise 3.12} of 
+@strong{@anchor{Exercise 5.22}Exercise 5.22:} @ref{Exercise 3.12} of
 @ref{3.3.1} presented an @code{append} procedure that appends two lists to form
 a new list and an @code{append!} procedure that splices two lists together.
-Design a register machine to implement each of these procedures.  Assume that
-the list-structure memory operations are available as primitive operations.
+Design a register machine using the edition's @code{Stmt} constructors to
+implement each procedure.  Assume that the operations from
+@code{listOperations(memory)} are installed in the machine; @code{cons},
+@code{car}, @code{cdr}, @code{set-car!}, and @code{set-cdr!} operate on
+@code{GValue} words in the two memory vectors.
 @end quotation
 
 @node	5.3.2, 5.4, 5.2, 5.3
@@ -478,7 +505,7 @@ In order to recycle pairs, we must have a way to determine which allocated
 pairs are not needed (in the sense that their contents can no longer influence
 the future of the computation).  The method we shall examine for accomplishing
 this is known as @newterm{garbage collection}.  Garbage collection is based on
-the observation that, at any moment in a Lisp interpretation, the only objects
+the observation that, at any moment in an evaluator run, the only objects
 that can affect the future of the computation are those that can be reached by
 some succession of @code{car} and @code{cdr} operations starting from the
 pointers that are currently in the machine registers.@footnote{We assume here
@@ -500,15 +527,13 @@ useful pairs in it have been copied.  Thus, if we interchange the roles of
 working memory and free memory, we can continue processing; new pairs will be
 allocated in the new working memory (which was the old free memory).  When this
 is full, we can copy the useful pairs into the new free memory (which was the
-old working memory).@footnote{This idea was invented and first implemented by
-Minsky, as part of the implementation of Lisp for the PDP-1 at the
-@abbr{MIT} Research Laboratory of Electronics.  It was further developed by
-@ref{Fenichel and Yochelson (1969)} for use in the Lisp implementation for the
-Multics time-sharing system.  Later, @ref{Baker (1978)} developed a ``real-time''
-version of the method, which does not require the computation to stop during
-garbage collection.  Baker's idea was extended by Hewitt, Lieberman, and Moon
-(see @ref{Lieberman and Hewitt 1983}) to take advantage of the fact that some
-structure is more volatile and other structure is more permanent.
+old working memory).@footnote{Minsky first implemented this idea for the PDP-1
+at the @abbr{MIT} Research Laboratory of Electronics.  @ref{Fenichel and
+Yochelson (1969)} further developed it for the Multics time-sharing system.
+Later, @ref{Baker (1978)} developed a ``real-time'' version that does not
+require computation to stop during collection.  Hewitt, Lieberman, and Moon
+extended Baker's idea (see @ref{Lieberman and Hewitt 1983}) to account for
+differences in object lifetime.}
 
 An alternative commonly used garbage-collection technique is the
 @newterm{mark-sweep} method.  This consists of tracing all the structure
@@ -526,7 +551,7 @@ garbage-collection phase the useful data will have been moved to consecutive
 memory locations, with all garbage pairs compressed out.  This can be an
 extremely important performance consideration in machines with virtual memory,
 in which accesses to widely separated memory addresses may require extra paging
-operations.}
+operations.
 
 @subsubheading Implementation of a stop-and-copy garbage collector
 
@@ -600,7 +625,7 @@ the-cdrs |                  |                 | memory
 @image{../../text/original/figures/chap5/Fig5.15c,,142mm,Figure 5.15: Reconfiguration of memory by the garbage-collection process.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/Fig5.15c.std,,142mm,,.pdf}
+@image{../../text/original/figures/pdf/chap5/Fig5.15c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 5.15:} Reconfiguration of memory by the garbage-collection process.}
@@ -616,11 +641,11 @@ the @code{free} pointer is incremented.  In addition, the old location of the
 pair is marked to show that its contents have been moved.  This marking is done
 as follows: In the @code{car} position, we place a special tag that signals
 that this is an already-moved object.  (Such an object is traditionally called
-a @newterm{broken heart}.)@footnote{The term @emph{broken heart} was coined by
-David Cressey, who wrote a garbage collector for MDL, a dialect of Lisp
-developed at @abbr{MIT} during the early 1970s.}  In the @code{cdr} position
-we place a @newterm{forwarding address} that points at the location to which
-the object has been moved.
+a @newterm{broken heart}.)@footnote{David Cressey coined the term while
+writing a garbage collector for MDL, a programming language developed at
+@abbr{MIT} during the early 1970s.}  In the @code{cdr} position we place a
+@newterm{forwarding address} that points at the location to which the object
+has been moved.
 
 After relocating the root, the garbage collector enters its basic cycle.  At
 each step in the algorithm, the @code{scan} pointer (initially pointing at the
@@ -654,17 +679,19 @@ and @code{scan}.  When the relocation of @code{root} has been accomplished, we
 install the new pointer as the new @code{root} and enter the main loop of the
 garbage collector.
 
-@example
-begin-garbage-collection
-  (assign free (const 0))
-  (assign scan (const 0))
-  (assign old (reg root))
-  (assign relocate-continue 
-          (label reassign-root))
-  (goto (label relocate-old-result-in-new))
-reassign-root
-  (assign root (reg new))
-  (goto (label gc-loop))
+@example kotlin
+listOf(
+    Label("begin-garbage-collection"),
+    Assign("free", Source.ConstSrc(GValue.VLong(0L))),
+    Assign("scan", Source.ConstSrc(GValue.VLong(0L))),
+    Assign("old", Source.RegSrc("root")),
+    Assign("relocate-continue",
+        Source.LabelSrc("reassign-root")),
+    Goto(GotoTarget.Lbl("relocate-old-result-in-new")),
+    Label("reassign-root"),
+    Assign("root", Source.RegSrc("new")),
+    Goto(GotoTarget.Lbl("gc-loop")),
+)
 @end example
 
 @noindent
@@ -678,17 +705,19 @@ subroutine to relocate the @code{car} of the next pair (by placing the
 @code{car} pointer in @code{old}).  The @code{relocate-continue} register is
 set up so that the subroutine will return to update the @code{car} pointer.
 
-@example
-gc-loop
-  (test (op =) (reg scan) (reg free))
-  (branch (label gc-flip))
-  (assign old 
-          (op vector-ref)
-          (reg new-cars)
-          (reg scan))
-  (assign relocate-continue 
-          (label update-car))
-  (goto (label relocate-old-result-in-new))
+@example kotlin
+listOf(
+    Label("gc-loop"),
+    Test(OpCond("=", listOf(Source.RegSrc("scan"),
+        Source.RegSrc("free")))),
+    Branch("gc-flip"),
+    Assign("old", Source.OpSrc("vector-ref",
+        listOf(Source.RegSrc("new-cars"),
+            Source.RegSrc("scan")))),
+    Assign("relocate-continue",
+        Source.LabelSrc("update-car")),
+    Goto(GotoTarget.Lbl("relocate-old-result-in-new")),
+)
 @end example
 
 @noindent
@@ -698,26 +727,28 @@ scanned, then proceed to relocate the @code{cdr} of the pair.  We return to
 and updating the @code{cdr}, we are finished scanning that pair, so we continue
 with the main loop.
 
-@example
-update-car
-  (perform (op vector-set!)
-           (reg new-cars)
-           (reg scan)
-           (reg new))
-  (assign  old 
-           (op vector-ref)
-           (reg new-cdrs)
-           (reg scan))
-  (assign  relocate-continue
-           (label update-cdr))
-  (goto (label relocate-old-result-in-new))
-update-cdr
-  (perform (op vector-set!)
-           (reg new-cdrs)
-           (reg scan)
-           (reg new))
-  (assign  scan (op +) (reg scan) (const 1))
-  (goto (label gc-loop))
+@example kotlin
+listOf(
+    Label("update-car"),
+    Perform(OpAct("vector-set!",
+                listOf(Source.RegSrc("new-cars"),
+        Source.RegSrc("scan"), Source.RegSrc("new")))),
+    Assign("old", Source.OpSrc("vector-ref",
+        listOf(Source.RegSrc("new-cdrs"),
+            Source.RegSrc("scan")))),
+    Assign("relocate-continue",
+        Source.LabelSrc("update-cdr")),
+    Goto(GotoTarget.Lbl("relocate-old-result-in-new")),
+    Label("update-cdr"),
+    Perform(OpAct("vector-set!",
+                listOf(Source.RegSrc("new-cdrs"),
+        Source.RegSrc("scan"), Source.RegSrc("new")))),
+    Assign("scan",
+            Source.OpSrc("+",
+                listOf(Source.RegSrc("scan"),
+        Source.ConstSrc(GValue.VLong(1L))))),
+    Goto(GotoTarget.Lbl("gc-loop")),
+)
 @end example
 
 @noindent
@@ -737,59 +768,56 @@ broken-heart tag and forwarding address at the old location.
 @code{Relocate-old-result-in-new} uses a register @code{oldcr} to hold the
 @code{car} or the @code{cdr} of the object pointed at by
 @code{old}.@footnote{The garbage collector uses the low-level predicate
-@code{pointer-to-pair?} instead of the list-structure @code{pair?}  operation
-because in a real system there might be various things that are treated as
-pairs for garbage-collection purposes.  For example, in a Scheme system that
-conforms to the @abbr{IEEE} standard a procedure object may be implemented
-as a special kind of ``pair'' that doesn't satisfy the @code{pair?} predicate.
-For simulation purposes, @code{pointer-to-pair?} can be implemented as
-@code{pair?}.}
+@code{pointer-to-pair?} instead of the guest list-structure
+@code{pair?} operation.  A runtime may represent callable objects with
+pair-like heap fields that the collector must trace but that do not satisfy
+the guest list-pair predicate.  For simulation purposes,
+@code{pointer-to-pair?} can be implemented as @code{pair?}.}
 
-@example
-relocate-old-result-in-new
-  (test (op pointer-to-pair?) (reg old))
-  (branch (label pair))
-  (assign new (reg old))
-  (goto (reg relocate-continue))
-pair
-  (assign  oldcr 
-           (op vector-ref)
-           (reg the-cars)
-           (reg old))
-  (test (op broken-heart?) (reg oldcr))
-  (branch  (label already-moved))
-  (assign  new (reg free)) @r{; new location for pair}
-  @r{;; Update @code{free} pointer.}
-  (assign free (op +) (reg free) (const 1))
-  @r{;; Copy the @code{car} and @code{cdr} to new memory.}
-  (perform (op vector-set!)
-           (reg new-cars)
-           (reg new)
-           (reg oldcr))
-  (assign  oldcr 
-           (op vector-ref)
-           (reg the-cdrs)
-           (reg old))
-  (perform (op vector-set!)
-           (reg new-cdrs)
-           (reg new)
-           (reg oldcr))
-  @r{;; Construct the broken heart.}
-  (perform (op vector-set!)
-           (reg the-cars)
-           (reg old)
-           (const broken-heart))
-  (perform (op vector-set!)
-           (reg the-cdrs)
-           (reg old)
-           (reg new))
-  (goto (reg relocate-continue))
-already-moved
-  (assign  new
-           (op vector-ref)
-           (reg the-cdrs)
-           (reg old))
-  (goto (reg relocate-continue))
+@example kotlin
+listOf(
+    Label("relocate-old-result-in-new"),
+    Test(OpCond("pointer-to-pair?",
+        listOf(Source.RegSrc("old")))),
+    Branch("pair"),
+    Assign("new", Source.RegSrc("old")),
+    Goto(GotoTarget.ByReg("relocate-continue")),
+    Label("pair"),
+    Assign("oldcr", Source.OpSrc("vector-ref",
+        listOf(Source.RegSrc("the-cars"),
+            Source.RegSrc("old")))),
+    Test(OpCond("broken-heart?",
+        listOf(Source.RegSrc("oldcr")))),
+    Branch("already-moved"),
+    Assign("new", Source.RegSrc("free")),
+    // @r{new location for pair}
+    Assign("free",
+            Source.OpSrc("+",
+                listOf(Source.RegSrc("free"),
+        Source.ConstSrc(GValue.VLong(1L))))),
+    Perform(OpAct("vector-set!",
+                listOf(Source.RegSrc("new-cars"),
+        Source.RegSrc("new"), Source.RegSrc("oldcr")))),
+    Assign("oldcr", Source.OpSrc("vector-ref",
+        listOf(Source.RegSrc("the-cdrs"),
+            Source.RegSrc("old")))),
+    Perform(OpAct("vector-set!",
+                listOf(Source.RegSrc("new-cdrs"),
+        Source.RegSrc("new"), Source.RegSrc("oldcr")))),
+    Perform(OpAct("vector-set!",
+                listOf(Source.RegSrc("the-cars"),
+        Source.RegSrc("old"),
+        Source.ConstSrc(GValue.VString("broken-heart"))))),
+    Perform(OpAct("vector-set!",
+                listOf(Source.RegSrc("the-cdrs"),
+        Source.RegSrc("old"), Source.RegSrc("new")))),
+    Goto(GotoTarget.ByReg("relocate-continue")),
+    Label("already-moved"),
+    Assign("new", Source.OpSrc("vector-ref",
+        listOf(Source.RegSrc("the-cdrs"),
+            Source.RegSrc("old")))),
+    Goto(GotoTarget.ByReg("relocate-continue")),
+)
 @end example
 
 @noindent
@@ -798,19 +826,20 @@ old and new memories by interchanging pointers: interchanging @code{the-cars}
 with @code{new-cars}, and @code{the-cdrs} with @code{new-cdrs}.  We will then
 be ready to perform another garbage collection the next time memory runs out.
 
-@example
-gc-flip
-  (assign temp (reg the-cdrs))
-  (assign the-cdrs (reg new-cdrs))
-  (assign new-cdrs (reg temp))
-  (assign temp (reg the-cars))
-  (assign the-cars (reg new-cars))
-  (assign new-cars (reg temp))
+@example kotlin
+listOf(
+    Label("gc-flip"),
+    Assign("temp", Source.RegSrc("the-cdrs")),
+    Assign("the-cdrs", Source.RegSrc("new-cdrs")),
+    Assign("new-cdrs", Source.RegSrc("temp")),
+    Assign("temp", Source.RegSrc("the-cars")),
+    Assign("the-cars", Source.RegSrc("new-cars")),
+    Assign("new-cars", Source.RegSrc("temp")),
+)
 @end example
 
 @noindent
-In this edition the five listings above remain the book's controller text:
-the section's Kotlin module is the memory of @ref{5.3.1} (the two vectors,
-the free pointer, the allocation path) with the list-structure operations
-installed over the 5.2 simulator, and the stop-and-copy collector that
-would drive this controller is not part of the unit.
+In this edition the five controller listings above use the simulator's
+@code{Stmt} constructors.  The stop-and-copy collector is a design in this
+section, not an implemented part of the unit; the list-memory API itself is
+@code{sicp.ch5.solutions.Memory} from @ref{5.3.1}.

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.7: Alyssa's program is incomplete because she has not
  * specified the implementation of the interval abstraction. Here is a
@@ -57,4 +55,4 @@ public fun divInterval(
     y: Interval,
 ): Interval = mulInterval(x, makeInterval(1.0 / y.upperBound, 1.0 / y.lowerBound))
 
-public fun ex_2_07(): Interval = throw PendingSolution()
+public fun ex_2_07(): Interval = throw PendingExercise()

@@ -5,39 +5,39 @@ package sicp.ch3.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.cons
-import sicp.runtime.setCdr
-import sicp.runtime.vlist
+import sicp.runtime.Empty
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.datumList
+import sicp.runtime.pair
 
 public class E3_19Test :
     FunSpec({
         test("the 3.13 cycle is caught in constant space") {
-            val z = makeCycle(vlist(VSym("a"), VSym("b"), VSym("c")) as VPair)
+            val cycle = makeCycle(datumList(Symbol("a"), Symbol("b"), Symbol("c")) as PairCell)
 
-            containsCycleConstantSpace(z) shouldBe true
+            containsCycleConstantSpace(cycle) shouldBe true
         }
 
-        test("a cell whose cdr is itself is caught too") {
-            val selfLoop = cons(VSym("a"), sicp.runtime.VNil)
-            selfLoop.setCdr(selfLoop)
+        test("a one-cell cycle is caught too") {
+            val selfLoop = pair(Symbol("a"), Empty)
+            selfLoop.second = selfLoop
 
             containsCycleConstantSpace(selfLoop) shouldBe true
         }
 
-        test("chains of even and odd length are reported acyclic") {
-            containsCycleConstantSpace(vlist(VSym("a"), VSym("b"))) shouldBe false
-            containsCycleConstantSpace(vlist(VSym("a"), VSym("b"), VSym("c"))) shouldBe false
-            containsCycleConstantSpace(cons(VSym("a"), sicp.runtime.VNil)) shouldBe false
+        test("even and odd finite chains are reported acyclic") {
+            containsCycleConstantSpace(datumList(Symbol("a"), Symbol("b"))) shouldBe false
+            containsCycleConstantSpace(datumList(Symbol("a"), Symbol("b"), Symbol("c"))) shouldBe false
+            containsCycleConstantSpace(datumList(Symbol("a"))) shouldBe false
         }
 
-        test("agrees with the 3.18 remembered-pairs detector on both answers") {
-            val x = vlist(VSym("a"), VSym("b")) as VPair
-            val z1 = cons(x, x)
-            val z = makeCycle(vlist(VSym("a"), VSym("b"), VSym("c")) as VPair)
+        test("constant-space and remembered-pair detectors agree for shared and cyclic data") {
+            val x = datumList(Symbol("a"), Symbol("b")) as PairCell
+            val shared = pair(x, x)
+            val cycle = makeCycle(datumList(Symbol("a"), Symbol("b"), Symbol("c")) as PairCell)
 
-            (containsCycleConstantSpace(z1) == containsCycle(z1)) shouldBe true
-            (containsCycleConstantSpace(z) == containsCycle(z)) shouldBe true
+            (containsCycleConstantSpace(shared) == containsCycle(shared)) shouldBe true
+            (containsCycleConstantSpace(cycle) == containsCycle(cycle)) shouldBe true
         }
     })

@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.9: the width of an interval is half of the difference between
  * its upper and lower bounds. The width is a measure of the uncertainty of
@@ -29,4 +27,4 @@ import sicp.runtime.PendingSolution
  * at two different centers, showing the two product widths differ despite
  * the equal input widths.
  */
-public fun ex_2_09(): Pair<Double, Double> = throw PendingSolution()
+public fun ex_2_09(): Pair<Double, Double> = throw PendingExercise()

@@ -24,6 +24,6 @@ public class E4_21Test :
         test("Exercise 4.21: the filled blanks answer (f 7) and (f 10)").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            mutualEvenOddWithoutDefineTranscript() shouldBe "#f\n#t\n"
+            mutualEvenOddWithoutDefineTranscript() shouldBe "false\ntrue\n"
         }
     })

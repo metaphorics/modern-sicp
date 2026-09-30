@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.87: install `=zero?` for polynomials in the generic
  * arithmetic package, so `adjoin-term` can drop zero terms whose
@@ -12,4 +10,4 @@ import sicp.runtime.PendingSolution
  * when every term's coefficient is zero, tested by the same generic
  * `=zero?` -- which recurses through the table for nested polys.
  */
-public fun ex_2_87(): Boolean = throw PendingSolution()
+public fun ex_2_87(): Boolean = throw PendingExercise()

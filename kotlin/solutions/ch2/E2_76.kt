@@ -39,9 +39,8 @@ public fun edMagnitude(z: RepZ): Double =
 
 public typealias RepHandler = (Double, Double) -> Double
 
-/** A minimal operation-and-type table over this exercise's own plain-double
- * representations, sharing the section's `put`/`get` discipline without
- * needing the runtime `OpTable`'s `Value`-typed handlers. */
+/** A minimal operation-and-representation table over this exercise's
+ * plain-double complex values. */
 public class RepresentationTable {
     private val entries: MutableMap<Pair<String, String>, RepHandler> = HashMap()
 

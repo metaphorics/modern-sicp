@@ -12,6 +12,14 @@ public class E4_57Test :
         test("Exercise 4.57: the can-replace queries").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            canReplaceQueries() shouldBe listOf("MEASURE")
+            canReplaceQueries() shouldBe
+                listOf(
+                    "?x = [Bitdiddle, Ben]",
+                    "?x = [Hacker, Alyssa, P]",
+                    "?person-1 = [Fect, Cy, D]",
+                    "?person-2 = [Hacker, Alyssa, P]",
+                    "?person-1 = [Aull, DeWitt]",
+                    "?person-2 = [Warbucks, Oliver]",
+                )
         }
     })

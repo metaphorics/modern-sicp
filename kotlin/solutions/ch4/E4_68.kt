@@ -3,41 +3,54 @@
 
 package sicp.ch4.solutions
 
-import sicp.ch4.QuerySystem
+import sicp.ch4.QAnd
+import sicp.ch4.QPattern
+import sicp.ch4.QRule
+import sicp.ch4.QueryDatabase
+import sicp.ch4.QueryDriver
 
-private const val REVERSE_RULES =
-    """
-    (assert! (rule (reverse () ())))
-    (assert! (rule (reverse (?u . ?v) ?y)
-                   (and (reverse ?v ?z)
-                        (append-to-form ?z (?u) ?y))))
-    """
+// Exercise 4.68: reverse as rules over the section's append. The base
+// rule reverses the empty list; the step rule reverses the tail and
+// appends the head behind it. Forward queries terminate with one
+// answer each. The backward query generates candidate lists forever
+// under the streaming driver, so it runs under the loop detector at
+// depth 8, which bounds the generation and keeps the one answer the
+// depth admits.
 
-public fun systemWithReverse(): QuerySystem {
-    val system = microshaftSystem()
-    system.load(REVERSE_RULES)
-    return system
+// Exercise 4.68: reverse by rule; the backward query runs bounded.
+
+/** The book's reverse rules as query data. */
+internal fun addReverseRules(db: QueryDatabase) {
+    db.addRule(QRule(list(sym("reverse"), list(), list()), QAnd(emptyList())))
+    db.addRule(
+        QRule(
+            list(sym("reverse"), improper(listOf(v("u")), v("v")), v("y")),
+            QAnd(
+                listOf(
+                    QPattern(list(sym("reverse"), v("v"), v("z"))),
+                    QPattern(list(sym("append-to-form"), v("z"), list(v("u")), v("y"))),
+                ),
+            ),
+        ),
+    )
 }
 
-/** Forward runs terminate; the backward query (reverse ?x (1 2 3)) has
- * exactly one answer but the engine generates candidate lists forever
- * before finding it, so the demo pins its first answer only. */
+/** Forward reversals answer once each; the backward query answers once
+ * under the depth bound. */
 public fun reverseQueries(): List<String> {
-    val system = systemWithReverse()
-    val out = mutableListOf<String>()
-    out.add("query: (reverse (1 2 3) ?x)")
-    out.addAll(answersOf(system, "(reverse (1 2 3) ?x)"))
-    out.add("query: (reverse (a b c d) ?x)")
-    out.addAll(answersOf(system, "(reverse (a b c d) ?x)"))
-    out.add("query: (reverse ?x (1 2 3)) -- first answer:")
+    val db = microshaftSystem()
+    addReverseRules(db)
+    val forward = QueryDriver.streaming(db)
+    val x = listOf(v("x"))
+    val oneTwoThree = answerLines(forward, QPattern(list(sym("reverse"), list(sym("1"), sym("2"), sym("3")), v("x"))), x)
+    val abcd =
+        answerLines(
+            forward,
+            QPattern(list(sym("reverse"), list(sym("a"), sym("b"), sym("c"), sym("d")), v("x"))),
+            x,
+        )
+    val bounded = QueryDriver.loopDetecting(db, 8)
     val backward =
-        try {
-            answersUpto(system, "(reverse ?x (1 2 3))", 1)
-        } catch (overflow: StackOverflowError) {
-            listOf("the unanchored generation diverges in this engine before the first answer survives the append filter")
-        } catch (fault: OutOfMemoryError) {
-            listOf("the unanchored generation exhausts the heap before the first answer survives the append filter")
-        }
-    out.addAll(backward)
-    return out
+        answerLines(bounded, QPattern(list(sym("reverse"), v("x"), list(sym("1"), sym("2"), sym("3")))), x)
+    return oneTwoThree + abcd + backward
 }

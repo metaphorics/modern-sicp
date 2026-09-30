@@ -5,22 +5,33 @@ package sicp.ch3.exercises
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.core.test.Enabled
-import sicp.runtime.VPair
-import sicp.runtime.VSym
-import sicp.runtime.vlist
+import sicp.runtime.PairCell
+import sicp.runtime.Symbol
+import sicp.runtime.datumList
+import sicp.runtime.structurallyEqual
 
 public class E3_12Test :
     FunSpec({
         test("Exercise 3.12: append copies, appendBang splices").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            val x = vlist(VSym("a"), VSym("b")) as VPair
-            val y = vlist(VSym("c"), VSym("d")) as VPair
+            val x = datumList(Symbol("a"), Symbol("b")) as PairCell
+            val y = datumList(Symbol("c"), Symbol("d")) as PairCell
+            val originalTail = x.second as PairCell
+
+            org.junit.jupiter.api.Assertions.assertTrue(
+                structurallyEqual(append(x, y), datumList(Symbol("a"), Symbol("b"), Symbol("c"), Symbol("d"))),
+            )
             org.junit.jupiter.api.Assertions
-                .assertEquals("(a b c d)", append(x, y).toString())
+                .assertTrue(x.second === originalTail)
+
+            val result = appendBang(x, y)
             org.junit.jupiter.api.Assertions
-                .assertEquals("(b)", x.cdr.toString())
+                .assertTrue(result === x)
+            org.junit.jupiter.api.Assertions.assertTrue(
+                structurallyEqual(x.second, datumList(Symbol("b"), Symbol("c"), Symbol("d"))),
+            )
             org.junit.jupiter.api.Assertions
-                .assertEquals("(b c d)", appendBang(x, y).cdr.toString())
+                .assertTrue(originalTail.second === y)
         }
     })

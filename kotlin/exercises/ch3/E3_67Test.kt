@@ -24,7 +24,7 @@ public class E3_67Test :
         ) {
             val prefix = pairsAll(integers, integers).take(1500)
             for (i in 1L..6L) {
-                prefix.indexOf(i to i) shouldBe ((1L shl (2 * i.toInt())) - 4) / 3
+                prefix.indexOf(i to i) shouldBe (((1L shl (2 * i.toInt())) - 4) / 3).toInt()
             }
         }
 

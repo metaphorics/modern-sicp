@@ -12,6 +12,10 @@ public class E5_45Test :
         test("Exercise 5.45: the measured ratios at n = 5 and 10 are tabulated").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            stackRatioTable() shouldBe emptyList()
+            stackRatioTable().takeLast(2) shouldBe
+                listOf(
+                    "the compiled machine uses less stack than the evaluator: true",
+                    "the special-purpose machine uses no stack: true",
+                )
         }
     })

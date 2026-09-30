@@ -12,6 +12,6 @@ public class E4_46Test :
         test("Exercise 4.46: the left operand cycles last, proving left-to-right").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            operandOrderEnumeration() shouldBe listOf("(1 3)", "(1 4)", "(2 3)", "(2 4)")
+            operandOrderEnumeration() shouldBe listOf("[1, 3]", "[1, 4]", "[2, 3]", "[2, 4]")
         }
     })

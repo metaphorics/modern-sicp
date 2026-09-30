@@ -12,6 +12,11 @@ public class E5_41Test :
         test("Exercise 5.41: the three book cases over the three-frame environment are pinned").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            findVariableLookups() shouldBe emptyList()
+            findVariableLookups() shouldBe
+                listOf(
+                    "counter -> frame 1, offset 1",
+                    "n -> frame 0, offset 0",
+                    "missing -> unbound",
+                )
         }
     })

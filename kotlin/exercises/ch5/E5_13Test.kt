@@ -12,6 +12,11 @@ public class E5_13Test :
         test("Exercise 5.13: registers derived from the controller text").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            derivedRegisterRuns() shouldBe emptyList()
+            derivedRegisterRuns() shouldBe
+                listOf(
+                    "derived registers: a b t",
+                    "gcd(206, 40) = 2",
+                    "allocated registers: a b t",
+                )
         }
     })

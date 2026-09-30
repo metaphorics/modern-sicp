@@ -7,14 +7,8 @@ import arrow.core.raise.Raise
 import kotlin.reflect.KClass
 
 /**
- * Exercise 2.79: define a generic equality predicate `equ?` over the
- * tower's numbers and install it. The per-level installs live in
- * [installEquQueries]; the edition's map row goes one step further --
- * `equ?` across tower levels -- so [equvAcross] walks two values to a
- * common level with a raise chain before comparing.
- *
- * The per-level `equ?` installs: same-level comparison for every level
- * the tower carries, integers through complexes.
+ * Install numeric equality for every tower level. [equvAcross] additionally
+ * compares values from different levels by raising them to a common level.
  */
 public fun installEquQueries(table: NumTable) {
     table.put("equ?", listOf("integer", "integer")) { args ->
@@ -36,8 +30,8 @@ public fun installEquQueries(table: NumTable) {
     table.put("equ?", listOf("complex", "complex")) { args ->
         val (a, b) = twoNums("equ?", args)
         if (a is Complex && b is Complex) {
-            val eq = repRealPart(a.rep) == repRealPart(b.rep) && repImagPart(a.rep) == repImagPart(b.rep)
-            ZLong(if (eq) 1 else 0)
+            val equal = repRealPart(a.rep) == repRealPart(b.rep) && repImagPart(a.rep) == repImagPart(b.rep)
+            ZLong(if (equal) 1 else 0)
         } else {
             raise(GenError.BadArgs("equ?", "expected two complex numbers"))
         }
@@ -69,8 +63,7 @@ private fun equAtSameLevel(
     y: Num,
 ): Boolean = applyGeneric(table, "equ?", listOf(x, y)) == ZLong(1)
 
-/** `equ?` across tower levels: raise the lower value until both stand on
- * one level, then compare there. */
+/** Compare values at different tower levels after raising them to a common level. */
 context(r: Raise<GenError>)
 public fun equvAcross(
     table: NumTable,
@@ -88,9 +81,7 @@ public fun equvAcross(
     return equAtSameLevel(table, a, b)
 }
 
-/** Runs the book's checks -- same-level equality for ordinary, rational,
- * and complex numbers -- plus the cross-level comparisons the map row
- * adds. Returns whether all hold. */
+/** Run same-level equality checks and the cross-level extension. */
 public fun ex_2_79(): Boolean {
     val table = NumTable()
     installEquQueries(table)

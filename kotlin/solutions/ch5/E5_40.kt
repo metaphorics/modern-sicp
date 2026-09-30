@@ -1,25 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Chapter 5, exercise 5.40: compile-time environment threading.
+// Original exercise
+//
+// Chapter 5, exercise 5.40: the compile-time environment in the code
+// generators. The exercise's dump reads the environment the compiler
+// threads for each variable reference; the dump here walks the same
+// frame-list model the lexical addressing uses, name by name.
 
 package sicp.ch5.solutions
 
-import arrow.core.raise.either
-import sicp.ch5.CompilerConfig
-import sicp.ch5.CompilerState
-import sicp.ch5.compileProgram
-import sicp.ch5.renderStmt
-
-private const val NESTED_LAMBDA = "(define (f x y) (lambda (a b c d e) (lambda (y z) (+ x y z))))"
-
-/** Reports each variable and the lexical frames visible at its reference. */
-public fun compileTimeEnvDump(): List<String> {
-    val rows = mutableListOf<String>()
-    val cfg =
-        CompilerConfig(trace = { frames, name ->
-            rows.add("$name in ${frames.joinToString(" ") { frame -> frame.joinToString(" ", "(", ")") }}")
-        })
-    either {
-        compileProgram(cfg, CompilerState(), readForms(NESTED_LAMBDA)).stmts.map(::renderStmt)
-    }.fold({ error("compile failed: $it") }, { it })
-    return rows
+/** The variable references of a probe read against the compile-time
+ *  environment, one line each: the name, its address, and the frame it
+ *  resolved in. */
+public fun compileTimeEnvironmentDump(): List<String> {
+    val frames = lexicalEnvironment(listOf(listOf("n"), listOf("product", "counter")))
+    val names = listOf("product", "counter", "n", "missing")
+    return names.map { name ->
+        val address = findVariable(name, frames)
+        "$name -> ${address?.let { "frame ${it.frame}, offset ${it.offset}" } ?: "unbound"}"
+    }
 }

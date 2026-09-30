@@ -12,6 +12,6 @@ public class E5_12aTest :
         test("Exercise 5.12a: the per-type census line of the summary").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            gcdMachineCensus() shouldBe "MEASURE"
+            gcdMachineCensus() shouldBe "(by type test 1 branch 1 assign 3 goto 1)"
         }
     })

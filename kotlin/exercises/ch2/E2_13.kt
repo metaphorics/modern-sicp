@@ -3,8 +3,6 @@
 
 package sicp.ch2.exercises
 
-import sicp.runtime.PendingSolution
-
 /**
  * Exercise 2.13: show that, under the assumption of small percentage
  * tolerances, there is a simple formula for the approximate percentage
@@ -19,4 +17,4 @@ import sicp.runtime.PendingSolution
  * `makeCenterPercent(100.0, 0.01) * makeCenterPercent(50.0, 0.02)`, paired
  * with the approximate formula's prediction, `0.01 + 0.02`.
  */
-public fun ex_2_13(): Pair<Double, Double> = throw PendingSolution()
+public fun ex_2_13(): Pair<Double, Double> = throw PendingExercise()

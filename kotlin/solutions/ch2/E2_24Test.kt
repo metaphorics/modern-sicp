@@ -8,7 +8,8 @@ import io.kotest.matchers.shouldBe
 
 public class E2_24Test :
     FunSpec({
-        test("the nested vlist prints (1 (2 (3 4)))") {
-            ex_2_24() shouldBe "(1 (2 (3 4)))"
+        test("ex_2_24 predicts the nested native datum rendering") {
+            ex_2_24() shouldBe
+                "PairCell(first=Whole(value=1), second=PairCell(first=Whole(value=2), second=PairCell(first=PairCell(first=Whole(value=3), second=PairCell(first=Whole(value=4), second=Empty)), second=Empty)))"
         }
     })

@@ -3,49 +3,49 @@
 
 package sicp.ch4.solutions
 
-import sicp.ch4.AmbEvaluator
-import sicp.ch4.AmbExec
-import sicp.ch4.ambDriver
-import sicp.runtime.AppE
-import sicp.runtime.Env
-import sicp.runtime.VarE
+// Exercise 4.52: `if-fail`. The experiment's `ifFail` enters its second
+// body exactly when the first exhausts its answers: with all-odd choices
+// the filter finds nothing and the alternative answers, and with an even
+// choice in the list the filter answers first and the alternative follows
+// the exhaustion.
 
-/** `if-fail`: the alternative answers only when every choice of the
- * first expression is exhausted. The guard is a frame pushed under the
- * first expression's choice frames, so it fires exactly when the search
- * unwinds past them -- and its trail mark rolls the failed branch's
- * assignments back. */
-internal class WithIfFail(
-    global: Env,
-) : AmbEvaluator(global) {
-    override fun reservedClause(expr: AppE): AmbExec? {
-        val head = expr.operator as? VarE ?: return null
-        if (head.name != "if-fail") {
-            return super.reservedClause(expr)
-        }
-        val aprocs = analyzedOperands(expr)
-        return { env, succeed ->
-            pushFailGuard(aprocs[1], env, succeed)
-            aprocs[0](env, succeed)
-        }
-    }
+/** The all-odd session: the filter finds nothing. */
+internal val IF_FAIL_ALL_ODD_PROGRAM: String =
+    AMB_BASE_PRELUDE + "\n" +
+        """
+fun main() {
+    budgetCap = 1000000L
+    ifFail(
+        {
+            val x = anElementOf(listOf(1L, 3L, 5L))
+            requireThat(isEven(x))
+            println(showLong(x))
+        },
+        { println("all-odd") },
+    )
 }
+        """.trimIndent()
 
-private val allOddQuery: String =
-    "(if-fail (let ((x (an-element-of '(1 3 5))))\n           (require (even? x))\n           x)\n         'all-odd)"
-
-private val eightQuery: String =
-    "(if-fail (let ((x (an-element-of '(1 3 5 8))))\n           (require (even? x))\n           x)\n         'all-odd)"
-
-/** The all-odd session: the alternative answers, then exhaustion. */
-public fun ifFailAllOddTranscript(): String {
-    val driver = ambDriver({ env, _ -> WithIfFail(env) }, AMB_BASE_PRELUDE)
-    return driver.input(allOddQuery) + driver.input("try-again")
+/** The eight session: one even choice answers, then the alternative. */
+internal val IF_FAIL_EIGHT_PROGRAM: String =
+    AMB_BASE_PRELUDE + "\n" +
+        """
+fun main() {
+    budgetCap = 1000000L
+    ifFail(
+        {
+            val x = anElementOf(listOf(1L, 3L, 5L, 8L))
+            requireThat(isEven(x))
+            println(showLong(x))
+        },
+        { println("all-odd") },
+    )
 }
+        """.trimIndent()
 
-/** The session with 8 available: 8 answers, `all-odd` on try-again,
- * then exhaustion. */
-public fun ifFailEightTranscript(): String {
-    val driver = ambDriver({ env, _ -> WithIfFail(env) }, AMB_BASE_PRELUDE)
-    return driver.input(eightQuery) + driver.input("try-again") + driver.input("try-again")
-}
+/** All odd means the alternative answers. => "all-odd\n" */
+public fun ifFailAllOddTranscript(): String = searchLines(IF_FAIL_ALL_ODD_PROGRAM).joinToString(separator = "\n", postfix = "\n")
+
+/** One even choice answers first, then the alternative answers after the
+ * exhaustion. => "8\nall-odd\n" */
+public fun ifFailEightTranscript(): String = searchLines(IF_FAIL_EIGHT_PROGRAM).joinToString(separator = "\n", postfix = "\n")

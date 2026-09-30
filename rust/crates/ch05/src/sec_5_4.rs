@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 5.4
 //!
 //! Section 5.4: the explicit-control evaluator. The machine is a guest
 //! data structure and a transition function (grammar §9): typed control

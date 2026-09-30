@@ -1,4 +1,5 @@
-(* SPDX-License-Identifier: GPL-3.0-only *)
+(* SPDX-License-Identifier: GPL-3.0-only
+   Adapted from the Scheme programs in SICP section 5.3 *)
 
 (** The list-structure memory of section 5.3 (grammar section 13, row
     5.3): two semispaces, each a pair of parallel [word array]s for the

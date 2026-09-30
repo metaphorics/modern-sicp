@@ -1,4 +1,5 @@
-(* SPDX-License-Identifier: GPL-3.0-only *)
+(* SPDX-License-Identifier: GPL-3.0-only
+   Adapted from the Scheme programs in SICP section 4.4 *)
 
 (** The query system of section 4.4 over closed host constructors
     (grammar sections 10 and 13, row 4.4).

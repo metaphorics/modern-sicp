@@ -1,4 +1,5 @@
-(* SPDX-License-Identifier: GPL-3.0-only *)
+(* SPDX-License-Identifier: GPL-3.0-only
+   Adapted from the Scheme programs in SICP section 4.1 *)
 
 (** The metacircular evaluator of section 4.1 as guest source: an OCaml
     host-subset program (the [core/metacircular] conformance case

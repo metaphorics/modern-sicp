@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 5.3
 
 //! Section 5.3: memory and garbage collection. The heap is a pair of
 //! `Vec`s addressed by checked `usize` indexes — a [`Word`] is an

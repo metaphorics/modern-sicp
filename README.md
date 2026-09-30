@@ -4,12 +4,12 @@ Four editions of "Structure and Interpretation of Computer Programs" by Abelson,
 
 The text comes from the lineage of the [Unofficial Texinfo Format](https://www.neilvandyke.org/sicp-texi/) through the [HTML5 and EPUB3 edition](https://github.com/sarabander/sicp). See `NOTICE.md` for attribution and the changes made here.
 
-The host-subset migration is in progress. Chapters 4 and 5 are being changed
-to interpret and compile checked subsets of each edition's own language.
-The [approved specification](docs/plan/host-subsets-specification.md) defines
-the required behavior; the [execution plan](docs/plan/host-subsets-migration.md)
-defines the work and verification order. Published editions are not evidence
-that this migration has passed its gates.
+The host-subset migration has landed. Chapters 4 and 5 interpret and compile
+checked subsets of each edition's own language, with per-edition contracts in
+[spec/host-subsets/](spec/host-subsets/). The suite runs 39 shared cases
+against all four editions (156 edition-case runs). The migration record,
+including the verification order, is
+[docs/plan/host-subsets-migration.md](docs/plan/host-subsets-migration.md).
 
 Read online: https://metaphorics.github.io/modern-sicp/
 

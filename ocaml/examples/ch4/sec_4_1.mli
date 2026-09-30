@@ -1,4 +1,5 @@
-(* SPDX-License-Identifier: GPL-3.0-only *)
+(* SPDX-License-Identifier: GPL-3.0-only
+   Adapted from the Scheme programs in SICP section 4.1 *)
 
 module Ast = Sicp_common.Ast
 module Check = Sicp_common.Check

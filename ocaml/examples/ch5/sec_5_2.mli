@@ -1,4 +1,5 @@
-(* SPDX-License-Identifier: GPL-3.0-only *)
+(* SPDX-License-Identifier: GPL-3.0-only
+   Adapted from the Scheme programs in SICP section 5.2 *)
 
 (** The section 5.2 machines: the [Sec_5_1] simulator over [value]
     words with the section's own operations -- the stack monitors of

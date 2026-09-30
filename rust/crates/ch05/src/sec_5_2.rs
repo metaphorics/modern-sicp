@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 5.2
 
 //! Section 5.2: the assembler and simulator over the machine data
 //! language of grammar §7. Assembly validates the program and resolves

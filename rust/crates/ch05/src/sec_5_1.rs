@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 5.1
 
 //! Section 5.1: register-machine design. The machines of the section
 //! are values in the data language of grammar §7 — registers, labels,

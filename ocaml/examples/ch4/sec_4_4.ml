@@ -1,4 +1,5 @@
-(* SPDX-License-Identifier: GPL-3.0-only *)
+(* SPDX-License-Identifier: GPL-3.0-only
+   Adapted from the Scheme programs in SICP section 4.4 *)
 
 module Eval_error = Sicp_common.Eval_error
 module Data = Sicp_common.Constructor_data

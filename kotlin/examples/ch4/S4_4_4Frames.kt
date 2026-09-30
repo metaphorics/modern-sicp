@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.4.8, frames and bindings: the immutable
 // variable-to-term map, the unmarked-inhabitant rule -- failure is the
 // absent option, never a sentinel binding -- and the extend step that

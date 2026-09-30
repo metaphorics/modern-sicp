@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.1, deductive information retrieval: the book's
 // Microshaft interactions over the typed query data base -- simple
 // queries, compound queries, the prose rules (lives-near, same, wheel,

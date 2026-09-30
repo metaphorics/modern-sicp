@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.2
 // Chapter 4, section 4.2.2, the lazy evaluator: the thunk machinery --
 // the memoized cell that fills once and whose every demand observes the
 // recorded value. The forcing instrument makes the lesson observable:

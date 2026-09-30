@@ -8,7 +8,15 @@ import io.kotest.matchers.shouldBe
 
 public class E4_08Test :
     FunSpec({
-        test("Exercise 4.8: the named loop sums the countdown") {
-            namedLetTranscript() shouldBe "15\n"
+        test("Exercise 4.8: named-let Fibonacci computes the book's value") {
+            namedLetFibonacciTranscript() shouldBe "55\n"
+        }
+
+        test("Exercise 4.8: the recursive name remains local") {
+            loopNameLocalTranscript() shouldBe "1\n7\n"
+        }
+
+        test("Exercise 4.8: ordinary let still evaluates") {
+            plainLetTranscript() shouldBe "3\n"
         }
     })

@@ -23,7 +23,7 @@ public sealed interface PortError @{
     ) : PortError
 
     public data class OutOfRange(
-        val n: Int,
+        val input: String,
     ) : PortError
 @}
 
@@ -32,8 +32,8 @@ public fun parsePort(s: String): Int @{
     val t = s.trim()
     if (t.isEmpty()) r.raise(PortError.Blank)
     if (t.any @{ c -> c !in '0'..'9' @}) r.raise(PortError.NotDigits(s))
-    val n = t.toInt()
-    if (n !in 1..65535) r.raise(PortError.OutOfRange(n))
+    val n = t.toIntOrNull() ?: r.raise(PortError.OutOfRange(t))
+    if (n !in 1..65535) r.raise(PortError.OutOfRange(t))
     return n
 @}
 @end example
@@ -71,10 +71,10 @@ raises @code{IntervalError}, and so on. One error set is shared by every
 chapter that runs interpreted programs: a typed error whose categories
 carry the book's runtime faults, from an unbound name that walked the whole
 environment chain, through type mismatches and division by zero, to
-checked arithmetic past the @code{Long} width. A user program signals
-failure by raising a typed error: a named category with a message and the
-offending values. The runtime reports the category; a raw host exception
-never escapes, so user programs of @ref{4.1} fail with values too.
+checked arithmetic past the @code{Long} width. A user program signals failure
+by raising a typed error with a category and source position. The runtime
+reports the category; a raw host exception never
+escapes, so user programs of @ref{4.1} fail with values too.
 
 @heading What this buys
 
@@ -93,7 +93,7 @@ either @{ parsePort("   ") @}
 // => Either.Left(Blank)
 
 either @{ parsePort("99999") @}
-// => Either.Left(OutOfRange(n=99999))
+// => Either.Left(OutOfRange(input=99999))
 @end example
 
 @strong{@anchor{Exercise 0.4}Exercise 0.4:} The scaffold gives you

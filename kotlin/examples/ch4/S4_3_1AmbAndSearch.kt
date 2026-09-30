@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.3
 // Chapter 4, section 4.3.1, amb and search: choice commits left to right,
 // a failed demand resumes the most recent untried alternative, and one run
 // explores to exhaustion -- so every attempt's effect lands in the answer

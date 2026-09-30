@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.1
 // Chapter 4, section 4.1.4, running the evaluator as a program: the run's
 // observation contract. A program owns its effects -- the writes appear in
 // program order with no driver lines around them -- the global names are

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4, the shared query plane for the section's listing
 // tests: the typed constructors that build query domain data (the edition's
 // `read` step is construction, never a parser over old source) and the
@@ -42,7 +43,7 @@ public fun fact(term: QTerm): QFact = QFact(term)
 /** A pattern query over one term. */
 public fun pattern(term: QTerm): QQuery = sicp.ch4.QPattern(term)
 
-/** A bodyless rule: every frame of the conclusion passes. */
+/** A rule with a conclusion and body. */
 public fun rule(
     conclusion: QTerm,
     body: QQuery,

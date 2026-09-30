@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.4.4, rules and unification: the book's unifier
 // cases seen through the driver -- the chain that resolves three names to
 // one, the frame that stores a term whose variables bind later, the case

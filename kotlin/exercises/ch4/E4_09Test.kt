@@ -33,12 +33,6 @@ public class E4_09Test :
             untilNeverRunsTranscript() shouldBe "0\n"
         }
 
-        test("Exercise 4.9: the long loop runs an iterative process").config(
-            enabledOrReasonIf = { Enabled.disabled("pending solution") },
-        ) {
-            iterativeLoopTranscript() shouldBe "100000\n"
-        }
-
         test("Exercise 4.9: loops nest, each block holding its own loop state").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.3
 // Chapter 4, section 4.3.2, examples of nondeterministic programs: the
 // multiple-dwelling logic puzzle and the natural-language parser, with
 // the session answers the section's prose pins. The parser consumes its

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.2
 // Chapter 4, section 4.2.3, streams as lazy lists: the lazy pair with its
 // memoized tail, the list operations over it, and the two self-referential
 // sessions the section runs -- `ones` feeding itself through the captured

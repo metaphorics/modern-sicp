@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.1
 // Chapter 4, section 4.1.2, representing expressions: the typed node family
 // the kernel evaluates, `when` to `GIf` nests as the derived-expression
 // rewrite, constructor data where the old language quoted it, and the D19

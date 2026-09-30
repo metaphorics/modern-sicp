@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.1
 // Chapter 4, section 4.1.6, internal definitions: mutual recursion under
 // the sequential definition rule. The two names land in one frame before
 // either body runs, so the procedures find each other at call time, and a

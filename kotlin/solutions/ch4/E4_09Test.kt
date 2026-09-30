@@ -8,7 +8,23 @@ import io.kotest.matchers.shouldBe
 
 public class E4_09Test :
     FunSpec({
-        test("Exercise 4.9: while and until accumulate through the derived loops") {
-            loopsTranscript() shouldBe "4\n10\n3\n12\n"
+        test("Exercise 4.9: while sums the loop values") {
+            whileSumTranscript() shouldBe "15\n"
+        }
+
+        test("Exercise 4.9: false while does not run its body") {
+            whileNeverRunsTranscript() shouldBe "0\n"
+        }
+
+        test("Exercise 4.9: until computes a product and stops at its target") {
+            untilProductTranscript() shouldBe "95040\n13\n"
+        }
+
+        test("Exercise 4.9: satisfied until does not run its body") {
+            untilNeverRunsTranscript() shouldBe "0\n"
+        }
+
+        test("Exercise 4.9: nested loops keep their bindings local") {
+            nestedLoopsTranscript() shouldBe "6\n"
         }
     })

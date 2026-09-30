@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.4.1, the driver and instantiation: an answer is
 // the instantiated query in the pinned line form -- `?name = <rendered
 // term>` -- a variable the match never bound contracts to its own name,

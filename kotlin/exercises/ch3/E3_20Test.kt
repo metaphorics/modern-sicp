@@ -16,8 +16,6 @@ public class E3_20Test :
             val alias = x
             alias.setFirst(Whole(17L))
             org.junit.jupiter.api.Assertions
-                .assertSame(x, alias)
-            org.junit.jupiter.api.Assertions
                 .assertEquals(Whole(17L), x.first())
             org.junit.jupiter.api.Assertions
                 .assertEquals(Whole(2L), x.second())

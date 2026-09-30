@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
 // Chapter 4, section 4.1, the source contract (given code, D23):
 // admission round trips over the shared grammar before any guest effect,
 // and the section 3.7 printer contract for what a program may write.

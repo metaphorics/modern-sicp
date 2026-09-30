@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 5.4
 // Section 5.4, running the explicit-control evaluator: the book's session
 // on the typed controller -- the factorial definition, then the call,
 // value 120 -- and the monitored machine's stack statistics, which are

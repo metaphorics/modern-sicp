@@ -99,6 +99,35 @@ lookup through @code{inner} finds 99. @code{global}, which has no @code{x}
 of its own, is left without one, and a lookup of @code{x} through
 @code{global} fails.
 
+@example kotlin
+import arrow.core.Either
+import arrow.core.raise.either
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
+import sicp.runtime.BindingFrame
+import sicp.runtime.DatumError
+import sicp.runtime.Whole
+
+public class EnvironmentChainTest :
+    FunSpec(@{
+        test("lookup and assignment follow the chain") @{
+            val global = BindingFrame.root()
+            val inner = BindingFrame.child(global)
+            inner.bind("x", Whole(1L))
+            val nested = BindingFrame.child(inner)
+
+            either @{ nested.read("x") @} shouldBe
+                Either.Right(Whole(1L))
+            either @{ nested.assign("x", Whole(99L)) @} shouldBe
+                Either.Right(Unit)
+            either @{ inner.read("x") @} shouldBe
+                Either.Right(Whole(99L))
+            either @{ global.read("x") @} shouldBe
+                Either.Left(DatumError.BadDatum("x"))
+        @}
+    @})
+@end example
+
 @noindent
 The declarations and assignments of @ref{3.2} run on exactly this chain,
 and @ref{4.3}'s backtracking evaluator takes a snapshot of the chain to

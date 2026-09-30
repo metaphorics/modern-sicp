@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.4.2, the evaluator: the data-directed dispatch
 // over the query kinds -- the series `and`, the `not` filter, the typed
 // guard standing in for the value filter, and the `always-true` handler that

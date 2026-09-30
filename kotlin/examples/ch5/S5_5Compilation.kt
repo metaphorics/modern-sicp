@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 5.5
 // Section 5.5, running the compiler: the factorial compilation is typed
 // controller data -- every statement renders on the pinned one-line trace
 // form the figure uses -- and compile-and-run answers the book's session,

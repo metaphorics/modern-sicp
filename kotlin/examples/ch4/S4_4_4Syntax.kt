@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.4.7, query syntax procedures: the typed
 // constructors take the query language's shapes as ordinary domain data --
 // symbols, variables, proper and improper lists, and bodyless rules -- and

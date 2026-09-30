@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.3
 // Chapter 4, section 4.3.3, implementing the amb evaluator: the engine's
 // observable contract -- the undo trail rolls an ordinary write back when
 // its branch dies while a `setPermanent` write survives, resumption

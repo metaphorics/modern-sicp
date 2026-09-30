@@ -662,29 +662,32 @@ write them:
 
 @example kotlin
 interface PairProc @{
-    fun car(): Value
+    fun first(): Datum
 
-    fun cdr(): Value
+    fun second(): Datum
 
-    fun setCar(v: Value)
+    fun setFirst(v: Datum)
 
-    fun setCdr(v: Value)
+    fun setSecond(v: Datum)
 @}
 
-fun proceduralCons(x: Value, y: Value): PairProc @{
-    var carCell = x
-    var cdrCell = y
+fun proceduralPair(
+    x: Datum,
+    y: Datum,
+): PairProc @{
+    var firstSlot = x
+    var secondSlot = y
     return object : PairProc @{
-        override fun car(): Value = carCell
+        override fun first(): Datum = firstSlot
 
-        override fun cdr(): Value = cdrCell
+        override fun second(): Datum = secondSlot
 
-        override fun setCar(v: Value) @{
-            carCell = v
+        override fun setFirst(v: Datum) @{
+            firstSlot = v
         @}
 
-        override fun setCdr(v: Value) @{
-            cdrCell = v
+        override fun setSecond(v: Datum) @{
+            secondSlot = v
         @}
     @}
 @}
@@ -703,22 +706,26 @@ other.}
 @strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{This edition replaces SICP exercise 3.20 with a host-language exercise that keeps its number and teaching objective.}
 
 Suppose we evaluate the following sequence against the
-@code{proceduralCons} implementation above:
+@code{proceduralPair} implementation above:
 
 @example kotlin
-val x = proceduralCons(VInt(1L), VInt(2L))
+val x = proceduralPair(Whole(1L), Whole(2L))
 val alias = x
 
-alias.setCar(VInt(17L))
+alias.setFirst(Whole(17L))
 
-x.car()
-// => 17
+x.first()
+// => Whole(value=17)
+
+val fresh = proceduralPair(Whole(1L), Whole(2L))
+fresh.first()
+// => Whole(value=1)
 @end example
 
 Trace this sequence: which captured @code{var} slot does each call consult,
-and why does @code{x.car()} answer 17 after the mutation went through
-@code{alias}?  What does a fresh @code{proceduralCons(VInt(1L), VInt(2L))}
-answer to the same @code{car()} request, and what does that contrast say
+and why does @code{x.first()} answer @code{Whole(value=17)} after the mutation
+went through @code{alias}?  What does the fresh @code{proceduralPair}
+answer to the same @code{first()} request, and what does that contrast say
 about where the state of a procedural pair lives?  (Compare
 @ref{Exercise 3.11}.)
 @end quotation
@@ -1157,11 +1164,11 @@ ordinary list.  The messages are the queue operations themselves:
 interface MessagePassingQueue @{
     fun emptyQueue(): Boolean
 
-    fun insert(item: Value)
+    fun insert(item: Datum)
 
-    fun delete(): Either<QueueError, Value>
+    fun delete(): Either<QueueError, Datum>
 
-    fun printQueue(): String
+    fun items(): List<Datum>
 @}
 @end example
 
@@ -1170,8 +1177,8 @@ Thus, the @code{makeQueue} function will have the form
 
 @example kotlin
 fun makeQueue(): MessagePassingQueue @{
-    var front: VPair? = ⟨…⟩
-    var rear: VPair? = ⟨…⟩
+    var front: PairCell? = ⟨…⟩
+    var rear: PairCell? = ⟨…⟩
     ⟨the queue operations,
         as members of the object expression⟩
     return ⟨the object expression⟩
@@ -1179,7 +1186,8 @@ fun makeQueue(): MessagePassingQueue @{
 @end example
 
 Complete the definition of @code{makeQueue} and provide implementations of the
-queue operations using this representation.
+queue operations using this representation. The @code{items} operation returns
+the contents as a host @code{List<Datum>} rather than printing the queue.
 @end quotation
 
 @quotation

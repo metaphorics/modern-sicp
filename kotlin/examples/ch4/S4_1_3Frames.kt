@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.1
 // Chapter 4, section 4.1.3, evaluator data structures: procedures and
 // environments. Frames are the kernel's capture-shared cell maps: a
 // definition adds to the first frame, assignment rebinds where the name

@@ -17,8 +17,10 @@ import sicp.ch5.Compiler
 import sicp.ch5.ExplicitControl
 import sicp.guest.Admission
 import sicp.guest.CheckedProgram
+import sicp.guest.GValue
 import sicp.guest.Mode
 import sicp.guest.RunResult
+import sicp.guest.renderPrinted
 import java.io.File
 
 private val corpusRoot = File("../../spec/host-subsets/kotlin")
@@ -46,8 +48,10 @@ private fun checkedOf(row: CorpusRow): CheckedProgram {
     )
 }
 
-private fun observations(result: RunResult): Triple<String, String?, Boolean> =
-    Triple(result.output, result.error?.category, result.mainValue == null)
+private fun renderedMainValue(value: GValue): String = "${value::class.simpleName}:${renderPrinted(value) ?: value.toString()}"
+
+private fun observations(result: RunResult): Triple<String, String?, String?> =
+    Triple(result.output, result.error?.category, result.mainValue?.let(::renderedMainValue))
 
 public class CorpusCoreTest :
     FunSpec({

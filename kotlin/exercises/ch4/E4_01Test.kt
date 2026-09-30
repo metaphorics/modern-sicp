@@ -12,13 +12,13 @@ public class E4_01Test :
         test("Exercise 4.1: the kernel's statement order evaluates operands left to right").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            leftToRightTranscript() shouldBe "1 2\n[1, 2]\n"
+            leftToRightTranscript() shouldBe "(1 . 2)\n1\n2\n"
         }
 
         test("Exercise 4.1: the right-to-left list-of-values runs the operands backwards").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
-            rightToLeftTranscript() shouldBe "1 2\n[2, 1]\n"
+            rightToLeftTranscript() shouldBe "(1 . 2)\n2\n1\n"
         }
 
         test("Exercise 4.1: the operands deliver the same values either way").config(

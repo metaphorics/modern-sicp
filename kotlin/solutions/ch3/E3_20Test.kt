@@ -17,7 +17,6 @@ public class E3_20Test :
 
             x.first() shouldBe Whole(17L)
             x.second() shouldBe Whole(2L)
-            (alias === x) shouldBe true
         }
 
         test("a fresh pair has its own captured slots") {

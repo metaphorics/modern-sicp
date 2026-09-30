@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.1
 // Chapter 4, section 4.1.5, data as programs: the evaluator as a universal
 // machine. The factorial program is ordinary node data -- the example
 // takes it apart field by field -- then feeds the very same structure to

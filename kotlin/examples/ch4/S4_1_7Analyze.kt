@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.1
 // Chapter 4, section 4.1.7, separating syntactic analysis from execution:
 // admission builds the typed syntax once, before any guest effect, and the
 // analyzed run answers exactly what the direct run answers -- the same

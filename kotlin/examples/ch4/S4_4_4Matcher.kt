@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.4.3, finding assertions by pattern matching: the
 // book's matcher cases over `[[a, b], c, [a, b]]` -- the repeated variable
 // matching consistently, the nested case, the non-match answering no

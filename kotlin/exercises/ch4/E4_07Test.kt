@@ -9,7 +9,7 @@ import io.kotest.matchers.shouldBe
 
 public class E4_07Test :
     FunSpec({
-        test("Exercise 4.7: the rewrite folds the bindings into nested lets").config(
+        test("Exercise 4.7: sequential bindings produce the expected sum").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             sequentialBindingsTranscript() shouldBe "12\n"

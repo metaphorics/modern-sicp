@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
 // Chapter 4, exercise 4.1
 
 package sicp.ch4.exercises

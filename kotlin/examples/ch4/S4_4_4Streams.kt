@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.4.6, stream operations: the answer stream is a
 // lazy sequence of frames -- a partial take reads only the frames it
 // needs, duplicates are stream elements until a view collapses them, and

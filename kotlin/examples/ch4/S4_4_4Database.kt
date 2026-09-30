@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.4
 // Chapter 4, section 4.4.4.5, maintaining the data base: the chronological
 // collections behind the answer stream, the leading-symbol index that
 // scopes a pattern to its own bucket, and the bind-then-append discipline
@@ -36,8 +37,8 @@ public class S4_4_4DatabaseTest :
             val driver = QueryDriver.streaming(microshaftDatabase())
             driver
                 .run(pattern(dotted(listOf(x), y)), listOf(x))
-                .take(39)
+                .take(40)
                 .toList()
-                .size shouldBe 39
+                .size shouldBe 40
         }
     })

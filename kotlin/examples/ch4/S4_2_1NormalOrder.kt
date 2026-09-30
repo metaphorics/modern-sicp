@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.2
 // Chapter 4, section 4.2.1, normal order and applicative order: the
 // section's `try` and `unless` under delayed arguments, with the strict
 // core run as the applicative-order contrast -- under delay the armed

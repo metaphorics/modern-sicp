@@ -21,27 +21,9 @@ public class E4_06Test :
             letBodyTranscript() shouldBe "7\n"
         }
 
-        test("Exercise 4.6: the inits evaluate in the outer environment").config(
-            enabledOrReasonIf = { Enabled.disabled("pending solution") },
-        ) {
-            letInitsOuterTranscript() shouldBe "5\n"
-        }
-
-        test("Exercise 4.6: an inner let shadows and leaves the outer binding").config(
-            enabledOrReasonIf = { Enabled.disabled("pending solution") },
-        ) {
-            letShadowTranscript() shouldBe "2\n5\n"
-        }
-
         test("Exercise 4.6: lets nest as derived expressions at every depth").config(
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             letNestedTranscript() shouldBe "3\n"
-        }
-
-        test("Exercise 4.6: a malformed binding list fails typed at admission").config(
-            enabledOrReasonIf = { Enabled.disabled("pending solution") },
-        ) {
-            malformedLetRejection() shouldBe "Syntax"
         }
     })

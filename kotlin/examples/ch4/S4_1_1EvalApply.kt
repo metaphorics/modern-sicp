@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Adapted from the Scheme programs in SICP section 4.1
 // Chapter 4, section 4.1.1, the core of the evaluator: eval as the clause
 // chain over the typed node family, apply over compound procedures, and
 // the operand order the kernel's code fixes. The book's unknown-expression

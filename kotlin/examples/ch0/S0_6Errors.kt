@@ -18,7 +18,7 @@ public sealed interface PortError {
     ) : PortError
 
     public data class OutOfRange(
-        val n: Int,
+        val input: String,
     ) : PortError
 }
 
@@ -32,8 +32,8 @@ public fun parsePort(s: String): Int {
     val t = s.trim()
     if (t.isEmpty()) r.raise(PortError.Blank)
     if (t.any { c -> c !in '0'..'9' }) r.raise(PortError.NotDigits(s))
-    val n = t.toInt()
-    if (n !in 1..65535) r.raise(PortError.OutOfRange(n))
+    val n = t.toIntOrNull() ?: r.raise(PortError.OutOfRange(t))
+    if (n !in 1..65535) r.raise(PortError.OutOfRange(t))
     return n
 }
 
@@ -48,6 +48,7 @@ public class S0_6ErrorsTest :
         test("each failure mode is its own Left value") {
             parsePortEither("   ") shouldBe Either.Left(PortError.Blank)
             parsePortEither("80x0") shouldBe Either.Left(PortError.NotDigits("80x0"))
-            parsePortEither("99999") shouldBe Either.Left(PortError.OutOfRange(99999))
+            parsePortEither("99999") shouldBe Either.Left(PortError.OutOfRange("99999"))
+            parsePortEither("2147483648") shouldBe Either.Left(PortError.OutOfRange("2147483648"))
         }
     })

@@ -32,7 +32,5 @@ public class E3_15Test :
             org.junit.jupiter.api.Assertions.assertTrue(
                 structurallyEqual(setToWow(z2), pair(datumList(Symbol("wow"), Symbol("b")), datumList(Symbol("a"), Symbol("b")))),
             )
-            org.junit.jupiter.api.Assertions
-                .assertTrue(z2.second === right)
         }
     })

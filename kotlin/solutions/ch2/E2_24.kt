@@ -8,4 +8,10 @@ import sicp.runtime.datumList
 import sicp.runtime.renderDatum
 
 /** Render the nested datum tree in the canonical native constructor form. */
-public fun ex_2_24(): String = renderDatum(datumList(Whole(1L), Whole(2L), datumList(Whole(3L), Whole(4L))))
+public fun ex_2_24(): String =
+    renderDatum(
+        datumList(
+            Whole(1L),
+            datumList(Whole(2L), datumList(Whole(3L), Whole(4L))),
+        ),
+    )

@@ -13,6 +13,6 @@ public class E2_24Test :
             enabledOrReasonIf = { Enabled.disabled("pending solution") },
         ) {
             ex_2_24() shouldBe
-                "PairCell(first=Whole(value=1), second=PairCell(first=Whole(value=2), second=PairCell(first=Whole(value=3), second=PairCell(first=Whole(value=4), second=Empty))))"
+                "PairCell(first=Whole(value=1), second=PairCell(first=PairCell(first=Whole(value=2), second=PairCell(first=PairCell(first=Whole(value=3), second=PairCell(first=Whole(value=4), second=Empty)), second=Empty)), second=Empty))"
         }
     })

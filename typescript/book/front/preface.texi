@@ -125,7 +125,8 @@
 
 @subtitle @abbr{Second Edition}@* Unofficial Texinfo Format @value{utfversion}
 
-@author Harold Abelson and Gerald Jay Sussman with Julie Sussman, foreword by Alan J. Perlis
+@author Harold Abelson and Gerald Jay Sussman
+@author with Julie Sussman, foreword by Alan J. Perlis
 
 @page
 @vskip 0pt plus 1filll

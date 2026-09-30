@@ -128,12 +128,11 @@ public fun compile(
     @}
 @end example
 
-The current implementation has a call-linkage defect for expression-bodied
-functions: the compiler supplies the label @code{__unused__}, but emits no
-label with that name.  An expression body that calls another guest function
-can therefore fail during machine execution.  The examples here use block
-bodies; this implementation gap remains open until the compiler assigns a
-real return destination.
+The compiler assigns each compiled call a fresh return destination and
+stores that label in the @code{continue} register before it transfers
+control.  An expression body can therefore call another guest function and
+return to the caller, exactly as a block body does.  The examples in this
+section use block bodies.
 
 @noindent
 The private program compiler dispatches on the checked syntax tree's typed

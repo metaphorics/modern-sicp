@@ -283,7 +283,7 @@ search that is now called @newterm{truth maintenance}.  Modern problem-solving
 systems all use some form of truth-maintenance system as a substrate.  See
 @ref{Forbus and deKleer 1993} for a discussion of elegant ways to build
 truth-maintenance systems and applications using truth maintenance.  
-@ref{Zabih et al. 1987} describes a nondeterministic extension to Scheme
+@ref{Zabih et al. 1987} describes a nondeterministic extension
 that is based on @code{amb}; it is similar to the interpreter described in this
 section, but more sophisticated, because it uses dependency-directed
 backtracking rather than chronological backtracking.  @ref{Winston 1992} gives an

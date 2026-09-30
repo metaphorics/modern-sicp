@@ -86,7 +86,7 @@
         <dc:subject>
           <rdf:Bag>
             <rdf:li>list</rdf:li>
-            <rdf:li>set-car</rdf:li>
+            <rdf:li>set-head</rdf:li>
           </rdf:Bag>
         </dc:subject>
       </cc:Work>

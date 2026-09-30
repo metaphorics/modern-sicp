@@ -180,95 +180,75 @@ required operations.  In our compiler, we will do essentially the same
 analysis.  Instead of producing execution procedures, however, we will generate
 sequences of instructions to be run by our register machine.
 
-The procedure @code{compile} is the top-level dispatch in the compiler.  It
-corresponds to the @code{eval} procedure of @ref{4.1.1}, the
-@code{analyze} procedure of @ref{4.1.7}, and the @code{eval-dispatch}
-entry point of the explicit-control-evaluator in @ref{5.4.1}.  The
-compiler, like the interpreters, uses the expression-syntax procedures defined
-in @ref{4.1.2}.@footnote{Notice, however, that our compiler is a guest-language
-program, and the syntax procedures that it uses to manipulate expressions are
-the actual guest procedures used with the metacircular evaluator.  For the
-explicit-control evaluator, in contrast, we assumed that equivalent syntax
-operations were available as operations for the register machine.  (Of course,
-when we simulated the register machine in the guest language, we used the actual guest
-procedures in our register machine simulation.)}  @code{Compile} performs a
-case analysis on the syntactic type of the expression to be compiled.  For each
-type of expression, it dispatches to a specialized @newterm{code generator}.
-Statement and declaration forms are dispatched by their own
-@code{compileStatement} and @code{compileDeclaration} procedures, mirroring the
-evaluator's separation of expression evaluation from statement execution in
-@ref{4.1.1}; the compiler required here is the compiler over the typed
-@code{Expr}/@code{Stmt}/@code{Decl} nodes of @ref{4.1.2}, and code generators
-answer an @code{InstructionSequence} or a typed @code{GuestError} through
-@code{CompileResult} (a caller distinguishes the two by the instruction
-sequence's @code{needs}/@code{modifies}/@code{statements} fields versus the
-error's kebab-case tag):
+The compiler separates expression, statement, and program entry points.
+@code{compileExpression} dispatches on the checked expression's tag.
+@code{compileStatement} handles a statement or declaration, and
+@code{compileDeclarationOrStatement} exposes the one-form entry point.
+@code{compileProgram} compiles an admitted program. Expression compilation
+returns an @code{InstructionSequence} or a typed @code{GuestError}, represented
+by @code{CompileResult}. A caller can distinguish the error case with
+@code{isCompileError}:
 
 @example typescript
-type CompileResult = InstructionSequence | GuestError;
+export type CompileResult = InstructionSequence | GuestError;
 
-const compileError = (error: GuestError): CompileResult => error;
+export const isCompileError = (
+  result: CompileResult | CompiledProgram,
+): result is GuestError =>
+  !("statements" in result) && !("instructions" in result);
 @end example
 
+@noindent
+The program entry point creates its context and compiles the top-level forms
+in order:
+
 @example typescript
-export const compile = (
-  cfg: CompilerConfig,
-  state: CompilerState,
-  cenv: Cenv,
-  exp: Expr,
-  target: string,
-  linkage: Linkage,
-): CompileResult => @{
-  switch (exp.tag) @{
-    case "number":
-    case "string":
-    case "boolean":
-    case "null":
-    case "undefined":
-    case "array":
-    case "object":
-      return compileSelfEvaluating(cfg, exp, target, linkage);
-    case "variable":
-      return compileVariable(cfg, cenv, exp, target, linkage);
-    case "assign":
-      return compileAssignment(cfg, state, cenv, exp, target, linkage);
-    case "conditional":
-      return compileConditional(cfg, state, cenv, exp, target, linkage);
-    case "arrow":
-      return compileLambda(cfg, state, cenv, exp, target, linkage);
-    case "call":
-      return compileApplication(cfg, state, cenv, exp, target, linkage);
-    case "binary":
-    case "logical":
-    case "unary":
-    case "member":
-    case "index":
-    case "template":
-    case "new-error":
-    case "new-map":
-    case "new-set":
-      return compilePrimitiveOperation(
-          cfg,
-          state,
-          cenv,
-          exp,
-          target,
-          linkage
-        );
+export const compileProgram = (
+  program: ReadonlyArray<Decl | Stmt>,
+): CompiledProgram | GuestError => @{
+  const context: CompileContext = @{
+    output: [],
+    labels: @{
+      throwTarget: null,
+      breakTarget: null,
+      continueTarget: null,
+    @},
+  @};
+  const sequences: InstructionSequence[] = [];
+  for (const item of program) @{
+    const compiled = compileStatement(item, nextLinkage, context);
+    if (isCompileError(compiled)) @{
+      return compiled;
+    @}
+    sequences.push(compiled);
   @}
-  return compileError(@{ tag: "unknown-syntax", construct: exp.tag @});
+  sequences.push(
+    makeSequence(
+      [],
+      [],
+      [
+        @{ tag: "label", name: "uncaught-throw" @},
+        gotoLabel("program-end"),
+      ],
+    ),
+  );
+  sequences.push(
+    makeSequence([], [], [@{ tag: "label", name: "program-end" @}]),
+  );
+  const instructions = sequences.flatMap(
+    (sequence) => [...sequence.statements],
+  );
+  return @{ sequences, instructions @};
 @};
 @end example
 
 @subsubheading Targets and linkages
 
-@code{Compile} and the code generators that it calls take two arguments in
-addition to the expression to compile.  There is a @newterm{target}, which
-specifies the register in which the compiled code is to return the value of the
-expression.  There is also a @newterm{linkage descriptor}, which describes how
-the code resulting from the compilation of the expression should proceed when
-it has finished its execution.  The linkage descriptor can require that the
-code do one of the following three things:
+@code{compileExpression} accepts a checked expression, the target @code{"val"},
+a @code{Linkage}, and an internal @code{CompileContext}.  The target is fixed
+to @code{"val"} in this edition.  A @code{Linkage} value describes what the
+compiled instructions do after they compute the result.  It is a tagged union
+with three cases:
 
 @itemize @bullet
 
@@ -281,38 +261,26 @@ return from the procedure being compiled (this is specified by the linkage
 descriptor @code{return}), or
 
 @item
-jump to a named entry point (this is specified by using the designated label as
-the linkage descriptor).
+jump to a named label through a @code{goto} linkage's @code{target}.
 
 @end itemize
 
 @noindent
-For example, compiling the expression @code{5} (which is self-evaluating) with
-a target of the @code{val} register and a linkage of @code{next} should produce
-the instruction
+The compiler uses the linkage to append the required control transfer.  A
+@code{next} linkage appends no instruction.  A @code{return} linkage jumps
+through @code{continue}.  A @code{goto} linkage jumps to its @code{target}.
 
 @example typescript
-const controller: Instruction[] = [
-  assign("val", constant(5)),
-];
+export type Linkage =
+  | @{ readonly kind: "next" @}
+  | @{ readonly kind: "return" @}
+  | @{ readonly kind: "goto"; readonly target: string @};
+
+export const nextLinkage: Linkage = @{ kind: "next" @};
+export const returnLinkage: Linkage = @{ kind: "return" @};
+export const gotoLinkage = (target: string): Linkage =>
+  (@{ kind: "goto", target @});
 @end example
-
-@noindent
-Compiling the same expression with a linkage of @code{return} should produce
-the instructions
-
-@example typescript
-const controller: Instruction[] = [
-assign("val", constant(5)),
-gotoRegister("continue"),
-];
-@end example
-
-@noindent
-In the first case, execution will continue with the next instruction in the
-sequence. In the second case, we will return from a procedure call.  In both
-cases, the value of the expression will be placed into the target @code{val}
-register.
 
 @subsubheading Instruction sequences and stack usage
 
@@ -442,36 +410,27 @@ the actual instructions (also called @newterm{statements}) in the sequence.
 @end itemize
 
 @noindent
-We will represent an instruction sequence as a list of its three parts.  The
-constructor for instruction sequences is thus
+The compiler stores these parts in an object. Its internal
+@code{makeSequence} helper creates the register sets:
 
 @example typescript
-const makeInstructionSequence = (
-  needs: readonly string[],
-  modifies: readonly string[],
-  statements: readonly MachineStatement[],
-): InstructionSequence => (@{ needs, modifies, statements @});
+const makeSequence = (
+  needs: Iterable<string>,
+  modifies: Iterable<string>,
+  statements: ReadonlyArray<MachineStatement>,
+): InstructionSequence => (@{
+  needs: new Set(needs),
+  modifies: new Set(modifies),
+  statements,
+@});
 @end example
 
 @noindent
-For example, the two-instruction sequence that looks up the value of the
-variable @code{x} in the current environment, assigns the result to @code{val},
-and then returns, requires registers @code{env} and @code{continue} to have
-been initialized, and modifies register @code{val}.  This sequence would
-therefore be constructed as
+A variable lookup needs @code{env} and modifies @code{val}. The public
+@code{compileVariable} helper returns that instruction sequence:
 
 @example typescript
-makeInstructionSequence(["env", "continue"], ["val"], [
-  assign(
-    "val",
-    op(
-      "lookupVariableValue",
-      constant(@{ tag: "symbol", name: "x" @}),
-      register("env")
-    )
-  ),
-  gotoRegister("continue"),
-])
+compileVariable("x")
 @end example
 
 @noindent
@@ -524,822 +483,396 @@ think of this idea?
 @node	5.5.2, 5.5.3, 5.5.1, 5.5
 @subsection Compiling Expressions
 
-In this section and the next we implement the code generators to which the
-@code{compile} procedure dispatches.
+The expression compiler dispatches on the checked syntax tree. This section
+follows its linkage handling and expression generators.
 
 @subsubheading Compiling linkage code
 
-In general, the output of each code generator will end with
-instructions---generated by the procedure @code{compileLinkage}---that
-implement the required linkage.  If the linkage is @code{return} then we must
-generate the instruction @code{(goto (reg continue))}.  This needs the
-@code{continue} register and does not modify any registers.  If the linkage is
-@code{next}, then we needn't include any additional instructions.  Otherwise,
-the linkage is a label, and we generate a @code{goto} to that label, an
-instruction that does not need or modify any registers.@footnote{This procedure
-uses a template shorthand the book calls @newterm{backquote} (or
-@newterm{quasiquote}); this edition builds the same records with typed
-constructors
-that is handy for constructing lists.  Preceding a list with a backquote symbol
-is much like quoting it, except that anything in the list that is flagged with
-a comma is evaluated.
-
-For example, if the value of @code{linkage} is the symbol @code{branch25},
-then the expression 
-
-@example
-[gotoLabel(linkage)]
-@end example
-
-evaluates to the list 
-	
-@example
-[gotoLabel("branch25")] 
-@end example
-
-Similarly, if the value of @code{x} is the list @code{(a b c)}, then 
-
-@example
-[1, 2, firstOf(x)] 
-@end example
-
-evaluates to the list 
-
-@example
-(1 2 a)
-@end example
-}
+The internal @code{emitLinkage} helper adds the control transfer for a linkage.
+A @code{return} needs the @code{continue} register. A @code{next} linkage
+adds no instructions, and a @code{goto} linkage jumps to its target.
 
 @example typescript
-const compileLinkage = (linkage: Linkage): InstructionSequence => @{
-  switch (linkage.kind) @{
-    case "return":
-      return makeInstructionSequence(
-          ["continue"],
-          [],
-          [gotoRegister("continue")]
-        );
-    case "next":
-      return emptyInstructionSequence();
-    case "goto":
-      return makeInstructionSequence(
-        [],
-        [],
-        [gotoLabel(linkage.label)]);
+const emitLinkage = (linkage: Linkage): InstructionSequence => @{
+  if (linkage.kind === "next") @{
+    return emptySequence;
   @}
+  if (linkage.kind === "return") @{
+    return makeSequence(["continue"], [], [gotoRegister("continue")]);
+  @}
+  return makeSequence([], [], [gotoLabel(linkage.target)]);
 @};
 @end example
 
 @noindent
-The linkage code is appended to an instruction sequence by @code{preserving}
-the @code{continue} register, since a @code{return} linkage will require the
-@code{continue} register: If the given instruction sequence modifies
-@code{continue} and the linkage code needs it, @code{continue} will be saved
-and restored.
+The compiler appends linkage instructions with @code{withLinkage}. The
+@code{preserving} helper saves @code{continue} only when the first sequence
+modifies it and the linkage sequence needs its original value.
 
 @example typescript
-const endWithLinkage = (
-  cfg: CompilerConfig,
+const withLinkage = (
+  body: InstructionSequence,
   linkage: Linkage,
-  seq: InstructionSequence
 ): InstructionSequence =>
-  preservingInstructionSequences(
-    cfg,
-    ["continue"],
-    seq,
-    compileLinkage(linkage)
-  );
+  appendInstructionSequences(body, emitLinkage(linkage));
 @end example
 
 @subsubheading Compiling simple expressions
 
-The code generators for self-evaluating expressions, quotations, and variables
-construct instruction sequences that assign the required value to the target
-register and then proceed as specified by the linkage descriptor.
+The compiler has generators for self-evaluating expressions and variables.
+The TypeScript guest grammar has no quotation form. Each generator produces an
+instruction sequence for the result in @code{val}.
 
 @example typescript
-const compileSelfEvaluating = (
-  cfg: CompilerConfig,
-  exp: Expr,
-  target: string,
-  linkage: Linkage,
-): InstructionSequence =>
-  endWithLinkage(
-    cfg,
-    linkage,
-    makeInstructionSequence(
-      [],
-      [target],
-      [assign(target, constant(literalValue(exp)))]
-    )
-  );
+export const compileSelfEvaluating = (
+  value: number | string | boolean | null,
+): CompileResult =>
+  makeSequence([], ["val"], [assign("val", constant(value as Word))]);
 @end example
 
 @noindent
-All these assignment instructions modify the target register, and the one that
-looks up a variable needs the @code{env} register.
+A self-evaluating expression modifies @code{val}. A variable read needs
+@code{env} and modifies @code{val}.
 
-Assignments and declarations are handled much as they are in the interpreter.
-We recursively generate code that computes the value to be assigned to the
-variable, and append to it a two-instruction sequence that actually sets or
-defines the variable and assigns the value of the whole expression (the
-assigned value itself, since assignment answers the assigned value and a
-declaration is a statement) to the target register.  The recursive compilation has target
-@code{val} and linkage @code{next} so that the code will put its result into
-@code{val} and continue with the code that is appended after it.  The appending
-is done preserving @code{env}, since the environment is needed for setting or
-defining the variable and the code for the variable value could be the
-compilation of a complex expression that might modify the registers in
-arbitrary ways.
+For assignment, the compiler evaluates the new value before it updates the
+binding. The assignment returns that value:
 
 @example typescript
-const valueCode = compile(
-  cfg,
-  state,
-  cenv,
-  value,
+const value = compileExpression(
+  expr.value,
   "val",
-  @{ kind: "next" @}
+  nextLinkage,
+  context,
 );
-const tail = makeInstructionSequence(["env", "val"], [target], [
-  perform(
-    "setVariableValue",
-    symbol(name),
-    register("val"),
-    register("env")
-  ),
-  assign(target, register("val")),
-]);
-return endWithLinkage(
-    cfg,
-    linkage,
-    preservingInstructionSequences(cfg, ["env"], valueCode, tail)
-  );
+if (isCompileError(value)) @{
+  return value;
+@}
+const write = makeSequence(
+  ["val", "env"],
+  ["val"],
+  [
+    assign(
+      "val",
+      op(
+        "set-variable-value",
+        constant(target.name),
+        register("val"),
+        register("env"),
+      ),
+    ),
+  ],
+);
+return withLinkage(appendInstructionSequences(value, write), linkage);
 @end example
 
 @noindent
-The appended two-instruction sequence requires @code{env} and @code{val} and
-modifies the target.  Note that although we preserve @code{env} for this
-sequence, we do not preserve @code{val}, because the @code{get-value-code} is
-designed to explicitly place its result in @code{val} for use by this sequence.
-(In fact, if we did preserve @code{val}, we would have a bug, because this
-would cause the previous contents of @code{val} to be restored right after the
-@code{get-value-code} is run.)
+The write sequence needs the binding environment and the value in @code{val}.
+It returns the assigned value in @code{val}.
 
 @subsubheading Compiling conditional expressions
 
-The code for an @code{if} expression compiled with a given target and linkage
-has the form
-
-@example
-⟨@emph{save @code{continue}, @code{env} if modified by
- predicate and needed by branches}⟩
-  ⟨@emph{compilation of predicate,
-   target @code{val}, linkage @code{next}}⟩
-  ⟨@emph{restore @code{continue}, @code{env} if saved above}⟩
-test("isFalse", register("val")),
-branch("false-branch"),
-@{ tag: "label", name: "true-branch" @},
- ⟨@emph{compilation of consequent with given
-  target and given linkage or @code{after-if}}⟩
-@{ tag: "label", name: "false-branch" @},
- ⟨@emph{compilation of alternative
-  with given target and linkage}⟩
-@{ tag: "label", name: "after-if" @},
-@end example
+The compiler emits the test and both branches in one instruction sequence.
+It places the alternative before the consequent and jumps over the consequent
+when the test is false:
 
 @noindent
-To generate this code, we compile the predicate, consequent, and alternative,
-and combine the resulting code with instructions to test the predicate result
-and with newly generated labels to mark the true and false branches and the end
-of the conditional.@footnote{We can't just use the labels @code{true-branch},
-@code{false-branch}, and @code{after-if} as shown above, because there might be
-more than one @code{if} in the program.  The compiler uses the procedure
-@code{makeLabel} to generate labels.  @code{makeLabel} takes a symbol as
-argument and returns a new symbol that begins with the given symbol.  For
-example, successive calls to @code{makeLabel("a")} would return @code{a1},
-@code{a2}, and so on.  @code{makeLabel} can be implemented similarly to the
-generation of unique variable names in the query language, as follows:
+@code{compileConditional} compiles each branch with the requested linkage.
+The compiler creates unique labels with @code{makeLabel}. It puts the
+alternative first, then jumps to the join label before it emits the
+consequent:
 
 @example typescript
-let labelCounter = 0;
-
-const newLabelNumber = (): number => @{
-  labelCounter = labelCounter + 1;
-  return labelCounter;
+const compileConditional = (
+  expr: Extract<Expr, @{ tag: "conditional" @}>,
+  linkage: Linkage,
+  context: CompileContext,
+): CompileResult => @{
+  const testCode = compileExpression(
+    expr.test,
+    "val",
+    nextLinkage,
+    context,
+  );
+  if (isCompileError(testCode)) @{
+    return testCode;
+  @}
+  const consequent = compileExpression(
+    expr.consequent,
+    "val",
+    linkage,
+    context,
+  );
+  if (isCompileError(consequent)) @{
+    return consequent;
+  @}
+  const alternativeBranch =
+    expr.alternative === null
+      ? undefined
+      : compileExpression(
+          expr.alternative,
+          "val",
+          linkage,
+          context,
+        );
+  if (
+    alternativeBranch !== undefined &&
+    isCompileError(alternativeBranch)
+  ) @{
+    return alternativeBranch;
+  @}
+  const trueLabel = makeLabel("true");
+  const afterLabel = makeLabel("after-if");
+  const alternative: InstructionSequence =
+    alternativeBranch ??
+    appendInstructionSequences(
+      makeSequence([], ["val"], [assign("val", constant(undefined))]),
+      emitLinkage(linkage),
+    );
+  return appendInstructionSequences(
+    testCode,
+    makeSequence(
+      ["val"],
+      [],
+      [test("is-true", register("val")), branch(trueLabel)],
+    ),
+    alternative,
+    makeSequence(
+      [],
+      [],
+      [gotoLabel(afterLabel), @{ tag: "label", name: trueLabel @}],
+    ),
+    consequent,
+    makeSequence([], [], [@{ tag: "label", name: afterLabel @}]),
+  );
 @};
-
-const makeLabel = (name: string): string =>
-  `$@{name@}$@{newLabelNumber()@}`;
-@end example
-} In this arrangement of code, we must branch around the true branch if the
-test is false.  The only slight complication is in how the linkage for the true
-branch should be handled.  If the linkage for the conditional is @code{return}
-or a label, then the true and false branches will both use this same linkage.
-If the linkage is @code{next}, the true branch ends with a jump around the code
-for the false branch to the label at the end of the conditional.
-
-@example typescript
-const afterIf = makeLabel(state, "after-if");
-const fBranch = makeLabel(state, "false-branch");
-const tBranch = makeLabel(state, "true-branch");
-const consequentLinkage = linkage.kind === "next"
-  ? linkageLabel(afterIf)
-  : linkage;
-const aCode = compile(
-  cfg,
-  state,
-  cenv,
-  alternativeExp,
-  target,
-  linkage
-);
-const cCode = compile(
-  cfg,
-  state,
-  cenv,
-  consequent,
-  target,
-  consequentLinkage
-);
-const pCode = compile(
-  cfg,
-  state,
-  cenv,
-  predicate,
-  "val",
-  @{ kind: "next" @}
-);
 @end example
 
 @noindent
-@code{Env} is preserved around the predicate code because it could be needed by
-the true and false branches, and @code{continue} is preserved because it could
-be needed by the linkage code in those branches.  The code for the true and
-false branches (which are not executed sequentially) is appended using a
-special combiner @code{parallelInstructionSequences} described in 
-@ref{5.5.4}.
+The branch sequences share the same compile-time context. The instruction
+sequence combiner records their register needs and modifications.
 
-Note that @code{cond} is a derived expression, so all that the compiler needs
-to do handle it is to apply the @code{switchToIf} transformer (from 
-@ref{4.1.2}) and compile the resulting @code{if} expression.
+The accepted guest grammar uses TypeScript conditional expressions. The
+compiler handles their checked syntax directly; it does not rewrite a
+Scheme-style @code{cond} form.
 
 @subsubheading Compiling sequences
 
-The compilation of sequences (from procedure bodies or explicit @code{begin}
-expressions) parallels their evaluation.  Each expression of the sequence is
-compiled---the last expression with the linkage specified for the sequence, and
-the other expressions with linkage @code{next} (to execute the rest of the
-sequence).  The instruction sequences for the individual expressions are
-appended to form a single instruction sequence, such that @code{env} (needed
-for the rest of the sequence) and @code{continue} (possibly needed for the
-linkage at the end of the sequence) are preserved.
+The sequence compiler processes forms in order. It gives the final form the
+requested linkage and gives each earlier form @code{next}. The sequence
+combiner joins their statements:
 
 @example typescript
-const firstCode = compile(
-  cfg,
-  state,
-  cenv,
-  first,
-  target,
-  @{ kind: "next" @}
-);
-const restCode = compileSequence(
-  cfg,
-  state,
-  cenv,
-  rest,
-  target,
-  linkage
-);
-return preservingInstructionSequences(
-    cfg,
-    ["env", "continue"],
-    firstCode,
-    restCode
-  );
+const compileSequence = (
+  items: ReadonlyArray<Decl | Stmt>,
+  linkage: Linkage,
+  context: CompileContext,
+): CompileResult => @{
+  if (items.length === 0) @{
+    return withLinkage(
+      makeSequence([], ["val"], [assign("val", constant(undefined))]),
+      linkage,
+    );
+  @}
+  const compiled: InstructionSequence[] = [];
+  for (const [index, item] of items.entries()) @{
+    const piece = compileStatement(
+      item,
+      index === items.length - 1 ? linkage : nextLinkage,
+      context,
+    );
+    if (isCompileError(piece)) @{
+      return piece;
+    @}
+    compiled.push(piece);
+  @}
+  return appendInstructionSequences(...compiled);
+@};
 @end example
 
 @subsubheading Compiling @code{lambda} expressions
 
-@code{Lambda} expressions construct procedures.  The object code for a
-@code{lambda} expression must have the form
+A lambda expression creates a closure that contains its entry label and the
+current environment. The compiler places the procedure body in the instruction
+stream and assigns the closure to @code{val}:
 
 @example
-⟨@emph{construct procedure object 
- and assign it to target register}⟩
+⟨@emph{construct closure and assign it to @code{val}}⟩
 ⟨@var{linkage}⟩
 @end example
 
 @noindent
-When we compile the @code{lambda} expression, we also generate the code for the
-procedure body.  Although the body won't be executed at the time of procedure
-construction, it is convenient to insert it into the object code right after
-the code for the @code{lambda}.  If the linkage for the @code{lambda}
-expression is a label or @code{return}, this is fine.  But if the linkage is
-@code{next}, we will need to skip around the code for the procedure body by
-using a linkage that jumps to a label that is inserted after the body.  The
-object code thus has the form
-
-@example
-⟨@emph{construct procedure object 
- and assign it to target register}⟩
- ⟨@emph{code for given linkage}⟩ @emph{or} 
-  @code{goto after-lambda}
- ⟨@emph{compilation of procedure body}⟩
-after-lambda
-@end example
-
-@noindent
-@code{Compile-lambda} generates the code for constructing the procedure object
-followed by the code for the procedure body.  The procedure object will be
-constructed at run time by combining the current environment (the environment
-at the point of definition) with the entry point to the compiled procedure body
-(a newly generated label).@footnote{@anchor{Footnote 323} We need
-machine operations to implement a data structure for representing compiled
-procedures, analogous to the structure for compound procedures described in
-@ref{4.1.3}:
+The compiler emits a jump over the body, then its entry label and instructions,
+then the label after the body. The closure captures the environment where the
+lambda appears.@footnote{@anchor{Footnote 323} The compiler uses the runtime
+@code{Closure} value. Its @code{make-procedure} operation stores the entry
+label, parameter names, and captured environment. The live compiler builds the
+body with @code{compileSequence} and @code{returnLinkage}:
 
 @example typescript
-// The compiled-procedure word is the machine's own value; its entry and
-// environment are projected by the compiledProcedureEntry and
-// compiledProcedureEnvironment operations:
-const makeCompiledProcedure = (
-  entry: Value,
-  environment: Value
-): Value =>
-  compiledProcedureWord(entry, environment);
-@end example
-
-
-@example typescript
-const afterLambda = makeLabel(state, "after-lambda");
-const procEntry = makeLabel(state, "entry");
-const construct = endWithLinkage(
-  cfg,
-  lambdaLinkage,
-  makeInstructionSequence(["env"], [target], [
-    assign(
-      target,
-      op(
-        "makeCompiledProcedure",
-        constant(@{ label: procEntry @}),
-        register("env")
-      )
-    ),
-  ]),
-);
-const body = compileLambdaBody(cfg, state, cenv, exp, procEntry);
-return @{ ...tackOnInstructionSequence(construct, body), statements: [
-  ...tackOnInstructionSequence(construct, body).statements,
-  mark(afterLambda),
-] @};
-@end example
-
-@noindent
-@code{Compile-lambda} uses the special combiner
-@code{tackOnInstructionSequence} rather than
-@code{appendInstructionSequences} (@ref{5.5.4}) to append the procedure body to the
-@code{lambda} expression code, because the body is not part of the sequence of
-instructions that will be executed when the combined sequence is entered;
-rather, it is in the sequence only because that was a convenient place to put
-it.
-
-@code{compileLambdaBody} constructs the code for the body of the procedure.
-This code begins with a label for the entry point.  Next come instructions that
-will cause the run-time evaluation environment to switch to the correct
-environment for evaluating the procedure body---namely, the definition
-environment of the procedure, extended to include the bindings of the formal
-parameters to the arguments with which the procedure is called.  After this
-comes the code for the sequence of expressions that makes up the procedure
-body.  The sequence is compiled with linkage @code{return} and target
-@code{val} so that it will end by returning from the procedure with the
-procedure result in @code{val}.
-
-@example typescript
-const head = makeInstructionSequence(["env", "proc", "argl"], ["env"], [
-  mark(procEntry),
-  assign("env", op("compiledProcedureEnvironment", register("proc"))),
-  assign(
-    "env",
-    op(
-      "extendEnvironment",
-      constant(list(names.map(symbol))),
-      register("argl"),
-      register("env")
-    )
-  ),
-]);
-const bodyCode = compileSequence(
-  cfg,
-  state,
-  extendCenv(names, cenv),
-  body,
-  "val",
-  LinkageReturn
-);
-return append2Sequences(head, bodyCode);
+const compileLambda = (
+  params: Block extends never ? never : ReadonlyArray<@{ kind: string; name: string @}>,
+  body: Block,
+  linkage: Linkage,
+  context: CompileContext,
+): CompileResult => @{
+  const entry = makeLabel("entry");
+  const after = makeLabel("after-lambda");
+  const compiledBody = compileSequence(body.body, returnLinkage, context);
+  if (isCompileError(compiledBody)) @{
+    return compiledBody;
+  @}
+  const names = params.map((param) => param.name);
+  const build = makeSequence(
+    ["env"],
+    ["val"],
+    [
+      assign(
+        "val",
+        op("make-procedure", constant(entry), constant(names as Word), register("env")),
+      ),
+    ],
+  );
+  return appendInstructionSequences(
+    makeSequence([], [], [gotoLabel(after), @{ tag: "label", name: entry @}]),
+    compiledBody,
+    makeSequence([], [], [@{ tag: "label", name: after @}]),
+    build,
+    emitLinkage(linkage),
+  );
+@};
 @end example
 }
+
+@noindent
+@code{compileLambda} compiles the body with @code{returnLinkage}. At run time,
+the call sequence creates the parameter environment from the captured
+environment and the argument list:
+
+@example typescript
+op(
+  "extend-environment",
+  op("procedure-parameters", register("proc")),
+  register("argl"),
+  op("procedure-environment", register("proc")),
+)
+@end example
 
 @node	5.5.3, 5.5.4, 5.5.2, 5.5
 @subsection Compiling Combinations
 
-The essence of the compilation process is the compilation of procedure
-applications.  The code for a combination compiled with a given target and
-linkage has the form
-
-@example
-⟨@emph{compilation of callCallee, 
- target @code{proc}, linkage @code{next}}⟩
-⟨@emph{evaluate callArgs and construct 
- argument list in @code{argl}}⟩
-⟨@emph{compilation of procedure call 
- with given target and linkage}⟩
-@end example
-
-@noindent
-The registers @code{env}, @code{proc}, and @code{argl} may have to be saved and
-restored during evaluation of the operator and operands.  Note that this is the
-only place in the compiler where a target other than @code{val} is specified.
-
-The required code is generated by @code{compileApplication}.  This recursively
-compiles the operator, to produce code that puts the procedure to be applied
-into @code{proc}, and compiles the operands, to produce code that evaluates the
-individual operands of the application.  The instruction sequences for the
-operands are combined (by @code{construct-arglist}) with code that constructs
-the list of arguments in @code{argl}, and the resulting argument-list code is
-combined with the procedure code and the code that performs the procedure call
-(produced by @code{compile-procedure-call}).  In appending the code sequences,
-the @code{env} register must be preserved around the evaluation of the operator
-(since evaluating the operator might modify @code{env}, which will be needed to
-evaluate the operands), and the @code{proc} register must be preserved around
-the construction of the argument list (since evaluating the operands might
-modify @code{proc}, which will be needed for the actual procedure application).
-@code{Continue} must also be preserved throughout, since it is needed for the
-linkage in the procedure call.
+The compiler handles calls in @code{compileApplication}. It compiles the
+callee into @code{val}, saves that value in @code{proc}, and compiles the
+arguments into @code{argl} in source order. The only target is @code{"val"}.
 
 @example typescript
-const procCode = compile(
-  cfg,
-  state,
-  cenv,
-  callCallee,
-  "proc",
-  @{ kind: "next" @}
+const operator = compileExpression(
+  expr.callee,
+  "val",
+  nextLinkage,
+  context,
 );
-const operandCodes = callArgs.map((operand) =>
-  compile(cfg, state, cenv, operand, "val", @{ kind: "next" @}));
-const arglistCode = constructArglist(cfg, operandCodes);
-const call = compileProcedureCall(cfg, state, target, linkage);
-const inner = preservingInstructionSequences(
-  cfg,
-  ["proc", "continue"],
-  arglistCode,
-  call
+if (isCompileError(operator)) @{
+  return operator;
+@}
+const toProc = makeSequence(
+  ["val"],
+  ["proc"],
+  [save("proc"), assign("proc", register("val"))],
 );
-return preservingInstructionSequences(
-    cfg,
-    ["env", "continue"],
-    procCode,
-    inner
-  );
+const operands = compileOperandList(expr.args, context);
+if (isCompileError(operands)) @{
+  return operands;
+@}
 @end example
 
 @noindent
-The code to construct the argument list will evaluate each operand into
-@code{val} and then @code{cons} that value onto the argument list being
-accumulated in @code{argl}.  Since we @code{cons} the arguments onto
-@code{argl} in sequence, we must start with the last argument and end with the
-first, so that the arguments will appear in order from first to last in the
-resulting list.  Rather than waste an instruction by initializing @code{argl}
-to the empty list to set up for this sequence of evaluations, we make the first
-code sequence construct the initial @code{argl}.  The general form of the
-argument-list construction is thus as follows:
-
-@example
-⟨@emph{compilation of last operand, targeted to @code{val}}⟩
-argl ← list(val)
-⟨@emph{compilation of next operand, targeted to @code{val}}⟩
-argl ← cons(val, argl)
-@r{…}
-⟨@emph{compilation of first operand, targeted to @code{val}}⟩
-argl ← cons(val, argl)
-@end example
-
-@noindent
-@code{Argl} must be preserved around each operand evaluation except the first
-(so that arguments accumulated so far won't be lost), and @code{env} must be
-preserved around each operand evaluation except the last (for use by subsequent
-operand evaluations).
-
-Compiling this argument code is a bit tricky, because of the special treatment
-of the first operand to be evaluated and the need to preserve @code{argl} and
-@code{env} in different places.  The @code{construct-arglist} procedure takes
-as arguments the code that evaluates the individual operands.  If there are no
-operands at all, it simply emits the instruction
+The operand helper starts with an empty argument list. It evaluates each
+operand in order, saves the current list while it compiles that operand, then
+adds the value to the list:
 
 @example typescript
-assign("argl", constant(@{ tag: "list", items: [] @}))
-@end example
-@noindent
-Otherwise, @code{construct-arglist} creates code that initializes @code{argl}
-with the last argument, and appends code that evaluates the rest of the
-arguments and adjoins them to @code{argl} in succession.  In order to process
-the arguments from last to first, we must reverse the list of operand code
-sequences from the order supplied by @code{compileApplication}.
-
-@example typescript
-const ordered = cfg.leftToRight
-  ? [...operandCodes]
-  : [...operandCodes].toReversed();
-const firstSeq = ordered[0];
-const codeToGetLastArg = append2Sequences(
-  (firstSeq !== undefined ? firstSeq : emptyInstructionSequence()),
-  makeInstructionSequence(
+const compileOperandList = (
+  args: ReadonlyArray<Arg>,
+  context: CompileContext,
+): CompileResult => @{
+  let collected = makeSequence(
     ["val"],
     ["argl"],
-    [assign("argl", op("list", register("val")))]
-  ),
-);
+    [assign("argl", op("empty-argl"))],
+  );
+  for (const arg of args) @{
+    const piece = compileExpression(
+      arg.expr,
+      "val",
+      nextLinkage,
+      context,
+    );
+    if (isCompileError(piece)) @{
+      return piece;
+    @}
+    const join = makeSequence(
+      ["val", "argl"],
+      ["argl"],
+      [
+        restore("argl"),
+        assign(
+          "argl",
+          op("adjoin-arg", register("val"), register("argl")),
+        ),
+      ],
+    );
+    collected = appendInstructionSequences(
+      collected,
+      makeSequence([], ["argl"], [save("argl")]),
+      piece,
+      join,
+    );
+  @}
+  return collected;
+@};
 @end example
 
 @subsubheading Applying procedures
 
-After evaluating the elements of a combination, the compiled code must apply
-the procedure in @code{proc} to the arguments in @code{argl}.  The code
-performs essentially the same dispatch as the @code{apply} procedure in the
-metacircular evaluator of @ref{4.1.1} or the @code{apply-dispatch}
-entry point in the explicit-control evaluator of @ref{5.4.1}.  It
-checks whether the procedure to be applied is a primitive procedure or a
-compiled procedure.  For a primitive procedure, it uses
-@code{applyProcedure}; we will see shortly how it handles compiled
-procedures.  The procedure-application code has the following form:
-
-@example
-if isPrimitiveProcedure(proc) then goto primitive-branch
-compiled-branch
- ⟨@emph{code to apply compiled procedure 
-  with given target and appropriate linkage}⟩
-primitive-branch
- ⟨@var{target}⟩ ← applyProcedure(proc, argl)
- ⟨@var{linkage}⟩
-after-call
-@end example
-
-@noindent
-Observe that the compiled branch must skip around the primitive branch.
-Therefore, if the linkage for the original procedure call was @code{next}, the
-compound branch must use a linkage that jumps to a label that is inserted after
-the primitive branch.  (This is similar to the linkage used for the true branch
-in @code{compileIf}.)
+The compiler emits a dispatch sequence inside @code{compileApplication}. A
+primitive call uses @code{apply-primitive-procedure}. A closure call extends
+the closure's captured environment with the arguments and jumps to its entry
+label:
 
 @example typescript
-const afterCall = makeLabel(state, "after-call");
-const compiledBranch = makeLabel(state, "compiled-branch");
-const primitiveBranch = makeLabel(state, "primitive-branch");
-const compiledLinkage = linkage.kind === "next"
-  ? linkageLabel(afterCall)
-  : linkage;
-const applCode = compileProcAppl(state, target, compiledLinkage);
-const primitiveCode = endWithLinkage(
-  cfg,
-  linkage,
-  makeInstructionSequence(
-  ["proc", "argl"], [target],
-  [assign(target,
-    op("applyProcedure", register("proc"), register("argl")))],
-));
-@end example
-
-@noindent
-The primitive and compound branches, like the true and false branches in
-@code{compileIf}, are appended using @code{parallelInstructionSequences}
-rather than the ordinary @code{appendInstructionSequences}, because they will
-not be executed sequentially.
-
-@subsubheading Applying compiled procedures
-
-The code that handles procedure application is the most subtle part of the
-compiler, even though the instruction sequences it generates are very short.  A
-compiled procedure (as constructed by @code{compileLambda}) has an entry
-point, which is a label that designates where the code for the procedure
-starts.  The code at this entry point computes a result in @code{val} and
-returns by executing the instruction @code{(goto (reg continue))}.  Thus, we
-might expect the code for a compiled-procedure application (to be generated by
-@code{compileProcAppl}) with a given target and linkage to look like this if
-the linkage is a label
-
-@example
-assign("continue", labelRef("proc-return")),
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
-proc-return
-assign("⟨@var{target}⟩", register("val")),
-  @r{; included if target is not @code{val}}
-gotoLabel("⟨@var{linkage}⟩"),
-  @r{; linkage code}
-@end example
-
-@noindent
-or like this if the linkage is @code{return}.
-
-@example
-save("continue"),
-assign("continue", labelRef("proc-return")),
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
-proc-return
-assign("⟨@var{target}⟩", register("val")),
-  @r{; included if target is not @code{val}}
-restore("continue"),
-gotoRegister("continue"),
-  @r{; linkage code}
-@end example
-
-@noindent
-This code sets up @code{continue} so that the procedure will return to a label
-@code{proc-return} and jumps to the procedure's entry point.  The code at
-@code{proc-return} transfers the procedure's result from @code{val} to the
-target register (if necessary) and then jumps to the location specified by the
-linkage.  (The linkage is always @code{return} or a label, because
-@code{compile-procedure-call} replaces a @code{next} linkage for the
-compound-procedure branch by an @code{after-call} label.)
-
-In fact, if the target is not @code{val}, that is exactly the code our compiler
-will generate.@footnote{Actually, we signal an error when the target is not
-@code{val} and the linkage is @code{return}, since the only place we request
-@code{return} linkages is in compiling procedures, and our convention is that
-procedures return their values in @code{val}.}  Usually, however, the target is
-@code{val} (the only time the compiler specifies a different register is when
-targeting the evaluation of an operator to @code{proc}), so the procedure
-result is put directly into the target register and there is no need to return
-to a special location that copies it.  Instead, we simplify the code by setting
-up @code{continue} so that the procedure will ``return'' directly to the place
-specified by the caller's linkage:
-
-@example
-⟨@emph{set up @code{continue} for linkage}⟩
-val ← compiledProcedureEntry(proc)
-goto val
-@end example
-
-@noindent
-If the linkage is a label, we set up @code{continue} so that the procedure will
-return to that label.  (That is, the @code{(goto (reg continue))} the procedure
-ends with becomes equivalent to the @code{(goto (label ⟨@var{linkage}⟩))} at
-@code{proc-return} above.)
-
-@example typescript
-assign("continue", labelRef("⟨@var{linkage}⟩")),
-assign("val", op("compiledProcedureEntry", register("proc"))),
-gotoRegister("val"),
-@end example
-
-@noindent
-If the linkage is @code{return}, we don't need to set up @code{continue} at
-all: It already holds the desired location.  (That is, the @code{gotoRegister("continue")} the procedure ends with goes
-directly to the place where the @code{gotoRegister("continue")} at
-@code{proc-return} would have gone.)
-
-@example typescript
-const controller: Instruction[] = [
-  assign("val", op("compiledProcedureEntry", register("proc"))),
-  gotoRegister("val"),
-];
-@end example
-
-@noindent
-With this implementation of the @code{return} linkage, the compiler generates
-tail-recursive code.  Calling a procedure as the final step in a procedure body
-does a direct transfer, without saving any information on the stack.
-
-Suppose instead that we had handled the case of a procedure call with a linkage
-of @code{return} and a target of @code{val} as shown above for a non-@code{val}
-target.  This would destroy tail recursion.  Our system would still give the
-same value for any expression.  But each time we called a procedure, we would
-save @code{continue} and return after the call to undo the (useless) save.
-These extra saves would accumulate during a nest of procedure
-calls.@footnote{Making a compiler generate tail-recursive code might seem like
-a straightforward idea.  But most compilers for common languages, including C
-and Pascal, do not do this, and therefore these languages cannot represent
-iterative processes in terms of procedure call alone.  The difficulty with tail
-recursion in these languages is that their implementations use the stack to
-store procedure arguments and local variables as well as return addresses.  The
-The implementations described in this book store arguments and variables in
-memory to be garbage-collected.  The reason for using the stack for variables
-and arguments is that it avoids the need for garbage collection in languages
-that would not otherwise require it, and is generally believed to be more
-efficient.  Sophisticated compilers can, in fact, use the stack for
-arguments without destroying tail recursion.  (See @ref{Hanson 1990} for a
-description.)  There is also some debate about whether stack allocation is
-actually more efficient than garbage collection in the first place, but the
-details seem to hinge on fine points of computer architecture.  (See @ref{Appel 1987}
-and @ref{Miller and Rozas 1994} for opposing views on this issue.)}
-
-@code{compileProcAppl} generates the above procedure-application code by
-considering four cases, depending on whether the target for the call is
-@code{val} and whether the linkage is @code{return}.  Observe that the
-instruction sequences are declared to modify all the registers, since executing
-the procedure body can change the registers in arbitrary ways.@footnote{The
-variable @code{all-regs} is bound to the list of names of all the registers:
-
-@example typescript
-const compileProcAppl = (
-  state: CompilerState,
-  target: string,
-  linkage: Linkage
-): CompileResult => @{
-  const entry = assign(
-    "val",
-    op("compiledProcedureEntry", register("proc"))
-  );
-  const goto = gotoRegister("val");
-  switch (linkage.kind) @{
-    case "return":
-      if (target !== "val")
-        return compileError(
-            @{ tag: "bad-operand",
-            operator: "return",
-            detail: "target is not val" @}
-          );
-      return makeInstructionSequence(
-          ["proc", "continue"],
-          ALL_REGS,
-          [entry, goto]
-        );
-    case "goto":
-      if (target === "val")
-        return makeInstructionSequence(["proc"], ALL_REGS, [
-          assign("continue", labelRef(linkage.label)),
-          entry,
-          goto,
-        ]);
-      @{
-        const procReturn = makeLabel("proc-return");
-        return makeInstructionSequence(["proc"], ALL_REGS, [
-          assign("continue", labelRef(procReturn)),
-          entry,
-          goto,
-          @{ tag: "label", name: procReturn @},
-          assign(target, register("val")),
-          gotoLabel(linkage.label),
-        ]);
-      @}
-    case "next":
-      return compileError(
-          @{ tag: "bad-operand",
-          operator: "compile-proc-appl",
-          detail: "the call carries no next linkage" @}
-        );
-  @}
-@};
-@end example
-
-@example typescript
-const ALL_REGS: readonly string[] = [
-  "env",
-  "proc",
+test("is-primitive-procedure", register("proc")),
+branch(primitive),
+gotoLabel(compound),
+assign(
   "val",
-  "argl",
-  "continue"];
+  op("apply-primitive-procedure", register("proc"), register("argl")),
+),
+assign(
+  "env",
+  op(
+    "extend-environment",
+    op("procedure-parameters", register("proc")),
+    register("argl"),
+    op("procedure-environment", register("proc")),
+  ),
+),
+assign("item", op("procedure-entry", register("proc"))),
+gotoRegister("item"),
 @end example
-}
-Also note that the code sequence for the case with target @code{val} and
-linkage @code{return} is declared to need @code{continue}: Even though
-@code{continue} is not explicitly used in the two-instruction sequence, we must
-be sure that @code{continue} will have the correct value when we enter the
-compiled procedure.
+
+@noindent
+The caller stores an @code{after-call} label in @code{continue} before the
+closure call. The closure returns there, and the compiler restores the saved
+registers. This path does not eliminate tail calls. Measure stack use instead
+of inferring it from guest tail position.
 
 @node	5.5.4, 5.5.5, 5.5.3, 5.5
 @subsection Combining Instruction Sequences
 
-This section describes the details on how instruction sequences are represented
-and combined.  Recall from @ref{5.5.1} that an instruction sequence is
-represented as a list of the registers needed, the registers modified, and the
-actual instructions.  We will also consider a label (symbol) to be a degenerate
-case of an instruction sequence, which doesn't need or modify any registers.
-So to determine the registers needed and modified by instruction sequences we
-use the selectors
-
-@example typescript
-const needs = seq2.needs.filter((name) => seq1.modifies.includes(name));
-@end example
-
-@noindent
-and to determine whether a given
-sequence needs or modifies a given register we use the predicates
-
-@example typescript
-const isNeeded = (
-  seq: InstructionSequence,
-  name: string
-): boolean => seq.needs.includes(name);
-@end example
-
-@noindent
-In terms of these predicates and selectors, we can implement the various
-instruction sequence combiners used throughout the compiler.
+An @code{InstructionSequence} contains register needs, register modifications,
+and machine statements. The first two fields are @code{ReadonlySet<string>}
+values. The statements form an ordered list. The @code{makeSequence} helper
+builds these sets for each sequence.
 
 The basic combiner is @code{appendInstructionSequences}.  This takes as
 arguments an arbitrary number of instruction sequences that are to be executed
@@ -1352,162 +885,89 @@ those registers that must be initialized before the first sequence can be run
 needed by any of the other sequences that are not initialized (modified) by
 sequences preceding it.
 
-The sequences are appended two at a time by @code{append2Sequences}.  This
-takes two instruction sequences @code{seq1} and @code{seq2} and returns the
-instruction sequence whose statements are the statements of @code{seq1}
-followed by the statements of @code{seq2}, whose modified registers are those
-registers that are modified by either @code{seq1} or @code{seq2}, and whose
-needed registers are the registers needed by @code{seq1} together with those
-registers needed by @code{seq2} that are not modified by @code{seq1}.  (In
-terms of set operations, the new set of needed registers is the union of the
-set of registers needed by @code{seq1} with the set difference of the registers
-needed by @code{seq2} and the registers modified by @code{seq1}.)  Thus,
-@code{appendInstructionSequences} is implemented as follows:
+The live combiner implements these rules:
 
 @example typescript
-const append2Sequences = (
-  seq1: InstructionSequence,
-  seq2: InstructionSequence
-): InstructionSequence => (@{
-  needs: listUnion(
-    seq1.needs,
-    listDifference(seq2.needs, seq1.modifies)),
-  modifies: listUnion(seq1.modifies, seq2.modifies),
-  statements: [...seq1.statements, ...seq2.statements],
-@});
-@end example
-
-@noindent
-This procedure uses some simple operations for manipulating sets represented as
-lists, similar to the (unordered) set representation described in 
-@ref{2.3.3}:
-
-@example typescript
-const listUnion = (
-  s1: readonly string[],
-  s2: readonly string[]
-): string[] => @{
-  const out = [...s1];
-  for (const name of s2) if (!out.includes(name)) out.push(name);
-  return out;
-@};
-@end example
-
-@noindent
-@code{Preserving}, the second major instruction sequence combiner, takes a list
-of registers @code{regs} and two instruction sequences @code{seq1} and
-@code{seq2} that are to be executed sequentially.  It returns an instruction
-sequence whose statements are the statements of @code{seq1} followed by the
-statements of @code{seq2}, with appropriate @code{save} and @code{restore}
-instructions around @code{seq1} to protect the registers in @code{regs} that
-are modified by @code{seq1} but needed by @code{seq2}.  To accomplish this,
-@code{preserving} first creates a sequence that has the required @code{save}s
-followed by the statements of @code{seq1} followed by the required
-@code{restore}s.  This sequence needs the registers being saved and restored in
-addition to the registers needed by @code{seq1}, and modifies the registers
-modified by @code{seq1} except for the ones being saved and restored.  This
-augmented sequence and @code{seq2} are then appended in the usual way.  The
-following procedure implements this strategy recursively, walking down the list
-of registers to be preserved:@footnote{Note that @code{preserving} calls
-@code{append} with three arguments.  Though the definition of @code{append}
-shown in this book accepts only two arguments, the standard library provides an
-@code{append} procedure that takes an arbitrary number of arguments.}
-
-@example typescript
-const preservingInstructionSequences = (
-  cfg: CompilerConfig,
-  regs: readonly string[],
-  seq1: InstructionSequence,
-  seq2: InstructionSequence,
+export const appendInstructionSequences = (
+  ...sequences: ReadonlyArray<InstructionSequence>
 ): InstructionSequence => @{
-  let current = seq1;
-  for (const name of regs) @{
-    const needed = seq2.needs.includes(
-      name) && current.modifies.includes(name
-    );
-    if (cfg.preservingOn ? needed : true) @{
-      current = @{
-        needs: listUnion([name], current.needs),
-        modifies: listDifference(current.modifies, [name]),
-        statements: [save(name), ...current.statements, restore(name)],
-      @};
-    @}
+  let needs = new Set<string>();
+  let modifies = new Set<string>();
+  const statements: MachineStatement[] = [];
+  for (const sequence of sequences) @{
+    needs = union(needs, minus(sequence.needs, modifies));
+    modifies = union(modifies, sequence.modifies);
+    statements.push(...sequence.statements);
   @}
-  return append2Sequences(current, seq2);
+  return @{ needs, modifies, statements @};
 @};
 @end example
 
 @noindent
-Another sequence combiner, @code{tackOnInstructionSequence}, is used by
-@code{compileLambda} to append a procedure body to another sequence.  Because
-the procedure body is not ``in line'' to be executed as part of the combined
-sequence, its register use has no impact on the register use of the sequence in
-which it is embedded.  We thus ignore the procedure body's sets of needed and
-modified registers when we tack it onto the other sequence.
+@code{preserving} takes a list of registers and two sequential instruction
+sequences. It saves a register only when the first sequence modifies it and
+the second sequence needs its original value. It then appends both sequences:
 
 @example typescript
-const tackOnInstructionSequence = (
-  seq: InstructionSequence,
-  bodySeq: InstructionSequence
-): InstructionSequence => (@{
-  needs: seq.needs,
-  modifies: seq.modifies,
-  statements: [...seq.statements, ...bodySeq.statements],
-@});
+export const preserving = (
+  registers: ReadonlyArray<string>,
+  first: InstructionSequence,
+  second: InstructionSequence,
+): InstructionSequence => @{
+  const protectedRegisters = registers.filter(
+    (name) => second.needs.has(name) && first.modifies.has(name),
+  );
+  if (protectedRegisters.length === 0) @{
+    return appendInstructionSequences(first, second);
+  @}
+  const saves = protectedRegisters.map(
+    (name): MachineStatement => save(name),
+  );
+  const restores = [...protectedRegisters]
+    .reverse()
+    .map((name): MachineStatement => restore(name));
+  return @{
+    needs: union(first.needs, minus(second.needs, first.modifies)),
+    modifies: union(first.modifies, second.modifies),
+    statements: [
+      ...saves,
+      ...first.statements,
+      ...restores,
+      ...second.statements,
+    ],
+  @};
+@};
 @end example
 
-@noindent
-@code{Compile-if} and @code{compile-procedure-call} use a special combiner
-called @code{parallelInstructionSequences} to append the two alternative
-branches that follow a test.  The two branches will never be executed
-sequentially; for any particular evaluation of the test, one branch or the
-other will be entered.  Because of this, the registers needed by the second
-branch are still needed by the combined sequence, even if these are modified by
-the first branch.
-
-@example typescript
-const parallelInstructionSequences = (
-  seq1: InstructionSequence,
-  seq2: InstructionSequence
-): InstructionSequence => (@{
-  needs: listUnion(seq1.needs, seq2.needs),
-  modifies: listUnion(seq1.modifies, seq2.modifies),
-  statements: [...seq1.statements, ...seq2.statements],
-@});
-@end example
+The lambda and conditional generators also use @code{appendInstructionSequences}.
+Labels separate alternative paths in the statement list. The compiler does not
+use separate tack-on or parallel-sequence helpers.
 
 @node	5.5.5, 5.5.6, 5.5.4, 5.5
 @subsection An Example of Compiled Code
 
-Now that we have seen all the elements of the compiler, let us examine an
-example of compiled code to see how things fit together.  We will compile the
-definition of a recursive @code{factorial} procedure by calling @code{compile}:
+Now compile a recursive factorial program through the public source entry
+point. @code{compileAndRun} admits the source, compiles it, and runs the
+instruction stream:
 
 @example typescript
-compileProgram(
-  parseProgram(`
-    function factorial(n: number): number @{
-      return n <= 1 ? 1 : factorial(n - 1) * n;
-    @}
-  `),
-  @{ target: "val", linkage: @{ kind: "next" @} @},
-);
+const factorialRun = compileAndRun(`
+  function factorial(n: number): number @{
+    return n <= 1 ? 1 : factorial(n - 1) * n;
+  @}
+  console.log(factorial(5));
+`);
+factorialRun.transcript;
+// => ["120"]
 @end example
 
 @noindent
-We have specified that the value of the @code{define} expression should be
-placed in the @code{val} register.  We don't care what the compiled code does
-after executing the @code{define}, so our choice of @code{next} as the linkage
-descriptor is arbitrary.
-
-@code{Compile} determines that the expression is a definition, so it calls
-@code{compileDeclaration} to compile code to compute the value to be assigned
-(targeted to @code{val}), followed by code to install the definition, followed
-by code to put the value of the @code{define} (which is the symbol @code{ok})
-into the target register, followed finally by the linkage code.  @code{Env} is
-preserved around the computation of the value, because it is needed in order to
-install the definition.  Because the linkage is @code{next}, there is no
-linkage code in this case.  The skeleton of the compiled code is thus
+For an admitted program, @code{compileProgram} returns a
+@code{CompiledProgram}. It contains one instruction sequence per top-level form
+and a flat @code{instructions} array. The program compiler uses
+@code{compileStatement} for each form. The expression compiler dispatches on
+checked syntax nodes and emits typed machine statements. The compiler does not
+take a target or linkage option at the program entry point.
 
 @example
 ⟨@emph{save @code{env} if modified by code to compute value}⟩
@@ -1523,21 +983,11 @@ assign("val", register("val")),
 @end example
 
 @noindent
-The expression that is to be compiled to produce the value for the variable
-@code{factorial} is a @code{lambda} expression whose value is the procedure
-that computes factorials.  @code{Compile} handles this by calling
-@code{compileLambda}, which compiles the procedure body, labels it as a new
-entry point, and generates the instruction that will combine the procedure body
-at the new entry point with the run-time environment and assign the result to
-@code{val}.  The sequence then skips around the compiled procedure code, which
-is inserted at this point.  The procedure code itself begins by extending the
-procedure's definition environment by a frame that binds the formal parameter
-@code{n} to the procedure argument.  Then comes the actual procedure body.
-Since this code for the value of the variable doesn't modify the @code{env}
-register, the optional @code{save} and @code{restore} shown above aren't
-generated.  (The procedure code at @code{entry2} isn't executed at this point,
-so its use of @code{env} is irrelevant.)  Therefore, the skeleton for the
-compiled code becomes
+A function declaration compiles through @code{compileStatement} and the
+compiler's internal declaration generator. The generator uses
+@code{compileLambda} to create a closure and emit its body behind an entry
+label. The closure stores the current environment. At run time, the call
+compiler extends that environment with the procedure parameters and arguments.
 
 @example typescript
 assign(
@@ -1573,25 +1023,10 @@ assign("val", register("val")),
 @end example
 
 @noindent
-A procedure body is always compiled (by @code{compileLambdaBody}) as a
-sequence with target @code{val} and linkage @code{return}.  The sequence in
-this case consists of a single @code{if} expression:
-
-@example typescript
-read("n <= 1 ? 1 : factorial(n - 1) * n")
-@end example
-
-@noindent
-@code{Compile-if} generates code that first computes the predicate (targeted to
-@code{val}), then checks the result and branches around the true branch if the
-predicate is false.  @code{Env} and @code{continue} are preserved around the
-predicate code, since they may be needed for the rest of the @code{if}
-expression.  Since the @code{if} expression is the final expression (and only
-expression) in the sequence making up the procedure body, its target is
-@code{val} and its linkage is @code{return}, so the true and false branches are
-both compiled with target @code{val} and linkage @code{return}.  (That is, the
-value of the conditional, which is the value computed by either of its
-branches, is the value of the procedure.)
+The compiler uses @code{compileSequence} for a procedure body and gives the
+final form @code{returnLinkage}. For a conditional expression,
+@code{compileConditional} compiles its test and branches. The branches produce
+the procedure result in @code{val}.
 
 @example
 ⟨@emph{save @code{continue}, @code{env} if modified by 
@@ -1853,7 +1288,6 @@ test("isPrimitiveProcedure", register("proc")),
 branch("primitive-branch14"),
 @{ tag: "label", name: "compiled-branch13" @},
 @r{;; note that a compound procedure here}
-@r{;; is called tail-recursively}
 assign("val", op("compiledProcedureEntry", register("proc"))),
 gotoRegister("val"),
 @{ tag: "label", name: "primitive-branch14" @},
@@ -2262,26 +1696,17 @@ is at (0, 2).
 @end example
 
 @noindent
-One way for the compiler to produce code that uses lexical addressing is to
-maintain a data structure called a @newterm{compile-time environment}.  This
-keeps track of which variables will be at which positions in which frames in
-the run-time environment when a particular variable-access operation is
-executed.  The compile-time environment is a list of frames, each containing a
-list of variables.  (There will of course be no values bound to the variables,
-since values are not computed at compile time.)  The compile-time environment
-becomes an additional argument to @code{compile} and is passed along to each
-code generator.  The top-level call to @code{compile} uses an empty
-compile-time environment.  When a @code{lambda} body is compiled,
-@code{compileLambdaBody} extends the compile-time environment by a frame
-containing the procedure's parameters, so that the sequence making up the body
-is compiled with that extended environment.  At each point in the compilation,
-@code{compileVariable} and @code{compileAssignment} use the compile-time
-environment in order to generate the appropriate lexical addresses.
+Lexical addressing is an extension to this compiler. The live implementation
+uses run-time environment operations for variable access. A compiler can instead
+keep a separate compile-time environment: a list of frames that records names
+and positions, but no values. To try this change, thread the new environment
+through @code{compileExpression} and @code{compileStatement}. Extend it with
+the lambda's parameters when @code{compileLambda} compiles a body. Then change
+@code{compileVariable} and the assignment generator to emit lexical-address
+operations when a name has a known address.
 
-@ref{Exercise 5.39} through @ref{Exercise 5.43} describe how to complete this
-sketch of the lexical-addressing strategy in order to incorporate lexical
-lookup into the compiler.  @ref{Exercise 5.44} describes another use for the
-compile-time environment.
+@ref{Exercise 5.39} through @ref{Exercise 5.43} develop this extension.
+@ref{Exercise 5.44} describes another use for a compile-time environment.
 
 @quotation
 @strong{@anchor{Exercise 5.39}Exercise 5.39:} Write a procedure
@@ -2395,179 +1820,29 @@ declare or assign these names.)
 @node	5.5.7, References, 5.4, 5.5
 @subsection Interfacing Compiled Code to the Evaluator
 
-We have not yet explained how to load compiled code into the evaluator machine
-or how to run it.  We will assume that the explicit-control-evaluator machine
-has been defined as in @ref{5.4.4}, with the additional operations specified in
-@ref{Footnote 323}.  We will implement a procedure @code{compileAndGo} that
-compiles a guest expression, loads the resulting object code into the evaluator
-machine, and causes the machine to run the code in the evaluator global
-environment, print the result, and enter the evaluator's driver loop.  We will
-also modify the evaluator so that interpreted expressions can call compiled procedures as well as interpreted ones.  We can
-then put a compiled procedure into the machine and use the evaluator to call
-it:
+The live TypeScript source entry point is
+@code{compileAndRun(source: string): RunResult}. The older
+@code{compileAndGo} interface does not exist in this module.
+@code{compileAndRun} admits the source, compiles the admitted program, runs a
+separate machine, and returns its outcome and transcript. It does not load its
+instruction stream into the explicit-control evaluator.
 
 @example typescript
-runSource(`
+const compiled = compileAndRun(`
   function factorial(n: number): number @{
     return n <= 1 ? 1 : factorial(n - 1) * n;
   @}
+  console.log(factorial(5));
 `);
-// ;;; EC-Eval value:
-// undefined
-//
-// ;;; EC-Eval input:
-// factorial(5);
-// ;;; EC-Eval value:
-// 120
+compiled.outcome;
+compiled.transcript;
+// => ["120"]
 @end example
 
 @noindent
-To allow the evaluator to handle compiled procedures (for example, to evaluate
-the call to @code{factorial} above), we need to change the code at
-@code{apply-dispatch} (@ref{5.4.1}) so that it recognizes compiled
-procedures (as distinct from compound or primitive procedures) and transfers
-control directly to the entry point of the compiled code:@footnote{Of course,
-compiled procedures as well as interpreted procedures are compound
-(nonprimitive).  For compatibility with the terminology used in the
-explicit-control evaluator, in this section we will use ``compound'' to mean
-interpreted (as opposed to compiled).}
-
-@example typescript
-const controller: Instruction[] = [
-  @{ tag: "label", name: "apply-dispatch" @},
-  test("isPrimitiveProcedure", register("proc")),
-  branch("primitive-apply"),
-  test("isClosure", register("proc")),
-  branch("compound-apply"),
-  test("isCompiledProcedure", register("proc")),
-  branch("compiled-apply"),
-  gotoLabel("unknown-procedure-type"),
-  @{ tag: "label", name: "compiled-apply" @},
-  restore("continue"),
-  assign("val", op("compiledProcedureEntry", register("proc"))),
-  gotoRegister("val"),
-];
-@end example
-
-@noindent
-Note the restore of @code{continue} at @code{compiled-apply}.  Recall that the
-evaluator was arranged so that at @code{apply-dispatch}, the continuation would
-be at the top of the stack.  The compiled code entry point, on the other hand,
-expects the continuation to be in @code{continue}, so @code{continue} must be
-restored before the compiled code is executed.
-
-To enable us to run some compiled code when we start the evaluator machine, we
-add a @code{branch} instruction at the beginning of the evaluator machine,
-which causes the machine to go to a new entry point if the @code{flag} register
-is set.@footnote{Now that the evaluator machine starts with a @code{branch}, we
-must always initialize the @code{flag} register before starting the evaluator
-machine.  To start the machine at its ordinary read-eval-print loop, we could
-use
-
-@example typescript
-const ecevalController: readonly MachineStatement[] =
-  controllerWithDriver(guardedDriver);
-@end example
-}
-
-@example typescript
-@r{;; branches if @code{flag} is set:}
-branch("external-entry"),
-@{ tag: "label", name: "read-eval-print-loop" @},
-perform("initializeStack"),
-@r{…}
-@end example
-
-@noindent
-@code{External-entry} assumes that the machine is started with @code{val}
-containing the location of an instruction sequence that puts a result into
-@code{val} and ends with @code{gotoRegister("continue")}.  Starting at this entry
-point jumps to the location designated by @code{val}, but first assigns
-@code{continue} so that execution will return to @code{print-result}, which
-prints the value in @code{val} and then goes to the beginning of the
-evaluator's read-eval-print loop.@footnote{Since a compiled procedure is an
-object that the system may try to print, we also modify the system print
-operation @code{userPrint} (from @ref{4.1.4}) so that it will not
-attempt to print the components of a compiled procedure:
-
-@example typescript
-const renderCompiledProcedure = (value: Value): string =>
-  compiledProcedureParts(
-    value) !== null ? "#[compiled-procedure]" : format(value
-  );
-@end example
-}
-
-@example typescript
-const controller: Instruction[] = [
-  @{ tag: "label", name: "external-entry" @},
-  perform("initializeStack", ),
-  assign("env", op("getGlobalEnvironment")),
-  assign("continue", labelRef("print-result")),
-  gotoRegister("val"),
-];
-@end example
-
-@noindent
-Now we can use the following procedure to compile a procedure definition,
-execute the compiled code, and run the read-eval-print loop so we can try the
-procedure.  Because we want the compiled code to return to the location in
-@code{continue} with its result in @code{val}, we compile the expression with a
-target of @code{val} and a linkage of @code{return}.  In order to transform the
-object code produced by the compiler into executable instructions for the
-evaluator register machine, we use the procedure @code{assemble} from the
-register-machine simulator (@ref{5.2.2}).  We then initialize the
-@code{val} register to point to the list of instructions, set the @code{flag}
-so that the evaluator will go to @code{external-entry}, and start the
-evaluator.
-
-@example typescript
-export const compileAndGo = (
-  cfg: CompilerConfig,
-  state: CompilerState,
-  compiledSource: string,
-  driverSource = "",
-  options: CompiledEvaluatorOptions = @{@},
-): CompiledEvaluator => @{
-  const @{ entry, lines @} = compileBlock(cfg, state, compiledSource);
-  const controller = controllerReplacingDriver(guardedDriver);
-  const evaluator = makeCompiledEvaluator(
-    [...controller, ...lines],
-    driverSource,
-    options
-  );
-  evaluator.armEntry(entry);
-  return evaluator;
-@};
-@end example
-
-@noindent
-If we have set up stack monitoring, as at the end of @ref{5.4.4}, we
-can examine the stack usage of compiled code:
-
-@example typescript
-compileAndRun(`
-  function factorial(n: number): number @{
-    return n <= 1 ? 1 : factorial(n - 1) * n;
-  @}
-`);
-// (total-pushes = 0, maximum-depth = 0)
-// ;;; EC-Eval value:
-// undefined
-//
-// ;;; EC-Eval input:
-// factorial(5);
-// (total-pushes = 31, maximum-depth = 14)
-// ;;; EC-Eval value:
-// 120
-@end example
-
-@noindent
-Compare this example with the evaluation of @code{(factorial 5)} using the
-interpreted version of the same procedure, shown at the end of 
-@ref{5.4.4}.  The interpreted version required 144 pushes and a maximum stack
-depth of 28.  This illustrates the optimization that results from our
-compilation strategy.
+The compiler exposes no adapter for cross-calls between compiled guest
+procedures and the explicit-control evaluator. Exercises 5.47 and 5.48 ask
+readers to design those interfaces.
 
 @subsubheading Interpretation and compilation
 
@@ -2691,6 +1966,13 @@ compared to the effectiveness of using the special-purpose Fibonacci machine of
 that is independent of @math{n}.
 @end quotation
 
+The live call generator is @code{compileApplication}. It dispatches primitive
+calls and closures. Its only target is @code{val}, and its linkage is a
+@code{Linkage} value. The pinned exercise keeps the original helper names:
+@code{compile-procedure-call} maps to @code{compileApplication} here. Extend
+that call path for interoperation. The exercise's @code{compileAndGo} call is
+a design objective; the module does not export that API.
+
 @quotation
 @strong{@anchor{Exercise 5.47}Exercise 5.47:} This section described how to
 modify the explicit-control evaluator so that interpreted code can call
@@ -2722,6 +2004,11 @@ procedure @code{g}.  Use @code{compileAndGo} to compile the definition of
 @code{f} and start the evaluator.  Now, typing at the evaluator, define
 @code{g} and try to call @code{f}.
 @end quotation
+
+The TypeScript module exposes @code{compileAndRun(source)} as a host entry
+point. Exercise 5.48 asks the reader to make that facility available inside
+the explicit-control evaluator. Its @code{compileAndGo} name refers to the
+proposed integration, not a shipped API.
 
 @quotation
 @strong{@anchor{Exercise 5.48}Exercise 5.48:} The @code{compileAndGo}

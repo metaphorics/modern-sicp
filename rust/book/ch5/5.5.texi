@@ -408,18 +408,40 @@ application, the explicit-control evaluator always saves and restores the
 @code{env} register around the evaluation of the operator, saves and restores
 @code{env} around the evaluation of each operand (except the final one), saves
 and restores @code{argl} around the evaluation of each operand, and saves and
-restores @code{proc} around the evaluation of the operand sequence.  For each
-of the following combinations, say which of these @code{save} and
-@code{restore} operations are superfluous and thus could be eliminated by the
-compiler's @code{preserving} mechanism:
+restores @code{proc} around the evaluation of the operand sequence.  Compile
+each complete guest program below, inspect the emitted @code{Save} and
+@code{Restore} statements, and say which register values must survive each
+subexpression and which stack operations the liveness analysis can omit:
 
 @example rust
-let examples = [
-    "(f 'x 'y)",
-    "((f) 'x 'y)",
-    "(f (g 'x) y)",
-    "(f (g 'x) 'y)",
-];
+fn main() @{
+    let f = |x: i64, y: i64| x + y;
+    let x = 1;
+    let y = 2;
+    println!("@{@}", f(x, y));
+@}
+@end example
+
+@example rust
+fn twice(
+    f: Box<dyn Fn(i64) -> i64>,
+) -> Box<dyn Fn(i64) -> i64> @{
+    Box::new(move |x| f(f(x)))
+@}
+
+fn main() @{
+    let inc: Box<dyn Fn(i64) -> i64> = Box::new(|x| x + 1);
+    println!("@{@}", twice(inc)(5));
+@}
+@end example
+
+@example rust
+fn main() @{
+    let g = |x: i64| x * 2;
+    let f = |x: i64, y: i64| x + y;
+    let x = 1;
+    println!("@{@}", f(g(x), 2));
+@}
 @end example
 @end quotation
 
@@ -495,7 +517,7 @@ in @ref{5.5.1}.
 
 @subsubheading Compiling simple expressions
 
-The code generators for self-evaluating expressions, quotations, and variables
+The code generators for self-evaluating expressions and variables
 construct instruction sequences that assign the required value to the target
 register and then proceed as specified by the linkage descriptor.
 
@@ -1000,8 +1022,8 @@ and Pascal, do not do this, and therefore these languages cannot represent
 iterative processes in terms of procedure call alone.  The difficulty with tail
 recursion in these languages is that their implementations use the stack to
 store procedure arguments and local variables as well as return addresses.  The
-The evaluator implementations described in this book store arguments and variables in
-memory to be garbage-collected.  The reason for using the stack for variables
+evaluator implementations described in this book store arguments and variables in
+an owned frame arena that lives for the whole run.  The reason for using the stack for variables
 and arguments is that it avoids the need for garbage collection in languages
 that would not otherwise require it, and is generally believed to be more
 efficient.  Sophisticated compilers can, in fact, use the stack for
@@ -1971,24 +1993,24 @@ procedures.  (The code will work correctly as long as the program does not
 We have not yet explained how to load compiled code into the evaluator machine
 or how to run it.  We will assume that the explicit-control-evaluator machine
 has been defined as in @ref{5.4.4}, with the additional operations
-specified in @ref{Footnote 323}.  We will implement a procedure
-@code{compile-and-go} that compiles a guest program, loads the resulting
-object code into the evaluator machine, and causes the machine to run the code
-in the evaluator global environment, print the result, and enter the
-evaluator's driver loop.  We will also modify the evaluator so that interpreted
+specified in @ref{Footnote 323}.  This edition's entry point is
+@code{compiled_run}: it admits a guest program, compiles it, and runs the
+resulting instruction sequences on the compiled machine, which prints the
+program's output.  We will also modify the evaluator so that interpreted
 expressions can call compiled procedures as well as interpreted ones.  We can
 then put a compiled procedure into the machine and use the evaluator to call
 it:
 
 @example rust
-// compile-and-go: compile the guest factorial, run it on the
-// compiled path, and hand control to the evaluator's driver.
+// compiled_run: admit the guest factorial, compile it, and run
+// it on the compiled path.
 let factorial_source = concat!(
     "fn factorial(n: i64) -> i64 @{ ",
     "if n == 1 @{ 1 @} else @{ factorial(n - 1) * n @} @}\n",
     "fn main() @{ println!(\"@{@}\", factorial(5)); @}",
 );
-let outcome = run_compiled(factorial_source)?;
+let program = admit(factorial_source)?;
+let outcome = compiled_run(&program)?;
 @end example
 
 @noindent
@@ -2037,9 +2059,9 @@ use
 
 @example rust
 // compile-and-run: the same compiled entry reached from inside
-// the evaluator machine (exercise 5.48).
-// the source defined above.
-let outcome = run_compiled(factorial_source)?;
+// the evaluator machine (exercise 5.48), on the source above.
+let program = admit(factorial_source)?;
+let outcome = compiled_run(&program)?;
 @end example
 }
 
@@ -2092,14 +2114,15 @@ so that the evaluator will go to @code{external-entry}, and start the
 evaluator.
 
 @example rust
-// compile-and-go: admit the guest factorial and its main, then run
-// the compiled path before the evaluator's driver takes over.
+// compiled_run: admit the guest factorial and its main, then run
+// the compiled path.
 let compiled_source = concat!(
     "fn factorial(n: i64) -> i64 @{ ",
     "if n == 1 @{ 1 @} else @{ factorial(n - 1) * n @} @}\n",
     "fn main() @{ println!(\"@{@}\", factorial(5)); @}",
 );
-let outcome = run_compiled(compiled_source)?;
+let program = admit(compiled_source)?;
+let outcome = compiled_run(&program)?;
 // => 120
 @end example
 
@@ -2108,9 +2131,9 @@ If we have set up stack monitoring, as at the end of @ref{5.4.4}, we
 can examine the stack usage of compiled code:
 
 @example rust
-let outcome = run_compiled(compiled_source)?;
+let (outcome, stats) = compiled_run_counted(&program);
 let transcript = &outcome.stdout;
-@r{…} // the monitored machine's push count and maximum depth
+@r{…} // stats: the monitored machine's push count and depth
 @end example
 
 @noindent
@@ -2269,13 +2292,13 @@ read-eval-print-loop @r{…}
 @end example
 
 To test your code, start by defining a procedure @code{f} that calls a
-procedure @code{g}.  Use @code{compile-and-go} to compile the definition of
+procedure @code{g}.  Use @code{compiled_run} to compile the definition of
 @code{f} and start the evaluator.  Now, typing at the evaluator, define
 @code{g} and try to call @code{f}.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.48}Exercise 5.48:} The @code{compile-and-go}
+@strong{@anchor{Exercise 5.48}Exercise 5.48:} The @code{compiled_run}
 interface implemented in this section is awkward, since the compiler can be
 called only once (when the evaluator machine is started).  Augment the
 compiler-interpreter interface by providing a @code{compile-and-run} primitive

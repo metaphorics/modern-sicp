@@ -1,160 +1,32 @@
 @node	5.5, References, 5.4, Chapter 5
 @section Compilation
 
-The explicit-control evaluator of @ref{5.4} is a register machine whose
-controller interprets Scheme programs.  In this section we will see how to run
-Scheme programs on a register machine whose controller is not a Scheme
-interpreter.
+The explicit-control evaluator of @ref{5.4} interprets checked programs in
+the OCaml guest subset.  This section studies the other execution path: the
+compiler translates the same checked syntax into typed register-machine
+instructions, which the 5.1 simulator executes.
 
-The explicit-control evaluator machine is universal---it can carry out any
-computational process that can be described in Scheme.  The evaluator's
-controller orchestrates the use of its data paths to perform the desired
-computation.  Thus, the evaluator's data paths are universal: They are
-sufficient to perform any computation we desire, given an appropriate
-controller.@footnote{This is a theoretical statement.  We are not claiming that
-the evaluator's data paths are a particularly convenient or efficient set of
-data paths for a general-purpose computer.  For example, they are not very good
-for implementing high-performance floating-point calculations or calculations
-that intensively manipulate bit vectors.}
+The guest language is the finite OCaml subset defined in
+@code{spec/@/host-subsets/@/ocaml/@/grammar.md}.  Admission parses and
+type-checks each complete source unit before an evaluator runs it.  The
+compiler consumes that checked AST; it does not lower guest syntax into
+another language or treat rendered instructions as source.  A suitable
+instruction sequence can express a computation in this subset.  This is
+not a claim that the simulator is a general-purpose high-performance CPU.
 
-Commercial general-purpose computers are register machines or@-gan@-ized around a
-collection of registers and operations that constitute an efficient and
-convenient universal set of data paths.  The controller for a general-purpose
-machine is an interpreter for a register-machine language like the one we have
-been using.  This language is called the @newterm{native language} of the
-machine, or simply @newterm{machine language}.  Programs written in machine
-language are sequences of instructions that use the machine's data paths.  For
-example, the explicit-control evaluator's instruction sequence can be thought
-of as a machine-language program for a general-purpose computer rather than as
-the controller for a specialized interpreter machine.
+The public interfaces mark the boundary.  @code{Check.check} admits source.
+@code{Sec_5_5.compile} compiles one AST expression, while
+@code{Sec_5_5.compile_program} compiles the items of a complete unit.
+@code{Sec_5_5.run} admits no source itself: it executes a checked program.
+The compiler returns typed instructions with register-use metadata.
+@code{Sec_5_5.statements_text} renders those instructions for inspection;
+the machine does not parse that text.
 
-There are two common strategies for bridging the gap between higher-level
-languages and register-machine languages.  The explicit-control evaluator
-illustrates the strategy of interpretation.  An interpreter written in the
-native language of a machine configures the machine to execute programs written
-in a language (called the @newterm{source language}) that may differ from the
-native language of the machine performing the evaluation.  The primitive
-procedures of the source language are implemented as a library of subroutines
-written in the native language of the given machine.  A program to be
-interpreted (called the @newterm{source program}) is represented as a data
-structure.  The interpreter traverses this data structure, analyzing the source
-program.  As it does so, it simulates the intended behavior of the source
-program by calling appropriate primitive subroutines from the library.
-
-In this section, we explore the alternative strategy of @newterm{compilation}.
-A compiler for a given source language and machine translates a source program
-into an equivalent program (called the @newterm{object program}) written in the
-machine's native language.  The compiler that we implement in this section
-translates programs written in Scheme into sequences of instructions to be
-executed using the explicit-control evaluator machine's data
-paths.@footnote{Actually, the machine that runs compiled code can be simpler
-than the interpreter machine, because we won't use the @code{exp} and
-@code{unev} registers.  The interpreter used these to hold pieces of
-unevaluated expressions.  With the compiler, however, these expressions get
-built into the compiled code that the register machine will run.  For the same
-reason, we don't need the machine operations that deal with expression syntax.
-But compiled code will use a few additional machine operations (to represent
-compiled procedure objects) that didn't appear in the explicit-control
-evaluator machine.}
-
-Compared with interpretation, compilation can provide a great increase in the
-efficiency of program execution, as we will explain below in the overview of
-the compiler.  On the other hand, an interpreter provides a more powerful
-environment for interactive program development and debugging, because the
-source program being executed is available at run time to be examined and
-modified.  In addition, because the entire library of primitives is present,
-new programs can be constructed and added to the system during debugging.
-
-In view of the complementary advantages of compilation and interpretation,
-modern program-development environments pursue a mixed strategy.  Lisp
-interpreters are generally organized so that interpreted procedures and
-compiled procedures can call each other.  This enables a programmer to compile
-those parts of a program that are assumed to be debugged, thus gaining the
-efficiency advantage of compilation, while retaining the interpretive mode of
-execution for those parts of the program that are in the flux of interactive
-development and debugging.  In @ref{5.5.7}, after we have implemented
-the compiler, we will show how to interface it with our interpreter to produce
-an integrated interpreter-compiler development system.
-
-@subsubheading An overview of the compiler
-
-Our compiler is much like our interpreter, both in its structure and in the
-function it performs.  Accordingly, the mechanisms used by the compiler for
-analyzing expressions will be similar to those used by the interpreter.
-Moreover, to make it easy to interface compiled and interpreted code, we will
-design the compiler to generate code that obeys the same conventions of
-register usage as the interpreter: The environment will be kept in the
-@code{env} register, argument lists will be accumulated in @code{argl}, a
-procedure to be applied will be in @code{proc}, procedures will return their
-answers in @code{val}, and the location to which a procedure should return will
-be kept in @code{continue}.  In general, the compiler translates a source
-program into an object program that performs essentially the same register
-operations as would the interpreter in evaluating the same source program.
-
-This description suggests a strategy for implementing a rudimentary compiler:
-We traverse the expression in the same way the interpreter does.  When we
-encounter a register instruction that the interpreter would perform in
-evaluating the expression, we do not execute the instruction but instead
-accumulate it into a sequence.  The resulting sequence of instructions will be
-the object code.  Observe the efficiency advantage of compilation over
-interpretation.  Each time the interpreter evaluates an expression---for
-example, @code{(f 84 96)}---it performs the work of classifying the expression
-(discovering that this is a procedure application) and testing for the end of
-the operand list (discovering that there are two operands).  With a compiler,
-the expression is analyzed only once, when the instruction sequence is
-generated at compile time.  The object code produced by the compiler contains
-only the instructions that evaluate the operator and the two operands, assemble
-the argument list, and apply the procedure (in @code{proc}) to the arguments
-(in @code{argl}).
-
-This is the same kind of optimization we implemented in the analyzing evaluator
-of @ref{4.1.7}.  But there are further opportunities to gain efficiency
-in compiled code.  As the interpreter runs, it follows a process that must be
-applicable to any expression in the language.  In contrast, a given segment of
-compiled code is meant to execute some particular expression.  This can make a
-big difference, for example in the use of the stack to save registers.  When
-the interpreter evaluates an expression, it must be prepared for any
-contingency.  Before evaluating a subexpression, the interpreter saves all
-registers that will be needed later, because the subexpression might require an
-arbitrary evaluation.  A compiler, on the other hand, can exploit the structure
-of the particular expression it is processing to generate code that avoids
-unnecessary stack operations.
-
-As a case in point, consider the combination @code{(f 84 96)}.  Before the
-interpreter evaluates the operator of the combination, it prepares for this
-evaluation by saving the registers containing the operands and the environment,
-whose values will be needed later.  The interpreter then evaluates the operator
-to obtain the result in @code{val}, restores the saved registers, and finally
-moves the result from @code{val} to @code{proc}.  However, in the particular
-expression we are dealing with, the operator is the symbol @code{f}, whose
-evaluation is accomplished by the machine operation
-@code{lookup-variable-value}, which does not alter any registers.  The compiler
-that we implement in this section will take advantage of this fact and generate
-code that evaluates the operator using the instruction
-
-@example
-(assign proc 
-        (op lookup-variable-value)
-        (const f)
-        (reg env))
-@end example
-
-@noindent
-This code not only avoids the unnecessary saves and restores but also assigns
-the value of the lookup directly to @code{proc}, whereas the interpreter would
-obtain the result in @code{val} and then move this to @code{proc}.
-
-A compiler can also optimize access to the environment.  Having analyzed the
-code, the compiler can in many cases know in which frame a particular variable
-will be located and access that frame directly, rather than performing the
-@code{lookup-variable-value} search.  We will discuss how to implement such
-variable access in @ref{5.5.6}.  Until then, however, we will focus on
-the kind of register and stack optimizations described above.  There are many
-other optimizations that can be performed by a compiler, such as coding
-primitive operations ``in line'' instead of using a general @code{apply}
-mechanism (see @ref{Exercise 5.38}); but we will not emphasize these here.  Our
-main goal in this section is to illustrate the compilation process in a
-simplified (but still interesting) context.
+The compiler and evaluators use the same guest AST.  The direct and
+explicit-control evaluators interpret checked programs.  The compiler emits
+instructions for the 5.1 register machine.  All paths must preserve the
+guest program's results, output, errors, and effects.  Instruction counts
+and stack activity are machine-specific observations, not guest behavior.
 
 @menu
 * 5.5.1::            Structure of the Compiler
@@ -169,326 +41,241 @@ simplified (but still interesting) context.
 @node	5.5.1, 5.5.2, 5.5, 5.5
 @subsection Structure of the Compiler
 
-In @ref{4.1.7} we modified our original metacircular interpreter to
-separate analysis from execution.  We analyzed each expression to produce an
-execution procedure that took an environment as argument and performed the
-required operations.  In our compiler, we will do essentially the same
-analysis.  Instead of producing execution procedures, however, we will generate
-sequences of instructions to be run by our register machine.
+The compiler starts from the typed AST produced by source admission.  The
+same AST is consumed by the direct evaluator, the explicit-control
+evaluator, and this compiler.  Code generation walks that tree and returns
+a sequence of typed register-machine instructions.
 
-The procedure @code{compile} is the top-level dispatch in the compiler.  It
-corresponds to the @code{eval} procedure of @ref{4.1.1}, the
-@code{analyze} procedure of @ref{4.1.7}, and the @code{eval-dispatch}
-entry point of the explicit-control-evaluator in @ref{5.4.1}.  The
-compiler, like the interpreters, uses the expression-syntax procedures defined
-in @ref{4.1.2}.@footnote{Notice, however, that our compiler is a Scheme
-program, and the syntax procedures that it uses to manipulate expressions are
-the actual Scheme procedures used with the metacircular evaluator.  For the
-explicit-control evaluator, in contrast, we assumed that equivalent syntax
-operations were available as operations for the register machine.  (Of course,
-when we simulated the register machine in Scheme, we used the actual Scheme
-procedures in our register machine simulation.)}  @code{Compile} performs a
-case analysis on the syntactic type of the expression to be compiled.  For each
-type of expression, it dispatches to a specialized @newterm{code generator}:
+@code{Check.check} is the source boundary.  It parses one complete unit,
+checks the closed guest grammar, and verifies its types with the pinned
+compiler before it returns a program.  @code{Sec_5_5.compile} accepts one
+AST expression.
+@code{Sec_5_5.compile_program} accepts the items of a checked unit.  The
+compiler does not read source text.  This low-level example builds an AST
+directly; source programs normally pass through @code{Check.check}:
 
 @example ocaml
-let rec compile cfg state cenv exp target linkage =
-  match Ast.view exp with
-  | Ast.Int _ | Ast.Float _ | Ast.Bool _ | Ast.String _ ->
-    compile_self_evaluating cfg state exp target linkage
-  | Ast.Quote _ -> compile_quoted cfg state exp target linkage
-  | Ast.Variable _ -> compile_variable cfg cenv exp target linkage
-  | Ast.Set _ -> compile_assignment cfg state cenv exp target linkage
-  | Ast.Definition _ -> compile_definition cfg state cenv exp target
-    linkage
-  | Ast.If _ -> compile_if cfg state cenv exp target linkage
-  | Ast.Lambda _ -> compile_lambda cfg state cenv exp target linkage
-  | Ast.Sequence body -> compile_sequence cfg state cenv body target
-    linkage
-  | Ast.Cond _ ->
-    (match cond_to_if exp with
-     | Ok e -> compile cfg state cenv e target linkage
-     | Error e -> Error e)
-  | Ast.Let _ ->
-    (match let_to_combination exp with
-     | Ok e -> compile cfg state cenv e target linkage
-     | Error e -> Error e)
-  | Ast.Application (operator, operands) ->
-    if is_open_coded cfg cenv operator
-    then compile_open_code cfg state cenv exp target linkage
-    else compile_application cfg state cenv operator operands target
-      linkage
-  | Ast.And _ | Ast.Or _ -> Error (Op_failed
-    "Unknown expression type: COMPILE")
-;;
+module A = Sicp_common.Ast
+module C = Sicp_ch5.Sec_5_5
+
+let expression = A.apply (A.var "f") [ A.scalar (A.Int 42) ]
+let state = C.new_state ()
+let code = C.compile state expression "val" C.Next
 @end example
 
 @noindent
-In this edition the dispatch is a match over the typed view of
-@ref{4.1.2}; @code{cfg} carries the exercise switches of this section,
-@code{state} the label counter and the compile-time constant table (the
-edition notes at the end of this section), and @code{cenv} the
-compile-time environment of @ref{5.5.6}, empty at top level.
+The private @code{compile_step} dispatches on @code{Ast.view}.  The live
+expression forms include @code{Ast.Scalar}, @code{Ast.Var},
+@code{Ast.Let}, @code{Ast.Fun}, @code{Ast.Apply}, @code{Ast.If},
+@code{Ast.Match}, @code{Ast.Sequence}, and the Boolean, arithmetic,
+comparison, reference, tuple, record, and constructor forms.  There are no
+AST cases for quotation, variable assignment, or @code{cond}.  The
+@code{Ast.Assign} case is assignment through a reference.
+
+@example ocaml
+let rec compile_step ctx state e target linkage =
+  match Ast.view e with
+  | Ast.Scalar s ->
+    end_with_linkage
+      ctx
+      linkage
+      (make_instruction_sequence
+         []
+         [ target ]
+         [ M.Assign
+             (target,
+              M.Const
+                (W.V
+                   (Sicp_ch4.Sec_4_1.scalar_value s))) ])
+  | Ast.Nil ->
+    end_with_linkage
+      ctx
+      linkage
+      (make_instruction_sequence
+         []
+         [ target ]
+         [ M.Assign (target, M.Const (W.V Value.nil)) ])
+  | Ast.Var _ ->
+    end_with_linkage
+      ctx
+      linkage
+      (assign_op [ "env" ] target
+         "lookup-variable-value" [ exp e; M.Reg "env" ])
+  | Ast.Fun (_, body) ->
+    compile_lambda ctx state e body target linkage
+  | Ast.If (c, t, f) ->
+    compile_if ctx state c t f target linkage
+  | Ast.And (a, b) ->
+    compile_if ctx state a b
+      (Ast.scalar (Ast.Bool false)) target linkage
+  | Ast.Or (a, b) ->
+    compile_if ctx state a
+      (Ast.scalar (Ast.Bool true)) b target linkage
+  | Ast.Sequence (a, b) ->
+    ctx.pres
+      [ "env"; "continue" ]
+      (ctx.self state a target Next)
+      (ctx.self state b target linkage)
+  | Ast.Let (false, bindings, body) ->
+    let names =
+      List.map
+        (fun (b : Ast.binding) ->
+           Option.value b.name ~default:"_")
+        bindings
+    in
+    let rhss =
+      List.map (fun (b : Ast.binding) -> b.rhs) bindings
+    in
+    compile_application ctx state
+      (Ast.fun_ names body) rhss target linkage
+  | Ast.Let (true, bindings, body) ->
+    append_2_sequences
+      (compile_rec_group ctx state e bindings)
+      (ctx.self state body target linkage)
+  | Ast.Match (scrutinee, cases) ->
+    compile_match ctx state scrutinee cases target linkage
+  | Ast.Apply (fn, args) ->
+    compile_application ctx state fn args target linkage
+  | Ast.Arith (_, a, b)
+  | Ast.Compare (_, a, b)
+  | Ast.Concat (a, b)
+  | Ast.Cons (a, b)
+  | Ast.Assign (a, b) ->
+    end_with_linkage
+      ctx
+      linkage
+      (ctx.pres
+         [ "env" ]
+         (ctx.self state a "arg1" Next)
+         (ctx.pres
+            [ "arg1" ]
+            (ctx.self state b "arg2" Next)
+            (assign_op
+               [ "arg1"; "arg2" ]
+               target
+               "apply-binary"
+               [ exp e; M.Reg "arg1"; M.Reg "arg2" ])))
+  | Ast.Not a
+  | Ast.Neg a
+  | Ast.Deref a
+  | Ast.Make_ref a
+  | Ast.Field (a, _) ->
+    end_with_linkage
+      ctx
+      linkage
+      (append_2_sequences
+         (ctx.self state a "val" Next)
+         (assign_op
+            [ "val" ] target "apply-unary"
+            [ exp e; M.Reg "val" ]))
+  | Ast.Tuple parts ->
+    compile_build ctx state e parts target linkage
+  | Ast.Construct (_, fields) ->
+    compile_build ctx state e fields target linkage
+  | Ast.Record fields ->
+    compile_build ctx state e
+      (List.map snd fields) target linkage
+@end example
+
+@noindent
+The aliases in this private source are @code{Ast} for the checked AST,
+@code{M} for the typed instruction constructors, and @code{W} for
+explicit-control words.  The public callers use @code{Sec_5_5.compile}
+or @code{Sec_5_5.compile_program}.
 
 @subsubheading Targets and linkages
 
-@code{Compile} and the code generators that it calls take two arguments in
-addition to the expression to compile.  There is a @newterm{target}, which
-specifies the register in which the compiled code is to return the value of the
-expression.  There is also a @newterm{linkage descriptor}, which describes how
-the code resulting from the compilation of the expression should proceed when
-it has finished its execution.  The linkage descriptor can require that the
-code do one of the following three things:
+A code generator takes an expression, a target register, and a linkage.
+The target names the register that receives the expression's value.
+The public linkage type has three cases:
 
-@itemize @bullet
-
-@item
-continue at the next instruction in sequence (this is specified by the linkage
-descriptor @code{next}),
-
-@item
-return from the procedure being compiled (this is specified by the linkage
-descriptor @code{return}), or
-
-@item
-jump to a named entry point (this is specified by using the designated label as
-the linkage descriptor).
-
-@end itemize
-
-@noindent
-For example, compiling the expression @code{5} (which is self-evaluating) with
-a target of the @code{val} register and a linkage of @code{next} should produce
-the instruction
-
-@example
-(assign val (const 5))
+@example ocaml
+type linkage =
+  | Next
+  | Return
+  | Goto_label of string
 @end example
 
 @noindent
-Compiling the same expression with a linkage of @code{return} should produce
-the instructions
+@code{Next} continues at the following instruction.
+@code{Return} jumps through the @code{continue} register.
+@code{Goto_label} jumps to a named label.  This call compiles the integer
+literal @code{5} to @code{val} and continues at the next instruction:
 
-@example
-(assign val (const 5))
-(goto (reg continue))
+@example ocaml
+module A = Sicp_common.Ast
+module C = Sicp_ch5.Sec_5_5
+
+let state = C.new_state ()
+let five = A.scalar (A.Int 5)
+let code = C.compile state five "val" C.Next
 @end example
 
 @noindent
-In the first case, execution will continue with the next instruction in the
-sequence. In the second case, we will return from a procedure call.  In both
-cases, the value of the expression will be placed into the target @code{val}
-register.
+The compiled expression leaves its result in @code{val}.  The same
+expression with @code{C.Return} ends with the return transfer.
+@code{C.Goto_label label} selects a named continuation.
 
 @subsubheading Instruction sequences and stack usage
 
-Each code generator returns an @newterm{instruction sequence} containing the
-object code it has generated for the expression.  Code generation for a
-compound expression is accomplished by combining the output from simpler code
-generators for component expressions, just as evaluation of a compound
-expression is accomplished by evaluating the component expressions.
-
-The simplest method for combining instruction sequences is a procedure called
-@code{append-instruction-sequences}.  It takes as arguments any number of
-instruction sequences that are to be executed sequentially; it appends them and
-returns the combined sequence.  That is, if @math{{⟨\kern0.1em seq_1⟩}} 
-and @math{{⟨\kern0.1em seq_2⟩}} are sequences of instructions, then 
-evaluating
-
-@example
-(append-instruction-sequences ⟨@var{seq₁}⟩ ⟨@var{seq₂}⟩)
-@end example
-
-@noindent
-produces the sequence
-
-@example
-⟨@var{seq₁}⟩
-⟨@var{seq₂}⟩
-@end example
-
-@noindent
-Whenever registers might need to be saved, the compiler's code generators use
-@code{preserving}, which is a more subtle method for combining instruction
-sequences.  @code{Preserving} takes three arguments: a set of registers and two
-instruction sequences that are to be executed sequentially.  It appends the
-sequences in such a way that the contents of each register in the set is
-preserved over the execution of the first sequence, if this is needed for the
-execution of the second sequence.  That is, if the first sequence modifies the
-register and the second sequence actually needs the register's original
-contents, then @code{preserving} wraps a @code{save} and a @code{restore} of
-the register around the first sequence before appending the sequences.
-Otherwise, @code{preserving} simply returns the appended instruction sequences.
-Thus, for example,
-@code{(preserving (list ⟨@var{reg₁}⟩ ⟨@var{reg₂}⟩) ⟨@var{seg₁}⟩ ⟨@var{seg₂}⟩)}
-produces one of the following four sequences of instructions, depending on how
-@math{{⟨\kern0.1em seq_1⟩}} and @math{{⟨\kern0.1em seq_2⟩}} 
-use @math{{⟨\kern0.1em reg_1⟩}} and @math{{⟨\kern0.1em reg_2⟩}}:
-@displaymath
-\matrix{
-\hbox{⟨}\kern0.1em{seq_1}\hbox{⟩}                     &
-\hbox{(save}                            &
-\hbox{(save}                            &
-\hbox{(save} \kern1ex \hbox{⟨}\kern0.1em{reg_2}\hbox{⟩}\hbox{)}    \cr
-\hbox{⟨}\kern0.1em{seq_2}\hbox{⟩}  		        &
-\kern1ex \hbox{⟨}\kern0.1em{reg_1}\hbox{⟩}\hbox{)}    &
-\kern1ex \hbox{⟨}\kern0.1em{reg_2}\hbox{⟩}\hbox{)}    &
-\hbox{(save} \kern1ex \hbox{⟨}\kern0.1em{reg_1}\hbox{⟩}\hbox{)}    \cr
-                                        &
-\hbox{⟨}\kern0.1em{seq_1}\hbox{⟩}                     &
-\hbox{⟨}\kern0.1em{seq_1}\hbox{⟩}                     &
-\hbox{⟨}\kern0.1em{seq_1}\hbox{⟩}                                  \cr
-                                        &
-\hbox{(restore}                         &
-\hbox{(restore}                         &
-\hbox{(restore} \kern1ex \hbox{⟨}\kern0.1em{reg_1}\hbox{⟩}\hbox{)} \cr
-                                        &
-\kern1ex \hbox{⟨}\kern0.1em{reg_1}\hbox{⟩}\hbox{)}    &
-\kern1ex \hbox{⟨}\kern0.1em{reg_2}\hbox{⟩}\hbox{)}    &
-\hbox{(restore} \kern1ex \hbox{⟨}\kern0.1em{reg_2}\hbox{⟩}\hbox{)} \cr
-                                        &
-\hbox{⟨}\kern0.1em{seq_2}\hbox{⟩}                     &
-\hbox{⟨}\kern0.1em{seq_2}\hbox{⟩}                     &
-\hbox{⟨}\kern0.1em{seq_2}\hbox{⟩}
-}
-@end displaymath
-@ifinfo
-
-@smallexample
-<seq_1> | (save <reg_1>)    | (save <reg_2>)    | (save <reg_2>)
-<seq_2> | <seq_1>           | <seq_1>           | (save <reg_1>)
-        | (restore <reg_1>) | (restore <reg_2>) | <seq_1>
-        | <seq_2>           | <seq_2>           | (restore <reg_1>)
-        |                   |                   | (restore <reg_2>)
-        |                   |                   | <seq_2>
-@end smallexample
-
-@end ifinfo
-
-@noindent
-By using @code{preserving} to combine instruction sequences the compiler avoids
-unnecessary stack operations.  This also isolates the details of whether or not
-to generate @code{save} and @code{restore} instructions within the
-@code{preserving} procedure, separating them from the concerns that arise in
-writing each of the individual code generators.  In fact no @code{save} or
-@code{restore} instructions are explicitly produced by the code generators.
-
-In principle, we could represent an instruction sequence simply as a list of
-instructions.  @code{Append-instruction-sequences} could then combine
-instruction sequences by performing an ordinary list @code{append}.  However,
-@code{preserving} would then be a complex operation, because it would have to
-analyze each instruction sequence to determine how the sequence uses its
-registers.  @code{Preserving} would be inefficient as well as complex, because
-it would have to analyze each of its instruction sequence arguments, even
-though these sequences might themselves have been constructed by calls to
-@code{preserving}, in which case their parts would have already been analyzed.
-To avoid such repetitious analysis we will associate with each instruction
-sequence some information about its register use.  When we construct a basic
-instruction sequence we will provide this information explicitly, and the
-procedures that combine instruction sequences will derive register-use
-information for the combined sequence from the information associated with the
-component sequences.
-
-An instruction sequence will contain three pieces of information:
-
-@itemize @bullet
-
-@item
-the set of registers that must be initialized before the instructions in the
-sequence are executed (these registers are said to be @newterm{needed} by the
-sequence),
-
-@item
-the set of registers whose values are modified by the instructions in the
-sequence, and
-
-@item
-the actual instructions (also called @newterm{statements}) in the sequence.
-
-@end itemize
-
-@noindent
-In this edition an instruction sequence is a record of its three parts.  The
-constructor for instruction sequences is thus
+A sequence records the registers it needs, the registers it modifies, and
+its typed statements.  The public type is @code{Sec_5_5.seq}; its fields
+are @code{needs}, @code{modifies}, and @code{statements}.  Sequential
+composition uses this metadata to avoid saves when an earlier sequence
+does not overwrite a value needed later.
 
 @example ocaml
-type seq =
-  @{ needs : string list
-  ; modifies : string list
-  ; stmts : string list
-  @}
+module C = Sicp_ch5.Sec_5_5
 
-let make_instruction_sequence needs modifies stmts = @{ needs; modifies;
-  stmts @}
+let first = C.empty_instruction_sequence
+let second = C.empty_instruction_sequence
+let combined =
+  C.preserving [ "env"; "continue" ] first second
 @end example
 
 @noindent
-For example, the two-instruction sequence that looks up the value of the
-variable @code{x} in the current environment, assigns the result to @code{val},
-and then returns, requires registers @code{env} and @code{continue} to have
-been initialized, and modifies register @code{val}.  This sequence would
-therefore be constructed as
-
-@example ocaml
-make_instruction_sequence
-  [ "env"; "continue" ]
-  [ "val" ]
-  [ "(assign val (op lookup-variable-value) (const x) (reg env)"
-  ; "(goto (reg continue))"
-  ]
-@end example
-
-@noindent
-We sometimes need to construct an instruction sequence with no statements:
-
-@example ocaml
-let empty_instruction_sequence = @{ needs = []; modifies = []; stmts =
-  [] @}
-@end example
-
-@noindent
-The procedures for combining instruction sequences are shown in 
-@ref{5.5.4}.
+@code{preserving} saves a listed register only when @code{first} modifies
+it and @code{second} needs its incoming value.  It then restores the
+register before the second sequence.  The instruction data remains typed
+through compilation and assembly.  @code{statements_text} is a renderer
+for inspection; its output is not the object program.
 
 @quotation
-@strong{@anchor{Exercise 5.31}Exercise 5.31:} In evaluating a procedure
-application, the explicit-control evaluator always saves and restores the
-@code{env} register around the evaluation of the operator, saves and restores
-@code{env} around the evaluation of each operand (except the final one), saves
-and restores @code{argl} around the evaluation of each operand, and saves and
-restores @code{proc} around the evaluation of the operand sequence.  For each
-of the following combinations, say which of these @code{save} and
-@code{restore} operations are superfluous and thus could be eliminated by the
-compiler's @code{preserving} mechanism:
+@strong{@anchor{Exercise 5.31}Exercise 5.31:} The compiler tracks the
+registers each instruction sequence needs and modifies.  For each complete
+guest unit below, compile it and inspect the emitted @code{Save} and
+@code{Restore} instructions.  Explain which incoming values must survive
+each subexpression and why:
 
-@example
-(f 'x 'y)
-((f) 'x 'y)
-(f (g 'x) y)
-(f (g 'x) 'y)
+@example ocaml
+let f x y = x + y
+let g x = x + 1
+let _ = f 1 2
+let _ = (fun x -> f x 2) 1
+let _ = f (g 1) 2
+let _ = f (g 1) (g 2)
 @end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.32}Exercise 5.32:} Using the @code{preserving}
-mechanism, the compiler will avoid saving and restoring @code{env} around the
-evaluation of the operator of a combination in the case where the operator is a
-symbol.  We could also build such optimizations into the evaluator.  Indeed,
-the explicit-control evaluator of @ref{5.4} already performs a similar
-optimization, by treating combinations with no operands as a special case.
+@strong{@anchor{Exercise 5.32}Exercise 5.32:} The compiler can specialize
+work before execution, while an evaluator can only act on the checked AST
+and current environment.
 
 @enumerate a
 
 @item
-Extend the explicit-control evaluator to recognize as a separate class of
-expressions combinations whose operator is a symbol, and to take advantage of
-this fact in evaluating such expressions.
+Choose a variable-operator call and a literal-operator expression from
+the guest subset.  Compare how the explicit-control evaluator and compiler
+execute them.  Identify any special case that the evaluator could perform
+without changing the result or observable effects.
 
 @item
-Alyssa P. Hacker suggests that by extending the evaluator to recognize more and
-more special cases we could incorporate all the compiler's optimizations, and
-that this would eliminate the advantage of compilation altogether.  What do you
-think of this idea?
+Alyssa P. Hacker suggests adding more and more special cases to the
+evaluator until it incorporates every compiler optimization.  Which work,
+such as instruction selection, remains compile-time work?  Which
+specializations could happen during evaluation?  Explain why the two
+approaches can still have different costs.
 
 @end enumerate
 @end quotation
@@ -496,2429 +283,643 @@ think of this idea?
 @node	5.5.2, 5.5.3, 5.5.1, 5.5
 @subsection Compiling Expressions
 
-In this section and the next we implement the code generators to which the
-@code{compile} procedure dispatches.
+The compiler handles the expression variants admitted by the OCaml subset.
+Its input is an AST node, not a string of source text.  The compiler uses
+the same scalar, variable, function, application, and control-flow forms
+as the evaluators.
 
 @subsubheading Compiling linkage code
 
-In general, the output of each code generator will end with
-instructions---generated by the procedure @code{compile-linkage}---that
-implement the required linkage.  If the linkage is @code{return} then we must
-generate the instruction @code{(goto (reg continue))}.  This needs the
-@code{continue} register and does not modify any registers.  If the linkage is
-@code{next}, then we needn't include any additional instructions.  Otherwise,
-the linkage is a label, and we generate a @code{goto} to that label, an
-instruction that does not need or modify any registers.@footnote{In this edition the statements are controller lines, strings
-in the book's notation, built with the module's @code{stmt} formatter
-(@code{Printf.sprintf}).  For example, if @code{f_branch} names the
-label @code{false-branch4}, then the expression
+The linkage determines where an expression continues after it leaves its
+result in the target register.  @code{Next} falls through,
+@code{Return} transfers through @code{continue}, and @code{Goto_label}
+transfers to a named label.  The compiler appends the selected transfer
+to the expression's instruction sequence.  @code{Sec_5_5.compile} exposes
+this choice directly:
 
 @example ocaml
-stmt "(branch (label %s))" f_branch
-@end example
+module A = Sicp_common.Ast
+module C = Sicp_ch5.Sec_5_5
 
-evaluates to the statement
-
-@example
-(branch (label false-branch4))
-@end example
-}
-
-@example ocaml
-let compile_linkage = function
-  | Return ->
-    Ok
-      (make_instruction_sequence
-         [ "continue" ]
-         []
-         [ "(goto (reg continue))" ])
-  | Next -> Ok empty_instruction_sequence
-  | Lab l ->
-    Ok (make_instruction_sequence [] [] [ "(goto (label " ^ l ^ "))" ])
-;;
-@end example
-
-@noindent
-The linkage code is appended to an instruction sequence by @code{preserving}
-the @code{continue} register, since a @code{return} linkage will require the
-@code{continue} register: If the given instruction sequence modifies
-@code{continue} and the linkage code needs it, @code{continue} will be saved
-and restored.
-
-@example ocaml
-let end_with_linkage cfg linkage seq =
-  compile_linkage linkage >>= fun tail -> preserving cfg [ "continue" ]
-    seq tail
-;;
+let expression = A.scalar (A.Int 5)
+let code = C.compile (C.new_state ()) expression "val" C.Return
 @end example
 
 @subsubheading Compiling simple expressions
 
-The code generators for self-evaluating expressions, quotations, and variables
-construct instruction sequences that assign the required value to the target
-register and then proceed as specified by the linkage descriptor.
+The AST represents scalar literals with @code{Ast.Scalar}, the empty
+list with @code{Ast.Nil}, and variable references with @code{Ast.Var}.
+The compiler places scalar values in the requested register.  A variable
+reference emits a lookup using the current @code{env}.  The language has
+no quotation form, so there is no quotation compiler.
+
+The AST builders can also create an application node for a compiler
+probe.  Source programs normally obtain the same node through admission:
 
 @example ocaml
-and compile_self_evaluating cfg state exp target linkage =
-  let spelling =
-    match Ast.view exp with
-    | Ast.Int n -> "const " ^ string_of_int n
-    | Ast.Float f -> "const " ^ Value.to_string (Value.float f)
-    | Ast.Bool b -> "const " ^ if b then "#t" else "#f"
-    | Ast.String s -> "const " ^ register_const state (Value.string s)
-    | _ -> assert false
-  in
-  end_with_linkage
-    cfg
-    linkage
-    (make_instruction_sequence
-       [ "env" ]
-       [ target ]
-       [ stmt "(assign %s (%s))" target spelling ])
+module A = Sicp_common.Ast
+module C = Sicp_ch5.Sec_5_5
 
-and compile_quoted cfg state exp target linkage =
-  match Ast.view exp with
-  | Ast.Quote d ->
-    let name = register_const state (datum_value d) in
-    end_with_linkage
-      cfg
-      linkage
-      (make_instruction_sequence
-         [ "env" ]
-         [ target ]
-         [ stmt "(assign %s (op text-of-quotation) (const %s))" target
-           name ])
-  | _ -> Error (Op_failed "not a quotation")
-
-and compile_variable cfg cenv exp target linkage =
-  match Ast.view exp with
-  | Ast.Variable name ->
-    (* the exercises 5.40 to 5.42 hook in here: with cfg.lexical the
-       access is a lexical-address lookup through find_variable, and
-       the 5.40 trace fires on every reference *)
-    end_with_linkage
-      cfg
-      linkage
-      (make_instruction_sequence
-         [ "env" ]
-         [ target ]
-         [ stmt
-             ("(assign %s (op lookup-variable-value) "
-              ^ "(const %s) (reg env))")
-             target
-             name ])
-  | _ -> Error (Op_failed "compile-variable needs a variable")
+let application =
+  A.apply (A.var "f")
+    [ A.scalar (A.Int 10); A.scalar (A.Int 32) ]
+let code = C.compile (C.new_state ()) application "val" C.Next
 @end example
 
 @noindent
-In this edition the quotation's datum rides in the compile-time
-constant table (the edition notes): @code{(const 'x)} becomes
-@code{(const compile-time-constant-1)}, whose initializer the emitted
-block carries.
-
-@noindent
-All these assignment instructions modify the target register, and the one that
-looks up a variable needs the @code{env} register.
-
-Assignments and definitions are handled much as they are in the interpreter.
-We recursively generate code that computes the value to be assigned to the
-variable, and append to it a two-instruction sequence that actually sets or
-defines the variable and assigns the value of the whole expression (the symbol
-@code{ok}) to the target register.  The recursive compilation has target
-@code{val} and linkage @code{next} so that the code will put its result into
-@code{val} and continue with the code that is appended after it.  The appending
-is done preserving @code{env}, since the environment is needed for setting or
-defining the variable and the code for the variable value could be the
-compilation of a complex expression that might modify the registers in
-arbitrary ways.
-
-@example ocaml
-and compile_assignment cfg state cenv exp target linkage =
-  match Ast.view exp with
-  | Ast.Set (name, value) ->
-    compile cfg state cenv value "val" Next
-    >>= fun value_code ->
-    preserving
-      cfg
-      [ "env" ]
-      value_code
-      (make_instruction_sequence
-         [ "env"; "val" ]
-         [ target ]
-         [ stmt
-             ("(perform (op set-variable-value!) (const %s) "
-              ^ "(reg val) (reg env))")
-             name
-         ; stmt "(assign %s (const ok))" target
-         ])
-    >>= fun seq -> end_with_linkage cfg linkage seq
-  | _ -> Error (Op_failed "compile-assignment needs an assignment")
-
-and compile_definition cfg state cenv exp target linkage =
-  definition_parts exp
-  >>= fun (name, value) ->
-  compile cfg state cenv value "val" Next
-  >>= fun value_code ->
-  preserving
-    cfg
-    [ "env" ]
-    value_code
-    (make_instruction_sequence
-       [ "env" ]
-       [ target ]
-       [ (stmt
-            ("(perform (op define-variable!) (const %s) "
-             ^ "(reg val) (reg env))")
-            name)
-       ; stmt "(assign %s (const ok))" target
-       ])
-  >>= fun seq -> end_with_linkage cfg linkage seq
-@end example
-
-@noindent
-In this edition @code{definition_parts} normalizes the procedure form
-@code{(define (f args) body)} to the @code{(define f (lambda ...))}
-form the book's @code{definition-value} produces.
-
-@noindent
-The appended two-instruction sequence requires @code{env} and @code{val} and
-modifies the target.  Note that although we preserve @code{env} for this
-sequence, we do not preserve @code{val}, because the @code{get-value-code} is
-designed to explicitly place its result in @code{val} for use by this sequence.
-(In fact, if we did preserve @code{val}, we would have a bug, because this
-would cause the previous contents of @code{val} to be restored right after the
-@code{get-value-code} is run.)
+The remaining compound forms have their own AST variants.  A
+@code{let} group is @code{Ast.Let}; a function is @code{Ast.Fun};
+an application is @code{Ast.Apply}.  Guest bindings are immutable.
+Mutation is explicit: @code{Ast.Make_ref} allocates a cell,
+@code{Ast.Deref} reads it, and @code{Ast.Assign} updates it.  Assignment
+does not rebind a variable name.
 
 @subsubheading Compiling conditional expressions
 
-The code for an @code{if} expression compiled with a given target and linkage
-has the form
+The compiler handles @code{Ast.If} with a test, two branches, and a join
+label.  The guest subset also has short-circuit @code{Ast.And} and
+@code{Ast.Or} expressions.  The compiler lowers them through the same
+conditional path, so it evaluates the right operand only when the left
+operand requires it.  The test leaves its Boolean result in @code{val};
+the selected branch leaves the expression result in the requested target.
 
-@example
-⟨@emph{compilation of predicate, 
- target @code{val}, linkage @code{next}}⟩
- (test (op false?) (reg val))
- (branch (label false-branch))
-true-branch
- ⟨@emph{compilation of consequent with given 
-  target and given linkage or @code{after-if}}⟩
-false-branch
- ⟨@emph{compilation of alternative 
-  with given target and linkage}⟩
-after-if
-@end example
-
-@noindent
-To generate this code, we compile the predicate, consequent, and alternative,
-and combine the resulting code with instructions to test the predicate result
-and with newly generated labels to mark the true and false branches and the end
-of the conditional.@footnote{We can't just use the labels @code{true-branch},
-@code{false-branch}, and @code{after-if} as shown above, because there might be
-more than one @code{if} in the program.  The compiler uses the procedure
-@code{make-label} to generate labels.  @code{Make-label} takes a base name as
-argument and returns a new label that begins with the given name.  For
-example, successive calls to @code{make_label state "a"} would return @code{a1},
-@code{a2}, and so on.  In this edition the counter rides in the
-compiler's state, beside the compile-time constant table:
-
-@example ocaml
-let make_label state name =
-  incr state.counter;
-  name ^ string_of_int !(state.counter)
-@end example
-} In this arrangement of code, we must branch around the true branch if the
-test is false.  The only slight complication is in how the linkage for the true
-branch should be handled.  If the linkage for the conditional is @code{return}
-or a label, then the true and false branches will both use this same linkage.
-If the linkage is @code{next}, the true branch ends with a jump around the code
-for the false branch to the label at the end of the conditional.
-
-@example ocaml
-and compile_if cfg state cenv exp target linkage =
-  match Ast.view exp with
-  | Ast.If (predicate, consequent, alternative) ->
-    (* the labels allocate after-if, false-branch, true-branch, and the
-       branches compile alternative, consequent, predicate: the orders
-       the book's own figures show *)
-    let after_if = make_label state "after-if" in
-    let f_branch = make_label state "false-branch" in
-    let t_branch = make_label state "true-branch" in
-    let consequent_linkage =
-      match linkage with
-      | Next -> Lab after_if
-      | l -> l
-    in
-    let alternative_exp = Option.value alternative ~default:(Ast.bool
-      false) in
-    compile cfg state cenv alternative_exp target linkage
-    >>= fun a_code ->
-    compile cfg state cenv consequent target consequent_linkage
-    >>= fun c_code ->
-    compile cfg state cenv predicate "val" Next
-    >>= fun p_code ->
-    let test_code =
-      make_instruction_sequence
-        [ "val" ]
-        []
-        [ "(test (op false?) (reg val))"; stmt "(branch (label %s))"
-          f_branch ]
-    in
-    let branches =
-      parallel_instruction_sequences
-        (append_2_sequences (make_instruction_sequence [] [] [ t_branch
-          ]) c_code)
-        (append_2_sequences (make_instruction_sequence [] [] [ f_branch
-          ]) a_code)
-    in
-    let branch_tail = @{ branches with stmts = branches.stmts @ [
-      after_if ] @} in
-    let with_test = append_2_sequences test_code branch_tail in
-    preserving cfg [ "env"; "continue" ] p_code with_test
-  | _ -> Error (Op_failed "compile-if needs an if")
-@end example
-
-@noindent
-@code{Env} is preserved around the predicate code because it could be needed by
-the true and false branches, and @code{continue} is preserved because it could
-be needed by the linkage code in those branches.  The code for the true and
-false branches (which are not executed sequentially) is appended using a
-special combiner @code{parallel-instruction-sequences} described in 
-@ref{5.5.4}.
-
-Note that @code{cond} is a derived expression, so all that the compiler needs
-to do handle it is to apply the @code{cond->if} transformer (from 
-@ref{4.1.2}) and compile the resulting @code{if} expression.
+The guest language has no @code{cond} form.  It also has no implicit
+conversion from a general value to a condition.  The admission checker
+has already established the Boolean type before the compiler runs.
 
 @subsubheading Compiling sequences
 
-The compilation of sequences (from procedure bodies or explicit @code{begin}
-expressions) parallels their evaluation.  Each expression of the sequence is
-compiled---the last expression with the linkage specified for the sequence, and
-the other expressions with linkage @code{next} (to execute the rest of the
-sequence).  The instruction sequences for the individual expressions are
-appended to form a single instruction sequence, such that @code{env} (needed
-for the rest of the sequence) and @code{continue} (possibly needed for the
-linkage at the end of the sequence) are preserved.
+A source sequence @code{first; second} is represented by
+@code{Ast.Sequence}.  The compiler emits the first expression before the
+second and leaves the second expression's value in the target register.
+Register preservation protects the environment or return destination
+when a later expression needs it.
 
-@example ocaml
-and compile_sequence cfg state cenv body target linkage =
-  match body with
-  | [] -> Error (Op_failed "compile-sequence of an empty body")
-  | [ last ] -> compile cfg state cenv last target linkage
-  | first :: rest ->
-    compile cfg state cenv first target Next
-    >>= fun first_code ->
-    compile_sequence cfg state cenv rest target linkage
-    >>= fun rest_code -> preserving cfg [ "env"; "continue" ] first_code
-      rest_code
-@end example
+@subsubheading Compiling @code{fun} expressions
 
-@subsubheading Compiling @code{lambda} expressions
+A function expression is @code{Ast.Fun} with a parameter list and body.
+The compiler creates a compiled closure that retains its definition
+environment.  Its entry code binds the arguments in a new environment
+and then compiles the body with return linkage.
 
-@code{Lambda} expressions construct procedures.  The object code for a
-@code{lambda} expression must have the form
-
-@example
-⟨@emph{construct procedure object 
- and assign it to target register}⟩
-⟨@var{linkage}⟩
-@end example
-
-@noindent
-When we compile the @code{lambda} expression, we also generate the code for the
-procedure body.  Although the body won't be executed at the time of procedure
-construction, it is convenient to insert it into the object code right after
-the code for the @code{lambda}.  If the linkage for the @code{lambda}
-expression is a label or @code{return}, this is fine.  But if the linkage is
-@code{next}, we will need to skip around the code for the procedure body by
-using a linkage that jumps to a label that is inserted after the body.  The
-object code thus has the form
-
-@example
-⟨@emph{construct procedure object 
- and assign it to target register}⟩
- ⟨@emph{code for given linkage}⟩ @emph{or} 
-  @code{(goto (label after-lambda))}
- ⟨@emph{compilation of procedure body}⟩
-after-lambda
-@end example
-
-@noindent
-@code{Compile-lambda} generates the code for constructing the procedure object
-followed by the code for the procedure body.  The procedure object will be
-constructed at run time by combining the current environment (the environment
-at the point of definition) with the entry point to the compiled procedure body
-(a newly generated label).@footnote{@anchor{Footnote 323} We need
-machine operations to implement a data structure for representing compiled
-procedures, analogous to the structure for compound procedures described in
-@ref{4.1.3}:
-
-@example ocaml
-let is_compiled_object v =
-  match Value.view v with
-  | Value.Pair (tag, second) ->
-    (match Value.view tag, Value.view second with
-     | Value.Symbol s, Value.Int _ -> String.equal s
-       "compiled-procedure"
-     | _ -> false)
-  | _ -> false
-
-(* the entry and the definition environment ride in a machine-side
-   table keyed by the object's index, so the object world stays free
-   of machine addresses (the edition notes) *)
-let compiled_parts table v =
-  match Value.view v with
-  | Value.Pair (_, second) ->
-    (match Value.view second with
-     | Value.Int id ->
-       (match Hashtbl.find_opt table id with
-        | Some (entry, env) -> Ok (entry, env)
-        | None -> Error (Op_failed
-          "the compiled procedure's entry is gone"))
-     | _ -> Error (Op_failed "not a compiled procedure"))
-  | _ -> Error (Op_failed "not a compiled procedure")
-@end example
-}
-
-@example ocaml
-and compile_lambda cfg state cenv exp target linkage =
-  match Ast.view exp with
-  | Ast.Lambda _ ->
-    let after_lambda = make_label state "after-lambda" in
-    let proc_entry = make_label state "entry" in
-    let lambda_linkage =
-      match linkage with
-      | Next -> Lab after_lambda
-      | l -> l
-    in
-    let construct =
-      make_instruction_sequence
-        [ "env" ]
-        [ target ]
-        [ stmt
-            ("(assign %s (op make-compiled-procedure) "
-             ^ "(const %s) (reg env))"
-            target
-            proc_entry
-        ]
-    in
-    compile_lambda_body cfg state cenv exp proc_entry
-    >>= fun body ->
-    end_with_linkage cfg lambda_linkage construct
-    >>= fun seq ->
-    Ok
-      (append_2_sequences
-         (tack_on_instruction_sequence seq body)
-         (make_instruction_sequence [] [] [ after_lambda ]))
-  | _ -> Error (Op_failed "compile-lambda needs a lambda")
-@end example
-
-@noindent
-In this edition the entry label rides in the @code{(const entry2)}
-spelling of the edition notes: the controller language of @ref{5.1}
-forbids labels as operation inputs.
-
-@noindent
-@code{Compile-lambda} uses the special combiner
-@code{tack-on-instruction-sequence} rather than
-@code{append-instruction-sequences} (@ref{5.5.4}) to append the procedure body to the
-@code{lambda} expression code, because the body is not part of the sequence of
-instructions that will be executed when the combined sequence is entered;
-rather, it is in the sequence only because that was a convenient place to put
-it.
-
-@code{Compile-lambda-body} constructs the code for the body of the procedure.
-This code begins with a label for the entry point.  Next come instructions that
-will cause the run-time evaluation environment to switch to the correct
-environment for evaluating the procedure body---namely, the definition
-environment of the procedure, extended to include the bindings of the formal
-parameters to the arguments with which the procedure is called.  After this
-comes the code for the sequence of expressions that makes up the procedure
-body.  The sequence is compiled with linkage @code{return} and target
-@code{val} so that it will end by returning from the procedure with the
-procedure result in @code{val}.
-
-@example ocaml
-and compile_lambda_body cfg state cenv exp proc_entry =
-  match Ast.view exp with
-  | Ast.Lambda (params, body) ->
-    (* 5.43 scans the internal definitions out of the body first, on
-       the cfg.scan_out switch *)
-    let body = if cfg.scan_out then scan_out_defines body else body in
-    let name_consts =
-      String.concat " " (List.map (fun p -> "(const " ^ p ^ ")") params)
-    in
-    let extend_stmt =
-      if params = []
-      then "(assign env (op extend-environment) (reg argl) (reg env))"
-      else
-        stmt
-          "(assign env (op extend-environment) %s (reg argl) (reg env))"
-          name_consts
-    in
-    compile_sequence cfg state (extend_cenv params cenv) body "val"
-      Return
-    >>= fun body_code ->
-    Ok
-      (append_2_sequences
-         (make_instruction_sequence
-            [ "env"; "proc"; "argl" ]
-            [ "env" ]
-            [ proc_entry
-            ; "(assign env (op compiled-procedure-env) (reg proc))"
-            ; extend_stmt
-            ])
-         body_code)
-  | _ -> Error (Op_failed "compile-lambda-body needs a lambda")
-@end example
-
-@noindent
-In this edition each parameter rides in its own @code{(const n)} name
-input, the parameter-list spelling of the edition notes.
+A non-recursive @code{Ast.Let} compiles as a function application.
+A recursive @code{Ast.Let} allocates the group's cells before compiling
+and filling its right-hand sides.  This supports mutually recursive
+bindings without rewriting them as variable assignment.
 
 @node	5.5.3, 5.5.4, 5.5.2, 5.5
 @subsection Compiling Combinations
 
-The essence of the compilation process is the compilation of procedure
-applications.  The code for a combination compiled with a given target and
-linkage has the form
-
-@example
-⟨@emph{compilation of operator, 
- target @code{proc}, linkage @code{next}}⟩
-⟨@emph{evaluate operands and construct 
- argument list in @code{argl}}⟩
-⟨@emph{compilation of procedure call 
- with given target and linkage}⟩
-@end example
-
-@noindent
-The registers @code{env}, @code{proc}, and @code{argl} may have to be saved and
-restored during evaluation of the operator and operands.  Note that this is the
-only place in the compiler where a target other than @code{val} is specified.
-
-The required code is generated by @code{compile-application}.  This recursively
-compiles the operator, to produce code that puts the procedure to be applied
-into @code{proc}, and compiles the operands, to produce code that evaluates the
-individual operands of the application.  The instruction sequences for the
-operands are combined (by @code{construct-arglist}) with code that constructs
-the list of arguments in @code{argl}, and the resulting argument-list code is
-combined with the procedure code and the code that performs the procedure call
-(produced by @code{compile-procedure-call}).  In appending the code sequences,
-the @code{env} register must be preserved around the evaluation of the operator
-(since evaluating the operator might modify @code{env}, which will be needed to
-evaluate the operands), and the @code{proc} register must be preserved around
-the construction of the argument list (since evaluating the operands might
-modify @code{proc}, which will be needed for the actual procedure application).
-@code{Continue} must also be preserved throughout, since it is needed for the
-linkage in the procedure call.
+An application node contains an operator expression and its operand
+expressions.  The compiler first compiles the operator to @code{proc}.
+It then evaluates operands from left to right and builds @code{argl}.
+Finally, it calls @code{compile_procedure_call}:
 
 @example ocaml
-and compile_application cfg state cenv operator operands target linkage
-  =
-  compile cfg state cenv operator "proc" Next
-  >>= fun proc_code ->
-  result_map_all (List.map (fun o -> compile cfg state cenv o "val"
-    Next) operands)
-  >>= fun codes ->
-  construct_arglist cfg codes
-  >>= fun arglist_code ->
-  compile_procedure_call cfg state target linkage
-  >>= fun call_code ->
-  preserving cfg [ "proc"; "continue" ] arglist_code call_code
-  >>= fun call_and_args -> preserving cfg [ "env"; "continue" ]
-    proc_code call_and_args
+module C = Sicp_ch5.Sec_5_5
+
+let state = C.new_state ()
+let call = C.compile_procedure_call state "val" C.Return
 @end example
 
 @noindent
-The code to construct the argument list will evaluate each operand into
-@code{val} and then @code{cons} that value onto the argument list being
-accumulated in @code{argl}.  Since we @code{cons} the arguments onto
-@code{argl} in sequence, we must start with the last argument and end with the
-first, so that the arguments will appear in order from first to last in the
-resulting list.  Rather than waste an instruction by initializing @code{argl}
-to the empty list to set up for this sequence of evaluations, we make the first
-code sequence construct the initial @code{argl}.  The general form of the
-argument-list construction is thus as follows:
-
-@example
-⟨@emph{compilation of last operand, targeted to @code{val}}⟩
-(assign argl (op list) (reg val))
-⟨@emph{compilation of next operand, targeted to @code{val}}⟩
-(assign argl (op cons) (reg val) (reg argl))
-@r{…}
-⟨@emph{compilation of first operand, targeted to @code{val}}⟩
-(assign argl (op cons) (reg val) (reg argl))
-@end example
-
-@noindent
-@code{Argl} must be preserved around each operand evaluation except the first
-(so that arguments accumulated so far won't be lost), and @code{env} must be
-preserved around each operand evaluation except the last (for use by subsequent
-operand evaluations).
-
-Compiling this argument code is a bit tricky, because of the special treatment
-of the first operand to be evaluated and the need to preserve @code{argl} and
-@code{env} in different places.  The @code{construct-arglist} procedure takes
-as arguments the code that evaluates the individual operands.  If there are no
-operands at all, it simply emits the instruction
-
-@example
-(assign argl (op empty-arglist))
-@end example
-
-@noindent
-In this edition the empty list is a list constant, so it rides the
-@ref{5.4} machine's @code{empty-arglist} operation instead of the
-book's @code{(const ())} input (the edition notes).
-
-@noindent
-Otherwise, @code{construct-arglist} creates code that initializes @code{argl}
-with the last argument, and appends code that evaluates the rest of the
-arguments and adjoins them to @code{argl} in succession.  In order to process
-the arguments from last to first, we must reverse the list of operand code
-sequences from the order supplied by @code{compile-application}.
-
-@example ocaml
-and construct_arglist cfg operand_codes =
-  (* 5.36 flips the order with the cfg.left_to_right switch; the
-     default compiles the operands right to left, the book's reverse *)
-  let ordered = if cfg.left_to_right then operand_codes else List.rev
-    operand_codes in
-  match ordered with
-  | [] ->
-    Ok
-      (make_instruction_sequence
-         []
-         [ "argl" ]
-         [ "(assign argl (op empty-arglist))" ])
-  | last_code :: rest_codes ->
-    let code_to_get_last_arg =
-      append_2_sequences
-        last_code
-        (make_instruction_sequence
-           [ "val" ]
-           [ "argl" ]
-           [ "(assign argl (op list) (reg val))" ])
-    in
-    let cons_step =
-      make_instruction_sequence
-        [ "val"; "argl" ]
-        [ "argl" ]
-        [ "(assign argl (op cons) (reg val) (reg argl))" ]
-    in
-    let rec code_to_get_rest_args = function
-      | [] -> Ok empty_instruction_sequence
-      | next :: rest ->
-        preserving cfg [ "argl" ] next cons_step
-        >>= fun code_for_next_arg ->
-        if rest = []
-        then Ok code_for_next_arg
-        else
-          code_to_get_rest_args rest
-          >>= fun rest_code -> preserving cfg [ "env" ]
-            code_for_next_arg rest_code
-    in
-    if rest_codes = []
-    then Ok code_to_get_last_arg
-    else
-      code_to_get_rest_args rest_codes
-      >>= fun rest_code -> preserving cfg [ "env" ] code_to_get_last_arg
-        rest_code
-@end example
+This public entry point compiles the call after the machine has placed the
+procedure in @code{proc} and arguments in @code{argl}.  In a full
+application, the compiler constructs both registers from the
+@code{Ast.Apply} node.  It preserves @code{env}, @code{proc},
+@code{argl}, and @code{continue} when later code needs their incoming
+values.
 
 @subsubheading Applying procedures
 
-After evaluating the elements of a combination, the compiled code must apply
-the procedure in @code{proc} to the arguments in @code{argl}.  The code
-performs essentially the same dispatch as the @code{apply} procedure in the
-metacircular evaluator of @ref{4.1.1} or the @code{apply-dispatch}
-entry point in the explicit-control evaluator of @ref{5.4.1}.  It
-checks whether the procedure to be applied is a primitive procedure or a
-compiled procedure.  For a primitive procedure, it uses
-@code{apply-primitive-procedure}; we will see shortly how it handles compiled
-procedures.  The procedure-application code has the following form:
+The call sequence tests whether a primitive can run inline with the exact
+argument count.  Otherwise, it transfers to the shared
+@code{compiled-apply} routine.  That routine applies primitives and
+compiled closures, and it handles partial and excess arguments.  The
+compiler does not build separate textual controller fragments for these
+paths.  It builds typed instructions from the instruction constructors of
+@ref{5.1}.
 
-@example
-(test (op primitive-procedure?) (reg proc))
- (branch (label primitive-branch))
-compiled-branch
- ⟨@emph{code to apply compiled procedure 
-  with given target and appropriate linkage}⟩
-primitive-branch
- (assign ⟨@var{target}⟩
-         (op apply-primitive-procedure)
-         (reg proc)
-         (reg argl))
- ⟨@var{linkage}⟩
-after-call
-@end example
-
-@noindent
-Observe that the compiled branch must skip around the primitive branch.
-Therefore, if the linkage for the original procedure call was @code{next}, the
-compound branch must use a linkage that jumps to a label that is inserted after
-the primitive branch.  (This is similar to the linkage used for the true branch
-in @code{compile-if}.)
-
-@example ocaml
-and compile_procedure_call cfg state target linkage =
-  let after_call = make_label state "after-call" in
-  let compiled_branch = make_label state "compiled-branch" in
-  let primitive_branch = make_label state "primitive-branch" in
-  let compound_branch =
-    if cfg.compound_calls then Some (make_label state "compound-branch")
-      else None
-  in
-  let compiled_linkage =
-    match linkage with
-    | Next -> Lab after_call
-    | l -> l
-  in
-  compile_proc_appl state target compiled_linkage
-  >>= fun appl_code ->
-  let primitive_tail =
-    match compound_branch, linkage with
-    | Some _, Next -> [ stmt "(goto (label %s))" after_call ]
-    | _ -> []
-  in
-  end_with_linkage
-    cfg
-    linkage
-    (make_instruction_sequence
-       [ "proc"; "argl" ]
-       [ target ]
-       (stmt
-          ("(assign %s (op apply-primitive-procedure) "
-           ^ "(reg proc) (reg argl))")
-          target
-        :: primitive_tail))
-  >>= fun primitive_code ->
-  (* the third branch of exercise 5.47 hands interpreted procedures to
-     the evaluator's compound-apply through the [unev] register, dead
-     at the call site; the default configuration compiles two branches
-     only *)
-  let compound_test, compound_label =
-    match compound_branch with
-    | Some cb ->
-      let cont_setup =
-        match linkage with
-        | Return -> []
-        | Next -> [ stmt "(assign continue (label %s))" after_call ]
-        | Lab l -> [ stmt "(assign continue (label %s))" l ]
-      in
-      ( [ make_instruction_sequence
-            [ "proc" ]
-            []
-            [ "(test (op compound-procedure?) (reg proc))"
-            ; stmt "(branch (label %s))" cb
-            ]
-        ]
-      , [ make_instruction_sequence [] [] [ cb ]
-        ; make_instruction_sequence
-            [ "proc" ]
-            [ "unev"; "continue" ]
-            (cont_setup
-             @ [ "(save continue)"
-               ; "(assign unev (label compound-apply))"
-               ; "(goto (reg unev))"
-               ])
-        ] )
-    | None -> [], []
-  in
-  Ok
-    (append_sequences
-       ([ make_instruction_sequence
-            [ "proc" ]
-            []
-            [ "(test (op primitive-procedure?) (reg proc))"
-            ; stmt "(branch (label %s))" primitive_branch
-            ]
-        ]
-        @ compound_test
-        @ [ parallel_instruction_sequences
-              (append_2_sequences
-                 (make_instruction_sequence [] [] [ compiled_branch ])
-                 appl_code)
-              (append_2_sequences
-                 (make_instruction_sequence [] [] [ primitive_branch ])
-                 primitive_code)
-          ]
-        @ compound_label
-        @ [ make_instruction_sequence [] [] [ after_call ] ]))
-@end example
-
-@noindent
-The primitive and compound branches, like the true and false branches in
-@code{compile-if}, are appended using @code{parallel-instruction-sequences}
-rather than the ordinary @code{append-instruction-sequences}, because they will
-not be executed sequentially.
+Several operators have dedicated AST forms.  @code{Ast.Arith},
+@code{Ast.Compare}, @code{Ast.Concat}, @code{Ast.Cons}, and
+@code{Ast.Assign} compile through the binary-operation path.
+@code{Ast.Not}, @code{Ast.Neg}, @code{Ast.Deref}, @code{Ast.Make_ref},
+and @code{Ast.Field} use the unary-operation path.  @code{Ast.Tuple},
+@code{Ast.Construct}, and @code{Ast.Record} evaluate their fields and
+use the value-building path.  A call through @code{Ast.Apply} uses the
+general procedure path.  The checker has already rejected ill-typed
+operands.
 
 @subsubheading Applying compiled procedures
 
-The code that handles procedure application is the most subtle part of the
-compiler, even though the instruction sequences it generates are very short.  A
-compiled procedure (as constructed by @code{compile-lambda}) has an entry
-point, which is a label that designates where the code for the procedure
-starts.  The code at this entry point computes a result in @code{val} and
-returns by executing the instruction @code{(goto (reg continue))}.  Thus, we
-might expect the code for a compiled-procedure application (to be generated by
-@code{compile-proc-appl}) with a given target and linkage to look like this if
-the linkage is a label
+A compiled closure stores its entry label, parameter names, and captured
+environment.  At the entry label, the shared runtime binds arguments to
+parameters and evaluates the function body in the captured environment.
+A call with the exact arity transfers directly to that entry.  A call with
+too few arguments creates a partial closure; a call with excess arguments
+applies the remaining arguments to the first result.
 
-@example
-(assign continue 
-        (label proc-return))
- (assign val
-         (op compiled-procedure-entry)
-         (reg proc))
- (goto (reg val))
-proc-return
- (assign ⟨@var{target}⟩ 
-         (reg val))   @r{; included if target is not @code{val}}
- (goto (label ⟨@var{linkage}⟩))   @r{; linkage code}
-@end example
+A call in return position can reuse the current @code{continue}
+destination.  Exact-arity tail calls therefore need no extra return save.
+If a compiled procedure receives excess arguments, the runtime saves
+@code{continue} and the remaining argument list.  It resumes after the
+call and applies those arguments to the first result.
 
-@noindent
-or like this if the linkage is @code{return}.
-
-@example
-(save continue)
- (assign continue 
-         (label proc-return))
- (assign val 
-         (op compiled-procedure-entry)
-         (reg proc))
- (goto (reg val))
-proc-return
- (assign ⟨@var{target}⟩
-         (reg val))   @r{; included if target is not @code{val}}
- (restore continue)
- (goto (reg continue))   @r{; linkage code}
-@end example
-
-@noindent
-This code sets up @code{continue} so that the procedure will return to a label
-@code{proc-return} and jumps to the procedure's entry point.  The code at
-@code{proc-return} transfers the procedure's result from @code{val} to the
-target register (if necessary) and then jumps to the location specified by the
-linkage.  (The linkage is always @code{return} or a label, because
-@code{compile-procedure-call} replaces a @code{next} linkage for the
-compound-procedure branch by an @code{after-call} label.)
-
-In fact, if the target is not @code{val}, that is exactly the code our compiler
-will generate.@footnote{Actually, we signal an error when the target is not
-@code{val} and the linkage is @code{return}, since the only place we request
-@code{return} linkages is in compiling procedures, and our convention is that
-procedures return their values in @code{val}.}  Usually, however, the target is
-@code{val} (the only time the compiler specifies a different register is when
-targeting the evaluation of an operator to @code{proc}), so the procedure
-result is put directly into the target register and there is no need to return
-to a special location that copies it.  Instead, we simplify the code by setting
-up @code{continue} so that the procedure will ``return'' directly to the place
-specified by the caller's linkage:
-
-@example
-⟨@emph{set up @code{continue} for linkage}⟩
-(assign val 
-        (op compiled-procedure-entry)
-        (reg proc))
-(goto (reg val))
-@end example
-
-@noindent
-If the linkage is a label, we set up @code{continue} so that the procedure will
-return to that label.  (That is, the @code{(goto (reg continue))} the procedure
-ends with becomes equivalent to the @code{(goto (label ⟨@var{linkage}⟩))} at
-@code{proc-return} above.)
-
-@example
-(assign continue 
-        (label ⟨@var{linkage}⟩))
-(assign val
-        (op compiled-procedure-entry)
-        (reg proc))
-(goto (reg val))
-@end example
-
-@noindent
-If the linkage is @code{return}, we don't need to set up @code{continue} at
-all: It already holds the desired location.  (That is, the @code{(goto (reg
-continue))} the procedure ends with goes directly to the place where the
-@code{(goto (reg continue))} at @code{proc-return} would have gone.)
-
-@example
-(assign val
-        (op compiled-procedure-entry)
-        (reg proc))
-(goto (reg val))
-@end example
-
-@noindent
-With this implementation of the @code{return} linkage, the compiler generates
-tail-recursive code.  Calling a procedure as the final step in a procedure body
-does a direct transfer, without saving any information on the stack.
-
-Suppose instead that we had handled the case of a procedure call with a linkage
-of @code{return} and a target of @code{val} as shown above for a non-@code{val}
-target.  This would destroy tail recursion.  Our system would still give the
-same value for any expression.  But each time we called a procedure, we would
-save @code{continue} and return after the call to undo the (useless) save.
-These extra saves would accumulate during a nest of procedure
-calls.@footnote{Making a compiler generate tail-recursive code might seem like
-a straightforward idea.  But most compilers for common languages, including C
-and Pascal, do not do this, and therefore these languages cannot represent
-iterative processes in terms of procedure call alone.  The difficulty with tail
-recursion in these languages is that their implementations use the stack to
-store procedure arguments and local variables as well as return addresses.  The
-Scheme implementations described in this book store arguments and variables in
-memory to be garbage-collected.  The reason for using the stack for variables
-and arguments is that it avoids the need for garbage collection in languages
-that would not otherwise require it, and is generally believed to be more
-efficient.  Sophisticated Lisp compilers can, in fact, use the stack for
-arguments without destroying tail recursion.  (See @ref{Hanson 1990} for a
-description.)  There is also some debate about whether stack allocation is
-actually more efficient than garbage collection in the first place, but the
-details seem to hinge on fine points of computer architecture.  (See @ref{Appel 1987}
-and @ref{Miller and Rozas 1994} for opposing views on this issue.)}
-
-@code{Compile-proc-appl} generates the above procedure-application code by
-considering four cases, depending on whether the target for the call is
-@code{val} and whether the linkage is @code{return}.  Observe that the
-instruction sequences are declared to modify all the registers, since executing
-the procedure body can change the registers in arbitrary ways.@footnote{The
-variable @code{all_regs} is bound to the list of names of all the registers:
-
-@example ocaml
-let all_regs = [ "env"; "proc"; "val"; "argl"; "continue" ]
-@end example
-}
-Also note that the code sequence for the case with target @code{val} and
-linkage @code{return} is declared to need @code{continue}: Even though
-@code{continue} is not explicitly used in the two-instruction sequence, we must
-be sure that @code{continue} will have the correct value when we enter the
-compiled procedure.
-
-@example ocaml
-and compile_proc_appl state target linkage =
-  let all_regs = [ "env"; "proc"; "val"; "argl"; "continue" ] in
-  match target, linkage with
-  | "val", Return ->
-    Ok
-      (make_instruction_sequence
-         [ "proc"; "continue" ]
-         all_regs
-         [ "(assign val (op compiled-procedure-entry) (reg proc))"
-         ; "(goto (reg val))"
-         ])
-  | "val", Lab l ->
-    Ok
-      (make_instruction_sequence
-         [ "proc" ]
-         all_regs
-         [ stmt "(assign continue (label %s))" l
-         ; "(assign val (op compiled-procedure-entry) (reg proc))"
-         ; "(goto (reg val))"
-         ])
-  | _, Return ->
-    Error (Op_failed "return linkage, target not val: COMPILE")
-  | _, _ ->
-    let proc_return = make_label state "proc-return" in
-    let goto_label = match linkage with Lab l -> l | _ -> proc_return in
-    Ok
-      (make_instruction_sequence
-         [ "proc" ]
-         all_regs
-         [ stmt "(assign continue (label %s))" proc_return
-         ; "(assign val (op compiled-procedure-entry) (reg proc))"
-         ; "(goto (reg val))"
-         ; proc_return
-         ; stmt "(assign %s (reg val))" target
-         ; stmt "(goto (label %s))" goto_label
-         ])
-@end example
+Stack allocation and garbage collection remain competing runtime
+strategies; see @ref{Hanson 1990}, @ref{Appel 1987}, and
+@ref{Miller and Rozas 1994}.
 
 @node	5.5.4, 5.5.5, 5.5.3, 5.5
 @subsection Combining Instruction Sequences
 
-This section describes the details on how instruction sequences are represented
-and combined.  Recall from @ref{5.5.1} that an instruction sequence is
-represented as a list of the registers needed, the registers modified, and the
-actual instructions.  We will also consider a label (symbol) to be a degenerate
-case of an instruction sequence, which doesn't need or modify any registers.
-So to determine the registers needed and modified by instruction sequences we
-use the selectors
+A compiler sequence stores its register needs, its register modifications,
+and typed instructions.  When two sequences run in order, registers written
+by the first sequence no longer need their incoming values in the combined
+sequence.  Its needs are therefore the needs of the first sequence together
+with the needs of the second that the first does not modify.
+
+The public combiners expose sequential composition, alternatives, and
+non-executed function bodies:
 
 @example ocaml
-(* the three parts are the fields of the seq record: s.needs,
-   s.modifies, and s.stmts; a label is the degenerate sequence, the
-   one-statement sequence that needs and modifies nothing *)
-make_instruction_sequence [] [] [ t_branch ]
+module C = Sicp_ch5.Sec_5_5
+
+let empty = C.empty_instruction_sequence
+let first = empty
+let second = empty
+let ordered = C.append_sequences [ first; second ]
+let alternatives =
+  C.parallel_instruction_sequences first second
+let protected = C.preserving [ "env"; "continue" ] first second
+let closure_code = C.tack_on_instruction_sequence first second
 @end example
 
 @noindent
-and to determine whether a given
-sequence needs or modifies a given register we use the predicates
+Sequential composition carries forward the register metadata.  Alternative
+branches combine both branches' needs, because either branch may read an
+incoming value.  @code{preserving} adds @code{Save} and @code{Restore}
+instructions only when the first sequence modifies a register that the
+second needs.  @code{tack_on_instruction_sequence} appends a function body's
+instructions without merging its needs into the closure-construction path.
 
-@example ocaml
-List.mem reg seq.needs
-List.mem reg seq.modifies
-@end example
-
-@noindent
-In terms of these predicates and selectors, we can implement the various
-instruction sequence combiners used throughout the compiler.
-
-The basic combiner is @code{append_sequences}.  This takes as
-arguments an arbitrary number of instruction sequences that are to be executed
-sequentially and returns an instruction sequence whose statements are the
-statements of all the sequences appended together.  The subtle point is to
-determine the registers that are needed and modified by the resulting sequence.
-It modifies those registers that are modified by any of the sequences; it needs
-those registers that must be initialized before the first sequence can be run
-(the registers needed by the first sequence), together with those registers
-needed by any of the other sequences that are not initialized (modified) by
-sequences preceding it.
-
-The sequences are appended two at a time by @code{append_2_sequences}.  This
-takes two instruction sequences @code{seq1} and @code{seq2} and returns the
-instruction sequence whose statements are the statements of @code{seq1}
-followed by the statements of @code{seq2}, whose modified registers are those
-registers that are modified by either @code{seq1} or @code{seq2}, and whose
-needed registers are the registers needed by @code{seq1} together with those
-registers needed by @code{seq2} that are not modified by @code{seq1}.  (In
-terms of set operations, the new set of needed registers is the union of the
-set of registers needed by @code{seq1} with the set difference of the registers
-needed by @code{seq2} and the registers modified by @code{seq1}.)  Thus,
-@code{append_sequences} is implemented as follows:
-
-@example ocaml
-let append_2_sequences seq1 seq2 =
-  @{ needs = list_union seq1.needs (list_difference seq2.needs
-    seq1.modifies)
-  ; modifies = list_union seq1.modifies seq2.modifies
-  ; stmts = seq1.stmts @ seq2.stmts
-  @}
-;;
-
-let rec append_sequences = function
-  | [] -> empty_instruction_sequence
-  | [ seq ] -> seq
-  | seq :: rest -> append_2_sequences seq (append_sequences rest)
-;;
-@end example
-
-@noindent
-This procedure uses some simple operations for manipulating sets represented as
-lists, similar to the (unordered) set representation described in 
-@ref{2.3.3}:
-
-@example ocaml
-let list_union s1 s2 =
-  let rec go acc = function
-    | [] -> List.rev acc @ s2
-    | x :: rest ->
-      if List.mem x s2 || List.mem x acc then go acc rest else go (x ::
-        acc) rest
-  in
-  go [] s1
-;;
-
-let rec list_difference s1 s2 =
-  match s1 with
-  | [] -> []
-  | x :: rest ->
-    if List.mem x s2 then list_difference rest s2 else x ::
-      list_difference rest s2
-;;
-@end example
-
-@noindent
-@code{Preserving}, the second major instruction sequence combiner, takes a list
-of registers @code{regs} and two instruction sequences @code{seq1} and
-@code{seq2} that are to be executed sequentially.  It returns an instruction
-sequence whose statements are the statements of @code{seq1} followed by the
-statements of @code{seq2}, with appropriate @code{save} and @code{restore}
-instructions around @code{seq1} to protect the registers in @code{regs} that
-are modified by @code{seq1} but needed by @code{seq2}.  To accomplish this,
-@code{preserving} first creates a sequence that has the required @code{save}s
-followed by the statements of @code{seq1} followed by the required
-@code{restore}s.  This sequence needs the registers being saved and restored in
-addition to the registers needed by @code{seq1}, and modifies the registers
-modified by @code{seq1} except for the ones being saved and restored.  This
-augmented sequence and @code{seq2} are then appended in the usual way.  The
-following procedure implements this strategy recursively, walking down the list
-of registers to be preserved:@footnote{In this edition the book's
-three-argument @code{append} is the list append (@@), chaining the
-@code{save}, the statements, and the @code{restore}.  The
-@code{preserving_on} switch is the comparison of @ref{Exercise 5.37}: off,
-every register in the set is saved unconditionally.}
-
-@example ocaml
-let preserving cfg regs seq1 seq2 =
-  let rec go seq1 = function
-    | [] -> Ok (append_2_sequences seq1 seq2)
-    | first_reg :: rest ->
-      let needed = List.mem first_reg seq2.needs && List.mem first_reg
-        seq1.modifies in
-      let saves = if cfg.preserving_on then needed else true in
-      if not saves
-      then go seq1 rest
-      else (
-        let wrapped =
-          @{ needs = first_reg :: seq1.needs
-          ; modifies = list_difference seq1.modifies [ first_reg ]
-          ; stmts =
-              (("(save " ^ first_reg ^ ")") :: seq1.stmts)
-              @ [ "(restore " ^ first_reg ^ ")" ]
-          @}
-        in
-        go wrapped rest)
-  in
-  go seq1 regs
-@end example
-
-@noindent
-Another sequence combiner, @code{tack-on-instruction-sequence}, is used by
-@code{compile-lambda} to append a procedure body to another sequence.  Because
-the procedure body is not ``in line'' to be executed as part of the combined
-sequence, its register use has no impact on the register use of the sequence in
-which it is embedded.  We thus ignore the procedure body's sets of needed and
-modified registers when we tack it onto the other sequence.
-
-@example ocaml
-let tack_on_instruction_sequence seq body_seq =
-  @{ seq with stmts = seq.stmts @ body_seq.stmts @}
-;;
-@end example
-
-@noindent
-@code{Compile-if} and @code{compile-procedure-call} use a special combiner
-called @code{parallel-instruction-sequences} to append the two alternative
-branches that follow a test.  The two branches will never be executed
-sequentially; for any particular evaluation of the test, one branch or the
-other will be entered.  Because of this, the registers needed by the second
-branch are still needed by the combined sequence, even if these are modified by
-the first branch.
-
-@example ocaml
-let parallel_instruction_sequences seq1 seq2 =
-  @{ needs = list_union seq1.needs seq2.needs
-  ; modifies = list_union seq1.modifies seq2.modifies
-  ; stmts = seq1.stmts @ seq2.stmts
-  @}
-;;
-@end example
+These operations are in @code{Sec_5_5.mli}.  They work on typed statement
+lists, not rendered controller strings.  @code{statements_text} is useful
+for reading those statements, but assembly and execution use the original
+instruction values.
 
 @node	5.5.5, 5.5.6, 5.5.4, 5.5
 @subsection An Example of Compiled Code
 
-Now that we have seen all the elements of the compiler, let us examine an
-example of compiled code to see how things fit together.  We will compile the
-definition of a recursive @code{factorial} procedure by calling @code{compile}:
+This complete OCaml-subset unit defines recursive factorial and prints its
+result:
 
 @example ocaml
-let state = Sec_5_5.new_state () in
-Sec_5_5.compile_block state
-@{|(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))|@}
+let rec factorial n =
+  if n = 1 then 1 else n * factorial (n - 1)
+let () = print_int (factorial 5); print_newline ()
 @end example
 
 @noindent
-In this edition @code{compile_block} reads the program, compiles it
-with target @code{val} and linkage @code{return}, and answers the
-entry label and the assembled controller block.  The figure below is
-that block without the entry label and the return linkage: the
-compilation with linkage @code{next} that the book's call to
-@code{compile} shows, and the section replay pins it statement for
-statement.
+Admission checks the source before compilation.  The host compiler API
+accepts the checked items and returns a sequence of typed instructions:
 
-@noindent
-We have specified that the value of the @code{define} expression should be
-placed in the @code{val} register.  We don't care what the compiled code does
-after executing the @code{define}, so our choice of @code{next} as the linkage
-descriptor is arbitrary.
+@example ocaml
+module C = Sicp_ch5.Sec_5_5
+module Check = Sicp_common.Check
 
-@code{Compile} determines that the expression is a definition, so it calls
-@code{compile-definition} to compile code to compute the value to be assigned
-(targeted to @code{val}), followed by code to install the definition, followed
-by code to put the value of the @code{define} (which is the symbol @code{ok})
-into the target register, followed finally by the linkage code.  @code{Env} is
-preserved around the computation of the value, because it is needed to
-install the definition.  Because the linkage is @code{next}, there is no
-linkage code in this case.  The skeleton of the compiled code is thus
-
-@example
-⟨@emph{save @code{env} if modified by code to compute value}⟩
-  ⟨@emph{compilation of definition value, 
-   target @code{val}, linkage @code{next}}⟩
-  ⟨@emph{restore @code{env} if saved above}⟩
-  (perform (op define-variable!)
-           (const factorial)
-           (reg val)
-           (reg env))
-  (assign val (const ok))
+let factorial_source =
+  "let rec factorial n =\n\
+   if n = 1 then 1 else n * factorial (n - 1)\n\
+   let () = print_int (factorial 5); print_newline ()"
+;;
+let checked = Check.check ~filename:"factorial.ml" factorial_source
+;;
+let inspection =
+  match checked with
+  | Error diagnostic -> Check.diagnostic_to_string diagnostic
+  | Ok program ->
+    let sequence =
+      C.compile_program (C.new_state ()) (Check.items program)
+    in
+    C.statements_text sequence
+;;
 @end example
 
 @noindent
-The expression that is to be compiled to produce the value for the variable
-@code{factorial} is a @code{lambda} expression whose value is the procedure
-that computes factorials.  @code{Compile} handles this by calling
-@code{compile-lambda}, which compiles the procedure body, labels it as a new
-entry point, and generates the instruction that will combine the procedure body
-at the new entry point with the run-time environment and assign the result to
-@code{val}.  The sequence then skips around the compiled procedure code, which
-is inserted at this point.  The procedure code itself begins by extending the
-procedure's definition environment by a frame that binds the formal parameter
-@code{n} to the procedure argument.  Then comes the actual procedure body.
-Since this code for the value of the variable doesn't modify the @code{env}
-register, the optional @code{save} and @code{restore} shown above aren't
-generated.  (The procedure code at @code{entry2} isn't executed at this point,
-so its use of @code{env} is irrelevant.)  Therefore, the skeleton for the
-compiled code becomes
-
-@example
-  (assign val (op make-compiled-procedure)
-              (label entry2)
-              (reg env))
-  (goto (label after-lambda1))
-entry2
-  (assign env (op compiled-procedure-env)
-              (reg proc))
-  (assign env (op extend-environment)
-              (const (n))
-              (reg argl)
-              (reg env))
-  ⟨@emph{compilation of procedure body}⟩
-after-lambda1
-  (perform (op define-variable!)
-           (const factorial)
-           (reg val) (reg env))
-  (assign val (const ok))
-@end example
-
-@noindent
-In this edition the compiler's own statement spells the entry
-@code{(const entry2)} and the parameter list one @code{(const n)}
-input, the two deviations the edition notes document.
-
-@noindent
-A procedure body is always compiled (by @code{compile-lambda-body}) as a
-sequence with target @code{val} and linkage @code{return}.  The sequence in
-this case consists of a single @code{if} expression:
-
-@example
-(if (= n 1)
-    1
-    (* (factorial (- n 1)) n))
-@end example
-
-@noindent
-@code{Compile-if} generates code that first computes the predicate (targeted to
-@code{val}), then checks the result and branches around the true branch if the
-predicate is false.  @code{Env} and @code{continue} are preserved around the
-predicate code, since they may be needed for the rest of the @code{if}
-expression.  Since the @code{if} expression is the final expression (and only
-expression) in the sequence making up the procedure body, its target is
-@code{val} and its linkage is @code{return}, so the true and false branches are
-both compiled with target @code{val} and linkage @code{return}.  (That is, the
-value of the conditional, which is the value computed by either of its
-branches, is the value of the procedure.)
-
-@example
-⟨@emph{save @code{continue}, @code{env} if modified by 
- predicate and needed by branches}⟩
-  ⟨@emph{compilation of predicate, 
-   target @code{val}, linkage @code{next}}⟩
-  ⟨@emph{restore @code{continue}, @code{env} if saved above}⟩
-  (test (op false?) (reg val))
-  (branch (label false-branch4))
-true-branch5
-  ⟨@emph{compilation of true branch, 
-   target @code{val}, linkage @code{return}}⟩
-false-branch4
-  ⟨@emph{compilation of false branch, 
-   target @code{val}, linkage @code{return}}⟩
-after-if3
-@end example
-
-@noindent
-The predicate @code{(= n 1)} is a procedure call.  This looks up the operator
-(the symbol @code{=}) and places this value in @code{proc}.  It then assembles
-the arguments @code{1} and the value of @code{n} into @code{argl}.  Then it
-tests whether @code{proc} contains a primitive or a compound procedure, and
-dispatches to a primitive branch or a compound branch accordingly.  Both
-branches resume at the @code{after-call} label.  The requirements to preserve
-registers around the evaluation of the operator and operands don't result in
-any saving of registers, because in this case those evaluations don't modify
-the registers in question.
-
-@example
-  (assign proc (op lookup-variable-value)
-               (const =) 
-               (reg env))
-  (assign val (const 1))
-  (assign argl (op list) (reg val))
-  (assign val (op lookup-variable-value)
-              (const n)
-              (reg env))
-  (assign argl (op cons) (reg val) (reg argl))
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch17))
-compiled-branch16
-  (assign continue (label after-call15))
-  (assign val (op compiled-procedure-entry)
-              (reg proc))
-  (goto (reg val))
-primitive-branch17
-  (assign val (op apply-primitive-procedure)
-              (reg proc)
-              (reg argl))
-after-call15
-@end example
-
-@noindent
-The true branch, which is the constant 1, compiles (with target @code{val} and
-linkage @code{return}) to
-
-@example
-(assign val (const 1))
-(goto (reg continue))
-@end example
-
-@noindent
-The code for the false branch is another procedure call, where the procedure
-is the value of the symbol @code{*}, and the arguments are @code{n} and the
-result of another procedure call (a call to @code{factorial}).  Each of these
-calls sets up @code{proc} and @code{argl} and its own primitive and compound
-branches.  @ref{Figure 5.17} shows the complete compilation of the definition
-of the @code{factorial} procedure.  Notice that the possible @code{save} and
-@code{restore} of @code{continue} and @code{env} around the predicate, shown
-above, are in fact generated, because these registers are modified by the
-procedure call in the predicate and needed for the procedure call and the
-@code{return} linkage in the branches.
+The renderer is a view of the instruction values.  @code{load} assembles
+the typed sequence, and @code{run} compiles and executes the checked
+program.  The renderer output is never parsed as machine instructions.
 
 @quotation
-@strong{@anchor{Figure 5.17}Figure 5.17:} @math{\downarrow} Compilation of the definition of the @code{factorial} procedure.
-
-@example
-@r{;; construct the procedure and skip over code}
-@r{;; for the procedure body}
-  (assign val
-          (op make-compiled-procedure) 
-          (label entry2) 
-          (reg env))
-  (goto (label after-lambda1))
-entry2     @r{; calls to @code{factorial} will enter here}
-  (assign env 
-          (op compiled-procedure-env)
-          (reg proc))
-  (assign env
-          (op extend-environment) 
-          (const (n)) 
-          (reg argl) 
-          (reg env))
-@r{;; begin actual procedure body}
-  (save continue)
-  (save env)
-@r{;; compute @code{(= n 1)}}
-  (assign proc 
-          (op lookup-variable-value) 
-          (const =) 
-          (reg env))
-  (assign val (const 1))
-  (assign argl (op list) (reg val))
-  (assign val 
-          (op lookup-variable-value) 
-          (const n) 
-          (reg env))
-  (assign argl (op cons) (reg val) (reg argl))
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch17))
-compiled-branch16
-  (assign continue (label after-call15))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch17
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-after-call15   @r{; @code{val} now contains result of @code{(= n 1)}}
-  (restore env)
-  (restore continue)
-  (test (op false?) (reg val))
-  (branch (label false-branch4))
-true-branch5  @r{; return 1}
-  (assign val (const 1))
-  (goto (reg continue))
-
-false-branch4
-@r{;; compute and return @code{(* (factorial (- n 1)) n)}}
-  (assign proc 
-          (op lookup-variable-value) 
-          (const *) 
-          (reg env))
-  (save continue)
-  (save proc)   @r{; save @code{*}} procedure
-  (assign val 
-          (op lookup-variable-value) 
-          (const n) 
-          (reg env))
-  (assign argl (op list) (reg val))
-  (save argl)   @r{; save partial argument list for @code{*}}
-@r{;; compute @code{(factorial (- n 1))},} 
-@r{;; which is the other argument for @code{*}}
-  (assign proc
-          (op lookup-variable-value) 
-          (const factorial) 
-          (reg env))
-  (save proc)  @r{; save @code{factorial} procedure}
-@r{;; compute @code{(- n 1)}, which is the argument for
-  @code{factorial}}
-  (assign proc 
-          (op lookup-variable-value)
-          (const -) 
-          (reg env))
-  (assign val (const 1))
-  (assign argl (op list) (reg val))
-  (assign val 
-          (op lookup-variable-value) 
-          (const n) 
-          (reg env))
-  (assign argl (op cons) (reg val) (reg argl))
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch8))
-compiled-branch7
-  (assign continue (label after-call6))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch8
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-
-after-call6   @r{; @code{val} now contains result of @code{(- n 1)}}
-  (assign argl (op list) (reg val))
-  (restore proc) @r{; restore @code{factorial}}
-@r{;; apply @code{factorial}}
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch11))
-compiled-branch10
-  (assign continue (label after-call9))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch11
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-after-call9      @r{; @code{val} now contains result} 
-                 @r{; of @code{(factorial (- n 1))}}
-  (restore argl) @r{; restore partial argument list for @code{*}}
-  (assign argl (op cons) (reg val) (reg argl))
-  (restore proc) @r{; restore @code{*}}
-  (restore continue)
-@r{;; apply @code{*} and return its value}
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch14))
-compiled-branch13
-@r{;; note that a compound procedure here}
-@r{;; is called tail-recursively}
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch14
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-  (goto (reg continue))
-after-call12
-after-if3
-after-lambda1
-@r{;; assign the procedure to the variable @code{factorial}}
-  (perform (op define-variable!) 
-           (const factorial) 
-           (reg val) 
-           (reg env))
-  (assign val (const ok))
-@end example
+@strong{@anchor{Figure 5.17}Figure 5.17:} The compiled-program path:
+guest source, admission, typed code generation, and machine execution.
 @end quotation
 
 @noindent
-In this edition the module's own compilation of this definition matches
-the figure statement for statement modulo the two documented spellings;
-the section replay in @code{examples/ch5/run_sec_5_5.ml} pins the
-match.
+To inspect the code for an expression directly, use @code{compile}.
+To inspect a whole unit, use @code{compile_program}.  Both APIs return
+the same instruction-sequence type:
 
-@quotation
-@strong{@anchor{Exercise 5.33}Exercise 5.33:} Consider the following definition
-of a factorial procedure, which is slightly different from the one given above:
+@example ocaml
+module C = Sicp_ch5.Sec_5_5
+module Check = Sicp_common.Check
 
-@example
-(define (factorial-alt n)
-  (if (= n 1)
-      1
-      (* n (factorial-alt (- n 1)))))
+let trace =
+  match checked with
+  | Error diagnostic -> Check.diagnostic_to_string diagnostic
+  | Ok program ->
+    C.statements_text
+      (C.compile_program (C.new_state ()) (Check.items program))
 @end example
 
-Compile this procedure and compare the resulting code with that produced for
-@code{factorial}.  Explain any differences you find.  Does either program
-execute more efficiently than the other?
-@end quotation
 @quotation
-@strong{@anchor{Exercise 5.33a}Exercise 5.33a:} @emph{Hand-optimize the
-alternative version's compiled code, and measure the win.} Take the
-compilation of @code{factorial-alt} produced for @ref{Exercise 5.33} and
-rewrite it by hand: fold the constant operands straight into the argument
-lists, drop the saves of registers whose values are re-derivable, and
-remove the labels nothing references. Run both versions on the machine
-and report the executed-instruction counts.
+@strong{@anchor{Figure 5.18}Figure 5.18:} Reading the typed factorial
+instruction sequence through @code{statements_text}.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.34}Exercise 5.34:} Compile the iterative factorial
-procedure
+@strong{@anchor{Exercise 5.33}Exercise 5.33:} Compare the compiled
+statements for these two complete guest units.  Explain how their
+expression trees change the call order and register saves:
 
-@example
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
+@example ocaml
+let rec factorial n =
+  if n = 1 then 1 else n * factorial (n - 1)
+let () = print_int (factorial 5)
 @end example
 
-Annotate the resulting code, showing the essential difference between the code
-for iterative and recursive versions of @code{factorial} that makes one process
-build up stack space and the other run in constant stack space.
-@end quotation
-
-@quotation
-@strong{@anchor{Exercise 5.35}Exercise 5.35:} What expression was compiled to
-produce the code shown in @ref{Figure 5.18}?
-@end quotation
-
-@quotation
-@strong{@anchor{Figure 5.18}Figure 5.18:} @math{\downarrow} An example of compiler output.  See
-@ref{Exercise 5.35}.
-
-@example
-(assign val (op make-compiled-procedure) 
-            (label entry16) 
-            (reg env))
-  (goto (label after-lambda15))
-entry16
-  (assign env (op compiled-procedure-env)
-              (reg proc))
-  (assign env (op extend-environment) 
-              (const (x)) 
-              (reg argl) 
-              (reg env))
-  (assign proc (op lookup-variable-value) 
-               (const +) 
-               (reg env))
-  (save continue) (save proc) (save env)
-  (assign proc (op lookup-variable-value) 
-               (const g) 
-               (reg env))
-  (save proc)
-  (assign proc (op lookup-variable-value) 
-               (const +) 
-               (reg env))
-  (assign val (const 2))
-  (assign argl (op list) (reg val))
-  (assign val (op lookup-variable-value)
-              (const x) 
-              (reg env))
-  (assign argl (op cons)
-               (reg val)
-               (reg argl))
-  (test (op primitive-procedure?)
-        (reg proc))
-  (branch (label primitive-branch19))
-compiled-branch18
-  (assign continue (label after-call17))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch19
-  (assign val
-          (op apply-primitive-procedure)
-          (reg proc) 
-          (reg argl))
-after-call17
-  (assign argl (op list) (reg val))
-  (restore proc)
-  (test (op primitive-procedure?)
-        (reg proc))
-  (branch (label primitive-branch22))
-compiled-branch21
-  (assign continue (label after-call20))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch22
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-after-call20
-  (assign argl (op list) (reg val))
-  (restore env)
-  (assign val
-          (op lookup-variable-value) 
-          (const x) 
-          (reg env))
-  (assign argl
-          (op cons)
-          (reg val)
-          (reg argl))
-  (restore proc)
-  (restore continue)
-  (test (op primitive-procedure?)
-        (reg proc))
-  (branch (label primitive-branch25))
-compiled-branch24
-  (assign val (op compiled-procedure-entry)
-              (reg proc))
-  (goto (reg val))
-primitive-branch25
-  (assign val 
-          (op apply-primitive-procedure)
-          (reg proc) 
-          (reg argl))
-  (goto (reg continue))
-after-call23
-after-lambda15
-  (perform (op define-variable!) 
-           (const f) 
-           (reg val) 
-           (reg env))
-  (assign val (const ok))
+@example ocaml
+let rec factorial_alt n =
+  if n = 1 then 1 else factorial_alt (n - 1) * n
+let () = print_int (factorial_alt 5)
 @end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.36}Exercise 5.36:} What order of evaluation does our
-compiler produce for operands of a combination?  Is it left-to-right,
-right-to-left, or some other order?  Where in the compiler is this order
-determined?  Modify the compiler so that it produces some other order of
-evaluation.  (See the discussion of order of evaluation for the
-explicit-control evaluator in @ref{5.4.1}.)  How does changing the
-order of operand evaluation affect the efficiency of the code that constructs
-the argument list?
+@strong{@anchor{Exercise 5.33a}Exercise 5.33a:} Hand-optimize the
+instruction sequence for @code{factorial_alt}.  Fold constant operands,
+remove saves whose values are not used later, and remove unreachable labels.
+Use @code{run_stats} to compare executed-instruction counts.  Explain
+which transformations preserve the checked guest program's result.
+
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.37}Exercise 5.37:} One way to understand the
-compiler's @code{preserving} mechanism for optimizing stack usage is to see
-what extra operations would be generated if we did not use this idea.  Modify
-@code{preserving} so that it always generates the @code{save} and
-@code{restore} operations.  Compile some simple expressions and identify the
-unnecessary stack operations that are generated.  Compare the code to that
-generated with the @code{preserving} mechanism intact.
-@end quotation
+@strong{@anchor{Exercise 5.34}Exercise 5.34:} Compile this iterative
+factorial program:
 
-@quotation
-@strong{@anchor{Exercise 5.38}Exercise 5.38:} Our compiler is clever about
-avoiding unnecessary stack operations, but it is not clever at all when it
-comes to compiling calls to the primitive procedures of the language in terms
-of the primitive operations supplied by the machine.  For example, consider how
-much code is compiled to compute @code{(+ a 1)}: The code sets up an argument
-list in @code{argl}, puts the primitive addition procedure (which it finds by
-looking up the symbol @code{+} in the environment) into @code{proc}, and tests
-whether the procedure is primitive or compound.  The compiler always generates
-code to perform the test, as well as code for primitive and compound branches
-(only one of which will be executed).  We have not shown the part of the
-controller that implements primitives, but we presume that these instructions
-make use of primitive arithmetic operations in the machine's data paths.
-Consider how much less code would be generated if the compiler could
-@newterm{open-code} primitives---that is, if it could generate code to directly
-use these primitive machine operations.  The expression @code{(+ a 1)} might be
-compiled into something as simple as@footnote{We have used the same symbol
-@code{+} here to denote both the source-language procedure and the machine
-operation.  In general there will not be a one-to-one correspondence between
-primitives of the source language and primitives of the machine.}
-
-@example
-(assign val (op lookup-variable-value) 
-            (const a) 
-            (reg env))
-(assign val (op +)
-            (reg val)
-            (const 1))
+@example ocaml
+let factorial n =
+  let rec iter product counter =
+    if counter > n then product
+    else iter (counter * product) (counter + 1)
+  in
+  iter 1 1
+let () = print_int (factorial 5)
 @end example
 
-In this exercise we will extend our compiler to support open coding of selected
-primitives.  Special-purpose code will be generated for calls to these
-primitive procedures instead of the general procedure-application code.  In
-order to support this, we will augment our machine with special argument
-registers @code{arg1} and @code{arg2}.  The primitive arithmetic operations of
-the machine will take their inputs from @code{arg1} and @code{arg2}. The
-results may be put into @code{val}, @code{arg1}, or @code{arg2}.
+Annotate the emitted instructions.  Compare its recursive call path
+with @ref{Exercise 5.33}.  Explain which instructions determine the
+machine stack depth.
 
-The compiler must be able to recognize the application of an open-coded
-primitive in the source program.  We will augment the dispatch in the
-@code{compile} procedure to recognize the names of these primitives in addition
-to the reserved words (the special forms) it currently
-recognizes.@footnote{Making the primitives into reserved words is in general a
-bad idea, since a user cannot then rebind these names to different procedures.
-Moreover, if we add reserved words to a compiler that is in use, existing
-programs that define procedures with these names will stop working.  See
-@ref{Exercise 5.44} for ideas on how to avoid this problem.} For each special
-form our compiler has a code generator.  In this exercise we will construct a
-family of code generators for the open-coded primitives.
+@end quotation
 
-@enumerate a
+@quotation
+@strong{@anchor{Exercise 5.35}Exercise 5.35:} Use
+@code{statements_text} on the sequence for @code{factorial}.  For each
+instruction, identify the guest expression or call that caused it.
+Explain how labels delimit function bodies and how the construction code
+skips a body while it creates a closure.
 
-@item
-The open-coded primitives, unlike the special forms, all need their operands
-evaluated.  Write a code generator @code{spread-arguments} for use by all the
-open-coding code generators.  @code{Spread-arguments} should take an operand
-list and compile the given operands targeted to successive argument registers.
-Note that an operand may contain a call to an open-coded primitive, so argument
-registers will have to be preserved during operand evaluation.
+@end quotation
 
-@item
-For each of the primitive procedures @code{=}, @code{*}, @code{-}, and
-@code{+}, write a code generator that takes a combination with that operator,
-together with a target and a linkage descriptor, and produces code to spread
-the arguments into the registers and then perform the operation targeted to the
-given target with the given linkage.  You need only handle expressions with two
-operands.  Make @code{compile} dispatch to these code generators.
+@quotation
+@strong{@anchor{Exercise 5.36}Exercise 5.36:} The guest evaluators and
+compiler evaluate application operands from left to right.  Inspect the
+instruction order for this effectful unit:
 
-@item
-Try your new compiler on the @code{factorial} example.  Compare the resulting
-code with the result produced without open coding.
+@example ocaml
+let mark value =
+  print_int value;
+  print_newline ();
+  value
+let combine first second = first + second
+let () =
+  print_int (combine (mark 1) (mark 2));
+  print_newline ()
+@end example
 
-@item
-Extend your code generators for @code{+} and @code{*} so that they can handle
-expressions with arbitrary numbers of operands.  An expression with more than
-two operands will have to be compiled into a sequence of operations, each with
-only two inputs.
+Compare the direct evaluator and compiled execution.  The native OCaml
+language leaves function-argument order unspecified, so do not use a
+native run of these effects as the expected order.  Explain how the
+compiler preserves the order required by the guest contract.
 
-@end enumerate
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 5.37}Exercise 5.37:} The public
+@code{preserving} helper saves a register only when the first sequence
+modifies it and the second needs its incoming value.  Inspect its output
+for several guest units.  Then design an alternate preservation function
+that always saves the requested registers.  Use @code{compile_open}'s
+@code{preserving} argument to compare the resulting typed statements.
+Explain why the unconditional version is correct but can use more stack
+space.
+
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 5.38}Exercise 5.38:} The compiler handles
+@code{Ast.Arith} and @code{Ast.Compare} through dedicated binary
+operations.  A normal function call has the separate @code{Ast.Apply}
+path.  Compare the typed statements for arithmetic and a call to a
+function that computes the same result.  Explain which checks remain
+necessary for each path.  Then propose another checked AST form that
+could use a specialized machine operation without changing guest behavior.
+
 @end quotation
 
 @node	5.5.6, 5.5.7, 5.5.5, 5.5
 @subsection Lexical Addressing
 
-One of the most common optimizations performed by compilers is the optimization
-of variable lookup.  Our compiler, as we have implemented it so far, generates
-code that uses the @code{lookup-variable-value} operation of the evaluator
-machine.  This searches for a variable by comparing it with each variable that
-is currently bound, working frame by frame outward through the run-time
-environment.  This search can be expensive if the frames are deeply nested or
-if there are many variables.  For example, consider the problem of looking up
-the value of @code{x} while evaluating the expression @code{(* x y z)} in an
-application of the procedure that is returned by
+The OCaml subset has lexical scope, and the checker resolves every name
+before execution.  The compiler does not yet turn a local name into a
+numeric lexical address.  Its @code{Ast.Var} case emits a
+@code{lookup-variable-value} operation that searches the runtime
+environment by name.
 
-@example
-(let ((x 3) (y 4))
-  (lambda (a b c d e)
-    (let ((y (* a b x))
-          (z (+ c d x)))
-      (* x y z))))
+Consider this guest unit:
+
+@example ocaml
+let outer = 3
+let make x =
+  let local = x + outer in
+  fun y -> local + y
+let answer = make 4 5
 @end example
 
 @noindent
-Since a @code{let} expression is just syntactic sugar for a @code{lambda}
-combination, this expression is equivalent to
-
-@example
-((lambda (x y)
-   (lambda (a b c d e)
-     ((lambda (y z) (* x y z))
-      (* a b x)
-      (+ c d x))))
- 3
- 4)
-@end example
-
-@noindent
-Each time @code{lookup-variable-value} searches for @code{x}, it must determine
-that the symbol @code{x} is not @code{eq?} to @code{y} or @code{z} (in the
-first frame), nor to @code{a}, @code{b}, @code{c}, @code{d}, or @code{e} (in
-the second frame).  We will assume, for the moment, that our programs do not
-use @code{define}---that variables are bound only with @code{lambda}.  Because
-our language is lexically scoped, the run-time environment for any expression
-will have a structure that parallels the lexical structure of the program in
-which the expression appears.@footnote{This is not true if we allow internal
-definitions, unless we scan them out.  See @ref{Exercise 5.43}.  } Thus, the
-compiler can know, when it analyzes the above expression, that each time the
-procedure is applied the variable @code{x} in @code{(* x y z)} will be found
-two frames out from the current frame and will be the first variable in that
-frame.
-
-We can exploit this fact by inventing a new kind of variable-lookup operation,
-@code{lexical-address-lookup}, that takes as arguments an environment and a
-@newterm{lexical address} that consists of two numbers: a @newterm{frame number}, 
-which specifies how many frames to pass over, and a
-@newterm{displacement number}, which specifies how many variables to pass over
-in that frame.  @code{Lexical-address-lookup} will produce the value of the
-variable stored at that lexical address relative to the current environment.
-If we add the @code{lexical-address-lookup} operation to our machine, we can
-make the compiler generate code that references variables using this operation,
-rather than @code{lookup-variable-value}.  Similarly, our compiled code can use
-a new @code{lexical-address-set!}  operation instead of
-@code{set-variable-value!}.
-
-In order to generate such code, the compiler must be able to determine the
-lexical address of a variable it is about to compile a reference to.  The
-lexical address of a variable in a program depends on where one is in the code.
-For example, in the following program, the address of @code{x} in expression
-@code{⟨}@var{e1}@code{⟩} is (2, 0)---two frames back and the first variable in the frame.  At
-that point @code{y} is at address (0, 0) and @code{c} is at address (1, 2).  In
-expression @code{⟨}@var{e2}@code{⟩}, @code{x} is at (1, 0), @code{y} is at (1, 1), and @code{c}
-is at (0, 2).
-
-@example
-((lambda (x y)
-   (lambda (a b c d e)
-     ((lambda (y z) ⟨@var{e1}⟩)
-      ⟨@var{e2}⟩
-      (+ c d x))))
- 3
- 4)
-@end example
-
-@noindent
-One way for the compiler to produce code that uses lexical addressing is to
-maintain a data structure called a @newterm{compile-time environment}.  This
-keeps track of which variables will be at which positions in which frames in
-the run-time environment when a particular variable-access operation is
-executed.  The compile-time environment is a list of frames, each containing a
-list of variables.  (There will of course be no values bound to the variables,
-since values are not computed at compile time.)  The compile-time environment
-becomes an additional argument to @code{compile} and is passed along to each
-code generator.  The top-level call to @code{compile} uses an empty
-compile-time environment.  When a @code{lambda} body is compiled,
-@code{compile-lambda-body} extends the compile-time environment by a frame
-containing the procedure's parameters, so that the sequence making up the body
-is compiled with that extended environment.  At each point in the compilation,
-@code{compile-variable} and @code{compile-assignment} use the compile-time
-environment to generate the appropriate lexical addresses.
-
-@ref{Exercise 5.39} through @ref{Exercise 5.43} describe how to complete this
-sketch of the lexical-addressing strategy to incorporate lexical
-lookup into the compiler.  @ref{Exercise 5.44} describes another use for the
-compile-time environment.
+The closure captures the environment where @code{make} creates it.
+Function application and @code{let} create environment frames.  The
+compiler preserves these semantics, but it does not calculate frame
+depths or slot displacements.  A lexical-address optimization would need
+to keep those compile-time frames aligned with the environments made by
+the runtime.
 
 @quotation
-@strong{@anchor{Exercise 5.39}Exercise 5.39:} Write a procedure
-@code{lexical-address-lookup} that implements the new lookup operation.  It
-should take two arguments---a lexical address and a run-time environment---and
-return the value of the variable stored at the specified lexical address.
-@code{Lexical-address-lookup} should signal an error if the value of the
-variable is the symbol @code{*unassigned*}.@footnote{This is the modification
-to variable lookup required if we implement the scanning method to eliminate
-internal definitions (@ref{Exercise 5.43}).  We will need to eliminate these
-definitions for lexical addressing to work.} Also write a procedure
-@code{lexical-address-set!} that implements the operation that changes the
-value of the variable at a specified lexical address.
+@strong{@anchor{Exercise 5.39}Exercise 5.39:} Design a lookup operation
+that accepts a frame depth and a position within that frame.  Specify
+its behavior for an unknown address and for an unfilled cell created by
+a recursive binding.  Keep errors in the guest error domain.
+
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.40}Exercise 5.40:} Modify the compiler to maintain
-the compile-time environment as described above.  That is, add a
-compile-time-environment argument to @code{compile} and the various code
-generators, and extend it in @code{compile-lambda-body}.
+@strong{@anchor{Exercise 5.40}Exercise 5.40:} Extend the compiler's
+internal traversal with a compile-time environment.  Add each function's
+parameters and each local binding group to the environment at the point
+where their bodies compile.  Keep the public expression and program
+entry points usable.
+
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.41}Exercise 5.41:} Write a procedure
-@code{find-variable} that takes as arguments a variable and a compile-time
-environment and returns the lexical address of the variable with respect to
-that environment.  For example, in the program fragment that is shown above,
-the compile-time environment during the compilation of expression @code{⟨}@var{e1}@code{⟩} is
-@code{((y z) (a b c d e) (x y))}.  @code{Find-variable} should produce
+@strong{@anchor{Exercise 5.41}Exercise 5.41:} Write a function that
+finds the frame depth and position of a name in a list of compile-time
+frames.  Test it on nested @code{let} and @code{fun} expressions with
+shadowed names.  State which binding each @code{Ast.Var} refers to.
 
-@example
-(find-variable 
- 'c '((y z) (a b c d e) (x y)))
-@i{(1 2)}
-
-(find-variable 
- 'x '((y z) (a b c d e) (x y)))
-@i{(2 0)}
-
-(find-variable 
- 'w '((y z) (a b c d e) (x y)))
-@i{not-found}
-@end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.42}Exercise 5.42:} Using @code{find-variable} from
-@ref{Exercise 5.41}, rewrite @code{compile-variable} and
-@code{compile-assignment} to output lexical-address instructions.  In cases
-where @code{find-variable} returns @code{not-found} (that is, where the
-variable is not in the compile-time environment), you should have the code
-generators use the evaluator operations, as before, to search for the binding.
-(The only place a variable that is not found at compile time can be is in the
-global environment, which is part of the run-time environment but is not part
-of the compile-time environment.@footnote{Lexical addresses cannot be used to
-access variables in the global environment, because these names can be defined
-and redefined interactively at any time.  With internal definitions scanned
-out, as in @ref{Exercise 5.43}, the only definitions the compiler sees are
-those at top level, which act on the global environment.  Compilation of a
-definition does not cause the defined name to be entered in the compile-time
-environment.}  Thus, if you wish, you may have the evaluator operations look
-directly in the global environment, which can be obtained with the operation
-@code{(op get-global-environment)}, instead of having them search the whole
-run-time environment found in @code{env}.)  Test the modified compiler on a few
-simple cases, such as the nested @code{lambda} combination at the beginning of
-this section.
+@strong{@anchor{Exercise 5.42}Exercise 5.42:} Use the address finder
+from @ref{Exercise 5.41} to emit indexed lookup instructions for local
+variables.  Keep name lookup for top-level bindings.  The subset has no
+assignment to a variable name: when a local variable contains a
+reference, lookup its reference value before handling @code{Ast.Assign}.
+
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.43}Exercise 5.43:} We argued in @ref{4.1.6}
-that internal definitions for block structure should not be considered ``real''
-@code{define}s.  Rather, a procedure body should be interpreted as if the
-internal variables being defined were installed as ordinary @code{lambda}
-variables initialized to their correct values using @code{set!}.  
-@ref{4.1.6} and @ref{Exercise 4.16} showed how to modify the metacircular
-interpreter to accomplish this by scanning out internal definitions.  Modify
-the compiler to perform the same transformation before it compiles a procedure
-body.
+@strong{@anchor{Exercise 5.43}Exercise 5.43:} The compiler handles a
+recursive @code{Ast.Let} by allocating the group's cells before it
+evaluates their right-hand sides.  Trace that sequence for two mutually
+recursive functions.  Explain which environment the closures capture
+and how the cells are filled before the body runs.
+
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.44}Exercise 5.44:} In this section we have focused
-on the use of the compile-time environment to produce lexical addresses.  But
-there are other uses for compile-time environments.  For instance, in
-@ref{Exercise 5.38} we increased the efficiency of compiled code by open-coding
-primitive procedures.  Our implementation treated the names of open-coded
-procedures as reserved words.  If a program were to rebind such a name, the
-mechanism described in @ref{Exercise 5.38} would still open-code it as a
-primitive, ignoring the new binding.  For example, consider the procedure
+@strong{@anchor{Exercise 5.44}Exercise 5.44:} The parser represents
+built-in arithmetic syntax such as @code{a + b} with @code{Ast.Arith}.
+A named function call has the distinct @code{Ast.Apply} form.
+Propose a specialization for a named call.  State how the compiler
+would prove that a local binding does not shadow the specialized
+operation before selecting it.
 
-@example
-(lambda (+ * a b x y)
-  (+ (* a x) (* b y)))
-@end example
-
-@noindent
-which computes a linear combination of @code{x} and @code{y}.  We might call it
-with arguments @code{+matrix}, @code{*matrix}, and four matrices, but the
-open-coding compiler would still open-code the @code{+} and the @code{*} in
-@code{(+ (* a x) (* b y))} as primitive @code{+} and @code{*}.  Modify the
-open-coding compiler to consult the compile-time environment to
-compile the correct code for expressions involving the names of primitive
-procedures.  (The code will work correctly as long as the program does not
-@code{define} or @code{set!} these names.)
 @end quotation
 
 @node	5.5.7, References, 5.4, 5.5
 @subsection Interfacing Compiled Code to the Evaluator
 
-We have not yet explained how to load compiled code into the evaluator machine
-or how to run it.  We will assume that the explicit-control-evaluator machine
-has been defined as in @ref{5.4.4}, with the additional operations
-specified in @ref{Footnote 323}.  We will implement a procedure
-@code{compile-and-go} that compiles a Scheme expression, loads the resulting
-object code into the evaluator machine, and causes the machine to run the code
-in the evaluator global environment, print the result, and enter the
-evaluator's driver loop.  We will also modify the evaluator so that interpreted
-expressions can call compiled procedures as well as interpreted ones.  We can
-then put a compiled procedure into the machine and use the evaluator to call
-it:
+The compiler and both evaluators accept the same checked program, but each
+run creates its own runtime state.  Admission happens once at the host
+boundary:
 
 @example ocaml
-let factorial_source =
-  @{|(define (factorial n)
-  (if (= n 1)
-      1
-      (* (factorial (- n 1)) n)))|@}
-;;
+module Check = Sicp_common.Check
+let checked =
+  Check.check ~filename:"factorial.ml" factorial_source
 @end example
 
 @noindent
-@code{compile_and_go} compiles the definition, appends the object code
-to the machine's controller, arms the external entry, and queues the
-driver's inputs:
+For a successful @code{Check.program}, compare the direct evaluator, the
+explicit-control evaluator, and the compiler:
 
 @example ocaml
-let state = Sec_5_5.new_state () in
-Sec_5_5.compile_and_go ~state ~compiled:factorial_source
-  ~source:"(factorial 5)" ()
->>= fun m -> Sec_5_5.start m
+module Direct = Sicp_ch4.Sec_4_1
+module Controlled = Sicp_ch5.Sec_5_4
+module Compiled = Sicp_ch5.Sec_5_5
+
+let runs =
+  match checked with
+  | Error diagnostic -> Error diagnostic
+  | Ok program ->
+    let direct = Direct.run ~emit:print_string program in
+    let controlled = Controlled.run ~emit:print_string program in
+    let compiled = Compiled.run ~emit:print_string program in
+    Ok (direct, controlled, compiled)
 @end example
 
 @noindent
-Starting the machine runs the compiled definition and then the driver
-loop; the transcript is the module's own output, pinned form for form
-in the section replay:
+Compare native OCaml execution with these engines only for observations
+the host language specifies.  Avoid side effects in argument positions
+whose order the host leaves unspecified.
 
-@example
-;;; EC-Eval value:
-ok
+Compare output, result values, and guest error categories.  The direct
+and explicit-control evaluators use interpreted closures.  The compiler
+uses compiled closures with entry labels.  The public run functions do not
+provide a bridge between those procedure representations.
 
-;;; EC-Eval input:
-(factorial 5)
+@code{run_stats} reports the number of executed instructions for compiled
+execution.  To inspect stack use, compile the checked items and pass the
+sequence to @code{load}.  Start the returned machine with
+@code{Sec_5_1.start}; then read @code{Sec_5_1.executed} and
+@code{Sec_5_1.stack_statistics}.  Counts describe one engine; they are
+not the guest behavior contract.
 
-;;; EC-Eval value:
-120
+Interpretation evaluates the checked AST through guest operations.
+Compilation chooses register instructions before execution.  Both paths
+must preserve guest results, output, errors, and effects.  The compiler
+can remove machine work only when it proves that the guest behavior stays
+the same.
 
-;;; EC-Eval input:
-@end example
+Safety checks cost instructions.  A compiler should remove a check only
+when it proves that the check is unnecessary.  The historical
+@abbr{UNIX}(tm) finger daemon failure exploited a missing input-buffer
+check; see @ref{Spafford 1989}.  Measure safe code generation.  Do not
+remove a required guest check to improve a counter.
 
-@noindent
-To allow the evaluator to handle compiled procedures (for example, to evaluate
-the call to @code{factorial} above), we need to change the code at
-@code{apply-dispatch} (@ref{5.4.1}) so that it recognizes compiled
-procedures (as distinct from compound or primitive procedures) and transfers
-control directly to the entry point of the compiled code:@footnote{Of course,
-compiled procedures as well as interpreted procedures are compound
-(nonprimitive).  For compatibility with the terminology used in the
-explicit-control evaluator, in this section we will use ``compound'' to mean
-interpreted (as opposed to compiled).}
+To port this execution model to another host, implement the explicit-control
+machine and its runtime, or lower checked programs and provide the
+operations and storage they need.  Exercises 5.51 and 5.52 ask readers
+to explore the C path.  The OCaml compiler interface itself returns typed
+register-machine instructions, not C code.
 
-@example
-apply-dispatch
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-apply))
-  (test (op compound-procedure?) (reg proc))
-  (branch (label compound-apply))
-  (test (op compiled-procedure?) (reg proc))
-  (branch (label compiled-apply))
-  (goto (label unknown-procedure-type))
+@quotation
+@strong{@anchor{Exercise 5.45}Exercise 5.45:} Compare the recursive
+and iterative factorial programs of @ref{Exercise 5.33} and
+@ref{Exercise 5.34}.  Record compiled instruction counts with
+@code{run_stats} and compiled stack statistics by loading the sequence.
+Compare stack statistics with @code{Sec_5_4.stack_statistics_after} and
+the special-purpose factorial machine of @ref{Figure 5.11}.  Report the
+program and machine configuration for each measurement.
 
-compiled-apply
-  (restore continue)
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-@end example
+@end quotation
 
-@noindent
-Note the restore of @code{continue} at @code{compiled-apply}.  Recall that the
-evaluator was arranged so that at @code{apply-dispatch}, the continuation would
-be at the top of the stack.  The compiled code entry point, on the other hand,
-expects the continuation to be in @code{continue}, so @code{continue} must be
-restored before the compiled code is executed.
-
-To enable us to run some compiled code when we start the evaluator machine, we
-add a @code{branch} instruction at the beginning of the evaluator machine,
-which causes the machine to go to a new entry point if the @code{flag} register
-is set.@footnote{Now that the evaluator machine starts with a @code{branch}, we
-must always initialize the @code{flag} register before starting the evaluator
-machine.  To start the machine at its ordinary read-eval-print loop, we could
-use
+@quotation
+@strong{@anchor{Exercise 5.46}Exercise 5.46:} Compare compiled and
+explicit-control execution of this tree-recursive guest program:
 
 @example ocaml
-let start_eceval () =
-  Sec_5_5.set_flag eceval false;
-  Sec_5_5.start eceval
+let rec fib n =
+  if n < 2 then n
+  else fib (n - 1) + fib (n - 2)
+let () = print_int (fib 10)
 @end example
 
-@noindent
-In this edition the machine builds its global environment when it is
-constructed, so @code{start_eceval} only clears the flag.
-}
+Record the compiled instruction count with @code{run_stats} and compiled
+stack statistics from a loaded sequence.  Compare stack statistics with
+@code{Sec_5_4.stack_statistics_after} and the special-purpose Fibonacci
+machine of @ref{Figure 5.12}.  State the input and configuration for
+every measurement.
 
-@example
-@r{;; branches if @code{flag} is set:}
-(branch (label external-entry)) 
-read-eval-print-loop
-  (perform (op initialize-stack))
-  @r{…}
-@end example
+@end quotation
 
-@noindent
-@code{External-entry} assumes that the machine is started with @code{val}
-containing the location of an instruction sequence that puts a result into
-@code{val} and ends with @code{(goto (reg continue))}.  Starting at this entry
-point jumps to the location designated by @code{val}, but first assigns
-@code{continue} so that execution will return to @code{print-result}, which
-prints the value in @code{val} and then goes to the beginning of the
-evaluator's read-eval-print loop.@footnote{Since a compiled procedure is an
-object that the system may try to print, note what the machine's print
-operation @code{user-print} (from @ref{4.1.4}) says for one: in this
-edition no special case is needed, because the compiled procedure's
-object is the tagged value with a table index (the edition notes), and
-the printed form is that value:
+@quotation
+@strong{@anchor{Exercise 5.47}Exercise 5.47:} The current evaluator and
+compiler use different procedure representations.  Design a checked
+interoperation boundary so compiled code can call an interpreted closure
+and interpreted code can call a compiled closure.  Preserve captured
+environments, argument order, arity errors, guest error categories, and
+reference mutation.  Test both directions with guest programs.  A host
+closure passed to a primitive is not evidence of guest procedure
+interoperation.
+
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 5.48}Exercise 5.48:} The public
+@code{Sec_5_5.run} function is a host API over @code{Check.program};
+the guest library does not expose the compiler.  Design a host coordinator
+that accepts source text, calls @code{Check.check}, compiles and executes
+the checked program, and returns its run result.  State whether runs share
+machine state or top-level bindings.  Explain why a host compiler API
+must not become an ordinary guest primitive.
+
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 5.49}Exercise 5.49:} Design a
+read-compile-execute-print driver for complete OCaml-subset units.
+Keep source input and output callbacks at the host boundary.  For each
+unit, admit it, compile its items, load the typed instruction sequence,
+execute it, and retain the ordered observations.  Explain which work
+belongs in the register machine and which belongs in the host driver.
+
+@end quotation
+
+@quotation
+@strong{@anchor{Exercise 5.50}Exercise 5.50:} Compile and run the
+metacircular evaluator as a guest program.  The current source is exposed
+as @code{Metacircular.evaluator}; @code{Metacircular.with_guest} adds a
+guest expression and a driver that prints its result.  Try this complete
+unit:
 
 @example ocaml
-install
-  ( "user-print"
-  , Sec_5_4.Action_op
-      (function
-        | [ w ] -> say m (Sec_5_4.word_to_string w)
-        | _ -> Error (Arity "user-print needs one argument")) )
-@end example
-}
+module Check = Sicp_common.Check
+module Compiler = Sicp_ch5.Sec_5_5
 
-@example
-external-entry
-  (perform (op initialize-stack))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (reg val))
-@end example
-
-@noindent
-Now we can use the following procedure to compile a procedure definition,
-execute the compiled code, and run the read-eval-print loop so we can try the
-procedure.  Because we want the compiled code to return to the location in
-@code{continue} with its result in @code{val}, we compile the expression with a
-target of @code{val} and a linkage of @code{return}.  In this edition the
-object code is controller text, so there is no separate assembly step:
-@code{compile_block} appends the block to the machine's controller, sets the
-@code{val} register to the block's entry label, sets the @code{flag} so that
-the evaluator will go to @code{external-entry}, and leaves the machine ready
-to start.
-
-@example ocaml
-let compile_and_go ?(cfg = default_config) ~state ~compiled ~source () =
-  compile_block ~cfg state compiled
-  >>= fun (entry, block) ->
-  make_compiled_evaluator
-    ~controller:(eceval_controller ^ "\n" ^ block)
-    ~source
-    ~state
-    ()
-  >>= fun m ->
-  set_register m "val" (Sec_5_4.Lab entry)
-  >>= fun () ->
-  set_flag m true;
-  Ok m
+let source =
+  Sicp_ch5.Metacircular.with_guest
+    "EAdd (EInt 2, EInt 3)"
+let () =
+  match Check.check ~filename:"selfinterp.ml" source with
+  | Error diagnostic ->
+    print_endline (Check.diagnostic_to_string diagnostic)
+  | Ok program ->
+    (match Compiler.run ~emit:print_string program with
+     | Ok _ -> ()
+     | Error error ->
+       print_endline (Sicp_common.Eval_error.to_string error))
 @end example
 
-@noindent
-If we have set up stack monitoring, as at the end of @ref{5.4.4}, we
-can examine the stack usage of compiled code.  In this edition the
-monitored machine swaps the driver fragment for the @ref{5.4.4}
-monitored driver, and the session is the module's own transcript:
+The driver should print @code{5}.  Trace how the guest evaluator handles
+@code{EAdd}.  The compiled run must execute the guest evaluator; a call
+to the host evaluator does not satisfy the exercise.
 
-@example ocaml
-let state = Sec_5_5.new_state () in
-Sec_5_5.compile_and_go ~state ~compiled:factorial_source
-  ~source:"(factorial 5)" ()
->>= fun m -> Sec_5_5.start m
-@end example
-
-@example
-(total-pushes = 0 maximum-depth = 0)
-
-;;; EC-Eval value:
-ok
-
-;;; EC-Eval input:
-(factorial 5)
-
-(total-pushes = 31 maximum-depth = 14)
-
-;;; EC-Eval value:
-120
-@end example
-
-@noindent
-Compare this example with the evaluation of @code{(factorial 5)} using the
-interpreted version of the same procedure, shown at the end of 
-@ref{5.4.4}.  The interpreted version required 144 pushes and a maximum stack
-depth of 28.  This illustrates the optimization that results from our
-compilation strategy.
-
-@subsubheading Interpretation and compilation
-
-With the programs in this section, we can now experiment with the alternative
-execution strategies of interpretation and compilation.@footnote{We can do even
-better by extending the compiler to allow compiled code to call interpreted
-procedures.  See @ref{Exercise 5.47}.}  An interpreter raises the machine to
-the level of the user program; a compiler lowers the user program to the level
-of the machine language.  We can regard the Scheme language (or any programming
-language) as a coherent family of abstractions erected on the machine language.
-Interpreters are good for interactive program development and debugging because
-the steps of program execution are organized in terms of these abstractions,
-and are therefore more intelligible to the programmer.  Compiled code can
-execute faster, because the steps of program execution are organized in terms
-of the machine language, and the compiler is free to make optimizations that
-cut across the higher-level abstractions.@footnote{Independent of the strategy
-of execution, we incur significant overhead if we insist that errors
-encountered in execution of a user program be detected and signaled, rather
-than being allowed to kill the system or produce wrong answers.  For example,
-an out-of-bounds array reference can be detected by checking the validity of
-the reference before performing it.  The overhead of checking, however, can be
-many times the cost of the array reference itself, and a programmer should
-weigh speed against safety in determining whether such a check is desirable.  A
-good compiler should be able to produce code with such checks, should avoid
-redundant checks, and should allow programmers to control the extent and type
-of error checking in the compiled code.
-
-Compilers for popular languages, such as C and C++, put hardly any
-error-checking operations into running code, so as to make things run as fast
-as possible.  As a result, it falls to programmers to explicitly provide error
-checking.  Unfortunately, people often neglect to do this, even in critical
-applications where speed is not a constraint.  Their programs lead fast and
-dangerous lives.  For example, the notorious ``Worm'' that paralyzed the
-Internet in 1988 exploited the @abbr{UNIX}(tm) operating system's failure to
-check whether the input buffer has overflowed in the finger daemon. (See
-@ref{Spafford 1989}.)}
-
-The alternatives of interpretation and compilation also lead to different
-strategies for porting languages to new computers. Suppose that we wish to
-implement Lisp for a new machine.  One strategy is to begin with the
-explicit-control evaluator of @ref{5.4} and translate its instructions
-to instructions for the new machine.  A different strategy is to begin with the
-compiler and change the code generators so that they generate code for the new
-machine.  The second strategy allows us to run any Lisp program on the new
-machine by first compiling it with the compiler running on our original Lisp
-system, and linking it with a compiled version of the run-time
-library.@footnote{Of course, with either the interpretation or the compilation
-strategy we must also implement for the new machine storage allocation, input
-and output, and all the various operations that we took as ``primitive'' in our
-discussion of the evaluator and compiler.  One strategy for minimizing work
-here is to write as many of these operations as possible in Lisp and then
-compile them for the new machine.  Ultimately, everything reduces to a small
-kernel (such as garbage collection and the mechanism for applying actual
-machine primitives) that is hand-coded for the new machine.} Better yet, we can
-compile the compiler itself, and run this on the new machine to compile other
-Lisp programs.@footnote{This strategy leads to amusing tests of correctness of
-the compiler, such as checking whether the compilation of a program on the new
-machine, using the compiled compiler, is identical with the compilation of the
-program on the original Lisp system.  Tracking down the source of differences
-is fun but often frustrating, because the results are extremely sensitive to
-minuscule details.}  Or we can compile one of the interpreters of 
-@ref{4.1} to produce an interpreter that runs on the new machine.
-
-@quotation
-@strong{@anchor{Exercise 5.45}Exercise 5.45:} By comparing the stack operations
-used by compiled code to the stack operations used by the evaluator for the
-same computation, we can determine the extent to which the compiler optimizes
-use of the stack, both in speed (reducing the total number of stack operations)
-and in space (reducing the maximum stack depth).  Comparing this optimized
-stack use to the performance of a special-purpose machine for the same
-computation gives some indication of the quality of the compiler.
-
-@enumerate a
-
-@item
-@ref{Exercise 5.27} asked you to determine, as a function of @math{n}, the number
-of pushes and the maximum stack depth needed by the evaluator to compute @math{{n!}}
-using the recursive factorial procedure given above.  @ref{Exercise 5.14} asked
-you to do the same measurements for the special-purpose factorial machine shown
-in @ref{Figure 5.11}. Now perform the same analysis using the compiled
-@code{factorial} procedure.
-
-Take the ratio of the number of pushes in the compiled version to the number of
-pushes in the interpreted version, and do the same for the maximum stack depth.
-Since the number of operations and the stack depth used to compute @math{{n!}}  are
-linear in @math{n}, these ratios should approach constants as @math{n} becomes large.
-What are these constants?  Similarly, find the ratios of the stack usage in the
-special-purpose machine to the usage in the interpreted version.
-
-Compare the ratios for special-purpose versus interpreted code to the ratios
-for compiled versus interpreted code.  You should find that the special-purpose
-machine does much better than the compiled code, since the hand-tailored
-controller code should be much better than what is produced by our rudimentary
-general-purpose compiler.
-
-@item
-Can you suggest improvements to the compiler that would help it generate code
-that would come closer in performance to the hand-tailored version?
-
-@end enumerate
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.46}Exercise 5.46:} Carry out an analysis like the
-one in @ref{Exercise 5.45} to determine the effectiveness of compiling the
-tree-recursive Fibonacci procedure
+@strong{@anchor{Exercise 5.51}Exercise 5.51:} Implement the
+explicit-control evaluator of @ref{5.4} in C for the same checked OCaml
+guest subset.  Include the register machine, tagged guest values,
+environments, stack, and runtime operations.  Compare its results and
+errors with the OCaml edition.  C is the host implementation language;
+it does not change the guest language.
 
-@example
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 1)) (fib (- n 2)))))
-@end example
-
-@noindent
-compared to the effectiveness of using the special-purpose Fibonacci machine of
-@ref{Figure 5.12}.  (For measurement of the interpreted performance, see
-@ref{Exercise 5.29}.)  For Fibonacci, the time resource used is not linear in
-@math{{n;}} hence the ratios of stack operations will not approach a limiting value
-that is independent of @math{n}.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.47}Exercise 5.47:} This section described how to
-modify the explicit-control evaluator so that interpreted code can call
-compiled procedures.  Show how to modify the compiler so that compiled
-procedures can call not only primitive procedures and compiled procedures, but
-interpreted procedures as well.  This requires modifying
-@code{compile-procedure-call} to handle the case of compound (interpreted)
-procedures.  Be sure to handle all the same @code{target} and @code{linkage}
-combinations as in @code{compile-proc-appl}.  To do the actual procedure
-application, the code needs to jump to the evaluator's @code{compound-apply}
-entry point.  This label cannot be directly referenced in object code (since
-the assembler requires that all labels referenced by the code it is assembling
-be defined there), so we will add a register called @code{compapp} to the
-evaluator machine to hold this entry point, and add an instruction to
-initialize it:
+@strong{@anchor{Exercise 5.52}Exercise 5.52:} Design a backend that
+translates checked OCaml-subset programs into C code.  Compile and run
+the generated artifact with the native C toolchain.  Also translate the
+guest evaluator of @ref{Exercise 5.50}.  Compare its guest output and
+error categories with the direct evaluator, explicit-control evaluator,
+and compiler.  Keep generated C separate from guest source.
 
-@example
-  (assign compapp (label compound-apply))
-  @r{;; branches if @code{flag} is set:}
-  (branch (label external-entry))
-read-eval-print-loop @r{…}
-@end example
-
-To test your code, start by defining a procedure @code{f} that calls a
-procedure @code{g}.  Use @code{compile-and-go} to compile the definition of
-@code{f} and start the evaluator.  Now, typing at the evaluator, define
-@code{g} and try to call @code{f}.
 @end quotation
 
-@quotation
-@strong{@anchor{Exercise 5.48}Exercise 5.48:} The @code{compile-and-go}
-interface implemented in this section is awkward, since the compiler can be
-called only once (when the evaluator machine is started).  Augment the
-compiler-interpreter interface by providing a @code{compile-and-run} primitive
-that can be called from within the explicit-control evaluator as follows:
+@strong{Edition notes.} The compiler is implemented in
+@code{ocaml/@/examples/@/ch5/@/sec_5_5.ml}.  The public interface
+@code{Sec_5_5.compile} accepts an AST expression.
+@code{Sec_5_5.compile_program} compiles top-level items, and
+@code{Sec_5_5.load} assembles the typed sequence.
+@code{Sec_5_5.run} executes a checked program;
+@code{Sec_5_5.run_stats} also reports executed instructions.
+@code{Sec_5_5.statements_text} renders statements for inspection.
 
-@example
-@i{;;; EC-Eval input:}
-(compile-and-run
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n))))
+The AST is defined in @code{ocaml/@/common/@/ast.ml}.  It uses
+@code{Scalar}, @code{Var}, @code{Let}, @code{Fun}, @code{Apply},
+@code{If}, @code{Match}, and the other variants described above.
+References use @code{Make_ref}, @code{Deref}, and @code{Assign};
+there are no quote, variable-set, or conditional-derived-form nodes.
+The compiler's state generates labels.  Its compiled closures retain an
+entry label, parameter names, and their captured environment.
 
-@i{;;; EC-Eval value:}
-@i{ok}
-
-@i{;;; EC-Eval input:}
-(factorial 5)
-
-@i{;;; EC-Eval value:}
-@i{120}
-@end example
-@end quotation
-
-@quotation
-@strong{@anchor{Exercise 5.49}Exercise 5.49:} As an alternative to using the
-explicit-control evaluator's read-eval-print loop, design a register machine
-that performs a read-compile-execute-print loop.  That is, the machine should
-run a loop that reads an expression, compiles it, assembles and executes the
-resulting code, and prints the result.  This is easy to run in our simulated
-setup, since we can arrange to call the procedures @code{compile} and
-@code{assemble} as ``register-machine operations.''
-@end quotation
-
-@quotation
-@strong{@anchor{Exercise 5.50}Exercise 5.50:} Use the compiler to compile the
-metacircular evaluator of @ref{4.1} and run this program using the
-register-machine simulator.  (To compile more than one definition at a time,
-you can package the definitions in a @code{begin}.)  The resulting interpreter
-will run very slowly because of the multiple levels of interpretation, but
-getting all the details to work is an instructive exercise.
-@end quotation
-
-@noindent
-In this edition the exercise runs on the module: the metacircular
-evaluator is the corpus program of @ref{4.1} adapted to this machine
-(@code{examples/ch5/metacircular.ml}), and compiling it with the
-compiler of this section and running it on the 5.5.7 machine answers
-the corpus session:
-
-@example ocaml
-let state = Sec_5_5.new_state () in
-Sec_5_5.compile_and_go
-  ~state
-  ~compiled:Metacircular.source
-  ~source:"(m-eval '(factorial 5) the-global-environment)"
-  ()
->>= fun m -> Sec_5_5.start m
-@end example
-
-@noindent
-The compiled corpus program's own value is the session's tick pair,
-and then the driver loop answers the object-world factorial:
-
-@example
-;;; EC-Eval value:
-(tick tick tick)
-
-;;; EC-Eval input:
-(m-eval '(factorial 5) the-global-environment)
-
-;;; EC-Eval value:
-120
-
-;;; EC-Eval input:
-@end example
-
-@noindent
-The levels of this section meet in one machine: the compiled
-@code{(factorial 5)} itself costs 292 machine steps, and the same
-computation through the compiled metacircular evaluator costs 52482
-machine steps, the price of one extra level of interpretation on this
-machine.
-
-@quotation
-@strong{@anchor{Exercise 5.51}Exercise 5.51:} Develop a rudimentary
-implementation of Scheme in C (or some other low-level language of your choice)
-by translating the explicit-control evaluator of @ref{5.4} into C.  In
-order to run this code you will need to also provide appropriate
-storage-allocation routines and other run-time support.
-@end quotation
-
-@quotation
-@strong{@anchor{Exercise 5.52}Exercise 5.52:} As a counterpoint to 
-@ref{Exercise 5.51}, modify the compiler so that it compiles Scheme procedures
-into sequences of C instructions.  Compile the metacircular evaluator of
-@ref{4.1} to produce a Scheme interpreter written in C.
-@end quotation
-
-
-@strong{Edition notes.} In this edition the compiler of this section is
-implemented in OCaml in @code{examples/ch5/sec_5_5.ml}, and the
-following documented deviations from the book's listings apply.
-
-In this edition labels used as operation inputs are spelled
-@code{(const l)} rather than @code{(label l)}, because the controller
-language of @ref{5.1} forbids labels as operation inputs (the pin of
-exercise 5.9). List and string constants ride in a compile-time
-constant table: the book's parameter list @code{(const (x))} becomes
-one @code{(const x)} input per parameter, and a quotation such as
-@code{(const 'x)} becomes @code{(const compile-time-constant-N)},
-naming the datum built by the emitted initializer.
-
-In this edition a compiled procedure object is a value tagged
-@code{compiled-procedure} whose second element indexes a machine-side
-entry-and-environment table, so that the object world stays free of
-machine addresses. The 5.5.7 machine's environments are identified by
-id symbols: @code{extend-environment} registers the new frame list and
-answers an id, and the lookup, set, and define operations resolve ids
-through that machine's own table.
-
-In this edition the compound-call branch of exercise 5.47 routes the
-apply through the @code{unev} register (dead at every call site)
-instead of declaring the book's @code{compapp} register, because the
-machine's register set is the @ref{5.4} substrate's.
-
-In this edition exercises 5.51 and 5.52 are realized as embedded C
-programs built and run by the system @code{cc}. The 5.51 translation
-reads the driver's program from the file named by @code{argv[1]}; the
-5.52 backend emits the runtime, the compile-time constant initializer,
-and the compiled program as one C file. Both answer the book's
-sessions: 5.51 prints @code{ok} and @code{120} for the factorial
-session, and 5.52's C-compiled metacircular answers @code{120} for
-@code{(m-eval '(factorial 5) the-global-environment)}.
+@code{Metacircular.evaluator} is the guest evaluator source.
+@code{Metacircular.with_guest} returns a complete unit containing that
+evaluator, one guest expression, and a printing driver.  The current
+compiler interface does not provide a combined driver-loop coordinator.
+Exercises 5.47 through 5.52 describe extensions or backends, not current
+compiler entry points.

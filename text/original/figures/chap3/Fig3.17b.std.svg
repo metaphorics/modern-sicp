@@ -62,7 +62,7 @@
         <dc:subject>
           <rdf:Bag>
             <rdf:li>list</rdf:li>
-            <rdf:li>cons</rdf:li>
+            <rdf:li>pairs</rdf:li>
           </rdf:Bag>
         </dc:subject>
       </cc:Work>

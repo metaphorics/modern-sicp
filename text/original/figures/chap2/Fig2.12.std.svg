@@ -29,7 +29,7 @@
             <rdf:li>figure</rdf:li>
             <rdf:li>beside</rdf:li>
             <rdf:li>below</rdf:li>
-            <rdf:li>flip-vert</rdf:li>
+            <rdf:li>flip vertical</rdf:li>
           </rdf:Bag>
         </dc:subject>
       </cc:Work>

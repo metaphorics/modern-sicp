@@ -18,6 +18,8 @@ from texi_indexes import anchors, source_files
 
 EDITIONS = ("rust", "ocaml", "typescript", "kotlin")
 IDENTITIES = ("sections", "exercises", "figures")
+PRESERVED_FIELDS = ("parts", *IDENTITIES, "references", "images")
+EXACT_FIELDS = ("parts", *IDENTITIES, "images")
 
 
 class RenderedAnchors(HTMLParser):
@@ -46,7 +48,7 @@ def is_array(value: object) -> TypeIs[list[object]]:
 
 
 def read_inventory(path: Path, edition: str) -> dict[str, set[str]]:
-    """Read one edition's required identities; reject incomplete inventories."""
+    """Read one edition's preserved fields; reject incomplete inventories."""
     document: object = json.loads(path.read_text(encoding="utf-8"))
     for key in ("sources", edition):
         if not is_object(document):
@@ -56,35 +58,61 @@ def read_inventory(path: Path, edition: str) -> dict[str, set[str]]:
         raise ValueError(f"{path}: missing inventory for {edition}")
     fields = document
     result: dict[str, set[str]] = {}
-    for kind in IDENTITIES:
+    for kind in PRESERVED_FIELDS:
         entries = fields.get(kind)
-        if not is_array(entries) or not entries:
+        if not is_array(entries) or (kind in ("parts", *IDENTITIES) and not entries):
             raise ValueError(f"{path}: {edition}.{kind} must be a nonempty list")
         values: set[str] = set()
         for entry in entries:
-            if not isinstance(entry, str) or re.fullmatch(r"\d+\.\d+[a-z]?", entry) is None:
+            if not isinstance(entry, str) or not entry:
+                raise ValueError(f"{path}: invalid {edition}.{kind} entry: {entry!r}")
+            if kind in IDENTITIES and re.fullmatch(r"\d+\.\d+[a-z]?", entry) is None:
                 raise ValueError(f"{path}: invalid {edition}.{kind} identity: {entry!r}")
             if entry in values:
-                raise ValueError(f"{path}: duplicate {edition}.{kind} identity: {entry}")
+                raise ValueError(f"{path}: duplicate {edition}.{kind} entry: {entry}")
             values.add(entry)
         result[kind] = values
     return result
 
 
 def identity_defects(tree: Path, expected: Mapping[str, set[str]]) -> list[str]:
-    """Report missing and unexpected section, exercise, and figure identities."""
+    """Report missing preserved targets and unexpected exact-inventory entries."""
     parts = source_files(tree)
     if not parts:
         raise ValueError(f"No Texinfo source in {tree}")
     text = "\n".join(path.read_text(encoding="utf-8") for path in parts)
+    reference_text = "\n".join(
+        [text, (tree / "main.texi").read_text(encoding="utf-8")]
+        if (tree / "main.texi").is_file()
+        else [text]
+    )
+    references = {
+        " ".join(reference.split())
+        for reference in re.findall(r"^@node[ \t]+([^,]+)", reference_text, re.MULTILINE)
+    }
+    references.update(
+        " ".join(reference.split())
+        for reference in re.findall(r"@anchor\{\s*([^}]+)", reference_text)
+    )
+    references.update(
+        " ".join(reference.split())
+        for reference in re.findall(
+            r"@(?:ref|xref|pxref)\s*\{\s*([^,}]+)", reference_text, re.DOTALL
+        )
+    )
+    # Adapted prose may change link usage, but preserved targets must remain available.
     actual = {
+        "parts": {path.relative_to(tree).as_posix() for path in parts},
         "sections": set(re.findall(r"^@node[ \t]+(\d+\.\d+)(?=,|\s*$)", text, re.MULTILINE)),
         "exercises": set(anchors(text, "Exercise")),
         "figures": set(anchors(text, "Figure")),
+        "references": references,
+        "images": {image.strip() for image in re.findall(r"@image\{\s*([^,}]+)", reference_text)},
     }
     defects: list[str] = []
-    for kind in IDENTITIES:
+    for kind in PRESERVED_FIELDS:
         defects.extend(f"{kind}: missing {item}" for item in sorted(expected[kind] - actual[kind]))
+    for kind in EXACT_FIELDS:
         defects.extend(
             f"{kind}: unexpected {item}" for item in sorted(actual[kind] - expected[kind])
         )

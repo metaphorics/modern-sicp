@@ -21,6 +21,18 @@ def book(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def expected_inventory(_book: Path) -> dict[str, set[str]]:
+    """Preserve each field the structural checker compares."""
+    return {
+        "parts": {"ch1/1.1.texi"},
+        "sections": {"1.1"},
+        "exercises": {"1.1"},
+        "figures": {"1.1"},
+        "references": set(),
+        "images": set(),
+    }
+
+
 @pytest.mark.parametrize(
     ("original", "replacement", "kind"),
     [
@@ -32,7 +44,7 @@ def book(tmp_path: Path) -> Path:
 def test_equal_counts_cannot_hide_replaced_identities(
     book: Path, original: str, replacement: str, kind: str
 ) -> None:
-    expected = {"sections": {"1.1"}, "exercises": {"1.1"}, "figures": {"1.1"}}
+    expected = expected_inventory(book)
     assert identity_defects(book, expected) == []
     part = book / "ch1/1.1.texi"
     part.write_text(part.read_text().replace(original, replacement))
@@ -40,13 +52,46 @@ def test_equal_counts_cannot_hide_replaced_identities(
 
 
 def test_missing_material_is_not_recovered_from_generated_indexes(book: Path) -> None:
-    expected = {"sections": {"1.1"}, "exercises": {"1.1"}, "figures": {"1.1"}}
+    expected = expected_inventory(book)
     (book / "ch1/1.1.texi").write_text("@node 1.1\n@section First\n")
     indexes = book / "back"
     indexes.mkdir()
     (indexes / "exercises.texi").write_text("@anchor{Exercise 1.1}\n")
     (indexes / "figures.texi").write_text("@anchor{Figure 1.1}\n")
     assert identity_defects(book, expected) == ["exercises: missing 1.1", "figures: missing 1.1"]
+
+
+def test_source_parts_references_and_images_are_preserved(book: Path) -> None:
+    expected = expected_inventory(book)
+    expected["references"] = {"Reference 1"}
+    expected["images"] = {"figures/chap1/Fig1.1"}
+
+    part = book / "ch1/1.1.texi"
+    part.write_text(
+        "@node 1.1\n@section First\n@anchor{Exercise 1.1}\n@anchor{Figure 1.1}\n"
+        "@anchor{Reference 1}\n@ref{Reference\n1}\n@image{figures/chap1/Fig1.1,,,.svg}\n"
+    )
+    assert identity_defects(book, expected) == []
+
+    part.write_text(
+        "@node 1.1\n@section First\n@anchor{Exercise 1.1}\n@anchor{Figure 1.1}\n"
+        "@anchor{Reference 1}\n@image{figures/chap1/Fig1.1,,,.svg}\n"
+    )
+    assert identity_defects(book, expected) == []
+
+    part.write_text("@node 1.1\n@section First\n@anchor{Exercise 1.1}\n@anchor{Figure 1.1}\n")
+    assert identity_defects(book, expected) == [
+        "references: missing Reference 1",
+        "images: missing figures/chap1/Fig1.1",
+    ]
+
+    part.rename(book / "ch1/renamed.texi")
+    assert identity_defects(book, expected) == [
+        "parts: missing ch1/1.1.texi",
+        "references: missing Reference 1",
+        "images: missing figures/chap1/Fig1.1",
+        "parts: unexpected ch1/renamed.texi",
+    ]
 
 
 @pytest.mark.parametrize("entries", [[], ["1.1", "1.1"], [1], ["1.1", None], ["invalid"]])
@@ -56,7 +101,18 @@ def test_corrupt_inventory_cannot_disable_preservation(
     inventory = tmp_path / "inventory.json"
     inventory.write_text(
         json.dumps(
-            {"sources": {"rust": {"sections": entries, "exercises": ["1.1"], "figures": ["1.1"]}}}
+            {
+                "sources": {
+                    "rust": {
+                        "parts": ["ch1/1.1.texi"],
+                        "sections": entries,
+                        "exercises": ["1.1"],
+                        "figures": ["1.1"],
+                        "references": [],
+                        "images": [],
+                    }
+                }
+            }
         )
     )
     with pytest.raises(ValueError, match=r"rust.sections"):
@@ -67,7 +123,18 @@ def test_requested_edition_cannot_fall_back_to_another_inventory(tmp_path: Path)
     inventory = tmp_path / "inventory.json"
     inventory.write_text(
         json.dumps(
-            {"sources": {"rust": {"sections": ["1.1"], "exercises": ["1.1"], "figures": ["1.1"]}}}
+            {
+                "sources": {
+                    "rust": {
+                        "parts": ["ch1/1.1.texi"],
+                        "sections": ["1.1"],
+                        "exercises": ["1.1"],
+                        "figures": ["1.1"],
+                        "references": [],
+                        "images": [],
+                    }
+                }
+            }
         )
     )
     with pytest.raises(ValueError, match="missing inventory for kotlin"):
@@ -77,7 +144,15 @@ def test_requested_edition_cannot_fall_back_to_another_inventory(tmp_path: Path)
 def test_missing_tree_cannot_pass_as_an_empty_book(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="No Texinfo source"):
         identity_defects(
-            tmp_path / "absent", {"sections": {"1.1"}, "exercises": {"1.1"}, "figures": {"1.1"}}
+            tmp_path / "absent",
+            {
+                "parts": {"ch1/1.1.texi"},
+                "sections": {"1.1"},
+                "exercises": {"1.1"},
+                "figures": {"1.1"},
+                "references": set(),
+                "images": set(),
+            },
         )
 
 
@@ -109,7 +184,7 @@ def test_source_inventory_cannot_hide_unpublished_material(
     converter = shutil.which(os.environ.get("TEXI2ANY", "texi2any"))
     if converter is None:
         pytest.skip("Texinfo is required for the rendered-book regression")
-    expected = {"sections": {"1.1"}, "exercises": {"1.1"}, "figures": {"1.1"}}
+    expected = expected_inventory(book)
     (book / "main.texi").write_text(
         "\\input texinfo\n@settitle Check\n@node Top\n@top Check\n" + include + "@bye\n"
     )
@@ -144,7 +219,18 @@ def test_relative_converter_keeps_validating_after_directory_change(
     inventory = tmp_path / "inventory.json"
     inventory.write_text(
         json.dumps(
-            {"sources": {"rust": {"sections": ["1.1"], "exercises": ["1.1"], "figures": ["1.1"]}}}
+            {
+                "sources": {
+                    "rust": {
+                        "parts": ["ch1/1.1.texi"],
+                        "sections": ["1.1"],
+                        "exercises": ["1.1"],
+                        "figures": ["1.1"],
+                        "references": [],
+                        "images": [],
+                    }
+                }
+            }
         )
     )
     monkeypatch.chdir(tmp_path)

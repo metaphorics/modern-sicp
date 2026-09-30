@@ -1,28 +1,28 @@
 @node	5.3, 5.4, 5.2, Chapter 5
 @section Storage Allocation and Garbage Collection
 
-In section @ref{5.4}, we will show how to implement a Scheme evaluator as a
+In section @ref{5.4}, we will show how to implement the guest evaluator as a
 register machine.  To simplify the discussion, we will assume that our
 register machines can be equipped with a @newterm{list-structured memory}, in
 which the basic operations for manipulating list-structured data are primitive.
 Postulating the existence of such a memory is a useful abstraction when one is
-focusing on the mechanisms of control in a Scheme interpreter, but this does
+focusing on the mechanisms of control in the guest interpreter, but this does
 not reflect a realistic view of the actual primitive data operations of
-contemporary computers.  To obtain a more complete picture of how a Lisp system
+contemporary computers.  To obtain a more complete picture of how a language system
 operates, we must investigate how list structure can be represented in a way
 that is compatible with conventional computer memories.
 
 There are two considerations in implementing list structure.  The first is
 purely an issue of representation: how to represent the ``box-and-pointer''
-structure of Lisp pairs, using only the storage and addressing capabilities of
+structure of data pairs, using only the storage and addressing capabilities of
 typical computer memories.  The second issue concerns the management of memory
-as a computation proceeds. The operation of a Lisp system depends on
+as a computation proceeds. The operation of the data system depends on
 the ability to continually create new data objects.  These include objects that
-are explicitly created by the Lisp procedures being interpreted as well as
+are explicitly created by the procedures being interpreted as well as
 structures created by the interpreter itself, such as environments and argument
 lists.  Although the constant creation of new data objects would pose no
 problem on a computer with an infinite amount of rapidly addressable memory,
-computer memories are available only in finite sizes (more's the pity).  Lisp
+computer memories are available only in finite sizes (more's the pity).  Language
 systems thus provide an @newterm{automatic storage allocation} facility to
 support the illusion of an infinite memory.  When a data object is no longer
 needed, the memory allocated to it is automatically recycled and used to
@@ -55,7 +55,7 @@ of time that is independent of the index.@footnote{We could represent memory as
 lists of items.  However, the access time would then not be independent of the
 index, since accessing the @math{n^{\hbox{th}}} element of a list requires @math{{n - 1}}
 @code{cdr} operations.} To describe memory operations, we use two
-primitive Scheme procedures for manipulating vectors:
+primitive procedures for manipulating vectors:
 
 @itemize @bullet
 
@@ -81,7 +81,7 @@ that specifies the beginning location of a vector in memory with an
 @newterm{index} that specifies the offset of a particular element of the
 vector.
 
-@subsubheading Representing Lisp data
+@subsubheading Representing data
 
 We can use vectors to implement the basic pair structures required for a
 list-structured memory.  Let us imagine that computer memory is divided into
@@ -103,7 +103,7 @@ kinds of data (which consist of some other data type and whatever is being used
 to represent data of that type).  Two data objects are considered to be the
 same (@code{eq?}) if their pointers are identical.@footnote{Type information
 may be encoded in a variety of ways, depending on the details of the machine on
-which the Lisp system is to be implemented.  The execution efficiency of Lisp
+which the memory system is to be implemented.  The execution efficiency of the data system
 programs will be strongly dependent on how cleverly this choice is made, but it
 is difficult to formulate general design rules for good choices.  The most
 straightforward way to implement typed pointers is to allocate a fixed set of
@@ -127,7 +127,7 @@ here).
 @float
 @anchor{Figure 5.14}
 @ifinfo
-@strong{Figure 5.14:} Box-and-pointer and memory-vector representations of the list @code{((1 2) 3 4)}.
+@strong{Figure 5.14:} Box-and-pointer and memory-vector representations of the list @code{((1 2), 3, 4)}.
 
 @example
                +---+---+               +---+---+    +---+---+
@@ -153,13 +153,13 @@ the-cdrs |    | p2 | p4 |    | e0 | p7 |    | e0 |    | ...
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap5/Fig5.14b,,137mm,Figure 5.14: Box-and-pointer and memory-vector representations of the list ((1 2) 3 4).,.std.svg}
+@image{../../text/original/figures/chap5/Fig5.14b,,137mm,Figure 5.14: Box-and-pointer and memory-vector representations of the list ((1 2)@comma{} 3@comma{} 4).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/Fig5.14b.std,,137mm,,.pdf}
+@image{../../text/original/figures/pdf/chap5/Fig5.14b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 5.14:} Box-and-pointer and memory-vector representations of the list @code{((1 2) 3 4)}.}
+@caption{@strong{Figure 5.14:} Box-and-pointer and memory-vector representations of the list @code{((1 2), 3, 4)}.}
 @end float
 
 @noindent
@@ -180,7 +180,7 @@ the largest number that can be stored in a single pointer.}
 
 A symbol might be represented as a typed pointer that designates a sequence of
 the characters that form the symbol's printed representation.  This sequence is
-constructed by the Lisp reader when the character string is initially
+constructed by the reader when the character string is initially
 encountered in input.  Since we want two instances of a symbol to be recognized
 as the ``same'' symbol by @code{eq?} and we want @code{eq?} to be a simple test
 for equality of pointers, we must ensure that if the reader sees the same
@@ -210,8 +210,8 @@ For example, we can make a register machine support the instructions
 @example rust
 // The machine's car and cdr operations, run over
 // the shared list-structure memory.
-let word = memory.borrow().car(&pair_word)?;
-let word = memory.borrow().cdr(&pair_word)?;
+let word = memory.car(pair_word)?;
+let word = memory.cdr(pair_word)?;
 @end example
 
 @noindent
@@ -219,14 +219,15 @@ if we implement these, respectively, as
 
 @example rust
 // Inside Memory: the car reads the the-cars
-// vector at the pair's index, the cdr the the-cdrs
-// vector.
-fn read_car(&self, index: usize) -> Result<Word, MemoryFault> @{
-    self.spaces[self.working]
-        .cars
-        .get(index)
-        .cloned()
-        .ok_or(MemoryFault::IndexOutOfRange @{ op: "car" @})
+// vector at the pair's address.
+pub fn car(&self, pair: Word) -> Result<Word, MemoryFault> @{
+    let Word::Addr(address) = pair else @{
+        return Err(MemoryFault::OutOfBounds);
+    @};
+    self.cars
+        .get(address)
+        .copied()
+        .ok_or(MemoryFault::OutOfBounds)
 @}
 @end example
 
@@ -236,8 +237,8 @@ The instructions
 @example rust
 // (perform (op set-car!) ...) and its
 // cdr twin, over the shared memory.
-memory.borrow_mut().set_car(&pair_word, value)?;
-memory.borrow_mut().set_cdr(&pair_word, value)?;
+memory.set_car(pair_word, value)?;
+memory.set_cdr(pair_word, value)?;
 @end example
 
 @noindent
@@ -246,11 +247,18 @@ are implemented as
 @example rust
 // The store behind set-car!: one half of the
 // pair's cell, overwritten in place.
-fn write_car(&mut self, index: usize, value: Word) -> Result<(), MemoryFault> @{
-    let slot = self.spaces[self.working]
+pub fn set_car(
+    &mut self,
+    pair: Word,
+    value: Word,
+) -> Result<(), MemoryFault> @{
+    let Word::Addr(address) = pair else @{
+        return Err(MemoryFault::OutOfBounds);
+    @};
+    let slot = self
         .cars
-        .get_mut(index)
-        .ok_or(MemoryFault::IndexOutOfRange @{ op: "set-car!" @})?;
+        .get_mut(address)
+        .ok_or(MemoryFault::OutOfBounds)?;
     *slot = value;
     Ok(())
 @}
@@ -270,7 +278,7 @@ pointer) because we are using a compacting garbage collector, as we will see in
 
 @example rust
 // (assign reg1 (op cons) (reg reg2) (reg reg3)):
-let pair = memory.borrow_mut().cons(car_word, cdr_word)?;
+let pair = memory.cons(car_word, cdr_word)?;
 @end example
 
 @noindent
@@ -283,15 +291,19 @@ essentially the implementation of @code{cons} in terms of @code{set-car!} and
 @example rust
 /// The allocation path of cons: store the two
 /// halves at the free pointer, then bump it.
-pub fn cons(&mut self, car_word: Word, cdr_word: Word) -> Result<Word, MemoryFault> @{
-    if self.free >= self.data_limit() @{
-        return Err(MemoryFault::Exhausted);
+pub fn cons(
+    &mut self,
+    car_word: Word,
+    cdr_word: Word,
+) -> Result<Word, MemoryFault> @{
+    if self.free >= self.cars.len() @{
+        return Err(MemoryFault::OutOfMemory);
     @}
-    let index = self.free;
-    self.spaces[self.working].cars[index] = car_word;
-    self.spaces[self.working].cdrs[index] = cdr_word;
+    let address = self.free;
+    self.cars[address] = car_word;
+    self.cdrs[address] = cdr_word;
     self.free += 1;
-    Ok(Word::Pair(index))
+    Ok(Word::Addr(address))
 @}
 @end example
 
@@ -301,13 +313,12 @@ The @code{eq?} operation
 @example rust
 // (op eq?): true when the two registers
 // carry the same word, equal numbers included.
-Ok(Value::Bool(left == right))
+Ok(Word::Int(i64::from(left == right)))
 @end example
 
 @noindent
-simply tests the equality of all fields in the registers, and predicates such
-as @code{pair?}, @code{null?}, @code{symbol?}, and @code{number?} need only
-check the type field.
+simply tests the equality of the two words, and predicates such as the pair,
+empty-list, and integer tests need only inspect the word's variant.
 
 @subsubheading Implementing stacks
 
@@ -321,7 +332,7 @@ saved values, pointed to by a special register @code{the-stack}.  Thus,
 // vector, so (save reg) is a stack push. Over
 // list-structure memory the same instruction is the
 // book's cons onto the-stack:
-let the_stack = memory.borrow_mut().cons(reg_word, the_stack)?;
+let the_stack = memory.cons(reg_word, the_stack)?;
 @end example
 
 @noindent
@@ -330,8 +341,8 @@ Similarly, @code{(restore ⟨@var{reg}⟩)} can be implemented as
 @example rust
 // (restore reg): the head comes back and the
 // stack tails into the rest.
-let reg_word = memory.borrow().car(&the_stack)?;
-let the_stack = memory.borrow().cdr(&the_stack)?;
+let reg_word = memory.car(the_stack)?;
+let the_stack = memory.cdr(the_stack)?;
 @end example
 
 @noindent
@@ -339,7 +350,8 @@ and @code{(perform (op initialize-stack))} can be implemented as
 
 @example rust
 // (perform (op initialize-stack)):
-let the_stack = Word::Empty;
+// the empty list is the reserved address 0.
+let the_stack = Word::Addr(0);
 @end example
 
 @noindent
@@ -355,23 +367,29 @@ representation and the memory-vector representation (as in @ref{Figure 5.14})
 of the list structure produced by
 
 @example rust
-let mut memory = Memory::new(8, 4, 1);
-let x = memory.cons(Word::Num(1), Word::Num(2))?;
-// (list x x) is (cons x (cons x '())): the inner cons
+let mut memory = Memory::new(8, 1);
+let x = memory.cons(Word::Int(1), Word::Int(2))?;
+// (list x x) is (cons x (cons x nil)): the inner cons
 // allocates before the outer cell can name it.
-let inner = memory.cons(x.clone(), Word::Empty)?;
-let y = memory.cons(x.clone(), inner)?;
+let nil = Word::Addr(0);
+let inner = memory.cons(x, nil)?;
+let y = memory.cons(x, inner)?;
 @end example
 
 @noindent
-with the @code{free} pointer initially @code{p1}.  What is the final value of
+where the empty list is the reserved address 0 and the @code{free} pointer starts at
+@code{p1}.  What is the final value of
 @code{free}?  What pointers represent the values of @code{x} and @code{y}?
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.21}Exercise 5.21:} Implement register machines for
-the following procedures.  Assume that the list-structure memory operations are
-available as machine primitives.
+the following procedures.  Build each machine below from the typed
+constructors, with the list-structure memory operations installed: declare the
+registers with @code{reg}, write one @code{(label, instruction)} entry per
+controller line in order, assemble the program, install the memory and
+standard operations, seed one sample tree, and run the machine, reading the
+answer back from its registers.
 
 @enumerate a
 
@@ -379,79 +397,305 @@ available as machine primitives.
 Recursive @code{count-leaves}:
 
 @example rust
-machine(
-    memory,
-    &["tree", "n", "temp", "continue"],
-    "
-begin-count-leaves
-  (assign continue (label count-leaves-done))
-count-loop
-  (test (op null?) (reg tree))
-  (branch (label null-tree))
-  (test (op pair?) (reg tree))
-  (branch (label pair-tree))
-  (assign n (const 1))
-  (goto (reg continue))
-null-tree
-  (assign n (const 0))
-  (goto (reg continue))
-pair-tree
-  (save continue)
-  (save tree)
-  (assign tree (op car) (reg tree))
-  (assign continue (label after-car))
-  (goto (label count-loop))
-after-car
-  (restore tree)
-  (save n)
-  (assign tree (op cdr) (reg tree))
-  (assign continue (label after-cdr))
-  (goto (label count-loop))
-after-cdr
-  (restore temp)
-  (assign n (op +) (reg n) (reg temp))
-  (restore continue)
-  (goto (reg continue))
-count-leaves-done",
-)
+// Recursive count-leaves, built from
+// the typed constructors with the
+// memory and standard operations
+// installed before the run.
+let memory: SharedMemory =
+    std::rc::Rc::new(std::cell::RefCell::new(
+        Memory::new(8, 1),
+    ));
+// Seed one sample tree and keep its
+// address for the tree register.
+let tree = memory
+    .borrow_mut()
+    .cons(Word::Int(1), Word::Int(2))?;
+let Word::Addr(tree_addr) = tree else @{
+    unreachable!("fresh cons answers an address")
+@};
+let program = MachineProgram::new(
+    vec![
+        reg("tree"),
+        reg("n"),
+        reg("temp"),
+        reg("continue"),
+    ],
+    vec![
+        (None, Instruction::Assign @{
+            target: reg("continue"),
+            value: Operand::Label(label(
+                "count-leaves-done",
+            )),
+        @}),
+        (Some(label("count-loop")), Instruction::Test @{
+            predicate: "null?".to_owned(),
+            arguments: vec![reg_op("tree")],
+        @}),
+        (None, Instruction::Branch(label("null-tree"))),
+        (None, Instruction::Test @{
+            predicate: "pair?".to_owned(),
+            arguments: vec![reg_op("tree")],
+        @}),
+        (None, Instruction::Branch(label("pair-tree"))),
+        (None, Instruction::Assign @{
+            target: reg("n"),
+            value: constant(1),
+        @}),
+        (
+            None,
+            Instruction::Goto(Operand::Register(
+                reg("continue"),
+            )),
+        ),
+        (Some(label("null-tree")), Instruction::Assign @{
+            target: reg("n"),
+            value: constant(0),
+        @}),
+        (
+            None,
+            Instruction::Goto(Operand::Register(
+                reg("continue"),
+            )),
+        ),
+        (
+            Some(label("pair-tree")),
+            Instruction::Save(reg("continue")),
+        ),
+        (None, Instruction::Save(reg("tree"))),
+        (None, Instruction::Assign @{
+            target: reg("tree"),
+            value: Operand::Operation @{
+                operation: "car".to_owned(),
+                arguments: vec![reg_op("tree")],
+            @},
+        @}),
+        (None, Instruction::Assign @{
+            target: reg("continue"),
+            value: Operand::Label(label("after-car")),
+        @}),
+        (
+            None,
+            Instruction::Goto(Operand::Label(
+                label("count-loop"),
+            )),
+        ),
+        (
+            Some(label("after-car")),
+            Instruction::Restore(reg("tree")),
+        ),
+        (None, Instruction::Assign @{
+            target: reg("temp"),
+            value: Operand::Register(reg("n")),
+        @}),
+        (None, Instruction::Save(reg("temp"))),
+        (None, Instruction::Assign @{
+            target: reg("tree"),
+            value: Operand::Operation @{
+                operation: "cdr".to_owned(),
+                arguments: vec![reg_op("tree")],
+            @},
+        @}),
+        (None, Instruction::Assign @{
+            target: reg("continue"),
+            value: Operand::Label(label("after-cdr")),
+        @}),
+        (
+            None,
+            Instruction::Goto(Operand::Label(
+                label("count-loop"),
+            )),
+        ),
+        (
+            Some(label("after-cdr")),
+            Instruction::Restore(reg("temp")),
+        ),
+        (None, Instruction::Assign @{
+            target: reg("n"),
+            value: Operand::Operation @{
+                operation: "add".to_owned(),
+                arguments: vec![
+                    reg_op("n"),
+                    reg_op("temp"),
+                ],
+            @},
+        @}),
+        (None, Instruction::Restore(reg("continue"))),
+        (
+            None,
+            Instruction::Goto(Operand::Register(
+                reg("continue"),
+            )),
+        ),
+        // The trailing done label answers
+// the count with print.
+        (
+            Some(label("count-leaves-done")),
+            Instruction::Perform @{
+            operation: "print".to_owned(),
+            arguments: vec![reg_op("n")],
+        @}),
+    ],
+);
+let mut machine = Machine::new(assemble(&program)?);
+for (name, op) in memory_operations(&memory) @{
+    machine.install_operation(&name, op);
+@}
+for (name, op) in standard_operations() @{
+    machine.install_operation(&name, op);
+@}
+let tree_word =
+    i64::try_from(tree_addr)
+        .map_err(|_| Fault::Overflow("heap"))?;
+machine.set_register("tree", tree_word)?;
+let run = machine.run()?;
+run.registers.get("n")            @r{// the leaf count}
 @end example
 
 @item
 Recursive @code{count-leaves} with explicit counter:
 
 @example rust
-machine(
-    memory,
-    &["tree", "n", "continue"],
-    "
-begin-count-leaves
-  (assign n (const 0))
-  (assign continue (label count-leaves-done))
-count-loop
-  (test (op null?) (reg tree))
-  (branch (label null-tree))
-  (test (op pair?) (reg tree))
-  (branch (label pair-tree))
-  (assign n (op +) (reg n) (const 1))
-  (goto (reg continue))
-null-tree
-  (goto (reg continue))
-pair-tree
-  (save continue)
-  (save tree)
-  (assign tree (op car) (reg tree))
-  (assign continue (label after-car))
-  (goto (label count-loop))
-after-car
-  (restore tree)
-  (assign tree (op cdr) (reg tree))
-  (assign continue (label after-cdr))
-  (goto (label count-loop))
-after-cdr
-  (restore continue)
-  (goto (reg continue))
-count-leaves-done",
-)
+// Recursive count-leaves with explicit
+// counter, built from the typed
+// constructors with the memory and
+// standard operations installed.
+let memory: SharedMemory =
+    std::rc::Rc::new(std::cell::RefCell::new(
+        Memory::new(8, 1),
+    ));
+// Seed one sample tree and keep its
+// address for the tree register.
+let tree = memory
+    .borrow_mut()
+    .cons(Word::Int(1), Word::Int(2))?;
+let Word::Addr(tree_addr) = tree else @{
+    unreachable!("fresh cons answers an address")
+@};
+let program = MachineProgram::new(
+    vec![
+        reg("tree"),
+        reg("n"),
+        reg("continue"),
+    ],
+    vec![
+        (None, Instruction::Assign @{
+            target: reg("n"),
+            value: constant(0),
+        @}),
+        (None, Instruction::Assign @{
+            target: reg("continue"),
+            value: Operand::Label(label(
+                "count-leaves-done",
+            )),
+        @}),
+        (Some(label("count-loop")), Instruction::Test @{
+            predicate: "null?".to_owned(),
+            arguments: vec![reg_op("tree")],
+        @}),
+        (None, Instruction::Branch(label("null-tree"))),
+        (None, Instruction::Test @{
+            predicate: "pair?".to_owned(),
+            arguments: vec![reg_op("tree")],
+        @}),
+        (None, Instruction::Branch(label("pair-tree"))),
+        (None, Instruction::Assign @{
+            target: reg("n"),
+            value: Operand::Operation @{
+                operation: "add".to_owned(),
+                arguments: vec![
+                    reg_op("n"),
+                    constant(1),
+                ],
+            @},
+        @}),
+        (
+            None,
+            Instruction::Goto(Operand::Register(
+                reg("continue"),
+            )),
+        ),
+        (
+            Some(label("null-tree")),
+            Instruction::Goto(Operand::Register(
+                reg("continue"),
+            )),
+        ),
+        (
+            Some(label("pair-tree")),
+            Instruction::Save(reg("continue")),
+        ),
+        (None, Instruction::Save(reg("tree"))),
+        (None, Instruction::Assign @{
+            target: reg("tree"),
+            value: Operand::Operation @{
+                operation: "car".to_owned(),
+                arguments: vec![reg_op("tree")],
+            @},
+        @}),
+        (None, Instruction::Assign @{
+            target: reg("continue"),
+            value: Operand::Label(label("after-car")),
+        @}),
+        (
+            None,
+            Instruction::Goto(Operand::Label(
+                label("count-loop"),
+            )),
+        ),
+        (
+            Some(label("after-car")),
+            Instruction::Restore(reg("tree")),
+        ),
+        (None, Instruction::Assign @{
+            target: reg("tree"),
+            value: Operand::Operation @{
+                operation: "cdr".to_owned(),
+                arguments: vec![reg_op("tree")],
+            @},
+        @}),
+        (None, Instruction::Assign @{
+            target: reg("continue"),
+            value: Operand::Label(label("after-cdr")),
+        @}),
+        (
+            None,
+            Instruction::Goto(Operand::Label(
+                label("count-loop"),
+            )),
+        ),
+        (
+            Some(label("after-cdr")),
+            Instruction::Restore(reg("continue")),
+        ),
+        (
+            None,
+            Instruction::Goto(Operand::Register(
+                reg("continue"),
+            )),
+        ),
+        // The trailing done label answers
+// the count with print.
+        (
+            Some(label("count-leaves-done")),
+            Instruction::Perform @{
+            operation: "print".to_owned(),
+            arguments: vec![reg_op("n")],
+        @}),
+    ],
+);
+let mut machine = Machine::new(assemble(&program)?);
+for (name, op) in memory_operations(&memory) @{
+    machine.install_operation(&name, op);
+@}
+for (name, op) in standard_operations() @{
+    machine.install_operation(&name, op);
+@}
+let tree_word =
+    i64::try_from(tree_addr)
+        .map_err(|_| Fault::Overflow("heap"))?;
+machine.set_register("tree", tree_word)?;
+let run = machine.run()?;
+run.registers.get("n")            @r{// the leaf count}
 @end example
 @end enumerate
 @end quotation
@@ -460,8 +704,9 @@ count-leaves-done",
 @strong{@anchor{Exercise 5.22}Exercise 5.22:} @ref{Exercise 3.12} of 
 @ref{3.3.1} presented an @code{append} procedure that appends two lists to form
 a new list and an @code{append!} procedure that splices two lists together.
-Design a register machine to implement each of these procedures.  Assume that
-the list-structure memory operations are available as primitive operations.
+Design a register machine to implement each of these procedures, building from
+the typed constructors with the memory operations installed as in
+@ref{Exercise 5.21}.
 @end quotation
 
 @node	5.3.2, 5.4, 5.2, 5.3
@@ -488,28 +733,28 @@ longer needed---they are @newterm{garbage}.  For instance, the computation
 // (accumulate + 0 (filter odd? (enumerate-interval 0 n))):
 // the enumeration and the filtered list are built in the
 // memory, and both are garbage once the sum is known.
-let mut interval = Word::Empty;
+let mut interval = Word::Addr(0);
 for item in (0..=n).rev() @{
-    interval = memory.borrow_mut().cons(Word::Num(item), interval)?;
+    interval = memory.cons(Word::Int(item), interval)?;
 @}
-let mut odds = Word::Empty;
+let mut odds = Word::Addr(0);
 let mut cursor = interval;
-while let Word::Pair(_) = cursor @{
-    let car_word = memory.borrow().car(&cursor)?;
-    if let Word::Num(value) = car_word @{
+while let Word::Addr(_) = cursor @{
+    let car_word = memory.car(cursor)?;
+    if let Word::Int(value) = car_word @{
         if value % 2 == 1 @{
-            odds = memory.borrow_mut().cons(car_word, odds)?;
+            odds = memory.cons(car_word, odds)?;
         @}
     @}
-    cursor = memory.borrow().cdr(&cursor)?;
+    cursor = memory.cdr(cursor)?;
 @}
 let mut sum = 0;
 let mut cursor = odds;
-while let Word::Pair(_) = cursor @{
-    if let Word::Num(value) = memory.borrow().car(&cursor)? @{
+while let Word::Addr(_) = cursor @{
+    if let Word::Int(value) = memory.car(cursor)? @{
         sum += value;
     @}
-    cursor = memory.borrow().cdr(&cursor)?;
+    cursor = memory.cdr(cursor)?;
 @}
 @end example
 
@@ -525,7 +770,7 @@ To recycle pairs, we must have a way to determine which allocated
 pairs are not needed (in the sense that their contents can no longer influence
 the future of the computation).  The method we shall examine for accomplishing
 this is known as @newterm{garbage collection}.  Garbage collection is based on
-the observation that, at any moment in a Lisp interpretation, the only objects
+the observation that, at any moment in an interpretation, the only objects
 that can affect the future of the computation are those that can be reached by
 some succession of @code{car} and @code{cdr} operations starting from the
 pointers that are currently in the machine registers.@footnote{We assume here
@@ -647,7 +892,7 @@ the-cdrs |                  |                 | memory
 @image{../../text/original/figures/chap5/Fig5.15c,,142mm,Figure 5.15: Reconfiguration of memory by the garbage-collection process.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/Fig5.15c.std,,142mm,,.pdf}
+@image{../../text/original/figures/pdf/chap5/Fig5.15c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 5.15:} Reconfiguration of memory by the garbage-collection process.}
@@ -702,22 +947,24 @@ install the new pointer as the new @code{root} and enter the main loop of the
 garbage collector.
 
 @example rust
-pub fn collect(memory: &SharedMemory, roots: &[Word]) -> Result<Vec<Word>, Fault> @{
+pub fn collect(
+    memory: &SharedMemory,
+    roots: &[Word],
+) -> Result<Vec<Word>, Fault> @{
     let root = plant_root_list(memory, roots)?;
-    let mut machine = make_machine_from_datums(
-        &["root", "the-cars", "the-cdrs", "new-cars", "new-cdrs",
-          "free", "scan", "old", "oldcr", "new",
-          "relocate-continue", "temp"],
-        &collector_operations(memory),
-        &collector_datums()?,
-    )?;
+    let program = MachineProgram::new(
+        collector_registers(),
+        collector_instructions(),
+    );
+    let mut machine = Machine::new(assemble(&program)?);
     // The four vector-base registers take the names of the working
-    // and the free semispaces, the book's (const 0) opens both
+    // and the free semispaces, the book's constant zero opens both
     // pointers at the first cell of the new memory, and the root's
-    // relocation is the opening move.
-    machine.set_register("root", Value::from(root))?;
-    machine.start()?;
-    finish_collection(memory, &machine, roots.len())
+    // relocation is the opening move.  The root enters the machine
+    // as its integer word.
+    machine.set_register("root", root_word)?;
+    let run = machine.run()?;
+    finish_collection(memory, &run, roots.len())
 @}
 @end example
 
@@ -796,7 +1043,7 @@ broken-heart tag and forwarding address at the old location.
 @code{old}.@footnote{The garbage collector uses the low-level predicate
 @code{pointer-to-pair?} instead of the list-structure @code{pair?}  operation
 because in a real system there might be various things that are treated as
-pairs for garbage-collection purposes.  For example, in a Scheme system that
+pairs for garbage-collection purposes.  For example, in a language system that
 conforms to the @abbr{IEEE} standard a procedure object may be implemented
 as a special kind of ``pair'' that doesn't satisfy the @code{pair?} predicate.
 For simulation purposes, @code{pointer-to-pair?} can be implemented as

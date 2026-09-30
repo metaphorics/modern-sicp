@@ -16,7 +16,7 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
-use sicp_runtime::{Key, Pair, SchemeError, Value, cons_cell, set_cdr};
+use sicp_runtime::{Key, Pair, SicpError, Value, cons_cell, set_cdr};
 
 /// The book's `last-pair`: the last pair of a nonempty chain.
 #[must_use]
@@ -196,7 +196,7 @@ pub struct ProcPair {
     dispatch: Rc<dyn Fn(PairRequest) -> Value>,
 }
 
-/// Builds the main text's procedural `(cons x y)`: the cells live in the
+/// Builds the main text's procedural pair: the cells live in the
 /// closure's captured state, and nothing other than the returned
 /// dispatch can reach them.
 #[must_use]
@@ -256,13 +256,13 @@ impl Queue {
     /// The book's `front-queue`: the item at the front.
     ///
     /// # Errors
-    /// [`SchemeError::UserRaised`] with the book's message when the queue
+    /// [`SicpError::UserRaised`] with the book's message when the queue
     /// is empty.
-    pub fn front(&self) -> Result<Value, SchemeError> {
+    pub fn front(&self) -> Result<Value, SicpError> {
         let front = self.front.borrow().clone();
         match front {
             Some(pair) => Ok(pair.car.borrow().clone()),
-            None => Err(SchemeError::UserRaised {
+            None => Err(SicpError::UserRaised {
                 message: "front called with an empty queue".into(),
                 irritants: vec![],
             }),
@@ -286,12 +286,12 @@ impl Queue {
     /// only at the front.
     ///
     /// # Errors
-    /// [`SchemeError::UserRaised`] with the book's message when the queue
+    /// [`SicpError::UserRaised`] with the book's message when the queue
     /// is empty before the deletion.
-    pub fn delete(&self) -> Result<(), SchemeError> {
+    pub fn delete(&self) -> Result<(), SicpError> {
         let front = self.front.borrow().clone();
         let Some(pair) = front else {
-            return Err(SchemeError::UserRaised {
+            return Err(SicpError::UserRaised {
                 message: "delete! called with an empty queue".into(),
                 irritants: vec![],
             });
@@ -301,7 +301,7 @@ impl Queue {
             Value::Pair(cell) => Some(cell),
             Value::Nil => None,
             other => {
-                return Err(SchemeError::TypeMismatch(format!(
+                return Err(SicpError::TypeMismatch(format!(
                     "queue node with a non-list tail: {other}"
                 )));
             }
@@ -371,8 +371,7 @@ impl Default for Table {
 }
 
 impl Table {
-    /// The book's `(make-table)`: a fresh headed table comparing keys
-    /// with `equal?`.
+    /// A fresh headed table comparing keys structurally.
     #[must_use]
     pub fn new() -> Self {
         Self::with_same_key(Rc::new(structural_same_key))
@@ -541,8 +540,8 @@ impl MemoTable {
     pub fn lookup_insert(
         &self,
         key: Key,
-        compute: impl FnOnce() -> Result<Value, SchemeError>,
-    ) -> Result<Value, SchemeError> {
+        compute: impl FnOnce() -> Result<Value, SicpError>,
+    ) -> Result<Value, SicpError> {
         if let Some(stored) = self.0.borrow().get(&key) {
             return Ok(stored.clone());
         }
@@ -973,9 +972,9 @@ impl Connector {
     /// agrees with an equal value and raises a contradiction otherwise.
     ///
     /// # Errors
-    /// [`SchemeError::UserRaised`] with the book's `Contradiction`
+    /// [`SicpError::UserRaised`] with the book's `Contradiction`
     /// message when the connector already holds a different value.
-    pub fn set_value(&self, new_value: f64, setter: &Informant) -> Result<(), SchemeError> {
+    pub fn set_value(&self, new_value: f64, setter: &Informant) -> Result<(), SicpError> {
         if !self.has_value() {
             *self.state.value.borrow_mut() = Some(new_value);
             *self.state.informant.borrow_mut() = Some(setter.clone());
@@ -991,7 +990,7 @@ impl Connector {
             irritants.push(Value::real(old));
         }
         irritants.push(Value::real(new_value));
-        Err(SchemeError::UserRaised {
+        Err(SicpError::UserRaised {
             message: "Contradiction".into(),
             irritants,
         })

@@ -1,75 +1,89 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.17: a traced instruction is
-//! announced by the labels that immediately precede it, and the
-//! count of exercise 5.15 is untouched.
+//! The reference solution of exercise 5.17: announcing the label
+//! before each traced instruction.
 
-use ch05::sec_5_2::fibonacci_machine;
-use sicp_runtime::Value;
+use ch05::sec_5_1::fibonacci_machine;
+use ch05::sec_5_2::{Fault, Machine, assemble};
+
+/// Drives one machine with tracing on and annotates every executed
+/// instruction with the labels its program counter carries: a label
+/// line precedes its instruction line, and the very first
+/// instruction — which follows no label — is announced by nothing.
+fn labelled_trace(machine: &mut Machine) -> Result<Vec<String>, Fault> {
+    let mut lines = Vec::new();
+    while machine.pc() < machine.assembled().instructions.len() {
+        let here = machine.pc();
+        for (label, index) in &machine.assembled().labels {
+            if *index == here {
+                lines.push(format!("{label}:"));
+            }
+        }
+        machine.step()?;
+        if let Some(recorded) = machine.trace().last() {
+            lines.push(recorded.to_owned());
+        }
+    }
+    Ok(lines)
+}
+
+/// Counts how often one label was announced.
+fn announced(lines: &[String], label: &str) -> usize {
+    let head = format!("{label}:");
+    lines.iter().filter(|line| **line == head).count()
+}
 
 mod ex_5_17 {
-    //! Exercise 5.17: print the labels preceding a traced
-    //! instruction, in a way that does not interfere with counting.
+    //! Exercise 5.17: modify the tracing so that it labels each
+    //! instruction with the label at which it starts.
 
     use super::*;
 
-    /// The label-traced fib(3) run: the trace carries 63 lines,
-    /// 51 instruction lines and 12 label lines, and the instruction
-    /// count of exercise 5.15 is still exactly 51.
+    /// The label-traced fib(3) run: the trace carries 65 lines, 52
+    /// instruction lines and 13 label lines — `loop` five times,
+    /// `base` three, `afterfibn-1` and `afterfibn-2` twice each, and
+    /// `done` once — and the instruction count of exercise 5.15 is
+    /// still exactly 52.
     #[test]
-    fn ex_5_17_labels_announced() {
-        let mut machine = fibonacci_machine();
-        machine.set_register("n", Value::Int(3)).unwrap();
+    fn ex_5_17_labels_announced() -> Result<(), Fault> {
+        let mut machine = Machine::new(assemble(&fibonacci_machine())?);
+        machine.set_register("n", 3)?;
         machine.set_trace(true);
-        machine.set_label_trace(true);
-        machine.start().unwrap();
-        assert_eq!(machine.instruction_count(), 51);
-        assert_eq!(machine.transcript().len(), 63);
-        let label_lines: Vec<&String> = machine
-            .transcript()
-            .iter()
-            .filter(|line| line.ends_with(':'))
-            .collect();
-        let names: Vec<&str> = label_lines
-            .iter()
-            .map(|line| line.trim_end_matches(':'))
-            .collect();
-        assert_eq!(
-            names,
-            [
-                "fib-loop",
-                "fib-loop",
-                "fib-loop",
-                "immediate-answer",
-                "afterfib-n-1",
-                "fib-loop",
-                "immediate-answer",
-                "afterfib-n-2",
-                "afterfib-n-1",
-                "fib-loop",
-                "immediate-answer",
-                "afterfib-n-2",
-            ]
-        );
+        let lines = labelled_trace(&mut machine)?;
+        let labels = lines.iter().filter(|line| line.ends_with(':')).count();
+        assert_eq!(lines.len(), 65);
+        assert_eq!(lines.len() - labels, 52);
+        assert_eq!(labels, 13);
+        assert_eq!(announced(&lines, "loop"), 5);
+        assert_eq!(announced(&lines, "base"), 3);
+        assert_eq!(announced(&lines, "afterfibn-1"), 2);
+        assert_eq!(announced(&lines, "afterfibn-2"), 2);
+        assert_eq!(announced(&lines, "done"), 1);
+        Ok(())
     }
 
-    /// Each label line comes immediately before its instruction, and
-    /// the first instruction of the sequence (before any label) is
-    /// announced by nothing.
+    /// Each label line comes immediately before its own instruction,
+    /// and the first line of the trace is an instruction — the
+    /// controller's opening assignment, before any label.
     #[test]
-    fn ex_5_17_label_precedes_its_instruction() {
-        let mut machine = fibonacci_machine();
-        machine.set_register("n", Value::Int(3)).unwrap();
+    fn ex_5_17_label_precedes_its_instruction() -> Result<(), Fault> {
+        let mut machine = Machine::new(assemble(&fibonacci_machine())?);
+        machine.set_register("n", 3)?;
         machine.set_trace(true);
-        machine.set_label_trace(true);
-        machine.start().unwrap();
-        let transcript = machine.transcript();
-        assert_eq!(transcript[0], "(assign continue (label fib-done))");
-        assert_eq!(transcript[1], "fib-loop:");
-        assert_eq!(transcript[2], "(test (op <) (reg n) (const 2))");
-        assert_eq!(transcript[3], "(branch (label immediate-answer))");
-        assert_eq!(transcript[20], "immediate-answer:");
-        assert_eq!(transcript[21], "(assign val (reg n))");
+        let lines = labelled_trace(&mut machine)?;
+        let first = lines.first().expect("the trace has lines");
+        assert!(!first.ends_with(':'));
+        assert_eq!(lines[1], "loop:");
+        assert!(!lines[2].ends_with(':'));
+        assert!(lines[2].contains("Test"));
+        let done = lines
+            .iter()
+            .position(|line| line == "done:")
+            .expect("announced");
+        let instruction = lines.get(done + 1).expect("an instruction follows");
+        assert!(instruction.contains("Perform"));
+        assert!(!instruction.ends_with(':'));
+        Ok(())
     }
 }

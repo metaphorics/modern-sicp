@@ -53,8 +53,8 @@ mod ex_3_54a {
 #[ignore = "pending solution"]
 fn ex_3_54() {
     let (prefix, at_ten) = ex_3_54::ex_3_54().expect("solved");
-    // factorials = 1 cons (integers * factorials): element k is k! (the
-    // head 1 serving as both 0! and 1!).
+    // factorials begin with 1, followed by elementwise products of the
+    // integers and earlier factorials; element k is k!.
     assert_eq!(prefix, vec![1, 1, 2, 6, 24, 120, 720, 5040]);
     assert_eq!(at_ten, 3_628_800);
 }

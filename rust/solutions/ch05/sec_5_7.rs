@@ -4,67 +4,138 @@
 //! The reference solution of exercise 5.7: the two exponentiation
 //! machines of exercise 5.4, run on the section's simulator.
 
-use ch05::sec_5_2::{Machine, OpHandler, make_machine, op};
-use sicp_runtime::Value;
+use ch05::sec_5_1::{
+    Instruction, Label, MachineProgram, Operand, Register, constant, label, reg, reg_op,
+};
+use ch05::sec_5_2::{Fault, Machine, assemble};
 
-/// The linear-recursive exponentiation machine of exercise 5.4:
-/// `n` counts down, each level saves `continue`, and the pending
+/// One row of a controller: an optional leading label and its
+/// instruction.
+type Row = (Option<Label>, Instruction);
+
+/// One unlabeled instruction row.
+fn row(instruction: Instruction) -> Row {
+    (None, instruction)
+}
+
+/// One labeled instruction row.
+fn at(name: &str, instruction: Instruction) -> Row {
+    (Some(label(name)), instruction)
+}
+
+/// `assign` from an operand.
+fn assign(name: &str, value: Operand) -> Instruction {
+    Instruction::Assign {
+        target: reg(name),
+        value,
+    }
+}
+
+/// The named register operand shorthand.
+fn source(name: &str) -> Operand {
+    reg_op(name)
+}
+
+/// The operation-valued operand the book writes
+/// `(assign target (op name) args...)` as.
+fn operation(name: &str, arguments: &[Operand]) -> Operand {
+    Operand::Operation {
+        operation: name.to_owned(),
+        arguments: arguments.to_vec(),
+    }
+}
+
+/// The linear-recursive exponentiation machine of exercise 5.4: `n`
+/// counts down, each level saves `continue`, and the pending
 /// multiplications ride the stack.
-const EXPONENT_RECURSIVE_CONTROLLER: &str = "
-  (assign continue (label expt-done))
-expt-loop
-  (test (op =) (reg n) (const 0))
-  (branch (label base-expt))
-  (save continue)
-  (assign n (op -) (reg n) (const 1))
-  (assign continue (label multiply))
-  (goto (label expt-loop))
-multiply
-  (assign val (op *) (reg b) (reg val))
-  (restore continue)
-  (goto (reg continue))
-base-expt
-  (assign val (const 1))
-  (goto (reg continue))
-expt-done";
+fn recursive_exponent_machine() -> MachineProgram {
+    let registers: Vec<Register> = ["b", "n", "val", "continue"]
+        .iter()
+        .map(|name| reg(name))
+        .collect();
+    let instructions = vec![
+        row(assign("continue", Operand::Label(label("expt-done")))),
+        at(
+            "expt-loop",
+            Instruction::Test {
+                predicate: "=".to_owned(),
+                arguments: vec![source("n"), constant(0)],
+            },
+        ),
+        row(Instruction::Branch(label("base-expt"))),
+        row(Instruction::Save(reg("continue"))),
+        row(assign("n", operation("sub1", &[source("n")]))),
+        row(assign("continue", Operand::Label(label("multiply")))),
+        row(Instruction::Goto(Operand::Label(label("expt-loop")))),
+        at(
+            "multiply",
+            assign("val", operation("mul", &[source("b"), source("val")])),
+        ),
+        row(Instruction::Restore(reg("continue"))),
+        row(Instruction::Goto(Operand::Register(reg("continue")))),
+        at("base-expt", assign("val", constant(1))),
+        row(Instruction::Goto(Operand::Register(reg("continue")))),
+        at(
+            "expt-done",
+            Instruction::Perform {
+                operation: "print".to_owned(),
+                arguments: vec![source("val")],
+            },
+        ),
+    ];
+    MachineProgram::new(registers, instructions)
+}
 
 /// The iterative exponentiation machine of exercise 5.4: a product
 /// accumulator and a counter, no stack.
-const EXPONENT_ITERATIVE_CONTROLLER: &str = "
-  (assign counter (reg n))
-  (assign product (const 1))
-expt-iter
-  (test (op =) (reg counter) (const 0))
-  (branch (label expt-done))
-  (assign product (op *) (reg product) (reg b))
-  (assign counter (op -) (reg counter) (const 1))
-  (goto (label expt-iter))
-expt-done";
-
-fn exponent_operations() -> Vec<(&'static str, OpHandler)> {
-    vec![
-        ("=", op("=").expect("shared")),
-        ("*", op("*").expect("shared")),
-        ("-", op("-").expect("shared")),
-    ]
+fn iterative_exponent_machine() -> MachineProgram {
+    let registers: Vec<Register> = ["b", "n", "counter", "product"]
+        .iter()
+        .map(|name| reg(name))
+        .collect();
+    let instructions = vec![
+        row(assign("counter", source("n"))),
+        row(assign("product", constant(1))),
+        at(
+            "expt-iter",
+            Instruction::Test {
+                predicate: "=".to_owned(),
+                arguments: vec![source("counter"), constant(0)],
+            },
+        ),
+        row(Instruction::Branch(label("expt-done"))),
+        row(assign(
+            "product",
+            operation("mul", &[source("product"), source("b")]),
+        )),
+        row(assign("counter", operation("sub1", &[source("counter")]))),
+        row(Instruction::Goto(Operand::Label(label("expt-iter")))),
+        at(
+            "expt-done",
+            Instruction::Perform {
+                operation: "print".to_owned(),
+                arguments: vec![source("product")],
+            },
+        ),
+    ];
+    MachineProgram::new(registers, instructions)
 }
 
-fn recursive_exponent_machine() -> Machine {
-    make_machine(
-        &["b", "n", "val", "continue"],
-        &exponent_operations(),
-        EXPONENT_RECURSIVE_CONTROLLER,
-    )
-    .expect("assembles")
-}
-
-fn iterative_exponent_machine() -> Machine {
-    make_machine(
-        &["b", "n", "counter", "product"],
-        &exponent_operations(),
-        EXPONENT_ITERATIVE_CONTROLLER,
-    )
-    .expect("assembles")
+/// Runs one machine to completion and answers its result register,
+/// push count, and maximum stack depth.
+fn run_machine(
+    program: &MachineProgram,
+    result: &str,
+    b: i64,
+    n: i64,
+) -> Result<(i64, u64, usize), Fault> {
+    let mut machine = Machine::new(assemble(program)?);
+    machine.set_register("b", b)?;
+    machine.set_register("n", n)?;
+    machine.run()?;
+    let stats = machine.stack_statistics();
+    let value = machine.get_register(result)?;
+    Ok((value, stats.pushes, stats.max_depth))
 }
 
 mod ex_5_07 {
@@ -76,56 +147,45 @@ mod ex_5_07 {
     /// The recursive machine answers `b^n` and pays one save and one
     /// restore per level: pushes and depth are both `n`.
     #[test]
-    fn ex_5_07_recursive() {
-        for b in 2i128..=5 {
-            for n in 0u32..=9 {
-                let mut machine = recursive_exponent_machine();
-                machine.set_register("b", Value::Int(b)).unwrap();
-                machine
-                    .set_register("n", Value::Int(i128::from(n)))
-                    .unwrap();
-                machine.start().unwrap();
-                assert_eq!(machine.get_register("val").unwrap(), Value::Int(b.pow(n)));
-                let (pushes, depth) = machine.stack_statistics();
-                assert_eq!(pushes, u64::from(n));
-                assert_eq!(depth, u64::from(n));
+    fn ex_5_07_recursive() -> Result<(), Fault> {
+        for b in 2..=5 {
+            for n in 0..=9 {
+                let (value, pushes, depth) =
+                    run_machine(&recursive_exponent_machine(), "val", b, n)?;
+                let levels = u32::try_from(n).expect("small exponent");
+                assert_eq!(value, b.pow(levels), "recursive expt({b}, {n})");
+                assert_eq!(pushes, u64::from(levels), "recursive expt({b}, {n}) pushes");
+                assert_eq!(depth, levels as usize, "recursive expt({b}, {n}) depth");
             }
         }
+        Ok(())
     }
 
     /// The iterative machine answers the same values and never
     /// touches the stack.
     #[test]
-    fn ex_5_07_iterative() {
-        for b in 2i128..=5 {
-            for n in 0u32..=9 {
-                let mut machine = iterative_exponent_machine();
-                machine.set_register("b", Value::Int(b)).unwrap();
-                machine
-                    .set_register("n", Value::Int(i128::from(n)))
-                    .unwrap();
-                machine.start().unwrap();
-                let answer = machine.get_register("product").unwrap();
-                assert_eq!(answer, Value::Int(b.pow(n)));
-                assert_eq!(machine.stack_statistics(), (0, 0));
+    fn ex_5_07_iterative() -> Result<(), Fault> {
+        for b in 2..=5 {
+            for n in 0..=9 {
+                let (value, pushes, depth) =
+                    run_machine(&iterative_exponent_machine(), "product", b, n)?;
+                let levels = u32::try_from(n).expect("small exponent");
+                assert_eq!(value, b.pow(levels), "iterative expt({b}, {n})");
+                assert_eq!(pushes, 0, "iterative expt({b}, {n}) pushes");
+                assert_eq!(depth, 0, "iterative expt({b}, {n}) depth");
             }
         }
+        Ok(())
     }
 
     /// The book's worked inputs, pinned literally: 2^10 = 1024 and
     /// 3^5 = 243 on both machines.
     #[test]
-    fn ex_5_07_pinned_inputs() {
-        let mut machine = recursive_exponent_machine();
-        machine.set_register("b", Value::Int(2)).unwrap();
-        machine.set_register("n", Value::Int(10)).unwrap();
-        machine.start().unwrap();
-        assert_eq!(machine.get_register("val").unwrap(), Value::Int(1024));
-
-        let mut machine = iterative_exponent_machine();
-        machine.set_register("b", Value::Int(3)).unwrap();
-        machine.set_register("n", Value::Int(5)).unwrap();
-        machine.start().unwrap();
-        assert_eq!(machine.get_register("product").unwrap(), Value::Int(243));
+    fn ex_5_07_pinned_inputs() -> Result<(), Fault> {
+        let (recursive, ..) = run_machine(&recursive_exponent_machine(), "val", 2, 10)?;
+        assert_eq!(recursive, 1024);
+        let (iterative, ..) = run_machine(&iterative_exponent_machine(), "product", 3, 5)?;
+        assert_eq!(iterative, 243);
+        Ok(())
     }
 }

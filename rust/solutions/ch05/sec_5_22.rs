@@ -1,177 +1,274 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.22: two register machines
-//! over the list-structure memory. The `append` machine copies the
-//! first list's cells, consing each car onto the appended tail; the
-//! `append!` machine walks to the last pair and splices the second
-//! list in with `set-cdr!`, allocating nothing.
+//! The reference solution of exercise 5.22: the register machines for
+//! `append` and `append!`, both run over the list-structure memory
+//! operations of section 5.3. The words follow the section's
+//! discipline: `0` is the empty list, a positive word is a pair
+//! address, and the integer datum `n` rides the word `-n-1`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use ch05::sec_5_2::{Fault, Machine, make_machine_from_datums};
-use ch05::sec_5_3::{Memory, SharedMemory, Word, memory_operations};
-use sicp_runtime::{Value, read_program};
+use ch05::sec_5_1::{Instruction, Label, MachineProgram, Operand, label, reg, reg_op};
+use ch05::sec_5_2::{Fault, Machine, assemble};
+use ch05::sec_5_3::{Memory, MemoryFault, SharedMemory, Word, memory_operations};
+
+/// One row of a controller: an optional leading label and its
+/// instruction.
+type Row = (Option<Label>, Instruction);
+
+/// One unlabeled instruction row.
+fn row(instruction: Instruction) -> Row {
+    (None, instruction)
+}
+
+/// One labeled instruction row.
+fn at(name: &str, instruction: Instruction) -> Row {
+    (Some(label(name)), instruction)
+}
+
+/// `assign` from an operand.
+fn assign(name: &str, value: Operand) -> Instruction {
+    Instruction::Assign {
+        target: reg(name),
+        value,
+    }
+}
+
+/// The named register operand shorthand.
+fn source(name: &str) -> Operand {
+    reg_op(name)
+}
+
+/// The operation-valued operand the book writes
+/// `(assign target (op name) args...)` as.
+fn operation(name: &str, arguments: &[Operand]) -> Operand {
+    Operand::Operation {
+        operation: name.to_owned(),
+        arguments: arguments.to_vec(),
+    }
+}
+
+/// `test` of one predicate over the given operands.
+fn test(predicate: &str, arguments: &[Operand]) -> Instruction {
+    Instruction::Test {
+        predicate: predicate.to_owned(),
+        arguments: arguments.to_vec(),
+    }
+}
+
+/// `goto` by label name.
+fn jump(name: &str) -> Instruction {
+    Instruction::Goto(Operand::Label(label(name)))
+}
+
+/// `goto` through a register.
+fn jump_register(name: &str) -> Instruction {
+    Instruction::Goto(Operand::Register(reg(name)))
+}
+
+/// The `append` machine: the answer is `(cons (car x) (append (cdr
+/// x) y))`, so the pending `cons` — which needs the first cell of
+/// `x` — crosses the recursive call in the saved `x`, and the
+/// accumulated list comes back in `val`.
+#[must_use]
+pub fn append_machine() -> MachineProgram {
+    MachineProgram::new(
+        vec![reg("x"), reg("y"), reg("val"), reg("continue")],
+        vec![
+            row(assign("continue", Operand::Label(label("append-done")))),
+            at("append", test("null?", &[source("x")])),
+            row(Instruction::Branch(label("base-case"))),
+            row(Instruction::Save(reg("continue"))),
+            row(assign("continue", Operand::Label(label("after-append")))),
+            row(Instruction::Save(reg("x"))),
+            row(assign("x", operation("cdr", &[source("x")]))),
+            row(jump("append")),
+            at("after-append", Instruction::Restore(reg("x"))),
+            row(Instruction::Restore(reg("continue"))),
+            row(assign(
+                "val",
+                operation("cons", &[operation("car", &[source("x")]), source("val")]),
+            )),
+            row(jump_register("continue")),
+            at("base-case", assign("val", source("y"))),
+            row(jump_register("continue")),
+            at(
+                "append-done",
+                Instruction::Perform {
+                    operation: "print".to_owned(),
+                    arguments: vec![source("val")],
+                },
+            ),
+        ],
+    )
+}
+
+/// The `append!` machine: the answer is the original `x`, so it is
+/// copied into `val` before the walk to `last-pair` reuses the `x`
+/// register, and the splice is the effect-only `set-cdr!`.
+#[must_use]
+pub fn append_bang_machine() -> MachineProgram {
+    MachineProgram::new(
+        vec![reg("x"), reg("y"), reg("val"), reg("continue")],
+        vec![
+            row(assign("val", source("x"))),
+            row(assign("continue", Operand::Label(label("append-done")))),
+            at(
+                "last-pair",
+                test("null?", &[operation("cdr", &[source("x")])]),
+            ),
+            row(Instruction::Branch(label("splice"))),
+            row(assign("x", operation("cdr", &[source("x")]))),
+            row(jump("last-pair")),
+            at(
+                "splice",
+                Instruction::Perform {
+                    operation: "set-cdr".to_owned(),
+                    arguments: vec![source("x"), source("y")],
+                },
+            ),
+            row(jump_register("continue")),
+            at(
+                "append-done",
+                Instruction::Perform {
+                    operation: "print".to_owned(),
+                    arguments: vec![source("val")],
+                },
+            ),
+        ],
+    )
+}
+
+/// The heap word a machine value names: an address as itself, the
+/// datum `n` as its integer word.
+fn heap_word(value: i64) -> Word {
+    if value <= -1 {
+        Word::Int(-value - 1)
+    } else {
+        Word::Addr(usize::try_from(value).expect("non-negative word"))
+    }
+}
+
+/// Builds one list cell per leaf, the leaves as integer data.
+fn build_list(memory: &SharedMemory, leaves: &[i64]) -> Result<Word, MemoryFault> {
+    let mut list = Word::Addr(0);
+    for leaf in leaves.iter().rev() {
+        list = memory.borrow_mut().cons(Word::Int(*leaf), list)?;
+    }
+    Ok(list)
+}
+
+/// Reads one proper list back to its leaf data.
+fn read_list(memory: &SharedMemory, mut list: Word) -> Result<Vec<i64>, MemoryFault> {
+    let mut leaves = Vec::new();
+    loop {
+        let (head, rest) = {
+            let heap = memory.borrow();
+            (heap.car(list)?, heap.cdr(list)?)
+        };
+        let Word::Int(leaf) = head else {
+            return Err(MemoryFault::OutOfBounds);
+        };
+        leaves.push(leaf);
+        match rest {
+            Word::Addr(0) => return Ok(leaves),
+            Word::Addr(_) => list = rest,
+            Word::Int(_) => return Err(MemoryFault::OutOfBounds),
+        }
+    }
+}
+
+/// One machine run over a fresh heap holding `x` and `y`, answering
+/// the machine's `val` and the heap.
+fn run_pair(
+    machine_program: &MachineProgram,
+    x_leaves: &[i64],
+    y_leaves: &[i64],
+) -> Result<(i64, SharedMemory, Word, Word), Box<dyn std::error::Error>> {
+    let memory: SharedMemory = Rc::new(RefCell::new(Memory::new(64, 1)));
+    let x = build_list(&memory, x_leaves)?;
+    let y = build_list(&memory, y_leaves)?;
+    let mut machine = Machine::new(assemble(machine_program)?);
+    for (name, op) in memory_operations(&memory) {
+        machine.install_operation(&name, op);
+    }
+    machine.set_register("x", word_value(x))?;
+    machine.set_register("y", word_value(y))?;
+    machine.run()?;
+    let answer = machine.get_register("val")?;
+    Ok((answer, memory, x, y))
+}
+
+/// The machine word a heap word travels as: an address as itself, an
+/// integer datum `n` as `-n-1`.
+fn word_value(word: Word) -> i64 {
+    match word {
+        Word::Addr(address) => i64::try_from(address).expect("small heap"),
+        Word::Int(value) => -value - 1,
+    }
+}
 
 mod ex_5_22 {
-    //! Exercise 5.22: design a register machine to implement
-    //! `append` of 3.12, which appends two lists to form a new list,
-    //! and one to implement `append!`, which splices two lists
-    //! together, assuming the list-structure memory operations are
-    //! available as primitive operations.
+    //! Exercise 5.22: design a register machine to implement `append`
+    //! and one to implement `append!`.
 
     use super::*;
 
-    /// Builds a machine whose operations are the memory primitives,
-    /// assembled from the book's controller datums.
-    fn machine(
-        memory: &SharedMemory,
-        registers: &[&str],
-        controller: &str,
-    ) -> Result<Machine, Fault> {
-        let operations = memory_operations(memory);
-        let datums = read_program(controller).map_err(|error| Fault::Parse(error.to_string()))?;
-        make_machine_from_datums(registers, &operations, &datums)
-    }
-
-    /// The proper list of the numbers, built bottom up: the
-    /// innermost cell allocates first.
-    fn num_list(memory: &SharedMemory, items: &[i128]) -> Word {
-        let mut word = Word::Empty;
-        for item in items.iter().rev() {
-            word = memory
-                .borrow_mut()
-                .cons(Word::Num(*item), word)
-                .expect("room for the lists");
-        }
-        word
-    }
-
-    /// The `append` machine of 3.12: recursion down the cdr side,
-    /// then one cons per cell of the first list on the way back.
-    fn append_machine(memory: &SharedMemory) -> Machine {
-        machine(
-            memory,
-            &["x", "y", "result", "car-val", "continue"],
-            "
-begin-append
-  (assign continue (label append-done))
-append-loop
-  (test (op null?) (reg x))
-  (branch (label null-x))
-  (save continue)
-  (save x)
-  (assign x (op cdr) (reg x))
-  (assign continue (label after-cdr))
-  (goto (label append-loop))
-after-cdr
-  (restore x)
-  (restore continue)
-  (assign car-val (op car) (reg x))
-  (assign result (op cons) (reg car-val) (reg result))
-  (goto (reg continue))
-null-x
-  (assign result (reg y))
-  (goto (reg continue))
-append-done",
-        )
-        .expect("the controller assembles")
-    }
-
-    /// The `append!` machine of 3.12: walk to the last pair of the
-    /// first list and splice the second list onto it. The result is
-    /// the first list's own head, unchanged as a pointer.
-    fn append_bang_machine(memory: &SharedMemory) -> Machine {
-        machine(
-            memory,
-            &["x", "y", "temp"],
-            "
-begin-append!
-last-pair-loop
-  (assign temp (op cdr) (reg x))
-  (test (op null?) (reg temp))
-  (branch (label found-last))
-  (assign x (reg temp))
-  (goto (label last-pair-loop))
-found-last
-  (perform (op set-cdr!) (reg x) (reg y))
-append!-done",
-        )
-        .expect("the controller assembles")
-    }
-
-    /// Appends `(1 2 3)` and `(4 5)` with the first machine: the
-    /// result reads as one list of five, built from three fresh
-    /// cells, and the last of them is the second list itself, shared
-    /// rather than copied.
+    /// `append` builds a fresh list: the answer is `(1 2 3 4)`,
+    /// neither input is disturbed, and the answer shares no cell
+    /// with `x`.
     #[test]
-    fn ex_5_22_append_copies_the_first_list() {
-        let memory: SharedMemory = Rc::new(RefCell::new(Memory::new(16, 4, 1)));
-        let x = num_list(&memory, &[1, 2, 3]);
-        let y = num_list(&memory, &[4, 5]);
-        let before_free = memory.borrow().free_word();
-        let mut machine = append_machine(&memory);
-        machine.set_register("x", Value::from(x.clone())).unwrap();
-        machine.set_register("y", Value::from(y.clone())).unwrap();
-        machine.start().unwrap();
-        let result = match ch05::sec_5_3::word_of(&machine.get_register("result").unwrap()).unwrap()
-        {
-            word @ Word::Pair(_) => word,
-            other => panic!("result is not a pair: {other:?}"),
-        };
-        assert_eq!(memory.borrow().write(&result).unwrap(), "(1 2 3 4 5)");
-        // The first list's own cells are untouched by the copy.
-        assert_eq!(memory.borrow().write(&x).unwrap(), "(1 2 3)");
-        // Three cells were allocated, and the last new cell's tail
-        // is y itself: the second list is shared, not copied.
-        assert_eq!(
-            memory.borrow().free_word(),
-            Word::Pair(before_free_index(&before_free) + 3)
-        );
-        let fourth = walk(&memory, &result, 3);
-        assert_eq!(fourth, y);
+    fn ex_5_22_append_builds_a_fresh_list() -> Result<(), Box<dyn std::error::Error>> {
+        let (answer, memory, x, y) = run_pair(&append_machine(), &[1, 2], &[3, 4])?;
+        let list = heap_word(answer);
+        assert_eq!(read_list(&memory, list)?, [1, 2, 3, 4]);
+        assert_ne!(list, x);
+        assert_eq!(read_list(&memory, x)?, [1, 2]);
+        assert_eq!(read_list(&memory, y)?, [3, 4]);
+        Ok(())
     }
 
-    /// Splices `(1 2 3)` and `(4 5)` with the second machine: the
-    /// first list's last pair now cdrs into the second list, no cell
-    /// was allocated, and the two arguments have become one list of
-    /// five.
+    /// The base case answers `y` itself: appending to the empty list
+    /// allocates nothing and the answer is the second pointer.
     #[test]
-    fn ex_5_22_append_bang_splices_the_lists() {
-        let memory: SharedMemory = Rc::new(RefCell::new(Memory::new(16, 4, 1)));
-        let x = num_list(&memory, &[1, 2, 3]);
-        let y = num_list(&memory, &[4, 5]);
-        let before_free = memory.borrow().free_word();
-        let mut machine = append_bang_machine(&memory);
-        machine.set_register("x", Value::from(x.clone())).unwrap();
-        machine.set_register("y", Value::from(y.clone())).unwrap();
-        machine.start().unwrap();
-        // The head is the same pointer, the printout is the spliced
-        // list, and nothing was allocated.
-        assert_eq!(memory.borrow().write(&x).unwrap(), "(1 2 3 4 5)");
-        assert_eq!(memory.borrow().free_word(), before_free);
-        // The splice: the cell after the 3 is the second list's own
-        // head cell.
-        let third = walk(&memory, &x, 2);
-        let spliced = memory.borrow().cdr(&third).unwrap();
-        assert_eq!(spliced, y);
+    fn ex_5_22_append_of_the_empty_list() -> Result<(), Box<dyn std::error::Error>> {
+        let (answer, memory, _, y) = run_pair(&append_machine(), &[], &[3, 4])?;
+        assert_eq!(heap_word(answer), y);
+        assert_eq!(read_list(&memory, heap_word(answer))?, [3, 4]);
+        Ok(())
     }
 
-    /// The word at the nth position of a proper list.
-    fn walk(memory: &SharedMemory, word: &Word, n: usize) -> Word {
-        let mut cursor = word.clone();
-        for _ in 0..n {
-            cursor = memory.borrow().cdr(&cursor).expect("a proper list");
-        }
-        cursor
+    /// `append!` splices: the answer is the original `x`, now
+    /// reading `(1 2 3 4)`, and its last cell names `y`'s first cell
+    /// rather than the empty list.
+    #[test]
+    fn ex_5_22_append_bang_splices() -> Result<(), Box<dyn std::error::Error>> {
+        let (answer, memory, x, y) = run_pair(&append_bang_machine(), &[1, 2], &[3, 4])?;
+        assert_eq!(heap_word(answer), x);
+        assert_eq!(read_list(&memory, x)?, [1, 2, 3, 4]);
+        assert_eq!(read_list(&memory, y)?, [3, 4]);
+        let spliced = memory.borrow().cdr(x)?;
+        assert_eq!(memory.borrow().cdr(spliced)?, y);
+        Ok(())
     }
 
-    /// The index a free pointer word names.
-    fn before_free_index(word: &Word) -> usize {
-        match word {
-            Word::Pair(index) => *index,
-            other => panic!("free is always a pair pointer: {other:?}"),
+    /// Splicing into the empty list is the machine's one boundary
+    /// case: `last-pair` has no cell to visit, so the run faults
+    /// rather than inventing a head.
+    #[test]
+    fn ex_5_22_append_bang_of_the_empty_list_faults() -> Result<(), Box<dyn std::error::Error>> {
+        let memory: SharedMemory = Rc::new(RefCell::new(Memory::new(64, 1)));
+        let y = build_list(&memory, &[3, 4])?;
+        let mut machine = Machine::new(assemble(&append_bang_machine())?);
+        for (name, op) in memory_operations(&memory) {
+            machine.install_operation(&name, op);
         }
+        machine.set_register("x", word_value(Word::Addr(0)))?;
+        machine.set_register("y", word_value(y))?;
+        let fault = machine.run().expect_err("no cell to splice into");
+        assert!(matches!(fault, Fault::UndefinedOperation(_)));
+        Ok(())
     }
 }

@@ -146,8 +146,8 @@ impl Serializer {
 /// atomic.
 pub type SharedInt = Arc<Mutex<i128>>;
 
-/// Makes a shared integer holding `value`: the book's `(define x 10)`
-/// written so a second process can reach it.
+/// Makes a shared integer holding `value`, in the form a second
+/// process can reach.
 #[must_use]
 pub fn shared_int(value: i128) -> SharedInt {
     Arc::new(Mutex::new(value))

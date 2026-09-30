@@ -7,15 +7,14 @@
 mod ex_2_53 {
     use sicp_runtime::Pending;
 
-    /// Exercise 2.53 (replacement): predicting printed values
+    /// Exercise 2.53 (replacement): predict symbolic-data renderings
     ///
-    /// Returns, in order: `list(a, b, c)` printed; `list(list(george))`
-    /// printed; the printed `cdr` of `((x1 x2) (y1 y2))`; the printed
-    /// `cadr` of the same; whether `car(a, short, list)` is a pair (as
-    /// `"true"`/`"false"`); whether the symbol `red` is found by
-    /// `memq` among the sublists `((red shoes) (blue socks))` (as
-    /// `"true"`/`"false"`); and the printed `memq` of `red` in the flat
-    /// list `(red shoes blue socks)`.
+    /// Returns, in order: a three-symbol sequence; a sequence containing
+    /// one nested `george` value; the tail and second element of a nested
+    /// sequence; whether a symbol can itself be a compound value;
+    /// whether `red` occurs among two nested sub-sequences; and the
+    /// position of `red` in a flat sequence. Boolean observations use
+    /// `"true"`/`"false"`.
     #[allow(
         clippy::type_complexity,
         reason = "one tuple per sub-question, matching the exercise's seven-part statement"

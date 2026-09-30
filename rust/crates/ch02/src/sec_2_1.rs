@@ -12,7 +12,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use sicp_runtime::SchemeError;
+use sicp_runtime::SicpError;
 
 // ---------------------------------------------------------------------
 // Pairs
@@ -62,23 +62,22 @@ pub struct Rational {
 }
 
 impl Rational {
-    /// Builds a rational number in lowest terms: the book's `make-rat`,
-    /// after the fix later in this subsection that divides out the `gcd`
-    /// of the arguments before constructing the pair.
+    /// Builds a rational number in lowest terms by dividing both
+    /// arguments by their gcd before constructing the pair.
     ///
     /// # Errors
-    /// [`SchemeError::DivisionByZero`] when `den` is zero.
-    /// [`SchemeError::Overflow`] when reducing the arguments overflows
+    /// [`SicpError::DivisionByZero`] when `den` is zero.
+    /// [`SicpError::Overflow`] when reducing the arguments overflows
     /// `i128`.
-    pub fn new(num: i128, den: i128) -> Result<Self, SchemeError> {
+    pub fn new(num: i128, den: i128) -> Result<Self, SicpError> {
         if den == 0 {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         }
-        let num_abs = num.checked_abs().ok_or(SchemeError::Overflow)?;
-        let den_abs = den.checked_abs().ok_or(SchemeError::Overflow)?;
+        let num_abs = num.checked_abs().ok_or(SicpError::Overflow)?;
+        let den_abs = den.checked_abs().ok_or(SicpError::Overflow)?;
         let g = gcd(num_abs, den_abs);
-        let num = num.checked_div(g).ok_or(SchemeError::Overflow)?;
-        let den = den.checked_div(g).ok_or(SchemeError::Overflow)?;
+        let num = num.checked_div(g).ok_or(SicpError::Overflow)?;
+        let den = den.checked_div(g).ok_or(SicpError::Overflow)?;
         Ok(Rational { num, den })
     }
 
@@ -94,64 +93,46 @@ impl Rational {
         self.den
     }
 
-    /// Adds two rationals: the book's `add-rat`, `(n1 d2 + n2 d1) / d1 d2`.
+    /// Adds two rationals: `(n1*d2 + n2*d1) / (d1*d2)`.
     ///
     /// # Errors
-    /// [`SchemeError::Overflow`] when the cross-multiplication or the
+    /// [`SicpError::Overflow`] when the cross-multiplication or the
     /// reduction overflows.
-    pub fn add(&self, other: &Self) -> Result<Self, SchemeError> {
+    pub fn add(&self, other: &Self) -> Result<Self, SicpError> {
         let num = cross_add(self.num, self.den, other.num, other.den)?;
-        let den = self
-            .den
-            .checked_mul(other.den)
-            .ok_or(SchemeError::Overflow)?;
+        let den = self.den.checked_mul(other.den).ok_or(SicpError::Overflow)?;
         Self::new(num, den)
     }
 
-    /// Subtracts two rationals: the book's `sub-rat`, `(n1 d2 - n2 d1) / d1 d2`.
+    /// Subtracts two rationals: `(n1*d2 - n2*d1) / (d1*d2)`.
     ///
     /// # Errors
-    /// [`SchemeError::Overflow`] when the cross-multiplication or the
+    /// [`SicpError::Overflow`] when the cross-multiplication or the
     /// reduction overflows.
-    pub fn sub(&self, other: &Self) -> Result<Self, SchemeError> {
+    pub fn sub(&self, other: &Self) -> Result<Self, SicpError> {
         let num = cross_sub(self.num, self.den, other.num, other.den)?;
-        let den = self
-            .den
-            .checked_mul(other.den)
-            .ok_or(SchemeError::Overflow)?;
+        let den = self.den.checked_mul(other.den).ok_or(SicpError::Overflow)?;
         Self::new(num, den)
     }
 
     /// Multiplies two rationals: the book's `mul-rat`.
     ///
     /// # Errors
-    /// [`SchemeError::Overflow`] when either product overflows.
-    pub fn mul(&self, other: &Self) -> Result<Self, SchemeError> {
-        let num = self
-            .num
-            .checked_mul(other.num)
-            .ok_or(SchemeError::Overflow)?;
-        let den = self
-            .den
-            .checked_mul(other.den)
-            .ok_or(SchemeError::Overflow)?;
+    /// [`SicpError::Overflow`] when either product overflows.
+    pub fn mul(&self, other: &Self) -> Result<Self, SicpError> {
+        let num = self.num.checked_mul(other.num).ok_or(SicpError::Overflow)?;
+        let den = self.den.checked_mul(other.den).ok_or(SicpError::Overflow)?;
         Self::new(num, den)
     }
 
     /// Divides two rationals: the book's `div-rat`.
     ///
     /// # Errors
-    /// [`SchemeError::Overflow`] when either product overflows.
-    /// [`SchemeError::DivisionByZero`] when `other` is zero.
-    pub fn div(&self, other: &Self) -> Result<Self, SchemeError> {
-        let num = self
-            .num
-            .checked_mul(other.den)
-            .ok_or(SchemeError::Overflow)?;
-        let den = self
-            .den
-            .checked_mul(other.num)
-            .ok_or(SchemeError::Overflow)?;
+    /// [`SicpError::Overflow`] when either product overflows.
+    /// [`SicpError::DivisionByZero`] when `other` is zero.
+    pub fn div(&self, other: &Self) -> Result<Self, SicpError> {
+        let num = self.num.checked_mul(other.den).ok_or(SicpError::Overflow)?;
+        let den = self.den.checked_mul(other.num).ok_or(SicpError::Overflow)?;
         Self::new(num, den)
     }
 }
@@ -164,17 +145,17 @@ impl fmt::Display for Rational {
 }
 
 /// Computes `a * d + c * b`, checked: the numerator of `add-rat`.
-fn cross_add(a: i128, b: i128, c: i128, d: i128) -> Result<i128, SchemeError> {
-    let ad = a.checked_mul(d).ok_or(SchemeError::Overflow)?;
-    let cb = c.checked_mul(b).ok_or(SchemeError::Overflow)?;
-    ad.checked_add(cb).ok_or(SchemeError::Overflow)
+fn cross_add(a: i128, b: i128, c: i128, d: i128) -> Result<i128, SicpError> {
+    let ad = a.checked_mul(d).ok_or(SicpError::Overflow)?;
+    let cb = c.checked_mul(b).ok_or(SicpError::Overflow)?;
+    ad.checked_add(cb).ok_or(SicpError::Overflow)
 }
 
 /// Computes `a * d - c * b`, checked: the numerator of `sub-rat`.
-fn cross_sub(a: i128, b: i128, c: i128, d: i128) -> Result<i128, SchemeError> {
-    let ad = a.checked_mul(d).ok_or(SchemeError::Overflow)?;
-    let cb = c.checked_mul(b).ok_or(SchemeError::Overflow)?;
-    ad.checked_sub(cb).ok_or(SchemeError::Overflow)
+fn cross_sub(a: i128, b: i128, c: i128, d: i128) -> Result<i128, SicpError> {
+    let ad = a.checked_mul(d).ok_or(SicpError::Overflow)?;
+    let cb = c.checked_mul(b).ok_or(SicpError::Overflow)?;
+    ad.checked_sub(cb).ok_or(SicpError::Overflow)
 }
 
 /// Euclid's Algorithm on nonnegative `i128`: this section's own copy of
@@ -198,16 +179,16 @@ fn gcd(mut a: i128, mut b: i128) -> i128 {
 /// (2.1.3). Both parts share one Rust type, since the dispatch closure's
 /// return type is fixed once; the fully dynamic version, where the two
 /// parts may differ, arrives with `Value` in section 2.4.
-pub struct ProcPair<T>(Rc<dyn Fn(u8) -> Result<T, SchemeError>>);
+pub struct ProcPair<T>(Rc<dyn Fn(u8) -> Result<T, SicpError>>);
 
-/// Builds a procedural pair: the book's procedural `cons`,
-/// `(lambda (m) (cond ((= m 0) x) ((= m 1) y) (else (error ...))))`.
+/// Builds a procedural pair: a dispatch closure answering `x` for
+/// message `0`, `y` for message `1`, and an error for anything else.
 #[must_use]
 pub fn cons_proc<T: Clone + 'static>(x: T, y: T) -> ProcPair<T> {
     ProcPair(Rc::new(move |m| match m {
         0 => Ok(x.clone()),
         1 => Ok(y.clone()),
-        other => Err(SchemeError::UnknownMessage(other)),
+        other => Err(SicpError::UnknownMessage(other)),
     }))
 }
 
@@ -217,7 +198,7 @@ pub fn cons_proc<T: Clone + 'static>(x: T, y: T) -> ProcPair<T> {
 /// Never, for a `z` built by [`cons_proc`]; the `Result` is part of the
 /// dispatch procedure's own signature, since any [`ProcPair`] answers only
 /// 0 and 1.
-pub fn car_proc<T>(z: &ProcPair<T>) -> Result<T, SchemeError> {
+pub fn car_proc<T>(z: &ProcPair<T>) -> Result<T, SicpError> {
     (z.0)(0)
 }
 
@@ -225,7 +206,7 @@ pub fn car_proc<T>(z: &ProcPair<T>) -> Result<T, SchemeError> {
 ///
 /// # Errors
 /// Never, for a `z` built by [`cons_proc`]; see [`car_proc`].
-pub fn cdr_proc<T>(z: &ProcPair<T>) -> Result<T, SchemeError> {
+pub fn cdr_proc<T>(z: &ProcPair<T>) -> Result<T, SicpError> {
     (z.0)(1)
 }
 
@@ -249,7 +230,7 @@ impl Step {
         Step(Rc::new(f))
     }
 
-    /// Applies the step's effect to the counter: the book's `(f x)`.
+    /// Applies the step's effect to the counter.
     pub fn apply(&self, x: &mut i128) {
         (self.0)(x);
     }
@@ -264,7 +245,7 @@ impl Step {
 pub struct Church(Rc<dyn Fn(Step) -> Step>);
 
 impl Church {
-    /// Builds a numeral from its own `(lambda (f) ...)` body: exercise
+    /// Builds a numeral from its own step-transformer body: exercise
     /// 2.6's `one`, `two`, and `+` use this to define numerals directly.
     #[must_use]
     pub fn from_fn(f: impl Fn(Step) -> Step + 'static) -> Self {
@@ -272,7 +253,7 @@ impl Church {
     }
 
     /// Applies the numeral to one step, producing the step of applying it
-    /// one more time: the book's `(n f)`.
+    /// one more time.
     #[must_use]
     pub fn apply(&self, f: Step) -> Step {
         (self.0)(f)
@@ -290,17 +271,15 @@ impl Church {
     }
 }
 
-/// The book's Church-numeral `zero`,
-/// `(lambda (f) (lambda (x) x))`: applies `f` zero times, so `x` returns
-/// unchanged.
+/// Church-numeral zero: applies its argument step zero times, so the
+/// initial state returns unchanged.
 #[must_use]
 pub fn church_zero() -> Church {
     Church::from_fn(|_f: Step| Step::from_fn(|_x: &mut i128| {}))
 }
 
-/// The book's `add-1`,
-/// `(lambda (n) (lambda (f) (lambda (x) (f ((n f) x)))))`: one more
-/// application of `f` than `n` performs.
+/// The successor of a numeral: one more application of the step than
+/// the numeral itself performs.
 #[must_use]
 pub fn church_succ(n: &Church) -> Church {
     let n = n.clone();
@@ -333,10 +312,10 @@ impl Interval {
     /// `make-interval`, given directly in the statement of exercise 2.7.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when `lower` is greater than `upper`.
-    pub fn new(lower: f64, upper: f64) -> Result<Self, SchemeError> {
+    /// [`SicpError::TypeMismatch`] when `lower` is greater than `upper`.
+    pub fn new(lower: f64, upper: f64) -> Result<Self, SicpError> {
         if lower > upper {
-            return Err(SchemeError::TypeMismatch(format!(
+            return Err(SicpError::TypeMismatch(format!(
                 "interval lower bound {lower} exceeds upper bound {upper}"
             )));
         }
@@ -347,8 +326,8 @@ impl Interval {
     /// `make-center-width`.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when `width` is negative.
-    pub fn from_center_width(center: f64, width: f64) -> Result<Self, SchemeError> {
+    /// [`SicpError::TypeMismatch`] when `width` is negative.
+    pub fn from_center_width(center: f64, width: f64) -> Result<Self, SicpError> {
         Self::new(center - width, center + width)
     }
 

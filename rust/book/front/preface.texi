@@ -104,7 +104,7 @@
 
 @documentencoding UTF-8
 
-@dircategory The Algorithmic Language Scheme
+@dircategory Rust
 @direntry
 * SICP: (sicp). Structure and Interpretation of Computer Programs
 @end direntry
@@ -234,16 +234,17 @@ The Rust Edition (@value{utfversion})
 
 The language of this book
 
-* 0.1::              Running this book
-* 0.2::              Values, names, and functions
-* 0.3::              Recursion and the call stack
-* 0.4::              Data
-* 0.5::              Mutation and ownership
-* 0.6::              Errors as values
-* 0.7::              Testing
-* 0.8::              Reading this book
+* 0.1::              Values, numbers, and bindings
+* 0.2::              Functions, recursion, and iteration
+* 0.3::              Ownership, moves, and borrowing
+* 0.4::              Product and sum data
+* 0.5::              Collections and iterators
+* 0.6::              Closures and trait objects
+* 0.7::              Shared ownership and interior mutability
+* 0.8::              Errors and tests
+* 0.9::              Modules, crates, and reading this book
 
-Programming in Lisp
+Building Abstractions with Procedures
 
 * 1.1::              The Elements of Programming
 * 1.2::              Procedures and the Processes They Generate
@@ -309,7 +310,7 @@ Multiple Representations for Abstract Data
 
 * 2.4.1::            Representations for Complex Numbers
 * 2.4.2::            Tagged data
-* 2.4.3::            Data.Directed Programming and Additivity
+* 2.4.3::            Data-Directed Programming and Additivity
 
 Systems with Generic Operations
 
@@ -363,8 +364,8 @@ Streams
 Metalinguistic Abstraction
 
 * 4.1::              The Metacircular Evaluator
-* 4.2::              Variations on a Scheme -- Lazy Evaluation
-* 4.3::              Variations on a Scheme -- Nondeterministic Computing
+* 4.2::              Lazy Evaluation
+* 4.3::              Nondeterministic Computing
 * 4.4::              Logic Programming
 
 The Metacircular Evaluator
@@ -377,17 +378,17 @@ The Metacircular Evaluator
 * 4.1.6::            Internal Definitions
 * 4.1.7::            Separating Syntactic Analysis from Execution
 
-Variations on a Scheme -- Lazy Evaluation
+Lazy Evaluation
 
 * 4.2.1::            Normal Order and Applicative Order
 * 4.2.2::            An Interpreter with Lazy Evaluation
 * 4.2.3::            Streams as Lazy Lists
 
-Variations on a Scheme -- Nondeterministic Computing
+Nondeterministic Computing
 
-* 4.3.1::            Amb and Search
+* 4.3.1::            Search and Choice
 * 4.3.2::            Examples of Nondeterministic Programs
-* 4.3.3::            Implementing the @code{Amb} Evaluator
+* 4.3.3::            Implementing the Search Evaluator
 
 Logic Programming
 
@@ -410,7 +411,7 @@ Implementing the Query System
 Computing with Register Machines
 
 * 5.1::              Designing Register Machines
-* 5.2::              A Register.Machine Simulator
+* 5.2::              A Register-Machine Simulator
 * 5.3::              Storage Allocation and Garbage Collection
 * 5.4::              The Explicit-Control Evaluator
 * 5.5::              Compilation
@@ -423,7 +424,7 @@ Designing Register Machines
 * 5.1.4::            Using a Stack to Implement Recursion
 * 5.1.5::            Instruction Summary
 
-A Register.Machine Simulator
+A Register-Machine Simulator
 
 * 5.2.1::            The Machine Model
 * 5.2.2::            The Assembler
@@ -435,14 +436,14 @@ Storage Allocation and Garbage Collection
 * 5.3.1::            Memory as Vectors
 * 5.3.2::            Maintaining the Illusion of Infinite Memory
 
-Registers and operations
+The Explicit-Control Evaluator
 
-* 5.4.1::            The Core of the Explicit.Control Evaluator
+* 5.4.1::            The Core of the Explicit-Control Evaluator
 * 5.4.2::            Sequence Evaluation and Tail Recursion
 * 5.4.3::            Conditionals, Assignments, and Definitions
 * 5.4.4::            Running the Evaluator
 
-An overview of the compiler
+Compilation
 
 * 5.5.1::            Structure of the Compiler
 * 5.5.2::            Compiling Expressions
@@ -744,8 +745,8 @@ the book reads without prior Rust knowledge.
 The prose is re-cut where the host language changes the lesson:
 closures and ownership (3.2), threads and shared state (3.4), and an explicit backtracking engine for nondeterministic computing (4.3).
 @item
-Each chapter closes with an ``In this language'' note that names the
-host mechanism the chapter relied on.
+Sections 2.4, 2.5, 3.3, and 4.1 close with an ``In this language'' note
+that names the host mechanism the section leaned on.
 @end itemize
 
 Toolchain: Rust 1.98.1, edition 2024.  The code in @file{examples/}, @file{exercises/}, and @file{solutions/} is the source of every listing; tests run with @code{cargo nextest}.

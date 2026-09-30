@@ -15,9 +15,9 @@ pub struct Pending {
 
 mod ex_5_20 {
     //! Exercise 5.20: draw the box-and-pointer and memory-vector
-    //! representations of the structure produced by
-    //! `(define x (cons 1 2))` and `(define y (list x x))`, with the
-    //! free pointer initially `p1`. What is the final value of
+    //! representations of the structure produced by allocating the
+    //! pair `x` from 1 and 2, then the pair `y` from `x` and `x`, with
+    //! the free pointer initially `p1`. What is the final value of
     //! `free`? What pointers represent the values of `x` and `y`?
 
     use super::Pending;

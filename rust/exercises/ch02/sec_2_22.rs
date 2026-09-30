@@ -9,9 +9,9 @@ mod ex_2_22 {
 
     /// Exercise 2.22: the iterative square-list bug
     ///
-    /// Returns the rendered answer of Louis Reasoner's first iterative rewrite
-    /// (which comes out reversed) and the rendered shape his `cons`-swapped
-    /// second rewrite accumulates instead of a flat list.
+    /// Returns the rendered output of the first iterative rewrite, which
+    /// reverses the sequence, and the nested pair shape produced by the
+    /// second rewrite's swapped pair-argument order.
     pub fn ex_2_22() -> Result<(String, String), Pending> {
         Err(Pending::new("2.22"))
     }

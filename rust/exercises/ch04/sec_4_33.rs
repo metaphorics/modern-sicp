@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.33: quote produces lazy lists.
+//! The pending scaffold of exercise 4.33: quotation data produces lazy lists.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,11 +12,12 @@ pub struct Pending {
 }
 
 mod ex_4_33 {
-    //! Exercise 4.33: quote produces lazy lists.
+    //! Exercise 4.33: quotation data produces lazy lists.
 
     use super::Pending;
 
-    /// Answers the plain evaluator's error on a quoted list and the lifted-quote session values.
+    /// Answers the strict engine's error when explicit `Quote` data is
+    /// applied as a procedure, and the quotation-lifting session values.
     pub fn ex_4_33() -> Result<(String, Vec<String>), Pending> {
         Err(Pending { exercise: "4.33" })
     }

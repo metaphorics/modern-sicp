@@ -9,9 +9,9 @@
 
 use ch03::sec_3_5::{Stream, add_streams, cons_stream, self_stream};
 
-/// The book's `(define s (cons-stream 1 (add-streams s s)))`: the name
-/// `s` is handed to the body and read inside the tail thunk only, which
-/// runs after the definition is complete.
+/// The self-referential sum: the name `s` is handed to the body and
+/// read inside the tail thunk only, which runs after the definition is
+/// complete.
 #[must_use]
 fn doubling() -> Stream<i128> {
     self_stream(|s| cons_stream(1, move || add_streams(&s.stream(), &s.stream())))

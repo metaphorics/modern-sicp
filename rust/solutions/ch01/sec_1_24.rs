@@ -21,7 +21,7 @@ mod ex_1_24 {
         }
     }
 
-    /// Draws the book's `(random (- n 1))` from the runtime's seeded
+    /// Draws a uniform integer below `n` from the runtime's seeded
     /// generator, widened into `i128`.
     fn random_below(rng: &mut Random, n: i128) -> i128 {
         i128::from(rng.random(u64::try_from(n).unwrap_or(u64::MAX)))

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.78: query language on amb evaluator.
+//! The pending scaffold of exercise 4.78: query evaluation over search choices.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,7 +12,7 @@ pub struct Pending {
 }
 
 mod ex_4_78 {
-    //! Exercise 4.78: the query language as a nondeterministic program over explicit choice frames.
+    //! Exercise 4.78: a query language as a nondeterministic program over explicit choice frames.
 
     use super::Pending;
 

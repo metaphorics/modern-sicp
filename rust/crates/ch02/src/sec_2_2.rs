@@ -13,7 +13,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use sicp_runtime::SchemeError;
+use sicp_runtime::SicpError;
 
 /// The runtime's persistent cons list: the section's list representation,
 /// re-exported so the listings can build on it.
@@ -37,13 +37,13 @@ pub fn append<T: Clone>(list1: &List<T>, list2: &List<T>) -> List<T> {
 /// which "cdrs down" the list `n` times and takes the `car`.
 ///
 /// # Errors
-/// [`SchemeError::TypeMismatch`] when `n` runs past the end of the list,
+/// [`SicpError::TypeMismatch`] when `n` runs past the end of the list,
 /// the analog of the book's attempted `car` of the empty list.
-pub fn list_ref<T: Clone>(items: &List<T>, n: usize) -> Result<T, SchemeError> {
+pub fn list_ref<T: Clone>(items: &List<T>, n: usize) -> Result<T, SicpError> {
     match (items, n) {
         (List::Cons(x, _), 0) => Ok(x.clone()),
         (List::Cons(_, rest), _) => list_ref(rest, n - 1),
-        (List::Nil, _) => Err(SchemeError::TypeMismatch(
+        (List::Nil, _) => Err(SicpError::TypeMismatch(
             "list-ref: index past the end".into(),
         )),
     }
@@ -94,11 +94,11 @@ pub fn map_list<T, U: Clone>(f: impl Fn(&T) -> U, items: &List<T>) -> List<U> {
 /// is checked, since a factor can push an element past `i128`.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when any product leaves the `i128` range.
-pub fn scale_list(items: &List<i128>, factor: i128) -> Result<List<i128>, SchemeError> {
+/// [`SicpError::Overflow`] when any product leaves the `i128` range.
+pub fn scale_list(items: &List<i128>, factor: i128) -> Result<List<i128>, SicpError> {
     items
         .iter()
-        .map(|x| x.checked_mul(factor).ok_or(SchemeError::Overflow))
+        .map(|x| x.checked_mul(factor).ok_or(SicpError::Overflow))
         .collect::<Result<Vec<_>, _>>()
         .map(|scaled| scaled.into_iter().collect())
 }
@@ -170,11 +170,11 @@ pub fn count_leaves<T>(tree: &Nest<T>) -> u64 {
 /// multiplication at the leaves.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when any product leaves the `i128` range.
-pub fn scale_tree(tree: &Nest<i128>, factor: i128) -> Result<Nest<i128>, SchemeError> {
+/// [`SicpError::Overflow`] when any product leaves the `i128` range.
+pub fn scale_tree(tree: &Nest<i128>, factor: i128) -> Result<Nest<i128>, SicpError> {
     match tree {
         Nest::Leaf(x) => Ok(Nest::Leaf(
-            x.checked_mul(factor).ok_or(SchemeError::Overflow)?,
+            x.checked_mul(factor).ok_or(SicpError::Overflow)?,
         )),
         Nest::Sub(items) => {
             let scaled: Result<Vec<_>, _> = items.iter().map(|t| scale_tree(t, factor)).collect();
@@ -189,11 +189,11 @@ pub fn scale_tree(tree: &Nest<i128>, factor: i128) -> Result<Nest<i128>, SchemeE
 /// test, and the map is a plain iterator map.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when any product leaves the `i128` range.
-pub fn scale_tree_map(tree: &Nest<i128>, factor: i128) -> Result<Nest<i128>, SchemeError> {
+/// [`SicpError::Overflow`] when any product leaves the `i128` range.
+pub fn scale_tree_map(tree: &Nest<i128>, factor: i128) -> Result<Nest<i128>, SicpError> {
     match tree {
         Nest::Leaf(x) => Ok(Nest::Leaf(
-            x.checked_mul(factor).ok_or(SchemeError::Overflow)?,
+            x.checked_mul(factor).ok_or(SicpError::Overflow)?,
         )),
         Nest::Sub(items) => {
             let mapped: Result<Vec<_>, _> = items
@@ -274,12 +274,12 @@ pub fn is_prime(n: i64) -> bool {
 /// to this chapter for the `even-fibs` and `list-fib-squares` pipelines.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when a Fibonacci number leaves `i128`
+/// [`SicpError::Overflow`] when a Fibonacci number leaves `i128`
 /// (first past roughly `k = 87`).
-pub fn fib(k: u32) -> Result<i128, SchemeError> {
+pub fn fib(k: u32) -> Result<i128, SicpError> {
     let (mut a, mut b) = (0_i128, 1_i128);
     for _ in 0..k {
-        let next = a.checked_add(b).ok_or(SchemeError::Overflow)?;
+        let next = a.checked_add(b).ok_or(SicpError::Overflow)?;
         a = b;
         b = next;
     }
@@ -293,14 +293,14 @@ pub fn fib(k: u32) -> Result<i128, SchemeError> {
 /// visible is visible in the code itself.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when a square or a sum leaves `i128`.
-pub fn sum_odd_squares(tree: &Nest<i128>) -> Result<i128, SchemeError> {
+/// [`SicpError::Overflow`] when a square or a sum leaves `i128`.
+pub fn sum_odd_squares(tree: &Nest<i128>) -> Result<i128, SicpError> {
     enumerate_tree(tree)
         .iter()
         .filter(|x| *x % 2 != 0)
         .try_fold(0_i128, |acc, x| {
-            let square = x.checked_mul(*x).ok_or(SchemeError::Overflow)?;
-            acc.checked_add(square).ok_or(SchemeError::Overflow)
+            let square = x.checked_mul(*x).ok_or(SicpError::Overflow)?;
+            acc.checked_add(square).ok_or(SicpError::Overflow)
         })
 }
 
@@ -309,8 +309,8 @@ pub fn sum_odd_squares(tree: &Nest<i128>) -> Result<i128, SchemeError> {
 /// collecting into a [`List`] is the `accumulate` with `cons`.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when a Fibonacci number leaves `i128`.
-pub fn even_fibs(n: u32) -> Result<List<i128>, SchemeError> {
+/// [`SicpError::Overflow`] when a Fibonacci number leaves `i128`.
+pub fn even_fibs(n: u32) -> Result<List<i128>, SicpError> {
     let fibs: Result<Vec<_>, _> = (0..=n).map(fib).collect();
     Ok(fibs?.into_iter().filter(|f| f % 2 == 0).collect())
 }
@@ -319,13 +319,13 @@ pub fn even_fibs(n: u32) -> Result<List<i128>, SchemeError> {
 /// `list-fib-squares`, reusing the stages of `even_fibs` in a new order.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when a Fibonacci number or its square
+/// [`SicpError::Overflow`] when a Fibonacci number or its square
 /// leaves `i128`.
-pub fn list_fib_squares(n: u32) -> Result<List<i128>, SchemeError> {
+pub fn list_fib_squares(n: u32) -> Result<List<i128>, SicpError> {
     let fibs: Result<Vec<_>, _> = (0..=n).map(fib).collect();
     let squares: Result<Vec<_>, _> = fibs?
         .iter()
-        .map(|f| f.checked_mul(*f).ok_or(SchemeError::Overflow))
+        .map(|f| f.checked_mul(*f).ok_or(SicpError::Overflow))
         .collect();
     Ok(squares?.into_iter().collect())
 }
@@ -334,14 +334,14 @@ pub fn list_fib_squares(n: u32) -> Result<List<i128>, SchemeError> {
 /// book's `product-of-squares-of-odd-elements`.
 ///
 /// # Errors
-/// [`SchemeError::Overflow`] when a square or the product leaves `i128`.
-pub fn product_of_squares_of_odd_elements(sequence: &[i128]) -> Result<i128, SchemeError> {
+/// [`SicpError::Overflow`] when a square or the product leaves `i128`.
+pub fn product_of_squares_of_odd_elements(sequence: &[i128]) -> Result<i128, SicpError> {
     sequence
         .iter()
         .filter(|x| *x % 2 != 0)
         .try_fold(1_i128, |acc, x| {
-            let square = x.checked_mul(*x).ok_or(SchemeError::Overflow)?;
-            acc.checked_mul(square).ok_or(SchemeError::Overflow)
+            let square = x.checked_mul(*x).ok_or(SicpError::Overflow)?;
+            acc.checked_mul(square).ok_or(SicpError::Overflow)
         })
 }
 
@@ -428,12 +428,12 @@ pub fn enumerate_tree<T: Clone>(tree: &Nest<T>) -> List<T> {
 pub struct Vect {
     /// The `x`-coordinate: the book's `xcor-vect`.
     pub x: f64,
-    /// The `y`-coordinate: the book's `ycor-vect`.
+    /// The `y`-coordinate.
     pub y: f64,
 }
 
 impl Vect {
-    /// Builds the book's `(make-vect x y)`.
+    /// Builds a vector from its `x` and `y` coordinates.
     #[must_use]
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
@@ -485,7 +485,7 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Builds the book's `(make-frame origin edge1 edge2)`.
+    /// Builds a frame from its origin and two edge vectors.
     #[must_use]
     pub fn new(origin: Vect, edge1: Vect, edge2: Vect) -> Self {
         Self {
@@ -519,7 +519,7 @@ pub struct Segment {
 }
 
 impl Segment {
-    /// Builds the book's `(make-segment start end)`.
+    /// Builds a segment from its start and end points.
     #[must_use]
     pub fn new(start: Vect, end: Vect) -> Self {
         Self { start, end }

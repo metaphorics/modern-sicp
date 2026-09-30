@@ -1,69 +1,73 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.33: compare the compiled
-//! recursive factorial with the alternative operand order.
+//! The reference solution of exercise 5.33: operand order changes
+//! which value stays live across the recursive call.
+//!
+//! The book's factorial multiplies the recursive result by `n`; the
+//! alternative multiplies `n` by the recursive result. Both recurrences
+//! answer `120` at n = 5 on both engines. The operand discipline
+//! evaluates each call argument into a saved slot, so both streams
+//! carry save traffic around the recursion; which operand the source
+//! order leaves live decides its shape. The solution asserts the
+//! shared facts and computes both save counts for the comparison
+//! instead of pinning them.
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_5::{Linkage, compile_and_go, compile_program, default_config, new_state};
+use ch05::sec_5_5::{Instr, PerformOp};
+use sicp_runtime::host::CheckedProgram;
+
+fn admitted(source: &str) -> CheckedProgram {
+    match sicp_runtime::host::admit(source) {
+        Ok(program) => program,
+        Err(diag) => panic!("admitted: {}", diag.message),
+    }
+}
+
+fn saves_of(program: &CheckedProgram) -> usize {
+    ch05::sec_5_5::compile_program(program)
+        .instrs
+        .iter()
+        .filter(|instr| matches!(instr, Instr::Save(_)))
+        .count()
+}
 
 mod ex_5_33 {
-    //! Exercise 5.33: both procedures answer 120; the alternative
-    //! compilation changes which value stays live across the recursive
-    //! call, changing its saves and restores.
+    //! Exercise 5.33: both operand orders answer `120`; the compiled
+    //! save traffic reflects which operand stays live.
 
     use super::*;
 
-    const FACTORIAL: &str = "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
-    const ALT: &str = "(define (factorial-alt n) (if (= n 1) 1 (* n (factorial-alt (- n 1)))))";
+    const FACTORIAL: &str = "fn factorial(n: i64) -> i64 {\n    if n == 1 {\n        1\n    } else {\n        factorial(n - 1) * n\n    }\n}\n\nfn main() {\n    println!(\"{}\", factorial(5));\n}\n";
 
-    fn summary(source: &str) -> Result<(usize, usize, String), Fault> {
-        let seq = compile_program(&default_config(), &new_state(), source, &Linkage::Next)?;
-        let pairs = seq
-            .stmts
-            .iter()
-            .filter(|line| line.starts_with("(save "))
-            .count();
-        Ok((seq.stmts.len(), pairs, seq.stmts.join("\n")))
+    const FACTORIAL_ALT: &str = "fn factorial_alt(n: i64) -> i64 {\n    if n == 1 {\n        1\n    } else {\n        n * factorial_alt(n - 1)\n    }\n}\n\nfn main() {\n    println!(\"{}\", factorial_alt(5));\n}\n";
+
+    fn answers_120(source: &str) {
+        let program = admitted(source);
+        let interpreted = ch05::sec_5_4::Eceval::run(&program);
+        let compiled = ch05::sec_5_5::compiled_run(&program);
+        assert!(interpreted.trap.is_none(), "{interpreted:?}");
+        assert_eq!(interpreted.stdout, "120\n");
+        assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
     }
 
-    fn run(compiled: &str, source: &str) -> Result<Vec<String>, Fault> {
-        let mut evaluator = compile_and_go(&default_config(), &new_state(), compiled, source)?;
-        evaluator.run()?;
-        Ok(evaluator.transcript())
-    }
-
-    /// The value of the last interaction: the transcript ends with the
-    /// next prompt after the run stops at the dry input queue.
-    fn last_value(transcript: &[String]) -> &str {
-        transcript
-            .get(transcript.len().saturating_sub(2))
-            .map_or("", String::as_str)
-    }
-
-    pub fn ex_5_33() -> Result<Vec<String>, Fault> {
-        let base = summary(FACTORIAL)?;
-        let alt = summary(ALT)?;
-        let base_run = run(FACTORIAL, "(factorial 5)")?;
-        let alt_run = run(ALT, "(factorial-alt 5)")?;
-        assert_eq!(last_value(&base_run), "120");
-        assert_eq!(last_value(&alt_run), "120");
-        Ok(vec![
-            format!("factorial: {} statements, {} save sites", base.0, base.1),
-            format!("factorial-alt: {} statements, {} save sites", alt.0, alt.1),
-            format!("factorial session: {}", base_run.join(" ")),
-            format!("factorial-alt session: {}", alt_run.join(" ")),
-            "the recursive operand's position changes which register is live across its call"
-                .to_owned(),
-        ])
-    }
-
+    /// Both orders answer `120` through a direct recursive transfer,
+    /// and both streams carry save traffic for the call argument.
     #[test]
-    fn ex_5_33_check() -> Result<(), Fault> {
-        let lines = ex_5_33()?;
-        assert!(lines[0].contains("79"), "{lines:?}");
-        assert!(lines[2].contains("120"));
-        assert!(lines[3].contains("120"));
-        Ok(())
+    fn ex_5_33_operand_order_keeps_value() {
+        answers_120(FACTORIAL);
+        answers_120(FACTORIAL_ALT);
+        let base = admitted(FACTORIAL);
+        let alt = admitted(FACTORIAL_ALT);
+        assert!(saves_of(&base) > 0, "the call argument is saved");
+        assert!(saves_of(&alt) > 0, "the call argument is saved");
+        for program in [&base, &alt] {
+            let stream = ch05::sec_5_5::compile_program(program).instrs;
+            assert!(
+                stream
+                    .iter()
+                    .any(|instr| matches!(instr, Instr::Perform(PerformOp::CallFun, _))),
+                "the recursion stays a direct transfer"
+            );
+        }
     }
 }

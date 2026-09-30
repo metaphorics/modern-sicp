@@ -1,55 +1,111 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted from the Scheme programs in SICP section 4.1
 
-//! Section 4.1.2: representing expressions. The evaluator classifies a
-//! form by its head symbol, the way `tagged-list?` does in the book,
-//! and the derived-expression rewrite turns a `cond` into a nest of
-//! `if` expressions before the evaluator ever sees it.
+//! Section 4.1.2: representing expressions. The front end answers a
+//! located syntax tree whose constructors classify each form — the
+//! book's syntax predicates become `match` arms over typed data — and
+//! a derived surface form is rewritten to a core form before the
+//! evaluator sees it, evaluating exactly the same either way.
 
-use ch04::sec_4_1::{
-    cond_to_if, eval_program, is_assignment, is_cond, is_quoted, setup_environment,
-};
-use sicp_runtime::{print_value, read};
+use ch04::sec_4_1::run_source;
+use sicp_runtime::host::ast::{Expr, ExprKind, Item, Stmt};
+use sicp_runtime::host::parse_program;
+
+/// Whether one expression is a call form.
+fn is_call(expr: &Expr) -> bool {
+    matches!(expr.kind, ExprKind::Call { .. })
+}
+
+/// Whether one expression is a format-macro form.
+fn is_format(expr: &Expr) -> bool {
+    matches!(expr.kind, ExprKind::Format { .. })
+}
+
+/// One statement's form and the expression shapes it carries.
+fn shape(stmt: &Stmt) -> String {
+    let expr = match stmt {
+        Stmt::Let(binding) => &binding.value,
+        Stmt::Expr { expr, .. } => expr,
+    };
+    format!(
+        "{}:call={} format={}",
+        match stmt {
+            Stmt::Let(_) => "let",
+            Stmt::Expr { .. } => "expr",
+        },
+        is_call(expr),
+        is_format(expr)
+    )
+}
+
+const DERIVED: &str = "\
+fn main() {
+    let answer = Some(30);
+    if let Some(v) = answer {
+        println!(\"{}\", v);
+    }
+}
+";
+
+const CORE: &str = "\
+fn main() {
+    let answer = Some(30);
+    match answer {
+        Some(v) => {
+            println!(\"{}\", v);
+        }
+        None => {}
+    }
+}
+";
 
 fn main() {
-    // The syntax predicates recognize the special forms by their tags.
-    let quoted = read("(quote (a b))").expect("read");
-    let assignment = read("(set! x 3)").expect("read");
-    let cond = read("(cond ((> x 0) x) ((= x 0) (display 'zero) 0) (else (- x)))").expect("read");
-    println!(
-        "quoted={} assignment={} cond={}",
-        is_quoted(&quoted),
-        is_assignment(&assignment),
-        is_cond(&cond)
-    );
-    // => quoted=true assignment=true cond=true
-    assert!(is_quoted(&quoted));
-    assert!(is_assignment(&assignment));
-    assert!(is_cond(&cond));
-
-    // The derived-expression rewrite the section shows.
-    let rewritten = cond_to_if(&cond).expect("rewrites");
-    println!("{}", print_value(&rewritten));
-    // => (if (> x 0) x (if (= x 0) (begin (display (quote zero)) 0) (- x)))
+    // The syntax predicates recognize the forms by their constructors.
+    let program = parse_program(
+        "fn id(x: i64) -> i64 {\n    x\n}\n\nfn main() {\n    let n = 21;\n    let m = id(n);\n    println!(\"{}\", m);\n}\n",
+    )
+    .expect("parses");
+    let Item::Fn(main_fn) = &program.items[1] else {
+        panic!("two function items");
+    };
+    let shapes = main_fn.body.stmts.iter().map(shape).collect::<Vec<_>>();
+    println!("{}", shapes.join(" "));
+    // => let:call=false format=false let:call=true format=false expr:call=false format=true
     assert_eq!(
-        print_value(&rewritten),
-        "(if (> x 0) x (if (= x 0) (begin (display (quote zero)) 0) (- x)))"
+        shapes,
+        [
+            "let:call=false format=false",
+            "let:call=true format=false",
+            "expr:call=false format=true",
+        ]
     );
 
-    // The rewrite evaluates the same as the original: one branch runs.
-    let env = setup_environment();
-    let program =
-        read("(let ((x 0)) (cond ((> x 0) 'pos) ((= x 0) 'zero) (else 'neg)))").expect("read");
-    let answer = ch04::sec_4_1::eval(&program, &env).expect("evaluates");
-    println!("{}", print_value(&answer));
-    // => zero
-    assert_eq!(print_value(&answer), "zero");
+    // A form is data to take apart: the call's head is its callee name
+    // and its arguments are the operands, in order.
+    let Some(ExprKind::Call { callee, args }) =
+        main_fn.body.stmts.iter().find_map(|stmt| match stmt {
+            Stmt::Let(binding) if is_call(&binding.value) => Some(&binding.value.kind),
+            Stmt::Expr { expr, .. } if is_call(expr) => Some(&expr.kind),
+            _ => None,
+        })
+    else {
+        panic!("one call form");
+    };
+    let ExprKind::Path(head) = &callee.kind else {
+        panic!("a named callee");
+    };
+    let name = head.first().expect("one name").name.as_str();
+    println!("callee={} args={}", name, args.len());
+    // => callee=id args=1
+    assert_eq!((name, args.len()), ("id", 1));
 
-    // Evaluating the rewritten form directly gives the same answer.
-    let program = read("(let ((x 0)) (if (> x 0) 'pos (if (= x 0) 'zero 'neg)))").expect("read");
-    let answer = ch04::sec_4_1::eval(&program, &env).expect("evaluates");
-    println!("{}", print_value(&answer));
-    // => zero
-    assert_eq!(print_value(&answer), "zero");
-    assert!(eval_program(&env, "(if #f #f #f)").is_ok());
+    // The derived-expression rewrite the section shows: `if let` is a
+    // surface convenience that rewrites to the `match` core form, and
+    // the rewrite evaluates the same as the original.
+    let derived = run_source(DERIVED).expect("admitted");
+    let core = run_source(CORE).expect("admitted");
+    println!("{}", derived.stdout);
+    // => 30
+    assert_eq!(derived.stdout, "30\n");
+    assert_eq!(derived.stdout, core.stdout);
 }

@@ -31,7 +31,7 @@ mod ex_3_24 {
     }
 }
 
-/// The book's `(make-table same-key?)`: a table whose records are
+/// A table whose records are
 /// matched by the given predicate.
 #[must_use]
 pub fn near_table(tolerance: f64) -> Table {

@@ -52,7 +52,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::OpTable;
-    use crate::error::SchemeError;
+    use crate::error::SicpError;
     use crate::key::Key;
     use crate::value::{Handler, Value};
 
@@ -119,8 +119,8 @@ mod tests {
                 match (a, b) {
                     (Value::Int(x), Value::Int(y)) => x
                         .checked_add(y)
-                        .map_or_else(|| Err(SchemeError::Overflow), |sum| Ok(Value::int(sum))),
-                    _ => Err(SchemeError::TypeMismatch("add: numbers".to_owned())),
+                        .map_or_else(|| Err(SicpError::Overflow), |sum| Ok(Value::int(sum))),
+                    _ => Err(SicpError::TypeMismatch("add: numbers".to_owned())),
                 }
             }),
         );
@@ -130,7 +130,7 @@ mod tests {
         assert_eq!(h(&[Value::int(2), Value::int(3)]), Ok(Value::int(5)));
         assert_eq!(
             h(&[Value::int(7), Value::sym("x")]),
-            Err(SchemeError::TypeMismatch("add: numbers".to_owned()))
+            Err(SicpError::TypeMismatch("add: numbers".to_owned()))
         );
     }
 }

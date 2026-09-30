@@ -7,8 +7,8 @@
 use ch02::sec_2_2::{Nest, count_leaves, leaf, length, scale_tree, scale_tree_map, sub};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // The book's `(cons (list 1 2) (list 3 4))`: a list of three items
-    // whose first item is itself a list. In this edition the nested
+    // A list of three items whose first item is itself a list, the
+    // shape the statement shows. In this edition the nested
     // structure is a `Nest`, and printing shows the shape.
     let x: Nest<i128> = sub(&[sub(&[leaf(1), leaf(2)]), leaf(3), leaf(4)]);
     println!("{x}");

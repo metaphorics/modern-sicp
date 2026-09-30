@@ -2,7 +2,7 @@
 // Original exercise
 
 //! The pending scaffold of exercise 3.46: the race window of a
-//! non-atomic `test-and-set!`, demonstrated with a controlled interleaving.
+//! non-atomic `test-and-set`, demonstrated with a controlled interleaving.
 
 mod ex_3_46 {
     /// The typed pending report of an unsolved scaffold: the body returns

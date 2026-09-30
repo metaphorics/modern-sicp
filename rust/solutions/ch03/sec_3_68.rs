@@ -62,11 +62,10 @@ fn mapped_first_row(
 }
 
 /// Louis's `pairs`: the whole first row, stream-appended to the
-/// recursive call as `stream_append`'s eager second argument --
-/// `(stream-append (stream-map (lambda (x) (list (stream-car s) x)) t)
-/// (pairs (stream-cdr s) (stream-cdr t)))`. Building the stream runs
-/// the recursion before `stream_append` can serve a single element, so
-/// construction never returns; the meter's budget bounds the dive.
+/// recursive call as `stream_append`'s eager second argument. Building
+/// the stream runs the recursion before `stream_append` can serve a
+/// single element, so construction never returns; the meter's budget
+/// bounds the dive.
 #[expect(
     unconditional_recursion,
     reason = "the unconditional recursion is Louis's defect under demonstration"

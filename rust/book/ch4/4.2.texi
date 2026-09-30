@@ -1,26 +1,36 @@
 @node	4.2, 4.3, 4.1, Chapter 4
-@section Variations on a Scheme --- Lazy Evaluation
+@section Lazy Evaluation
 
-Now that we have an evaluator expressed as a Lisp program, we can experiment
+Now that we have an evaluator expressed as a Rust program, we can experiment
 with alternative choices in language design simply by modifying the evaluator.
 Indeed, new languages are often invented by first writing an evaluator that
 embeds the new language within an existing high-level language.  For example,
-if we wish to discuss some aspect of a proposed modification to Lisp with
-another member of the Lisp community, we can supply an evaluator that embodies
-the change.  The recipient can then experiment with the new evaluator and send
-back comments as further modifications.  Not only does the high-level
-implementation base make it easier to test and debug the evaluator; in
-addition, the embedding enables the designer to snarf@footnote{Snarf: ``To
-grab, especially a large document or file for the purpose of using it either
-with or without the owner's permission.''  Snarf down: ``To snarf, sometimes
-with the connotation of absorbing, processing, or understanding.''  (These
-definitions were snarfed from @ref{Steele et al. 1983}.  See also @ref{Raymond 1993}.)}
-features from the underlying language, just as our embedded Lisp evaluator uses
-primitives and control structure from the underlying Lisp.  Only later (if
-ever) need the designer go to the trouble of building a complete implementation
-in a low-level language or in hardware.  In this section and the next we
-explore some variations on Scheme that provide significant additional
-expressive power.
+if we wish to discuss some aspect of a proposed modification to the object
+language with another member of the language community, we can supply an
+evaluator that embodies the change.  The recipient can then experiment with
+the new evaluator and send back comments as further modifications.  Not only
+does the high-level implementation base make it easier to test and debug the
+evaluator; in addition, the embedding enables the designer to
+snarf@footnote{Snarf: ``To grab, especially a large document or file for the
+purpose of using it either with or without the owner's permission.''  Snarf
+down: ``To snarf, sometimes with the connotation of absorbing, processing, or
+understanding.''  (These definitions were snarfed from @ref{Steele et
+al. 1983}.  See also @ref{Raymond 1993}.)} features from the underlying
+language, just as our embedded evaluator uses primitives and control structure
+from the underlying Rust.  Only later (if ever) need the designer go to the
+trouble of building a complete implementation in a low-level language or in
+hardware.
+
+In this section the variation is not a change to the Rust guest itself.  The
+guest grammar has no implicit laziness: an ordinary call evaluates its
+operands before the call, a Rust closure call is strict, and no iterator
+becomes lazy.  Instead this section studies two @newterm{named experiments},
+@code{lazy-recompute/1} and @code{lazy-memo/1}, which are separate evaluators
+over explicit @code{Thunk} and @code{Force} syntax data.  They live in the
+module @code{ch04::sec_4_2}, are selected by the typed mode value
+@code{Mode::Recompute} or @code{Mode::Memo}, and each is checked against its
+own finite reference model.  The core evaluator of @ref{4.1} remains strict
+throughout.
 
 @menu
 * 4.2.1::            Normal Order and Applicative Order
@@ -32,57 +42,72 @@ expressive power.
 @subsection Normal Order and Applicative Order
 
 In @ref{1.1}, where we began our discussion of models of evaluation, we
-noted that Scheme is an @newterm{applicative-order} language, namely, that all
-the arguments to Scheme procedures are evaluated when the procedure is applied.
-In contrast, @newterm{normal-order} languages delay evaluation of procedure
-arguments until the actual argument values are needed.  Delaying evaluation of
-procedure arguments until the last possible moment (e.g., until they are
-required by a primitive operation) is called @newterm{lazy evaluation}.@footnote{The difference
-between the ``lazy'' terminology and the
-``normal-order'' terminology is somewhat fuzzy.  Generally, ``lazy'' refers to
-the mechanisms of particular evaluators, while ``normal-order'' refers to the
-semantics of languages, independent of any particular evaluation strategy.  But
-this is not a hard-and-fast distinction, and the two terminologies are often
-used interchangeably.}  Consider the procedure
+noted that the guest language is an @newterm{applicative-order} language,
+namely, that all the arguments to Rust functions and closures are evaluated
+when the procedure is applied.  In contrast, @newterm{normal-order} languages
+delay evaluation of procedure arguments until the actual argument values are
+needed.  Delaying evaluation of procedure arguments until the last possible
+moment (e.g., until they are required by a primitive operation) is called
+@newterm{lazy evaluation}.@footnote{The difference between the ``lazy''
+terminology and the ``normal-order'' terminology is somewhat fuzzy.
+Generally, ``lazy'' refers to the mechanisms of particular evaluators, while
+``normal-order'' refers to the semantics of languages, independent of any
+particular evaluation strategy.  But this is not a hard-and-fast distinction,
+and the two terminologies are often used interchangeably.}  Consider the
+experiment program
 
 @example rust
-let (values, _) = run_lazy(
-    &Lazy,
-    "(define (try a b) (if (= a 0) 1 b))\n(try 0 (/ 1 0))",
-)
-.expect("runs");
-for value in &values @{
-    println!("@{@}", print_value(value));
-@}
-// => ok
-// => 1
-assert_eq!(printed(&values), vec!["ok", "1"]);
+// try(a, b): answer b when a is nonzero, answer 1 otherwise.
+let try_procedure = LazyExpr::Lambda(
+    vec![String::from("a"), String::from("b")],
+    Box::new(LazyExpr::If(
+        Box::new(LazyExpr::Var(String::from("a"))),
+        Box::new(LazyExpr::Var(String::from("b"))),
+        Box::new(LazyExpr::Int(1)),
+    )),
+);
+let delayed_b =
+    LazyExpr::Emit(String::from("b was evaluated"));
+let program = LazyExpr::Apply(
+    Box::new(try_procedure),
+    vec![LazyExpr::Int(0), delayed_b],
+);
+let mut engine = LazyEngine::new(Mode::Memo);
+let outcome = engine.run(&program);
+assert_eq!(outcome.value, Some(1));
+assert!(outcome.effects.is_empty());
 @end example
 
 @noindent
-The session defines @code{try} at the driver and then demands its value, and
-the armed operand never runs.  Evaluating @code{(try 0 (/ 1 0))} generates an
-error in Scheme.  With lazy
-evaluation, there would be no error.  Evaluating the expression would return 1,
-because the argument @code{(/ 1 0)} would never be evaluated.
+The experiment's conditions are integers: zero is false and any other value is
+true, which is a property of this experiment data language, not of Rust.  The
+call binds its arguments as delayed operands, and the @code{If} demands only
+the condition, so the operand carrying @code{Emit("b was evaluated")} is never
+demanded and the effect log stays empty.  Evaluating the same call under
+applicative order would evaluate the second operand first and the effect
+would appear.  With lazy
+evaluation, there is no such effect.  Evaluating the expression returns 1,
+because the second argument is never evaluated.
 
 An example that exploits lazy evaluation is the definition of a procedure
-@code{unless}, which the driver session defines and then uses in an expression
-whose exceptional arm prints and answers while the usual arm would raise:
+@code{unless}, which answers with its usual value unless a condition holds, in
+which case it answers with its exceptional value:
 
 @example rust
-let (values, displayed) = run_lazy(
-    &Lazy,
-    "(define (unless condition usual-value exceptional-value) \
-     (if condition exceptional-value usual-value))\n\
-     (unless (= 0 0) (/ 1 0) (begin (display \"exception: returning 0\") 0))",
-)
-.expect("runs");
-println!("@{displayed@}");
-// => exception: returning 0
-// => 0
-assert_eq!(displayed, "exception: returning 0");
-assert_eq!(printed(&values).last(), Some(&"0".to_owned()));
+// unless(condition, usual, exceptional): the experiment's If with
+// swapped branches.
+let unless = LazyExpr::Lambda(
+    vec![
+        String::from("condition"),
+        String::from("usual"),
+        String::from("exceptional"),
+    ],
+    Box::new(LazyExpr::If(
+        Box::new(LazyExpr::Var(String::from("condition"))),
+        Box::new(LazyExpr::Var(String::from("exceptional"))),
+        Box::new(LazyExpr::Var(String::from("usual"))),
+    )),
+);
 @end example
 
 @noindent
@@ -109,27 +134,27 @@ languages (see @ref{Exercise 4.31}) that give programmers detailed control over
 the strictness of the procedures they define.
 
 A striking example of a procedure that can usefully be made non-strict is
-@code{cons} (or, in general, almost any constructor for data structures).  One
+a constructor for data structures.  One
 can do useful computation, combining elements to form data structures and
 operating on the resulting data structures, even if the values of the elements
 are not known.  It makes perfect sense, for instance, to compute the length of
 a list without knowing the values of the individual elements in the list.  We
-will exploit this idea in @ref{4.2.3} to implement the streams of
-@ref{Chapter 3} as lists formed of non-strict @code{cons} pairs.
+will exploit this idea in @ref{4.2.3} to implement lazy lists as lists formed
+of non-strict pairs.
 
 @quotation
-@strong{@anchor{Exercise 4.25}Exercise 4.25:} Suppose that (in ordinary
-applicative-order Scheme) we define @code{unless} as shown above and then
-define @code{factorial} in terms of @code{unless} as
+@strong{@anchor{Exercise 4.25}Exercise 4.25:} Suppose that (in the ordinary
+applicative-order evaluator of @ref{4.1}) we define @code{unless} as shown
+above and then define @code{factorial} in terms of @code{unless} as
 
 @example
-(define (factorial n)
-  (unless (= n 1)
-          (* n (factorial (- n 1)))
-          1))
+factorial(n) =
+  unless(n == 1,
+         n * factorial(n - 1),
+         1)
 @end example
 
-What happens if we attempt to evaluate @code{(factorial 5)}?  Will our
+What happens if we attempt to evaluate @code{factorial(5)}?  Will our
 definitions work in a normal-order language?
 @end quotation
 
@@ -141,19 +166,20 @@ things such as @code{unless}.  Ben points out that it's possible to implement
 one did that, @code{unless} would be merely syntax, not a procedure that could
 be used in conjunction with higher-order procedures.  Fill in the details on
 both sides of the argument.  Show how to implement @code{unless} as a derived
-expression (like @code{cond} or @code{let}), and give an example of a situation
-where it might be useful to have @code{unless} available as a procedure, rather
-than as a special form.
+expression (like the case form or @code{Let} of @ref{4.1.2}), and give an
+example of a situation where it might be useful to have @code{unless} available
+as a procedure, rather than as a special form.
 @end quotation
 
 @node	4.2.2, 4.2.3, 4.2.1, 4.2
 @subsection An Interpreter with Lazy Evaluation
 
-In this section we will implement a normal-order language that is the same as
-Scheme except that compound procedures are non-strict in each argument.
-Primitive procedures will still be strict.  It is not difficult to modify the
-evaluator of @ref{4.1.1} so that the language it interprets behaves
-this way.  Almost all the required changes center around procedure application.
+In this section we will implement a normal-order experiment language whose
+compound procedures are non-strict in each argument.
+Primitive procedures will still be strict.  The experiment is a separate
+evaluator over explicit syntax data; it does not alter the strict evaluator of
+@ref{4.1.1}, and no Rust call becomes lazy implicitly.  Almost all the
+required changes center around procedure application.
 
 The basic idea is that, when applying a procedure, the interpreter must
 determine which arguments are to be evaluated and which are to be delayed.  The
@@ -162,27 +188,34 @@ called @newterm{thunks}.@footnote{The word @newterm{thunk} was invented by an
 informal working group that was discussing the implementation of call-by-name
 in Algol 60.  They observed that most of the analysis of (``thinking about'')
 the expression could be done at compile time; thus, at run time, the expression
-would already have been ``thunk'' about (@ref{Ingerman et al. 1960}).} The thunk must
-contain the information required to produce the value of the argument when it
-is needed, as if it had been evaluated at the time of the application.  Thus,
-the thunk must contain the argument expression and the environment in which the
-procedure application is being evaluated.
+would already have been ``thunk'' about (@ref{Ingerman et al. 1960}).} The
+thunk must contain the information required to produce the value of the
+argument when it is needed, as if it had been evaluated at the time of the
+application.  Thus, the thunk must contain the argument expression and the
+environment in which the procedure application is being evaluated.  In the
+experiment data a thunk is explicit: @code{Thunk(id, body)} packages a body
+expression with an identity, and evaluating it produces the delayed value
+@code{Later(id)} without running the body.
 
 The process of evaluating the expression in a thunk is called
 @newterm{forcing}.@footnote{This is analogous to the use of @code{force} on the
 delayed objects that were introduced in @ref{Chapter 3} to represent streams.
 The critical difference between what we are doing here and what we did in
 @ref{Chapter 3} is that we are building delaying and forcing into the
-evaluator, and thus making this uniform and automatic throughout the language.}
-In general, a thunk will be forced only when its value is needed: when it is
-passed to a primitive procedure that will use the value of the thunk; when it
-is the value of a predicate of a conditional; and when it is the value of an
-operator that is about to be applied as a procedure.  One design choice we have
-available is whether or not to @newterm{memoize} thunks, as we did with delayed
-objects in @ref{3.5.1}.  With memoization, the first time a thunk is
-forced, it stores the value that is computed.  Subsequent forcings simply
-return the stored value without repeating the computation.  We'll make our
-interpreter memoize, because this is more efficient for many applications.
+evaluator, and thus making this uniform and automatic throughout the
+experiment language.}  In general, a thunk will be forced only when its value
+is needed: when it is passed to a primitive procedure that will use the value
+of the thunk; when it is the value of a predicate of a conditional; and when it
+is the value of an operator that is about to be applied as a procedure.  One
+design choice we have available is whether or not to @newterm{memoize} thunks,
+as we did with delayed objects in @ref{3.5.1}.  With memoization, the first
+time a thunk is forced, it stores the value that is computed.  Subsequent
+forcings simply return the stored value without repeating the computation.
+The experiment names both choices: in @code{lazy-memo/1} the first successful
+result is stored per thunk identity and its effects occur once; in
+@code{lazy-recompute/1} every forcing evaluates the expression again.  In both
+modes a failed force stays delayed.  We'll make our discussion memoizing by
+default, because this is more efficient for many applications.
 There are tricky considerations here, however.@footnote{Lazy evaluation
 combined with memoization is sometimes referred to as @newterm{call-by-need}
 argument passing, in contrast to @newterm{call-by-name} argument passing.
@@ -190,180 +223,154 @@ argument passing, in contrast to @newterm{call-by-name} argument passing.
 evaluation.)  As language designers, we can build our evaluator to memoize, not
 to memoize, or leave this an option for programmers (@ref{Exercise 4.31}).  As
 you might expect from @ref{Chapter 3}, these choices raise issues that become
-both subtle and confusing in the presence of assignments.  (See @ref{Exercise 4.27}
+both subtle and confusing in the presence of effects.  (See @ref{Exercise 4.27}
 and @ref{Exercise 4.29}.)  An excellent article by @ref{Clinger (1982)}
 attempts to clarify the multiple dimensions of confusion that arise here.}
 
 @subsubheading Modifying the evaluator
 
-The main difference between the lazy evaluator and the one in @ref{4.1}
-is in the handling of procedure applications in @code{eval} and
-@code{apply_procedure}.
-
-The application clause of the section's @code{step} hook becomes
+The main difference between the lazy experiment and the evaluator in
+@ref{4.1} is in the handling of procedure applications.  The experiment's
+syntax data carries the delay and demand forms explicitly:
 
 @example rust
-fn lazy_application(ev: &impl LazyEval, exp: &Value, env: &Rc<Env>) -> StepResult @{
-    let operator = first_of(exp)?;
-    let operands = operand_items(exp)?;
-    let proc = ev.actual_value(&operator, env)?;
-    match &proc @{
-        Value::Closure(closure) => apply_delayed(ev, closure, &operands, env),
-        other => @{
-            let args = list_of_arg_values(ev, &operands, env)?;
-            ev.apply_procedure(other, &args).map(Step::Done)
+pub enum LazyExpr @{
+    Int(i64),
+    Var(String),
+    Thunk(usize, Box<LazyExpr>),
+    Force(Box<LazyExpr>),
+    Add(Box<LazyExpr>, Box<LazyExpr>),
+    Mul(Box<LazyExpr>, Box<LazyExpr>),
+    Let(String, Box<LazyExpr>, Box<LazyExpr>),
+    Emit(String),
+    If(Box<LazyExpr>, Box<LazyExpr>, Box<LazyExpr>),
+    Apply(Box<LazyExpr>, Vec<LazyExpr>),
+    Lambda(Vec<String>, Box<LazyExpr>),
+    Pair(Box<LazyExpr>, Box<LazyExpr>),
+    Empty,
+    Quote(LazyVal),
+@}
+@end example
+
+@noindent
+and its values are integers, delayed identities, explicit lazy pairs, the
+empty datum, primitive operators, and closures over this data:
+
+@example rust
+pub enum LazyVal @{
+    Now(i64),
+    Later(usize),
+    PairVal(Box<LazyVal>, Box<LazyVal>),
+    EmptyVal,
+    Prim(PrimOp),
+    Closure(Vec<String>, Box<LazyExpr>, Vec<(String, LazyVal)>),
+@}
+@end example
+
+@noindent
+The application clause is the heart of the change.  The operator is demanded
+first, so the dispatcher can tell a primitive from a closure; a closure then
+binds every argument as a delayed thunk, while a primitive demands its
+operands before it runs:
+
+@example rust
+LazyExpr::Apply(operator, args) => @{
+    // The operator is demanded first (the exercise 4.28 ordering).
+    let callable = self.eval(operator, env)?;
+    @r{…}
+    if let LazyVal::Closure(params, _, _) = &callable @{
+        if params.len() != args.len() @{
+            return None;
         @}
-    @}
-@}
-@end example
-
-@noindent
-This is almost the same as the application clause of @code{eval} in
-@ref{4.1.1}.  For lazy evaluation, however, we call @code{apply_procedure} with
-the operand expressions, rather than the arguments produced by evaluating them.
-Since we will need the environment to construct thunks if the arguments are to
-be delayed, we must pass this as well.  We still evaluate the operator, because
-@code{apply_procedure} needs the actual procedure to dispatch on its type (primitive versus compound) and apply it.
-
-Whenever we need the actual value of an expression, we use
-
-@example rust
-fn actual_value(&self, exp: &Value, env: &Rc<Env>) -> EvalResult @{
-    let value = self.eval(exp, env)?;
-    self.force_value(value)
-@}
-@end example
-
-@noindent
-instead of just @code{eval}, so that if the expression's value is a thunk, it
-will be forced.
-
-Our new version of @code{apply_procedure} is also almost the same as the
-version in @ref{4.1.1}.  The difference is that @code{eval} has passed in
-unevaluated operand expressions: the dispatch in @code{lazy_application} sends
-primitive procedures (which are strict) through @code{list_of_arg_values},
-which evaluates all the arguments before applying the primitive, and compound
-procedures (which are non-strict) to @code{apply_delayed}, which delays all
-the arguments before the procedure's body runs.
-
-@example rust
-fn apply_delayed(
-    ev: &impl LazyEval,
-    closure: &Rc<Closure>,
-    operands: &[Value],
-    env: &Rc<Env>,
-) -> StepResult @{
-    let mut args = Vec::with_capacity(operands.len());
-    for (position, operand) in operands.iter().enumerate() @{
-        args.push(match ev.delay_operand(closure, position) @{
-            Some(true) => delay_it(operand.clone(), env),
-            Some(false) => delay_recomputing(operand.clone(), env),
-            None => ev.actual_value(operand, env)?,
-        @});
-    @}
-    let frame = extend_environment(
-        closure_name(closure),
-        &closure.params,
-        closure.rest.as_ref(),
-        &args,
-        &closure.env,
-    )?;
-    ev.step_sequence(&closure.body, &frame)
-@}
-@end example
-
-@noindent
-The procedure that processes the arguments of a strict primitive is just like
-@code{list_of_values} from @ref{4.1.1}, except that it uses
-@code{actual_value} instead of @code{eval}; the delayed arguments of a
-compound procedure are packaged by @code{delay_it}, one @code{delay_operand}
-answer at a time:
-
-@example rust
-pub fn list_of_arg_values(
-    ev: &impl LazyEval,
-    exps: &[Value],
-    env: &Rc<Env>,
-) -> Result<Vec<Value>, SchemeError> @{
-    let mut values = Vec::with_capacity(exps.len());
-    for exp in exps @{
-        values.push(ev.actual_value(exp, env)?);
-    @}
-    Ok(values)
-@}
-@end example
-
-@noindent
-The other place we must change the evaluator is in the handling of @code{if},
-where we must use @code{actual_value} instead of @code{eval} to get the value
-of the predicate expression before testing whether it is true or false:
-
-@example rust
-fn forced_if(ev: &impl LazyEval, exp: &Value, env: &Rc<Env>) -> StepResult @{
-    let (predicate, consequent, alternative) = if_parts(exp)?;
-    let tested = ev.actual_value(&predicate, env)?;
-    let branch = if is_true(&tested) @{ consequent @} else @{ alternative @};
-    Ok(Step::Tail(branch, Rc::clone(env)))
-@}
-@end example
-
-@noindent
-Finally, we must change the driver of @ref{4.1.4}
-to use @code{actual_value} instead of @code{eval}, so that if a delayed value
-is propagated back to the read-eval-print loop, it will be forced before being
-printed.  We also change the prompts to indicate that this is the lazy
-evaluator:
-
-@example rust
-pub const INPUT_PROMPT: &str = ";;; L-Eval input: ";
-pub const OUTPUT_PROMPT: &str = ";;; L-Eval value: ";
-
-fn evaluate_line(
-    ev: &impl LazyEval,
-    line: &str,
-    env: &Rc<Env>,
-    render: Render,
-) -> Result<String, SchemeError> @{
-    let form = sicp_runtime::read(line)?;
-    let value = ev.actual_value(&form, env)?;
-    render.value(ev, &value)
-@}
-@end example
-
-@noindent
-The session loop announces each input line, evaluates it, and announces the
-rendered value; one fresh lazy global environment carries the whole session,
-and an error ends it with one @code{Error:} line:
-
-@example rust
-fn lazy_session(ev: &impl LazyEval, lines: &[&str], render: Render) -> String @{
-    let (sink, cell) = OutputSink::buffer();
-    let env = setup_lazy_environment_in(&sink);
-    for line in lines @{
-        announce_input(&cell, line);
-        match evaluate_line(ev, line, &env, render) @{
-            Ok(text) => announce_output(&cell, &text),
-            Err(error) => return push_lazy_error(&cell, &error),
+        for (param, arg) in params.iter().zip(args) @{
+            // Arguments bind as delayed thunks.
+            let id = self.register_fresh(arg, env);
+            extended.push((param.clone(), LazyVal::Later(id)));
         @}
+    @} else @{
+        // Primitive application demands its operands.
+        let mut values = Vec::with_capacity(args.len());
+        for arg in args @{
+            values.push(self.eval(arg, env)?);
+        @}
+        return self.apply_prim(callable, &values);
     @}
-    cell.borrow().clone()
+    @r{…}
 @}
 @end example
 
 @noindent
-With these changes made, we can start the evaluator and test it.  The
+This is almost the same as the application clause of @code{evaluate} in
+@ref{4.1.1}, except that a compound procedure receives unevaluated operand
+expressions packaged as thunks.  Each thunk carries its operand expression
+together with the environment where it was delayed, and forcing evaluates
+the body in that stored environment rather than in the caller's environment
+at the force site.  We still evaluate the operator first, because dispatch needs the
+actual procedure (primitive versus closure) to apply it.
+
+Whenever we need the actual value of an expression, we demand it: the
+expression is evaluated and, if its value is a delayed thunk, the thunk is
+forced, recursively, until the value is not a thunk.  In the experiment this
+is the @code{Force} form and the forcing loop:
+
+@example rust
+LazyExpr::Force(target) => @{
+    let demanded = self.eval(target, env)?;
+    match demanded @{
+        LazyVal::Later(id) => self.force_id(id),
+        other => Some(other),
+    @}
+@},
+@end example
+
+@noindent
+The other place we must change the evaluator is in the handling of
+conditionals, where the condition is demanded before it is tested.  The
+experiment's @code{If} demands its condition as an integer and takes the
+@code{then} branch when the condition is nonzero:
+
+@example rust
+LazyExpr::If(condition, then, otherwise) => @{
+    let decision = self.demand_int(condition, env)?;
+    if decision != 0 @{
+        self.eval(then, env)
+    @} else @{
+        self.eval(otherwise, env)
+    @}
+@},
+@end example
+
+@noindent
+Finally, the run is announced by an outcome value rather than by a prompt:
+the engine answers the demanded integer, the ordered effect log, and the
+rendered forms of produced values, so that a delayed value propagated back to
+the driver is forced and printed.  The two prompts of the book's driver loop
+collapse into one observation record:
+
+@example rust
+pub struct LazyOutcome @{
+    pub value: Option<i64>,
+    pub effects: Vec<String>,
+    pub rendered: Vec<String>,
+@}
+
+let mut engine = LazyEngine::new(Mode::Memo);
+let outcome = engine.run(&program);
+@end example
+
+@noindent
+With these changes made, we can start the experiment and test it.  The
 successful evaluation of the @code{try} expression discussed in
-@ref{4.2.1} indicates that the interpreter is performing lazy evaluation:
+@ref{4.2.1} indicates that the interpreter is performing lazy evaluation: the
+armed operand's effect never appears in the log.
 
 @example rust
-// The section's first interaction: the armed operand never runs.
-let transcript = with_eval_stack(move || lazy_driver_transcript(&Lazy, TRY_SESSION));
-println!("@{transcript@}");
-// => ;;; L-Eval input: (define (try a b) (if (= a 0) 1 b))
-// => ;;; L-Eval value: ok
-// => ;;; L-Eval input: (try 0 (/ 1 0))
-// => ;;; L-Eval value: 1
-assert!(transcript.ends_with(";;; L-Eval value: 1\n"));
+let mut engine = LazyEngine::new(Mode::Memo);
+let outcome = engine.run(&try_program);
+// => value: 1
+// => effects: (empty)
+assert_eq!(outcome.value, Some(1));
+assert!(outcome.effects.is_empty());
 @end example
 
 @subsubheading Representing thunks
@@ -372,83 +379,72 @@ Our evaluator must arrange to create thunks when procedures are applied to
 arguments and to force these thunks later.  A thunk must package an expression
 together with the environment, so that the argument can be produced later.  To
 force the thunk, we simply extract the expression and environment from the
-thunk and evaluate the expression in the environment.  We use
-@code{actual_value} rather than @code{eval} so that in case the value of the
-expression is itself a thunk, we will force that, and so on, until we reach
-something that is not a thunk:
+thunk and evaluate the expression in the environment.  We demand the value
+rather than merely evaluating it, so that in case the value of the expression
+is itself a thunk, we will force that, and so on, until we reach something
+that is not a thunk.  The engine keeps one table of registered thunks keyed
+by identity, where each entry pairs the delayed body with its creating
+environment, and one memo table of results:
 
 @example rust
-pub fn recompute_cell(ev: &impl Evaluator, cell: &Rc<RefCell<ThunkState>>) -> EvalResult @{
-    let pending = match &*cell.borrow() @{
-        ThunkState::Forced(value) => return Ok(value.clone()),
-        ThunkState::Delayed @{ expr, env @} => (expr.clone(), Rc::clone(env)),
-    @};
-    ev.eval(&pending.0, &pending.1)
+pub struct LazyEngine @{
+    mode: Mode,
+    memo: HashMap<usize, Option<LazyVal>>,
+    effects: Vec<String>,
+    thunks: HashMap<usize, (LazyExpr, HashMap<String, LazyVal>)>,
+    next_id: usize,
 @}
 @end example
 
 @noindent
-One easy way to package an expression with an environment in this edition is
-the @code{Value::Thunk} cell: an @code{Rc}-shared cell whose @code{Delayed}
-state holds the expression and its environment, so the book's three-element
-@code{thunk} list and its accessors collapse into one constructor and one
-pattern.  We create a thunk as follows:
-
-@example rust
-pub fn delay_it(expr: Value, env: &Rc<Env>) -> Value @{
-    ThunkState::delay(expr, env)
-@}
-@end example
-
-@noindent
-Actually, what we want for our interpreter is not quite this, but rather thunks
-that have been memoized.  When a thunk is forced, we will turn it into an
-evaluated thunk by replacing the stored expression with its value and changing
-the @code{thunk} tag so that it can be recognized as already
-evaluated.@footnote{Notice that we also erase the @code{env} from the thunk
-once the expression's value has been computed.  This makes no difference in the
-values returned by the interpreter.  It does help save space, however, because
-removing the reference from the thunk to the @code{env} once it is no longer
-needed allows this structure to be @newterm{garbage-collected} and its space
-recycled, as we will discuss in @ref{5.3}.  The edition's cell does the same
-rewrite: the @code{Forced} state replaces the whole cell, so the stored
-expression and environment drop out of it at the first forcing.
-
-Similarly, we could have allowed unneeded environments in the memoized delayed
-objects of @ref{3.5.1} to be garbage-collected, by having
-@code{memo-proc} do something like @code{(set! proc '())} to discard the
-procedure @code{proc} (which includes the environment in which the @code{delay}
-was evaluated) after storing its value.}
-
-@example rust
-pub fn force_memo(ev: &impl Evaluator, value: Value) -> EvalResult @{
-    let mut current = value;
-    while let Value::Thunk(_) = current @{
-        current = ThunkState::force(&current, |expr, env| ev.eval(expr, env))?;
-    @}
-    Ok(current)
-@}
-@end example
+Actually, what we want for our interpreter is not quite this, but rather
+thunks that have been memoized.  When a thunk is forced, we will turn it into
+an evaluated thunk by storing the computed value under the thunk's identity so
+that it can be recognized as already evaluated.@footnote{Notice that we also
+erase the expression from the memo once the expression's value has been
+computed.  This makes no difference in the values returned by the interpreter.
+It does help save space, however, because dropping the stored expression and
+its environment once they are no longer needed allows this structure to be
+@newterm{garbage-collected} and its space recycled, as we will discuss in
+@ref{5.3}.  Similarly, we could have allowed unneeded environments in the
+memoized delayed objects of @ref{3.5.1} to be garbage-collected, by having
+the memoized procedure discard the procedure @code{proc} (which includes the
+environment in which the delay was evaluated) after storing its value.}  In
+@code{lazy-memo/1} the first successful result is stored per thunk identity
+and its effects occur once; in @code{lazy-recompute/1} the body is evaluated
+again at every forcing and the memo table stays empty.  In both modes a failed
+force stays delayed, so a later demand may try the body again.
 
 @noindent
-Notice that the same @code{delay_it} machinery works both with and without
-memoization: the no-memo probes of exercises 4.29 and 4.31 wrap the delayed
-cell in a tag the recomputing force recognizes, and the cell itself stays
-@code{Delayed}, so every forcing evaluates the expression again.
-
-@example rust
-pub fn delay_recomputing(expr: Value, env: &Rc<Env>) -> Value @{
-    Value::tagged("lazy-thunk", ThunkState::delay(expr, env))
-@}
-@end example
+Notice that the same thunk machinery works both with and without
+memoization: the experiment's mode value selects the behavior, the identities
+are the same, and the observable difference is the effect log and the amount
+of repeated work.
 
 @quotation
 @strong{@anchor{Exercise 4.27}Exercise 4.27:} Suppose we type in the following
-definitions to the lazy evaluator:
+definitions to the lazy evaluator, where @code{tick} records one effect for
+each execution of the procedure body:
 
 @example
-(define count 0)
-(define (id x) (set! count (+ count 1)) x)
+count = 0
+id(x) = (count := count + 1; x)
+@end example
+
+@noindent
+In the experiment data the same probe is written with the effect log, one
+@code{Emit("tick")} standing for one increment of @code{count}:
+
+@example rust
+// id(x) = Let("_", Emit("tick"), Var("x"))
+let id = LazyExpr::Lambda(
+    vec![String::from("x")],
+    Box::new(LazyExpr::Let(
+        String::from("_"),
+        Box::new(LazyExpr::Emit(String::from("tick"))),
+        Box::new(LazyExpr::Var(String::from("x"))),
+    )),
+);
 @end example
 
 Give the missing values in the following sequence of interactions, and explain
@@ -457,54 +453,42 @@ lazy evaluation and side effects can be very confusing.  This is just what you
 might expect from the discussion in @ref{Chapter 3}.}
 
 @example
-(define w (id (id 10)))
+w = id(id(10))
 
-@i{;;; L-Eval input:}
-count
+⟨@var{effects so far}⟩
 
-@i{;;; L-Eval value:}
+demand w
+
 ⟨@var{response}⟩
 
-@i{;;; L-Eval input:}
-w
-
-@i{;;; L-Eval value:}
-⟨@var{response}⟩
-
-@i{;;; L-Eval input:}
-count
-
-@i{;;; L-Eval value:}
-⟨@var{response}⟩
+⟨@var{effects so far}⟩
 @end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 4.28}Exercise 4.28:} @code{Eval} uses
-@code{actual_value} rather than @code{eval} to evaluate the operator before
-passing it to @code{apply_procedure} to force the value of the
-operator.  Give an example that demonstrates the need for this forcing.
+@strong{@anchor{Exercise 4.28}Exercise 4.28:} The application clause of
+@ref{4.2.2} demands the operator's value rather than merely evaluating it
+before passing it to the dispatch that applies it, so that if the operator's
+value is a thunk it will be forced.  Give an example that demonstrates the
+need for this forcing.
+@end quotation
 
-@noindent
+@quotation
 @strong{@anchor{Exercise 4.29}Exercise 4.29:} Exhibit a program that you would
 expect to run much more slowly without memoization than with memoization.
 Also, consider the following interaction, where the @code{id} procedure is
-defined as in @ref{Exercise 4.27} and @code{count} starts at 0:
+defined as in @ref{Exercise 4.27} and @code{tick} counts body executions:
 
 @example
-(define (square x) (* x x))
+square(x) = x * x
 
-@i{;;; L-Eval input:}
-(square (id 10))
+square(id(10))
 
-@i{;;; L-Eval value:}
 ⟨@var{response}⟩
 
-@i{;;; L-Eval input:}
-count
+⟨@var{effects with @code{Mode::Memo}}⟩
 
-@i{;;; L-Eval value:}
-⟨@var{response}⟩
+⟨@var{effects with @code{Mode::Recompute}}⟩
 @end example
 
 Give the responses both when the evaluator memoizes and when it does not.
@@ -519,235 +503,223 @@ is there only for its effect, such as assigning to a variable or printing),
 there can be no subsequent use of this value (e.g., as an argument to a
 primitive procedure) that will cause it to be forced.  Cy thus thinks that when
 evaluating sequences, we must force all expressions in the sequence except the
-final one.  He proposes to modify @code{step_sequence} from @ref{4.1.1}
-to use @code{actual_value} rather than @code{eval}:
-
-@example
-(define (eval-sequence exps env)
-  (cond ((last-exp? exps) 
-         (eval (first-exp exps) env))
-        (else 
-         (actual-value (first-exp exps) 
-                       env)
-         (eval-sequence (rest-exps exps) 
-                        env))))
-@end example
+last one.  He proposes to modify the sequence evaluator from @ref{4.1.1} to
+demand the value of each non-final expression rather than merely evaluating it.
 
 @enumerate a
 
 @item
-Ben Bitdiddle thinks Cy is wrong.  He shows Cy the @code{for-each} procedure
-described in @ref{Exercise 2.23}, which gives an important example of a
-sequence with side effects:
+Ben Bitdiddle thinks that Cy is wrong.  He shows Cy the @code{for_each}
+procedure described in @ref{Exercise 2.23}, which gives an important example
+of a sequence with side effects:
 
-@example
-(define (for-each proc items)
-  (if (null? items)
-      'done
-      (begin (proc (car items))
-             (for-each proc 
-                       (cdr items)))))
-@end example
+@smallexample
+for_each(items, action) =
+  if is_empty(items)
+  then "done"
+  else (action(first(items)); for_each(rest(items), action))
+@end smallexample
 
-He claims that the evaluator in the text (with the original
-@code{step_sequence}) handles this correctly:
-
-@example
-@i{;;; L-Eval input:}
-(for-each
- (lambda (x) (newline) (display x))
- (list 57 321 88))
-@i{57}
-@i{321}
-@i{88}
-
-@i{;;; L-Eval value:}
-@i{done}
-@end example
-
-Explain why Ben is right about the behavior of @code{for-each}.
+He claims that the evaluator in the text (with the original sequence handling)
+handles this correctly.  Explain why Ben is right about the behavior of
+@code{for_each}.
 
 @item
-Cy agrees that Ben is right about the @code{for-each} example, but says that
+Cy agrees that Ben is right about the @code{for_each} example, but says that
 that's not the kind of program he was thinking about when he proposed his
-change to @code{step_sequence}.  He defines the following two procedures in the
-lazy evaluator:
+change to sequence evaluation.  Define the following two procedures in the
+experiment language, writing each sequence with nested @code{Let} bindings in
+the style of @ref{Exercise 4.27}, where each @code{Emit} records its tag in
+the log and the argument is a delayed operand:
 
-@example
-(define (p1 x)
-  (set! x (cons x '(2))) x)
+@smallexample
+p1(x) =
+    let _ = emit(x first time)
+    in let _ = emit(x second time) in x
+p2(x) = let _ = emit(once) in x
+@end smallexample
 
-(define (p2 x)
-  (define (p e) e x)
-  (p (set! x (cons x '(2)))))
-@end example
-
-What are the values of @code{(p1 1)} and @code{(p2 1)} with the original
-@code{step_sequence}?  What would the values be with Cy's proposed change to
-@code{step_sequence}?
+What are the values of @code{p1(1)} and @code{p2(1)} with the original
+sequence handling?  What would the values and the effect logs be with Cy's
+proposed change?
 
 @item
-Cy also points out that changing @code{step_sequence} as he proposes does not
+Cy also points out that changing sequence evaluation as he proposes does not
 affect the behavior of the example in part a.  Explain why this is true.
 
 @item
-How do you think sequences ought to be treated in the lazy evaluator?  Do you
-like Cy's approach, the approach in the text, or some other approach?
+How do you think sequence expressions ought to be treated in the lazy
+evaluator?  Do you like Cy's approach, the approach in the text, or some other
+approach?
 
 @end enumerate
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.31}Exercise 4.31:} The approach taken in this
-section is somewhat unpleasant, because it makes an incompatible change to
-Scheme.  It might be nicer to implement lazy evaluation as an
-@newterm{upward-compatible extension}, that is, so that ordinary Scheme
-programs will work as before.  We can do this by extending the syntax of
-procedure declarations to let the user control whether or not arguments are to
-be delayed.  While we're at it, we may as well also give the user the choice
+section is somewhat unpleasant, because it makes an incompatible change to the
+experiment language.  It might be nicer to implement lazy evaluation as an
+@newterm{upward-compatible extension}, that is, so that ordinary programs will
+work as before.  We can do this by extending the syntax of procedure
+declarations to let the user control whether or not arguments are to be
+delayed.  While we're at it, we may as well also give the user the choice
 between delaying with and without memoization.  For example, the definition
 
 @example
-(define (f a (b lazy) c (d lazy-memo))
-  @r{…})
+f(a, b lazy, c lazy-memo, d lazy-memo) = @r{…}
 @end example
 
 @noindent
 would define @code{f} to be a procedure of four arguments, where the first and
-third arguments are evaluated when the procedure is called, the second argument
-is delayed, and the fourth argument is both delayed and memoized.  Thus,
-ordinary procedure definitions will produce the same behavior as ordinary
-Scheme, while adding the @code{lazy-memo} declaration to each parameter of
-every compound procedure will produce the behavior of the lazy evaluator
-defined in this section. Design and implement the changes required to produce
-such an extension to Scheme.  You will have to implement new syntax procedures
-to handle the new syntax for @code{define}.  You must also arrange for
-@code{eval} or @code{apply_procedure} to determine when arguments are to
-be delayed, and to force or delay arguments accordingly, and you must
-arrange for forcing to memoize or not, as appropriate.
+third arguments are evaluated when the procedure is called, the second
+argument is delayed, and the fourth argument is both delayed and memoized.
+Thus, ordinary procedure definitions will produce the same behavior as
+ordinary applicative order, while adding the @code{lazy-memo} declaration to
+each parameter of every compound procedure will produce the behavior of the
+lazy evaluator defined in this section.  Design and implement the changes
+required to produce such an extension to the experiment language.  You will
+have to implement new syntax procedures to handle the new syntax for
+@code{Lambda}.  You must also arrange for evaluation or application to
+determine when arguments are to be delayed, and to force or delay arguments
+accordingly, and you must arrange for forcing to memoize or not, as
+appropriate.
+@end quotation
+
+@quotation
+@strong{In this language: the lazy application clause, the memoized thunk, and the printable lazy pairs.}
+The book's lazy layer is a change to one evaluator; this edition keeps the
+core evaluator strict and puts the variation in two named experiments,
+@code{lazy-recompute/1} and @code{lazy-memo/1}, over explicit
+@code{Thunk}/@code{Force} data.  The lazy layer does not fork the semantics
+anywhere else: the same experiment data is checked against the independent
+finite reference model of @code{sec_4_2}, and the mode value selects the
+forcing discipline.  The application clause binds every closure argument as a
+fresh delayed thunk and demands the operator first; the memo table stores the
+first successful result per thunk identity and runs its effects once, while
+the recomputing mode evaluates the body at every demand; and lazy pairs carry
+explicit pair data whose renderings are themselves produced for printing.
+One boundary is honest and unchanged: forcing is ordinary host recursion, so
+a deeply nested demand uses the host stack like any other call.
 @end quotation
 
 @node	4.2.3, 4.3, 4.2.2, 4.2
 @subsection Streams as Lazy Lists
 
 In @ref{3.5.1}, we showed how to implement streams as delayed lists.
-We introduced special forms @code{delay} and @code{cons-stream}, which allowed
-us to construct a ``promise'' to compute the @code{cdr} of a stream, without
-actually fulfilling that promise until later.  We could use this general
-technique of introducing special forms whenever we need more control over the
-evaluation process, but this is awkward.  For one thing, a special form is not
-a first-class object like a procedure, so we cannot use it together with
-higher-order procedures.@footnote{This is precisely the issue with the
-@code{unless} procedure, as in @ref{Exercise 4.26}.}  Also, we were
-forced to create streams as a new kind of data object similar but not identical
-to lists, and this required us to reimplement many ordinary list operations
-(@code{map}, @code{append}, and so on) for use with streams.
+We introduced delayed objects that allowed us to construct a ``promise'' to
+compute the rest of a stream, without actually fulfilling that promise until
+later.  We could use this general technique of introducing delaying whenever we
+need more control over the evaluation process, but this is awkward.  For one
+thing, a delayed object is not a first-class object like a procedure, so we
+cannot use it together with higher-order procedures.@footnote{This is
+precisely the issue with the @code{unless} procedure, as in
+@ref{Exercise 4.26}.}  Also, we were forced to create streams as a new kind of
+data object similar but not identical to lists, and this required us to
+reimplement many ordinary list operations (@code{map}, @code{append}, and so
+on) for use with streams.  With lazy evaluation, streams and lists are
+identical, so there is no need for special forms or for separate list and
+stream operations.  All we need to do is to arrange matters so that the pair
+constructor is non-strict.
 
-With lazy evaluation, streams and lists can be identical, so there is no need
-for special forms or for separate list and stream operations.  All we need to
-do is to arrange matters so that @code{cons} is non-strict.  One way to
-accomplish this is to extend the lazy evaluator to allow for non-strict
-primitives, and to implement @code{cons} as one of these.  An easier way is to
-recall (@ref{2.1.3}) that there is no fundamental need to implement
-@code{cons} as a primitive at all.  Instead, we can represent pairs as
-procedures:@footnote{This is the procedural representation described in
-@ref{Exercise 2.4}.  Essentially any procedural representation (e.g., a
-message-passing implementation) would do as well.  Notice that we can install
-these definitions in the lazy evaluator simply by typing them at the driver
-loop.  If we had originally included @code{cons}, @code{car}, and @code{cdr} as
-primitives in the global environment, they will be redefined.  (Also see
-@ref{Exercise 4.33} and @ref{Exercise 4.34}.)}
+In the experiment language the pair is explicit syntax data whose two slots
+are values that may be delayed:
 
 @example rust
-lazy_driver_transcript(
-    &Lazy,
-    &[
-        "(define (cons x y) (lambda (m) (m x y)))",
-        "(define (car z) (z (lambda (p q) p)))",
-        "(define (cdr z) (z (lambda (p q) q)))",
-    ],
-)
-// => ;;; L-Eval input: (define (cons x y) (lambda (m) (m x y)))
-// => ;;; L-Eval value: ok
-// => ;;; L-Eval input: (define (car z) (z (lambda (p q) p)))
-// => ;;; L-Eval value: ok
-// => ;;; L-Eval input: (define (cdr z) (z (lambda (p q) q)))
-// => ;;; L-Eval value: ok
+LazyExpr::Pair(Box<LazyExpr>, Box<LazyExpr>)
+@end example
+
+@noindent
+and the corresponding value is a lazy pair:
+
+@example rust
+LazyVal::PairVal(Box<LazyVal>, Box<LazyVal>)
+@end example
+
+@noindent
+The empty datum is @code{Empty} / @code{EmptyVal}, the selectors are the
+primitive operators @code{PrimOp::First} and @code{PrimOp::Rest}, the
+constructor is @code{PrimOp::PairBuild}, and the tests are
+@code{PrimOp::IsEmpty} and @code{PrimOp::IsPair}.  Recall (@ref{2.1.3}) that
+there is no fundamental need to implement pairs as primitives at all.  Instead,
+we can represent pairs as procedures:@footnote{This is the procedural
+representation described in @ref{Exercise 2.4}.  Essentially any procedural
+representation (e.g., a message-passing implementation) would do as well.}
+Notice that we can install these definitions in the lazy experiment simply by
+writing them in its data language.  For example, the pair of @code{x} and
+@code{y} can be a closure that dispatches a selector to its two halves:
+
+@example rust
+// pair(x, y) = Lambda([m], Apply(Var("m"), [Var("x"), Var("y")]))
+let pair = LazyExpr::Lambda(
+    vec![String::from("m")],
+    Box::new(LazyExpr::Apply(
+        Box::new(LazyExpr::Var(String::from("m"))),
+        vec![
+            LazyExpr::Var(String::from("x")),
+            LazyExpr::Var(String::from("y")),
+        ],
+    )),
+);
+// first(p) = Apply(p, [Lambda([a, d], Var("a"))])
 @end example
 
 @noindent
 In terms of these basic operations, the standard definitions of the list
 operations will work with infinite lists (streams) as well as finite ones, and
-the stream operations can be implemented as list operations.  Here are some
-examples:
+the stream operations can be implemented as list operations.  The following
+definitions are written in the constructor notation of the experiment's data
+(the @code{LazyExpr} and @code{LazyVal} forms of @ref{4.2.2}), not as
+executable Rust.  Here are some examples; @code{ones} is the infinite list of
+ones, @code{integers} starts at
+1 and adds the list of ones to its own rest, and @code{list_ref} walks
+@code{n} rest steps and demands the first element:
 
-@example rust
-lazy_driver_transcript(
-    &Lazy,
-    &[
-        "(define (list-ref items n) (if (= n 0) (car items) (list-ref (cdr items) (- n 1))))",
-        "(define (map proc items) (if (null? items) '() (cons (proc (car items)) (map proc (cdr items)))))",
-        "(define (scale-list items factor) (map (lambda (x) (* x factor)) items))",
-        "(define (add-lists list1 list2) (cond ((null? list1) list2) ((null? list2) list1) \
-(else (cons (+ (car list1) (car list2)) (add-lists (cdr list1) (cdr list2))))))",
-        "(define ones (cons 1 ones))",
-        "(define integers (cons 1 (add-lists ones integers)))",
-        "(list-ref integers 17)",
-    ],
-)
-// => ;;; L-Eval value: 18
+@example
+ones = Pair(1, Thunk(1, ones))
+integers = Pair(1, Thunk(2, add_lists(ones, integers)))
+list_ref(items, n) =
+  if n == 0 then first(items) else list_ref(rest(items), n - 1)
+
+list_ref(integers, 17)
+// => 18
 @end example
 
 @noindent
-Note that these lazy lists are even lazier than the streams of @ref{Chapter 3}:
-The @code{car} of the list, as well as the @code{cdr}, is
-delayed.@footnote{This permits us to create delayed versions of more general
-kinds of list structures, not just sequences.  @ref{Hughes 1990} discusses some
-applications of ``lazy trees.''}  In fact, even accessing the @code{car} or
-@code{cdr} of a lazy pair need not force the value of a list element.  The
+Note that these lazy lists are even lazier than the streams of
+@ref{Chapter 3}: the @code{first} of the list, as well as the @code{rest}, is
+delayed.@footnote{This permits us to create delayed data of more general kinds
+of list structures, not just sequences.  @ref{Hughes 1990} discusses some
+applications of ``lazy trees.''}  In fact, even accessing the @code{first} or
+@code{rest} of a lazy pair need not force the value of a list element.  The
 value will be forced only when it is really needed---e.g., for use as the
-argument of a primitive, or to be printed as an answer.
+argument of a primitive operation, or to be printed in an answer.  Lazy pairs
+also help with the problem that arose with streams in @ref{3.5.4}, where we
+found that formulating stream models of systems with loops may require us to
+sprinkle our programs with explicit @code{Thunk} operations, beyond the ones
+supplied by delayed pairs.  With lazy evaluation, all arguments to procedures
+are delayed uniformly.  For instance, we can implement procedures to integrate
+lists and solve differential equations, as we originally intended to do in
+@ref{3.5.4} (again in the constructor notation):
 
-Lazy pairs also help with the problem that arose with streams in
-@ref{3.5.4}, where we found that formulating stream models of systems with
-loops may require us to sprinkle our programs with explicit @code{delay}
-operations, beyond the ones supplied by @code{cons-stream}.  With lazy
-evaluation, all arguments to procedures are delayed uniformly.  For instance,
-we can implement procedures to integrate lists and solve differential equations
-as we originally intended in @ref{3.5.4}:
-
-@example rust
-with_eval_stack(move || @{
-    lazy_driver_transcript(
-        &Lazy,
-        &[
-            "(define (integral integrand initial-value dt) \
-(define int (cons initial-value (add-lists (scale-list integrand dt) int))) int)",
-            "(define (solve f y0 dt) (define y (integral dy y0 dt)) (define dy (map f y)) y)",
-            "(list-ref (solve (lambda (x) x) 1 0.001) 1000)",
-        ],
-    )
-@})
-// => ;;; L-Eval value: 2.716923932235896
+@example
+integral(integrand, initial_value, dt) =
+  Pair(initial_value,
+       Thunk(3, integral(add_lists(scale_list(dt, integrand),
+                                   integrand),
+                         initial_value + first(integrand) * dt,
+                         dt)))
+solve(f, y0, dt) =
+  y where y = integral(dy, y0, dt)
+            dy = scale_list(dt, map(f, y))
 @end example
 
 @noindent
-The edition prints the host's full floating-point precision, where the book's
-@code{2.716924} is the rounded form.
-
-@quotation
-@strong{In this language: the lazy application clause, the memoized thunk cell, and the printable lazy pairs.}
-The lazy layer does not fork the evaluator: it implements the one @code{step}
-hook of @ref{4.1}, reroutes the two clauses the section changes, the
-application and the @code{if} predicate, and falls back to @code{base_step}
-for the clause chain the section leaves alone.  The book's @code{thunk} and
-@code{evaluated-thunk} pair collapses into the two states of one
-@code{Rc}-shared cell: @code{Delayed} holds the expression and its
-environment, @code{Forced} holds the memoized value, and the forcing loop
-answers chains level by level.  Deep forcing is host non-tail recursion, so
-the sessions of this section run on the same 256 MiB worker stack
-(@code{with_eval_stack}) that carries the 4.1 corpus.
-@end quotation
+The experiment language computes with @code{i64} only: the guest has no
+floating point.  The textbook's @code{dt = 0.001} therefore becomes the same
+fixed-point scale used in the Newton-iteration lesson of @ref{1.1}, with the
+fractional step carried as an integer numerator over a stated power of two;
+the lazy structure of @code{integral} and @code{solve} is unchanged, and the
+corpus program records the fixed-point value the solution reaches.
 
 @quotation
 @strong{@anchor{Exercise 4.32}Exercise 4.32:} Give some examples that
@@ -757,34 +729,30 @@ this extra laziness?
 @end quotation
 
 @quotation
-@emph{Exercise 4.32a is added by this edition and extends exercise
-4.32; SICP numbers stop at 4.32.} @strong{@anchor{Exercise 4.32a}Exercise 4.32a:} Build
-a lazy tree in which each node is a pair whose two slots are delayed---delayed
-subtrees and delayed counting bodies---so that building the tree computes
-nothing.  Force one path from the root to a leaf, then force one other branch,
-and use a counter at the tree's leaves to show that exactly the subtrees on the
+@emph{Exercise 4.32a is added by this edition and extends exercise 4.32;
+SICP numbers stop at 4.32.}
+@strong{@anchor{Exercise 4.32a}Exercise 4.32a:} Build
+a lazy tree in which each node is a pair whose two slots are delayed--delayed
+subtrees and delayed counting bodies--so that building the tree computes
+nothing. Force one path from the root to a leaf, then force one other branch,
+and use a counter in the tree's leaves to show that exactly the subtrees on the
 visited paths have computed; every unvisited leaf must still be a thunk.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.33}Exercise 4.33:} Ben Bitdiddle tests the lazy list
-implementation given above by evaluating the expression
-
-@example
-(car '(a b c))
-@end example
-
-To his surprise, this produces an error.  After some thought, he realizes that
-the ``lists'' obtained by reading in quoted expressions are different from the
-lists manipulated by the new definitions of @code{cons}, @code{car}, and
-@code{cdr}.  Modify the evaluator's treatment of quoted expressions so that
-quoted lists typed at the driver loop will produce true lazy lists.
+implementation given above by evaluating the expression @code{first(Pair(a,
+b))}.  To his surprise, this produces an error.  After some thought, he
+realizes that the ``lists'' obtained from the quoted data of @code{Quote} are
+different from the lists manipulated by the new definitions of the pair
+constructor and its selectors.  Modify the evaluator's treatment of quoted
+expressions so that quoted lists typed at the driver produce true lazy pairs.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 4.34}Exercise 4.34:} Modify the driver loop for the
-evaluator so that lazy pairs and lists will print in some reasonable way.
-(What are you going to do about infinite lists?)  You may also need to modify
-the representation of lazy pairs so that the evaluator can identify them in
-order to print them.
+experiment so that lazy pairs and lists will print in some reasonable way.
+(What are you going to do about infinite lists?)  You may need to modify the
+representation of lazy pairs so that the evaluator can identify them in order
+to print them.
 @end quotation

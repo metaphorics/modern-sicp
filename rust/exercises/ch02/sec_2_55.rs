@@ -9,9 +9,9 @@ mod ex_2_55 {
 
     /// Exercise 2.55 (replacement): quote in edition AST terms
     ///
-    /// Returns the printed value of `''abracadabra` (the edition's
-    /// tiny quoted-AST type), and the printed `car` of that value, in
-    /// that order.
+    /// Returns the quotation datum a doubly quoted name denotes in the
+    /// edition's `Quoted` data, and the head of that datum, each in
+    /// the explicit constructor rendering.
     pub fn ex_2_55() -> Result<(String, String), Pending> {
         Err(Pending::new("2.55"))
     }
@@ -22,6 +22,9 @@ mod ex_2_55 {
 fn ex_2_55() {
     assert_eq!(
         ex_2_55::ex_2_55(),
-        Ok(("(quote abracadabra)".to_string(), "quote".to_string()))
+        Ok((
+            "Pair(Sym(\"quote\"), Pair(Sym(\"abracadabra\"), Nil))".to_string(),
+            "Sym(\"quote\")".to_string(),
+        ))
     );
 }

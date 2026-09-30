@@ -7,9 +7,9 @@
 
 mod ex_2_16 {
     use ch02::sec_2_1::Interval;
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
-    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SchemeError> {
+    fn from_center_percent(center: f64, percent: f64) -> Result<Interval, SicpError> {
         Interval::from_center_width(center, center.abs() * percent / 100.0)
     }
 
@@ -18,7 +18,7 @@ mod ex_2_16 {
     ///
     /// # Errors
     /// Never, for `x` and `y` built by `Interval::new`.
-    fn sub_interval(x: &Interval, y: &Interval) -> Result<Interval, SchemeError> {
+    fn sub_interval(x: &Interval, y: &Interval) -> Result<Interval, SicpError> {
         Interval::new(
             x.lower_bound() - y.upper_bound(),
             x.upper_bound() - y.lower_bound(),
@@ -41,9 +41,9 @@ mod ex_2_16 {
     /// problem underlying exercises 2.14 and 2.15.
     ///
     /// # Errors
-    /// [`SchemeError`] when the fixed input below fails to build, which
+    /// [`SicpError`] when the fixed input below fails to build, which
     /// it does not.
-    pub fn ex_2_16() -> Result<(f64, f64), SchemeError> {
+    pub fn ex_2_16() -> Result<(f64, f64), SicpError> {
         let x = from_center_percent(10.0, 5.0)?;
         let difference = sub_interval(&x, &x)?;
         Ok((difference.lower_bound(), difference.upper_bound()))

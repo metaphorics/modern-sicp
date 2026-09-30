@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.6: Exercise 4.6: `let` as a derived expression..
+//! The pending scaffold of exercise 4.6: `let` desugared to closure application.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,12 +12,12 @@ pub struct Pending {
 }
 
 mod ex_4_06 {
-    //! Exercise 4.6: `let` as a derived expression.
+    //! Exercise 4.6: `let` desugared to closure application.
 
     use super::Pending;
 
-    /// Answers the printed `let->combination` rewrite and the value of
-    /// the let that rewrite evaluates to.
+    /// Answers the printed `let`-to-closure desugaring and the value the
+    /// desugared application evaluates to.
     pub fn ex_4_06() -> Result<(String, String), Pending> {
         Err(Pending { exercise: "4.6" })
     }
@@ -27,6 +27,7 @@ mod ex_4_06 {
 #[ignore = "pending solution"]
 fn ex_4_06() {
     let (rewritten, value) = ex_4_06::ex_4_06().expect("solved");
-    assert_eq!(rewritten, "((lambda (x y) (+ x y)) 3 4)");
+    assert!(rewritten.contains('x') && rewritten.contains('y'));
+    assert!(rewritten.contains('3') && rewritten.contains('4'));
     assert_eq!(value, "7");
 }

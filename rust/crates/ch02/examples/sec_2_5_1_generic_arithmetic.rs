@@ -7,7 +7,7 @@
 
 use ch02::sec_2_5::{
     add, div, install_generic_arithmetic, make_complex_from_mag_ang, make_complex_from_real_imag,
-    make_rational, make_real, make_scheme_number, mul, sub,
+    make_integer, make_rational, make_real, mul, sub,
 };
 use sicp_runtime::OpTable;
 
@@ -19,10 +19,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table = OpTable::new();
     install_generic_arithmetic(&table)?;
 
-    // Ordinary numbers dispatch to the package keyed by
-    // (scheme-number scheme-number).
-    let a = make_scheme_number(&table, 10)?;
-    let b = make_scheme_number(&table, 5)?;
+    // Ordinary integers dispatch to the plain-number package keyed by
+    // (integer, integer).
+    let a = make_integer(&table, 10)?;
+    let b = make_integer(&table, 5)?;
     println!("{}", add(&table, &a, &b)?);
     // => 15
     assert_eq!(add(&table, &a, &b)?.to_string(), "15");
@@ -41,12 +41,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // => (rational (3 . 2))
     assert_eq!(div(&table, &r1, &r2)?.to_string(), "(rational (3 . 2))");
 
-    // Reals are the tower's third level.
+    // Reals are the tower's third level; an ordinary real is bare, so
+    // the product prints as the plain number.
     let x = make_real(&table, 2.5)?;
     let y = make_real(&table, 0.25)?;
     println!("{}", mul(&table, &x, &y)?);
-    // => (real 0.625)
-    assert_eq!(mul(&table, &x, &y)?.to_string(), "(real 0.625)");
+    // => 0.625
+    assert_eq!(mul(&table, &x, &y)?.to_string(), "0.625");
 
     // Complex numbers are a two-level tagged datum: the outer complex
     // tag, then the rectangular or polar tag inside.

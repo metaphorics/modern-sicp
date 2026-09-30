@@ -8,12 +8,12 @@ mod term_lists {
     //! `mul_terms` it did not need) so this exercise can run it on a
     //! bigger example.
     use ch02::sec_2_5::{Term, coeff, make_term, order};
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
-    fn coeff_int(t: &Term) -> Result<i128, SchemeError> {
+    fn coeff_int(t: &Term) -> Result<i128, SicpError> {
         match coeff(t) {
             Value::Int(n) => Ok(*n),
-            other => Err(SchemeError::TypeMismatch(format!(
+            other => Err(SicpError::TypeMismatch(format!(
                 "only integer coefficients are supported here: {other}"
             ))),
         }
@@ -29,7 +29,7 @@ mod term_lists {
         out
     }
 
-    fn add_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn add_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         match (l1.first(), l2.first()) {
             (None, _) => Ok(l2.to_vec()),
             (_, None) => Ok(l1.to_vec()),
@@ -44,18 +44,18 @@ mod term_lists {
         }
     }
 
-    fn negate(terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn negate(terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|t| Ok(make_term(order(t), Value::Int(-coeff_int(t)?))))
             .collect()
     }
 
-    fn sub_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn sub_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         add_terms(l1, &negate(l2)?)
     }
 
-    fn mul_term_by_all_terms(t: &Term, terms: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    fn mul_term_by_all_terms(t: &Term, terms: &[Term]) -> Result<Vec<Term>, SicpError> {
         terms
             .iter()
             .map(|u| {
@@ -70,7 +70,7 @@ mod term_lists {
     /// Full term-list multiplication: distribute one term list over the
     /// other and add the partial products. Exercise 2.94 never needed
     /// this (it only divided); building `Q_1` and `Q_2` here does.
-    pub fn mul_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn mul_terms(l1: &[Term], l2: &[Term]) -> Result<Vec<Term>, SicpError> {
         match l1.first() {
             None => Ok(Vec::new()),
             Some(t1) => {
@@ -83,15 +83,12 @@ mod term_lists {
     /// Long division on term lists (exercise 2.91), unmodified: this is
     /// exactly the version that requires every quotient coefficient to
     /// divide evenly.
-    fn div_terms(
-        dividend: &[Term],
-        divisor: &[Term],
-    ) -> Result<(Vec<Term>, Vec<Term>), SchemeError> {
+    fn div_terms(dividend: &[Term], divisor: &[Term]) -> Result<(Vec<Term>, Vec<Term>), SicpError> {
         if dividend.is_empty() {
             return Ok((Vec::new(), Vec::new()));
         }
         let Some(dvsr) = divisor.first() else {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         };
         let dend = &dividend[0];
         if order(dend) < order(dvsr) {
@@ -99,10 +96,10 @@ mod term_lists {
         }
         let (nc, dc) = (coeff_int(dend)?, coeff_int(dvsr)?);
         if dc == 0 {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         }
         if nc % dc != 0 {
-            return Err(SchemeError::TypeMismatch(format!(
+            return Err(SicpError::TypeMismatch(format!(
                 "div_terms: {nc} does not divide evenly by {dc}"
             )));
         }
@@ -114,7 +111,7 @@ mod term_lists {
 
     /// Exercise 2.94's Euclidean loop, unmodified: `gcd(a, 0) = a`,
     /// otherwise `gcd(a, b) = gcd(b, remainder_terms(a, b))`.
-    pub fn gcd_terms(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SchemeError> {
+    pub fn gcd_terms(a: &[Term], b: &[Term]) -> Result<Vec<Term>, SicpError> {
         if b.is_empty() {
             return Ok(a.to_vec());
         }
@@ -122,7 +119,7 @@ mod term_lists {
         gcd_terms(b, &rem)
     }
 
-    pub fn as_pairs(terms: &[Term]) -> Result<Vec<(u32, i128)>, SchemeError> {
+    pub fn as_pairs(terms: &[Term]) -> Result<Vec<(u32, i128)>, SicpError> {
         terms
             .iter()
             .map(|t| Ok((order(t), coeff_int(t)?)))
@@ -133,7 +130,7 @@ mod term_lists {
 mod ex_2_95 {
     use super::term_lists::{as_pairs, gcd_terms, mul_terms};
     use ch02::sec_2_5::make_term;
-    use sicp_runtime::{SchemeError, Value};
+    use sicp_runtime::{SicpError, Value};
 
     /// The two products, and the message `gcd_terms` fails with.
     type Answer = (Vec<(u32, i128)>, Vec<(u32, i128)>, String);
@@ -152,7 +149,7 @@ mod ex_2_95 {
     /// # Errors
     /// Whatever building `Q_1` and `Q_2` raises (it does not, on this
     /// input); `gcd_terms`'s own failure is captured, not propagated.
-    pub fn ex_2_95() -> Result<Answer, SchemeError> {
+    pub fn ex_2_95() -> Result<Answer, SicpError> {
         let p1 = vec![
             make_term(2, Value::Int(1)),
             make_term(1, Value::Int(-2)),

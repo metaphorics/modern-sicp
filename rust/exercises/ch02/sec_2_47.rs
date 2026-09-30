@@ -9,9 +9,9 @@ mod ex_2_47 {
 
     /// Exercise 2.47: frame constructors
     ///
-    /// Returns the rendered origin and edges extracted from a list-shaped
-    /// frame constructor and from a cons-shaped one, both built for the
-    /// unit square, in that order.
+    /// Returns the rendered origin and edges extracted from a
+    /// sequence-backed frame and from a pair-backed frame, both built
+    /// for the unit square, in that order.
     pub fn ex_2_47() -> Result<(String, String), Pending> {
         Err(Pending::new("2.47"))
     }

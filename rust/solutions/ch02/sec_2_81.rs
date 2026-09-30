@@ -7,10 +7,10 @@ mod ex_2_81 {
     use ch02::sec_2_5::{
         contents, install_generic_arithmetic, make_complex_from_real_imag, put_coercion, type_tag,
     };
-    use sicp_runtime::{Handler, Key, OpTable, SchemeError, Value};
+    use sicp_runtime::{Handler, Key, OpTable, SicpError, Value};
     use std::rc::Rc;
 
-    fn tag_list_key(args: &[Value]) -> Result<Key, SchemeError> {
+    fn tag_list_key(args: &[Value]) -> Result<Key, SicpError> {
         let mut key = Key::Nil;
         for a in args.iter().rev() {
             key = Key::pair(Key::Sym(type_tag(a)?), key);
@@ -18,10 +18,10 @@ mod ex_2_81 {
         Ok(key)
     }
 
-    fn no_method(op: &str, args: &[Value]) -> SchemeError {
+    fn no_method(op: &str, args: &[Value]) -> SicpError {
         let mut irritants = vec![Value::sym(op)];
         irritants.extend(args.iter().cloned());
-        SchemeError::UserRaised {
+        SicpError::UserRaised {
             message: "No method for these types".into(),
             irritants,
         }
@@ -35,15 +35,15 @@ mod ex_2_81 {
         op: &str,
         args: &[Value],
         depth: u32,
-    ) -> Result<Value, SchemeError> {
+    ) -> Result<Value, SicpError> {
         if depth == 0 {
-            return Err(SchemeError::UserRaised {
+            return Err(SicpError::UserRaised {
                 message: "recursion did not terminate: Louis's self-coercion loop".into(),
                 irritants: vec![],
             });
         }
         if let Some(proc) = table.get(&Key::sym(op), &tag_list_key(args)?) {
-            let bare: Result<Vec<Value>, SchemeError> = args.iter().map(contents).collect();
+            let bare: Result<Vec<Value>, SicpError> = args.iter().map(contents).collect();
             return proc(&bare?);
         }
         if let [a1, a2] = args {
@@ -67,11 +67,11 @@ mod ex_2_81 {
         coercions: &OpTable,
         op: &str,
         args: &[Value],
-    ) -> Result<Value, SchemeError> {
+    ) -> Result<Value, SicpError> {
         // Direct entries always win, as before; the fix only skips the
         // coercion attempt when the arguments already share a type.
         if let Some(proc) = table.get(&Key::sym(op), &tag_list_key(args)?) {
-            let bare: Result<Vec<Value>, SchemeError> = args.iter().map(contents).collect();
+            let bare: Result<Vec<Value>, SicpError> = args.iter().map(contents).collect();
             return proc(&bare?);
         }
         if let [a1, _a2] = args {
@@ -84,15 +84,17 @@ mod ex_2_81 {
         louis_apply_generic(table, coercions, op, args, 8)
     }
 
-    /// Louis's identity coercions plus the `exp` operation, which only
-    /// the scheme-number package offers.
+    /// Louis's identity coercions plus the `exp` operation, which is
+    /// defined only for integer pairs.
     pub fn install(table: &OpTable, coercions: &OpTable) {
-        put_coercion(
-            coercions,
-            "scheme-number",
-            "scheme-number",
-            Rc::new(|args: &[Value]| Ok(args[0].clone())),
-        );
+        for tag in ["integer", "real"] {
+            put_coercion(
+                coercions,
+                tag,
+                tag,
+                Rc::new(|args: &[Value]| Ok(args[0].clone())),
+            );
+        }
         put_coercion(
             coercions,
             "complex",
@@ -100,17 +102,15 @@ mod ex_2_81 {
             Rc::new(|args: &[Value]| Ok(args[0].clone())),
         );
         let key = Key::pair(
-            Key::sym("scheme-number"),
-            Key::pair(Key::sym("scheme-number"), Key::Nil),
+            Key::sym("integer"),
+            Key::pair(Key::sym("integer"), Key::Nil),
         );
         let exp: Handler = Rc::new(|args: &[Value]| {
             let (Value::Int(b), Value::Int(e)) = (&args[0], &args[1]) else {
-                return Err(SchemeError::TypeMismatch("exp: integers".into()));
+                return Err(SicpError::TypeMismatch("exp: integers".into()));
             };
-            let e = u32::try_from(*e).map_err(|_| SchemeError::Overflow)?;
-            b.checked_pow(e)
-                .map(Value::Int)
-                .ok_or(SchemeError::Overflow)
+            let e = u32::try_from(*e).map_err(|_| SicpError::Overflow)?;
+            b.checked_pow(e).map(Value::Int).ok_or(SicpError::Overflow)
         });
         table.put(Key::sym("exp"), key, exp);
     }
@@ -118,7 +118,7 @@ mod ex_2_81 {
     /// The three answers: what Louis's coercions do to a missing
     /// same-type operation, what the fixed dispatch does, and that `exp`
     /// still answers on two ordinary numbers.
-    pub fn ex_2_81() -> Result<(String, String, i128), SchemeError> {
+    pub fn ex_2_81() -> Result<(String, String, i128), SicpError> {
         let table = OpTable::new();
         install_generic_arithmetic(&table)?;
         let coercions = OpTable::new();
@@ -139,7 +139,7 @@ mod ex_2_81 {
         let Value::Int(eight) =
             fixed_apply_generic(&table, &coercions, "exp", &[Value::Int(2), Value::Int(3)])?
         else {
-            return Err(SchemeError::TypeMismatch("exp 2 3".into()));
+            return Err(SicpError::TypeMismatch("exp 2 3".into()));
         };
 
         Ok((louis.to_string(), fixed.to_string(), eight))

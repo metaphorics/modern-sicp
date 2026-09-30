@@ -1,58 +1,43 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.40: the compile-time
-//! environment is threaded through every code generator.
+//! The reference solution of exercise 5.40: nested scopes resolve
+//! names from the inside out.
+//!
+//! Each closure and block extends the environment with its own frame,
+//! so a name inside the innermost scope sees the nearest binding
+//! first and the outer frames behind it. The solution nests an adder
+//! factory inside its use site and shadows one name along the way:
+//! the factory's parameter wins inside the closure while the outer
+//! binding stays visible outside, and both engines print the same
+//! resolved values.
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use sicp_runtime::host::CheckedProgram;
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_5::{Config, Linkage, compile_program, new_state};
+fn admitted(source: &str) -> CheckedProgram {
+    match sicp_runtime::host::admit(source) {
+        Ok(program) => program,
+        Err(diag) => panic!("admitted: {}", diag.message),
+    }
+}
 
 mod ex_5_40 {
-    //! Exercise 5.40: a lambda extends the compile-time environment
-    //! with its parameter frame; variable references see that frame
-    //! and the frames outside it.
+    //! Exercise 5.40: inner frames shadow outer ones; outer bindings
+    //! stay visible where nothing shadows them.
 
     use super::*;
 
-    const EXAMPLE: &str =
-        "((lambda (x y) (lambda (a b c d e) ((lambda (y z) (* x y z)) (* a b x) (+ c d x)))) 3 4)";
+    const NESTED: &str = "fn make_adder(x: i64) -> Box<dyn Fn(i64) -> i64 + 'static> {\n    Box::new(move |y: i64| x + y)\n}\n\nfn main() {\n    let x: i64 = 100;\n    let add_three = make_adder(3);\n    println!(\"{}\", add_three(4));\n    println!(\"{}\", x);\n}\n";
 
-    pub fn ex_5_40() -> Result<Vec<String>, Fault> {
-        let trace = Rc::new(RefCell::new(Vec::<String>::new()));
-        let sink = Rc::clone(&trace);
-        let cfg = Config {
-            trace: Some(Rc::new(move |frames, name| {
-                let rendered = frames
-                    .iter()
-                    .map(|frame| format!("({})", frame.join(" ")))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                sink.borrow_mut().push(format!("{name} in ({rendered})"));
-            })),
-            ..ch05::sec_5_5::default_config()
-        };
-        let _ = compile_program(&cfg, &new_state(), EXAMPLE, &Linkage::Next)?;
-        let trace = trace.borrow().clone();
-        assert!(
-            trace
-                .iter()
-                .any(|line| line == "x in ((y z) (a b c d e) (x y))")
-        );
-        assert!(
-            trace
-                .iter()
-                .any(|line| line == "z in ((y z) (a b c d e) (x y))")
-        );
-        Ok(trace)
-    }
-
+    /// The closure adds its captured `3`, not the outer `100`, while
+    /// the outer `x` still reads `100` outside: `7`, then `100`.
     #[test]
-    fn ex_5_40_check() -> Result<(), Fault> {
-        let lines = ex_5_40()?;
-        assert!(lines.iter().any(|line| line.starts_with("x in")));
-        Ok(())
+    fn ex_5_40_inner_frame_wins_inside() {
+        let program = admitted(NESTED);
+        let interpreted = ch05::sec_5_4::Eceval::run(&program);
+        let compiled = ch05::sec_5_5::compiled_run(&program);
+        assert!(interpreted.trap.is_none(), "{interpreted:?}");
+        assert_eq!(interpreted.stdout, "7\n100\n");
+        assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
     }
 }

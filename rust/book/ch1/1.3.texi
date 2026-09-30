@@ -125,7 +125,8 @@ fn @code{⟨}@var{name}@code{⟩}(a: f64, b: f64) -> f64 @{
     if a > b @{
         0.0
     @} else @{
-        @code{⟨}@var{term}@code{⟩}(a) + @code{⟨}@var{name}@code{⟩}(@code{⟨}@var{next}@code{⟩}(a), b)
+        @code{⟨}@var{term}@code{⟩}(a) +
+            @code{⟨}@var{name}@code{⟩}(@code{⟨}@var{next}@code{⟩}(a), b)
     @}
 @}
 @end example
@@ -510,18 +511,23 @@ let plus4 = |x: f64| x + 4.0;
 @noindent
 We can read a closure expression as follows:
 
-@example
+@smallexample
 |x: f64|      x + 4.0
     |            |
 the procedure of an argument x that adds x and 4
-@end example
+@end smallexample
 
 @noindent
 Like any expression that has a procedure as its value, a closure
 expression can be used as the operator in a call such as
 
 @example rust
-println!("@{@}", (|x: f64, y: f64, z: f64| x + y + square(z))(1.0, 2.0, 3.0));
+println!(
+    "@{@}",
+    (|x: f64, y: f64, z: f64| x + y + square(z))(
+        1.0, 2.0, 3.0
+    )
+);
 // => 12
 @end example
 
@@ -588,7 +594,9 @@ single call to that procedure:
 
 @example rust
 fn f_closure(x: f64, y: f64) -> f64 @{
-    (|a: f64, b: f64| x * square(a) + y * b + a * b)(1.0 + x * y, 1.0 - y)
+    (|a: f64, b: f64| x * square(a) + y * b + a * b)(
+        1.0 + x * y, 1.0 - y
+    )
 @}
 @end example
 
@@ -614,26 +622,21 @@ let @code{⟨}@var{name}@code{⟩} = @code{⟨}@var{expression}@code{⟩};
 @noindent
 which can be thought of as saying
 
-@example
+@smallexample
 let ⟨@var{name₁}⟩ @r{have the value} ⟨@var{exp₁}⟩ @r{and}
     ⟨@var{name₂}⟩ @r{have the value} ⟨@var{exp₂}⟩ @r{and}
     @r{…}
   @r{in} ⟨@var{body}⟩
-@end example
+@end smallexample
 
 @noindent
-Each name is associated with the value of the corresponding expression, and the
-rest of the block is evaluated with these names bound as local variables.
-Here the two languages part company.  Scheme's @code{let} is an alternate
-syntax for applying an anonymous procedure: every value is computed
-@emph{before} any of the new names exists.  Rust's @code{let} is an ordinary
-binding that takes effect where it stands, and a second @code{let} using the
-same name @newterm{shadows} the first from that point on.  No special
-mechanism is needed to provide local variables: a @code{let} binding is an
-ordinary binding whose scope ends at the end of its block.
+A @code{let} binding first evaluates its initializer using the bindings
+already in scope. It then binds the pattern's names for the rest of the block.
+A second @code{let} with the same name @newterm{shadows} the earlier binding;
+it creates a new binding rather than assigning to the old one.
 
-We can see from this difference that the scope of a variable specified by a
-@code{let} binding runs from the binding to the end of the block.  Two
+Local variables therefore need no separate scope mechanism. Each binding
+is available after its declaration and until the end of its block. Two
 consequences:
 
 @itemize @bullet
@@ -656,13 +659,9 @@ is 33.  On the other hand, the @code{x} that is the second operand of the
 outer @code{+} is still 5.
 
 @item
-A Rust @code{let} shadows immediately, where Scheme's @code{let} computes all
-its values outside the new bindings.  This matters when the expressions that
-provide the values for the local variables depend upon variables having the
-same names as the local variables themselves.  For example, if the value of
-@code{x} is 2, Scheme evaluates @code{(let ((x 3) (y (+ x 2))) (* x y))} as
-follows: the value of @code{y} is computed from the outer @code{x}, so
-@code{y} is 4 and the whole expression is 12.  The same two lines in Rust
+Later initializers can use earlier bindings in the same block. If a new
+binding shadows a name, subsequent expressions use the new binding.
+For example:
 
 @example rust
 let x = 2.0;
@@ -746,7 +745,11 @@ size of the interval we will consider ``small enough'').  Here is a procedure
 that implements this strategy:
 
 @example rust
-fn search(f: &dyn Fn(f64) -> f64, neg_point: f64, pos_point: f64) -> f64 @{
+fn search(
+    f: &dyn Fn(f64) -> f64,
+    neg_point: f64,
+    pos_point: f64,
+) -> f64 @{
     let midpoint = average(neg_point, pos_point);
     if close_enough(neg_point, pos_point) @{
         midpoint
@@ -808,7 +811,7 @@ fn half_interval_method(
     f: impl Fn(f64) -> f64,
     a: f64,
     b: f64,
-) -> Result<f64, SchemeError> @{
+) -> Result<f64, SicpError> @{
     let a_value = f(a);
     let b_value = f(b);
     if a_value < 0.0 && b_value > 0.0 @{
@@ -816,7 +819,7 @@ fn half_interval_method(
     @} else if b_value < 0.0 && a_value > 0.0 @{
         Ok(search(&f, b, a))
     @} else @{
-        Err(SchemeError::UserRaised @{
+        Err(SicpError::UserRaised @{
             message: "Values are not of opposite sign".to_owned(),
             irritants: vec![Value::Real(a), Value::Real(b)],
         @})
@@ -1251,14 +1254,19 @@ With the aid of @code{deriv}, we can express Newton's method as a fixed-point
 process:
 
 @example rust
-fn newton_transform(g: impl Fn(f64) -> f64 + 'static) -> impl Fn(f64) -> f64 @{
+fn newton_transform(
+    g: impl Fn(f64) -> f64 + 'static,
+) -> impl Fn(f64) -> f64 @{
     let shared: Rc<dyn Fn(f64) -> f64> = Rc::new(g);
     let for_deriv = Rc::clone(&shared);
     let dg = deriv(move |x| for_deriv(x));
     move |x| x - shared(x) / dg(x)
 @}
 
-fn newtons_method(g: impl Fn(f64) -> f64 + 'static, guess: f64) -> f64 @{
+fn newtons_method(
+    g: impl Fn(f64) -> f64 + 'static,
+    guess: f64,
+) -> f64 @{
     fixed_point(newton_transform(g), guess)
 @}
 @end example
@@ -1322,7 +1330,11 @@ this section (where we look for a fixed point of the average-damped version of
 let x = 9.0;
 println!(
     "@{@}",
-    fixed_point_of_transform(Box::new(move |y| x / y), average_damp_dyn, 1.0)
+    fixed_point_of_transform(
+        Box::new(move |y| x / y),
+        average_damp_dyn,
+        1.0,
+    )
 );
 // => 3
 @end example
@@ -1335,7 +1347,11 @@ transform of @math{{y \mapsto y^2 - x}}) as
 @example rust
 println!(
     "@{@}",
-    fixed_point_of_transform(Box::new(|y| y * y - 9.0), newton_transform_dyn, 1.0)
+    fixed_point_of_transform(
+        Box::new(|y| y * y - 9.0),
+        newton_transform_dyn,
+        1.0,
+    )
 );
 // => 3.000000000000002
 @end example
@@ -1394,7 +1410,7 @@ implementation cost of first-class procedures is that allowing procedures to be
 returned as values requires reserving storage for a procedure's free variables
 even while the procedure is not executing.  Rust stores the variables a closure
 captures inside the closure value itself, which is why a returned closure must
-own them (@code{move}); in the Scheme implementation we will study in
+own them (@code{move}); in the evaluator we will study in
 @ref{4.1}, these variables are stored in the procedure's environment.}
 
 @quotation
@@ -1415,13 +1431,14 @@ to approximate zeros of the cubic @math{{x^3 + ax^2 + bx + c}}.
 that takes a procedure of one argument as argument and returns a procedure that
 applies the original procedure twice.  For example, if @code{inc} is a
 procedure that adds 1 to its argument, then @code{double(inc)} should be a
-procedure that adds 2.  The book then asks for the value of
-@code{(((double (double double)) inc) 5)}, which feeds @code{double} to
-itself.  A single Rust @code{double} has one argument type, and the compiler
+procedure that adds 2.  The source book then asks for the value of the
+self-application @code{double(double(double))(inc)(5)}, which feeds
+@code{double} to itself.  A single Rust @code{double} has one argument type,
+and the compiler
 rejects passing the generic @code{double} to itself: read the error.  Recover
-the book's answer by composing around @code{inc} with @code{double} as many
-times as the book's self-application builds, and explain why that many
-nestings produce the value the book's expression returns.
+the puzzle's answer by composing @code{double} around @code{inc} as many
+times as the self-application builds, and explain why that many
+applications of @code{inc} produce the value the puzzle asks for.
 @end quotation
 
 @quotation

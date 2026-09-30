@@ -1,55 +1,61 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.35: `an-integer-between`, the
-//! bounded choice the Pythagorean-triple search draws from. The
-//! procedure is the book's: require a nonempty inclusive range, then
-//! offer the low end or the range above it -- the second alternative
-//! only evaluates when the first fails, so the recursion descends one
-//! bound at a time.
+//! The reference solution of exercise 4.35: `an-integer-between` over
+//! typed range choices and a Pythagorean triple search.
 
-use ch04::eval_support::{AMB_SEED, Amb, collect_amb_answers, with_eval_stack};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_35 {
-    use super::*;
+use ch04::sec_4_3::{AnswerTerm, AnswerValue, Predicate, Search, SearchEngine, reference_model};
+use sicp_runtime::host::query::Term;
 
-    /// The exercise's program: the generator and the triple search over
-    /// the book's range.
-    const PROGRAM: &str = r"
-(define (require p) (if (not p) (amb)))
-(define (an-integer-between low high)
-  (require (<= low high))
-  (amb low (an-integer-between (+ low 1) high)))
-(define (a-pythagorean-triple-between low high)
-  (let ((i (an-integer-between low high)))
-    (let ((j (an-integer-between i high)))
-      (let ((k (an-integer-between j high)))
-        (require (= (+ (* i i) (* j j)) (* k k)))
-        (list i j k)))))
-(a-pythagorean-triple-between 1 20)";
+fn variable(name: &str) -> Term {
+    Term::Variable(name.to_owned())
+}
 
-    /// Every triple the search finds over 1..=20, printed.
-    #[must_use]
-    pub fn triples() -> Vec<String> {
-        with_eval_stack(move || {
-            let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-            collect_amb_answers(&amb, PROGRAM)
-        })
+fn triples() -> Search {
+    let success = Search::Success(vec![
+        AnswerTerm::Var("i".to_owned()),
+        AnswerTerm::Var("j".to_owned()),
+        AnswerTerm::Var("k".to_owned()),
+    ]);
+    let ordered = Search::Guard(
+        Predicate::Le(variable("i"), variable("j")),
+        Box::new(Search::Guard(
+            Predicate::Le(variable("j"), variable("k")),
+            Box::new(Search::Guard(
+                Predicate::Pythagorean("i".to_owned(), "j".to_owned(), "k".to_owned()),
+                Box::new(success),
+            )),
+        )),
+    );
+    Search::ChooseRange {
+        var: "i".to_owned(),
+        lo: 1,
+        hi: 20,
+        body: Box::new(Search::ChooseRange {
+            var: "j".to_owned(),
+            lo: 1,
+            hi: 20,
+            body: Box::new(Search::ChooseRange {
+                var: "k".to_owned(),
+                lo: 1,
+                hi: 30,
+                body: Box::new(ordered),
+            }),
+        }),
     }
 }
 
 #[test]
 fn ex_4_35() {
-    // Six triples between 1 and 20, then the search runs dry.
-    assert_eq!(
-        ex_4_35::triples(),
-        vec![
-            "(3 4 5)",
-            "(5 12 13)",
-            "(6 8 10)",
-            "(8 15 17)",
-            "(9 12 15)",
-            "(12 16 20)"
-        ]
-    );
+    let program = triples();
+    let outcome = SearchEngine::new().run(&program);
+    let reference = reference_model(&program);
+    assert_eq!(outcome.answers, reference.answers);
+    assert!(outcome.answers.contains(&vec![
+        AnswerValue::Int(3),
+        AnswerValue::Int(4),
+        AnswerValue::Int(5)
+    ]));
 }

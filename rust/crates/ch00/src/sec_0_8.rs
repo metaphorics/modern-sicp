@@ -7,7 +7,7 @@ use thiserror::Error;
 
 /// A small arithmetic error, derived with `thiserror` the same way the
 /// rest of the book derives its one error type,
-/// [`SchemeError`](sicp_runtime::SchemeError).
+/// [`SicpError`](sicp_runtime::SicpError).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum ArithError {
     /// Division or remainder by zero.

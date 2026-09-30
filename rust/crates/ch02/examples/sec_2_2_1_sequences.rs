@@ -8,7 +8,7 @@ use ch02::sec_2_2::{List, append, length, length_iter, list_ref, map_list, scale
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The sequence 1, 2, 3, 4 as a chain of pairs, built the edition's
-    // way; the book's `(list 1 2 3 4)` is this constructor call.
+    // way; the four-item list is this constructor call.
     let one_through_four: List<i128> = List::from_iter([1, 2, 3, 4]);
     println!("{one_through_four}");
     // => (1 2 3 4)

@@ -6,7 +6,7 @@
 //! name.
 
 mod ex_2_05 {
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 2.5's `cons`: `2^a * 3^b`. This edition's numbers
     /// convention keeps every exact integer in `i128` with checked
@@ -15,13 +15,11 @@ mod ex_2_05 {
     /// it.
     ///
     /// # Errors
-    /// [`SchemeError::Overflow`] when `2^a * 3^b` does not fit `i128`.
-    fn cons(a: u32, b: u32) -> Result<i128, SchemeError> {
-        let two_to_a = 2i128.checked_pow(a).ok_or(SchemeError::Overflow)?;
-        let three_to_b = 3i128.checked_pow(b).ok_or(SchemeError::Overflow)?;
-        two_to_a
-            .checked_mul(three_to_b)
-            .ok_or(SchemeError::Overflow)
+    /// [`SicpError::Overflow`] when `2^a * 3^b` does not fit `i128`.
+    fn cons(a: u32, b: u32) -> Result<i128, SicpError> {
+        let two_to_a = 2i128.checked_pow(a).ok_or(SicpError::Overflow)?;
+        let three_to_b = 3i128.checked_pow(b).ok_or(SicpError::Overflow)?;
+        two_to_a.checked_mul(three_to_b).ok_or(SicpError::Overflow)
     }
 
     /// Counts how many times `factor` divides `z`.
@@ -50,9 +48,9 @@ mod ex_2_05 {
     /// `2^a * 3^b` encoding.
     ///
     /// # Errors
-    /// [`SchemeError::Overflow`] when `cons` overflows, which does not
+    /// [`SicpError::Overflow`] when `cons` overflows, which does not
     /// arise from encoding `(3, 2)`.
-    pub fn ex_2_05() -> Result<(u32, u32), SchemeError> {
+    pub fn ex_2_05() -> Result<(u32, u32), SicpError> {
         let z = cons(3, 2)?;
         Ok((car(z), cdr(z)))
     }

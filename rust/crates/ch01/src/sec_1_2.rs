@@ -192,7 +192,7 @@ pub fn expmod(base: i128, exp: i128, m: i128) -> i128 {
     }
 }
 
-/// Draws the book's `(random (- n 1))` on section-sized numbers: the
+/// Draws a uniform integer below `n` on section-sized numbers: the
 /// seeded generator of the runtime reduced into `0..n`. Section bounds
 /// never leave the `u64` range, so the widening saturates instead of
 /// failing.

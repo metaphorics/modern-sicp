@@ -10,7 +10,7 @@ mod ex_2_76 {
         MessageObject, apply_generic_message_passing, install_polar_package,
         install_rectangular_package, magnitude, make_from_real_imag_message_passing, real_part,
     };
-    use sicp_runtime::{OpTable, SchemeError, Value};
+    use sicp_runtime::{OpTable, SicpError, Value};
 
     // --- Explicit dispatch: one closed enum, every operation a `match`. ---
 
@@ -50,7 +50,7 @@ mod ex_2_76 {
     /// third package would add table entries and edit nothing: a test
     /// below proves this by pointer identity, not just by absence of a
     /// diff.
-    fn data_directed_probe() -> Result<(f64, f64), SchemeError> {
+    fn data_directed_probe() -> Result<(f64, f64), SicpError> {
         let table = OpTable::new();
         install_rectangular_package(&table);
         install_polar_package(&table);
@@ -60,10 +60,10 @@ mod ex_2_76 {
         Ok((real, mag))
     }
 
-    fn as_real(v: &Value) -> Result<f64, SchemeError> {
+    fn as_real(v: &Value) -> Result<f64, SicpError> {
         match v {
             Value::Real(x) => Ok(*x),
-            other => Err(SchemeError::TypeMismatch(format!(
+            other => Err(SicpError::TypeMismatch(format!(
                 "not a real number: {other}"
             ))),
         }
@@ -75,7 +75,7 @@ mod ex_2_76 {
         Rc::new(move |op| match op {
             "real-part" => Ok(Value::real(r * a.cos())),
             "magnitude" => Ok(Value::real(r)),
-            other => Err(SchemeError::UserRaised {
+            other => Err(SicpError::UserRaised {
                 message: "Unknown op".into(),
                 irritants: vec![Value::sym(other)],
             }),
@@ -87,7 +87,7 @@ mod ex_2_76 {
     /// operation edits every existing object — here both the rectangular
     /// object from the section and [`polar_message_object`] would each
     /// gain a match arm.
-    fn message_passing_probe() -> Result<(f64, f64), SchemeError> {
+    fn message_passing_probe() -> Result<(f64, f64), SicpError> {
         let z = make_from_real_imag_message_passing(3.0, 4.0);
         let real = as_real(&apply_generic_message_passing("real-part", &z)?)?;
         let mag = as_real(&apply_generic_message_passing("magnitude", &z)?)?;
@@ -101,7 +101,7 @@ mod ex_2_76 {
         clippy::type_complexity,
         reason = "one probe pair per strategy, matching the exercise's three-way comparison"
     )]
-    pub fn ex_2_76() -> Result<((f64, f64), (f64, f64), (f64, f64)), SchemeError> {
+    pub fn ex_2_76() -> Result<((f64, f64), (f64, f64), (f64, f64)), SicpError> {
         Ok((
             explicit_dispatch_probe(),
             data_directed_probe()?,

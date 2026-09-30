@@ -8,7 +8,8 @@
 mod ex_2_04 {
     /// An alternative procedural pair: `cons(x, y)` returns a value whose
     /// only operation is `apply`, handing both parts to a selector
-    /// closure at once, matching the book's `(lambda (m) (m x y))`. Rust
+    /// closure at once, the message-passing shape the book's procedural
+    /// pair has. Rust
     /// fixes a closure's return type at its own definition, so `apply` is
     /// a generic method rather than a second closure layer: that is what
     /// lets `car` and `cdr` below request two different result types from
@@ -34,7 +35,8 @@ mod ex_2_04 {
     }
 
     /// Exercise 2.4's `cdr`: selects the second part, applying the
-    /// selector `(lambda (p q) q)` instead of `car`'s `(lambda (p q) p)`.
+    /// selector that answers its second argument instead of `car`'s,
+    /// which answers its first.
     fn cdr<A: Clone, B: Clone>(z: &Cons<A, B>) -> B {
         z.apply(|_p, q| q.clone())
     }

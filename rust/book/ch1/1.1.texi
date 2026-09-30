@@ -1,4 +1,4 @@
-@node    Chapter 1, 1.1, 0.8, Top
+@node    Chapter 1, 1.1, 0.9, Top
 @chapter Building Abstractions with Procedures
 
 @quotation
@@ -271,28 +271,20 @@ println!("@{@}", 2.7 + 10.0);
 @end example
 
 @noindent
-Expressions such as these, formed by writing an operator between the
-expressions that denote its arguments, are the closest Rust comes to the
-book's @newterm{combinations}.  The vocabulary differs from Lisp's in one
-visible way: Lisp writes every combination in @newterm{prefix notation},
-with the operator leftmost, while Rust writes its primitive arithmetic
-operators in the customary infix position (@code{137 + 349}, not
-@code{(+ 137 349)}).  A function call is prefix-shaped the way a Lisp
-combination is---the operator's name comes first,
-@code{sum_of_squares(3, 4)}---but the operators proper are written between
-their operands, and each function and operator takes a fixed number of
-arguments, so the book's variadic forms such as @code{(+ 21 35 12 7)} become
-@code{21 + 35 + 12 + 7}, one operator repeated.  What matters for this
-chapter is what the two notations share: in both, the value of a compound
-expression is obtained by applying the procedure specified by the
-@newterm{operator} to the @newterm{arguments} that are the values of the
-@newterm{operands}, and in both
-the notation is unambiguous about which operator applies to which operands.
+A @newterm{combination} applies an @newterm{operator} to the values of its
+@newterm{operands}. Rust writes arithmetic operators between their operands,
+as in @code{137 + 349}. This is infix notation. A function call instead puts
+the function name before its @newterm{arguments}, as in
+@code{sum_of_squares(3, 4)}. These forms tell us which operation to perform
+and which expressions supply its inputs.
 
-A further advantage the book claims for prefix notation is that it extends in
-a straightforward way to allow combinations to be @i{nested}, that is, to have
-combinations whose elements are themselves combinations.  Rust nests the same
-way:
+An ordinary Rust function has a fixed number of parameters. To add several
+values with the binary @code{+} operator, we write repeated additions:
+@code{21 + 35 + 12 + 7}. The expression's grouping determines which values
+each operator receives.
+
+Operands and function arguments can themselves be compound expressions.
+This lets us build @i{nested} combinations:
 
 @example rust
 println!("@{@}", (3 * 5) + (10 - 6));
@@ -394,7 +386,7 @@ to use simple names to refer to the results of compound operations, such as the
 have very complex structures, and it would be extremely inconvenient to have to
 remember and repeat their details each time we want to use them.  Indeed,
 complex programs are constructed by building, step by step, computational
-objects of increasing complexity.  Where the book's Lisp session builds this
+objects of increasing complexity.  Where the source book's Lisp session builds this
 way one interaction at a time, a Rust program grows the same way in the
 source: each new name is written down once, checked by the compiler, and
 thereafter available by name, which gives the incremental style a guarantee
@@ -476,7 +468,7 @@ general kind of process known as @newterm{tree accumulation}.
 @ifinfo
 @strong{Figure 1.1:} Tree representation, showing the value of each subcombination.
 
-@example
+@smallexample
    390
    /|\____________
   / |             \
@@ -487,7 +479,7 @@ general kind of process known as @newterm{tree accumulation}.
         /|\    +  3 5  7
        / | \
       *  4  6
-@end example
+@end smallexample
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap1/Fig1.1g,,58mm,Figure 1.1: Tree representation@comma{} showing the value of each subcombination.,.std.svg}
@@ -598,11 +590,11 @@ fn square(x: i64) -> i64 @{
 @noindent
 We can understand this in the following way:
 
-@example
+@smallexample
 fn square(x: i64) -> i64 @{    x * x    @}
     |      |         |          |
  To square something, multiply it by itself.
-@end example
+@end smallexample
 
 @noindent
 We have here a @newterm{compound procedure}, which has been given the name
@@ -620,7 +612,10 @@ procedures that have already been created.  We will see how to do this in
 The general form of a procedure definition is
 
 @example rust
-fn @code{⟨}@var{name}@code{⟩}(@code{⟨}@var{parameters}@code{⟩}: @code{⟨}@var{parameter types}@code{⟩}) -> @code{⟨}@var{return type}@code{⟩} @{
+fn @code{⟨}@var{name}@code{⟩}(
+    @code{⟨}@var{parameters}@code{⟩}:
+        @code{⟨}@var{parameter types}@code{⟩}
+) -> @code{⟨}@var{return type}@code{⟩} @{
     @code{⟨}@var{body}@code{⟩}
 @}
 @end example
@@ -871,8 +866,8 @@ valuable tool, and we will investigate some of its implications in @ref{Chapter
 @newterm{stream processing}, which is a way of handling apparently ``infinite''
 data structures by incorporating a limited form of normal-order evaluation; in
 Rust, the iterator adapters of @ref{0.5} are the same tool under another
-name.  In @ref{4.2} we will modify the interpreter of @ref{Chapter 4} to
-evaluate the book's Scheme subset with normal-order delay, and the Rust
+name.  In @ref{4.2} we will modify the evaluator of @ref{Chapter 4} to
+interpret its checked Rust subset with normal-order delay, and the Rust
 closures of @ref{0.6} are the ordinary-language stand-in for a thunk.}
 
 @node	1.1.6, 1.1.7, 1.1.5, 1.1
@@ -921,8 +916,10 @@ The general form of a conditional expression is
 
 @example rust
 match @code{⟨}@var{subject}@code{⟩} @{
-    @code{⟨}@var{pattern₁}@code{⟩} @code{⟨}@var{guard₁}@code{⟩} => @code{⟨}@var{e₁}@code{⟩},
-    @code{⟨}@var{pattern₂}@code{⟩} @code{⟨}@var{guard₂}@code{⟩} => @code{⟨}@var{e₂}@code{⟩},
+    @code{⟨}@var{pattern₁}@code{⟩} @code{⟨}@var{guard₁}@code{⟩} =>
+        @code{⟨}@var{e₁}@code{⟩},
+    @code{⟨}@var{pattern₂}@code{⟩} @code{⟨}@var{guard₂}@code{⟩} =>
+        @code{⟨}@var{e₂}@code{⟩},
     @r{…}
     _ => @code{⟨}@var{eₙ}@code{⟩},
 @}
@@ -984,7 +981,7 @@ fn abs(x: i64) -> i64 @{
 @noindent
 which could be expressed in English as ``If @math{x} is less than zero return
 @math{{-x}}; otherwise return @math{x}.''  The @code{_} pattern plays the role
-of the book's @code{else}: it matches whatever the earlier clauses did not.
+of the source book's @code{else}: it matches whatever the earlier clauses did not.
 This causes the @code{match} to return as its value the value of the corresponding
 @code{⟨}@var{e}@code{⟩} whenever all previous clauses have been bypassed.
 
@@ -1095,45 +1092,47 @@ which also carries the substitution walk of @code{f(5)}.)
 
 @quotation
 @strong{@anchor{Exercise 1.1}Exercise 1.1:} Below is a sequence of expressions.
-What is the result produced by the program for each expression?
-Assume that the sequence is to be evaluated in the order in which it is
-presented.
+What does each line print? Predict the output before running the program.
+Result comments are omitted here because the results are the exercise.
+Evaluate the expressions in the order shown.
 
 @example rust
-10
-5 + 3 + 4
-9 - 1
-6 / 2
-2 * 4 + (4 - 6)
-let a = 3;
-let b = a + 1;
-a + b + a * b
-a == b
-if b > a && b < a * b @{
-    b
-@} else @{
-    a
+fn main() @{
+    println!("@{@}", 10);
+    println!("@{@}", 5 + 3 + 4);
+    println!("@{@}", 9 - 1);
+    println!("@{@}", 6 / 2);
+    println!("@{@}", 2 * 4 + (4 - 6));
+    let a = 3;
+    let b = a + 1;
+    println!("@{@}", a + b + a * b);
+    println!("@{@}", a == b);
+    println!("@{@}", if b > a && b < a * b @{
+        b
+    @} else @{
+        a
+    @});
+    println!("@{@}", match a @{
+        _ if a == 4 => 6,
+        _ if b == 4 => 6 + 7 + a,
+        _ => 25,
+    @});
+    println!("@{@}", 2 + (if b > a @{ b @} else @{ a @}));
+    println!("@{@}", (if a > b @{
+        a
+    @} else if a < b @{
+        b
+    @} else @{
+        -1
+    @}) * (a + 1));
 @}
-match a @{
-    _ if a == 4 => 6,
-    _ if b == 4 => 6 + 7 + a,
-    _ => 25,
-@}
-2 + if b > a @{ b @} else @{ a @}
-(if a > b @{
-    a
-@} else if a < b @{
-    b
-@} else @{
-    -1
-@}) * (a + 1)
 @end example
 @end quotation
 
 @quotation
-@emph{SICP exercise 1.2 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}
-@strong{@anchor{Exercise 1.2}Exercise 1.2:} The book's exercise asks you to
-translate a fraction into Lisp's prefix form.  In Rust, the operators are
+@emph{This edition replaces SICP exercise 1.2 with a host-language exercise that keeps its number and teaching objective.}
+@strong{@anchor{Exercise 1.2}Exercise 1.2:} The original exercise asks you to
+translate a fraction into prefix notation.  In Rust, the operators are
 already written between their operands, so the same skill---seeing an
 expression as a tree of operations, not a flat formula---is exercised by
 writing the fraction below as pure nested function calls, built from nothing
@@ -1439,7 +1438,11 @@ Eva Lu Ator claims this can indeed be done, and she defines a new version of
 @code{if}:
 
 @example rust
-fn new_if<T>(predicate: bool, then_clause: T, else_clause: T) -> T @{
+fn new_if<T>(
+    predicate: bool,
+    then_clause: T,
+    else_clause: T,
+) -> T @{
     if predicate @{
         then_clause
     @} else @{
@@ -1534,7 +1537,7 @@ problem into subproblems.
 @ifinfo
 @strong{Figure 1.2:} Procedural decomposition of the @code{sqrt} program.
 
-@example
+@smallexample
                  sqrt
                   |
               sqrt-iter
@@ -1542,7 +1545,7 @@ problem into subproblems.
         good-enough   improve
         /         \         \
    square         abs       average
-@end example
+@end smallexample
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap1/Fig1.2,,38mm,Figure 1.2: Procedural decomposition of the sqrt program.,.std.svg}

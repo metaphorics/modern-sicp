@@ -8,11 +8,12 @@ example, we saw in @ref{2.1.1} how to separate the task of designing a
 program that uses rational numbers from the task of implementing rational
 numbers in terms of the host language's primitive mechanisms for
 constructing compound data.  The key idea was to erect an abstraction barrier---in this case, the selectors and constructors for rational numbers
-(@code{make-rat}, @code{numer}, @code{denom})---that isolates the way rational
+(@code{Rational::new}, @code{numer}, @code{denom})---that isolates the way rational
 numbers are used from their underlying representation in terms of list
 structure.  A similar abstraction barrier isolates the details of the
-procedures that perform rational arithmetic (@code{add-rat}, @code{sub-rat},
-@code{mul-rat}, and @code{div-rat}) from the ``higher-level'' procedures that
+procedures that perform rational arithmetic (@code{Rational::add},
+@code{Rational::sub},
+@code{Rational::mul}, and @code{Rational::div}) from the ``higher-level'' procedures that
 use rational numbers.  The resulting program has the structure shown in
 @ref{Figure 2.1}.
 
@@ -59,8 +60,8 @@ We begin with the simple complex-number example. We will see how type tags and
 data-directed style enable us to design separate rectangular and polar
 representations for complex numbers while maintaining the notion of an abstract
 ``complex-number'' data object.  We will accomplish this by defining arithmetic
-procedures for complex numbers (@code{add-complex}, @code{sub-complex},
-@code{mul-complex}, and @code{div-complex}) in terms of generic selectors that
+procedures for complex numbers (@code{add_complex}, @code{sub_complex},
+@code{mul_complex}, and @code{div_complex}) in terms of generic selectors that
 access parts of a complex number independent of how the number is represented.
 The resulting complex-number system, as shown in @ref{Figure 2.19}, contains
 two different kinds of abstraction barriers.  The ``horizontal'' abstraction
@@ -80,7 +81,7 @@ and install alternative representations.
 Programs that use complex numbers
 -----------------------------------------------
 Complex arithmetic package
-add-complex sub-complex mul-complex div-complex
+add subtract multiply divide
 -----------------------------------------------
 Rectangular             | Polar
 representation          | representation
@@ -94,7 +95,7 @@ List structure and primitive machine arithmetic
 @image{../../text/original/figures/chap2/Fig2.19a,,147mm,Figure 2.19: Data-abstraction barriers in the complex-number system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.}
@@ -204,7 +205,7 @@ Angle(z_1 * z_2) = Angle(z_1) + Angle(z_2)
 @image{../../text/original/figures/chap2/Fig2.20,,147mm,Figure 2.20: Complex numbers as points in the plane.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.20.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.20.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.20:} Complex numbers as points in the plane.}
@@ -256,26 +257,40 @@ builds, since that table is what finally makes the four selectors below
 generic across whichever representation a number carries:
 
 @example rust
-pub fn add_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> @{
-    let re = as_real(&real_part(table, z1)?)? + as_real(&real_part(table, z2)?)?;
-    let im = as_real(&imag_part(table, z1)?)? + as_real(&imag_part(table, z2)?)?;
+pub fn add_complex(
+    table: &OpTable, z1: &Value, z2: &Value,
+) -> Result<Value, SicpError> @{
+    let re = as_real(&real_part(table, z1)?)?
+        + as_real(&real_part(table, z2)?)?;
+    let im = as_real(&imag_part(table, z1)?)?
+        + as_real(&imag_part(table, z2)?)?;
     make_from_real_imag(table, re, im)
 @}
 
-pub fn sub_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> @{
-    let re = as_real(&real_part(table, z1)?)? - as_real(&real_part(table, z2)?)?;
-    let im = as_real(&imag_part(table, z1)?)? - as_real(&imag_part(table, z2)?)?;
+pub fn sub_complex(
+    table: &OpTable, z1: &Value, z2: &Value,
+) -> Result<Value, SicpError> @{
+    let re = as_real(&real_part(table, z1)?)?
+        - as_real(&real_part(table, z2)?)?;
+    let im = as_real(&imag_part(table, z1)?)?
+        - as_real(&imag_part(table, z2)?)?;
     make_from_real_imag(table, re, im)
 @}
 
-pub fn mul_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> @{
-    let r = as_real(&magnitude(table, z1)?)? * as_real(&magnitude(table, z2)?)?;
+pub fn mul_complex(
+    table: &OpTable, z1: &Value, z2: &Value,
+) -> Result<Value, SicpError> @{
+    let r = as_real(&magnitude(table, z1)?)?
+        * as_real(&magnitude(table, z2)?)?;
     let a = as_real(&angle(table, z1)?)? + as_real(&angle(table, z2)?)?;
     make_from_mag_ang(table, r, a)
 @}
 
-pub fn div_complex(table: &OpTable, z1: &Value, z2: &Value) -> Result<Value, SchemeError> @{
-    let r = as_real(&magnitude(table, z1)?)? / as_real(&magnitude(table, z2)?)?;
+pub fn div_complex(
+    table: &OpTable, z1: &Value, z2: &Value,
+) -> Result<Value, SicpError> @{
+    let r = as_real(&magnitude(table, z1)?)?
+        / as_real(&magnitude(table, z2)?)?;
     let a = as_real(&angle(table, z1)?)? - as_real(&angle(table, z2)?)?;
     make_from_mag_ang(table, r, a)
 @}
@@ -327,21 +342,21 @@ given by the following selectors and constructors, working directly on a
 pair of reals:
 
 @example rust
-fn rect_real_part(z: &Value) -> Result<Value, SchemeError> @{
+fn rect_real_part(z: &Value) -> Result<Value, SicpError> @{
     car(z)
 @}
 
-fn rect_imag_part(z: &Value) -> Result<Value, SchemeError> @{
+fn rect_imag_part(z: &Value) -> Result<Value, SicpError> @{
     cdr(z)
 @}
 
-fn rect_magnitude(z: &Value) -> Result<Value, SchemeError> @{
+fn rect_magnitude(z: &Value) -> Result<Value, SicpError> @{
     let x = as_real(&car(z)?)?;
     let y = as_real(&cdr(z)?)?;
     Ok(Value::real((x * x + y * y).sqrt()))
 @}
 
-fn rect_angle(z: &Value) -> Result<Value, SchemeError> @{
+fn rect_angle(z: &Value) -> Result<Value, SicpError> @{
     let x = as_real(&car(z)?)?;
     let y = as_real(&cdr(z)?)?;
     Ok(Value::real(y.atan2(x)))
@@ -352,7 +367,10 @@ fn rect_make_from_real_imag(x: f64, y: f64) -> Value @{
 @}
 
 fn rect_make_from_mag_ang(r: f64, a: f64) -> Value @{
-    Value::Pair(cons_cell(Value::real(r * a.cos()), Value::real(r * a.sin())))
+    Value::Pair(cons_cell(
+        Value::real(r * a.cos()),
+        Value::real(r * a.sin()),
+    ))
 @}
 @end example
 
@@ -363,23 +381,23 @@ the trigonometric relations to obtain the real and imaginary parts.  Alyssa's
 representation is:
 
 @example rust
-fn polar_real_part(z: &Value) -> Result<Value, SchemeError> @{
+fn polar_real_part(z: &Value) -> Result<Value, SicpError> @{
     let r = as_real(&car(z)?)?;
     let a = as_real(&cdr(z)?)?;
     Ok(Value::real(r * a.cos()))
 @}
 
-fn polar_imag_part(z: &Value) -> Result<Value, SchemeError> @{
+fn polar_imag_part(z: &Value) -> Result<Value, SicpError> @{
     let r = as_real(&car(z)?)?;
     let a = as_real(&cdr(z)?)?;
     Ok(Value::real(r * a.sin()))
 @}
 
-fn polar_magnitude(z: &Value) -> Result<Value, SchemeError> @{
+fn polar_magnitude(z: &Value) -> Result<Value, SicpError> @{
     car(z)
 @}
 
-fn polar_angle(z: &Value) -> Result<Value, SchemeError> @{
+fn polar_angle(z: &Value) -> Result<Value, SicpError> @{
     cdr(z)
 @}
 
@@ -438,20 +456,20 @@ pub fn attach_tag(type_tag: &str, contents: Value) -> Value @{
     Value::tagged(type_tag, contents)
 @}
 
-pub fn type_tag(datum: &Value) -> Result<Symbol, SchemeError> @{
+pub fn type_tag(datum: &Value) -> Result<Symbol, SicpError> @{
     match datum @{
         Value::Tagged @{ tag, .. @} => Ok(Rc::clone(tag)),
-        other => Err(SchemeError::UserRaised @{
+        other => Err(SicpError::UserRaised @{
             message: "Bad tagged datum: TYPE-TAG".into(),
             irritants: vec![other.clone()],
         @}),
     @}
 @}
 
-pub fn contents(datum: &Value) -> Result<Value, SchemeError> @{
+pub fn contents(datum: &Value) -> Result<Value, SicpError> @{
     match datum @{
         Value::Tagged @{ data, .. @} => Ok((**data).clone()),
-        other => Err(SchemeError::UserRaised @{
+        other => Err(SicpError::UserRaised @{
             message: "Bad tagged datum: CONTENTS".into(),
             irritants: vec![other.clone()],
         @}),
@@ -477,7 +495,8 @@ pub fn is_polar(z: &Value) -> bool @{
 With type tags, Ben and Alyssa can now modify their code so that their two
 different representations can coexist in the same system.  Whenever Ben
 constructs a complex number, he tags it as rectangular.  Whenever Alyssa
-constructs a complex number, she tags it as polar.  In Scheme, Ben and Alyssa
+constructs a complex number, she tags it as polar.  In a single flat
+namespace Ben and Alyssa
 would also have had to rename their procedures to avoid a name clash; here
 the internal procedures of @ref{2.4.1} stay private free functions
 (@code{rect_real_part} and friends, @code{polar_real_part} and friends),
@@ -517,52 +536,52 @@ extract the bare, untagged datum and send this to the rectangular or polar
 procedure as required:
 
 @example rust
-pub fn real_part_dispatch(z: &Value) -> Result<Value, SchemeError> @{
+pub fn real_part_dispatch(z: &Value) -> Result<Value, SicpError> @{
     if is_rectangular(z) @{
         rect_real_part(&contents(z)?)
     @} else if is_polar(z) @{
         polar_real_part(&contents(z)?)
     @} else @{
-        Err(SchemeError::UserRaised @{
+        Err(SicpError::UserRaised @{
             message: "Unknown type: REAL-PART".into(),
             irritants: vec![z.clone()],
         @})
     @}
 @}
 
-pub fn imag_part_dispatch(z: &Value) -> Result<Value, SchemeError> @{
+pub fn imag_part_dispatch(z: &Value) -> Result<Value, SicpError> @{
     if is_rectangular(z) @{
         rect_imag_part(&contents(z)?)
     @} else if is_polar(z) @{
         polar_imag_part(&contents(z)?)
     @} else @{
-        Err(SchemeError::UserRaised @{
+        Err(SicpError::UserRaised @{
             message: "Unknown type: IMAG-PART".into(),
             irritants: vec![z.clone()],
         @})
     @}
 @}
 
-pub fn magnitude_dispatch(z: &Value) -> Result<Value, SchemeError> @{
+pub fn magnitude_dispatch(z: &Value) -> Result<Value, SicpError> @{
     if is_rectangular(z) @{
         rect_magnitude(&contents(z)?)
     @} else if is_polar(z) @{
         polar_magnitude(&contents(z)?)
     @} else @{
-        Err(SchemeError::UserRaised @{
+        Err(SicpError::UserRaised @{
             message: "Unknown type: MAGNITUDE".into(),
             irritants: vec![z.clone()],
         @})
     @}
 @}
 
-pub fn angle_dispatch(z: &Value) -> Result<Value, SchemeError> @{
+pub fn angle_dispatch(z: &Value) -> Result<Value, SicpError> @{
     if is_rectangular(z) @{
         rect_angle(&contents(z)?)
     @} else if is_polar(z) @{
         polar_angle(&contents(z)?)
     @} else @{
-        Err(SchemeError::UserRaised @{
+        Err(SicpError::UserRaised @{
             message: "Unknown type: ANGLE".into(),
             irritants: vec![z.clone()],
         @})
@@ -585,7 +604,9 @@ construct polar numbers whenever we have magnitudes and angles:
 @example rust
 let z = rect_make_from_real_imag_tagged(3.0, 4.0);
 // => (rectangular (3 . 4))
-let w = polar_make_from_mag_ang_tagged(1.0, std::f64::consts::FRAC_PI_2);
+let w = polar_make_from_mag_ang_tagged(
+    1.0, std::f64::consts::FRAC_PI_2,
+);
 // => (polar (1 . 1.5707963267948966))
 @end example
 
@@ -608,9 +629,9 @@ interface.
 @example
 -------------------------------------------------
 Complex arithmetic package
-add-complex sub-complex mul-complex div-complex
+add  subtract  multiply  divide
 -------------------------------------------------
-| real-part imag-part | magnitude angle
+| real part imaginary part | magnitude angle
 | make-from-real-imag | make-from-mag-ang
 -------------------------------------------------
 Rectangular             | Polar
@@ -623,7 +644,7 @@ representation          | representation
 @image{../../text/original/figures/chap2/Fig2.21a,,147mm,Figure 2.21: Structure of the generic complex-arithmetic system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.}
@@ -660,7 +681,8 @@ and apply the appropriate selector for that representation.
 
 Another weakness of the technique is that even though the individual
 representations can be designed separately, we must guarantee that no two
-procedures in the entire system have the same name.  In Scheme this is why Ben
+procedures in the entire system have the same name.  This is why, in the
+original telling, Ben
 and Alyssa had to change the names of their original procedures from
 @ref{2.4.1}; in this edition the module system already keeps their private
 functions apart, but the underlying issue is the same one section 2.4.2's
@@ -704,10 +726,10 @@ same information could have been organized in a table, as shown in @ref{Figure 2
            |               Types
 Operations | Polar           | Rectangular
 ===========+=================+======================
-real-part  | real-part-polar | real-part-rectangular
-imag-part  | imag-part-polar | imag-part-rectangular
-magnitude  | magnitude-polar | magnitude-rectangular
-angle      | angle-polar     | angle-rectangular
+real part  | real part polar | real part rectangular
+imag part  | imag part polar | imag part rectangular
+magnitude  | magnitude polar | magnitude rectangular
+angle      | angle polar     | angle rectangular
 @end example
 @end quotation
 @end ifinfo
@@ -715,7 +737,7 @@ angle      | angle-polar     | angle-rectangular
 @image{../../text/original/figures/chap2/Fig2.22,,147mm,Figure 2.22: Table of operations for the complex-number system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.22.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.22.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.22:} Table of operations for the complex-number system.}
@@ -764,7 +786,9 @@ entries to the table that tell the system how to operate on rectangular
 numbers.  This is accomplished by calling the following procedure:
 
 @example rust
-fn selector_handler(f: fn(&Value) -> Result<Value, SchemeError>) -> Handler @{
+fn selector_handler(
+    f: fn(&Value) -> Result<Value, SicpError>,
+) -> Handler @{
     Rc::new(move |args| f(sole(args)?))
 @}
 
@@ -777,9 +801,18 @@ fn constructor_handler(f: fn(f64, f64) -> Value) -> Handler @{
 
 pub fn install_rectangular_package(table: &OpTable) @{
     let tag = tag_list_key(&["rectangular"]);
-    table.put(Key::sym("real-part"), tag.clone(), selector_handler(rect_real_part));
-    table.put(Key::sym("imag-part"), tag.clone(), selector_handler(rect_imag_part));
-    table.put(Key::sym("magnitude"), tag.clone(), selector_handler(rect_magnitude));
+    table.put(
+        Key::sym("real-part"), tag.clone(),
+        selector_handler(rect_real_part),
+    );
+    table.put(
+        Key::sym("imag-part"), tag.clone(),
+        selector_handler(rect_imag_part),
+    );
+    table.put(
+        Key::sym("magnitude"), tag.clone(),
+        selector_handler(rect_magnitude),
+    );
     table.put(Key::sym("angle"), tag, selector_handler(rect_angle));
     table.put(
         Key::sym("make-from-real-imag"),
@@ -801,7 +834,7 @@ necessary to interface them to the rest of the system. Moreover,
 since @code{rect_real_part} and friends are private free functions, Ben
 needn't worry about name conflicts with other procedures outside this module.
 To interface these to the rest of the system, Ben
-installs his @code{real-part} procedure under the operation name
+installs his @code{rect_real_part} procedure under the operation name
 @code{real-part} and the tag list @code{(rectangular)}, and similarly for the other
 selectors.@footnote{We install under the one-element tag list
 @code{(rectangular)} rather than the bare symbol @code{rectangular} to allow
@@ -817,9 +850,18 @@ Alyssa's polar package is analogous:
 @example rust
 pub fn install_polar_package(table: &OpTable) @{
     let tag = tag_list_key(&["polar"]);
-    table.put(Key::sym("real-part"), tag.clone(), selector_handler(polar_real_part));
-    table.put(Key::sym("imag-part"), tag.clone(), selector_handler(polar_imag_part));
-    table.put(Key::sym("magnitude"), tag.clone(), selector_handler(polar_magnitude));
+    table.put(
+        Key::sym("real-part"), tag.clone(),
+        selector_handler(polar_real_part),
+    );
+    table.put(
+        Key::sym("imag-part"), tag.clone(),
+        selector_handler(polar_imag_part),
+    );
+    table.put(
+        Key::sym("magnitude"), tag.clone(),
+        selector_handler(polar_magnitude),
+    );
     table.put(Key::sym("angle"), tag, selector_handler(polar_angle));
     table.put(
         Key::sym("make-from-real-imag"),
@@ -852,7 +894,9 @@ length, and the book's separate @code{apply} primitive becomes the ordinary
 call @code{handler(&bare)} against the contents slice.}
 
 @example rust
-pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value, SchemeError> @{
+pub fn apply_generic(
+    table: &OpTable, op: &str, args: &[Value],
+) -> Result<Value, SicpError> @{
     let mut tag_keys = Vec::with_capacity(args.len());
     let mut tag_values = Vec::with_capacity(args.len());
     for arg in args @{
@@ -860,20 +904,25 @@ pub fn apply_generic(table: &OpTable, op: &str, args: &[Value]) -> Result<Value,
         tag_values.push(Value::Sym(tag.clone()));
         tag_keys.push(Key::Sym(tag));
     @}
-    let Some(handler) = table.get(&Key::sym(op), &key_tag_list(&tag_keys)) else @{
-        return Err(SchemeError::UserRaised @{
+    let Some(handler) = table.get(
+        &Key::sym(op), &key_tag_list(&tag_keys),
+    ) else @{
+        return Err(SicpError::UserRaised @{
             message: "No method for these types: APPLY-GENERIC".into(),
-            irritants: vec![Value::list(vec![Value::sym(op), Value::list(tag_values)])],
+            irritants: vec![Value::list(vec![
+                Value::sym(op), Value::list(tag_values),
+            ])],
         @});
     @};
-    let bare: Vec<Value> = args.iter().map(contents).collect::<Result<_, _>>()?;
+    let bare: Vec<Value> = args.iter()
+        .map(contents).collect::<Result<_, _>>()?;
     handler(&bare)
 @}
 @end example
 
 @noindent
 A miss here does not fall through to a general-purpose error: it raises the
-edition's typed @code{SchemeError::UserRaised}, naming the operation and the
+edition's typed @code{SicpError::UserRaised}, naming the operation and the
 tag list that had no handler, which is the concrete answer to what an
 extensible-at-runtime table costs that a closed trait cannot: the compiler
 cannot catch a missing combination the way it catches a missing @code{match}
@@ -882,16 +931,22 @@ arm, so the table's own miss path has to.
 Using @code{apply_generic}, we can define our generic selectors as follows:
 
 @example rust
-pub fn real_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> @{
+pub fn real_part(
+    table: &OpTable, z: &Value,
+) -> Result<Value, SicpError> @{
     apply_generic(table, "real-part", std::slice::from_ref(z))
 @}
-pub fn imag_part(table: &OpTable, z: &Value) -> Result<Value, SchemeError> @{
+pub fn imag_part(
+    table: &OpTable, z: &Value,
+) -> Result<Value, SicpError> @{
     apply_generic(table, "imag-part", std::slice::from_ref(z))
 @}
-pub fn magnitude(table: &OpTable, z: &Value) -> Result<Value, SchemeError> @{
+pub fn magnitude(
+    table: &OpTable, z: &Value,
+) -> Result<Value, SicpError> @{
     apply_generic(table, "magnitude", std::slice::from_ref(z))
 @}
-pub fn angle(table: &OpTable, z: &Value) -> Result<Value, SchemeError> @{
+pub fn angle(table: &OpTable, z: &Value) -> Result<Value, SicpError> @{
     apply_generic(table, "angle", std::slice::from_ref(z))
 @}
 @end example
@@ -907,21 +962,32 @@ rectangular numbers whenever we have real and imaginary parts, and polar
 numbers whenever we have magnitudes and angles:
 
 @example rust
-pub fn make_from_real_imag(table: &OpTable, x: f64, y: f64) -> Result<Value, SchemeError> @{
-    let Some(handler) = table.get(&Key::sym("make-from-real-imag"), &Key::sym("rectangular"))
+pub fn make_from_real_imag(
+    table: &OpTable, x: f64, y: f64,
+) -> Result<Value, SicpError> @{
+    let Some(handler) = table.get(
+        &Key::sym("make-from-real-imag"), &Key::sym("rectangular"),
+    )
     else @{
-        return Err(SchemeError::UserRaised @{
-            message: "make-from-real-imag is not installed for rectangular".into(),
+        return Err(SicpError::UserRaised @{
+            message:
+                "make-from-real-imag is not installed for rectangular"
+                    .into(),
             irritants: vec![],
         @});
     @};
     handler(&[Value::real(x), Value::real(y)])
 @}
 
-pub fn make_from_mag_ang(table: &OpTable, r: f64, a: f64) -> Result<Value, SchemeError> @{
-    let Some(handler) = table.get(&Key::sym("make-from-mag-ang"), &Key::sym("polar")) else @{
-        return Err(SchemeError::UserRaised @{
-            message: "make-from-mag-ang is not installed for polar".into(),
+pub fn make_from_mag_ang(
+    table: &OpTable, r: f64, a: f64,
+) -> Result<Value, SicpError> @{
+    let Some(handler) = table.get(
+        &Key::sym("make-from-mag-ang"), &Key::sym("polar"),
+    ) else @{
+        return Err(SicpError::UserRaised @{
+            message:
+                "make-from-mag-ang is not installed for polar".into(),
             irritants: vec![],
         @});
     @};
@@ -939,7 +1005,11 @@ runtime's @code{OpTable} maps @code{(operation, tag-list)} keys to
 like the book's own table.
 
 @example rust
-table.put(Key::sym("real-part"), tag_list_key(&["rectangular"]), handler);
+table.put(
+    Key::sym("real-part"),
+    tag_list_key(&["rectangular"]),
+    handler,
+);
 // => ()
 table.get(&Key::sym("real-part"), &tag_list_key(&["polar"]));
 // => None
@@ -958,14 +1028,24 @@ trade.
 program that performs symbolic differentiation over the enum @code{Expr}:
 
 @example rust
-pub fn deriv(exp: &Expr, var: &Symbol) -> Result<Expr, SchemeError> @{
+pub fn deriv(
+    exp: &Expr,
+    var: &Symbol,
+) -> Result<Expr, SicpError> @{
     match exp @{
         Expr::Num(_) => Ok(Expr::Num(0)),
         Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
-        Expr::Sum(a1, a2) => make_sum(deriv(a1, var)?, deriv(a2, var)?),
+        Expr::Sum(a1, a2) =>
+            make_sum(deriv(a1, var)?, deriv(a2, var)?),
         Expr::Product(m1, m2) => @{
-            let left = make_product((**m1).clone(), deriv(m2, var)?)?;
-            let right = make_product(deriv(m1, var)?, (**m2).clone())?;
+            let left = make_product(
+                (**m1).clone(),
+                deriv(m2, var)?,
+            )?;
+            let right = make_product(
+                deriv(m1, var)?,
+                (**m2).clone(),
+            )?;
             make_sum(left, right)
         @}
     @}
@@ -979,7 +1059,9 @@ being performed is @code{deriv}.  We can transform this program into
 data-directed style by rewriting the basic derivative procedure as
 
 @example rust
-pub fn deriv(exp: &Expr, var: &Symbol, table: &DerivTable) -> Result<Expr, SchemeError> @{
+pub fn deriv(
+    exp: &Expr, var: &Symbol, table: &DerivTable,
+) -> Result<Expr, SicpError> @{
     match exp @{
         Expr::Num(_) => Ok(Expr::Num(0)),
         Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
@@ -987,7 +1069,9 @@ pub fn deriv(exp: &Expr, var: &Symbol, table: &DerivTable) -> Result<Expr, Schem
             let Some(op) = operator(exp) else @{
                 return Err(unknown_expression(exp));
             @};
-            let Some(handler) = deriv_get(table, "deriv", op) else @{
+            let Some(handler) =
+                deriv_get(table, "deriv", op)
+            else @{
                 return Err(unknown_expression(exp));
             @};
             handler(table, &operands(exp), var)
@@ -1031,7 +1115,9 @@ operator that binds it together.  Suppose, however, we indexed the handlers
 in the opposite way, so that the dispatch line in @code{deriv} looked like
 
 @example rust
-let Some(handler) = deriv_get(table, op, "deriv") else @{ ... @};
+let Some(handler) =
+    deriv_get(table, op, "deriv")
+else @{ ... @};
 @end example
 
 @noindent
@@ -1122,15 +1208,17 @@ operation-name string it receives.  In such a discipline,
 @code{make_from_real_imag} could be written as
 
 @example rust
-pub type MessageObject = Rc<dyn Fn(&str) -> Result<Value, SchemeError>>;
+pub type MessageObject = Rc<dyn Fn(&str) -> Result<Value, SicpError>>;
 
-pub fn make_from_real_imag_message_passing(x: f64, y: f64) -> MessageObject @{
+pub fn make_from_real_imag_message_passing(
+    x: f64, y: f64,
+) -> MessageObject @{
     Rc::new(move |op| match op @{
         "real-part" => Ok(Value::real(x)),
         "imag-part" => Ok(Value::real(y)),
         "magnitude" => Ok(Value::real((x * x + y * y).sqrt())),
         "angle" => Ok(Value::real(y.atan2(x))),
-        other => Err(SchemeError::UserRaised @{
+        other => Err(SicpError::UserRaised @{
             message: "Unknown op: MAKE-FROM-REAL-IMAG".into(),
             irritants: vec![Value::sym(other)],
         @}),
@@ -1145,7 +1233,9 @@ object and lets the object do the work:@footnote{One limitation of this
 organization is it permits only generic procedures of one argument.}
 
 @example rust
-pub fn apply_generic_message_passing(op: &str, arg: &MessageObject) -> Result<Value, SchemeError> @{
+pub fn apply_generic_message_passing(
+    op: &str, arg: &MessageObject,
+) -> Result<Value, SicpError> @{
     arg(op)
 @}
 @end example

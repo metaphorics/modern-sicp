@@ -45,7 +45,7 @@ fn main() -> Result<(), ArithError> @{
 @end example
 
 This is the shape of every fallible function from chapter 1 on: the book's
-one @code{SchemeError} enum plays the role @code{ArithError} plays here, and
+one @code{SicpError} enum plays the role @code{ArithError} plays here, and
 @code{?} is how every interpreter and machine in this book propagates a
 failure without hand-written checks cluttering the procedure that triggers
 it. The runnable listing above is
@@ -69,7 +69,10 @@ use proptest::prelude::*;
 
 proptest! @{
     #[test]
-    fn safe_div_agrees_with_ordinary_division(a in 1i128..1000, b in 1i128..1000) @{
+    fn safe_div_agrees_with_ordinary_division(
+        a in 1i128..1000,
+        b in 1i128..1000,
+    ) @{
         prop_assert_eq!(safe_div(a, b), Ok(a / b));
     @}
 @}
@@ -93,11 +96,11 @@ example proves too little) or too verbose (the expected value is pages long)
 to write by hand; this section is only the tour.
 
 Every exercise in this book ships three files: a scaffold under
-@code{exercises/} whose test is deliberately failing (more on this in
-@ref{0.9}) until solved, a reference solution with a passing test under
-@code{solutions/}, and that solution's reasoning in an adjacent Markdown
-file. @code{cargo nextest run --workspace} runs every solved test in the
-edition in one pass.
+@code{exercises/} whose test is marked @code{#[ignore = "pending solution"]}
+while unsolved (more on this in @ref{0.9}), a reference solution with a
+passing test under @code{solutions/}, and that solution's reasoning in an
+adjacent Markdown file. @code{cargo nextest run --workspace} runs the
+solved tests without running pending scaffolds.
 
 @subheading Exercise
 

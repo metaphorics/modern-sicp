@@ -1,46 +1,51 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.43: internal definitions are
-//! scanned out before procedure-body compilation.
+//! The reference solution of exercise 5.43: bindings initialize
+//! before use.
+//!
+//! Internal definitions become ordered local bindings: each `let`
+//! initializes its cell before the next one reads it, so `a = 1` and
+//! `b = 2` combine to `3`. Reading a name before its binding exists
+//! never reaches evaluation — admission rejects the program the way
+//! the scan rejects an unassigned variable, before any effect runs.
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_5::{Config, compile_and_go, compile_block, default_config, new_state};
+use sicp_runtime::host::{CheckedProgram, DiagKind};
+
+fn admitted(source: &str) -> CheckedProgram {
+    match sicp_runtime::host::admit(source) {
+        Ok(program) => program,
+        Err(diag) => panic!("admitted: {}", diag.message),
+    }
+}
 
 mod ex_5_43 {
-    //! Exercise 5.43: internal definitions become unassigned lambda
-    //! bindings followed by assignments.
+    //! Exercise 5.43: ordered bindings provide their values; uses
+    //! before any binding are rejected.
 
     use super::*;
 
-    const PROGRAM: &str = "(define (sum) (define a 1) (define b 2) (+ a b))\n(sum)";
+    const ORDERED: &str = "fn sum() -> i64 {\n    let a = 1;\n    let b = 2;\n    a + b\n}\n\nfn main() {\n    println!(\"{}\", sum());\n}\n";
 
-    pub fn ex_5_43() -> Result<Vec<String>, Fault> {
-        let (_, plain_text) = compile_block(&default_config(), &new_state(), PROGRAM)?;
-        let scanned_cfg = Config {
-            scan_out: true,
-            ..ch05::sec_5_5::default_config()
-        };
-        let (_, scanned_text) = compile_block(&scanned_cfg, &new_state(), PROGRAM)?;
-        let mut scanned = compile_and_go(&scanned_cfg, &new_state(), PROGRAM, "")?;
-        scanned.run()?;
-        let transcript = scanned.transcript();
-        assert!(transcript.contains(&"3".to_owned()), "{transcript:?}");
-        assert!(plain_text.contains("define-variable!"));
-        assert!(scanned_text.contains("*unassigned*"));
-        assert_eq!(scanned_text.matches("(op define-variable!)").count(), 1);
-        Ok(vec![
-            "plain body: internal define compiles through define-variable!".to_owned(),
-            "scanned body: *unassigned* bindings plus set!, no internal define operation"
-                .to_owned(),
-            format!("scanned session: {}", transcript.join(" ")),
-        ])
+    const TOO_EARLY: &str = "fn main() {\n    println!(\"{}\", x);\n    let x = 1;\n}\n";
+
+    /// The ordered bindings combine to `3` on both engines.
+    #[test]
+    fn ex_5_43_ordered_bindings_provide_values() {
+        let program = admitted(ORDERED);
+        let interpreted = ch05::sec_5_4::Eceval::run(&program);
+        let compiled = ch05::sec_5_5::compiled_run(&program);
+        assert!(interpreted.trap.is_none(), "{interpreted:?}");
+        assert_eq!(interpreted.stdout, "3\n");
+        assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
     }
 
+    /// The use before any binding is rejected before effects run.
     #[test]
-    fn ex_5_43_check() -> Result<(), Fault> {
-        let lines = ex_5_43()?;
-        assert!(lines[2].contains(";;; EC-Eval value: 3"));
-        Ok(())
+    fn ex_5_43_early_use_rejected() {
+        let Err(diag) = sicp_runtime::host::admit(TOO_EARLY) else {
+            panic!("the early use admitted");
+        };
+        assert_eq!(diag.kind, DiagKind::Type, "{diag:?}");
     }
 }

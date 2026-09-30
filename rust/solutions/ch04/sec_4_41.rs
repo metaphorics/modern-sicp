@@ -1,75 +1,54 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
 //! The reference solution of exercise 4.41: an ordinary Rust program
-//! solves the multiple-dwelling puzzle. No `amb` and no search engine:
-//! the host enumerates the assignments itself, rejects the ones a
-//! restriction rules out, and keeps the survivor. The answer agrees
-//! with the nondeterministic procedure of section 4.3.2.
+//! solves the multiple-dwelling puzzle.
 
-mod ex_4_41 {
-    /// One assignment: the floor each person lives on, people in the
-    /// book's order.
-    type Assignment = [u8; 5];
+/// Shared typed support for this exercise.
+pub mod support;
 
-    const NAMES: [&str; 5] = ["baker", "cooper", "fletcher", "miller", "smith"];
+const SOLVER: &str = "
+fn adjacent(left: i64, right: i64) -> bool {
+    let difference = left - right;
+    difference == 1 || difference == -1
+}
 
-    /// The restrictions of the puzzle, over one assignment.
-    fn holds(a: Assignment) -> bool {
-        let [baker, cooper, fletcher, miller, smith] = a;
-        let distinct = a.iter().collect::<std::collections::HashSet<_>>().len() == 5;
-        distinct
-            && baker != 5
-            && cooper != 1
-            && fletcher != 5
-            && fletcher != 1
-            && miller > cooper
-            && i16::from(smith) - i16::from(fletcher) != 1
-            && i16::from(smith) - i16::from(fletcher) != -1
-            && i16::from(fletcher) - i16::from(cooper) != 1
-            && i16::from(fletcher) - i16::from(cooper) != -1
-    }
-
-    /// Every solution: the host walks all 5^5 assignments.
-    #[must_use]
-    pub fn solutions() -> Vec<Assignment> {
-        let mut out = Vec::new();
-        for baker in 1..=5u8 {
-            for cooper in 1..=5u8 {
-                for fletcher in 1..=5u8 {
-                    for miller in 1..=5u8 {
-                        for smith in 1..=5u8 {
-                            let a = [baker, cooper, fletcher, miller, smith];
-                            if holds(a) {
-                                out.push(a);
-                            }
+fn main() {
+    let mut solutions: Vec<String> = Vec::new();
+    for baker in 1..6 {
+        for cooper in 1..6 {
+            for fletcher in 1..6 {
+                for miller in 1..6 {
+                    for smith in 1..6 {
+                        if baker == cooper || baker == fletcher || baker == miller || baker == smith {
+                            continue;
                         }
+                        if cooper == fletcher || cooper == miller || cooper == smith {
+                            continue;
+                        }
+                        if fletcher == miller || fletcher == smith || miller == smith {
+                            continue;
+                        }
+                        if baker == 5 || cooper == 1 || fletcher == 1 || fletcher == 5 {
+                            continue;
+                        }
+                        if miller <= cooper || adjacent(smith, fletcher) || adjacent(fletcher, cooper) {
+                            continue;
+                        }
+                        solutions.push(format!(\"{} {} {} {} {}\", baker, cooper, fletcher, miller, smith));
                     }
                 }
             }
         }
-        out
     }
-
-    /// The printed form the nondeterministic section answers with.
-    #[must_use]
-    pub fn printed(a: Assignment) -> String {
-        let pairs: Vec<String> = a
-            .iter()
-            .zip(NAMES)
-            .map(|(floor, name)| format!("({name} {floor})"))
-            .collect();
-        format!("({})", pairs.join(" "))
+    for solution in &solutions {
+        println!(\"{}\", solution);
     }
+    println!(\"{}\", solutions.len());
 }
+";
 
 #[test]
 fn ex_4_41() {
-    let solutions = ex_4_41::solutions();
-    // Exactly one assignment satisfies the puzzle, the book's answer.
-    assert_eq!(solutions.len(), 1);
-    assert_eq!(
-        ex_4_41::printed(solutions[0]),
-        "((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))"
-    );
+    let outcome = support::direct(SOLVER).expect("ordinary program runs");
+    assert_eq!(outcome.stdout, "3 2 4 5 1\n1\n");
 }

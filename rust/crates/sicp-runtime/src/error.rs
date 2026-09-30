@@ -11,7 +11,7 @@ use crate::value::Value;
 /// The edition's typed error: every `error` in the book raises one of these
 /// variants.
 #[derive(Clone, Debug, PartialEq, thiserror::Error)]
-pub enum SchemeError {
+pub enum SicpError {
     /// A name lookup walked the whole environment chain without a hit.
     #[error("unbound variable: {0}")]
     UnboundVariable(String),
@@ -92,18 +92,18 @@ fn irritants_suffix(irritants: &[Value]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::SchemeError;
+    use super::SicpError;
     use crate::value::Value;
 
     #[test]
     fn unbound_names_the_variable() {
-        let e = SchemeError::UnboundVariable("x".to_owned());
+        let e = SicpError::UnboundVariable("x".to_owned());
         assert_eq!(e.to_string(), "unbound variable: x");
     }
 
     #[test]
     fn user_raised_prints_message_then_irritants() {
-        let e = SchemeError::UserRaised {
+        let e = SicpError::UserRaised {
             message: "ap".to_owned(),
             irritants: vec![Value::Int(1), Value::Int(2)],
         };
@@ -112,7 +112,7 @@ mod tests {
 
     #[test]
     fn user_raised_with_no_irritants_prints_bare_message() {
-        let e = SchemeError::UserRaised {
+        let e = SicpError::UserRaised {
             message: "boom".to_owned(),
             irritants: vec![],
         };
@@ -121,28 +121,28 @@ mod tests {
 
     #[test]
     fn control_flow_and_domain_errors_print_fixed_text() {
-        assert_eq!(SchemeError::Backtrack.to_string(), "no more alternatives");
-        assert_eq!(SchemeError::DivisionByZero.to_string(), "division by zero");
-        assert_eq!(SchemeError::Overflow.to_string(), "integer overflow");
+        assert_eq!(SicpError::Backtrack.to_string(), "no more alternatives");
+        assert_eq!(SicpError::DivisionByZero.to_string(), "division by zero");
+        assert_eq!(SicpError::Overflow.to_string(), "integer overflow");
         assert_eq!(
-            SchemeError::InsufficientFunds.to_string(),
+            SicpError::InsufficientFunds.to_string(),
             "insufficient funds"
         );
         assert_eq!(
-            SchemeError::UnknownMessage(3).to_string(),
+            SicpError::UnknownMessage(3).to_string(),
             "message not understood: 3"
         );
     }
 
     #[test]
     fn not_procedure_prints_the_offending_object() {
-        let e = SchemeError::NotProcedure(Value::Int(5));
+        let e = SicpError::NotProcedure(Value::Int(5));
         assert_eq!(e.to_string(), "not a procedure: 5");
     }
 
     #[test]
     fn wrong_arity_names_procedure_and_counts() {
-        let e = SchemeError::WrongArity {
+        let e = SicpError::WrongArity {
             procedure: "square".to_owned(),
             expected: "1".to_owned(),
             got: 2,
@@ -155,10 +155,10 @@ mod tests {
 
     #[test]
     fn errors_clone_and_compare_by_value() {
-        let e = SchemeError::UnknownMessage(7);
+        let e = SicpError::UnknownMessage(7);
         let f = e.clone();
         assert_eq!(e, f);
-        let g = SchemeError::NotProcedure(Value::Pair(crate::cons_cell(Value::Nil, Value::Nil)));
+        let g = SicpError::NotProcedure(Value::Pair(crate::cons_cell(Value::Nil, Value::Nil)));
         assert_ne!(e, g);
     }
 }

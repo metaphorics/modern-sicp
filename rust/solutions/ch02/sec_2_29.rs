@@ -32,12 +32,12 @@ mod ex_2_29 {
         Submobile(Box<Mobile>),
     }
 
-    /// The book's `(make-mobile left right)`.
+    /// Builds a mobile from its left and right branches.
     pub fn make_mobile(left: Branch, right: Branch) -> Mobile {
         Mobile { left, right }
     }
 
-    /// The book's `(make-branch length structure)`.
+    /// Builds a branch from its length and structure.
     pub fn make_branch(length: i128, structure: BranchStructure) -> Branch {
         Branch { length, structure }
     }

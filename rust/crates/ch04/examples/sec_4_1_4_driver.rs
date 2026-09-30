@@ -1,51 +1,94 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted from the Scheme programs in SICP section 4.1
 
-//! Section 4.1.4: running the evaluator as a program. The global
-//! environment holds the primitive procedures under their
-//! object-language names, and a driver loop reads forms, evaluates
-//! them, and prints the results behind the book's prompts.
+//! Section 4.1.4: running the evaluator as a program. The global scope
+//! holds the built-in operations under their source names, and a
+//! checked program runs to its ordered transcript: a definition
+//! prints nothing on its own, calls print their values in evaluation
+//! order, and a trap stops the run after the output already written.
 
-use ch04::sec_4_1::{driver_transcript, eval_program, run_program, setup_environment};
-use sicp_runtime::print_value;
+use ch04::sec_4_1::{run, run_program, run_source};
+use sicp_runtime::host::admit;
+
+const PRIMITIVES: &str = "\
+fn main() {
+    println!(\"{}\", 1 + 6);
+    println!(\"{}\", 1 + 2 * 3);
+}
+";
+
+const SESSION: &str = "\
+fn append(xs: Vec<i64>, ys: Vec<i64>) -> Vec<i64> {
+    let mut out = xs;
+    for y in ys {
+        out.push(y);
+    }
+    out
+}
 
 fn main() {
-    // The global environment answers the primitives by name.
-    let env = setup_environment();
-    let values = eval_program(&env, "(+ 1 6)\n(+ 1 (* 2 3))\ncar").expect("runs");
-    for value in &values {
-        println!("{}", print_value(value));
-    }
+    let joined = append(vec![1, 2, 3], vec![4, 5, 6]);
+    println!(\"{:?}\", joined);
+    println!(\"{:?}\", (10, (20, 30)));
+}
+";
+
+const WHOLE: &str = "\
+fn square(x: i64) -> i64 {
+    x * x
+}
+
+fn main() {
+    println!(\"{}\", square(6));
+    println!(\"{}\", \"done\");
+}
+";
+
+const STOPPED: &str = "\
+fn main() {
+    println!(\"{}\", 36);
+    let d = 0;
+    println!(\"{}\", 1 / d);
+    println!(\"{}\", 99);
+}
+";
+
+fn main() {
+    // The global scope answers the built-in operations by name.
+    let output = run_program(PRIMITIVES);
+    println!("{output}");
     // => 7
     // => 7
-    // => #[primitive-procedure car]
-    assert_eq!(
-        values.iter().map(print_value).collect::<Vec<_>>(),
-        vec!["7", "7", "#[primitive-procedure car]"]
-    );
+    assert_eq!(output, "7\n7\n");
 
-    // The driver loop's sample session: the book's append definition
-    // and one call, prompts included.
-    let transcript = driver_transcript(&[
-        "(define (append x y) (if (null? x) y (cons (car x) (append (cdr x) y))))",
-        "(append '(a b c) '(d e f))",
-        "(cons 'x '(y z))",
-    ]);
-    println!("{transcript}");
-    // => ;;; M-Eval input: (define (append x y) ...)
-    // => ;;; M-Eval value: ok
-    // => ;;; M-Eval input: (append '(a b c) '(d e f))
-    // => ;;; M-Eval value: (a b c d e f)
-    // => ;;; M-Eval input: (cons 'x '(y z))
-    // => ;;; M-Eval value: (x y z)
-    assert!(transcript.contains(";;; M-Eval value: (a b c d e f)"));
-    assert!(transcript.ends_with(";;; M-Eval value: (x y z)\n"));
+    // The driver session's shapes: the append definition joins two
+    // sequences, and a nested pair prints as the structure it is.
+    let output = run_program(SESSION);
+    println!("{output}");
+    // => [1, 2, 3, 4, 5, 6]
+    // => (10, (20, 30))
+    assert_eq!(output, "[1, 2, 3, 4, 5, 6]\n(10, (20, 30))\n");
 
-    // A whole program runs the same way with printer.md output: a
-    // definition prints nothing, an error prints one line and stops.
-    let output = run_program("(define (square x) (* x x))\n(square 6)\n(display 'done)\n");
+    // A whole program runs the same way with the printer's output: a
+    // definition prints nothing, the calls print their values.
+    let output = run_program(WHOLE);
     println!("{output}");
     // => 36
     // => done
-    assert_eq!(output, "36\ndone");
+    assert_eq!(output, "36\ndone\n");
+
+    // The transcript is the same transcript every engine of the
+    // edition observes, byte for byte.
+    assert_eq!(
+        run_source(SESSION).expect("admitted").stdout,
+        run_program(SESSION)
+    );
+
+    // A trap prints one line of context on the error channel and
+    // stops; everything before it stands in the transcript.
+    let outcome = run(&admit(STOPPED).expect("checked"));
+    println!("{}", outcome.stdout);
+    // => 36
+    assert_eq!(outcome.stdout, "36\n");
+    assert!(outcome.trap.is_some());
 }

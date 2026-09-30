@@ -7,21 +7,21 @@
 
 mod ex_2_10 {
     use ch02::sec_2_1::{Interval, mul_interval};
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 2.10: `div-interval`, checking that the divisor does not
     /// span zero before dividing, and signaling
-    /// [`SchemeError::DivisionByZero`] when it does, instead of
+    /// [`SicpError::DivisionByZero`] when it does, instead of
     /// `ch02::sec_2_1::div_interval`'s undefined numeric result.
     ///
     /// # Errors
-    /// [`SchemeError::DivisionByZero`] when `y`'s bounds straddle or
-    /// touch zero. [`SchemeError::TypeMismatch`] when the reciprocal
+    /// [`SicpError::DivisionByZero`] when `y`'s bounds straddle or
+    /// touch zero. [`SicpError::TypeMismatch`] when the reciprocal
     /// interval fails to build, which cannot happen once the zero check
     /// above passes.
-    fn div_interval_checked(x: &Interval, y: &Interval) -> Result<Interval, SchemeError> {
+    fn div_interval_checked(x: &Interval, y: &Interval) -> Result<Interval, SicpError> {
         if y.lower_bound() <= 0.0 && y.upper_bound() >= 0.0 {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         }
         let reciprocal_y = Interval::new(1.0 / y.upper_bound(), 1.0 / y.lower_bound())?;
         Ok(mul_interval(x, &reciprocal_y))
@@ -34,10 +34,10 @@ mod ex_2_10 {
     /// `[-1, 1]` (which spans zero) is rejected.
     ///
     /// # Errors
-    /// [`SchemeError`] when the fixed bounds below fail to build an
+    /// [`SicpError`] when the fixed bounds below fail to build an
     /// interval, or when the valid division is rejected, neither of
     /// which happens for these inputs.
-    pub fn ex_2_10() -> Result<((f64, f64), bool), SchemeError> {
+    pub fn ex_2_10() -> Result<((f64, f64), bool), SicpError> {
         let x = Interval::new(6.0, 8.0)?;
         let y = Interval::new(2.0, 4.0)?;
         let quotient = div_interval_checked(&x, &y)?;

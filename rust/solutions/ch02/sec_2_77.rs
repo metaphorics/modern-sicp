@@ -10,10 +10,10 @@ mod ex_2_77 {
     use ch02::sec_2_5::{
         contents, install_generic_arithmetic, make_complex_from_real_imag, type_tag,
     };
-    use sicp_runtime::{Handler, Key, OpTable, SchemeError, Value};
+    use sicp_runtime::{Handler, Key, OpTable, SicpError, Value};
 
     /// The table key for an argument's tag list.
-    fn tag_list_key(args: &[Value]) -> Result<Key, SchemeError> {
+    fn tag_list_key(args: &[Value]) -> Result<Key, SicpError> {
         let mut key = Key::Nil;
         for a in args.iter().rev() {
             key = Key::pair(Key::Sym(type_tag(a)?), key);
@@ -28,15 +28,15 @@ mod ex_2_77 {
         count: &Cell<u32>,
         op: &str,
         args: &[Value],
-    ) -> Result<Value, SchemeError> {
+    ) -> Result<Value, SicpError> {
         count.set(count.get() + 1);
         let Some(proc) = table.get(&Key::sym(op), &tag_list_key(args)?) else {
-            return Err(SchemeError::UserRaised {
+            return Err(SicpError::UserRaised {
                 message: "No method for these types".into(),
                 irritants: vec![Value::sym(op)],
             });
         };
-        let bare: Result<Vec<Value>, SchemeError> = args.iter().map(contents).collect();
+        let bare: Result<Vec<Value>, SicpError> = args.iter().map(contents).collect();
         proc(&bare?)
     }
 
@@ -57,9 +57,9 @@ mod ex_2_77 {
         }
     }
 
-    /// Evaluates `(magnitude z)` for the Figure 2.24 object and returns
+    /// Evaluates the magnitude of the Figure 2.24 object and returns
     /// the answer with the number of `apply_generic` invocations.
-    pub fn ex_2_77() -> Result<(String, u32), SchemeError> {
+    pub fn ex_2_77() -> Result<(String, u32), SicpError> {
         let table = Rc::new(OpTable::new());
         install_generic_arithmetic(&table)?;
         let count = Rc::new(Cell::new(0));

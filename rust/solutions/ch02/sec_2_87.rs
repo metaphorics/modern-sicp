@@ -8,10 +8,10 @@ mod ex_2_87 {
         add, adjoin_term, install_generic_arithmetic, install_polynomial_is_zero,
         install_polynomial_package, is_zero, make_polynomial, make_term, the_empty_termlist,
     };
-    use sicp_runtime::{OpTable, SchemeError, Value};
+    use sicp_runtime::{OpTable, SicpError, Value};
     use std::rc::Rc;
 
-    fn table() -> Result<Rc<OpTable>, SchemeError> {
+    fn table() -> Result<Rc<OpTable>, SicpError> {
         let t = Rc::new(OpTable::new());
         install_generic_arithmetic(&t)?;
         install_polynomial_package(&t);
@@ -26,7 +26,7 @@ mod ex_2_87 {
     /// coefficient of a polynomial: `y - y` (an all-zero termlist) added
     /// as the top coefficient of an `x`-polynomial disappears from the
     /// printed result, exactly as a zero-number coefficient would.
-    pub fn ex_2_87() -> Result<(String, bool, bool), SchemeError> {
+    pub fn ex_2_87() -> Result<(String, bool, bool), SicpError> {
         let table = table()?;
 
         let zero_poly = make_polynomial(&table, "y", &the_empty_termlist())?;

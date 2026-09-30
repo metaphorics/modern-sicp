@@ -7,9 +7,8 @@ mod ex_2_55 {
     use sicp_runtime::Symbol;
     use std::fmt;
 
-    /// A tiny quoted-AST value: exactly enough structure to model what
-    /// `'x` and nested quotation build, without a reader. A symbol, or
-    /// a pair of two quoted values, or the empty list.
+    /// A tiny quoted-AST value: exactly the shape quotation denotes. A
+    /// symbol, a pair of two quoted values, or the empty list.
     enum Quoted {
         Sym(Symbol),
         Pair(Box<Quoted>, Box<Quoted>),
@@ -17,21 +16,13 @@ mod ex_2_55 {
     }
 
     impl fmt::Display for Quoted {
-        /// Prints a proper list `(a b c)`; this exercise never builds
-        /// a dotted pair, so the improper-list case is unreachable.
+        /// Renders as explicit Rust data: the variant constructors with
+        /// their fields, so the shape of the value is the printed text.
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                Quoted::Sym(s) => write!(f, "{s}"),
-                Quoted::Nil => write!(f, "()"),
-                Quoted::Pair(car, cdr) => {
-                    write!(f, "({car}")?;
-                    let mut rest: &Quoted = cdr;
-                    while let Quoted::Pair(next, more) = rest {
-                        write!(f, " {next}")?;
-                        rest = more;
-                    }
-                    write!(f, ")")
-                }
+                Quoted::Sym(s) => write!(f, "Sym({s:?})"),
+                Quoted::Nil => write!(f, "Nil"),
+                Quoted::Pair(car, cdr) => write!(f, "Pair({car}, {cdr})"),
             }
         }
     }
@@ -58,14 +49,18 @@ mod ex_2_55 {
 
     /// Exercise 2.55 (replacement): quote in edition AST terms
     ///
-    /// `'x` is reader sugar for `(quote x)`, so `''abracadabra` is
-    /// `(quote (quote abracadabra))`: the outer `quote` returns its
-    /// argument, `(quote abracadabra)`, unevaluated. That argument is
-    /// an ordinary two-element list whose first element is the symbol
-    /// `quote`, so its `car` is `quote`, not the symbol `abracadabra`
-    /// and not another quote form.
+    /// Quotation is explicit symbolic data here: a quoted form is the
+    /// two-element `Quoted` list whose first element is the symbol
+    /// `quote` and whose second is that form. The doubly quoted word
+    /// denotes `list2(sym("quote"), list2(sym("quote"),
+    /// sym("abracadabra")))`; the outer `Pair` is the outer quotation,
+    /// and the value that quotation yields is the inner two-element
+    /// list `list2(sym("quote"), sym("abracadabra"))`. The `car` of
+    /// that list is its outer `Pair`'s first element -- the symbol
+    /// `quote`, not the symbol `abracadabra` and not a further quote
+    /// form.
     ///
-    /// Returns the printed value of `''abracadabra`, and the printed
+    /// Returns the printed value of the yielded list, and the printed
     /// `car` of that value, in that order.
     pub fn ex_2_55() -> (String, String) {
         let inner = list2(sym("quote"), sym("abracadabra"));
@@ -79,6 +74,9 @@ mod ex_2_55 {
 fn ex_2_55() {
     assert_eq!(
         ex_2_55::ex_2_55(),
-        ("(quote abracadabra)".to_string(), "quote".to_string())
+        (
+            "Pair(Sym(\"quote\"), Pair(Sym(\"abracadabra\"), Nil))".to_string(),
+            "Sym(\"quote\")".to_string()
+        )
     );
 }

@@ -28,7 +28,7 @@ mod ex_1_43 {
 
     /// Exercise 1.43: repeated application
     ///
-    /// Returns `(repeated square 2)(5)`, which is 625.
+    /// Returns `repeated(square, 2)(5)`, which is 625.
     pub fn ex_1_43() -> f64 {
         repeated(|x| x * x, 2)(5.0)
     }

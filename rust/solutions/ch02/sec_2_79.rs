@@ -9,37 +9,37 @@ mod ex_2_79 {
         apply_generic, contents, install_generic_arithmetic, make_complex_from_real_imag,
         make_rational,
     };
-    use sicp_runtime::{Handler, Key, OpTable, SchemeError, Value};
+    use sicp_runtime::{Handler, Key, OpTable, SicpError, Value};
 
     #[expect(
         clippy::cast_precision_loss,
         reason = "the exact-to-inexact promotion this comparison is defined by; i128 magnitudes here stay far under f64's mantissa"
     )]
-    fn as_f64(v: &Value) -> Result<f64, SchemeError> {
+    fn as_f64(v: &Value) -> Result<f64, SicpError> {
         match v {
             Value::Int(n) => Ok(*n as f64),
             Value::Real(x) => Ok(*x),
-            other => Err(SchemeError::TypeMismatch(format!("{other}"))),
+            other => Err(SicpError::TypeMismatch(format!("{other}"))),
         }
     }
 
-    fn pair_car(v: &Value) -> Result<Value, SchemeError> {
+    fn pair_car(v: &Value) -> Result<Value, SicpError> {
         match v {
             Value::Pair(c) => Ok(c.car.borrow().clone()),
-            other => Err(SchemeError::TypeMismatch(format!("{other}"))),
+            other => Err(SicpError::TypeMismatch(format!("{other}"))),
         }
     }
 
-    fn pair_cdr(v: &Value) -> Result<Value, SchemeError> {
+    fn pair_cdr(v: &Value) -> Result<Value, SicpError> {
         match v {
             Value::Pair(c) => Ok(c.cdr.borrow().clone()),
-            other => Err(SchemeError::TypeMismatch(format!("{other}"))),
+            other => Err(SicpError::TypeMismatch(format!("{other}"))),
         }
     }
 
-    fn as_int(v: &Value) -> Result<i128, SchemeError> {
+    fn as_int(v: &Value) -> Result<i128, SicpError> {
         let Value::Int(n) = v else {
-            return Err(SchemeError::TypeMismatch("expected an integer".into()));
+            return Err(SicpError::TypeMismatch("expected an integer".into()));
         };
         Ok(*n)
     }
@@ -57,15 +57,21 @@ mod ex_2_79 {
     pub fn install_equ(table: &OpTable) {
         let ordinary: Handler =
             Rc::new(|args: &[Value]| Ok(Value::boolean(as_f64(&args[0])? == as_f64(&args[1])?)));
-        table.put(
-            Key::sym("is_equ"),
-            two_tags("scheme-number", "scheme-number"),
-            ordinary,
-        );
+        for pair in [
+            ("integer", "integer"),
+            ("integer", "real"),
+            ("real", "integer"),
+        ] {
+            table.put(
+                Key::sym("is_equ"),
+                two_tags(pair.0, pair.1),
+                Rc::clone(&ordinary),
+            );
+        }
         let rational: Handler = Rc::new(|args: &[Value]| {
             let numer = |v: &Value| as_int(&pair_car(v)?);
             let denom = |v: &Value| as_int(&pair_cdr(v)?);
-            let cross = |a: i128, b: i128| a.checked_mul(b).ok_or(SchemeError::Overflow);
+            let cross = |a: i128, b: i128| a.checked_mul(b).ok_or(SicpError::Overflow);
             Ok(Value::boolean(
                 cross(numer(&args[0])?, denom(&args[1])?)?
                     == cross(numer(&args[1])?, denom(&args[0])?)?,
@@ -92,7 +98,7 @@ mod ex_2_79 {
             Key::sym("is_equ"),
             two_tags("complex", "complex"),
             Rc::new(|args: &[Value]| {
-                let parts = |z: &Value| -> Result<(f64, f64), SchemeError> {
+                let parts = |z: &Value| -> Result<(f64, f64), SicpError> {
                     Ok((
                         as_f64(&real_part_dispatch(z)?)?,
                         as_f64(&imag_part_dispatch(z)?)?,
@@ -108,14 +114,14 @@ mod ex_2_79 {
     use std::rc::Rc;
 
     /// Equality questions across the three domains the exercise names.
-    pub fn ex_2_79() -> Result<Vec<bool>, SchemeError> {
+    pub fn ex_2_79() -> Result<Vec<bool>, SicpError> {
         let table = OpTable::new();
         install_generic_arithmetic(&table)?;
         install_equ(&table);
-        let equ = |a: &Value, b: &Value| -> Result<bool, SchemeError> {
+        let equ = |a: &Value, b: &Value| -> Result<bool, SicpError> {
             match apply_generic(&table, "is_equ", &[a.clone(), b.clone()])? {
                 Value::Bool(b) => Ok(b),
-                other => Err(SchemeError::TypeMismatch(format!("{other}"))),
+                other => Err(SicpError::TypeMismatch(format!("{other}"))),
             }
         };
         Ok(vec![

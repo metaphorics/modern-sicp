@@ -4,7 +4,8 @@
 //! The reference solution of exercise 5.1: the iterative factorial
 //! machine, its diagrams, and its run.
 
-use ch05::sec_5_1::{Machine, Value, factorial_iterative};
+use ch05::sec_5_1::factorial_iterative;
+use ch05::sec_5_2::{Fault, Machine, assemble};
 
 mod ex_5_01 {
     //! Exercise 5.1: design a register machine for the iterative
@@ -38,19 +39,24 @@ mod ex_5_01 {
     ///        |         | no
     ///        +---- [p<-c*p, then c<-c+1]
     /// ```
-    pub fn machine() -> Machine {
-        factorial_iterative()
+    fn run(n: i64) -> Result<(Machine, u64), Fault> {
+        let mut machine = Machine::new(assemble(&factorial_iterative())?);
+        machine.set_register("n", n)?;
+        machine.run()?;
+        let pushes = machine.stack_statistics().pushes;
+        Ok((machine, pushes))
     }
 
     #[test]
-    fn ex_5_01() {
+    fn ex_5_01() -> Result<(), Fault> {
         // the machine computes the iterative factorial...
-        let one = machine().run(&[("n", Value::Int(1))]).expect("run");
-        assert_eq!(one.value_of("product"), Value::Int(1));
-        let six = machine().run(&[("n", Value::Int(6))]).expect("run");
-        assert_eq!(six.value_of("product"), Value::Int(720));
+        let (one, one_pushes) = run(1)?;
+        assert_eq!(one.get_register("product")?, 1);
+        let (six, six_pushes) = run(6)?;
+        assert_eq!(six.get_register("product")?, 720);
         // ...iteratively: the stack is never touched.
-        assert_eq!(one.pushes, 0);
-        assert_eq!(six.pushes, 0);
+        assert_eq!(one_pushes, 0);
+        assert_eq!(six_pushes, 0);
+        Ok(())
     }
 }

@@ -14,8 +14,8 @@ mod ex_2_05 {
 
     /// Exercise 2.5: pairs of nonnegative integers as `2^a * 3^b`
     ///
-    /// Returns `car` and `cdr` of the pair `(3, 2)` recovered from its
-    /// `2^a * 3^b` encoding.
+    /// Returns the two exponents of the pair `(3, 2)` recovered from
+    /// its `2^a * 3^b` encoding, using the pair's first/second selectors.
     pub fn ex_2_05() -> Result<(u32, u32), Pending> {
         Err(Pending { exercise: "2.5" })
     }

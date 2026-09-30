@@ -39,11 +39,10 @@ fn counting_shared_sqrt_stream(x: f64, improves: &Rc<Cell<u32>>) -> Stream<f64> 
     })
 }
 
-/// Louis's `sqrt-stream` with the same meter, translated from
-/// `(cons-stream 1.0 (stream-map (lambda (g) (sqrt-improve g x))
-/// (sqrt-stream x)))`: the tail maps over a fresh recursive call, so
-/// each tail force builds a brand-new stream at the next level of the
-/// tower and no memo is ever shared between levels.
+/// Louis's `sqrt-stream` with the same meter: the tail maps the
+/// improvement over a fresh recursive call, so each tail force builds a
+/// brand-new stream at the next level of the tower and no memo is ever
+/// shared between levels.
 fn counting_louis_sqrt_stream(x: f64, improves: &Rc<Cell<u32>>) -> Stream<f64> {
     let meter = Rc::clone(improves);
     cons_stream(1.0, move || {

@@ -1,121 +1,53 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.12: the traversals of 4.11's
-//! representation abstracted, and the three operations redefined
-//! through them.
+//! The reference solution of exercise 4.12: environment operations
+//! abstracted over one frame-level scan.
 
-use ch04::eval_support::*;
+/// Shared typed support for this exercise.
+pub mod support;
 
-/// Builds one frame of `(name . value)` bindings, the 4.11 shape.
-fn alist_frame(names: &[Value], values: &[Value]) -> Value {
-    let mut frame = Value::Nil;
-    for (name, value) in names.iter().zip(values) {
-        let binding = Value::Pair(cons_cell(name.clone(), value.clone()));
-        frame = Value::Pair(cons_cell(binding, frame));
-    }
-    frame
+use support::BindingValue;
+
+type Binding = (String, BindingValue);
+
+fn frame_scan(frame: &[Binding], name: &str) -> Option<usize> {
+    frame.iter().rposition(|(bound, _)| bound == name)
 }
 
-mod ex_4_12 {
-    use super::*;
+fn lookup(env: &[Vec<Binding>], name: &str) -> Option<BindingValue> {
+    // Innermost first: a shadowing binding in an inner frame wins.
+    env.iter()
+        .rev()
+        .find_map(|frame| frame_scan(frame, name).map(|index| frame[index].1.clone()))
+}
 
-    /// The frame-level traversal: the binding of `var` in one frame.
-    pub fn frame_scan(frame: &Value, var: &Value) -> Option<Value> {
-        let mut cursor = frame.clone();
-        while let Value::Pair(cell) = cursor {
-            let binding = cell.car.borrow().clone();
-            if sicp_runtime::car(&binding).ok().as_ref() == Some(var) {
-                return Some(binding);
-            }
-            cursor = cell.cdr.borrow().clone();
-        }
-        None
-    }
+fn define(env: &mut [Vec<Binding>], name: &str, value: BindingValue) {
+    env[0].push((name.to_owned(), value));
+}
 
-    /// The environment-level traversal: the binding of `var` in the
-    /// first frame that has one, walking outwards.
-    pub fn env_scan(env: &Value, var: &Value) -> Option<Value> {
-        let mut cursor = env.clone();
-        while let Value::Pair(cell) = cursor {
-            let frame = cell.car.borrow().clone();
-            if let Some(binding) = frame_scan(&frame, var) {
-                return Some(binding);
-            }
-            cursor = cell.cdr.borrow().clone();
-        }
-        None
-    }
-
-    /// `lookup-variable-value` redefined through `env_scan`.
-    ///
-    /// # Errors
-    /// [`SchemeError::UnboundVariable`] when the scan finds nothing.
-    pub fn lookup(env: &Value, var: &Value) -> EvalResult {
-        let binding =
-            env_scan(env, var).ok_or_else(|| SchemeError::UnboundVariable(var.to_string()))?;
-        sicp_runtime::cdr(&binding)
-    }
-
-    /// `set-variable-value!` redefined through `env_scan`.
-    ///
-    /// # Errors
-    /// [`SchemeError::UnboundVariable`] when the scan finds nothing.
-    pub fn set(env: &Value, var: &Value, val: Value) -> Result<(), SchemeError> {
-        let binding =
-            env_scan(env, var).ok_or_else(|| SchemeError::UnboundVariable(var.to_string()))?;
-        let Value::Pair(binding_cell) = binding else {
-            return Err(SchemeError::TypeMismatch("not a binding".to_owned()));
-        };
-        sicp_runtime::set_cdr(&binding_cell, val);
-        Ok(())
-    }
-
-    /// `define-variable!` redefined through `frame_scan`: a hit mutates
-    /// the binding, a miss adds one to the first frame.
-    pub fn define(env: &Value, var: &Value, val: Value) {
-        let Value::Pair(cell) = env else {
-            return;
-        };
-        let frame = cell.car.borrow().clone();
-        if let Some(binding) = frame_scan(&frame, var) {
-            if let Value::Pair(binding_cell) = binding {
-                sicp_runtime::set_cdr(&binding_cell, val);
-            }
-            return;
-        }
-        let binding = Value::Pair(cons_cell(var.clone(), val));
-        sicp_runtime::set_car(cell, Value::Pair(cons_cell(binding, frame)));
-    }
-
-    /// Answers the same three lookups as exercise 4.11, now through the
-    /// two abstractions.
-    pub fn answers() -> Result<Vec<String>, SchemeError> {
-        let outer = Value::Pair(cons_cell(
-            alist_frame(&[Value::sym("x")], &[Value::int(1)]),
-            Value::Nil,
-        ));
-        let inner = Value::Pair(cons_cell(
-            alist_frame(&[Value::sym("x")], &[Value::int(2)]),
-            outer.clone(),
-        ));
-        let shadowed = lookup(&inner, &Value::sym("x"))?;
-        set(&inner, &Value::sym("x"), Value::int(10))?;
-        let rebound = lookup(&inner, &Value::sym("x"))?;
-        define(&inner, &Value::sym("y"), Value::int(7));
-        let added = lookup(&inner, &Value::sym("y"))?;
-        let missing = lookup(&inner, &Value::sym("z")).expect_err("z is unbound");
-        assert_eq!(added, Value::int(7));
-        Ok(vec![
-            print_value(&shadowed),
-            print_value(&rebound),
-            missing.to_string(),
-        ])
-    }
+fn assign(env: &mut [Vec<Binding>], name: &str, value: BindingValue) -> bool {
+    let Some(frame) = env
+        .iter_mut()
+        .rev()
+        .find(|frame| frame_scan(frame, name).is_some())
+    else {
+        return false;
+    };
+    let Some(index) = frame_scan(frame, name) else {
+        return false;
+    };
+    frame[index].1 = value;
+    true
 }
 
 #[test]
 fn ex_4_12() {
-    let values = ex_4_12::answers().expect("runs");
-    assert_eq!(values, vec!["2", "10", "unbound variable: z"]);
+    let mut env = vec![Vec::new(), Vec::new()];
+    define(&mut env, "x", BindingValue::Int(1));
+    env[1].push(("y".to_owned(), BindingValue::Int(2)));
+    env[1].push(("x".to_owned(), BindingValue::Int(10)));
+    assert_eq!(lookup(&env, "x"), Some(BindingValue::Int(10)));
+    assert!(assign(&mut env, "y", BindingValue::Int(20)));
+    assert_eq!(lookup(&env, "y"), Some(BindingValue::Int(20)));
+    assert_eq!(lookup(&env, "z"), None);
 }

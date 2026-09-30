@@ -1,86 +1,149 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.43: the yacht puzzle. The
-//! program assigns each daughter a father, keeps the two facts the
-//! story states (Melissa is Sir Barnacle's daughter; Mary Ann's father
-//! is Mr. Moore when we are told her surname), requires the five yacht
-//! names distinct with the four fixed namings, and holds the last
-//! sentence: Gabrielle's father owns the yacht named after Dr.
-//! Parker's daughter. Told that Mary Ann is a Moore, Lorna's father is
-//! Downing and the solution is unique; without the surname, Parker
-//! also works.
+//! The reference solution of exercise 4.43: the yacht puzzle as typed
+//! search over father, daughter, and yacht-name assignments.
 
-use ch04::eval_support::{AMB_SEED, Amb, collect_amb_answers, with_eval_stack};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_43 {
-    use super::*;
+use ch04::sec_4_3::{AnswerTerm, AnswerValue, Predicate, Search, SearchEngine};
+use sicp_runtime::host::query::Term;
 
-    /// The puzzle program; the `told` flag stands for the sentence the
-    /// exercise varies.
-    const PROGRAM: &str = r"
-(define (require p) (if (not p) (amb)))
-(define (distinct? items)
-  (cond ((null? items) #t)
-        ((null? (cdr items)) #t)
-        ((member (car items) (cdr items)) #f)
-        (else (distinct? (cdr items)))))
-(define (member x xs)
-  (cond ((null? xs) #f)
-        ((equal? x (car xs)) xs)
-        (else (member x (cdr xs)))))
-(define (lookup key alist)
-  (cond ((null? alist) #f)
-        ((eq? key (car (car alist))) (car (cdr (car alist))))
-        (else (lookup key (cdr alist)))))
-(define (yacht-solve told)
-  (let ((mary-ann (an-element-of '(moore downing hall barnacle parker)))
-        (gabrielle (an-element-of '(moore downing hall barnacle parker)))
-        (lorna (an-element-of '(moore downing hall barnacle parker)))
-        (rosalind (an-element-of '(moore downing hall barnacle parker)))
-        (melissa (an-element-of '(moore downing hall barnacle parker)))
-        (parker-yacht (an-element-of '(mary-ann gabrielle lorna rosalind melissa))))
-    (require (distinct? (list mary-ann gabrielle lorna rosalind melissa)))
-    (require (eq? melissa 'barnacle))
-    (if told (require (eq? mary-ann 'moore)) #t)
-    (require (not (member parker-yacht '(lorna melissa rosalind gabrielle))))
-    (require (not (eq? lorna 'moore)))
-    (require (not (eq? rosalind 'hall)))
-    (require (not (eq? gabrielle 'barnacle)))
-    (let ((parker-daughter
-           (cond ((eq? mary-ann 'parker) 'mary-ann)
-                 ((eq? gabrielle 'parker) 'gabrielle)
-                 ((eq? lorna 'parker) 'lorna)
-                 ((eq? rosalind 'parker) 'rosalind)
-                 (else 'melissa))))
-      (let ((yachts (list (list 'moore 'lorna) (list 'downing 'melissa)
-                          (list 'hall 'rosalind) (list 'barnacle 'gabrielle)
-                          (list 'parker parker-yacht))))
-        (require (eq? (lookup gabrielle yachts) parker-daughter))
-        (list 'lornas-father lorna)))))
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) (an-element-of (cdr items))))
-(yacht-solve #t)";
+fn variable(name: &str) -> Term {
+    Term::Variable(name.to_owned())
+}
 
-    /// Lorna's father for one value of the told flag: every solution.
-    #[must_use]
-    pub fn solutions(told: bool) -> Vec<String> {
-        let program = PROGRAM.replace("(yacht-solve #t)", &format!("(yacht-solve {told})"));
-        with_eval_stack(move || {
-            let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-            collect_amb_answers(&amb, &program)
-        })
+fn integer(value: i64) -> Term {
+    Term::Integer(value)
+}
+
+fn eq(left: &str, value: i64) -> Predicate {
+    Predicate::Eq(variable(left), integer(value))
+}
+
+fn guard(predicate: Predicate, body: Search) -> Search {
+    Search::Guard(predicate, Box::new(body))
+}
+
+fn distinct(prefix: &str, body: Search) -> Search {
+    let mut result = body;
+    for left in 1..=5 {
+        for right in (left + 1)..=5 {
+            result = guard(
+                Predicate::Ne(
+                    variable(&format!("{prefix}{left}")),
+                    variable(&format!("{prefix}{right}")),
+                ),
+                result,
+            );
+        }
     }
+    result
+}
+
+fn fixed_facts(body: Search, told: Told) -> Search {
+    let mut result = body;
+    result = guard(eq("d4", 5), result);
+    result = guard(eq("y1", 3), result);
+    result = guard(eq("y3", 4), result);
+    result = guard(eq("y4", 2), result);
+    result = guard(eq("y2", 5), result);
+    if let Told::Yes = told {
+        result = guard(eq("d1", 1), result);
+    }
+    for father in 1..=5 {
+        result = guard(
+            Predicate::Ne(
+                variable(&format!("d{father}")),
+                variable(&format!("y{father}")),
+            ),
+            result,
+        );
+    }
+    result = distinct("d", result);
+    distinct("y", result)
+}
+
+fn gabrielle_father(body: &Search) -> Search {
+    let mut alternatives = Vec::new();
+    for father in 1..=5 {
+        alternatives.push(guard(
+            eq(&format!("d{father}"), 2),
+            guard(
+                Predicate::Eq(variable(&format!("y{father}")), variable("d5")),
+                body.clone(),
+            ),
+        ));
+    }
+    Search::Choose(alternatives)
+}
+
+fn lorna_father() -> Search {
+    let names = ["moore", "downing", "hall", "barnacle", "parker"];
+    let mut alternatives = Vec::new();
+    for (index, name) in names.iter().enumerate() {
+        let father = i64::try_from(index + 1).expect("five fathers");
+        alternatives.push(guard(
+            eq(&format!("d{}", index + 1), 3),
+            Search::Set(
+                "lorna_father".to_owned(),
+                father,
+                Box::new(Search::Success(vec![AnswerTerm::Atom((*name).to_owned())])),
+            ),
+        ));
+    }
+    Search::Choose(alternatives)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Told {
+    Yes,
+    No,
+}
+
+fn build(told: Told) -> Search {
+    let body = lorna_father();
+    let body = gabrielle_father(&body);
+    let body = fixed_facts(body, told);
+    let mut result = body;
+    for prefix in ["d", "y"] {
+        for index in (1..=5).rev() {
+            result = Search::ChooseRange {
+                var: format!("{prefix}{index}"),
+                lo: 1,
+                hi: 5,
+                body: Box::new(result),
+            };
+        }
+    }
+    result
+}
+
+fn told_program() -> Search {
+    build(Told::Yes)
+}
+
+fn untold_program() -> Search {
+    build(Told::No)
 }
 
 #[test]
 fn ex_4_43() {
-    // Told that Mary Ann's last name is Moore: one solution.
-    assert_eq!(ex_4_43::solutions(true), vec!["(lornas-father downing)"]);
-    // Not told: Downing and Parker both work.
+    let told = SearchEngine::new().run(&told_program());
     assert_eq!(
-        ex_4_43::solutions(false),
-        vec!["(lornas-father downing)", "(lornas-father parker)"]
+        told.answers,
+        vec![vec![AnswerValue::Sym("downing".to_owned())]]
+    );
+    let untold = SearchEngine::new().run(&untold_program());
+    assert_eq!(untold.answers.len(), 2);
+    assert!(
+        untold
+            .answers
+            .contains(&vec![AnswerValue::Sym("downing".to_owned())])
+    );
+    assert!(
+        untold
+            .answers
+            .contains(&vec![AnswerValue::Sym("parker".to_owned())])
     );
 }

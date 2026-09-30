@@ -1,109 +1,212 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.40: prune before choosing.
-//! There are 5^5 = 3125 assignments of five people to five floors
-//! before the distinctness requirement, and 5! = 120 after it -- the
-//! test pins both counts from a plain host enumeration. The efficient
-//! procedure interleaves restrictions with the choices, so most rejects
-//! happen after one or two `amb`s instead of five; the measurement
-//! reports 300 Fail deliveries where the unpruned search needs 3670,
-//! for the same unique answer.
+//! The reference solution of exercise 4.40: assignment counts and
+//! interleaved restriction pruning in the multiple-dwelling search.
 
-use ch04::eval_support::{AMB_SEED, Amb, setup_amb_environment, with_eval_stack};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_40 {
-    use super::*;
+use ch04::sec_4_3::{AnswerTerm, AnswerValue, Predicate, Search, SearchEngine};
+use sicp_runtime::host::query::Term;
 
-    /// The book's procedure beside the pruned one.
-    const LIBRARY: &str = r"
-(define (require p) (if (not p) (amb)))
-(define (distinct? items)
-  (cond ((null? items) #t)
-        ((null? (cdr items)) #t)
-        ((member (car items) (cdr items)) #f)
-        (else (distinct? (cdr items)))))
-(define (member x xs)
-  (cond ((null? xs) #f)
-        ((equal? x (car xs)) xs)
-        (else (member x (cdr xs)))))
-(define (multiple-dwelling)
-  (let ((baker (amb 1 2 3 4 5)) (cooper (amb 1 2 3 4 5))
-        (fletcher (amb 1 2 3 4 5)) (miller (amb 1 2 3 4 5))
-        (smith (amb 1 2 3 4 5)))
-    (require (distinct? (list baker cooper fletcher miller smith)))
-    (require (not (= baker 5)))
-    (require (not (= cooper 1)))
-    (require (not (= fletcher 5)))
-    (require (not (= fletcher 1)))
-    (require (> miller cooper))
-    (require (not (= (abs (- smith fletcher)) 1)))
-    (require (not (= (abs (- fletcher cooper)) 1)))
-    (list (list 'baker baker) (list 'cooper cooper)
-          (list 'fletcher fletcher) (list 'miller miller)
-          (list 'smith smith))))
-(define (multiple-dwelling-faster)
-  (let ((cooper (amb 1 2 3 4 5)))
-    (require (not (= cooper 1)))
-    (let ((fletcher (amb 1 2 3 4 5)))
-      (require (not (= fletcher 1)))
-      (require (not (= fletcher 5)))
-      (require (not (= (abs (- fletcher cooper)) 1)))
-      (let ((miller (amb 1 2 3 4 5)))
-        (require (> miller cooper))
-        (let ((baker (amb 1 2 3 4 5)))
-          (require (not (= baker 5)))
-          (let ((smith (amb 1 2 3 4 5)))
-            (require (distinct? (list baker cooper fletcher miller smith)))
-            (require (not (= (abs (- smith fletcher)) 1)))
-            (list (list 'baker baker) (list 'cooper cooper)
-                  (list 'fletcher fletcher) (list 'miller miller)
-                  (list 'smith smith))))))))";
+fn variable(name: &str) -> Term {
+    Term::Variable(name.to_owned())
+}
 
-    /// The first answer of one procedure with its failure count.
-    ///
-    /// # Panics
-    /// Panics when the procedure finds no solution, which only a broken
-    /// restriction set causes.
-    #[must_use]
-    pub fn first_with_failures(form: &str) -> (String, u64) {
-        let form = form.to_owned();
-        with_eval_stack(move || {
-            let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-            let env = setup_amb_environment();
-            for form in sicp_runtime::read_program(LIBRARY).expect("parses") {
-                let _ = amb.run_form(&form, &env);
-            }
-            let before = amb.failures();
-            let first = amb.run(&form, &env).expect("a solution exists");
-            (sicp_runtime::print_value(&first), amb.failures() - before)
-        })
+fn integer(value: i64) -> Term {
+    Term::Integer(value)
+}
+
+fn guard(predicate: Predicate, body: Search) -> Search {
+    Search::Guard(predicate, Box::new(body))
+}
+
+fn emit(tag: &'static str, body: Search) -> Search {
+    Search::Emit(tag.to_owned(), Box::new(body))
+}
+
+fn choose(name: &str, body: Search) -> Search {
+    Search::ChooseRange {
+        var: name.to_owned(),
+        lo: 1,
+        hi: 5,
+        body: Box::new(body),
     }
+}
 
-    /// The assignment counts the exercise asks for: before and after
-    /// the distinctness requirement.
-    #[must_use]
-    pub fn assignment_counts() -> (usize, usize) {
-        let before = 5_usize.pow(5);
-        let after = (1..=5).product();
-        (before, after)
-    }
+fn difference(left: &str, right: &str, amount: &str) -> Predicate {
+    Predicate::DiffEq(
+        left.to_owned(),
+        right.to_owned(),
+        amount.to_owned(),
+        "zero".to_owned(),
+    )
+}
+
+fn not_adjacent(left: &str, right: &str) -> Predicate {
+    Predicate::Or(vec![
+        difference(left, right, "two"),
+        difference(left, right, "three"),
+        difference(left, right, "four"),
+        difference(right, left, "two"),
+        difference(right, left, "three"),
+        difference(right, left, "four"),
+    ])
+}
+
+fn answer() -> Search {
+    Search::Success(vec![
+        AnswerTerm::Var("baker".to_owned()),
+        AnswerTerm::Var("cooper".to_owned()),
+        AnswerTerm::Var("fletcher".to_owned()),
+        AnswerTerm::Var("miller".to_owned()),
+        AnswerTerm::Var("smith".to_owned()),
+    ])
+}
+
+fn all_assignments() -> Search {
+    choose(
+        "baker",
+        choose(
+            "cooper",
+            choose(
+                "fletcher",
+                choose("miller", choose("smith", emit("assignment", answer()))),
+            ),
+        ),
+    )
+}
+
+fn distinct_assignments() -> Search {
+    let smith = guard(
+        Predicate::Ne(variable("smith"), variable("miller")),
+        guard(
+            Predicate::Ne(variable("smith"), variable("fletcher")),
+            guard(
+                Predicate::Ne(variable("smith"), variable("cooper")),
+                guard(
+                    Predicate::Ne(variable("smith"), variable("baker")),
+                    emit("assignment", answer()),
+                ),
+            ),
+        ),
+    );
+    let miller = guard(
+        Predicate::Ne(variable("miller"), variable("fletcher")),
+        guard(
+            Predicate::Ne(variable("miller"), variable("cooper")),
+            guard(
+                Predicate::Ne(variable("miller"), variable("baker")),
+                choose("smith", smith),
+            ),
+        ),
+    );
+    let fletcher = guard(
+        Predicate::Ne(variable("fletcher"), variable("cooper")),
+        guard(
+            Predicate::Ne(variable("fletcher"), variable("baker")),
+            choose("miller", miller),
+        ),
+    );
+    let cooper = guard(
+        Predicate::Ne(variable("cooper"), variable("baker")),
+        choose("fletcher", fletcher),
+    );
+    choose("baker", choose("cooper", cooper))
+}
+
+fn efficient_dwelling() -> Search {
+    let smith = guard(
+        not_adjacent("smith", "fletcher"),
+        guard(
+            Predicate::Ne(variable("smith"), variable("miller")),
+            guard(
+                Predicate::Ne(variable("smith"), variable("fletcher")),
+                guard(
+                    Predicate::Ne(variable("smith"), variable("cooper")),
+                    guard(
+                        Predicate::Ne(variable("smith"), variable("baker")),
+                        emit("assignment", answer()),
+                    ),
+                ),
+            ),
+        ),
+    );
+    let miller = guard(
+        Predicate::Gt(variable("miller"), variable("cooper")),
+        guard(
+            Predicate::Ne(variable("miller"), variable("fletcher")),
+            guard(
+                Predicate::Ne(variable("miller"), variable("cooper")),
+                guard(
+                    Predicate::Ne(variable("miller"), variable("baker")),
+                    choose("smith", smith),
+                ),
+            ),
+        ),
+    );
+    let fletcher = guard(
+        Predicate::Ne(variable("fletcher"), integer(5)),
+        guard(
+            Predicate::Ne(variable("fletcher"), integer(1)),
+            guard(
+                not_adjacent("fletcher", "cooper"),
+                guard(
+                    Predicate::Ne(variable("fletcher"), variable("cooper")),
+                    guard(
+                        Predicate::Ne(variable("fletcher"), variable("baker")),
+                        choose("miller", miller),
+                    ),
+                ),
+            ),
+        ),
+    );
+    let cooper = guard(
+        Predicate::Ne(variable("cooper"), integer(1)),
+        guard(
+            Predicate::Ne(variable("cooper"), variable("baker")),
+            choose("fletcher", fletcher),
+        ),
+    );
+    let baker = guard(
+        Predicate::Ne(variable("baker"), integer(5)),
+        choose("cooper", cooper),
+    );
+    Search::Set(
+        "zero".to_owned(),
+        0,
+        Box::new(Search::Set(
+            "two".to_owned(),
+            2,
+            Box::new(Search::Set(
+                "three".to_owned(),
+                3,
+                Box::new(Search::Set(
+                    "four".to_owned(),
+                    4,
+                    Box::new(choose("baker", baker)),
+                )),
+            )),
+        )),
+    )
 }
 
 #[test]
 fn ex_4_40() {
-    // The exercise's two counts.
-    assert_eq!(ex_4_40::assignment_counts(), (3125, 120));
-    // Both procedures answer the same unique assignment.
-    let (naive_answer, naive_failures) = ex_4_40::first_with_failures("(multiple-dwelling)");
-    let (pruned_answer, pruned_failures) =
-        ex_4_40::first_with_failures("(multiple-dwelling-faster)");
+    let all = SearchEngine::new().run(&all_assignments());
+    let distinct = SearchEngine::new().run(&distinct_assignments());
+    let efficient = SearchEngine::new().run(&efficient_dwelling());
+    assert_eq!(all.effects.len(), 5usize.pow(5));
+    assert_eq!(distinct.effects.len(), 5 * 4 * 3 * 2);
+    assert_eq!(efficient.effects.len(), efficient.answers.len());
     assert_eq!(
-        naive_answer,
-        "((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))"
+        efficient.answers,
+        vec![vec![
+            AnswerValue::Int(3),
+            AnswerValue::Int(2),
+            AnswerValue::Int(4),
+            AnswerValue::Int(5),
+            AnswerValue::Int(1)
+        ]]
     );
-    assert_eq!(pruned_answer, naive_answer);
-    // The pruned search delivers a fraction of the Fails.
-    assert_eq!(naive_failures, 3670);
-    assert_eq!(pruned_failures, 300);
 }

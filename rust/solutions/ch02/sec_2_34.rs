@@ -5,7 +5,7 @@
 
 mod ex_2_34 {
     use ch02::sec_2_2::accumulate;
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 2.34: `horner-eval`
     ///
@@ -17,15 +17,15 @@ mod ex_2_34 {
     /// nested formula needs.
     ///
     /// # Errors
-    /// [`SchemeError::Overflow`] when an intermediate product or sum
+    /// [`SicpError::Overflow`] when an intermediate product or sum
     /// leaves the `i128` range, which is this edition's arithmetic
     /// contract for exact integers.
-    fn horner_eval(x: i128, coefficient_sequence: &[i128]) -> Result<i128, SchemeError> {
+    fn horner_eval(x: i128, coefficient_sequence: &[i128]) -> Result<i128, SicpError> {
         accumulate(
-            |this_coeff, acc: Result<i128, SchemeError>| {
+            |this_coeff, acc: Result<i128, SicpError>| {
                 let higher_terms = acc?;
-                let shifted = higher_terms.checked_mul(x).ok_or(SchemeError::Overflow)?;
-                this_coeff.checked_add(shifted).ok_or(SchemeError::Overflow)
+                let shifted = higher_terms.checked_mul(x).ok_or(SicpError::Overflow)?;
+                this_coeff.checked_add(shifted).ok_or(SicpError::Overflow)
             },
             Ok(0),
             coefficient_sequence,

@@ -5,7 +5,7 @@
 
 mod ex_2_58 {
     use ch02::sec_2_3::{Expr, deriv, make_product, make_sum};
-    use sicp_runtime::{SchemeError, Symbol};
+    use sicp_runtime::{SicpError, Symbol};
 
     /// One infix token: this exercise's own contribution is turning
     /// concrete infix syntax into the section's existing `Expr`, so
@@ -20,7 +20,7 @@ mod ex_2_58 {
         RParen,
     }
 
-    fn tokenize(input: &str) -> Result<Vec<Token>, SchemeError> {
+    fn tokenize(input: &str) -> Result<Vec<Token>, SicpError> {
         let mut tokens = Vec::new();
         let mut chars = input.chars().peekable();
         while let Some(&c) = chars.peek() {
@@ -49,7 +49,7 @@ mod ex_2_58 {
                 chars.next();
             }
             if word.is_empty() {
-                return Err(SchemeError::Parse(format!("unexpected character: {c}")));
+                return Err(SicpError::Parse(format!("unexpected character: {c}")));
             }
             tokens.push(
                 word.parse::<i128>()
@@ -69,35 +69,35 @@ mod ex_2_58 {
             Parser { tokens, pos: 0 }
         }
 
-        fn peek(&self) -> Result<&Token, SchemeError> {
+        fn peek(&self) -> Result<&Token, SicpError> {
             self.tokens
                 .get(self.pos)
-                .ok_or_else(|| SchemeError::Parse("unexpected end of input".to_string()))
+                .ok_or_else(|| SicpError::Parse("unexpected end of input".to_string()))
         }
 
-        fn advance(&mut self) -> Result<Token, SchemeError> {
+        fn advance(&mut self) -> Result<Token, SicpError> {
             let token = self.peek()?.clone();
             self.pos += 1;
             Ok(token)
         }
 
-        fn expect(&mut self, expected: &Token) -> Result<(), SchemeError> {
+        fn expect(&mut self, expected: &Token) -> Result<(), SicpError> {
             let found = self.advance()?;
             if &found == expected {
                 Ok(())
             } else {
-                Err(SchemeError::Parse(format!(
+                Err(SicpError::Parse(format!(
                     "expected {expected:?}, found {found:?}"
                 )))
             }
         }
 
         /// An atom: a number or a variable.
-        fn atom(&mut self) -> Result<Expr, SchemeError> {
+        fn atom(&mut self) -> Result<Expr, SicpError> {
             match self.advance()? {
                 Token::Num(n) => Ok(Expr::Num(n)),
                 Token::Var(s) => Ok(Expr::Var(s)),
-                other => Err(SchemeError::Parse(format!(
+                other => Err(SicpError::Parse(format!(
                     "expected an atom, found {other:?}"
                 ))),
             }
@@ -106,7 +106,7 @@ mod ex_2_58 {
         /// Part a: fully parenthesized infix. Every binary operation
         /// is wrapped in its own parentheses, so no precedence rule is
         /// needed: `"(" expr op expr ")"`, or a bare atom.
-        fn fully_parenthesized(&mut self) -> Result<Expr, SchemeError> {
+        fn fully_parenthesized(&mut self) -> Result<Expr, SicpError> {
             if self.peek()? != &Token::LParen {
                 return self.atom();
             }
@@ -118,7 +118,7 @@ mod ex_2_58 {
             match op {
                 Token::Plus => make_sum(left, right),
                 Token::Star => make_product(left, right),
-                other => Err(SchemeError::Parse(format!(
+                other => Err(SicpError::Parse(format!(
                     "expected + or *, found {other:?}"
                 ))),
             }
@@ -128,7 +128,7 @@ mod ex_2_58 {
         /// parentheses only where needed to override precedence:
         /// `expr := term ("+" term)*`, `term := factor ("*" factor)*`,
         /// `factor := atom | "(" expr ")"`.
-        fn precedence_expr(&mut self) -> Result<Expr, SchemeError> {
+        fn precedence_expr(&mut self) -> Result<Expr, SicpError> {
             let mut left = self.precedence_term()?;
             while self.pos < self.tokens.len() && self.peek()? == &Token::Plus {
                 self.advance()?;
@@ -138,7 +138,7 @@ mod ex_2_58 {
             Ok(left)
         }
 
-        fn precedence_term(&mut self) -> Result<Expr, SchemeError> {
+        fn precedence_term(&mut self) -> Result<Expr, SicpError> {
             let mut left = self.precedence_factor()?;
             while self.pos < self.tokens.len() && self.peek()? == &Token::Star {
                 self.advance()?;
@@ -148,7 +148,7 @@ mod ex_2_58 {
             Ok(left)
         }
 
-        fn precedence_factor(&mut self) -> Result<Expr, SchemeError> {
+        fn precedence_factor(&mut self) -> Result<Expr, SicpError> {
             if self.peek()? == &Token::LParen {
                 self.advance()?;
                 let inner = self.precedence_expr()?;
@@ -159,12 +159,12 @@ mod ex_2_58 {
         }
     }
 
-    fn parse_fully_parenthesized(input: &str) -> Result<Expr, SchemeError> {
+    fn parse_fully_parenthesized(input: &str) -> Result<Expr, SicpError> {
         let tokens = tokenize(input)?;
         Parser::new(&tokens).fully_parenthesized()
     }
 
-    fn parse_infix(input: &str) -> Result<Expr, SchemeError> {
+    fn parse_infix(input: &str) -> Result<Expr, SicpError> {
         let tokens = tokenize(input)?;
         Parser::new(&tokens).precedence_expr()
     }

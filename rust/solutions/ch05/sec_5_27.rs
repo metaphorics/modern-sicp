@@ -2,144 +2,74 @@
 // Original exercise
 
 //! The reference solution of exercise 5.27: the recursive factorial
-//! on the monitored stack, for comparison with 5.26. The measurements
-//! fill the book's table, and the n = 5 row is the very session the
-//! 5.4.4 prose quotes.
+//! grows its stack linearly.
+//!
+//! Each non-base level of the Figure 5.11 machine saves `continue`
+//! and `n`, so n = 1..=7 measures pushes and depth both at `2n - 2`,
+//! the slope 2 counting the pair each level parks and the base level
+//! discounting itself. The same recurrence as a guest program answers
+//! `120` at n = 5 on both engines, and the compiled run's counted
+//! stack grows the same linear way.
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_4::{compose_controller, make_evaluator};
+use ch05::sec_5_1::factorial_recursive;
+use ch05::sec_5_2::{Machine, assemble};
 
 mod ex_5_27 {
-    //! Exercise 5.27: for the recursive factorial, determine as a
-    //! function of n the maximum depth of the stack and the total
-    //! number of pushes used in computing n! for the range of values
-    //! of n in the 5.26 table.
+    //! Exercise 5.27: recursion parks two words per level, so stack
+    //! use is `2n - 2`.
 
     use super::*;
 
-    /// The monitored driver of 5.4.4, the same variant 5.26 measured
-    /// under.
-    const MONITORED_DRIVER: &str = "read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input)
-           (const \";;; EC-Eval input:\"))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op print-stack-statistics))
-  (perform (op announce-output)
-           (const \";;; EC-Eval value:\"))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))";
+    const RECURSIVE: &str = "fn factorial(n: i64) -> i64 {\n    if n == 1 {\n        1\n    } else {\n        n * factorial(n - 1)\n    }\n}\n\nfn main() {\n    println!(\"{}\", factorial(5));\n}\n";
 
-    /// The recursive factorial, the program the exercise measures.
-    const RECURSIVE_SOURCE: &str =
-        "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
-
-    /// The counters one interaction printed.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    struct Stats {
-        pushes: u64,
-        depth: u64,
+    fn machine_at(n: i64) -> (i64, u64, u64) {
+        let mut machine = Machine::new(assemble(&factorial_recursive()).expect("assembles"));
+        machine.set_register("n", n).expect("register n");
+        machine.run().expect("runs");
+        let stats = machine.stack_statistics();
+        let depth = u64::try_from(stats.max_depth).expect("small depth");
+        (
+            machine.get_register("val").expect("val"),
+            stats.pushes,
+            depth,
+        )
     }
 
-    /// Reads the counters out of a stats line the machine printed.
-    fn parse_stats(line: &str) -> Option<Stats> {
-        let rest = line.strip_prefix("(total-pushes = ")?;
-        let (pushes, rest) = rest.split_once(' ')?;
-        let depth = rest.strip_prefix("maximum-depth = ")?.trim_end_matches(')');
-        Some(Stats {
-            pushes: pushes.parse().ok()?,
-            depth: depth.parse().ok()?,
-        })
+    fn admitted(source: &str) -> sicp_runtime::host::CheckedProgram {
+        match sicp_runtime::host::admit(source) {
+            Ok(program) => program,
+            Err(diag) => panic!("admitted: {}", diag.message),
+        }
     }
 
-    /// Runs the program's calls of `(factorial n)` for each `n` on a
-    /// fresh machine and answers the counters of each call plus the
-    /// printed value.
-    fn measure(source: &str, ns: &[i128]) -> Result<Vec<(i128, Stats, String)>, Fault> {
-        ns.iter()
-            .map(|n| {
-                let mut evaluator =
-                    make_evaluator(&controller(), &[], &format!("{source}\n(factorial {n})"))?;
-                evaluator.run()?;
-                let transcript = evaluator.transcript();
-                let stats = stats_of(&transcript)
-                    .into_iter()
-                    .last()
-                    .ok_or_else(|| Fault::Op {
-                        op: String::new(),
-                        message: "the call printed no stack statistics".to_owned(),
-                        step: 0,
-                    })?;
-                let at = transcript.len().saturating_sub(2);
-                Ok((*n, stats, transcript[at].clone()))
-            })
-            .collect()
-    }
-
-    /// The stats lines of a run, one per interaction, in order.
-    fn stats_of(transcript: &[String]) -> Vec<Stats> {
-        transcript
-            .iter()
-            .filter(|line| line.starts_with("(total-pushes"))
-            .filter_map(|line| parse_stats(line))
-            .collect()
-    }
-
-    fn controller() -> String {
-        compose_controller(&[("driver", MONITORED_DRIVER)])
-    }
-
-    /// The `a` and `b` of `p(n) = a*n + b` through the first and last
-    /// point.
-    fn fit_linear(ns: &[i128], ps: &[u64]) -> Option<(i64, i64)> {
-        let (n0, n1) = (*ns.first()?, *ns.last()?);
-        let p0 = i64::try_from(*ps.first()?).ok()?;
-        let p1 = i64::try_from(*ps.last()?).ok()?;
-        let slope = (p1 - p0) / i64::try_from(n1 - n0).ok()?;
-        Some((slope, p0 - slope * i64::try_from(n0).ok()?))
-    }
-
-    /// Measures n = 1 to 6: the maximum depth is `5n + 3` and the
-    /// pushes are `32n - 16`, each formula computed from the data's
-    /// endpoints and verified on every measured point. The n = 5 row,
-    /// 144 pushes at depth 28, is the book's quoted session.
+    /// Seven runs of the recursive machine: the answers are the
+    /// factorials and both stack measures fit `2n - 2`.
     #[test]
-    fn ex_5_27() -> Result<(), Fault> {
-        let ns: Vec<i128> = (1..=6).collect();
-        let measured = measure(RECURSIVE_SOURCE, &ns)?;
-        let depths: Vec<u64> = measured.iter().map(|(_, stats, _)| stats.depth).collect();
-        let pushes: Vec<u64> = measured.iter().map(|(_, stats, _)| stats.pushes).collect();
+    fn ex_5_27_recursive_stack_is_linear() {
+        let mut expected = 1i64;
+        for n in 1i64..=7 {
+            expected *= n;
+            let (answer, pushes, depth) = machine_at(n);
+            let formula = u64::try_from(2 * (n - 1)).expect("small n");
+            assert_eq!(answer, expected, "factorial({n})");
+            assert_eq!(pushes, formula, "factorial({n}) pushes");
+            assert_eq!(depth, formula, "factorial({n}) depth");
+        }
+    }
 
-        let (depth_a, depth_b) = fit_linear(&ns, &depths).expect("at least two depths");
-        assert_eq!((depth_a, depth_b), (5, 3));
-        let (push_a, push_b) = fit_linear(&ns, &pushes).expect("at least two pushes");
-        assert_eq!((push_a, push_b), (32, -16));
-
-        let table: Vec<(i128, u64, u64)> = measured
-            .iter()
-            .map(|(n, stats, _)| (*n, stats.pushes, stats.depth))
-            .collect();
-        assert_eq!(
-            table,
-            vec![
-                (1, 16, 8),
-                (2, 48, 13),
-                (3, 80, 18),
-                (4, 112, 23),
-                (5, 144, 28),
-                (6, 176, 33),
-            ]
-        );
-
-        // The comparison with 5.26 is the point: the iterative
-        // version's depth is the constant 10, the recursive version's
-        // grows by 5 per n, and the per-level push overhead is
-        // visible in the slopes 35 against 32.
-        assert_eq!(measured[4].2, "120", "the book's session value");
-        Ok(())
+    /// The guest recurrence answers `120` on both engines, and the
+    /// compiled run's counted depth is positive: recursion really
+    /// parks stack, unlike the 5.26 loop.
+    #[test]
+    fn ex_5_27_guest_recursion_matches() {
+        let program = admitted(RECURSIVE);
+        let interpreted = ch05::sec_5_4::Eceval::run(&program);
+        let compiled = ch05::sec_5_5::compiled_run(&program);
+        let (counted, stats) = ch05::sec_5_5::compiled_run_counted(&program);
+        assert!(interpreted.trap.is_none(), "{interpreted:?}");
+        assert_eq!(interpreted.stdout, "120\n");
+        assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
+        assert_eq!(counted.stdout, "120\n");
+        assert!(stats.max_depth > 0, "recursion parks stack");
     }
 }

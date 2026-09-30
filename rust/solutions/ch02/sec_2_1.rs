@@ -43,23 +43,23 @@ fn ex_2_01() {
 /// self-multiplications of a rational number to overflow `i128`.
 mod ex_2_01a {
     use ch02::sec_2_1::Rational;
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 2.1a: repeatedly squares `Rational::new(99, 100)` and
     /// returns the 1-indexed attempt number of the first squaring that
     /// overflows `i128`.
     ///
     /// # Errors
-    /// A [`SchemeError`] other than [`SchemeError::Overflow`], which does
+    /// A [`SicpError`] other than [`SicpError::Overflow`], which does
     /// not arise from squaring `99/100`.
-    pub fn ex_2_01a() -> Result<usize, SchemeError> {
+    pub fn ex_2_01a() -> Result<usize, SicpError> {
         let mut product = Rational::new(99, 100)?;
         let mut attempts = 0usize;
         loop {
             attempts += 1;
             match product.mul(&product) {
                 Ok(next) => product = next,
-                Err(SchemeError::Overflow) => return Ok(attempts),
+                Err(SicpError::Overflow) => return Ok(attempts),
                 Err(other) => return Err(other),
             }
         }

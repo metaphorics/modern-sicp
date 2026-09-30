@@ -27,7 +27,7 @@ fn slot_get(slot: &Slot) -> i128 {
 
 /// P1: the protected square, computed into a private slot, then the
 /// unprotected assignment of that slot to `x` -- the exercise's
-/// `(set! x ((s (lambda () (* x x)))))`.
+/// serialized square followed by the plain store.
 fn square_steps(
     x: &SharedInt,
     serializer: &Serializer,

@@ -1,2769 +1,1977 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Adapted from the Scheme programs in SICP section 5.5
-
-//! Section 5.5: Compilation.
 //!
-//! The book's [`compile`] and its code generators: they turn
-//! object-language expressions (the list structure the reader
-//! produced) into instruction sequences whose statements are
-//! controller lines in the book's notation. Every sequence carries
-//! its needed and modified register sets, so
-//! [`preserving_instruction_sequences`] never reads code. The label
-//! orders and compile orders inside the generators are the ones the
-//! book's own figures show (after-lambda before entry, alternative
-//! before consequent before predicate, after-call before
-//! compiled-branch before primitive-branch), so the emitted label
-//! numbering matches the book's; the module tests check the compiled
-//! factorial against Figure 5.17 and the seeded compilation of
-//! exercise 5.35 against Figure 5.18.
-//!
-//! One spelling deviates from the book's listings, forced by the
-//! section 5.2 machine language (exercise 5.9 forbids labels as
-//! operation inputs): the book's `(label entry2)` operation input of
-//! `make-compiled-procedure` is spelled `(const entry2)`. List
-//! constants need no table here, because the 5.2 machine's `(const
-//! (n))` spellings build list values directly.
-//!
-//! The 5.5.7 machine ([`make_compiled_evaluator`],
-//! [`compile_and_go`]) runs compiled code beside interpreted code:
-//! the 5.4 evaluator's controller with the compiled apply-dispatch,
-//! the armed external entry, and the `arg1`/`arg2` registers of
-//! exercise 5.38.
+//! Section 5.5: the compiler. Checked syntax compiles to typed
+//! instruction sequences (grammar §9): labels, assignments, branches,
+//! saves, restores, performs, and the two purpose-built typed
+//! instructions (`Bind` for pattern dispatch, `MakeClosure` for closure
+//! creation), with explicit register liveness in each sequence and the
+//! `preserving` discipline that protects live registers across nested
+//! compiled calls. `compiled_run` executes the sequences on a real
+//! instruction VM over guest values; `emit_c` renders the same
+//! sequences as a C translation unit over the `mc_*` word runtime
+//! (exercise 5.52), linked against the backend with no duplicate main.
 
-use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
-use std::rc::Rc;
+use std::collections::{BTreeSet, HashMap};
+use std::fmt::Write as _;
 
-use crate::sec_5_2::{Fault, Machine, OpHandler, make_machine};
-use crate::sec_5_4::{
-    INPUT_EXHAUSTED, apply_object_primitive, environment_of, intern_env, object_is_true,
-    primitive_name, primitive_word, render_word,
+use sicp_runtime::host::check::CheckedProgram;
+use sicp_runtime::host::diag::Diag;
+use sicp_runtime::host::hir::{
+    BinOp, ClosureKind, CtorOp, FormatKind, FormatSpec, FunId, HirBlock, HirExpr, HirExprKind,
+    HirPat, MethodOp, PlaceRoot, Proj, Sema, UnOp,
 };
-use sicp_runtime::{
-    Env, Pair, Value, cons_cell, display_value, print_value, read_program, set_car, set_cdr,
-};
+use sicp_runtime::host::ops::{self, RunOutcome, TrapReport};
+use sicp_runtime::host::value::{HostValue, RtProj, Trap};
 
-/// The reserved tag prefix of the evaluator's own words is shared with
-/// 5.4; compiled procedure words carry this tag.
-const COMPILED_TAG: &str = "sicp-word: compiled-procedure";
-
-/// The message whose read fault ends a driver session, 5.4's stop.
-pub const INPUT_QUEUE_EMPTY: &str = INPUT_EXHAUSTED;
-
-fn op_fail(message: impl Into<String>) -> Fault {
-    Fault::Op {
-        op: String::new(),
-        message: message.into(),
-        step: 0,
-    }
+/// One compiled instruction over the teaching machine's registers.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Instr {
+    /// A label definition.
+    Label(String),
+    /// `assign REG <- OPERAND`.
+    Assign(String, Operand),
+    /// `test` one binary relation over two operands, setting `flag`.
+    Test(BinOp, Operand, Operand),
+    /// `test` one operand for truth, setting `flag`.
+    TestBool(Operand),
+    /// `branch LABEL` when `flag` is set.
+    Branch(String),
+    /// `goto OPERAND`.
+    Goto(Operand),
+    /// `save REG`.
+    Save(String),
+    /// `restore REG`.
+    Restore(String),
+    /// Drop the top N stack entries: a `break` or `continue` leaving
+    /// the entries its loop body pushed.
+    Discard(usize),
+    /// Bind the value register against one pattern, falling through on
+    /// success and jumping to `fail` otherwise.
+    Bind {
+        /// The pattern to bind.
+        pat: HirPat,
+        /// The label to jump to when the pattern does not match.
+        fail: String,
+    },
+    /// Build one closure value with the checked capture discipline.
+    MakeClosure {
+        /// The closure's kind.
+        kind: ClosureKind,
+        /// The closure's body label.
+        body: String,
+        /// The parameter slots.
+        params: Vec<u32>,
+        /// The capture records: binding slot and capture mode index.
+        captures: Vec<(u32, u32)>,
+        /// The closure activation's first binding slot.
+        bind_base: u32,
+        /// The closure activation's local slots.
+        frame_slots: u32,
+    },
+    /// `perform` one typed operation over operands.
+    Perform(PerformOp, Vec<Operand>),
 }
 
-// ---------------------------------------------------------------------------
-// Instruction sequences
-// ---------------------------------------------------------------------------
+/// One compiled operand.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Operand {
+    /// A constant integer.
+    Const(i64),
+    /// A constant `usize`.
+    ConstU(u64),
+    /// A constant `bool`.
+    Bool(bool),
+    /// A constant string slice.
+    Str(String),
+    /// A register read.
+    Reg(String),
+    /// A label address.
+    Label(String),
+    /// A typed operation whose result the assignment stores: the
+    /// compiled form of the repaired machine contract (grammar §7
+    /// repair note). `Perform` stays effect-only.
+    Op(PerformOp, Vec<Operand>),
+}
 
-/// One instruction sequence: the registers the code needs, the
-/// registers it modifies, and the statements, one controller line
-/// each, in the book's three-part shape.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// The typed operations `Perform` runs (grammar §9 typed operation
+/// values, closed over the shared leaf semantics).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PerformOp {
+    /// Call the compiled function at the labeled entry.
+    CallFun,
+    /// Call the function or closure value in `val` (args in `argl`).
+    CallValue,
+    /// Return from the compiled call.
+    Return,
+    /// An admitted constructor.
+    Ctor(CtorOp),
+    /// An admitted method (receiver value in `val`, args in `argl`).
+    Method(MethodOp),
+    /// An admitted method on a place (a reference to the receiver's
+    /// place in `val`, args in `argl`): the receiver's update is
+    /// written back to the place.
+    MethodAt(MethodOp),
+    /// The function value of one top-level function.
+    FunRef(u32),
+    /// A reference to one local binding's place (its own slot, or the
+    /// place its capture record names); `through` addresses the
+    /// referent when the slot holds a reference.
+    LocalRef {
+        /// The binding slot.
+        bind: u32,
+        /// Whether the reference is exclusive.
+        mutable: bool,
+        /// Whether a borrow held in the slot is seen through.
+        through: bool,
+    },
+    /// Extend the reference in `val` by one field projection.
+    RefField(u32),
+    /// Extend the reference in `val` by the index in `tmp`.
+    RefIndex,
+    /// Read the place the reference in `val` names.
+    Load,
+    /// Move out of the place the reference in `val` names.
+    Take,
+    /// Store `val` (or, for a compound assignment, the place's value
+    /// combined with `val`) into the place the reference in `tmp`
+    /// names.
+    Store(Option<BinOp>),
+    /// One arithmetic/comparison operator.
+    Arith(BinOp),
+    /// One unary operator.
+    Unary(UnOp),
+    /// A format call (args in `argl`).
+    Format(FormatKind, FormatSpec),
+    /// Build a tuple from `val` and `tmp`.
+    MakeTuple,
+    /// Build a vector from `argl`.
+    MakeVec,
+    /// Build a struct or tuple-struct from `argl`.
+    MakeStruct(u32),
+    /// Build an enum variant from `argl`.
+    MakeVariant(u32, u32),
+    /// Project one field of `val`.
+    Project(u32),
+    /// Index `val` by `tmp`.
+    IndexGet,
+    /// Build `val` repeated `tmp` times into one vector.
+    MakeRepeat,
+    /// Build the half-open range `val..tmp`.
+    MakeRange,
+    /// Advance the iterator in `val`: the item goes to `item` and
+    /// `flag` tells whether there was one.
+    IterNext,
+    /// Turn the iterable in `val` into its iterator (a range or
+    /// iterator as is, a borrowed collection by reference, an owned one
+    /// by value).
+    IterStart,
+    /// No `match` arm matched (the checker's exhaustiveness makes this
+    /// unreachable).
+    NoMatch,
+    /// The postfix `?` control transfer.
+    Try,
+}
+
+/// One instruction sequence with its register liveness (grammar §5.5).
+#[derive(Debug, Clone, PartialEq)]
 pub struct Seq {
-    /// The registers that must be initialized before the code runs.
-    pub needs: Vec<String>,
-    /// The registers the code's instructions modify.
-    pub modifies: Vec<String>,
-    /// The statements: controller lines in the book's notation.
-    pub stmts: Vec<String>,
+    /// The registers the sequence reads.
+    pub needs: BTreeSet<String>,
+    /// The registers the sequence writes.
+    pub modifies: BTreeSet<String>,
+    /// The instructions, in order.
+    pub stmts: Vec<Instr>,
 }
 
-/// The book's `make-instruction-sequence`.
-#[must_use]
-pub fn make_instruction_sequence(needs: &[&str], modifies: &[&str], stmts: Vec<String>) -> Seq {
-    Seq {
-        needs: needs.iter().map(|name| (*name).to_owned()).collect(),
-        modifies: modifies.iter().map(|name| (*name).to_owned()).collect(),
-        stmts,
-    }
-}
-
-/// The book's `empty-instruction-sequence`.
-#[must_use]
-pub fn empty_instruction_sequence() -> Seq {
-    Seq::default()
-}
-
-/// The book's `list-union`, preserving the first list's order.
-fn list_union(s1: &[String], s2: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = s1.to_vec();
-    for name in s2 {
-        if !out.contains(name) {
-            out.push(name.clone());
+impl Seq {
+    /// Builds one sequence from its parts.
+    #[must_use]
+    pub fn new(needs: &[&str], modifies: &[&str], stmts: Vec<Instr>) -> Self {
+        Self {
+            needs: needs.iter().map(|name| (*name).to_owned()).collect(),
+            modifies: modifies.iter().map(|name| (*name).to_owned()).collect(),
+            stmts,
         }
     }
-    out
-}
 
-/// The book's `list-difference`, preserving the first list's order.
-fn list_difference(s1: &[String], s2: &[String]) -> Vec<String> {
-    s1.iter()
-        .filter(|name| !s2.contains(name))
-        .cloned()
-        .collect()
-}
+    /// The empty sequence.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self::new(&[], &[], Vec::new())
+    }
 
-/// The book's `append-2-sequences`: the needs of the first plus the
-/// needs of the second that the first does not modify.
-#[must_use]
-pub fn append_2_sequences(seq1: &Seq, seq2: &Seq) -> Seq {
-    Seq {
-        needs: list_union(&seq1.needs, &list_difference(&seq2.needs, &seq1.modifies)),
-        modifies: list_union(&seq1.modifies, &seq2.modifies),
-        stmts: seq1
-            .stmts
-            .iter()
-            .chain(seq2.stmts.iter())
-            .cloned()
-            .collect(),
+    /// Concatenates two sequences in order.
+    #[must_use]
+    pub fn append(mut self, other: Self) -> Self {
+        self.needs.extend(other.needs);
+        self.modifies.extend(other.modifies);
+        self.stmts.extend(other.stmts);
+        self
+    }
+
+    /// Runs `body` while `registers` are saved and restored: the
+    /// `preserving` discipline of 5.5.1 that makes nested calls safe.
+    #[must_use]
+    pub fn preserving(self, registers: &[&str], body: Self) -> Self {
+        // Save every register the body modifies and the first
+        // sequence needs, run `self`, then `body`, then restore: the
+        // first sequence is always present.
+        let mut saves = Self::empty();
+        let mut restores = Self::empty();
+        for register in registers {
+            let name = (*register).to_owned();
+            if self.needs.contains(&name) && body.modifies.contains(&name) {
+                saves = saves.append(Seq::new(&[&name], &[], vec![Instr::Save(name.clone())]));
+                restores = restores.append(Seq::new(&[], &[], vec![Instr::Restore(name)]));
+            }
+        }
+        saves.append(self).append(body).append(restores)
     }
 }
 
-/// The book's `append-instruction-sequences` over a list.
-#[must_use]
-pub fn append_sequences(seqs: &[Seq]) -> Seq {
-    let mut acc = empty_instruction_sequence();
-    for seq in seqs {
-        acc = append_2_sequences(&acc, seq);
-    }
-    acc
+/// The label supply one compilation draws on.
+#[derive(Debug, Default)]
+pub struct Labels {
+    next: usize,
 }
 
-/// The book's `tack-on-instruction-sequence`: the body's register use
-/// is ignored, because the body is not executed in line.
-#[must_use]
-pub fn tack_on_instruction_sequence(seq: &Seq, body_seq: &Seq) -> Seq {
-    Seq {
-        needs: seq.needs.clone(),
-        modifies: seq.modifies.clone(),
-        stmts: seq
-            .stmts
-            .iter()
-            .chain(body_seq.stmts.iter())
-            .cloned()
-            .collect(),
+impl Labels {
+    /// Builds one label supply.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Draws one fresh label with the given prefix.
+    #[must_use]
+    pub fn fresh(&mut self, prefix: &str) -> String {
+        let label = format!("{prefix}#{}", self.next);
+        self.next += 1;
+        label
     }
 }
 
-/// The book's `parallel-instruction-sequences`: the two branches after
-/// a test are never executed sequentially, so the combined sequence
-/// modifies what either branch modifies.
+/// Compiles one checked program to one flat instruction stream: every
+/// function and every closure body is pre-compiled and labeled, so the
+/// VM executes instructions only and never sees syntax.
 #[must_use]
-pub fn parallel_instruction_sequences(seq1: &Seq, seq2: &Seq) -> Seq {
-    Seq {
-        needs: list_union(&seq1.needs, &seq2.needs),
-        modifies: list_union(&seq1.modifies, &seq2.modifies),
-        stmts: seq1
-            .stmts
-            .iter()
-            .chain(seq2.stmts.iter())
-            .cloned()
-            .collect(),
+pub fn compile_program(program: &CheckedProgram) -> CompiledProgram {
+    let mut labels = Labels::new();
+    let mut closures: Vec<(String, Seq)> = Vec::new();
+    let mut instrs: Vec<Instr> = Vec::new();
+    for def in &program.sema.funs {
+        let seq = compile_block(&def.body, &mut labels, &mut closures);
+        instrs.push(Instr::Label(format!("fun{}", def.id.0)));
+        instrs.extend(seq.stmts);
+        instrs.push(Instr::Perform(PerformOp::Return, Vec::new()));
+    }
+    for (label, seq) in closures {
+        instrs.push(Instr::Label(label));
+        instrs.extend(seq.stmts);
+        instrs.push(Instr::Perform(PerformOp::Return, Vec::new()));
+    }
+    CompiledProgram {
+        sema: program.sema.clone(),
+        instrs,
+        entry: format!("fun{}", program.sema.main.0),
+        main: program.sema.main,
     }
 }
 
-/// The book's `preserving`: appends with a `save`/`restore` around the
-/// first sequence of every register the first modifies and the second
-/// needs. Walking the register list in order nests the wraps, so the
-/// first register of the set is saved last, the book's own order.
-///
-/// With [`Config::preserving_on`] off (the 5.37 comparison) every
-/// register in the set is saved unconditionally.
-#[must_use]
-pub fn preserving_instruction_sequences(
-    cfg: &Config,
-    regs: &[&str],
-    seq1: &Seq,
-    seq2: &Seq,
-) -> Seq {
-    let mut current = seq1.clone();
-    for reg in regs {
-        let needed = seq2.needs.iter().any(|name| name == reg)
-            && current.modifies.iter().any(|name| name == reg);
-        let saves = if cfg.preserving_on { needed } else { true };
-        if saves {
-            let mut stmts = vec![format!("(save {reg})")];
-            stmts.extend(current.stmts.iter().cloned());
-            stmts.push(format!("(restore {reg})"));
-            current = Seq {
-                needs: list_union(&[(*reg).to_owned()], &current.needs),
-                modifies: list_difference(&current.modifies, &[(*reg).to_owned()]),
-                stmts,
-            };
+/// One compiled program: one flat, labeled instruction stream.
+#[derive(Debug, Clone)]
+pub struct CompiledProgram {
+    /// The typed program the sequences came from.
+    pub sema: Sema,
+    /// Every function and closure body, pre-compiled in one stream.
+    pub instrs: Vec<Instr>,
+    /// The entry label.
+    pub entry: String,
+    /// The entry point.
+    pub main: FunId,
+}
+
+/// The compile-time context one body compiles under: the label supply,
+/// the pre-compiled closure bodies, the enclosing loops' exit and
+/// continue targets, and how many stack entries the body has pushed
+/// above its activation's base at the current point. A `break` or
+/// `continue` discards exactly the entries pushed since its loop's
+/// target point, so an early exit leaves the stack balanced.
+struct Ctx<'a> {
+    labels: &'a mut Labels,
+    closures: &'a mut Vec<(String, Seq)>,
+    loops: Vec<LoopTarget>,
+    depth: usize,
+}
+
+/// One enclosing loop's control targets.
+struct LoopTarget {
+    /// Where `break` jumps; the loop's value is in `val` there.
+    exit: String,
+    /// The stack depth live at `exit`.
+    exit_depth: usize,
+    /// Where `continue` jumps.
+    next: String,
+    /// The stack depth live at `next`.
+    next_depth: usize,
+}
+
+impl<'a> Ctx<'a> {
+    fn new(labels: &'a mut Labels, closures: &'a mut Vec<(String, Seq)>) -> Self {
+        Self {
+            labels,
+            closures,
+            loops: Vec::new(),
+            depth: 0,
         }
     }
-    append_2_sequences(&current, seq2)
+
+    /// Compiles `body` with `val` saved around it: `val` holds what it
+    /// held before (restored), and `tmp` holds the body's result.
+    fn around_val(&mut self, body: impl FnOnce(&mut Self) -> Seq) -> Seq {
+        self.depth += 1;
+        let compiled = body(self);
+        self.depth -= 1;
+        seq(vec![Instr::Save(VAL.to_owned())])
+            .append(compiled)
+            .append(seq(vec![
+                Instr::Assign(TMP.to_owned(), reg(VAL)),
+                Instr::Restore(VAL.to_owned()),
+            ]))
+    }
+
+    /// Compiles one loop body with its control targets installed.
+    fn in_loop(&mut self, target: LoopTarget, body: &HirBlock) -> Seq {
+        self.loops.push(target);
+        let compiled = compile_block_in(self, body);
+        self.loops.pop();
+        compiled
+    }
 }
 
-/// Wraps a sequence in a save and restore of one register: the code
-/// writes the register as scratch and reads its entry value after, so
-/// the value the caller left there survives. The open-coded operand
-/// paths use this shield where [`preserving_instruction_sequences`]
-/// cannot, because the protected value is an output of the surrounding
-/// code, not an input to it.
-fn shield_register(name: &str, seq: Seq) -> Seq {
-    let Seq {
+const VAL: &str = "val";
+const TMP: &str = "tmp";
+const ARGL: &str = "argl";
+const ITEM: &str = "item";
+
+fn reg(name: &str) -> Operand {
+    Operand::Reg(name.to_owned())
+}
+
+/// Builds one sequence from its instructions, deriving the registers
+/// it reads and writes.
+fn seq(stmts: Vec<Instr>) -> Seq {
+    let mut needs = BTreeSet::new();
+    let mut modifies = BTreeSet::new();
+    let read = |operand: &Operand, needs: &mut BTreeSet<String>| {
+        if let Operand::Reg(name) = operand {
+            needs.insert(name.clone());
+        }
+    };
+    for stmt in &stmts {
+        match stmt {
+            Instr::Assign(target, operand) => {
+                read(operand, &mut needs);
+                modifies.insert(target.clone());
+            }
+            Instr::Test(_, left, right) => {
+                read(left, &mut needs);
+                read(right, &mut needs);
+                modifies.insert("flag".to_owned());
+            }
+            Instr::TestBool(operand) => {
+                read(operand, &mut needs);
+                modifies.insert("flag".to_owned());
+            }
+            Instr::Branch(_) => {
+                needs.insert("flag".to_owned());
+            }
+            Instr::Goto(operand) => read(operand, &mut needs),
+            Instr::Save(name) => {
+                needs.insert(name.clone());
+            }
+            Instr::Restore(name) => {
+                modifies.insert(name.clone());
+            }
+            Instr::Bind { .. } => {
+                needs.insert(VAL.to_owned());
+            }
+            Instr::MakeClosure { .. } => {
+                modifies.insert(VAL.to_owned());
+            }
+            Instr::Perform(_, operands) => {
+                for operand in operands {
+                    read(operand, &mut needs);
+                }
+                needs.insert(VAL.to_owned());
+                modifies.insert(VAL.to_owned());
+            }
+            Instr::Label(_) | Instr::Discard(_) => {}
+        }
+    }
+    Seq {
         needs,
         modifies,
         stmts,
-    } = seq;
-    let mut wrapped = vec![format!("(save {name})")];
-    wrapped.extend(stmts);
-    wrapped.push(format!("(restore {name})"));
-    Seq {
-        needs: list_union(&[name.to_owned()], &needs),
-        modifies,
-        stmts: wrapped,
     }
 }
 
-// ---------------------------------------------------------------------------
-// The compiler state
-// ---------------------------------------------------------------------------
-
-/// The compiler's state: the book's label counter, shared by clone so
-/// a running machine's operation can compile under the same numbering.
-#[derive(Clone, Default)]
-pub struct State {
-    counter: Cell<usize>,
-    entries: Cell<usize>,
+fn perform(op: PerformOp) -> Seq {
+    seq(vec![Instr::Perform(op, Vec::new())])
 }
 
-/// The book's fresh label counter.
+fn set_val(operand: Operand) -> Seq {
+    seq(vec![Instr::Assign(VAL.to_owned(), operand)])
+}
+
+fn label(name: &str) -> Seq {
+    seq(vec![Instr::Label(name.to_owned())])
+}
+
+fn goto(name: &str) -> Seq {
+    seq(vec![Instr::Goto(Operand::Label(name.to_owned()))])
+}
+
+/// Compiles one block into one sequence producing its tail in `val`.
 #[must_use]
-pub fn new_state() -> State {
-    State::default()
+pub fn compile_block(
+    block: &HirBlock,
+    labels: &mut Labels,
+    closures: &mut Vec<(String, Seq)>,
+) -> Seq {
+    compile_block_in(&mut Ctx::new(labels, closures), block)
 }
 
-/// A label counter seeded at `n`: exercise 5.35's reproduction of
-/// Figure 5.18 seeds 14, the labels the book's session had already
-/// generated.
+/// Compiles one expression into one sequence producing its value in
+/// `val`. Every admitted form lowers here; nothing falls through.
 #[must_use]
-pub fn new_state_seeded(n: usize) -> State {
-    State {
-        counter: Cell::new(n),
-        entries: Cell::new(0),
-    }
+pub fn compile_expr(expr: &HirExpr, labels: &mut Labels, closures: &mut Vec<(String, Seq)>) -> Seq {
+    compile_expr_in(&mut Ctx::new(labels, closures), expr)
 }
 
-/// The book's `make-label`: the name suffixed with the next counter
-/// value, so successive labels read `after-lambda1`, `after-lambda15`,
-/// and so on, as the book's figures show.
-pub fn make_label(state: &State, name: &str) -> String {
-    let next = state.counter.get() + 1;
-    state.counter.set(next);
-    format!("{name}{next}")
-}
-
-/// Counts one compiled block: the entry names of 5.48's recorded
-/// blocks and 5.49's chained forms stay distinct.
-pub fn bump_entry(state: &State) -> usize {
-    let next = state.entries.get() + 1;
-    state.entries.set(next);
-    next
-}
-
-// ---------------------------------------------------------------------------
-// Targets, linkages, compile-time environments
-// ---------------------------------------------------------------------------
-
-/// The book's linkage descriptor.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Linkage {
-    /// Continue at the next instruction in sequence.
-    Next,
-    /// Return from the procedure being compiled.
-    Return,
-    /// Jump to the named entry point.
-    Lab(String),
-}
-
-/// The compile-time environment: the frames of parameter names,
-/// newest first; the empty vector is the top level.
-pub type Cenv = Vec<Vec<String>>;
-/// The callback used by the compiler's variable-reference tracing option.
-pub type TraceFn = Rc<dyn Fn(&Cenv, &str)>;
-
-/// The empty compile-time environment: the top level.
-#[must_use]
-pub fn top_cenv() -> Cenv {
-    Vec::new()
-}
-
-/// Extends the compile-time environment with one parameter frame.
-#[must_use]
-pub fn extend_cenv(params: &[String], frames: &Cenv) -> Cenv {
-    let mut out = Vec::with_capacity(frames.len() + 1);
-    out.push(params.to_vec());
-    out.extend(frames.iter().cloned());
-    out
-}
-
-/// The book's `find-variable` result: the lexical address as the pair
-/// of frame number and displacement, or not-found past every frame.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LexicalAddress {
-    /// The variable's `(frame displacement)` address.
-    Found(usize, usize),
-    /// The variable is in no frame of the compile-time environment.
-    NotFound,
-}
-
-/// The book's `find-variable`: the lexical address of `name` with
-/// respect to the compile-time environment, or not-found.
-#[must_use]
-pub fn find_variable(name: &str, frames: &Cenv) -> LexicalAddress {
-    for (frame_number, names) in frames.iter().enumerate() {
-        for (displacement, candidate) in names.iter().enumerate() {
-            if candidate == name {
-                return LexicalAddress::Found(frame_number, displacement);
-            }
-        }
-    }
-    LexicalAddress::NotFound
-}
-
-/// The configuration the section's exercises turn: lexical addressing
-/// (5.40 to 5.42), scanning out internal definitions (5.43),
-/// open-coded primitives (5.38 and 5.44), the operand evaluation
-/// order (5.36), the preserving mechanism itself (5.37), and compiled
-/// calls to interpreted procedures (5.47).
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "The booleans are independent compiler switches for distinct section exercises."
-)]
-#[derive(Clone, Default)]
-pub struct Config {
-    /// 5.40 to 5.42: emit lexical-address accesses.
-    pub lexical: bool,
-    /// 5.43: scan internal definitions out of bodies.
-    pub scan_out: bool,
-    /// 5.38 and 5.44: open-code the named primitives.
-    pub open_code: bool,
-    /// 5.36: evaluate operands left to right.
-    pub left_to_right: bool,
-    /// 5.37: the preserving mechanism itself; off saves blindly.
-    pub preserving_on: bool,
-    /// 5.47: compiled code may call interpreted procedures.
-    pub compound_calls: bool,
-    /// 5.40: every variable reference reports the compile-time
-    /// environment it was compiled against.
-    pub trace: Option<TraceFn>,
-}
-
-/// The configuration of the section's main text: every extension off,
-/// the preserving mechanism on.
-#[must_use]
-pub fn default_config() -> Config {
-    Config {
-        preserving_on: true,
-        ..Config::default()
-    }
-}
-
-/// The primitives the open-coding dispatch of 5.38 recognizes.
-#[must_use]
-pub fn open_coded_primitives() -> &'static [&'static str] {
-    &["+", "-", "*", "<", "="]
-}
-
-// ---------------------------------------------------------------------------
-// Syntax over the object language's list structure
-// ---------------------------------------------------------------------------
-
-fn items_of(word: &Value) -> Option<Vec<Value>> {
-    word.list_items().ok()
-}
-
-/// The items when `word` is the tagged list `(tag ...)`.
-fn tagged_items(word: &Value, tag: &str) -> Option<Vec<Value>> {
-    let items = items_of(word)?;
-    if matches!(items.first(), Some(Value::Sym(name)) if name.as_ref() == tag) {
-        Some(items)
-    } else {
-        None
-    }
-}
-
-fn is_tagged(word: &Value, tag: &str) -> bool {
-    tagged_items(word, tag).is_some()
-}
-
-fn is_symbol(word: &Value) -> bool {
-    matches!(word, Value::Sym(_))
-}
-
-fn symbol_name(word: &Value) -> Option<String> {
-    match word {
-        Value::Sym(name) => Some(name.to_string()),
-        _ => None,
-    }
-}
-
-fn is_self_evaluating(word: &Value) -> bool {
-    matches!(
-        word,
-        Value::Int(_) | Value::Real(_) | Value::Str(_) | Value::Bool(_)
-    )
-}
-
-fn operand_items(word: &Value) -> Vec<Value> {
-    items_of(word).unwrap_or_default()
-}
-
-/// The parameters of a lambda word as names.
-fn parameter_names(word: &Value) -> Result<Vec<String>, Fault> {
-    operand_items(word)
-        .iter()
-        .map(symbol_name)
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| op_fail("compile-lambda: a parameter is not a symbol"))
-}
-
-/// Builds the lambda a procedure-form define names:
-/// `(lambda parameters body...)`.
-fn lambda_form(parameters: Value, body: &[Value]) -> Value {
-    let mut form = vec![Value::sym("lambda"), parameters];
-    form.extend(body.iter().cloned());
-    Value::list(form)
-}
-
-/// Renders a constant for a `(const ...)` spelling: the value form,
-/// whose strings are quoted, so the reader round-trips the datum.
-fn const_spelling(word: &Value) -> String {
-    print_value(word)
-}
-
-// ---------------------------------------------------------------------------
-// Derived expressions
-// ---------------------------------------------------------------------------
-
-/// The book's `cond->if` (4.1.2): the clauses become nested `if`s; a
-/// clause with no actions answers its test, and a cond with no else
-/// falls through to false.
-///
-/// # Errors
-///
-/// Returns a fault when `exp` is not a `cond` expression.
-pub fn cond_to_if(exp: &Value) -> Result<Value, Fault> {
-    let items = tagged_items(exp, "cond").ok_or_else(|| op_fail("cond->if needs a cond"))?;
-    let mut result = Value::Bool(false);
-    for clause in items[1..].iter().rev() {
-        let parts = items_of(clause).unwrap_or_default();
-        let Some(test) = parts.first() else {
-            continue;
-        };
-        let actions = parts.get(1..).unwrap_or(&[]);
-        let consequent = match actions {
-            [] => test.clone(),
-            [single] => single.clone(),
-            many => Value::list(many.to_vec()),
-        };
-        let is_else = matches!(test, Value::Sym(name) if name.as_ref() == "else");
-        if is_else {
-            result = consequent;
-        } else {
-            result = Value::list(vec![Value::sym("if"), test.clone(), consequent, result]);
-        }
-    }
-    Ok(result)
-}
-
-/// The 4.1.6 `let`-to-combination transformation: `(let ((n e) ...)
-/// body ...)` is the call of a lambda on the inits.
-///
-/// # Errors
-///
-/// Returns a fault when `exp` is not a `let` expression or contains a malformed binding.
-pub fn let_to_combination(exp: &Value) -> Result<Value, Fault> {
-    let items = tagged_items(exp, "let").ok_or_else(|| op_fail("let->combination needs a let"))?;
-    let bindings = operand_items(items.get(1).unwrap_or(&Value::Nil));
-    let body = items.get(2..).unwrap_or(&[]).to_vec();
-    let mut params = Vec::new();
-    let mut inits = Vec::new();
-    for binding in &bindings {
-        let pair = operand_items(binding);
-        if pair.len() != 2 {
-            return Err(op_fail("let->combination: bad binding"));
-        }
-        params.push(pair[0].clone());
-        inits.push(pair[1].clone());
-    }
-    let lambda = lambda_form(Value::list(params), &body);
-    let mut call = vec![lambda];
-    call.extend(inits);
-    Ok(Value::list(call))
-}
-
-// ---------------------------------------------------------------------------
-// The code generators
-// ---------------------------------------------------------------------------
-
-/// The registers a compiled procedure call may disturb. The callee's
-/// body may itself open-code into `arg1` and `arg2`, so a call claims
-/// them too; without the claim the operand shields below never fire
-/// and a compound-call operand destroys the caller's live argument
-/// values.
-const ALL_REGS: [&str; 7] = ["env", "proc", "val", "argl", "continue", "arg1", "arg2"];
-
-/// The book's `compile-linkage`.
-#[must_use]
-pub fn compile_linkage(linkage: &Linkage) -> Seq {
-    match linkage {
-        Linkage::Return => {
-            make_instruction_sequence(&["continue"], &[], vec!["(goto (reg continue))".to_owned()])
-        }
-        Linkage::Next => empty_instruction_sequence(),
-        Linkage::Lab(label) => {
-            make_instruction_sequence(&[], &[], vec![format!("(goto (label {label}))")])
-        }
-    }
-}
-
-/// The book's `end-with-linkage`.
-#[must_use]
-pub fn end_with_linkage(cfg: &Config, linkage: &Linkage, seq: &Seq) -> Seq {
-    preserving_instruction_sequences(cfg, &["continue"], seq, &compile_linkage(linkage))
-}
-
-/// The book's `compile`, the top-level dispatch. `cenv` is the
-/// compile-time environment (empty at the top level), `target` the
-/// register the code answers in, and `linkage` the descriptor for how
-/// the code proceeds.
-///
-/// # Errors
-///
-/// Returns a fault when `exp` is malformed or uses an unsupported expression.
-pub fn compile(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    if is_self_evaluating(exp) {
-        return Ok(compile_self_evaluating(cfg, exp, target, linkage));
-    }
-    if is_tagged(exp, "quote") {
-        return compile_quoted(cfg, exp, target, linkage);
-    }
-    if is_symbol(exp) {
-        return compile_variable(cfg, cenv, exp, target, linkage);
-    }
-    if is_tagged(exp, "set!") {
-        return compile_assignment(cfg, state, cenv, exp, target, linkage);
-    }
-    if is_tagged(exp, "define") {
-        return compile_definition(cfg, state, cenv, exp, target, linkage);
-    }
-    if is_tagged(exp, "if") {
-        return compile_if(cfg, state, cenv, exp, target, linkage);
-    }
-    if is_tagged(exp, "lambda") {
-        return compile_lambda(cfg, state, cenv, exp, target, linkage);
-    }
-    if is_tagged(exp, "begin") {
-        let items = tagged_items(exp, "begin").unwrap_or_default();
-        return compile_sequence(cfg, state, cenv, &items[1..], target, linkage);
-    }
-    if is_tagged(exp, "cond") {
-        let transformed = cond_to_if(exp)?;
-        return compile(cfg, state, cenv, &transformed, target, linkage);
-    }
-    if is_tagged(exp, "let") {
-        let transformed = let_to_combination(exp)?;
-        return compile(cfg, state, cenv, &transformed, target, linkage);
-    }
-    if let Value::Pair(_) = exp {
-        let operator = items_of(exp)
-            .and_then(|items| items.first().cloned())
-            .unwrap_or(Value::Nil);
-        if is_open_coded(cfg, cenv, &operator) {
-            return compile_open_code(cfg, state, cenv, exp, target, linkage);
-        }
-        return compile_application(cfg, state, cenv, exp, target, linkage);
-    }
-    Err(op_fail(format!(
-        "Unknown expression type: COMPILE: {}",
-        display_value(exp)
-    )))
-}
-
-/// 5.38 and 5.44: the operator is an open-coded primitive name only
-/// when the configuration open-codes, the name is one of the
-/// open-coded set, and no compile-time frame binds the name.
-fn is_open_coded(cfg: &Config, cenv: &Cenv, operator: &Value) -> bool {
-    let Some(name) = symbol_name(operator) else {
-        return false;
-    };
-    cfg.open_code
-        && open_coded_primitives().contains(&name.as_str())
-        && find_variable(&name, cenv) == LexicalAddress::NotFound
-}
-
-fn compile_self_evaluating(cfg: &Config, exp: &Value, target: &str, linkage: &Linkage) -> Seq {
-    end_with_linkage(
-        cfg,
-        linkage,
-        &make_instruction_sequence(
-            &[],
-            &[target],
-            vec![format!("(assign {target} (const {}))", const_spelling(exp))],
-        ),
-    )
-}
-
-fn compile_quoted(
-    cfg: &Config,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let items = tagged_items(exp, "quote").unwrap_or_default();
-    let Some(datum) = items.get(1) else {
-        return Err(op_fail("compile-quoted needs a datum"));
-    };
-    // The quote prefix marks the spelling as a datum, so a quoted
-    // datum that is itself a `quote` form round-trips through the
-    // reader unchanged.
-    Ok(end_with_linkage(
-        cfg,
-        linkage,
-        &make_instruction_sequence(
-            &[],
-            &[target],
-            vec![format!(
-                "(assign {target} (const '{}))",
-                const_spelling(datum)
-            )],
-        ),
-    ))
-}
-
-fn compile_variable(
-    cfg: &Config,
-    cenv: &Cenv,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let Some(name) = symbol_name(exp) else {
-        return Err(op_fail("compile-variable needs a variable"));
-    };
-    if let Some(trace) = &cfg.trace {
-        trace(cenv, &name);
-    }
-    let access = if cfg.lexical {
-        match find_variable(&name, cenv) {
-            LexicalAddress::Found(frame, displacement) => vec![format!(
-                "(assign {target} (op lexical-address-lookup) (const {frame}) (const {displacement}) (reg env))"
-            )],
-            LexicalAddress::NotFound => vec![format!(
-                "(assign {target} (op lookup-variable-value) (const {name}) (reg env))"
-            )],
-        }
-    } else {
-        vec![format!(
-            "(assign {target} (op lookup-variable-value) (const {name}) (reg env))"
-        )]
-    };
-    Ok(end_with_linkage(
-        cfg,
-        linkage,
-        &make_instruction_sequence(&["env"], &[target], access),
-    ))
-}
-
-fn compile_assignment(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let items = tagged_items(exp, "set!").unwrap_or_default();
-    let Some(name) = items.get(1).and_then(symbol_name) else {
-        return Err(op_fail("compile-assignment needs a variable"));
-    };
-    let Some(value) = items.get(2) else {
-        return Err(op_fail("compile-assignment needs a value"));
-    };
-    let value_code = compile(cfg, state, cenv, value, "val", &Linkage::Next)?;
-    let assign_stmt = if cfg.lexical {
-        match find_variable(&name, cenv) {
-            LexicalAddress::Found(frame, displacement) => format!(
-                "(perform (op lexical-address-set!) (const {frame}) (const {displacement}) (reg val) (reg env))"
-            ),
-            LexicalAddress::NotFound => {
-                format!("(perform (op set-variable-value!) (const {name}) (reg val) (reg env))")
-            }
-        }
-    } else {
-        format!("(perform (op set-variable-value!) (const {name}) (reg val) (reg env))")
-    };
-    let tail = make_instruction_sequence(
-        &["env", "val"],
-        &[target],
-        vec![assign_stmt, format!("(assign {target} (const ok))")],
-    );
-    Ok(end_with_linkage(
-        cfg,
-        linkage,
-        &preserving_instruction_sequences(cfg, &["env"], &value_code, &tail),
-    ))
-}
-
-/// The `(name, value)` a define names, with a procedure-form define
-/// rewritten to its lambda.
-fn definition_parts(exp: &Value) -> Result<(String, Value), Fault> {
-    let items = tagged_items(exp, "define").unwrap_or_default();
-    let Some(target) = items.get(1) else {
-        return Err(op_fail("compile-definition needs a target"));
-    };
-    match target {
-        Value::Sym(name) => {
-            let value = items
-                .get(2)
-                .ok_or_else(|| op_fail("compile-definition needs a value"))?;
-            Ok((name.to_string(), value.clone()))
-        }
-        Value::Pair(_) => {
-            let signature = operand_items(target);
-            let name = signature
-                .first()
-                .and_then(symbol_name)
-                .ok_or_else(|| op_fail("compile-definition needs a name"))?;
-            let parameters = signature
-                .get(1..)
-                .map_or(Value::Nil, |rest| Value::list(rest.to_vec()));
-            let body = items.get(2..).unwrap_or(&[]).to_vec();
-            Ok((name, lambda_form(parameters, &body)))
-        }
-        other => Err(op_fail(format!(
-            "compile-definition: bad target: {}",
-            display_value(other)
-        ))),
-    }
-}
-
-fn compile_definition(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let (name, value) = definition_parts(exp)?;
-    let value_code = compile(cfg, state, cenv, &value, "val", &Linkage::Next)?;
-    let tail = make_instruction_sequence(
-        &["env"],
-        &[target],
-        vec![
-            format!("(perform (op define-variable!) (const {name}) (reg val) (reg env))"),
-            format!("(assign {target} (const ok))"),
-        ],
-    );
-    Ok(end_with_linkage(
-        cfg,
-        linkage,
-        &preserving_instruction_sequences(cfg, &["env"], &value_code, &tail),
-    ))
-}
-
-fn compile_if(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let items = tagged_items(exp, "if").unwrap_or_default();
-    let Some(predicate) = items.get(1) else {
-        return Err(op_fail("compile-if needs a predicate"));
-    };
-    let Some(consequent) = items.get(2) else {
-        return Err(op_fail("compile-if needs a consequent"));
-    };
-    // The label allocations and the compilation order (alternative,
-    // consequent, predicate) are the orders the book's own figures
-    // show.
-    let after_if = make_label(state, "after-if");
-    let f_branch = make_label(state, "false-branch");
-    let t_branch = make_label(state, "true-branch");
-    let consequent_linkage = if *linkage == Linkage::Next {
-        Linkage::Lab(after_if.clone())
-    } else {
-        linkage.clone()
-    };
-    let alternative_exp = items.get(3).cloned().unwrap_or(Value::Bool(false));
-    let a_code = compile(cfg, state, cenv, &alternative_exp, target, linkage)?;
-    let c_code = compile(cfg, state, cenv, consequent, target, &consequent_linkage)?;
-    let p_code = compile(cfg, state, cenv, predicate, "val", &Linkage::Next)?;
-    let test_code = make_instruction_sequence(
-        &["val"],
-        &[],
-        vec![
-            "(test (op false?) (reg val))".to_owned(),
-            format!("(branch (label {f_branch}))"),
-        ],
-    );
-    let true_side = append_2_sequences(
-        &make_instruction_sequence(&[], &[], vec![t_branch]),
-        &c_code,
-    );
-    let false_side = append_2_sequences(
-        &make_instruction_sequence(&[], &[], vec![f_branch]),
-        &a_code,
-    );
-    let mut branches = parallel_instruction_sequences(&true_side, &false_side);
-    branches.stmts.push(after_if);
-    let with_test = append_2_sequences(&test_code, &branches);
-    Ok(preserving_instruction_sequences(
-        cfg,
-        &["env", "continue"],
-        &p_code,
-        &with_test,
-    ))
-}
-
-/// 5.43: the internal defines of a body become a `let` of
-/// `*unassigned*` bindings whose values are `set!` after it, the
-/// book's scan-out; a body with no defines is returned unchanged.
-#[must_use]
-pub fn scan_out_defines(body: &[Value]) -> Vec<Value> {
-    let has_defines = body.iter().any(|form| is_tagged(form, "define"));
-    if !has_defines {
-        return body.to_vec();
-    }
-    let mut names = Vec::new();
-    let mut sets = Vec::new();
-    for form in body {
-        if !is_tagged(form, "define") {
-            continue;
-        }
-        if let Ok((name, value)) = definition_parts(form) {
-            names.push(name.clone());
-            sets.push(Value::list(vec![
-                Value::sym("set!"),
-                Value::sym(&name),
+fn compile_block_in(ctx: &mut Ctx<'_>, block: &HirBlock) -> Seq {
+    let mut out = Seq::empty();
+    for stmt in &block.stmts {
+        match stmt {
+            sicp_runtime::host::hir::HirStmt::Let {
+                binding,
+                destruct,
                 value,
-            ]));
+            } => {
+                out = out.append(compile_expr_in(ctx, value));
+                out = out.append(match destruct {
+                    Some((left, right)) => seq(vec![
+                        Instr::Assign(TMP.to_owned(), reg(VAL)),
+                        Instr::Perform(PerformOp::Project(0), Vec::new()),
+                        Instr::Assign(slot_name(*left), reg(VAL)),
+                        Instr::Assign(VAL.to_owned(), reg(TMP)),
+                        Instr::Perform(PerformOp::Project(1), Vec::new()),
+                        Instr::Assign(slot_name(*right), reg(VAL)),
+                    ]),
+                    None => seq(vec![Instr::Assign(slot_name(*binding), reg(VAL))]),
+                });
+            }
+            sicp_runtime::host::hir::HirStmt::Expr(expr) => {
+                out = out.append(compile_expr_in(ctx, expr));
+            }
         }
     }
-    let bindings = Value::list(
-        names
-            .iter()
-            .map(|name| {
-                Value::list(vec![
-                    Value::sym(name),
-                    Value::list(vec![Value::sym("quote"), Value::sym("*unassigned*")]),
-                ])
-            })
-            .collect(),
-    );
-    let mut let_form = vec![Value::sym("let"), bindings];
-    let_form.extend(sets);
-    let_form.extend(
-        body.iter()
-            .filter(|form| !is_tagged(form, "define"))
-            .cloned(),
-    );
-    vec![Value::list(let_form)]
+    match &block.tail {
+        Some(tail) => out.append(compile_expr_in(ctx, tail)),
+        None => out.append(set_val(Operand::Const(0))),
+    }
 }
 
-fn compile_sequence(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    seq: &[Value],
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let Some((first, rest)) = seq.split_first() else {
-        return Err(op_fail("compile-sequence needs a sequence"));
-    };
-    if rest.is_empty() {
-        return compile(cfg, state, cenv, first, target, linkage);
+/// Compiles the operands of a call, constructor, or collection into
+/// `argl` (one vector, in source order); `val` is not preserved.
+fn compile_operands(ctx: &mut Ctx<'_>, args: &[HirExpr]) -> Seq {
+    let mut out = Seq::empty();
+    let base = ctx.depth;
+    for arg in args {
+        out = out
+            .append(compile_expr_in(ctx, arg))
+            .append(seq(vec![Instr::Save(VAL.to_owned())]));
+        ctx.depth += 1;
     }
-    let first_code = compile(cfg, state, cenv, first, target, &Linkage::Next)?;
-    let rest_code = compile_sequence(cfg, state, cenv, rest, target, linkage)?;
-    Ok(preserving_instruction_sequences(
-        cfg,
-        &["env", "continue"],
-        &first_code,
-        &rest_code,
-    ))
-}
-
-fn compile_lambda(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let items = tagged_items(exp, "lambda").unwrap_or_default();
-    if items.len() < 2 {
-        return Err(op_fail("compile-lambda needs parameters"));
-    }
-    // after-lambda is allocated before entry, the order the book's
-    // figures show.
-    let after_lambda = make_label(state, "after-lambda");
-    let proc_entry = make_label(state, "entry");
-    let lambda_linkage = if *linkage == Linkage::Next {
-        Linkage::Lab(after_lambda.clone())
-    } else {
-        linkage.clone()
-    };
-    let construct = end_with_linkage(
-        cfg,
-        &lambda_linkage,
-        &make_instruction_sequence(
-            &["env"],
-            &[target],
-            vec![format!(
-                "(assign {target} (op make-compiled-procedure) (const {proc_entry}) (reg env))"
-            )],
-        ),
-    );
-    let body = compile_lambda_body(cfg, state, cenv, exp, &proc_entry)?;
-    let mut combined = tack_on_instruction_sequence(&construct, &body);
-    combined.stmts.push(after_lambda);
-    Ok(combined)
-}
-
-fn compile_lambda_body(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    exp: &Value,
-    proc_entry: &str,
-) -> Result<Seq, Fault> {
-    let items = tagged_items(exp, "lambda").unwrap_or_default();
-    let Some(parameters) = items.get(1) else {
-        return Err(op_fail("compile-lambda-body needs parameters"));
-    };
-    let names = parameter_names(parameters)?;
-    let body = items.get(2..).unwrap_or(&[]).to_vec();
-    let body = if cfg.scan_out {
-        scan_out_defines(&body)
-    } else {
-        body
-    };
-    let head = make_instruction_sequence(
-        &["env", "proc", "argl"],
-        &["env"],
-        vec![
-            proc_entry.to_owned(),
-            "(assign env (op compiled-procedure-env) (reg proc))".to_owned(),
-            format!(
-                "(assign env (op extend-environment) (const ({})) (reg argl) (reg env))",
-                names.join(" ")
-            ),
-        ],
-    );
-    let body_code = compile_sequence(
-        cfg,
-        state,
-        &extend_cenv(&names, cenv),
-        &body,
-        "val",
-        &Linkage::Return,
-    )?;
-    Ok(append_2_sequences(&head, &body_code))
-}
-
-fn compile_application(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let items = items_of(exp).ok_or_else(|| op_fail("compile-application needs a combination"))?;
-    let operator = items
-        .first()
-        .ok_or_else(|| op_fail("compile-application needs an operator"))?;
-    let operands = items.get(1..).unwrap_or(&[]);
-    let proc_code = compile(cfg, state, cenv, operator, "proc", &Linkage::Next)?;
-    let mut operand_codes = Vec::with_capacity(operands.len());
-    for operand in operands {
-        operand_codes.push(compile(cfg, state, cenv, operand, "val", &Linkage::Next)?);
-    }
-    let arglist_code = construct_arglist(cfg, &operand_codes);
-    let call = compile_procedure_call(cfg, state, target, linkage)?;
-    let inner = preserving_instruction_sequences(cfg, &["proc", "continue"], &arglist_code, &call);
-    Ok(preserving_instruction_sequences(
-        cfg,
-        &["env", "continue"],
-        &proc_code,
-        &inner,
-    ))
-}
-
-/// The book's `construct-arglist`: the default evaluates the operands
-/// right to left, the last operand initializing `argl` and each
-/// earlier operand consing onto it. The 5.36 `left_to_right`
-/// configuration evaluates first to last, adjoining each argument at
-/// the end, so the argument list keeps the source order either way and
-/// the instruction count is unaffected by the choice.
-#[must_use]
-pub fn construct_arglist(cfg: &Config, operand_codes: &[Seq]) -> Seq {
-    let mut ordered: Vec<Seq> = operand_codes.to_vec();
-    if !cfg.left_to_right {
-        ordered.reverse();
-    }
-    if ordered.is_empty() {
-        return make_instruction_sequence(
-            &[],
-            &["argl"],
-            vec!["(assign argl (const ()))".to_owned()],
-        );
-    }
-    let cons_op = if cfg.left_to_right {
-        "(assign argl (op adjoin-arg) (reg val) (reg argl))"
-    } else {
-        "(assign argl (op cons) (reg val) (reg argl))"
-    };
-    let code_to_get_last_arg = append_2_sequences(
-        &ordered[0],
-        &make_instruction_sequence(
-            &["val"],
-            &["argl"],
-            vec!["(assign argl (op list) (reg val))".to_owned()],
-        ),
-    );
-    if ordered.len() == 1 {
-        return code_to_get_last_arg;
-    }
-    let cons_step =
-        make_instruction_sequence(&["val", "argl"], &["argl"], vec![cons_op.to_owned()]);
-    let mut rest_code = empty_instruction_sequence();
-    for operand_code in ordered[1..].iter().rev() {
-        let code_for_next_arg =
-            preserving_instruction_sequences(cfg, &["argl"], operand_code, &cons_step);
-        rest_code = preserving_instruction_sequences(cfg, &["env"], &code_for_next_arg, &rest_code);
-    }
-    preserving_instruction_sequences(cfg, &["env"], &code_to_get_last_arg, &rest_code)
-}
-
-fn compile_procedure_call(
-    cfg: &Config,
-    state: &State,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    // after-call is allocated before compiled-branch before
-    // primitive-branch, the order the book's figures show.
-    let after_call = make_label(state, "after-call");
-    let compiled_branch = make_label(state, "compiled-branch");
-    let primitive_branch = make_label(state, "primitive-branch");
-    let compound_branch = if cfg.compound_calls {
-        Some(make_label(state, "compound-branch"))
-    } else {
-        None
-    };
-    let compiled_linkage = if *linkage == Linkage::Next {
-        Linkage::Lab(after_call.clone())
-    } else {
-        linkage.clone()
-    };
-    let appl_code = compile_proc_appl(state, target, &compiled_linkage)?;
-    // compound-apply answers in `val`; a call compiled into another
-    // register needs the copy the compiled branch's proc-return
-    // performs, so the interpreted branch lands on compound-return
-    // first.
-    let compound_return = if compound_branch.is_some() && target != "val" {
-        Some(make_label(state, "compound-return"))
-    } else {
-        None
-    };
-    let primitive_tail = if compound_branch.is_some() && *linkage == Linkage::Next {
-        vec![format!("(goto (label {after_call}))")]
-    } else {
-        Vec::new()
-    };
-    let mut primitive_stmts = vec![format!(
-        "(assign {target} (op apply-primitive-procedure) (reg proc) (reg argl))"
-    )];
-    primitive_stmts.extend(primitive_tail);
-    let primitive_code = end_with_linkage(
-        cfg,
-        linkage,
-        &make_instruction_sequence(&["proc", "argl"], &[target], primitive_stmts),
-    );
-    let (compound_test, compound_label, compound_return_block) = match compound_branch {
-        Some(branch) => {
-            compile_compound_branch(branch, target, linkage, &after_call, compound_return)
-        }
-        None => (
-            empty_instruction_sequence(),
-            empty_instruction_sequence(),
-            empty_instruction_sequence(),
-        ),
-    };
-    let dispatched = parallel_instruction_sequences(
-        &append_2_sequences(
-            &make_instruction_sequence(&[], &[], vec![compiled_branch]),
-            &appl_code,
-        ),
-        &append_2_sequences(
-            &make_instruction_sequence(&[], &[], vec![primitive_branch.clone()]),
-            &primitive_code,
-        ),
-    );
-    let test = make_instruction_sequence(
-        &["proc"],
-        &[],
-        vec![
-            "(test (op primitive-procedure?) (reg proc))".to_owned(),
-            format!("(branch (label {primitive_branch}))"),
-        ],
-    );
-    let after = make_instruction_sequence(&[], &[], vec![after_call]);
-    Ok(append_sequences(&[
-        test,
-        compound_test,
-        dispatched,
-        compound_label,
-        compound_return_block,
-        after,
+    ctx.depth = base;
+    let count = i64::try_from(args.len()).expect("operand lists are small");
+    out.append(seq(vec![
+        Instr::Perform(PerformOp::MakeVec, vec![Operand::Const(count)]),
+        Instr::Assign(ARGL.to_owned(), reg(VAL)),
     ]))
 }
 
-/// 5.47: the third branch of a procedure call. It tests `proc` and,
-/// for an interpreted procedure, hands the call to the evaluator's
-/// compound-apply through the `unev` register, whose value is dead at
-/// a call site (the machine's register set is the 5.4 machine's, so
-/// the book's `compapp` register has no name here). The branch saves
-/// `continue` on the stack before jumping: the interpreted
-/// compound-apply reaches its body through ev-sequence, whose
-/// last-expression path restores `continue` from the stack, the
-/// interpreted calling convention. compound-apply answers in `val`
-/// and jumps through `continue`; a call compiled into a non-`val`
-/// target first lands on its compound-return label, where `val` is
-/// copied into the target exactly as the compiled branch's
-/// proc-return does. Returns the test, the branch body, and the
-/// copy block, in emission order.
-fn compile_compound_branch(
-    branch: String,
-    target: &str,
-    linkage: &Linkage,
-    after_call: &str,
-    compound_return: Option<String>,
-) -> (Seq, Seq, Seq) {
-    let compound_test = make_instruction_sequence(
-        &["proc"],
-        &[],
-        vec![
-            "(test (op compound-procedure?) (reg proc))".to_owned(),
-            format!("(branch (label {branch}))"),
-        ],
-    );
-    let cont_label = compound_return.as_deref();
-    let mut cont_setup = vec![branch];
-    cont_setup.extend(match linkage {
-        Linkage::Return => Vec::new(),
-        Linkage::Next => vec![format!(
-            "(assign continue (label {}))",
-            cont_label.unwrap_or(after_call)
-        )],
-        Linkage::Lab(label) => vec![format!(
-            "(assign continue (label {}))",
-            cont_label.unwrap_or(label)
-        )],
-    });
-    cont_setup.extend([
-        "(save continue)".to_owned(),
-        "(assign unev (label compound-apply))".to_owned(),
-        "(goto (reg unev))".to_owned(),
-    ]);
-    let compound_label = make_instruction_sequence(&["proc"], &["unev", "continue"], cont_setup);
-    let compound_return_block = match compound_return {
-        Some(label) => compile_compound_return(target, linkage, after_call, label),
-        None => empty_instruction_sequence(),
+/// Compiles one place to its address: `val` holds a reference to the
+/// place. `through` sees through a borrow held in a local root (a
+/// projection or method addresses the referent, like the native autoref
+/// adjustment); a bare read, store, or borrow keeps the slot itself.
+fn compile_address(
+    ctx: &mut Ctx<'_>,
+    place: &sicp_runtime::host::hir::Place,
+    through: bool,
+    mutable: bool,
+) -> Seq {
+    let mut out = match &place.root {
+        PlaceRoot::Local(bind) => perform(PerformOp::LocalRef {
+            bind: bind.0,
+            mutable,
+            through,
+        }),
+        PlaceRoot::Deref(inner) => compile_expr_in(ctx, inner),
     };
-    (compound_test, compound_label, compound_return_block)
+    for step in &place.proj {
+        out = out.append(match step {
+            Proj::Field(index) => perform(PerformOp::RefField(*index)),
+            Proj::Index(index) => ctx
+                .around_val(|ctx| compile_expr_in(ctx, index))
+                .append(perform(PerformOp::RefIndex)),
+        });
+    }
+    out
 }
 
-/// The block a compound call returns to when the call was compiled
-/// into a non-`val` target: `val` is copied into the target exactly
-/// as the compiled branch's proc-return does, then control goes to
-/// the join point. Return linkage never reaches a non-val target
-/// (compile-proc-appl faults first), so the fallthrough here is
-/// after-call, the Next linkage's join point.
-fn compile_compound_return(
-    target: &str,
-    linkage: &Linkage,
-    after_call: &str,
-    label: String,
-) -> Seq {
-    let exit = match linkage {
-        Linkage::Lab(destination) => destination.clone(),
-        _ => after_call.to_owned(),
+/// Compiles `left` into `val` and `right` into `tmp`, in that order.
+fn compile_pair(ctx: &mut Ctx<'_>, left: &HirExpr, right: &HirExpr) -> Seq {
+    compile_expr_in(ctx, left).append(ctx.around_val(|ctx| compile_expr_in(ctx, right)))
+}
+
+// Preserve one exhaustive dispatch from checked HIR forms to instruction sequences.
+#[allow(clippy::too_many_lines)]
+fn compile_expr_in(ctx: &mut Ctx<'_>, expr: &HirExpr) -> Seq {
+    match &expr.kind {
+        HirExprKind::I64(value) => set_val(Operand::Const(*value)),
+        HirExprKind::Usize(value) => set_val(Operand::ConstU(*value)),
+        HirExprKind::Bool(value) => set_val(Operand::Bool(*value)),
+        HirExprKind::Unit => set_val(Operand::Const(0)),
+        HirExprKind::Str(text) => set_val(Operand::Str(text.clone())),
+        HirExprKind::Place { place, mode } => {
+            let through = !place.proj.is_empty();
+            let load = if *mode == sicp_runtime::host::hir::PlaceUse::Move {
+                PerformOp::Take
+            } else {
+                PerformOp::Load
+            };
+            compile_address(ctx, place, through, false).append(perform(load))
+        }
+        HirExprKind::FunRef(fun) => perform(PerformOp::FunRef(fun.0)),
+        HirExprKind::StructLit(id, fields) | HirExprKind::TupleStructLit(id, fields) => {
+            compile_operands(ctx, fields).append(perform(PerformOp::MakeStruct(id.0)))
+        }
+        HirExprKind::VariantLit(id, index, payload) => {
+            compile_operands(ctx, payload).append(perform(PerformOp::MakeVariant(id.0, *index)))
+        }
+        HirExprKind::Tuple(left, right) => {
+            compile_pair(ctx, left, right).append(perform(PerformOp::MakeTuple))
+        }
+        HirExprKind::Array(items) | HirExprKind::VecList(items) => {
+            compile_operands(ctx, items).append(set_val(reg(ARGL)))
+        }
+        HirExprKind::VecRepeat(value, count) => {
+            compile_pair(ctx, value, count).append(perform(PerformOp::MakeRepeat))
+        }
+        HirExprKind::Format { kind, spec, args } => {
+            compile_operands(ctx, args).append(perform(PerformOp::Format(*kind, spec.clone())))
+        }
+        HirExprKind::Field { base, index } => {
+            compile_expr_in(ctx, base).append(perform(PerformOp::Project(*index)))
+        }
+        HirExprKind::Index { base, index } => {
+            compile_pair(ctx, base, index).append(perform(PerformOp::IndexGet))
+        }
+        HirExprKind::Call { callee, args } => {
+            compile_operands(ctx, args).append(seq(vec![Instr::Perform(
+                PerformOp::CallFun,
+                vec![Operand::Label(format!("fun{}", callee.0))],
+            )]))
+        }
+        HirExprKind::Ctor(op, args) => {
+            compile_operands(ctx, args).append(perform(PerformOp::Ctor(*op)))
+        }
+        HirExprKind::IndirectCall { callee, args } => {
+            let callee_seq = compile_expr_in(ctx, callee);
+            ctx.depth += 1;
+            let operands = compile_operands(ctx, args);
+            ctx.depth -= 1;
+            callee_seq
+                .append(seq(vec![Instr::Save(VAL.to_owned())]))
+                .append(operands)
+                .append(seq(vec![Instr::Restore(VAL.to_owned())]))
+                .append(perform(PerformOp::CallValue))
+        }
+        HirExprKind::Method {
+            op,
+            receiver,
+            receiver_place,
+            args,
+        } => {
+            // The receiver is evaluated first, as in Rust: its place
+            // when the method reads or updates it in place, its value
+            // otherwise.
+            let (receiver_seq, apply) = match receiver_place {
+                Some(place) => (
+                    compile_address(ctx, place, true, true),
+                    PerformOp::MethodAt(*op),
+                ),
+                None => (compile_expr_in(ctx, receiver), PerformOp::Method(*op)),
+            };
+            ctx.depth += 1;
+            let operands = compile_operands(ctx, args);
+            ctx.depth -= 1;
+            receiver_seq
+                .append(seq(vec![Instr::Save(VAL.to_owned())]))
+                .append(operands)
+                .append(seq(vec![Instr::Restore(VAL.to_owned())]))
+                .append(perform(apply))
+        }
+        HirExprKind::Unary { op, operand } => match (op, &operand.kind) {
+            (UnOp::Ref | UnOp::RefMut, HirExprKind::Place { place, .. }) => {
+                compile_address(ctx, place, !place.proj.is_empty(), *op == UnOp::RefMut)
+            }
+            _ => compile_expr_in(ctx, operand).append(perform(PerformOp::Unary(*op))),
+        },
+        HirExprKind::Binary { op, left, right } => match op {
+            BinOp::And | BinOp::Or => {
+                // Short-circuit: the right operand runs only when the
+                // left one does not decide the result.
+                let done = ctx.labels.fresh("logic-done");
+                let rhs = ctx.labels.fresh("logic-rhs");
+                let left_seq = compile_expr_in(ctx, left);
+                let right_seq = compile_expr_in(ctx, right);
+                let test = if *op == BinOp::And {
+                    seq(vec![
+                        Instr::TestBool(reg(VAL)),
+                        Instr::Branch(rhs.clone()),
+                        Instr::Goto(Operand::Label(done.clone())),
+                    ])
+                } else {
+                    seq(vec![
+                        Instr::TestBool(reg(VAL)),
+                        Instr::Branch(done.clone()),
+                        Instr::Goto(Operand::Label(rhs.clone())),
+                    ])
+                };
+                left_seq
+                    .append(test)
+                    .append(label(&rhs))
+                    .append(right_seq)
+                    .append(label(&done))
+            }
+            _ => compile_pair(ctx, left, right).append(perform(PerformOp::Arith(*op))),
+        },
+        HirExprKind::Assign { op, target, value } => {
+            // The assigned value is evaluated before the place, as in
+            // Rust; the place's address lands in `tmp`.
+            let value_seq = compile_expr_in(ctx, value);
+            let address =
+                ctx.around_val(|ctx| compile_address(ctx, target, !target.proj.is_empty(), true));
+            value_seq
+                .append(address)
+                .append(perform(PerformOp::Store(*op)))
+        }
+        HirExprKind::If {
+            test,
+            then,
+            else_branch,
+        } => {
+            let then_label = ctx.labels.fresh("then");
+            let end = ctx.labels.fresh("endif");
+            let test_seq = compile_expr_in(ctx, test);
+            let then_seq = compile_expr_in(ctx, then);
+            let else_seq = compile_expr_in(ctx, else_branch);
+            test_seq
+                .append(seq(vec![
+                    Instr::TestBool(reg(VAL)),
+                    Instr::Branch(then_label.clone()),
+                ]))
+                .append(else_seq)
+                .append(goto(&end))
+                .append(label(&then_label))
+                .append(then_seq)
+                .append(label(&end))
+        }
+        HirExprKind::IfLet {
+            pat,
+            value,
+            then,
+            else_branch,
+        } => {
+            let otherwise = ctx.labels.fresh("iflet-else");
+            let end = ctx.labels.fresh("iflet-end");
+            let value_seq = compile_expr_in(ctx, value);
+            let then_seq = compile_expr_in(ctx, then);
+            let else_seq = compile_expr_in(ctx, else_branch);
+            value_seq
+                .append(seq(vec![Instr::Bind {
+                    pat: pat.clone(),
+                    fail: otherwise.clone(),
+                }]))
+                .append(then_seq)
+                .append(goto(&end))
+                .append(label(&otherwise))
+                .append(else_seq)
+                .append(label(&end))
+        }
+        HirExprKind::Match { scrutinee, arms } => {
+            // A failed `Bind` leaves `val` intact, so every arm tests
+            // the same scrutinee value.
+            let end = ctx.labels.fresh("match-end");
+            let mut out = compile_expr_in(ctx, scrutinee);
+            for (pat, body) in arms {
+                let next = ctx.labels.fresh("match-next");
+                out = out
+                    .append(seq(vec![Instr::Bind {
+                        pat: pat.clone(),
+                        fail: next.clone(),
+                    }]))
+                    .append(compile_expr_in(ctx, body))
+                    .append(goto(&end))
+                    .append(label(&next));
+            }
+            out.append(perform(PerformOp::NoMatch)).append(label(&end))
+        }
+        HirExprKind::Block(block) => compile_block_in(ctx, block),
+        HirExprKind::Loop { body, .. } => {
+            let top = ctx.labels.fresh("loop");
+            let done = ctx.labels.fresh("loop-done");
+            let target = LoopTarget {
+                exit: done.clone(),
+                exit_depth: ctx.depth,
+                next: top.clone(),
+                next_depth: ctx.depth,
+            };
+            let body_seq = ctx.in_loop(target, body);
+            label(&top)
+                .append(body_seq)
+                .append(goto(&top))
+                .append(label(&done))
+        }
+        HirExprKind::While { test, body } => {
+            let top = ctx.labels.fresh("while");
+            let run = ctx.labels.fresh("while-body");
+            let done = ctx.labels.fresh("while-done");
+            let test_seq = compile_expr_in(ctx, test);
+            let target = LoopTarget {
+                exit: done.clone(),
+                exit_depth: ctx.depth,
+                next: top.clone(),
+                next_depth: ctx.depth,
+            };
+            let body_seq = ctx.in_loop(target, body);
+            label(&top)
+                .append(test_seq)
+                .append(seq(vec![
+                    Instr::TestBool(reg(VAL)),
+                    Instr::Branch(run.clone()),
+                    Instr::Goto(Operand::Label(done.clone())),
+                ]))
+                .append(label(&run))
+                .append(body_seq)
+                .append(goto(&top))
+                .append(label(&done))
+                .append(set_val(Operand::Const(0)))
+        }
+        HirExprKind::WhileLet { pat, value, body } => {
+            let top = ctx.labels.fresh("whilelet");
+            let done = ctx.labels.fresh("whilelet-done");
+            let value_seq = compile_expr_in(ctx, value);
+            let target = LoopTarget {
+                exit: done.clone(),
+                exit_depth: ctx.depth,
+                next: top.clone(),
+                next_depth: ctx.depth,
+            };
+            let body_seq = ctx.in_loop(target, body);
+            label(&top)
+                .append(value_seq)
+                .append(seq(vec![Instr::Bind {
+                    pat: pat.clone(),
+                    fail: done.clone(),
+                }]))
+                .append(body_seq)
+                .append(goto(&top))
+                .append(label(&done))
+                .append(set_val(Operand::Const(0)))
+        }
+        HirExprKind::For {
+            pat,
+            iterable,
+            body,
+        } => {
+            // The iterator lives on the stack for the whole loop: each
+            // step restores it, advances it, and saves it back.
+            let top = ctx.labels.fresh("for");
+            let run = ctx.labels.fresh("for-body");
+            let done = ctx.labels.fresh("for-done");
+            let iterable_seq = compile_expr_in(ctx, iterable);
+            let outer = ctx.depth;
+            ctx.depth += 1;
+            let target = LoopTarget {
+                exit: done.clone(),
+                exit_depth: outer,
+                next: top.clone(),
+                next_depth: ctx.depth,
+            };
+            let body_seq = ctx.in_loop(target, body);
+            ctx.depth = outer;
+            let finish = ctx.labels.fresh("for-finish");
+            iterable_seq
+                .append(perform(PerformOp::IterStart))
+                .append(seq(vec![Instr::Save(VAL.to_owned())]))
+                .append(label(&top))
+                .append(seq(vec![
+                    Instr::Restore(VAL.to_owned()),
+                    Instr::Perform(PerformOp::IterNext, Vec::new()),
+                    Instr::Save(VAL.to_owned()),
+                    Instr::Branch(run.clone()),
+                    Instr::Goto(Operand::Label(finish.clone())),
+                ]))
+                .append(label(&run))
+                .append(seq(vec![
+                    Instr::Assign(VAL.to_owned(), reg(ITEM)),
+                    Instr::Bind {
+                        pat: pat.clone(),
+                        fail: top.clone(),
+                    },
+                ]))
+                .append(body_seq)
+                .append(goto(&top))
+                .append(label(&finish))
+                .append(seq(vec![Instr::Discard(1)]))
+                .append(label(&done))
+                .append(set_val(Operand::Const(0)))
+        }
+        HirExprKind::Closure(closure) => {
+            let body_label = ctx.labels.fresh("closure-body");
+            let params: Vec<u32> = closure.params.iter().map(|(bind, _)| bind.0).collect();
+            let captures: Vec<(u32, u32)> = closure
+                .captures
+                .iter()
+                .map(|capture| (capture.binding.0, capture.mode as u32))
+                .collect();
+            // The body is pre-compiled into the flat stream under its
+            // own activation: no enclosing loop or stack entry reaches
+            // into it.
+            let body_seq = compile_block_in(
+                &mut Ctx::new(&mut *ctx.labels, &mut *ctx.closures),
+                &closure.body,
+            );
+            ctx.closures.push((body_label.clone(), body_seq));
+            seq(vec![Instr::MakeClosure {
+                kind: closure.kind,
+                body: body_label,
+                params,
+                captures,
+                bind_base: closure.bind_base,
+                frame_slots: closure.frame_slots,
+            }])
+        }
+        HirExprKind::Return(value) => {
+            let value_seq = match value {
+                Some(value) => compile_expr_in(ctx, value),
+                None => set_val(Operand::Const(0)),
+            };
+            value_seq.append(perform(PerformOp::Return))
+        }
+        HirExprKind::Break(value) => {
+            let value_seq = match value {
+                Some(value) => compile_expr_in(ctx, value),
+                None => set_val(Operand::Const(0)),
+            };
+            let target = ctx
+                .loops
+                .last()
+                .expect("the checker admits `break` only inside a loop");
+            value_seq.append(seq(vec![
+                Instr::Discard(ctx.depth - target.exit_depth),
+                Instr::Goto(Operand::Label(target.exit.clone())),
+            ]))
+        }
+        HirExprKind::Continue => {
+            let target = ctx
+                .loops
+                .last()
+                .expect("the checker admits `continue` only inside a loop");
+            seq(vec![
+                Instr::Discard(ctx.depth - target.next_depth),
+                Instr::Goto(Operand::Label(target.next.clone())),
+            ])
+        }
+        HirExprKind::Try(inner) => compile_expr_in(ctx, inner).append(perform(PerformOp::Try)),
+        HirExprKind::Range(left, right) => {
+            compile_pair(ctx, left, right).append(perform(PerformOp::MakeRange))
+        }
+    }
+}
+
+fn slot_name(binding: sicp_runtime::host::hir::BindId) -> String {
+    format!("slot{}", binding.0)
+}
+
+/// The compiled-code runner: one instruction VM over guest values.
+#[must_use]
+pub fn compiled_run(program: &CheckedProgram) -> RunOutcome {
+    let compiled = compile_program(program);
+    let mut vm = Vm::new(compiled);
+    match vm.run() {
+        Ok(()) => RunOutcome {
+            stdout: vm.engine.effects.stdout,
+            trap: None,
+        },
+        Err(report) => RunOutcome {
+            stdout: vm.engine.effects.stdout,
+            trap: Some(report),
+        },
+    }
+}
+
+/// Runs one compiled program and reports the counted statistics the
+/// compiled-versus-interpreted stack lessons (exercises 5.27 through
+/// 5.29 and 5.45, 5.46, 5.50) compare: save/restore totals, the
+/// control-stack depth over the save stack and the call frames, and
+/// the executed-instruction count.
+#[must_use]
+pub fn compiled_run_counted(program: &CheckedProgram) -> (RunOutcome, crate::sec_5_2::StackStats) {
+    let compiled = compile_program(program);
+    let mut vm = Vm::new(compiled);
+    let outcome = match vm.run() {
+        Ok(()) => RunOutcome {
+            stdout: vm.engine.effects.stdout,
+            trap: None,
+        },
+        Err(report) => RunOutcome {
+            stdout: vm.engine.effects.stdout,
+            trap: Some(report),
+        },
     };
-    make_instruction_sequence(
-        &["val"],
-        &[target],
-        vec![
-            label,
-            format!("(assign {target} (reg val))"),
-            format!("(goto (label {exit}))"),
-        ],
+    (outcome, vm.stats)
+}
+
+/// The compiled entry point the conformance gates name.
+///
+/// # Errors
+/// The admission [`Diag`] when the source is rejected before any
+/// effect.
+pub fn run_compiled(source: &str) -> Result<RunOutcome, Diag> {
+    let program = sicp_runtime::host::admit(source)?;
+    Ok(compiled_run(&program))
+}
+
+/// One compiled call in progress: where to resume and the stack height
+/// the callee started at, which `return` (and `?`) restores however
+/// many entries the callee's early exit left pushed.
+struct CallRecord {
+    return_pc: usize,
+    stack_base: usize,
+}
+
+struct Vm {
+    program: CompiledProgram,
+    engine: ops::Engine,
+    regs: HashMap<String, HostValue>,
+    stack: Vec<(String, HostValue)>,
+    calls: Vec<CallRecord>,
+    labels: HashMap<String, usize>,
+    pc: usize,
+    stats: crate::sec_5_2::StackStats,
+}
+
+impl Vm {
+    fn new(program: CompiledProgram) -> Self {
+        let mut engine = ops::Engine::new(program.sema.clone());
+        // Main gets its real frame: local writes must resolve.
+        let main_def = &program.sema.funs[program.main.0 as usize];
+        engine.push_activation(main_def.bind_base, main_def.frame_slots, Vec::new());
+        let labels = program
+            .instrs
+            .iter()
+            .enumerate()
+            .filter_map(|(index, instr)| match instr {
+                Instr::Label(name) => Some((name.clone(), index)),
+                _ => None,
+            })
+            .collect();
+        Self {
+            program,
+            engine,
+            regs: HashMap::new(),
+            stack: Vec::new(),
+            calls: Vec::new(),
+            labels,
+            pc: 0,
+            stats: crate::sec_5_2::StackStats::default(),
+        }
+    }
+
+    fn run(&mut self) -> Result<(), TrapReport> {
+        let entry = self.program.entry.clone();
+        self.jump(&entry)?;
+        while self.pc < self.program.instrs.len() {
+            let instr = self.program.instrs[self.pc].clone();
+            self.stats.steps += 1;
+            self.step(instr)?;
+        }
+        Ok(())
+    }
+
+    fn trap(trap: Trap) -> TrapReport {
+        TrapReport {
+            trap,
+            span: sicp_runtime::host::diag::Span::default(),
+        }
+    }
+
+    fn reg(&self, name: &str) -> HostValue {
+        self.regs.get(name).cloned().unwrap_or(HostValue::Unit)
+    }
+
+    fn set(&mut self, name: &str, value: HostValue) {
+        self.regs.insert(name.to_owned(), value);
+    }
+
+    /// Reads through a borrowed value, like the native autoref
+    /// adjustment for field, index, and method bases.
+    fn through_ref(&self, value: HostValue) -> Result<HostValue, TrapReport> {
+        if matches!(value, HostValue::Ref { .. }) {
+            return self.engine.deref_value(&value).map_err(Self::trap);
+        }
+        Ok(value)
+    }
+
+    /// The place a reference register addresses.
+    fn place_of(
+        &self,
+        name: &str,
+    ) -> Result<(sicp_runtime::host::value::Addr, Vec<RtProj>, bool), TrapReport> {
+        ops::Engine::ref_target(&self.reg(name)).map_err(Self::trap)
+    }
+
+    fn operand(&mut self, operand: &Operand) -> Result<HostValue, TrapReport> {
+        Ok(match operand {
+            Operand::Const(value) => HostValue::Int(*value),
+            Operand::ConstU(value) => HostValue::Usize(*value),
+            Operand::Bool(value) => HostValue::Bool(*value),
+            Operand::Str(text) => HostValue::Text(text.clone()),
+            Operand::Reg(name) => match name
+                .strip_prefix("slot")
+                .and_then(|digits| digits.parse::<u32>().ok())
+            {
+                // Locals live in per-call activation frames: a
+                // recursive call cannot clobber its caller's values.
+                Some(slot) => self
+                    .engine
+                    .read_local(sicp_runtime::host::hir::BindId(slot))
+                    .map_err(Self::trap)?,
+                None => self.reg(name),
+            },
+            Operand::Op(op, operands) => {
+                // Computation results flow through the operation
+                // path: the operation computes into `val`, and the
+                // surrounding assignment stores the target. Control
+                // operations are not operand-shaped.
+                if matches!(
+                    op,
+                    PerformOp::Try
+                        | PerformOp::CallFun
+                        | PerformOp::CallValue
+                        | PerformOp::Return
+                        | PerformOp::NoMatch
+                ) {
+                    return Err(Self::trap(Trap::Dangling));
+                }
+                let saved_pc = self.pc;
+                self.perform(op, operands)?;
+                self.pc = saved_pc;
+                self.reg(VAL)
+            }
+            Operand::Label(name) => HostValue::Text(name.clone()),
+        })
+    }
+
+    // Keep each instruction's machine transition in this exhaustive dispatch.
+    #[allow(clippy::too_many_lines)]
+    fn step(&mut self, instr: Instr) -> Result<(), TrapReport> {
+        match instr {
+            Instr::Label(_) => self.pc += 1,
+            Instr::Assign(target, operand) => {
+                let value = self.operand(&operand)?;
+                match target
+                    .strip_prefix("slot")
+                    .and_then(|digits| digits.parse::<u32>().ok())
+                {
+                    Some(slot) => self
+                        .engine
+                        .write_local(sicp_runtime::host::hir::BindId(slot), value)
+                        .map_err(Self::trap)?,
+                    None => self.set(&target, value),
+                }
+                self.pc += 1;
+            }
+            Instr::Test(op, left, right) => {
+                let a = self.operand(&left)?;
+                let b = self.operand(&right)?;
+                let result = ops::checked_binary(op, &a, &b).map_err(Self::trap)?;
+                self.set("flag", result);
+                self.pc += 1;
+            }
+            Instr::TestBool(operand) => {
+                let value = self.operand(&operand)?;
+                self.set("flag", value);
+                self.pc += 1;
+            }
+            Instr::Branch(label) => {
+                if matches!(self.reg("flag"), HostValue::Bool(true)) {
+                    self.jump(&label)?;
+                } else {
+                    self.pc += 1;
+                }
+            }
+            Instr::Goto(operand) => {
+                let HostValue::Text(label) = self.operand(&operand)? else {
+                    return Err(Self::trap(Trap::Dangling));
+                };
+                self.jump(&label)?;
+            }
+            Instr::Save(name) => {
+                let value = self.reg(&name);
+                self.stack.push((name, value));
+                self.stats.pushes += 1;
+                self.note_depth();
+                self.pc += 1;
+            }
+            Instr::Restore(name) => {
+                let (saved, value) = self.stack.pop().ok_or_else(|| Self::trap(Trap::Dangling))?;
+                if saved != name {
+                    return Err(Self::trap(Trap::Dangling));
+                }
+                self.stats.pops += 1;
+                self.set(&name, value);
+                self.pc += 1;
+            }
+            Instr::Discard(count) => {
+                let keep = self
+                    .stack
+                    .len()
+                    .checked_sub(count)
+                    .ok_or_else(|| Self::trap(Trap::Dangling))?;
+                self.stack.truncate(keep);
+                self.pc += 1;
+            }
+            Instr::Bind { pat, fail } => {
+                let bound =
+                    ops::bind_pattern(&self.engine, &pat, &self.reg(VAL)).map_err(Self::trap)?;
+                match bound {
+                    Some(bindings) => {
+                        for (binding, bound) in bindings {
+                            self.engine
+                                .write_local(binding, bound)
+                                .map_err(Self::trap)?;
+                        }
+                        self.pc += 1;
+                    }
+                    None => self.jump(&fail)?,
+                }
+            }
+            Instr::MakeClosure {
+                kind,
+                body,
+                params,
+                captures,
+                bind_base,
+                frame_slots,
+            } => {
+                let mut capture_values = Vec::with_capacity(captures.len());
+                for (slot, mode) in captures {
+                    let binding = sicp_runtime::host::hir::BindId(slot);
+                    let mode = match mode {
+                        1 => sicp_runtime::host::hir::CaptureMode::Mut,
+                        2 => sicp_runtime::host::hir::CaptureMode::Owned,
+                        _ => sicp_runtime::host::hir::CaptureMode::Shared,
+                    };
+                    let value = self
+                        .engine
+                        .capture_value(binding, mode)
+                        .map_err(Self::trap)?;
+                    capture_values.push((binding, mode, value));
+                }
+                let param_types: Vec<_> = params
+                    .iter()
+                    .map(|slot| {
+                        (
+                            sicp_runtime::host::hir::BindId(*slot),
+                            sicp_runtime::host::hir::HostTy::Unit,
+                        )
+                    })
+                    .collect();
+                // The closure value carries its compiled entry label:
+                // application jumps to the pre-compiled instructions.
+                let closure = ops::compiled_closure_value(
+                    kind,
+                    param_types,
+                    capture_values,
+                    frame_slots,
+                    bind_base,
+                    body,
+                );
+                self.set(VAL, closure);
+                self.pc += 1;
+            }
+            Instr::Perform(op, operands) => self.perform(&op, &operands)?,
+        }
+        Ok(())
+    }
+
+    fn jump(&mut self, label: &str) -> Result<(), TrapReport> {
+        self.pc = *self
+            .labels
+            .get(label)
+            .ok_or_else(|| Self::trap(Trap::Dangling))?;
+        Ok(())
+    }
+
+    /// Leaves the current compiled call with `val` as its result: the
+    /// activation is popped, the stack returns to the height the call
+    /// started at, and control resumes after the call site. Leaving
+    /// main halts the machine.
+    fn leave_call(&mut self) {
+        self.engine.pop_activation();
+        match self.calls.pop() {
+            Some(record) => {
+                self.stack.truncate(record.stack_base);
+                self.pc = record.return_pc;
+            }
+            None => self.pc = self.program.instrs.len(),
+        }
+    }
+
+    /// Notes the control-stack depth: the saved-register stack and
+    /// the active call frames share the machine's one stack.
+    fn note_depth(&mut self) {
+        let depth = self.stack.len() + self.calls.len();
+        self.stats.max_depth = self.stats.max_depth.max(depth);
+    }
+
+    /// Enters one compiled body: pushes its activation, writes its
+    /// parameters, records the return point, and jumps to its entry.
+    fn enter(
+        &mut self,
+        entry: &str,
+        activation: (
+            u32,
+            u32,
+            Vec<(
+                sicp_runtime::host::hir::BindId,
+                sicp_runtime::host::hir::CaptureMode,
+                HostValue,
+            )>,
+        ),
+        params: &[sicp_runtime::host::hir::BindId],
+        args: Vec<HostValue>,
+    ) -> Result<(), TrapReport> {
+        let (bind_base, frame_slots, captures) = activation;
+        self.engine
+            .push_activation(bind_base, frame_slots, captures);
+        for (binding, value) in params.iter().zip(args) {
+            self.engine
+                .write_local(*binding, value)
+                .map_err(Self::trap)?;
+        }
+        self.calls.push(CallRecord {
+            return_pc: self.pc + 1,
+            stack_base: self.stack.len(),
+        });
+        self.note_depth();
+        self.jump(entry)
+    }
+
+    fn call_fun(&mut self, fun: FunId, args: Vec<HostValue>) -> Result<(), TrapReport> {
+        let def = self
+            .program
+            .sema
+            .funs
+            .get(fun.0 as usize)
+            .ok_or_else(|| Self::trap(Trap::Dangling))?;
+        let params: Vec<_> = def.params.iter().map(|(binding, _)| *binding).collect();
+        let activation = (def.bind_base, def.frame_slots, Vec::new());
+        self.enter(&format!("fun{}", fun.0), activation, &params, args)
+    }
+
+    /// Applies one function or closure value in the flat stream: the
+    /// activation is pushed and control jumps to the pre-compiled
+    /// entry, so no syntax is interpreted here.
+    fn enter_value(&mut self, callee: HostValue, args: Vec<HostValue>) -> Result<(), TrapReport> {
+        match callee {
+            HostValue::Closure(closure) => {
+                let entry = closure
+                    .compiled_entry
+                    .clone()
+                    .ok_or_else(|| Self::trap(Trap::Dangling))?;
+                let params: Vec<_> = closure.params.iter().map(|(binding, _)| *binding).collect();
+                let activation = (
+                    closure.bind_base,
+                    closure.frame_slots,
+                    closure.captures.clone(),
+                );
+                self.enter(&entry, activation, &params, args)
+            }
+            HostValue::FnPtr(fun) => self.call_fun(fun, args),
+            HostValue::Box(inner) => self.enter_value(*inner, args),
+            HostValue::Ref { .. } => {
+                let callee = self.through_ref(callee)?;
+                self.enter_value(callee, args)
+            }
+            _ => Err(Self::trap(Trap::Dangling)),
+        }
+    }
+
+    fn take_argl(&mut self) -> Vec<HostValue> {
+        match self.regs.remove(ARGL) {
+            Some(HostValue::Vec(items)) => items,
+            _ => Vec::new(),
+        }
+    }
+
+    // Keep each typed machine operation's register effects together here.
+    #[allow(clippy::too_many_lines)]
+    fn perform(&mut self, op: &PerformOp, operands: &[Operand]) -> Result<(), TrapReport> {
+        let value = match op {
+            PerformOp::CallFun => {
+                let Some(Operand::Label(label)) = operands.first() else {
+                    return Err(Self::trap(Trap::Dangling));
+                };
+                let fun = label
+                    .strip_prefix("fun")
+                    .and_then(|digits| digits.parse().ok())
+                    .ok_or_else(|| Self::trap(Trap::Dangling))?;
+                let args = self.take_argl();
+                return self.call_fun(FunId(fun), args);
+            }
+            PerformOp::CallValue => {
+                let callee = self.reg(VAL);
+                let args = self.take_argl();
+                return self.enter_value(callee, args);
+            }
+            PerformOp::Return => {
+                self.leave_call();
+                return Ok(());
+            }
+            PerformOp::Try => {
+                let value = self.reg(VAL);
+                match ops::builtin_variant(&value) {
+                    Some((0, payload)) if payload.len() == 1 => payload[0].clone(),
+                    // `Err(e)` or `None` leaves the function with the
+                    // residual as its value.
+                    Some((1, _)) => {
+                        self.leave_call();
+                        return Ok(());
+                    }
+                    _ => return Err(Self::trap(Trap::Dangling)),
+                }
+            }
+            PerformOp::NoMatch => return Err(Self::trap(Trap::Dangling)),
+            PerformOp::FunRef(fun) => HostValue::FnPtr(FunId(*fun)),
+            PerformOp::Ctor(ctor) => {
+                let args = self.take_argl();
+                ops::construct(*ctor, &args).map_err(Self::trap)?
+            }
+            PerformOp::Method(method) => {
+                let receiver = self.through_ref(self.reg(VAL))?;
+                let args = self.take_argl();
+                let (result, _) =
+                    ops::apply_method(*method, receiver, None, &args).map_err(Self::trap)?;
+                result
+            }
+            PerformOp::MethodAt(method) => {
+                let (addr, projs, _) = self.place_of(VAL)?;
+                let args = self.take_argl();
+                let receiver = if *method == MethodOp::IntoIter {
+                    self.engine.take_at(addr, &projs)
+                } else {
+                    self.engine.read_at(addr, &projs)
+                }
+                .map_err(Self::trap)?;
+                let receiver = self.through_ref(receiver)?;
+                let (result, updated) =
+                    ops::apply_method(*method, receiver, Some((addr, projs.clone())), &args)
+                        .map_err(Self::trap)?;
+                if let Some(updated) = updated {
+                    self.engine
+                        .write_at(addr, &projs, updated)
+                        .map_err(Self::trap)?;
+                }
+                result
+            }
+            PerformOp::LocalRef {
+                bind,
+                mutable,
+                through,
+            } => {
+                let (addr, projs) = self
+                    .engine
+                    .local_place(sicp_runtime::host::hir::BindId(*bind))
+                    .map_err(Self::trap)?;
+                let (addr, projs) = if *through {
+                    match self.engine.read_at(addr, &projs).map_err(Self::trap)? {
+                        HostValue::Ref { addr, projs, .. } => (addr, projs),
+                        _ => (addr, projs),
+                    }
+                } else {
+                    (addr, projs)
+                };
+                HostValue::Ref {
+                    addr,
+                    projs,
+                    mutable: *mutable,
+                }
+            }
+            PerformOp::RefField(index) => {
+                let (addr, mut projs, mutable) = self.place_of(VAL)?;
+                projs.push(RtProj::Field(*index));
+                HostValue::Ref {
+                    addr,
+                    projs,
+                    mutable,
+                }
+            }
+            PerformOp::RefIndex => {
+                let (addr, mut projs, mutable) = self.place_of(VAL)?;
+                let at = ops::index_position(&self.reg(TMP)).map_err(Self::trap)?;
+                projs.push(RtProj::Index(at));
+                HostValue::Ref {
+                    addr,
+                    projs,
+                    mutable,
+                }
+            }
+            PerformOp::Load => {
+                let (addr, projs, _) = self.place_of(VAL)?;
+                self.engine.read_at(addr, &projs).map_err(Self::trap)?
+            }
+            PerformOp::Take => {
+                let (addr, projs, _) = self.place_of(VAL)?;
+                self.engine.take_at(addr, &projs).map_err(Self::trap)?
+            }
+            PerformOp::Store(binop) => {
+                let (addr, projs, _) = self.place_of(TMP)?;
+                let produced = self.reg(VAL);
+                let stored = match *binop {
+                    None => produced,
+                    Some(binop) => {
+                        let current = self.engine.read_at(addr, &projs).map_err(Self::trap)?;
+                        ops::checked_binary(binop, &current, &produced).map_err(Self::trap)?
+                    }
+                };
+                self.engine
+                    .write_at(addr, &projs, stored)
+                    .map_err(Self::trap)?;
+                HostValue::Unit
+            }
+            PerformOp::Arith(binop) => {
+                ops::checked_binary(*binop, &self.reg(VAL), &self.reg(TMP)).map_err(Self::trap)?
+            }
+            PerformOp::Unary(unop) => {
+                ops::checked_unary(*unop, &self.reg(VAL)).map_err(Self::trap)?
+            }
+            PerformOp::Format(kind, spec) => {
+                let args = self.take_argl();
+                let rendered =
+                    ops::render_format(spec, &args, &self.engine.store).map_err(Self::trap)?;
+                match *kind {
+                    FormatKind::Format => HostValue::Text(rendered),
+                    FormatKind::Print => {
+                        self.engine.effects.push_text(&rendered);
+                        HostValue::Unit
+                    }
+                    FormatKind::Println => {
+                        self.engine.effects.push_line(&rendered);
+                        HostValue::Unit
+                    }
+                }
+            }
+            PerformOp::MakeTuple => {
+                HostValue::Tuple(Box::new(self.reg(VAL)), Box::new(self.reg(TMP)))
+            }
+            PerformOp::MakeVec => {
+                // The stack holds the operands bottom-first; they leave
+                // it in source order.
+                let count = match operands.first() {
+                    Some(Operand::Const(count)) => usize::try_from(*count).unwrap_or(0),
+                    _ => 0,
+                };
+                let keep = self
+                    .stack
+                    .len()
+                    .checked_sub(count)
+                    .ok_or_else(|| Self::trap(Trap::Dangling))?;
+                self.stats.pops += u64::try_from(count).expect("operand lists are small");
+                HostValue::Vec(
+                    self.stack
+                        .split_off(keep)
+                        .into_iter()
+                        .map(|(_, value)| value)
+                        .collect(),
+                )
+            }
+            PerformOp::MakeRepeat => {
+                let times = ops::index_position(&self.reg(TMP)).map_err(Self::trap)?;
+                let times =
+                    usize::try_from(times).map_err(|_| Self::trap(Trap::Overflow("repeat")))?;
+                HostValue::Vec(vec![self.reg(VAL); times])
+            }
+            PerformOp::MakeStruct(item) => HostValue::Struct(*item, self.take_argl()),
+            PerformOp::MakeVariant(item, index) => {
+                HostValue::Variant(*item, *index, self.take_argl())
+            }
+            PerformOp::Project(index) => {
+                let base = self.through_ref(self.reg(VAL))?;
+                project_value(&base, *index).map_err(Self::trap)?
+            }
+            PerformOp::IndexGet => {
+                let base = self.through_ref(self.reg(VAL))?;
+                let at = ops::index_position(&self.reg(TMP)).map_err(Self::trap)?;
+                let (HostValue::Vec(items) | HostValue::Array(items)) = base else {
+                    return Err(Self::trap(Trap::Dangling));
+                };
+                let at = usize::try_from(at).map_err(|_| Self::trap(Trap::IndexOutOfBounds))?;
+                items
+                    .get(at)
+                    .cloned()
+                    .ok_or_else(|| Self::trap(Trap::IndexOutOfBounds))?
+            }
+            PerformOp::MakeRange => {
+                ops::range_of(&self.reg(VAL), &self.reg(TMP)).map_err(Self::trap)?
+            }
+            PerformOp::IterStart => match self.reg(VAL) {
+                iterator @ HostValue::Iter(_) => iterator,
+                HostValue::Ref {
+                    addr,
+                    projs,
+                    mutable,
+                } => {
+                    let collection = self.engine.read_at(addr, &projs).map_err(Self::trap)?;
+                    let (HostValue::Vec(items) | HostValue::Array(items)) = collection else {
+                        return Err(Self::trap(Trap::Dangling));
+                    };
+                    ops::refs_iterator(addr, projs, items.len(), mutable)
+                }
+                HostValue::Vec(items) | HostValue::Array(items) => ops::items_iterator(items),
+                _ => return Err(Self::trap(Trap::Dangling)),
+            },
+            PerformOp::IterNext => {
+                let mut iterator = self.reg(VAL);
+                let step = ops::iterator_next(&mut iterator).map_err(Self::trap)?;
+                match ops::builtin_variant(&step) {
+                    Some((0, payload)) if payload.len() == 1 => {
+                        let item = payload[0].clone();
+                        self.set(ITEM, item);
+                        self.set("flag", HostValue::Bool(true));
+                    }
+                    _ => self.set("flag", HostValue::Bool(false)),
+                }
+                iterator
+            }
+        };
+        self.set(VAL, value);
+        self.pc += 1;
+        Ok(())
+    }
+}
+
+fn project_value(value: &HostValue, index: u32) -> Result<HostValue, Trap> {
+    match value {
+        HostValue::Struct(_, fields) | HostValue::Variant(_, _, fields) => fields
+            .get(index as usize)
+            .cloned()
+            .ok_or(Trap::IndexOutOfBounds),
+        HostValue::Tuple(left, right) => match index {
+            0 => Ok((**left).clone()),
+            1 => Ok((**right).clone()),
+            _ => Err(Trap::IndexOutOfBounds),
+        },
+        _ => Err(Trap::Dangling),
+    }
+}
+
+/// The C translation of one compiled program (exercise 5.52's
+/// artifact): a translation unit over the `mc_*` word runtime that the
+/// backend links with its own `main`. The generated `mc_main` executes
+/// the compiled instruction sequence; nothing here is a placeholder.
+#[must_use]
+pub fn emit_c(program: &CompiledProgram) -> String {
+    let mut out = String::new();
+    out.push_str(
+        "/* Generated from the typed compiler representation (exercise 5.52). */\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n/* The tagged-word runtime the backend provides. */\nextern long mc_alloc_pair(long car, long cdr);\nextern long mc_car(long pair);\nextern long mc_cdr(long pair);\nextern long mc_set_car(long pair, long value);\nextern long mc_set_cdr(long pair, long value);\nextern long mc_alloc_int(long value);\nextern long mc_int_value(long word);\nextern long mc_is_pair(long word);\nextern long mc_is_null(long word);\nextern void mc_print(long word);\nextern long mc_make_closure(long body_id, long arity);\nextern long mc_apply_closure(long closure, long args);\nextern long mc_alloc_vec(long capacity);\nextern long mc_vec_push(long vec, long value);\nextern long mc_vec_get(long vec, long index);\nextern long mc_text(const char *text);\n\nvoid mc_main(void);\n\n",
+    );
+    out.push_str("void mc_main(void) {\n");
+    out.push_str("    long val = 0, tmp = 0, argl = 0, flag = 0;\n");
+    out.push_str("    long save_stack[4096]; long save_top = 0;\n");
+    out.push_str("    long call_stack[2048]; long call_top = 0;\n");
+    out.push_str("    static int labels_indexed = 0;\n    (void)labels_indexed;\n");
+    let mut label_index: HashMap<String, usize> = HashMap::new();
+    for (instruction_index, instr) in program.instrs.iter().enumerate() {
+        if let Instr::Label(name) = instr {
+            label_index.insert(name.clone(), instruction_index);
+        }
+    }
+    out.push_str("    goto ");
+    write_c_label(&mut out, &program.entry);
+    out.push_str(";\n");
+    // Formatting into a `String` cannot fail.
+    for instr in &program.instrs {
+        match instr {
+            Instr::Label(name) => {
+                write_c_label(&mut out, name);
+                out.push_str(": ;\n");
+            }
+            Instr::Assign(target, operand) => {
+                if let Operand::Op(op, args) = operand
+                    && is_statement_op(op)
+                {
+                    out.push_str(&c_perform(op, args));
+                    let _ = writeln!(&mut out, "    {} = val;", c_reg(target));
+                    continue;
+                }
+                let _ = writeln!(&mut out, "    {} = {};", c_reg(target), c_operand(operand));
+            }
+            Instr::Test(op, left, right) => {
+                let _ = writeln!(
+                    &mut out,
+                    "    flag = (mc_int_value({}) {} mc_int_value({}));",
+                    c_operand(left),
+                    c_op(*op),
+                    c_operand(right)
+                );
+            }
+            Instr::TestBool(operand) => {
+                let _ = writeln!(&mut out, "    flag = ({} != 0);", c_operand(operand));
+            }
+            Instr::Branch(label) => {
+                out.push_str("    if (flag) goto ");
+                write_c_label(&mut out, label);
+                out.push_str(";\n");
+            }
+            Instr::Goto(operand) => match operand {
+                Operand::Label(label) => {
+                    out.push_str("    goto ");
+                    write_c_label(&mut out, label);
+                    out.push_str(";\n");
+                }
+                other => {
+                    let _ = writeln!(&mut out, "    goto *dispatch[{}];", c_operand(other));
+                }
+            },
+            Instr::Save(name) => {
+                let _ = writeln!(&mut out, "    save_stack[save_top++] = {};", c_reg(name));
+            }
+            Instr::Restore(name) => {
+                let _ = writeln!(&mut out, "    {} = save_stack[--save_top];", c_reg(name));
+            }
+            Instr::Discard(count) => {
+                let _ = writeln!(&mut out, "    save_top -= {count};");
+            }
+            Instr::Bind { fail, .. } => {
+                out.push_str("    if (!mc_bind(val)) goto ");
+                write_c_label(&mut out, fail);
+                out.push_str(";\n");
+            }
+            Instr::MakeClosure { body, params, .. } => {
+                let _ = writeln!(
+                    &mut out,
+                    "    val = mc_make_closure({}, {});",
+                    label_index.get(body).copied().unwrap_or(0),
+                    params.len()
+                );
+            }
+            Instr::Perform(op, operands) => {
+                out.push_str(&c_perform(op, operands));
+            }
+        }
+    }
+    out.push_str("}\n");
+    let _ = label_index;
+    out
+}
+fn write_c_label(out: &mut String, label: &str) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    out.push_str("L_");
+    for byte in label.bytes() {
+        if byte.is_ascii_alphanumeric() {
+            out.push(char::from(byte));
+        } else {
+            out.push('_');
+            out.push(char::from(HEX[usize::from(byte >> 4)]));
+            out.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+}
+
+fn c_reg(name: &str) -> String {
+    match name {
+        "val" | "tmp" | "argl" | "flag" => name.to_owned(),
+        other => format!("reg_{other}"),
+    }
+}
+
+fn c_operand(operand: &Operand) -> String {
+    match operand {
+        Operand::Const(value) => format!("mc_alloc_int({value})"),
+        Operand::ConstU(value) => format!("mc_alloc_int({value})"),
+        Operand::Bool(value) => format!("mc_alloc_int({})", i64::from(*value)),
+        Operand::Str(text) => format!("mc_text({text:?})"),
+        Operand::Reg(name) => c_reg(name),
+        Operand::Label(name) => format!("/* label {name} */ 0"),
+        Operand::Op(op, args) => c_expr_op(op, args),
+    }
+}
+
+/// Whether an operation materializes through statements rather than
+/// an expression: those reach C only through `c_perform`.
+fn is_statement_op(op: &PerformOp) -> bool {
+    matches!(
+        op,
+        PerformOp::Ctor(_)
+            | PerformOp::MakeVec
+            | PerformOp::MakeRepeat
+            | PerformOp::MakeStruct(_)
+            | PerformOp::MakeVariant(_, _)
+            | PerformOp::CallFun
+            | PerformOp::CallValue
+            | PerformOp::Return
+            | PerformOp::Format(_, _)
+            | PerformOp::Method(_)
     )
 }
 
-fn compile_proc_appl(state: &State, target: &str, linkage: &Linkage) -> Result<Seq, Fault> {
-    let all: Vec<&str> = ALL_REGS.to_vec();
-    let entry = "(assign val (op compiled-procedure-entry) (reg proc))";
-    let goto = "(goto (reg val))";
-    match linkage {
-        Linkage::Return if target == "val" => Ok(make_instruction_sequence(
-            &["proc", "continue"],
-            &all,
-            vec![entry.to_owned(), goto.to_owned()],
-        )),
-        Linkage::Return => Err(op_fail("return linkage, target not val: COMPILE")),
-        Linkage::Lab(label) if target == "val" => Ok(make_instruction_sequence(
-            &["proc"],
-            &all,
-            vec![
-                format!("(assign continue (label {label}))"),
-                entry.to_owned(),
-                goto.to_owned(),
-            ],
-        )),
-        Linkage::Lab(label) => {
-            let proc_return = make_label(state, "proc-return");
-            Ok(make_instruction_sequence(
-                &["proc"],
-                &all,
-                vec![
-                    format!("(assign continue (label {proc_return}))"),
-                    entry.to_owned(),
-                    goto.to_owned(),
-                    proc_return,
-                    format!("(assign {target} (reg val))"),
-                    format!("(goto (label {label}))"),
-                ],
-            ))
+/// Lowers expression-shaped operations inline; statement-shaped
+/// operations reach C only through `c_perform` at statement level.
+fn c_expr_op(op: &PerformOp, args: &[Operand]) -> String {
+    let arg = |index: usize| -> String {
+        args.get(index)
+            .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand)
+    };
+    match op {
+        PerformOp::Arith(binop) => format!(
+            "mc_alloc_int(mc_int_value({}) {} mc_int_value({}))",
+            arg(0),
+            c_op(*binop),
+            arg(1)
+        ),
+        PerformOp::Unary(UnOp::Neg) => format!("mc_alloc_int(-mc_int_value({}))", arg(0)),
+        PerformOp::Unary(UnOp::Not) => format!("mc_alloc_int(!mc_int_value({}))", arg(0)),
+        PerformOp::Unary(_) | PerformOp::IterStart => arg(0),
+        PerformOp::Project(index) => {
+            format!("({index} == 0 ? mc_car({}) : mc_cdr({}))", arg(0), arg(0))
         }
-        Linkage::Next => Err(op_fail(
-            "compile-proc-appl: the call carries no next linkage",
-        )),
+        PerformOp::IndexGet => format!("mc_vec_get({}, mc_int_value({}))", arg(0), arg(1)),
+        PerformOp::MakeRange | PerformOp::MakeTuple => {
+            format!("mc_alloc_pair({}, {})", arg(0), arg(1))
+        }
+        PerformOp::Try => format!("mc_car({})", arg(0)),
+        PerformOp::IterNext => format!("mc_cdr({})", arg(0)),
+        // Statement-shaped operations appear only as Assign sources:
+        // the instruction loop emits them through `c_perform`. A
+        // nested statement operation in an expression position cannot
+        // be a C expression; fail loudly rather than emit wrong code.
+        _ => String::from("mc_compile_error_statement_operation_in_expression_position"),
     }
 }
 
-// ---------------------------------------------------------------------------
-// 5.38: open-coded primitives
-// ---------------------------------------------------------------------------
-
-/// 5.38(a): the operands are evaluated into successive argument
-/// registers, with the registers still to come preserved around each
-/// evaluation, because an operand may itself be an open-coded call;
-/// the environment is preserved with them, because a nested call
-/// operand rebinds it and a later operand (a variable reference) reads
-/// the caller's frame.
-fn spread_arguments(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    operands: &[Value],
-    targets: &[&str],
-) -> Result<Seq, Fault> {
-    let Some((operand, rest)) = operands.split_first() else {
-        return Ok(empty_instruction_sequence());
-    };
-    let Some((target, rest_targets)) = targets.split_first() else {
-        return Err(op_fail("spread-arguments ran out of argument registers"));
-    };
-    let code = compile(cfg, state, cenv, operand, target, &Linkage::Next)?;
-    if rest.is_empty() {
-        return Ok(code);
+fn c_op(op: BinOp) -> &'static str {
+    match op {
+        BinOp::Add | BinOp::And | BinOp::Or => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Rem => "%",
+        BinOp::Eq => "==",
+        BinOp::Ne => "!=",
+        BinOp::Lt => "<",
+        BinOp::Le => "<=",
+        BinOp::Gt => ">",
+        BinOp::Ge => ">=",
     }
-    let rest_code = spread_arguments(cfg, state, cenv, rest, rest_targets)?;
-    // A later operand may itself be open-coded and write this
-    // operand's register as scratch, so the result just computed is
-    // shielded across the remaining operand code.
-    let rest_code = if rest_code.modifies.iter().any(|reg| reg.as_str() == *target) {
-        shield_register(target, rest_code)
-    } else {
-        rest_code
-    };
-    let mut preserve: Vec<&str> = rest_targets.to_vec();
-    preserve.push("env");
-    Ok(preserving_instruction_sequences(
-        cfg, &preserve, &code, &rest_code,
-    ))
 }
-
-fn compile_open_code(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    exp: &Value,
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let items = items_of(exp).ok_or_else(|| op_fail("open coding needs a combination"))?;
-    let name = items
-        .first()
-        .and_then(symbol_name)
-        .ok_or_else(|| op_fail("open coding needs a primitive name"))?;
-    let operands = items.get(1..).unwrap_or(&[]);
-    if operands.len() > 2 && (name == "+" || name == "*") {
-        return compile_open_code_nary(cfg, state, cenv, &name, operands, target, linkage);
-    }
-    if operands.len() != 2 {
-        return Err(op_fail(format!(
-            "open coding needs two operands for {name}"
-        )));
-    }
-    let spread = spread_arguments(cfg, state, cenv, operands, &["arg1", "arg2"])?;
-    let apply = make_instruction_sequence(
-        &["arg1", "arg2"],
-        &[target],
-        vec![format!(
-            "(assign {target} (op {name}) (reg arg1) (reg arg2))"
-        )],
-    );
-    Ok(end_with_linkage(
-        cfg,
-        linkage,
-        &append_2_sequences(&spread, &apply),
-    ))
-}
-
-/// 5.38(d): more than two operands fold through one register: each
-/// operand is evaluated into `arg1` and folded into `val`, which then
-/// moves to the requested `target`; the accumulator folded so far is
-/// shielded across every remaining operand evaluation, since a call
-/// operand's code writes `val` as scratch. The environment is
-/// preserved around an evaluation whose tail reads it (a later
-/// operand may be a call that rebinds `env`); `arg1` itself is never
-/// preserved around its own evaluation, it is the evaluation's
-/// output.
-fn compile_open_code_nary(
-    cfg: &Config,
-    state: &State,
-    cenv: &Cenv,
-    name: &str,
-    operands: &[Value],
-    target: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let Some(first) = operands.first() else {
-        return Err(op_fail("open coding needs operands"));
-    };
-    let Some(second) = operands.get(1) else {
-        return Err(op_fail("open coding needs operands"));
-    };
-    let c1 = compile(cfg, state, cenv, first, "arg1", &Linkage::Next)?;
-    let c2 = compile(cfg, state, cenv, second, "arg2", &Linkage::Next)?;
-    // The second operand's evaluation may clobber `arg1` internally
-    // (an open-coded operand, or a compound call whose body
-    // open-codes), so the first operand's result is shielded across
-    // it.
-    let c2_shielded = if c2.modifies.iter().any(|reg| reg == "arg1") {
-        shield_register("arg1", c2)
-    } else {
-        c2
-    };
-    let fold_first = make_instruction_sequence(
-        &["arg1", "arg2"],
-        &["val"],
-        vec![format!("(assign val (op {name}) (reg arg1) (reg arg2))")],
-    );
-    let open_step = make_instruction_sequence(
-        &["arg1", "val"],
-        &["val"],
-        vec![format!("(assign val (op {name}) (reg arg1) (reg val))")],
-    );
-    let mut rest_code = empty_instruction_sequence();
-    for operand in operands[2..].iter().rev() {
-        let code = compile(cfg, state, cenv, operand, "arg1", &Linkage::Next)?;
-        // The accumulator folded so far lives in `val`, and a call
-        // operand's code may write `val` as scratch, so the
-        // accumulator is shielded across it.
-        let code = if code.modifies.iter().any(|reg| reg == "val") {
-            shield_register("val", code)
-        } else {
-            code
-        };
-        rest_code = preserving_instruction_sequences(
-            cfg,
-            &["env"],
-            &code,
-            &append_2_sequences(&open_step, &rest_code),
-        );
-    }
-    // The first two operands preserve `env` the way the fold loop
-    // does: an earlier operand that is a call rebinds `env`, and any
-    // later operand reading a variable must see the caller's frame.
-    let after_second = preserving_instruction_sequences(
-        cfg,
-        &["env"],
-        &c2_shielded,
-        &append_2_sequences(&fold_first, &rest_code),
-    );
-    let first_two = preserving_instruction_sequences(cfg, &["env"], &c1, &after_second);
-    let move_to_target = make_instruction_sequence(
-        &["val"],
-        &[target],
-        vec![format!("(assign {target} (reg val))")],
-    );
-    let result = if target == "val" {
-        first_two
-    } else {
-        append_2_sequences(&first_two, &move_to_target)
-    };
-    Ok(end_with_linkage(cfg, linkage, &result))
-}
-
-// ---------------------------------------------------------------------------
-// Whole programs
-// ---------------------------------------------------------------------------
-
-/// Compiles the forms of one program: every form but the last
-/// continues to the next, and the last carries the requested linkage;
-/// the forms append with `env` and `continue` preserved.
-///
-/// # Errors
-///
-/// Returns a fault when `forms` is empty or when a form cannot be compiled.
-pub fn compile_forms(
-    cfg: &Config,
-    state: &State,
-    forms: &[Value],
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let mut acc: Option<Seq> = None;
-    let last = forms.len().saturating_sub(1);
-    for (index, form) in forms.iter().enumerate() {
-        let form_linkage = if index == last {
-            linkage
-        } else {
-            &Linkage::Next
-        };
-        let code = compile(cfg, state, &top_cenv(), form, "val", form_linkage)?;
-        acc = Some(match acc {
-            None => code,
-            Some(previous) => {
-                preserving_instruction_sequences(cfg, &["env", "continue"], &previous, &code)
+fn c_string_literal(text: &str) -> String {
+    let mut out = String::new();
+    out.push('"');
+    for character in text.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\0' => out.push_str("\\000"),
+            character if character.is_ascii_control() => {
+                let byte =
+                    u8::try_from(u32::from(character)).expect("ASCII control characters fit in u8");
+                out.push('\\');
+                out.push(char::from(b'0' + (byte >> 6)));
+                out.push(char::from(b'0' + ((byte >> 3) & 7)));
+                out.push(char::from(b'0' + (byte & 7)));
             }
-        });
-    }
-    acc.ok_or_else(|| op_fail("compile-forms needs a program"))
-}
-
-/// Reads `source` and compiles it as one program.
-///
-/// # Errors
-/// [`Fault::Parse`] when the source is unreadable, plus the compiler's
-/// faults.
-pub fn compile_program(
-    cfg: &Config,
-    state: &State,
-    source: &str,
-    linkage: &Linkage,
-) -> Result<Seq, Fault> {
-    let forms = read_program(source).map_err(|error| Fault::Parse(error.to_string()))?;
-    compile_forms(cfg, state, &forms, linkage)
-}
-
-/// The statements of a sequence, one controller line each.
-#[must_use]
-pub fn statements_text(seq: &Seq) -> String {
-    seq.stmts.join("\n")
-}
-
-/// Compiles the forms of `source` under a fresh entry label: the shape
-/// `compile_and_go`, 5.48's recorded blocks, and 5.49's chained forms
-/// share. The entry label counts its own sequence, so two
-/// `compile_block` calls on one state never collide.
-///
-/// # Errors
-/// [`Fault::Parse`] when the source is unreadable, plus the compiler's
-/// faults.
-pub fn compile_block(cfg: &Config, state: &State, source: &str) -> Result<(String, String), Fault> {
-    let seq = compile_program(cfg, state, source, &Linkage::Return)?;
-    let entry = format!("compiled-entry-{}", bump_entry(state));
-    Ok((entry.clone(), format!("{entry}\n{}", statements_text(&seq))))
-}
-
-// ---------------------------------------------------------------------------
-// Compiled procedure words
-// ---------------------------------------------------------------------------
-
-/// The compiled procedure word: the entry label and the environment,
-/// the book's `make-compiled-procedure` product.
-#[must_use]
-pub fn compiled_procedure_word(entry: Value, environment: Value) -> Value {
-    Value::tagged(COMPILED_TAG, Value::list(vec![entry, environment]))
-}
-
-/// The `(entry, environment)` a compiled procedure word carries.
-#[must_use]
-pub fn compiled_procedure_parts(word: &Value) -> Option<(Value, Value)> {
-    match word {
-        Value::Tagged { tag, data } if tag.as_ref() == COMPILED_TAG => {
-            let items = data.list_items().ok()?;
-            Some((items.first()?.clone(), items.get(1)?.clone()))
+            other => out.push(other),
         }
-        _ => None,
     }
+    out.push('"');
+    out
 }
 
-/// Renders a word on the compiled machine's transcript: compiled
-/// procedures print as the book's footnote prints them, everything
-/// else as 5.4 renders.
-#[must_use]
-pub fn render_compiled_word(word: &Value) -> String {
-    if compiled_procedure_parts(word).is_some() {
-        return "#[compiled-procedure]".to_owned();
+fn c_print_format(kind: FormatKind, spec: &FormatSpec) -> String {
+    if kind == FormatKind::Format {
+        return String::from("#error \"the C backend does not support format! values\"\n");
     }
-    render_word(word)
-}
-
-// ---------------------------------------------------------------------------
-// The runtime primitive table
-// ---------------------------------------------------------------------------
-
-/// One runtime primitive: the shape `apply-primitive-procedure` and
-/// the object-language `apply` reach.
-pub type RuntimeFn = Rc<dyn Fn(&[Value]) -> Result<Value, Fault>>;
-
-fn number_of(name: &str, word: &Value) -> Result<i128, Fault> {
-    match word {
-        Value::Int(n) => Ok(*n),
-        other => Err(op_fail(format!(
-            "{name}: needs a number, got {}",
-            display_value(other)
-        ))),
+    if spec.debug.iter().any(|debug| *debug) {
+        return String::from("#error \"the C backend does not support debug formatting\"\n");
     }
-}
-
-fn listed(word: &Value, name: &str) -> Result<Vec<Value>, Fault> {
-    word.list_items()
-        .map_err(|_| op_fail(format!("{name}: needs a list")))
-}
-
-fn cadr_of(name: &str, word: &Value) -> Result<Value, Fault> {
-    listed(word, name)?
-        .get(1)
-        .cloned()
-        .ok_or_else(|| op_fail(format!("{name}: list too short")))
-}
-
-fn caddr_of(name: &str, word: &Value) -> Result<Value, Fault> {
-    listed(word, name)?
-        .get(2)
-        .cloned()
-        .ok_or_else(|| op_fail(format!("{name}: list too short")))
-}
-
-fn cadddr_of(name: &str, word: &Value) -> Result<Value, Fault> {
-    listed(word, name)?
-        .get(3)
-        .cloned()
-        .ok_or_else(|| op_fail(format!("{name}: list too short")))
-}
-
-/// The marker symbol whose presence names the empty environment in the
-/// compiled metacircular's `setup-environment`.
-#[must_use]
-pub fn the_empty_environment_marker() -> Value {
-    Value::sym("the-empty")
-}
-
-/// The runtime primitive names the machine binds in its global
-/// environment: the 5.4 object set plus the names the compiled
-/// metacircular calls.
-#[must_use]
-pub fn runtime_names() -> Vec<&'static str> {
-    let mut names: Vec<&'static str> = crate::sec_5_4::object_primitive_names().to_vec();
-    names.extend([
-        "cadr",
-        "caddr",
-        "cadddr",
-        "cddr",
-        "cdddr",
-        "caadr",
-        "cdadr",
-        "quotient",
-        "abs",
-        "<=",
-        ">=",
-        "display",
-        "newline",
-        "error",
-        "extend-environment",
-        "lookup-variable-value",
-        "set-variable-value!",
-        "define-variable!",
-        "apply-in-underlying-scheme",
-    ]);
-    names
-}
-
-/// Applies the runtime primitive `name` to values: the compiled
-/// machine's own primitive table, the 5.4 object set plus the names
-/// the compiled metacircular calls, then any `extra` entries last.
-/// `display` writes into `output` when one is given.
-///
-/// # Errors
-/// [`Fault::Op`] carrying the primitive's own message.
-pub fn apply_runtime_primitive(
-    output: Option<&Rc<RefCell<Vec<String>>>>,
-    extra: &[(String, RuntimeFn)],
-    name: &str,
-    args: &[Value],
-) -> Result<Value, Fault> {
-    if let Some((_, f)) = extra.iter().find(|(known, _)| known == name) {
-        return f(args);
-    }
-    let first = || args.first().cloned().unwrap_or(Value::Nil);
-    match name {
-        "cadr" => cadr_of("cadr", &first()),
-        "caddr" => caddr_of("caddr", &first()),
-        "cadddr" => cadddr_of("cadddr", &first()),
-        "caadr" => listed(&cadr_of("caadr", &first())?, "caadr")?
-            .first()
-            .cloned()
-            .ok_or_else(|| op_fail("caadr: list too short")),
-        "cddr" => Ok(Value::list(
-            listed(&first(), "cddr")?.into_iter().skip(2).collect(),
-        )),
-        "cdddr" => Ok(Value::list(
-            listed(&first(), "cdddr")?.into_iter().skip(3).collect(),
-        )),
-        "cdadr" => Ok(Value::list(
-            listed(&cadr_of("cdadr", &first())?, "cdadr")?
-                .into_iter()
-                .skip(1)
-                .collect(),
-        )),
-        "quotient" => {
-            let a = number_of("quotient", &first())?;
-            let b = number_of("quotient", &args.get(1).cloned().unwrap_or(Value::Nil))?;
-            if b == 0 {
-                return Err(op_fail("division by zero"));
-            }
-            Ok(Value::Int(a / b))
+    let mut out = String::new();
+    for (index, piece) in spec.pieces.iter().enumerate() {
+        if !piece.is_empty() {
+            out.push_str("    fputs(");
+            out.push_str(&c_string_literal(piece));
+            out.push_str(", stdout);\n");
         }
-        "abs" => Ok(Value::Int(number_of("abs", &first())?.abs())),
-        "<=" => Ok(Value::boolean(
-            number_of("<=", &first())?
-                <= number_of("<=", &args.get(1).cloned().unwrap_or(Value::Nil))?,
-        )),
-        ">=" => Ok(Value::boolean(
-            number_of(">=", &first())?
-                >= number_of(">=", &args.get(1).cloned().unwrap_or(Value::Nil))?,
-        )),
-        "display" => {
-            let rendered = display_value(&first());
-            if let Some(output) = output {
-                output.borrow_mut().push(rendered);
-            }
-            Ok(first())
+        if index < spec.debug.len() {
+            out.push_str("    mc_print(mc_vec_get(argl, ");
+            out.push_str(&index.to_string());
+            out.push_str("));\n");
         }
-        "newline" => {
-            if let Some(output) = output {
-                output.borrow_mut().push(String::new());
-            }
-            Ok(Value::sym("newline"))
-        }
-        "error" => Err(op_fail(format!(
-            "error: {}",
-            args.iter().map(display_value).collect::<Vec<_>>().join(" ")
-        ))),
-        "extend-environment" => runtime_extend_environment(args),
-        "lookup-variable-value" => runtime_lookup(args),
-        "set-variable-value!" => runtime_set(args),
-        "define-variable!" => runtime_define(args),
-        "apply-in-underlying-scheme" => {
-            let proc = args
-                .first()
-                .ok_or_else(|| op_fail("apply needs a procedure"))?;
-            let args_list = args.get(1).cloned().unwrap_or(Value::Nil);
-            let Some(name) = primitive_name(proc) else {
-                return Err(op_fail("apply-in-underlying-scheme needs a primitive"));
+    }
+    if kind == FormatKind::Println {
+        out.push_str("    putchar('\\n');\n");
+    }
+    out
+}
+
+// Keep one exhaustive lowering from typed operations to C statements.
+#[allow(clippy::too_many_lines)]
+fn c_perform(op: &PerformOp, operands: &[Operand]) -> String {
+    match op {
+        PerformOp::CallFun => {
+            let name = match operands.first() {
+                Some(Operand::Label(name)) => name.as_str(),
+                _ => "0",
             };
-            let values = listed(&args_list, "apply-in-underlying-scheme")?;
-            apply_runtime_primitive(output, extra, name, &values)
+            let mut out = String::from("    call_stack[call_top++] = 0; goto ");
+            write_c_label(&mut out, name);
+            out.push_str(";\n");
+            out
         }
-        other => apply_object_primitive(other, args),
-    }
-}
-
-fn runtime_extend_environment(args: &[Value]) -> Result<Value, Fault> {
-    let names = args
-        .first()
-        .and_then(|word| word.list_items().ok())
-        .ok_or_else(|| op_fail("extend-environment needs a name list"))?;
-    let values = args
-        .get(1)
-        .and_then(|word| word.list_items().ok())
-        .ok_or_else(|| op_fail("extend-environment needs a value list"))?;
-    if names.len() != values.len() {
-        return Err(op_fail(format!(
-            "extend-environment: wants {} arguments, got {}",
-            names.len(),
-            values.len()
-        )));
-    }
-    let base: Rc<Env> = match args.get(2) {
-        Some(word) if *word == the_empty_environment_marker() => Env::global(),
-        Some(word) => environment_of(word, "extend-environment")?,
-        None => return Err(op_fail("extend-environment needs a parent environment")),
-    };
-    let extended = Env::child(&base);
-    for (name, value) in names.into_iter().zip(values) {
-        let Some(sym) = symbol_name(&name) else {
-            return Err(op_fail("extend-environment: a name is not a symbol"));
-        };
-        extended.define(sym.into(), value);
-    }
-    Ok(intern_env(extended))
-}
-
-fn runtime_lookup(args: &[Value]) -> Result<Value, Fault> {
-    let Some(name) = args.first().and_then(symbol_name) else {
-        return Err(op_fail("lookup-variable-value needs a variable"));
-    };
-    let env = environment_of(
-        &args.get(1).cloned().unwrap_or(Value::Nil),
-        "lookup-variable-value",
-    )?;
-    env.lookup(&name)
-        .map_err(|error| op_fail(error.to_string()))
-}
-
-fn runtime_set(args: &[Value]) -> Result<Value, Fault> {
-    let Some(name) = args.first().and_then(symbol_name) else {
-        return Err(op_fail("set-variable-value! needs a variable"));
-    };
-    let value = args.get(1).cloned().unwrap_or(Value::Nil);
-    let env = environment_of(
-        &args.get(2).cloned().unwrap_or(Value::Nil),
-        "set-variable-value!",
-    )?;
-    env.set(&name, value)
-        .map_err(|error| op_fail(error.to_string()))?;
-    Ok(Value::sym("ok"))
-}
-
-fn runtime_define(args: &[Value]) -> Result<Value, Fault> {
-    let Some(name) = args.first().and_then(symbol_name) else {
-        return Err(op_fail("define-variable! needs a variable"));
-    };
-    let value = args.get(1).cloned().unwrap_or(Value::Nil);
-    let env = environment_of(
-        &args.get(2).cloned().unwrap_or(Value::Nil),
-        "define-variable!",
-    )?;
-    env.define(name.into(), value);
-    Ok(Value::sym("ok"))
-}
-
-// ---------------------------------------------------------------------------
-// The 5.5.7 machine
-// ---------------------------------------------------------------------------
-
-/// The registers of the 5.5.7 machine description: the evaluator's
-/// seven plus the `arg1` and `arg2` of exercise 5.38. The machine's
-/// own `flag` is never named by a controller.
-pub const MACHINE_REGISTERS: &[&str] = &[
-    "exp", "env", "val", "continue", "proc", "argl", "unev", "arg1", "arg2",
-];
-
-/// The apply-dispatch of 5.5.7: the compiled-procedure test before the
-/// unknown-type stop, and the compiled entry that restores `continue`
-/// and jumps to the compiled code.
-pub const APPLY_DISPATCH_COMPILED: &str = "apply-dispatch
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-apply))
-  (test (op compound-procedure?) (reg proc))
-  (branch (label compound-apply))
-  (test (op compiled-procedure?) (reg proc))
-  (branch (label compiled-apply))
-  (goto (label unknown-procedure-type))
-compiled-apply
-  (restore continue)
-  (assign val (op compiled-procedure-entry) (reg proc))
-  (goto (reg val))";
-
-/// The external entry: reached when the machine starts armed, it
-/// points `continue` at `print-result` and jumps to the compiled code
-/// in `val`.
-pub const EXTERNAL_ENTRY: &str = "external-entry
-  (perform (op initialize-stack))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (reg val))";
-
-/// The 5.4 driver with the armed-entry guard in front: the test of the
-/// armed operation stands in for the book's flag branch, because the
-/// 5.2 machine's flag is written only by tests. The guard runs once,
-/// at the top of the assembled controller.
-pub const DRIVER_WITH_GUARD: &str = ";; branches if the compiled entry is armed:
-  (test (op compiled-entry-armed?))
-  (branch (label external-entry))
-read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input)
-           (const \";;; EC-Eval input:\"))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op announce-output)
-           (const \";;; EC-Eval value:\"))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))";
-
-/// The 5.5.7 controller in named fragments, in printed order: the 5.4
-/// fragments, the guarded driver, the compiled apply-dispatch, and the
-/// external entry. A variant machine replaces a fragment (the
-/// monitored driver of 5.45) and concatenates.
-#[must_use]
-pub fn eceval_fragments() -> Vec<(&'static str, String)> {
-    let mut fragments: Vec<(&'static str, String)> = crate::sec_5_4::controller_fragments()
-        .iter()
-        .map(|(name, text)| (*name, (*text).to_owned()))
-        .collect();
-    for (name, text) in [
-        ("driver", DRIVER_WITH_GUARD.to_owned()),
-        ("apply-dispatch", APPLY_DISPATCH_COMPILED.to_owned()),
-        ("external-entry", EXTERNAL_ENTRY.to_owned()),
-    ] {
-        match fragments.iter_mut().find(|(known, _)| *known == name) {
-            Some(slot) => slot.1 = text,
-            None => fragments.push((name, text)),
+        PerformOp::Return => "    if (call_top > 0) { call_top--; return; }\n".to_owned(),
+        PerformOp::Ctor(CtorOp::StringFrom) => "    val = mc_text(\"\");\n".to_owned(),
+        PerformOp::Ctor(CtorOp::VecNew) => "    val = mc_alloc_vec(0);\n".to_owned(),
+        // The mc_* runtime has no option/result constructor symbols
+        // yet: emit a named extern so the artifact fails at link with
+        // the exact missing surface instead of silently wrong code.
+        PerformOp::Ctor(CtorOp::OptSome) => {
+            let payload = operands
+                .first()
+                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+            format!("    val = mc_compile_error_ctor_opt_some({payload});\n")
         }
-    }
-    fragments
-}
-
-/// The 5.5.7 controller: the fragments concatenated.
-#[must_use]
-pub fn eceval_controller() -> String {
-    eceval_fragments()
-        .into_iter()
-        .map(|(_, text)| text)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// The 5.5.7 controller with the driver fragment replaced: the
-/// monitored driver of 5.45 and the chained driver of 5.49 compose
-/// this way.
-#[must_use]
-pub fn controller_replacing_driver(driver: &str) -> String {
-    eceval_fragments()
-        .into_iter()
-        .map(|(name, text)| {
-            if name == "driver" {
-                driver.to_owned()
-            } else {
-                text
+        PerformOp::Ctor(CtorOp::OptNone) => {
+            "    val = mc_compile_error_ctor_opt_none();\n".to_owned()
+        }
+        PerformOp::Ctor(CtorOp::ResOk) => {
+            let payload = operands
+                .first()
+                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+            format!("    val = mc_compile_error_ctor_res_ok({payload});\n")
+        }
+        PerformOp::Ctor(CtorOp::ResErr) => {
+            let payload = operands
+                .first()
+                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+            format!("    val = mc_compile_error_ctor_res_err({payload});\n")
+        }
+        PerformOp::Format(kind, spec) => c_print_format(*kind, spec),
+        PerformOp::MakeVec => {
+            // Counted construction: the save stack holds the pushed
+            // values bottom-first; pop them in source order.
+            let count = match operands.first() {
+                Some(Operand::Const(n)) => usize::try_from(*n).unwrap_or(0),
+                _ => 0,
+            };
+            let mut out = String::from("    val = mc_alloc_vec(0);\n");
+            for index in (0..count).rev() {
+                let _ = writeln!(
+                    &mut out,
+                    "    val = mc_vec_push(val, save_stack[save_top - {index} - 1]);"
+                );
             }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// One operation over the machine itself: the shape the stack
-/// statistics op needs.
-fn machine_op(
-    name: &'static str,
-    f: impl Fn(&mut Machine, &[Value]) -> Result<Value, Fault> + 'static,
-) -> (&'static str, OpHandler) {
-    let handler: OpHandler = Rc::new(move |machine, args| f(machine, args));
-    (name, handler)
-}
-
-fn word_op(
-    name: &'static str,
-    f: impl Fn(&[Value]) -> Result<Value, Fault> + 'static,
-) -> (&'static str, OpHandler) {
-    let handler: OpHandler = Rc::new(move |_, args| f(args));
-    (name, handler)
-}
-
-fn one_arg(args: &[Value], what: &str) -> Result<Value, Fault> {
-    args.first()
-        .cloned()
-        .ok_or_else(|| op_fail(format!("{what}: needs one argument")))
-}
-
-fn two_args(args: &[Value], what: &str) -> Result<(Value, Value), Fault> {
-    let a = args
-        .first()
-        .cloned()
-        .ok_or_else(|| op_fail(format!("{what}: needs two arguments")))?;
-    let b = args
-        .get(1)
-        .cloned()
-        .ok_or_else(|| op_fail(format!("{what}: needs two arguments")))?;
-    Ok((a, b))
-}
-
-/// The compiled operations and the machine's own driver operations,
-/// including the armed-entry latch the guard tests and the runtime
-/// primitive dispatch. Install these over the 5.4 base table, whose
-/// `apply-primitive-procedure` they override.
-fn base_machine_operations(
-    output: &Rc<RefCell<Vec<String>>>,
-    input: &Rc<RefCell<VecDeque<Value>>>,
-    global: &Value,
-    armed: &Rc<Cell<bool>>,
-    extra_runtime: &[(String, RuntimeFn)],
-) -> Vec<(&'static str, OpHandler)> {
-    let extra = Rc::new(extra_runtime.to_vec());
-    let apply_extra = Rc::clone(&extra);
-    let output_for_apply = Rc::clone(output);
-    let get_global = word_op("get-global-environment", {
-        let global = global.clone();
-        move |_| Ok(global.clone())
-    });
-    let prompt = announce_op("prompt-for-input", output, display_value);
-    let announce_output = announce_op("announce-output", output, display_value);
-    let user_print = announce_op("user-print", output, render_compiled_word);
-    let read = word_op("read", {
-        let input = Rc::clone(input);
-        move |_| {
-            input
-                .borrow_mut()
-                .pop_front()
-                .ok_or_else(|| op_fail(INPUT_QUEUE_EMPTY))
+            let _ = writeln!(&mut out, "    save_top -= {count};");
+            out
         }
-    });
-    let statistics = machine_op("print-stack-statistics", {
-        let output = Rc::clone(output);
-        move |machine, _| {
-            let (pushes, depth) = machine.stack_statistics();
-            output
-                .borrow_mut()
-                .push(format!("(total-pushes = {pushes} maximum-depth = {depth})"));
-            Ok(Value::sym("done"))
+        PerformOp::MakeRepeat => String::from(
+            "    { long _item = val; long _n = mc_int_value(tmp); \
+val = mc_alloc_vec(0); \
+while (_n > 0) { val = mc_vec_push(val, _item); _n--; } }\n",
+        ),
+        PerformOp::MakeStruct(_) | PerformOp::MakeVariant(_, _) => "    val = argl;\n".to_owned(),
+        PerformOp::MakeTuple | PerformOp::MakeRange => {
+            "    val = mc_alloc_pair(val, tmp);\n".to_owned()
         }
-    });
-    let initialize_stack = machine_op("initialize-stack", |machine, _| {
-        machine.initialize_stack();
-        Ok(Value::sym("done"))
-    });
-    let armed_latch = Rc::clone(armed);
-    let armed_test = word_op("compiled-entry-armed?", move |_| {
-        if armed_latch.get() {
-            armed_latch.set(false);
-            Ok(Value::boolean(true))
-        } else {
-            Ok(Value::boolean(false))
+        PerformOp::Project(index) => {
+            format!("    val = {index} == 0 ? mc_car(val) : mc_cdr(val);\n")
         }
-    });
-    let apply_primitive = word_op("apply-primitive-procedure", move |args| {
-        let (proc, argl) = two_args(args, "apply-primitive-procedure")?;
-        let Some(name) = primitive_name(&proc) else {
-            return Err(op_fail(
-                "apply-primitive-procedure needs a primitive procedure",
-            ));
-        };
-        let values = listed(&argl, "apply-primitive-procedure")?;
-        apply_runtime_primitive(Some(&output_for_apply), &apply_extra, name, &values)
-    });
-    vec![
-        get_global,
-        prompt,
-        announce_output,
-        read,
-        user_print,
-        statistics,
-        initialize_stack,
-        armed_test,
-        word_op("false?", |args| {
-            Ok(Value::boolean(!object_is_true(&one_arg(args, "false?")?)))
-        }),
-        word_op("list", |args| Ok(Value::list(args.to_vec()))),
-        word_op("cons", |args| {
-            let (a, b) = two_args(args, "cons")?;
-            Ok(Value::Pair(cons_cell(a, b)))
-        }),
-        word_op("make-compiled-procedure", |args| {
-            let (entry, env) = two_args(args, "make-compiled-procedure")?;
-            Ok(compiled_procedure_word(entry, env))
-        }),
-        word_op("compiled-procedure-env", |args| {
-            compiled_procedure_parts(&one_arg(args, "compiled-procedure-env")?)
-                .map(|(_, env)| env)
-                .ok_or_else(|| op_fail("compiled-procedure-env needs a compiled procedure"))
-        }),
-        word_op("compiled-procedure-entry", |args| {
-            compiled_procedure_parts(&one_arg(args, "compiled-procedure-entry")?)
-                .map(|(entry, _)| entry)
-                .ok_or_else(|| op_fail("compiled-procedure-entry needs a compiled procedure"))
-        }),
-        word_op("compiled-procedure?", |args| {
-            Ok(Value::boolean(
-                compiled_procedure_parts(&one_arg(args, "compiled-procedure?")?).is_some(),
-            ))
-        }),
-        apply_primitive,
-    ]
-    .into_iter()
-    .chain(open_coded_operations())
-    .collect()
-}
-
-/// The machine operations the open-coded compilations name directly:
-/// the 5.38 argument registers feed the same object arithmetic the
-/// primitive table serves.
-fn open_coded_operations() -> Vec<(&'static str, OpHandler)> {
-    ["+", "-", "*", "<", "="]
-        .iter()
-        .map(|name| word_op(name, move |args| apply_object_primitive(name, args)))
-        .collect()
-}
-
-fn announce_op(
-    name: &'static str,
-    output: &Rc<RefCell<Vec<String>>>,
-    render: impl Fn(&Value) -> String + 'static,
-) -> (&'static str, OpHandler) {
-    let output = Rc::clone(output);
-    word_op(name, move |args| {
-        let word = args.first().cloned().unwrap_or(Value::Nil);
-        output.borrow_mut().push(render(&word));
-        Ok(Value::sym("done"))
-    })
-}
-
-/// The section's compiled evaluator: the controller (the 5.5.7 text,
-/// or a composed variant) is assembled by the 5.2 simulator over the
-/// 5.4 base operations, the compiled operations, and the caller's
-/// `operations` last (overriding on a name collision); the global
-/// environment binds `true`, `false`, and the runtime primitives; and
-/// the object program `source` is read into the driver's input queue.
-/// The armed latch starts false, so the plain driver path runs.
-///
-/// # Errors
-/// [`Fault::Parse`] when the controller or the source is unreadable,
-/// plus the assembly faults of [`Fault`].
-pub fn make_compiled_evaluator(
-    controller: Option<&str>,
-    operations: &[(&'static str, OpHandler)],
-    extra_runtime: &[(String, RuntimeFn)],
-    source: &str,
-) -> Result<CompiledEvaluator, Fault> {
-    let forms = read_program(source).map_err(|error| Fault::Parse(error.to_string()))?;
-    let output = Rc::new(RefCell::new(Vec::new()));
-    let input = Rc::new(RefCell::new(VecDeque::from(forms)));
-    let armed = Rc::new(Cell::new(false));
-    let global_env = Env::global();
-    global_env.define("true".into(), Value::boolean(true));
-    global_env.define("false".into(), Value::boolean(false));
-    for name in runtime_names() {
-        global_env.define(name.into(), primitive_word(name));
-    }
-    for (name, _) in extra_runtime {
-        global_env.define(name.as_str().into(), primitive_word(name));
-    }
-    let global = intern_env(global_env);
-    let mut table: Vec<(&'static str, OpHandler)> = crate::sec_5_4::base_operations();
-    table.extend(base_machine_operations(
-        &output,
-        &input,
-        &global,
-        &armed,
-        extra_runtime,
-    ));
-    table.extend(operations.iter().cloned());
-    let text = controller.map_or_else(eceval_controller, std::borrow::ToOwned::to_owned);
-    let machine = make_machine(MACHINE_REGISTERS, &table, &text)?;
-    Ok(CompiledEvaluator {
-        machine,
-        output,
-        armed,
-    })
-}
-
-/// The section's compiled evaluator over the 5.5.7 controller.
-pub struct CompiledEvaluator {
-    machine: Machine,
-    output: Rc<RefCell<Vec<String>>>,
-    armed: Rc<Cell<bool>>,
-}
-
-impl CompiledEvaluator {
-    /// The machine, mutable, for the monitoring extensions.
-    pub fn machine_mut(&mut self) -> &mut Machine {
-        &mut self.machine
-    }
-
-    /// The machine.
-    #[must_use]
-    pub fn machine(&self) -> &Machine {
-        &self.machine
-    }
-
-    /// Points `val` at the compiled entry and arms the external entry,
-    /// the book's `compile-and-go` wiring.
-    pub fn arm_entry(&mut self, entry: &str) {
-        let _ = self.machine.set_register("val", Value::sym(entry));
-        self.armed.set(true);
-    }
-
-    /// Arms or disarms the external entry.
-    pub fn arm(&self, armed: bool) {
-        self.armed.set(armed);
-    }
-
-    /// Runs the machine until the input queue runs dry, the book's
-    /// read-eval-print loop.
-    ///
-    /// # Errors
-    /// Any fault of the machine except the queue-dry read, which is
-    /// the run's normal end.
-    pub fn run(&mut self) -> Result<(), Fault> {
-        match self.machine.start() {
-            Ok(_) => Ok(()),
-            Err(Fault::Op { op, message, .. }) if op == "read" && message == INPUT_QUEUE_EMPTY => {
-                Ok(())
-            }
-            Err(fault) => Err(fault),
+        PerformOp::IndexGet => "    val = mc_vec_get(val, mc_int_value(tmp));\n".to_owned(),
+        PerformOp::Arith(op) => format!(
+            "    val = mc_alloc_int(mc_int_value(val) {} mc_int_value(tmp));\n",
+            c_op(*op)
+        ),
+        PerformOp::Unary(UnOp::Neg) => "    val = mc_alloc_int(-mc_int_value(val));\n".to_owned(),
+        PerformOp::Unary(UnOp::Not) => "    val = mc_alloc_int(!mc_int_value(val));\n".to_owned(),
+        PerformOp::Unary(_) | PerformOp::IterStart => "    val = val;\n".to_owned(),
+        PerformOp::IterNext => "    val = mc_cdr(val);\n".to_owned(),
+        // The mc_* word runtime has no place (reference) model or
+        // function-value table: emit named externs so the artifact
+        // fails at link with the exact missing surface instead of
+        // silently wrong code.
+        PerformOp::FunRef(fun) => format!("    val = mc_compile_error_fun_ref({fun});\n"),
+        PerformOp::LocalRef { bind, .. } => {
+            format!("    val = mc_compile_error_local_ref({bind});\n")
+        }
+        PerformOp::RefField(index) => {
+            format!("    val = mc_compile_error_ref_field(val, {index});\n")
+        }
+        PerformOp::RefIndex => "    val = mc_compile_error_ref_index(val, tmp);\n".to_owned(),
+        PerformOp::Load | PerformOp::Take => "    val = mc_compile_error_load(val);\n".to_owned(),
+        PerformOp::Store(_) => "    val = mc_compile_error_store(tmp, val);\n".to_owned(),
+        PerformOp::MethodAt(_) => "    val = mc_compile_error_method_at(val, argl);\n".to_owned(),
+        PerformOp::NoMatch => "    mc_compile_error_no_match();\n".to_owned(),
+        PerformOp::Try => "    val = mc_car(val);\n".to_owned(),
+        PerformOp::CallValue | PerformOp::Method(_) => {
+            "    val = mc_apply_closure(val, argl);\n".to_owned()
+        }
+        PerformOp::Ctor(CtorOp::VecWithCapacity) => {
+            let cap = operands
+                .first()
+                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+            format!("    val = mc_alloc_vec(mc_int_value({cap}));\n")
+        }
+        PerformOp::Ctor(CtorOp::MapNew) => {
+            "    val = mc_compile_error_ctor_map_new();\n".to_owned()
+        }
+        PerformOp::Ctor(CtorOp::BoxNew) => {
+            let payload = operands
+                .first()
+                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+            format!("    val = mc_compile_error_ctor_box_new({payload});\n")
         }
     }
-
-    /// The lines the driver printed: the prompts, the stack statistics
-    /// of a monitored driver, and the values, in order.
-    #[must_use]
-    pub fn transcript(&self) -> Vec<String> {
-        self.output.borrow().clone()
-    }
-
-    /// The machine's stack counters `(total-pushes, maximum-depth)`.
-    #[must_use]
-    pub fn stack_statistics(&self) -> (u64, u64) {
-        self.machine.stack_statistics()
-    }
-
-    /// The instruction count of the run so far.
-    #[must_use]
-    pub fn instruction_count(&self) -> u64 {
-        self.machine.instruction_count()
-    }
-
-    /// Reads a register's contents.
-    ///
-    /// # Errors
-    /// [`Fault::UnknownRegister`] when the machine has no such
-    /// register.
-    pub fn get_register(&self, name: &str) -> Result<Value, Fault> {
-        self.machine.get_register(name)
-    }
 }
 
-/// The book's `compile-and-go`: compiles `compiled`, appends its block
-/// to the 5.5.7 controller, points `val` at the entry, arms the
-/// external entry, and answers the machine whose driver inputs are
-/// `source`.
-///
-/// # Errors
-/// [`Fault::Parse`] when either text is unreadable, plus the assembly
-/// faults.
-pub fn compile_and_go(
-    cfg: &Config,
-    state: &State,
-    compiled: &str,
-    source: &str,
-) -> Result<CompiledEvaluator, Fault> {
-    let (entry, block) = compile_block(cfg, state, compiled)?;
-    let controller = format!("{}\n{block}", eceval_controller());
-    let mut evaluator = make_compiled_evaluator(Some(&controller), &[], &[], source)?;
-    evaluator.arm_entry(&entry);
-    Ok(evaluator)
-}
-
-// ---------------------------------------------------------------------------
-// The lexical-addressing machine of 5.39 to 5.42
-// ---------------------------------------------------------------------------
-
-/// The lexical machine's global environment: the book's 3.2 list
-/// structure, a frame of `(names . values)` dotted pairs chaining by
-/// `cons`, pre-bound with booleans and runtime primitives.
+/// The register names the compiler targets, exported for the
+/// section's exercises.
 #[must_use]
-pub fn lexical_global_environment() -> Value {
-    let mut names = vec![Value::sym("true"), Value::sym("false")];
-    let mut values = vec![Value::boolean(true), Value::boolean(false)];
-    for name in runtime_names() {
-        names.push(Value::sym(name));
-        values.push(primitive_word(name));
-    }
-    let frame = cons_cell(Value::list(names), Value::list(values));
-    Value::Pair(cons_cell(Value::Pair(frame), Value::Nil))
+pub fn register_names() -> &'static [&'static str] {
+    &["val", "tmp", "argl", "flag"]
 }
 
-fn lexical_frames(env: &Value) -> Result<Vec<Value>, Fault> {
-    env.list_items()
-        .map_err(|_| op_fail("the environment is not a frame list"))
-}
-
-fn lexical_frame_at(env: &Value, frame_number: i128) -> Result<Value, Fault> {
-    let frames = lexical_frames(env)?;
-    let index =
-        usize::try_from(frame_number).map_err(|_| op_fail("lexical address out of range"))?;
-    frames
-        .get(index)
-        .cloned()
-        .ok_or_else(|| op_fail("lexical address out of range"))
-}
-
-/// The value a frame's `displacement`th binding carries.
-fn lexical_binding(frame: &Value, displacement: usize) -> Result<Value, Fault> {
-    let Value::Pair(cell) = frame else {
-        return Err(op_fail("the frame is not a dotted pair"));
-    };
-    let values = cell.cdr.borrow().clone();
-    listed(&values, "the frame")?
-        .into_iter()
-        .nth(displacement)
-        .ok_or_else(|| op_fail("lexical address out of range"))
-}
-
-/// The mutable cell holding a binding's value: the cons cell the
-/// `displacement`th value of the frame rides in.
-fn lexical_value_cell(frame: &Value, displacement: usize) -> Result<Pair, Fault> {
-    let Value::Pair(cell) = frame else {
-        return Err(op_fail("the frame is not a dotted pair"));
-    };
-    let values = cell.cdr.borrow().clone();
-    let mut cursor = values;
-    for index in 0..=displacement {
-        let Value::Pair(pair) = cursor else {
-            return Err(op_fail("lexical address out of range"));
-        };
-        let next = pair.cdr.borrow().clone();
-        if index == displacement {
-            return Ok(pair);
-        }
-        cursor = next;
-    }
-    Err(op_fail("lexical address out of range"))
-}
-
-/// The operations of the lexical machine: the environment pathway runs
-/// on the book's list structure, and the two lexical addressing
-/// operations walk it. Install these last so they override the word
-/// environment pathway.
+/// The liveness merge two sequences share when stacked.
 #[must_use]
-pub fn lexical_operations(global: &Value) -> Vec<(&'static str, OpHandler)> {
-    vec![
-        lexical_get_global(global),
-        lexical_extend(),
-        lexical_lookup(),
-        lexical_set(),
-        lexical_define(),
-        lexical_lookup_op(),
-        lexical_set_op(),
-    ]
-}
-
-fn lexical_get_global(global: &Value) -> (&'static str, OpHandler) {
-    word_op("get-global-environment", {
-        let global = global.clone();
-        move |_| Ok(global.clone())
-    })
-}
-
-fn lexical_extend() -> (&'static str, OpHandler) {
-    word_op("extend-environment", |args| {
-        let (params, argl) = two_args(args, "extend-environment")?;
-        let base = args
-            .get(2)
-            .cloned()
-            .ok_or_else(|| op_fail("extend-environment needs an environment"))?;
-        let frame = cons_cell(params, argl);
-        Ok(Value::Pair(cons_cell(Value::Pair(frame), base)))
-    })
-}
-
-/// Walks a frame's names, answering the displacement of `name`, or
-/// nothing.
-fn frame_displacement(frame: &Value, name: &Value) -> Option<usize> {
-    let Value::Pair(cell) = frame else {
-        return None;
-    };
-    let names = cell.car.borrow().clone();
-    let names = listed(&names, "the frame").ok()?;
-    names.iter().position(|candidate| candidate == name)
-}
-
-fn lexical_lookup() -> (&'static str, OpHandler) {
-    word_op("lookup-variable-value", |args| {
-        let (name, env) = two_args(args, "lookup-variable-value")?;
-        for frame in lexical_frames(&env)? {
-            if let Some(displacement) = frame_displacement(&frame, &name) {
-                let value = lexical_binding(&frame, displacement)?;
-                if value == Value::sym("*unassigned*") {
-                    return Err(op_fail(
-                        "lexical-address-lookup: the variable is *unassigned*",
-                    ));
-                }
-                return Ok(value);
-            }
-        }
-        Err(op_fail(format!(
-            "unbound variable: {}",
-            display_value(&name)
-        )))
-    })
-}
-
-fn lexical_set() -> (&'static str, OpHandler) {
-    word_op("set-variable-value!", |args| {
-        let (name, value) = two_args(args, "set-variable-value!")?;
-        let env = args
-            .get(2)
-            .cloned()
-            .ok_or_else(|| op_fail("set-variable-value! needs an environment"))?;
-        for frame in lexical_frames(&env)? {
-            if let Some(displacement) = frame_displacement(&frame, &name) {
-                let slot = lexical_value_cell(&frame, displacement)?;
-                set_car(&slot, value);
-                return Ok(Value::sym("ok"));
-            }
-        }
-        Err(op_fail(format!(
-            "unbound variable: {}",
-            display_value(&name)
-        )))
-    })
-}
-
-fn lexical_define() -> (&'static str, OpHandler) {
-    word_op("define-variable!", |args| {
-        let (name, value) = two_args(args, "define-variable!")?;
-        let env = args
-            .get(2)
-            .cloned()
-            .ok_or_else(|| op_fail("define-variable! needs an environment"))?;
-        let frame = lexical_frames(&env)?
-            .into_iter()
-            .next()
-            .ok_or_else(|| op_fail("define-variable! needs a frame"))?;
-        let Value::Pair(frame_cell) = &frame else {
-            return Err(op_fail("the frame is not a dotted pair"));
-        };
-        if let Some(displacement) = frame_displacement(&frame, &name) {
-            let slot = lexical_value_cell(&frame, displacement)?;
-            set_car(&slot, value);
-            return Ok(Value::sym("ok"));
-        }
-        let names = frame_cell.car.borrow().clone();
-        let values = frame_cell.cdr.borrow().clone();
-        set_car(frame_cell, Value::Pair(cons_cell(name, names)));
-        set_cdr(frame_cell, Value::Pair(cons_cell(value, values)));
-        Ok(Value::sym("ok"))
-    })
-}
-
-fn lexical_lookup_op() -> (&'static str, OpHandler) {
-    word_op("lexical-address-lookup", |args| {
-        let frame_number = number_of(
-            "lexical-address-lookup",
-            &args.first().cloned().unwrap_or(Value::Nil),
-        )?;
-        let displacement = number_of(
-            "lexical-address-lookup",
-            &args.get(1).cloned().unwrap_or(Value::Nil),
-        )?;
-        let env = args
-            .get(2)
-            .cloned()
-            .ok_or_else(|| op_fail("lexical-address-lookup needs an environment"))?;
-        let frame = lexical_frame_at(&env, frame_number)?;
-        let index =
-            usize::try_from(displacement).map_err(|_| op_fail("lexical address out of range"))?;
-        let value = lexical_binding(&frame, index)?;
-        if value == Value::sym("*unassigned*") {
-            return Err(op_fail(
-                "lexical-address-lookup: the variable is *unassigned*",
-            ));
-        }
-        Ok(value)
-    })
-}
-
-fn lexical_set_op() -> (&'static str, OpHandler) {
-    word_op("lexical-address-set!", |args| {
-        let frame_number = number_of(
-            "lexical-address-set!",
-            &args.first().cloned().unwrap_or(Value::Nil),
-        )?;
-        let displacement = number_of(
-            "lexical-address-set!",
-            &args.get(1).cloned().unwrap_or(Value::Nil),
-        )?;
-        let value = args.get(2).cloned().unwrap_or(Value::Nil);
-        let env = args
-            .get(3)
-            .cloned()
-            .ok_or_else(|| op_fail("lexical-address-set! needs an environment"))?;
-        let frame = lexical_frame_at(&env, frame_number)?;
-        let index =
-            usize::try_from(displacement).map_err(|_| op_fail("lexical address out of range"))?;
-        let slot = lexical_value_cell(&frame, index)?;
-        set_car(&slot, value);
-        Ok(Value::sym("ok"))
-    })
-}
-
-// ---------------------------------------------------------------------------
-// The object-language evaluator source of exercises 5.50 and 5.52
-// ---------------------------------------------------------------------------
-
-/// The metacircular evaluator of 4.1 as object-language source: the
-/// program 5.50 compiles and 5.52's C backend compiles again. The
-/// shared corpus ships the same evaluator at
-/// `spec/scheme-subset/programs/core/metacircular.scm`; this copy
-/// differs in the ways this machine forces, all mechanical:
-///
-/// - The book's list-structure environments (whose frame machinery
-///   needs mutable pairs) are the machine's own environments behind
-///   the runtime primitives, so their object-level definitions and
-///   the frame machinery below them are gone; `'the-empty` marks the
-///   empty parent.
-/// - The `apply` table entry is an object-level definition applied
-///   through `m-eval`, because a primitive of this machine applies
-///   primitives only; `apply-in-underlying-scheme` is pre-bound by
-///   the machine.
-/// - The `/` table entry loses its variadic `lambda` and
-///   `exact->inexact`, which the shared grammar has no form for.
-/// - The corpus's apply-on-compound session (`(twice cons 7)`) is not
-///   reproduced: a compiled procedure object cannot re-enter the
-///   evaluator's `m-apply` through a primitive, so the object-level
-///   `apply` definition the corpus needs has nothing to call.
-///
-/// The evaluator proper (`m-eval`, `m-apply`, the syntax procedures,
-/// `cond->if`, the driver calls) is the corpus's text verbatim.
-pub const METACIRCULAR: &str = include_str!("metacircular_source.scm");
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The whitespace-free token stream of one controller line.
-    fn tokens(line: &str) -> Vec<String> {
-        line.split_whitespace().map(String::from).collect()
-    }
-
-    /// The compiled factorial's statements.
-    fn compiled_factorial() -> Vec<String> {
-        let source = "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
-        let seq = compile_program(&default_config(), &new_state(), source, &Linkage::Next)
-            .expect("compiles");
-        seq.stmts
-    }
-
-    /// The book's Figure 5.17 listing, comments stripped and wrapped
-    /// instructions unwrapped.
-    const FIGURE_5_17: &str = "\
-(assign val (op make-compiled-procedure) (label entry2) (reg env))
-(goto (label after-lambda1))
-entry2
-(assign env (op compiled-procedure-env) (reg proc))
-(assign env (op extend-environment) (const (n)) (reg argl) (reg env))
-(save continue)
-(save env)
-(assign proc (op lookup-variable-value) (const =) (reg env))
-(assign val (const 1))
-(assign argl (op list) (reg val))
-(assign val (op lookup-variable-value) (const n) (reg env))
-(assign argl (op cons) (reg val) (reg argl))
-(test (op primitive-procedure?) (reg proc))
-(branch (label primitive-branch17))
-compiled-branch16
-(assign continue (label after-call15))
-(assign val (op compiled-procedure-entry) (reg proc))
-(goto (reg val))
-primitive-branch17
-(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-after-call15
-(restore env)
-(restore continue)
-(test (op false?) (reg val))
-(branch (label false-branch4))
-true-branch5
-(assign val (const 1))
-(goto (reg continue))
-false-branch4
-(assign proc (op lookup-variable-value) (const *) (reg env))
-(save continue)
-(save proc)
-(assign val (op lookup-variable-value) (const n) (reg env))
-(assign argl (op list) (reg val))
-(save argl)
-(assign proc (op lookup-variable-value) (const factorial) (reg env))
-(save proc)
-(assign proc (op lookup-variable-value) (const -) (reg env))
-(assign val (const 1))
-(assign argl (op list) (reg val))
-(assign val (op lookup-variable-value) (const n) (reg env))
-(assign argl (op cons) (reg val) (reg argl))
-(test (op primitive-procedure?) (reg proc))
-(branch (label primitive-branch8))
-compiled-branch7
-(assign continue (label after-call6))
-(assign val (op compiled-procedure-entry) (reg proc))
-(goto (reg val))
-primitive-branch8
-(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-after-call6
-(assign argl (op list) (reg val))
-(restore proc)
-(test (op primitive-procedure?) (reg proc))
-(branch (label primitive-branch11))
-compiled-branch10
-(assign continue (label after-call9))
-(assign val (op compiled-procedure-entry) (reg proc))
-(goto (reg val))
-primitive-branch11
-(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-after-call9
-(restore argl)
-(assign argl (op cons) (reg val) (reg argl))
-(restore proc)
-(restore continue)
-(test (op primitive-procedure?) (reg proc))
-(branch (label primitive-branch14))
-compiled-branch13
-(assign val (op compiled-procedure-entry) (reg proc))
-(goto (reg val))
-primitive-branch14
-(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-(goto (reg continue))
-after-call12
-after-if3
-after-lambda1
-(perform (op define-variable!) (const factorial) (reg val) (reg env))
-(assign val (const ok))";
-
-    /// The book's Figure 5.18 listing, comments stripped.
-    const FIGURE_5_18: &str = "\
-(assign val (op make-compiled-procedure) (label entry16) (reg env))
-(goto (label after-lambda15))
-entry16
-(assign env (op compiled-procedure-env) (reg proc))
-(assign env (op extend-environment) (const (x)) (reg argl) (reg env))
-(assign proc (op lookup-variable-value) (const +) (reg env))
-(save continue) (save proc) (save env)
-(assign proc (op lookup-variable-value) (const g) (reg env))
-(save proc)
-(assign proc (op lookup-variable-value) (const +) (reg env))
-(assign val (const 2))
-(assign argl (op list) (reg val))
-(assign val (op lookup-variable-value) (const x) (reg env))
-(assign argl (op cons) (reg val) (reg argl))
-(test (op primitive-procedure?) (reg proc))
-(branch (label primitive-branch19))
-compiled-branch18
-(assign continue (label after-call17))
-(assign val (op compiled-procedure-entry) (reg proc))
-(goto (reg val))
-primitive-branch19
-(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-after-call17
-(assign argl (op list) (reg val))
-(restore proc)
-(test (op primitive-procedure?) (reg proc))
-(branch (label primitive-branch22))
-compiled-branch21
-(assign continue (label after-call20))
-(assign val (op compiled-procedure-entry) (reg proc))
-(goto (reg val))
-primitive-branch22
-(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-after-call20
-(assign argl (op list) (reg val))
-(restore env)
-(assign val (op lookup-variable-value) (const x) (reg env))
-(assign argl (op cons) (reg val) (reg argl))
-(restore proc)
-(restore continue)
-(test (op primitive-procedure?) (reg proc))
-(branch (label primitive-branch25))
-compiled-branch24
-(assign val (op compiled-procedure-entry) (reg proc))
-(goto (reg val))
-primitive-branch25
-(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
-(goto (reg continue))
-after-call23
-after-lambda15
-(perform (op define-variable!) (const f) (reg val) (reg env))
-(assign val (const ok))";
-
-    /// The book's token streams, with the make-compiled-procedure
-    /// operand mapped to this edition's spelling.
-    fn book_tokens(figure: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        let mut previous_was_make = false;
-        for token in figure.lines().flat_map(tokens) {
-            if token == "(label" && previous_was_make {
-                out.push("(const".to_owned());
-            } else {
-                out.push(token.clone());
-            }
-            previous_was_make = token.contains("make-compiled-procedure)");
-        }
-        out
-    }
-
-    /// The compiled factorial is the book's Figure 5.17, token for
-    /// token, modulo the one forced spelling.
-    #[test]
-    fn the_compiled_factorial_is_figure_5_17() {
-        let statements = compiled_factorial();
-        let actual = book_tokens(&statements_text(&Seq {
-            needs: Vec::new(),
-            modifies: Vec::new(),
-            stmts: statements,
-        }));
-        let expected = book_tokens(FIGURE_5_17);
-        assert_eq!(actual, expected);
-    }
-
-    /// The 5.35 expression behind Figure 5.18, compiled with the
-    /// counter seeded at 14, matches the figure token for token.
-    #[test]
-    fn the_seeded_compilation_is_figure_5_18() {
-        let source = "(define (f x) (+ x (g (+ x 2))))";
-        let seq = compile_program(
-            &default_config(),
-            &new_state_seeded(14),
-            source,
-            &Linkage::Next,
-        )
-        .expect("compiles");
-        let actual = book_tokens(&statements_text(&seq));
-        let expected = book_tokens(FIGURE_5_18);
-        assert_eq!(actual, expected);
-    }
-
-    /// The monitored driver of 5.4.4 over the 5.5.7 fragments.
-    fn monitored_driver() -> String {
-        ";; branches if the compiled entry is armed:
-  (test (op compiled-entry-armed?))
-  (branch (label external-entry))
-read-eval-print-loop
-  (perform (op initialize-stack))
-  (perform (op prompt-for-input)
-           (const \";;; EC-Eval input:\"))
-  (assign exp (op read))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (label eval-dispatch))
-print-result
-  (perform (op print-stack-statistics))
-  (perform (op announce-output)
-           (const \";;; EC-Eval value:\"))
-  (perform (op user-print) (reg val))
-  (goto (label read-eval-print-loop))"
-            .to_owned()
-    }
-
-    /// The `(total-pushes ...)` lines of a monitored session.
-    fn stats_lines(transcript: &[String]) -> Vec<String> {
-        transcript
-            .iter()
-            .filter(|line| line.starts_with("(total-pushes"))
-            .cloned()
-            .collect()
-    }
-
-    /// The value of the last interaction.
-    fn last_value(transcript: &[String]) -> &str {
-        let at = transcript.len().saturating_sub(2);
-        transcript[at].as_str()
-    }
-
-    /// The book's 5.5.7 session: the compiled define answers ok, the
-    /// interpreted call answers 120 through the compiled
-    /// apply-dispatch, and the monitored counters are the book's 0/0
-    /// and 31/14.
-    #[test]
-    fn the_compiled_session_matches_the_book() {
-        let source = "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
-        let (entry, block) =
-            compile_block(&default_config(), &new_state(), source).expect("compiles");
-        let controller = controller_replacing_driver(&monitored_driver()) + "\n" + &block;
-        let mut evaluator = make_compiled_evaluator(Some(&controller), &[], &[], "(factorial 5)")
-            .expect("assembles");
-        evaluator.arm_entry(&entry);
-        evaluator.run().expect("runs");
-        let transcript = evaluator.transcript();
-        assert_eq!(
-            stats_lines(&transcript),
-            vec![
-                "(total-pushes = 0 maximum-depth = 0)".to_owned(),
-                "(total-pushes = 31 maximum-depth = 14)".to_owned(),
-            ]
-        );
-        assert_eq!(last_value(&transcript), "120");
-    }
-
-    /// The driver path still interprets: a plain interaction runs the
-    /// interpreted evaluator over the 5.5.7 controller.
-    #[test]
-    fn the_driver_path_still_interprets() {
-        let mut evaluator = make_compiled_evaluator(None, &[], &[], "(+ 2 3)").expect("assembles");
-        evaluator.run().expect("runs");
-        assert_eq!(last_value(&evaluator.transcript()), "5");
-    }
-
-    /// Compiled procedures flow through the compiled apply-dispatch,
-    /// and the driver path still interprets its own lambda: the
-    /// compiled `twice` runs a compiled lambda, then the driver
-    /// applies an interpreted one.
-    #[test]
-    fn compiled_code_calls_both_kinds() {
-        let mut evaluator = compile_and_go(
-            &default_config(),
-            &new_state(),
-            "(define (twice f x) (f (f x)))\n(twice (lambda (y) (* y y)) 3)",
-            "(define (g x) (* x x))\n(g 7)",
-        )
-        .expect("compiles");
-        evaluator.run().expect("runs");
-        let transcript = evaluator.transcript();
-        assert!(transcript.contains(&"81".to_owned()), "{transcript:?}");
-        assert_eq!(last_value(&transcript), "49");
-    }
-
-    /// The 5.5.7 controller assembles with the new entries present.
-    #[test]
-    fn the_controller_carries_the_new_entries() {
-        let controller = eceval_controller();
-        assert!(controller.contains("compiled-apply"));
-        assert!(controller.contains("external-entry"));
-        assert!(controller.contains("compiled-entry-armed?"));
-    }
+pub fn parallel_merge(left: &Seq, right: &Seq) -> Seq {
+    let mut merged = left.clone();
+    merged.needs.extend(right.needs.iter().cloned());
+    merged.modifies.extend(right.modifies.iter().cloned());
+    merged
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.11: Exercise 4.11: the frame as an association list..
+//! The pending scaffold of exercise 4.11: frames as paired name/value lists.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,12 +12,12 @@ pub struct Pending {
 }
 
 mod ex_4_11 {
-    //! Exercise 4.11: the frame as an association list.
+    //! Exercise 4.11: frames as paired name/value lists.
 
     use super::Pending;
 
-    /// Answers the lookups the association-list environment operations
-    /// produce for a shadowed, a rebound, and an unbound name.
+    /// Answers the lookups the paired-list frame operations produce for
+    /// a shadowed, a rebound, and an unbound name.
     pub fn ex_4_11() -> Result<Vec<String>, Pending> {
         Err(Pending { exercise: "4.11" })
     }

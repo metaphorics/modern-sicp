@@ -18,7 +18,7 @@ mod ex_2_22 {
         answer
     }
 
-    /// Louis's second rewrite, `(cons answer (square (car things)))`, on
+    /// Louis's second rewrite, the answer paired with the square of the leading value, on
     /// the tree type: the answer goes into the `car` position, so every
     /// step wraps the growing answer and one square in a new branch
     /// instead of extending a flat list. In Rust the literal translation

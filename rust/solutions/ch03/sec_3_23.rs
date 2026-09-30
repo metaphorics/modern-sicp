@@ -9,7 +9,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use sicp_runtime::{SchemeError, Value};
+use sicp_runtime::{SicpError, Value};
 
 /// One node of the deque: the item plus the two neighbor handles.
 struct DequeNode {
@@ -82,11 +82,11 @@ impl Deque {
     /// The book's `front-delete-dequeue!`, answering the removed item.
     ///
     /// # Errors
-    /// [`SchemeError::UserRaised`] when the deque is empty.
-    pub fn front_delete(&self) -> Result<Value, SchemeError> {
+    /// [`SicpError::UserRaised`] when the deque is empty.
+    pub fn front_delete(&self) -> Result<Value, SicpError> {
         let front = self.front.borrow().clone();
         let Some(node) = front else {
-            return Err(SchemeError::UserRaised {
+            return Err(SicpError::UserRaised {
                 message: "front-delete-dequeue! called with an empty deque".into(),
                 irritants: vec![],
             });
@@ -104,11 +104,11 @@ impl Deque {
     /// The book's `rear-delete-dequeue!`, answering the removed item.
     ///
     /// # Errors
-    /// [`SchemeError::UserRaised`] when the deque is empty.
-    pub fn rear_delete(&self) -> Result<Value, SchemeError> {
+    /// [`SicpError::UserRaised`] when the deque is empty.
+    pub fn rear_delete(&self) -> Result<Value, SicpError> {
         let rear = self.rear.borrow().clone();
         let Some(node) = rear else {
-            return Err(SchemeError::UserRaised {
+            return Err(SicpError::UserRaised {
                 message: "rear-delete-dequeue! called with an empty deque".into(),
                 irritants: vec![],
             });

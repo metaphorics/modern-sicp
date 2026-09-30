@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.27: lazy id with set!.
+//! The pending scaffold of exercise 4.27: lazy identity with assignment.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,11 +12,11 @@ pub struct Pending {
 }
 
 mod ex_4_27 {
-    //! Exercise 4.27: lazy id with set!.
+    //! Exercise 4.27: lazy identity with assignment.
 
     use super::Pending;
 
-    /// Answers the printed session values of the lazy `(id (id 10))` interaction, in order.
+    /// Answers the printed session values of the lazy `id(id(10))` interaction, in order.
     pub fn ex_4_27() -> Result<Vec<String>, Pending> {
         Err(Pending { exercise: "4.27" })
     }

@@ -7,7 +7,7 @@
 
 mod ex_2_08 {
     use ch02::sec_2_1::Interval;
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 2.8: `sub-interval`, reasoning analogous to Alyssa's
     /// `add-interval`: the smallest possible difference is `x`'s lower
@@ -19,7 +19,7 @@ mod ex_2_08 {
     /// # Errors
     /// Never, for `x` and `y` built by `Interval::new`; the `Result` only
     /// reflects [`Interval::new`]'s own signature.
-    fn sub_interval(x: &Interval, y: &Interval) -> Result<Interval, SchemeError> {
+    fn sub_interval(x: &Interval, y: &Interval) -> Result<Interval, SicpError> {
         Interval::new(
             x.lower_bound() - y.upper_bound(),
             x.upper_bound() - y.lower_bound(),
@@ -31,9 +31,9 @@ mod ex_2_08 {
     /// Returns the lower and upper bounds of `[6, 8] - [1, 3]`.
     ///
     /// # Errors
-    /// [`SchemeError`] when the fixed bounds below fail to build an
+    /// [`SicpError`] when the fixed bounds below fail to build an
     /// interval, which they do not.
-    pub fn ex_2_08() -> Result<(f64, f64), SchemeError> {
+    pub fn ex_2_08() -> Result<(f64, f64), SicpError> {
         let x = Interval::new(6.0, 8.0)?;
         let y = Interval::new(1.0, 3.0)?;
         let diff = sub_interval(&x, &y)?;

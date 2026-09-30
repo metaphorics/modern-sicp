@@ -9,7 +9,7 @@ mod ex_2_73 {
     use std::fmt;
     use std::rc::Rc;
 
-    use sicp_runtime::{Key, SchemeError, Symbol, Value};
+    use sicp_runtime::{Key, SicpError, Symbol, Value};
 
     /// The exercise's own expression enum: `Pow` is part (c)'s
     /// contribution, and `Atan` sits dormant here — 2.73a installs its
@@ -47,7 +47,7 @@ mod ex_2_73 {
         matches!(exp, Expr::Num(x) if *x == n)
     }
 
-    pub(crate) fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SchemeError> {
+    pub(crate) fn make_sum(a1: Expr, a2: Expr) -> Result<Expr, SicpError> {
         if is_number(&a1, 0) {
             return Ok(a2);
         }
@@ -55,12 +55,12 @@ mod ex_2_73 {
             return Ok(a1);
         }
         if let (Expr::Num(x), Expr::Num(y)) = (&a1, &a2) {
-            return Ok(Expr::Num(x.checked_add(*y).ok_or(SchemeError::Overflow)?));
+            return Ok(Expr::Num(x.checked_add(*y).ok_or(SicpError::Overflow)?));
         }
         Ok(Expr::Sum(Box::new(a1), Box::new(a2)))
     }
 
-    pub(crate) fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SchemeError> {
+    pub(crate) fn make_product(m1: Expr, m2: Expr) -> Result<Expr, SicpError> {
         if is_number(&m1, 0) || is_number(&m2, 0) {
             return Ok(Expr::Num(0));
         }
@@ -71,7 +71,7 @@ mod ex_2_73 {
             return Ok(m1);
         }
         if let (Expr::Num(x), Expr::Num(y)) = (&m1, &m2) {
-            return Ok(Expr::Num(x.checked_mul(*y).ok_or(SchemeError::Overflow)?));
+            return Ok(Expr::Num(x.checked_mul(*y).ok_or(SicpError::Overflow)?));
         }
         Ok(Expr::Product(Box::new(m1), Box::new(m2)))
     }
@@ -88,8 +88,7 @@ mod ex_2_73 {
         Expr::Pow(Box::new(u), Box::new(n))
     }
 
-    /// The operator symbol of an application variant, the book's
-    /// `(operator exp)`. `Num` and `Var` answer `None`: part (a)'s fact —
+    /// The operator symbol of an application variant, the book's operator selector. `Num` and `Var` answer `None`: part (a)'s fact —
     /// a number or a variable has no operator to index the table by — is
     /// visible directly in this function's return type, not asserted
     /// after the fact.
@@ -103,8 +102,7 @@ mod ex_2_73 {
         }
     }
 
-    /// The operand expressions of an application variant, the book's
-    /// `(operands exp)`: two for the binary operators, one for `atan`.
+    /// The operand expressions of an application variant, the book's operands selector: two for the binary operators, one for `atan`.
     pub(crate) fn operands(exp: &Expr) -> Vec<&Expr> {
         match exp {
             Expr::Sum(a, b) | Expr::Product(a, b) | Expr::Pow(a, b) => vec![a, b],
@@ -113,8 +111,8 @@ mod ex_2_73 {
         }
     }
 
-    fn unknown_expression(exp: &Expr) -> SchemeError {
-        SchemeError::UserRaised {
+    fn unknown_expression(exp: &Expr) -> SicpError {
+        SicpError::UserRaised {
             message: "unknown expression type: DERIV".into(),
             irritants: vec![Value::string(&exp.to_string())],
         }
@@ -124,7 +122,7 @@ mod ex_2_73 {
     /// the operand expressions, and the differentiation variable,
     /// produces the derivative.
     pub(crate) type DerivHandler =
-        Rc<dyn Fn(&DerivTable, &[&Expr], &Symbol) -> Result<Expr, SchemeError>>;
+        Rc<dyn Fn(&DerivTable, &[&Expr], &Symbol) -> Result<Expr, SicpError>>;
 
     /// The exercise's own operation table: the same `(op, tag) -> handler`
     /// shape as the section's `OpTable`, keyed here by `("deriv", operator)`
@@ -162,7 +160,7 @@ mod ex_2_73 {
     /// `Num` and `Var` stay `match` arms — they carry no operator — and
     /// every other variant dispatches through the table indexed
     /// `("deriv", operator)`.
-    pub(crate) fn deriv(exp: &Expr, var: &Symbol, table: &DerivTable) -> Result<Expr, SchemeError> {
+    pub(crate) fn deriv(exp: &Expr, var: &Symbol, table: &DerivTable) -> Result<Expr, SicpError> {
         match exp {
             Expr::Num(_) => Ok(Expr::Num(0)),
             Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
@@ -185,7 +183,7 @@ mod ex_2_73 {
         exp: &Expr,
         var: &Symbol,
         table: &DerivTable,
-    ) -> Result<Expr, SchemeError> {
+    ) -> Result<Expr, SicpError> {
         match exp {
             Expr::Num(_) => Ok(Expr::Num(0)),
             Expr::Var(x) => Ok(Expr::Num(i128::from(x == var))),
@@ -220,11 +218,11 @@ mod ex_2_73 {
         Rc::new(|table, ops, var| {
             let (u, n) = (ops[0], ops[1]);
             let Expr::Num(k) = n else {
-                return Err(SchemeError::TypeMismatch(
+                return Err(SicpError::TypeMismatch(
                     "the exponent must be a literal number".into(),
                 ));
             };
-            let n_minus_one = k.checked_sub(1).ok_or(SchemeError::Overflow)?;
+            let n_minus_one = k.checked_sub(1).ok_or(SicpError::Overflow)?;
             let lower = make_exponentiation(u.clone(), Expr::Num(n_minus_one));
             let du = deriv(u, var, table)?;
             make_product(Expr::Num(*k), make_product(lower, du)?)

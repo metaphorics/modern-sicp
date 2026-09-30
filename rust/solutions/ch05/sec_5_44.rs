@@ -1,51 +1,42 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The reference solution of exercise 5.44: open coding consults the
-//! compile-time environment before treating a name as primitive.
+//! The reference solution of exercise 5.44: shadowing is lexical, so
+//! a rebound name stays an ordinary binding.
+//!
+//! A block that rebinds `x` evaluates its own binding where the outer
+//! one stood, while free names still resolve to the functions they
+//! named: the inner `double(x) + x` uses the inner `1` twice for `3`,
+//! and the outer `double(x)` still doubles the outer `100` to `200`.
+//! No special case distinguishes the two; the environment's
+//! innermost-first order decides both.
 
-use ch05::sec_5_2::Fault;
-use ch05::sec_5_5::{Config, Linkage, compile_program, new_state};
+use sicp_runtime::host::CheckedProgram;
+
+fn admitted(source: &str) -> CheckedProgram {
+    match sicp_runtime::host::admit(source) {
+        Ok(program) => program,
+        Err(diag) => panic!("admitted: {}", diag.message),
+    }
+}
 
 mod ex_5_44 {
-    //! Exercise 5.44: lambda parameters named `+` and `*` shadow the
-    //! open-coded primitive names; free names remain eligible.
+    //! Exercise 5.44: rebound names resolve inward; free names still
+    //! reach their functions.
 
     use super::*;
 
-    const SHADOWED: &str = "(lambda (+ * a b x y) (+ (* a x) (* b y)))";
-    const FREE: &str = "(lambda (a b x y) (+ (* a x) (* b y)))";
+    const SHADOWED: &str = "fn double(x: i64) -> i64 {\n    x * 2\n}\n\nfn main() {\n    let x = 100;\n    let inner = {\n        let x = 1;\n        double(x) + x\n    };\n    println!(\"{}\", inner);\n    println!(\"{}\", double(x));\n}\n";
 
-    fn open_code_count(source: &str) -> Result<usize, Fault> {
-        let cfg = Config {
-            open_code: true,
-            ..ch05::sec_5_5::default_config()
-        };
-        let seq = compile_program(&cfg, &new_state(), source, &Linkage::Next)?;
-        Ok(seq
-            .stmts
-            .iter()
-            .filter(|line| line.contains("(op +)") || line.contains("(op *)"))
-            .count())
-    }
-
-    pub fn ex_5_44() -> Result<Vec<String>, Fault> {
-        let shadowed = open_code_count(SHADOWED)?;
-        let free = open_code_count(FREE)?;
-        assert_eq!(shadowed, 0);
-        assert!(free > 0);
-        Ok(vec![
-            format!("shadowed + and *: {shadowed} open-coded operations"),
-            format!("free + and *: {free} open-coded operations"),
-            "compile-time lambda frames prevent open coding of rebound names; top-level rebinding is outside this analysis".to_owned(),
-        ])
-    }
-
+    /// The inner block answers `3` from its own `x` and the outer
+    /// call answers `200` from the untouched `100`.
     #[test]
-    fn ex_5_44_check() -> Result<(), Fault> {
-        let lines = ex_5_44()?;
-        assert!(lines[0].contains(": 0 "));
-        assert!(lines[1].contains("open-coded operations"));
-        Ok(())
+    fn ex_5_44_shadowed_name_stays_ordinary() {
+        let program = admitted(SHADOWED);
+        let interpreted = ch05::sec_5_4::Eceval::run(&program);
+        let compiled = ch05::sec_5_5::compiled_run(&program);
+        assert!(interpreted.trap.is_none(), "{interpreted:?}");
+        assert_eq!(interpreted.stdout, "3\n200\n");
+        assert_eq!(interpreted.stdout, compiled.stdout, "engines agree");
     }
 }

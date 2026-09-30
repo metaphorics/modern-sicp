@@ -19,8 +19,8 @@ use ch03::sec_3_5::{
 };
 
 /// Exercise-local `integrate-series`: each coefficient divided by its
-/// 1-based index, the book's `(stream-map / s (integers-starting-from
-/// 1))`. The section module does not ship it; it is this exercise's
+/// 1-based index, mapping division over the stream and the integers
+/// from 1. The section module does not ship it; it is this exercise's
 /// starting machinery. The index-to-`f64` cast is a real-number
 /// conversion the series algebra wants: indices stay tiny, so the
 /// division is exact where the pinned prefixes test it.

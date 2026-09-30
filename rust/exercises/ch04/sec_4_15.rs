@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.15: Exercise 4.15: the halting-problem diagonal, run..
+//! The pending scaffold of exercise 4.15: the halting diagonal over step budgets.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,12 +12,12 @@ pub struct Pending {
 }
 
 mod ex_4_15 {
-    //! Exercise 4.15: the halting-problem diagonal, run.
+    //! Exercise 4.15: the halting diagonal over step budgets.
 
     use super::Pending;
 
-    /// Answers the two outcomes of `(try try)` under the two fixed
-    /// verdicts of `halts?`: the step budget that proves the first run
+    /// Answers the two outcomes of the self-applied `halts` probe under
+    /// two fixed verdicts: the step budget that proves the first run
     /// never halts, and the `halted` value that contradicts the second.
     pub fn ex_4_15() -> Result<(String, String), Pending> {
         Err(Pending { exercise: "4.15" })

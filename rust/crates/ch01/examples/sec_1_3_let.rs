@@ -43,10 +43,11 @@ fn main() {
     // => 38
     assert!((inner + x - 38.0_f64).abs() < 1e-9);
 
-    // Scheme's `let` computes every value before any binding comes into
-    // scope, so the `y` of `(let ((x 3) (y (+ x 2))) (* x y))` reads the
-    // outer `x`. Rust's sequential `let`s shadow at once, so the same
-    // two lines read the new `x`.
+    // Rust's `let` computes each initializer from the bindings already
+    // in scope, and a later `let` with the same name shadows the
+    // earlier binding only from its own line on. Here `y_outside` is
+    // computed before the shadowing `let x = 3.0` and reads the outer
+    // `x`, while `y_inside` is computed after it and reads the new one.
     let x = 2.0;
     let y_outside = x + 2.0;
     let x = 3.0;

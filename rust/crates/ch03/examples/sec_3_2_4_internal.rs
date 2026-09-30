@@ -8,7 +8,7 @@
 use std::rc::Rc;
 
 use ch03::sec_3_2::{define, sqrt};
-use sicp_runtime::{Env, SchemeError, Value};
+use sicp_runtime::{Env, SicpError, Value};
 
 fn main() {
     // The internal definitions see the enclosing frame's x because they
@@ -43,7 +43,7 @@ fn main() {
     assert_eq!(e2.lookup("x"), Ok(Value::real(2.0)));
     assert_eq!(
         global.lookup("x"),
-        Err(SchemeError::UnboundVariable("x".into()))
+        Err(SicpError::UnboundVariable("x".into()))
     );
 
     // The helper names never reached the global environment: the frame

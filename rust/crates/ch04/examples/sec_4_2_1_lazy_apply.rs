@@ -2,71 +2,178 @@
 // Adapted from the Scheme programs in SICP section 4.2
 
 //! Sections 4.2.1/4.2.2: the lazy application clause. Compound
-//! procedures are non-strict in each argument -- their operands bind as
-//! thunks -- while primitives stay strict and force every argument.
-//! The operator, the `if` predicate, and the driver's printed value are
-//! the demand sites that force.
+//! procedures are non-strict in each argument -- their operands bind
+//! as delayed thunks -- while primitives stay strict and demand every
+//! argument. The operator, the `if` predicate, and each primitive slot
+//! carry the demand sites that force.
 
-use ch04::eval_support::{Lazy, printed, run_lazy};
-use sicp_runtime::print_value;
+use ch04::sec_4_2::{LazyEngine, LazyExpr, LazyVal, Mode, PrimOp, reference_model};
+
+fn int(value: i64) -> LazyExpr {
+    LazyExpr::Int(value)
+}
+
+fn var(name: &str) -> LazyExpr {
+    LazyExpr::Var(name.to_owned())
+}
+
+fn force(expr: LazyExpr) -> LazyExpr {
+    LazyExpr::Force(Box::new(expr))
+}
+
+fn bind(name: &str, value: LazyExpr, body: LazyExpr) -> LazyExpr {
+    LazyExpr::Let(name.to_owned(), Box::new(value), Box::new(body))
+}
+
+fn emit(tag: &str) -> LazyExpr {
+    LazyExpr::Emit(tag.to_owned())
+}
+
+fn branch(condition: LazyExpr, then: LazyExpr, otherwise: LazyExpr) -> LazyExpr {
+    LazyExpr::If(Box::new(condition), Box::new(then), Box::new(otherwise))
+}
+
+fn call(operator: LazyExpr, args: Vec<LazyExpr>) -> LazyExpr {
+    LazyExpr::Apply(Box::new(operator), args)
+}
+
+fn closure_expr(params: &[&str], body: LazyExpr) -> LazyExpr {
+    LazyExpr::Lambda(
+        params.iter().map(|name| (*name).to_owned()).collect(),
+        Box::new(body),
+    )
+}
+
+fn prim(op: PrimOp) -> LazyExpr {
+    LazyExpr::Quote(LazyVal::Prim(op))
+}
+
+/// The book's `id`: answers its argument without demanding it.
+fn id() -> LazyExpr {
+    closure_expr(&["x"], var("x"))
+}
+
+/// The book's armed operand: demanding it stops the run.
+fn armed() -> LazyExpr {
+    force(var("no_such_binding"))
+}
+
+/// The book's `try`, where `a` equal to 0 answers 1 and never demands
+/// the armed `b`; `a` nonzero demands `b` and runs its body.
+fn try_call(a: i64, armed: LazyExpr) -> LazyExpr {
+    call(
+        closure_expr(
+            &["a", "b"],
+            branch(force(var("a")), force(var("b")), int(1)),
+        ),
+        vec![int(a), armed],
+    )
+}
+
+fn agree(program: &LazyExpr) {
+    let outcome = LazyEngine::new(Mode::Memo).run(program);
+    println!(
+        "value={:?} effects={:?} rendered={:?}",
+        outcome.value, outcome.effects, outcome.rendered
+    );
+    assert_eq!(outcome, reference_model(Mode::Memo, program));
+}
 
 fn main() {
-    // The book's `try`: the armed operand `(/ 1 0)` is never demanded,
-    // so the lazy evaluator answers 1 where Scheme raises.
-    let (values, _) = run_lazy(
-        &Lazy,
-        "(define (try a b) (if (= a 0) 1 b))\n(try 0 (/ 1 0))",
-    )
-    .expect("runs");
-    for value in &values {
-        println!("{}", print_value(value));
-    }
-    // => ok
-    // => 1
-    assert_eq!(printed(&values), vec!["ok", "1"]);
+    // The book's `try`: the armed operand is never demanded, so the
+    // effect its body would log never appears and the lazy evaluator
+    // answers 1 where a strict evaluator would run the body.
+    let probed = try_call(0, emit("b was evaluated"));
+    agree(&probed);
+    // => value=Some(1) effects=[] rendered=["1"]
+    assert_eq!(LazyEngine::new(Mode::Memo).run(&probed).value, Some(1));
 
-    // `unless` as a procedure does useful work even when an arm would
-    // raise: only the chosen arm is forced, and the strict primitive
-    // rule is what forces it.
-    let (values, displayed) = run_lazy(
-        &Lazy,
-        "(define (unless condition usual-value exceptional-value) \
-         (if condition exceptional-value usual-value))\n\
-         (unless (= 0 0) (/ 1 0) (begin (display \"exception: returning 0\") 0))",
-    )
-    .expect("runs");
-    println!("{displayed}");
-    // => exception: returning 0
-    // => 0
-    assert_eq!(displayed, "exception: returning 0");
-    assert_eq!(printed(&values).last(), Some(&"0".to_owned()));
+    // The same call armed with a body that stops the run: still 1,
+    // because non-strictness is the operand rule, not a missing error.
+    let stopped = try_call(0, armed());
+    agree(&stopped);
+    // => value=Some(1) effects=[] rendered=["1"]
+    assert_eq!(LazyEngine::new(Mode::Memo).run(&stopped).value, Some(1));
 
-    // The operator is forced: `id`'s body answers a thunk of `+`, and
-    // the application clause forces it before apply can dispatch.
-    let (values, _) = run_lazy(&Lazy, "(define (id x) x)\n((id +) 2 3)").expect("runs");
-    println!("{}", print_value(values.last().expect("a value")));
-    // => 5
-    assert_eq!(printed(&values).last(), Some(&"5".to_owned()));
+    // With `a` nonzero the armed operand is demanded and the run stops
+    // at it.
+    let demanded = try_call(1, armed());
+    agree(&demanded);
+    // => value=None effects=[] rendered=[]
+    assert_eq!(LazyEngine::new(Mode::Memo).run(&demanded).value, None);
 
-    // `eval-if` forces the predicate: an unforced thunk would be
-    // truthy, and the wrong branch would run.
-    let (values, _) = run_lazy(&Lazy, "(define (id x) x)\n(if (id #f) 'yes 'no)").expect("runs");
-    println!("{}", print_value(values.last().expect("a value")));
-    // => no
-    assert_eq!(printed(&values).last(), Some(&"no".to_owned()));
+    // `unless` as a procedure does useful work even when the other arm
+    // would stop the run: only the chosen arm is demanded, and its
+    // display effect precedes the value.
+    let unless = closure_expr(
+        &["c", "u", "e"],
+        branch(force(var("c")), force(var("e")), force(var("u"))),
+    );
+    let program = bind(
+        "shown",
+        call(
+            unless,
+            vec![
+                int(1),
+                armed(),
+                bind("_", emit("exception: returning 0"), int(0)),
+            ],
+        ),
+        var("shown"),
+    );
+    agree(&program);
+    // => value=Some(0) effects=["exception: returning 0"] rendered=["0"]
+    let outcome = LazyEngine::new(Mode::Memo).run(&program);
+    assert_eq!(outcome.value, Some(0));
+    assert_eq!(outcome.effects, ["exception: returning 0"]);
+
+    // The operator is demanded before apply can dispatch: `id`'s body
+    // answers a thunk of `+`, and the demand site forces it first.
+    let program = call(
+        force(call(id(), vec![prim(PrimOp::Add)])),
+        vec![int(2), int(3)],
+    );
+    agree(&program);
+    // => value=Some(5) effects=[] rendered=["5"]
+    assert_eq!(LazyEngine::new(Mode::Memo).run(&program).value, Some(5));
+
+    // The `if` predicate is demanded before the branch is chosen: an
+    // undemanded thunk decides nothing.
+    let picks = |truth: LazyExpr| branch(force(call(id(), vec![truth])), emit("yes"), emit("no"));
+    agree(&picks(LazyExpr::Quote(LazyVal::Now(0))));
+    // => value=Some(0) effects=["no"] rendered=["0"]
+    assert_eq!(
+        LazyEngine::new(Mode::Memo)
+            .run(&picks(LazyExpr::Quote(LazyVal::Now(0))))
+            .effects,
+        ["no"]
+    );
+    agree(&picks(LazyExpr::Quote(LazyVal::Now(1))));
+    // => value=Some(0) effects=["yes"] rendered=["0"]
+    assert_eq!(
+        LazyEngine::new(Mode::Memo)
+            .run(&picks(LazyExpr::Quote(LazyVal::Now(1))))
+            .effects,
+        ["yes"]
+    );
 
     // A compound procedure binds delayed operands: defining `w` runs
-    // `id`'s set! once (the outer body), while the inner `(id 10)` is
-    // still a thunk awaiting a demand.
-    let (values, _) = run_lazy(
-        &Lazy,
-        "(define count 0)\n\
-         (define (id x) (set! count (+ count 1)) x)\n\
-         (define w (id (id 10)))\n\
-         count",
-    )
-    .expect("runs");
-    println!("{}", print_value(values.last().expect("a value")));
-    // => 1
-    assert_eq!(printed(&values).last(), Some(&"1".to_owned()));
+    // the outer body once (the probe reads 1), while the inner call is
+    // still a thunk awaiting a demand. The body answers its argument's
+    // binding unforced, so the value of `w` is the inner thunk itself.
+    let ticked_id = closure_expr(&["x"], bind("_", emit("tick"), var("x")));
+    let w = call(ticked_id.clone(), vec![call(ticked_id, vec![int(10)])]);
+    let program = bind("w", w.clone(), int(0));
+    agree(&program);
+    // => value=Some(0) effects=["tick"] rendered=["0"]
+    assert_eq!(LazyEngine::new(Mode::Memo).run(&program).effects, ["tick"]);
+
+    // Demanding `w` runs the inner body exactly once more: the probe
+    // now reads 2 and the value is 10.
+    let program = bind("w", w, force(force(var("w"))));
+    agree(&program);
+    // => value=Some(10) effects=["tick", "tick"] rendered=["10"]
+    let outcome = LazyEngine::new(Mode::Memo).run(&program);
+    assert_eq!(outcome.value, Some(10));
+    assert_eq!(outcome.effects, ["tick", "tick"]);
 }

@@ -1,68 +1,87 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.44: eight queens with `amb`.
-//! Each row draws a column from the board, `require` rejects a column
-//! that a placed queen attacks, and the recursion descends row by row;
-//! the answer list accumulates in cons order, last row first.
+//! The reference solution of exercise 4.44: eight queens as explicit
+//! row choices with column and diagonal guards.
 
-use ch04::eval_support::{AMB_SEED, Amb, SchemeError, setup_amb_environment, with_eval_stack};
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_44 {
-    use super::*;
+use ch04::sec_4_3::{AnswerTerm, AnswerValue, Predicate, Search, SearchEngine};
+use sicp_runtime::host::query::Term;
 
-    /// The queens program: helpers, `queens`, and one query per board
-    /// the test answers.
-    const PROGRAM: &str = r"
-(define (require p) (if (not p) (amb)))
-(define (an-element-of items)
-  (require (not (null? items)))
-  (amb (car items) (an-element-of (cdr items))))
-(define (integers low high)
-  (if (> low high) '() (cons low (integers (+ low 1) high))))
-(define (safe col placed)
-  (define (check dist cols)
-    (cond ((null? cols) #t)
-          ((= col (car cols)) #f)
-          ((= dist (abs (- col (car cols)))) #f)
-          (else (check (+ dist 1) (cdr cols)))))
-  (check 1 placed))
-(define (queens n)
-  (define (place k placed)
-    (if (> k n)
-        placed
-        (let ((col (an-element-of (integers 1 n))))
-          (require (safe col placed))
-          (place (+ k 1) (cons col placed)))))
-  (place 1 '()))";
+fn variable(name: &str) -> Term {
+    Term::Variable(name.to_owned())
+}
 
-    /// The first solution on a board of `n` rows and columns.
-    ///
-    /// # Panics
-    /// Panics when the board has no solution at all, which the square
-    /// boards 4 and up never hit.
-    #[must_use]
-    pub fn first_solution(n: usize) -> String {
-        let query = format!("(queens {n})");
-        with_eval_stack(move || {
-            let amb = Amb::new(AMB_SEED).expect("the seed is nonzero");
-            let env = setup_amb_environment();
-            for form in sicp_runtime::read_program(PROGRAM).expect("parses") {
-                let _ = amb.run_form(&form, &env);
-            }
-            match amb.run(&query, &env) {
-                Ok(value) => sicp_runtime::print_value(&value),
-                Err(SchemeError::Backtrack) => String::from("<no solution>"),
-                Err(error) => panic!("the search raised: {error}"),
-            }
-        })
+fn guard(predicate: Predicate, body: Search) -> Search {
+    Search::Guard(predicate, Box::new(body))
+}
+
+fn difference(left: &str, right: &str, amount: &str) -> Predicate {
+    Predicate::DiffEq(
+        left.to_owned(),
+        right.to_owned(),
+        amount.to_owned(),
+        "zero".to_owned(),
+    )
+}
+
+fn not_diagonal(left: &str, right: &str, distance: i64, board: i64) -> Predicate {
+    let mut allowed = Vec::new();
+    for amount in 1..board {
+        if amount != distance {
+            let name = format!("d{amount}");
+            allowed.push(difference(left, right, &name));
+            allowed.push(difference(right, left, &name));
+        }
     }
+    Predicate::Or(allowed)
+}
+
+fn queens(board: i64) -> Search {
+    let mut body = Search::Success(
+        (1..=board)
+            .map(|row| AnswerTerm::Var(format!("c{row}")))
+            .collect(),
+    );
+    for left in 1..=board {
+        for right in (left + 1)..=board {
+            let left_name = format!("c{left}");
+            let right_name = format!("c{right}");
+            body = guard(
+                Predicate::Ne(variable(&left_name), variable(&right_name)),
+                guard(
+                    not_diagonal(&left_name, &right_name, right - left, board),
+                    body,
+                ),
+            );
+        }
+    }
+    for amount in 0..board {
+        body = Search::Set(format!("d{amount}"), amount, Box::new(body));
+    }
+    for row in 1..=board {
+        body = Search::ChooseRange {
+            var: format!("c{row}"),
+            lo: 1,
+            hi: board,
+            body: Box::new(body),
+        };
+    }
+    body = Search::Set("zero".to_owned(), 0, Box::new(body));
+    body
 }
 
 #[test]
 fn ex_4_44() {
-    // The first solutions on the three boards, columns in row order.
-    assert_eq!(ex_4_44::first_solution(4), "(3 1 4 2)");
-    assert_eq!(ex_4_44::first_solution(6), "(5 3 1 6 4 2)");
-    assert_eq!(ex_4_44::first_solution(8), "(4 2 7 3 6 8 5 1)");
+    let outcome = SearchEngine::new().run_prefix(&queens(4), 1);
+    assert_eq!(
+        outcome.answers,
+        vec![vec![
+            AnswerValue::Int(3),
+            AnswerValue::Int(1),
+            AnswerValue::Int(4),
+            AnswerValue::Int(2)
+        ]]
+    );
 }

@@ -1,26 +1,63 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.21: recursion without define..
+//! The reference solution of exercise 4.21: recursion without a
+//! top-level definition, by passing the procedure to itself.
 
-use ch04::eval_support::*;
+/// Shared typed support for this exercise.
+pub mod support;
 
-mod ex_4_21 {
-    use super::*;
+/// A factorial procedure passed as ordinary data: the wrapper keeps the
+/// self-application well-typed without naming the top-level function.
+#[derive(Debug, Clone, Copy)]
+struct Fact(fn(Fact, i64) -> i64);
 
-    /// The book's applicative-order factorial and the completed `f`,
-    /// both as plain expressions the base evaluator runs.
-    pub fn answers() -> Result<Vec<String>, SchemeError> {
-        let fact = "((lambda (n) ((lambda (fact) (fact fact n))\n  (lambda (ft k) (if (= k 1) 1 (* k (ft ft (- k 1)))))))\n 10)";
-        let f = "(define (f x)\n  ((lambda (even? odd?)\n     (even? even? odd? x))\n   (lambda (ev? od? n)\n     (if (= n 0) true (od? ev? od? (- n 1))))\n   (lambda (ev? od? n)\n     (if (= n 0) false (ev? ev? od? (- n 1))))))\n(f 10)";
-        let program = format!("{fact}\n{f}");
-        let (values, _) = run_with(&Base, &program)?;
-        Ok(printed(&values))
+/// A Fibonacci procedure passed as ordinary data, threading its
+/// accumulator state through the same self-passing discipline.
+#[derive(Debug, Clone, Copy)]
+struct Fib(fn(Fib, i64, i64, i64) -> i64);
+
+fn factorial(proc: Fact, n: i64) -> i64 {
+    if n == 0 { 1 } else { n * (proc.0)(proc, n - 1) }
+}
+
+fn fibonacci(proc: Fib, n: i64, previous: i64, current: i64) -> i64 {
+    if n == 0 {
+        previous
+    } else {
+        (proc.0)(proc, n - 1, current, previous + current)
+    }
+}
+
+struct Mutual {
+    even: fn(i64, &Mutual) -> bool,
+    odd: fn(i64, &Mutual) -> bool,
+}
+
+fn even_step(n: i64, procedures: &Mutual) -> bool {
+    if n == 0 {
+        true
+    } else {
+        (procedures.odd)(n - 1, procedures)
+    }
+}
+
+fn odd_step(n: i64, procedures: &Mutual) -> bool {
+    if n == 0 {
+        false
+    } else {
+        (procedures.even)(n - 1, procedures)
     }
 }
 
 #[test]
 fn ex_4_21() {
-    let values = ex_4_21::answers().expect("runs");
-    assert_eq!(values, vec!["3628800", "ok", "#t"]);
+    assert_eq!(factorial(Fact(factorial), 10), 3_628_800);
+    assert_eq!(fibonacci(Fib(fibonacci), 10, 0, 1), 55);
+
+    let procedures = Mutual {
+        even: even_step,
+        odd: odd_step,
+    };
+    assert!((procedures.even)(10, &procedures));
+    assert!((procedures.odd)(7, &procedures));
 }

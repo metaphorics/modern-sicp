@@ -16,8 +16,8 @@ mod ex_4_14 {
 
     use super::Pending;
 
-    /// Answers the error Louis's primitive map raises on a compound
-    /// procedure and the list Eva's object-language map produces.
+    /// Answers the error Louis's primitive map raises on a closure
+    /// value and the vector Eva's guest-language map produces.
     pub fn ex_4_14() -> Result<(String, String), Pending> {
         Err(Pending { exercise: "4.14" })
     }
@@ -28,5 +28,5 @@ mod ex_4_14 {
 fn ex_4_14() {
     let (louis, eva) = ex_4_14::ex_4_14().expect("solved");
     assert!(louis.contains("not a procedure"));
-    assert_eq!(eva, "(1 4 9)");
+    assert_eq!(eva, "[1, 4, 9]");
 }

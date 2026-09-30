@@ -1,1012 +1,802 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Adapted from the Scheme programs in SICP section 4.3
+//
+// Section 4.3: the named search experiment (grammar §7).
+// `search-depth-first/1` explores explicit `Choose`/`Fail`/`Success`
+// data depth-first in the vector's written order, records mutations on
+// an explicit trail, and rolls back only trailed assignments when
+// backtracking. Generator alternatives (`ChooseRange`, `ChooseFrom`)
+// supply the between/starting-from lessons; `Persist` is the
+// permanent-set! lesson; `Guard(Predicate, ...)` gives binding-dependent
+// constraints; `Success(Vec<AnswerTerm>)` answers compute from the
+// bindings. It is deterministic for a fixed program. `?`, `Result`,
+// panics, and ordinary `return` never trigger backtracking.
 
-//! Section 4.3: the `amb` evaluator as an explicit backtracking engine.
-//!
-//! The evaluator runs the chapter's `Value` syntax with one new piece of
-//! control: an `amb` form is the book's nondeterministic choice point,
-//! searched depth-first. The engine keeps the search in plain data -- a
-//! choice frame per open `amb`, each holding its pending alternatives
-//! and the continuation of the computation that followed the choice --
-//! so a dead end unwinds by returning [`SchemeError::Backtrack`] to the
-//! nearest `amb` site, and a solution returned to the driver leaves its
-//! frames resumable: `try_again` takes the deepest pending alternative
-//! and continues it without replaying the work the answer already did.
-//! Assignments made on a branch land on an undo trail that backtracking
-//! rolls back; `permanent-set!` skips the trail, `if-fail` catches the
-//! failure of its first expression, and `ramb` searches its
-//! alternatives in the order a seeded xorshift draws, so a
-//! `ramb`-driven program is reproducible for a fixed seed.
-//!
-//! The book's continuation-passing shape maps onto the engine as
-//! follows: the book's success continuation is a [`Cont`], a plain
-//! closure from one value to the rest of the computation; the book's
-//! failure continuation is the engine's choice stack plus the
-//! `Backtrack` unwind, because the alternatives are values in a frame,
-//! not closures the program threads through itself; and the driver
-//! loop's `try-again` is [`Amb::try_again`], which resumes the saved
-//! stack instead of re-running the problem from scratch.
+use std::collections::HashMap;
 
-use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
-use std::rc::Rc;
+pub use sicp_runtime::host::query::{Predicate, Term};
 
-use sicp_runtime::{Closure, Env, Handler, Random, SchemeError, Symbol, Value, print_value};
-
-use crate::sec_4_1::{
-    OutputSink, assignment_value, assignment_variable, cond_to_if, definition_value,
-    definition_variable, extend_environment, first_of, if_parts, is_application, is_assignment,
-    is_begin, is_cond, is_definition, is_if, is_lambda, is_let, is_quoted, is_self_evaluating,
-    is_tagged_list, is_true, is_variable, let_to_combination, operand_items, primitive_table,
-    split_params, text_of_quotation,
-};
-
-/// One evaluation's answer.
-pub type EvalResult = Result<Value, SchemeError>;
-
-/// The rest of one expression's evaluation: the book's success
-/// continuation, a closure from the value just obtained to everything
-/// that follows it. Failures need no closure -- they travel as
-/// [`SchemeError::Backtrack`] to the nearest choice frame.
-pub type Cont = Rc<dyn Fn(&Amb, Value) -> EvalResult>;
-
-/// An extension's dispatch clause, the book's new `analyze` case: when
-/// it recognizes the expression it answers the evaluation, and when it
-/// does not it answers `None` and the section dispatch takes over. The
-/// clause sees every expression at every nesting depth, because the
-/// engine checks it inside [`Amb::eval_with`].
-pub type SpecialHook = Rc<dyn Fn(&Amb, &Value, &Rc<Env>, &Cont) -> Option<EvalResult>>;
-
-/// Builds one continuation.
-fn cont(f: impl Fn(&Amb, Value) -> EvalResult + 'static) -> Cont {
-    Rc::new(f)
+/// One resolved answer operand: a literal, a bound variable, or a
+/// computed combination of bound variables (grammar §7 success data).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnswerTerm {
+    /// A literal answer component.
+    Const(i64),
+    /// The current binding of one variable.
+    Var(String),
+    /// The sum of the listed variables' bindings, in order.
+    Sum(Vec<String>),
+    /// The product of the listed variables' bindings, in order.
+    Product(Vec<String>),
+    /// A symbolic answer component.
+    Atom(String),
 }
 
-/// One undo entry of the trail: the frame, the name, and the value the
-/// binding held before the assignment, restored when backtracking
-/// crosses the assignment.
-struct Undo {
-    env: Rc<Env>,
-    name: Symbol,
-    old: Value,
+/// One resolved answer component: an integer or a symbol.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnswerValue {
+    /// An integer component.
+    Int(i64),
+    /// A symbolic component.
+    Sym(String),
 }
 
-/// One resumable choice frame: the book's `try-next` loop stored as
-/// data. `alts` holds the alternatives not yet tried, each with the
-/// environment to evaluate it in; `k` is the continuation that consumes
-/// each chosen value; `trail_len` is the trail length at the push, the
-/// line backtracking rolls the trail back to.
-struct AmbFrame {
-    alts: VecDeque<(Value, Rc<Env>)>,
-    k: Cont,
-    trail_len: usize,
-}
-
-/// The next step a resume loop takes: one pending alternative of the
-/// deepest frame, or the frame's exhaustion.
-enum Job {
-    Alternative {
-        expr: Value,
-        env: Rc<Env>,
-        k: Cont,
-        trail_len: usize,
+/// The search data language of grammar §7.
+#[derive(Debug, Clone)]
+pub enum Search {
+    /// A produced answer, computed from the current bindings.
+    Success(Vec<AnswerTerm>),
+    /// A dead end.
+    Fail,
+    /// An explicit choice point, alternatives in written order.
+    Choose(Vec<Search>),
+    /// Uses the primary search's answers, or the fallback if it yields none.
+    IfFail {
+        /// The preferred search.
+        primary: Box<Search>,
+        /// The search used when the primary yields no answers.
+        fallback: Box<Search>,
     },
-    Exhausted(Box<AmbFrame>),
+    /// `an-integer-between`: `var` ranges over `lo..=hi`.
+    ChooseRange {
+        /// The variable to bind.
+        var: String,
+        /// The inclusive low bound.
+        lo: i64,
+        /// The inclusive high bound.
+        hi: i64,
+        /// The continuation.
+        body: Box<Search>,
+    },
+    /// `an-integer-starting-from`: the unbounded generator.
+    ChooseFrom {
+        /// The variable to bind.
+        var: String,
+        /// The first value.
+        start: i64,
+        /// The continuation.
+        body: Box<Search>,
+    },
+    /// A trailed assignment: rolled back when backtracking crosses it.
+    Set(String, i64, Box<Search>),
+    /// `permanent-set!`: an assignment the trail does not restore.
+    Persist(String, i64, Box<Search>),
+    /// A binding-dependent constraint.
+    Guard(Predicate, Box<Search>),
+    /// An ordered effect before the continuation.
+    Emit(String, Box<Search>),
 }
 
-/// Whether a search runs its alternatives in written order or in the
-/// order the seeded xorshift draws.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Search {
-    InOrder,
-    Shuffled,
+/// One search run's observable outcome.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchOutcome {
+    /// Every answer tuple, in the order the search produced them.
+    pub answers: Vec<Vec<AnswerValue>>,
+    /// The ordered effect log.
+    pub effects: Vec<String>,
 }
 
-/// Whether an assignment lands on the undo trail: the book's `set!`
-/// versus exercise 4.51's `permanent-set!`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Assignment {
-    Undoable,
-    Permanent,
+/// The search engine: one explicit trail, one ordered effect log, and
+/// an answer limit that makes unbounded generators observable as
+/// prefixes.
+pub struct SearchEngine {
+    trail: Vec<(String, Option<i64>)>,
+    bindings: HashMap<String, i64>,
+    answers: Vec<Vec<AnswerValue>>,
+    effects: Vec<String>,
+    limit: usize,
+    /// A randomized rambling order, when seeded; `None` keeps the
+    /// depth-first written order of `search-depth-first/1`.
+    seed: Option<u64>,
+    stream: u64,
 }
-
-/// The `amb` evaluator: the choice stack, the undo trail, and the
-/// seeded xorshift `ramb` draws from. All state is per-instance and
-/// behind interior mutability, so the seed is threaded through
-/// construction and no evaluator state is global.
-pub struct Amb {
-    stack: RefCell<Vec<AmbFrame>>,
-    trail: RefCell<Vec<Undo>>,
-    rng: RefCell<Random>,
-    failures: Cell<u64>,
-    hook: RefCell<Option<SpecialHook>>,
-}
-
-impl Amb {
-    /// Creates an evaluator whose `ramb` searches from `seed`.
-    ///
-    /// # Errors
-    /// [`SchemeError::ZeroSeed`] when `seed` is zero, because
-    /// `xorshift64*` never leaves the zero state.
-    pub fn new(seed: u64) -> Result<Self, SchemeError> {
-        Ok(Self {
-            stack: RefCell::new(Vec::new()),
-            trail: RefCell::new(Vec::new()),
-            rng: RefCell::new(Random::new(seed)?),
-            failures: Cell::new(0),
-            hook: RefCell::new(None),
-        })
+impl Default for SearchEngine {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    /// Installs an extension's dispatch clause: the engine consults it
-    /// first for every expression it evaluates, at every nesting depth.
-    /// Exercise 4.54's variant installs one clause for `require`.
-    pub fn install_special_hook(&self, hook: SpecialHook) {
-        *self.hook.borrow_mut() = Some(hook);
+/// One splitmix64 step: the deterministic source behind seeded
+/// rambling.
+fn splitmix64(stream: &mut u64) -> u64 {
+    *stream = stream.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = *stream;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// A Fisher-Yates permutation driven by the engine's stream.
+fn shuffle<T>(stream: &mut u64, items: &mut [T]) {
+    let mut index = items.len();
+    while index > 1 {
+        index -= 1;
+        let modulus = u64::try_from(index + 1).expect("slice length fits in u64");
+        let pick = usize::try_from(splitmix64(stream) % modulus)
+            .expect("pick is bounded by the slice index");
+        items.swap(index, pick);
     }
+}
 
-    /// The number of failures the search has delivered to choice
-    /// frames: one per failed alternative replay and one per frame
-    /// exhaustion, the count exercises 4.37, 4.39, and 4.40 compare.
+impl SearchEngine {
+    /// Builds one engine.
     #[must_use]
-    pub fn failures(&self) -> u64 {
-        self.failures.get()
+    pub fn new() -> Self {
+        Self {
+            trail: Vec::new(),
+            bindings: HashMap::new(),
+            answers: Vec::new(),
+            effects: Vec::new(),
+            limit: usize::MAX,
+            seed: None,
+            stream: 0,
+        }
     }
 
-    /// Evaluates `exp` in `env` and hands the value to `k`: the entry
-    /// an extension's clause uses to run the rest of the computation,
-    /// the book's `ambeval` with one continuation. `require` is no
-    /// clause here -- the base language installs it as an ordinary
-    /// procedure -- so exercise 4.54's variant recognizes it before
-    /// dispatching everything else through this entry.
-    ///
-    /// # Errors
-    /// Whatever the expression's evaluation raises.
-    pub fn eval_with(&self, exp: &Value, env: &Rc<Env>, k: Cont) -> EvalResult {
-        let hook = self.hook.borrow().clone();
-        if let Some(result) = hook.and_then(|hook| hook(self, exp, env, &k)) {
-            return result;
+    /// Builds one rambling engine: finite choice points visit their
+    /// alternatives in a deterministic seeded order (splitmix64 per
+    /// choice point). Unseeded depth-first behavior is unchanged.
+    #[must_use]
+    pub fn with_seed(seed: u64) -> Self {
+        Self {
+            trail: Vec::new(),
+            bindings: HashMap::new(),
+            answers: Vec::new(),
+            effects: Vec::new(),
+            limit: usize::MAX,
+            seed: Some(seed),
+            stream: seed,
         }
-        if is_self_evaluating(exp) {
-            return k(self, exp.clone());
-        }
-        if is_quoted(exp) {
-            return k(self, text_of_quotation(exp)?);
-        }
-        if is_variable(exp) {
-            return k(self, lookup_variable(exp, env)?);
-        }
-        if is_lambda(exp) {
-            return k(self, Value::Closure(lambda_closure(exp, env)?));
-        }
-        if is_tagged_list(exp, "amb") {
-            return self.search(exp, env, k, Search::InOrder);
-        }
-        if is_tagged_list(exp, "ramb") {
-            return self.search(exp, env, k, Search::Shuffled);
-        }
-        if is_if(exp) {
-            return self.eval_if(exp, env, &k);
-        }
-        if is_definition(exp) {
-            return self.eval_definition(exp, env, &k);
-        }
-        if is_assignment(exp) {
-            return self.eval_assignment(exp, env, &k, Assignment::Undoable);
-        }
-        if is_tagged_list(exp, "permanent-set!") {
-            return self.eval_assignment(exp, env, &k, Assignment::Permanent);
-        }
-        if is_tagged_list(exp, "if-fail") {
-            return self.eval_if_fail(exp, env, &k);
-        }
-        if is_begin(exp) {
-            let forms = operand_items(exp)?;
-            return self.eval_sequence(&forms, env, &k);
-        }
-        if is_cond(exp) {
-            return self.eval_with(&cond_to_if(exp)?, env, k);
-        }
-        if is_let(exp) {
-            return self.eval_with(&let_to_combination(exp)?, env, k);
-        }
-        if is_application(exp) {
-            return self.eval_application(exp, env, &k);
-        }
-        Err(SchemeError::TypeMismatch(format!(
-            "unknown expression type: {exp}"
-        )))
     }
 
-    /// Starts a new problem: discards the unexplored alternatives and
-    /// the trail of any earlier problem, then answers the first
-    /// non-failing execution of `form`.
-    ///
-    /// # Errors
-    /// [`SchemeError::Backtrack`] when every execution fails; whatever
-    /// the evaluation raises otherwise.
-    pub fn run_form(&self, form: &Value, env: &Rc<Env>) -> EvalResult {
-        self.discard_problem();
-        let answer: Cont = cont(|_, value| Ok(value));
-        match self.eval_with(form, env, answer) {
-            Err(error) => {
-                // A completed failed problem leaves nothing in flight.
-                self.discard_problem();
-                Err(error)
+    /// Runs one finite search program under the engine's rambling
+    /// order: the same seed and program answer identically.
+    #[must_use]
+    pub fn run_seeded(&mut self, program: &Search) -> SearchOutcome {
+        self.limit = usize::MAX;
+        self.explore(program);
+        self.finish()
+    }
+
+    /// Runs one finite search program, answering every success in
+    /// depth-first written order.
+    #[must_use]
+    pub fn run(&mut self, program: &Search) -> SearchOutcome {
+        self.limit = usize::MAX;
+        self.explore(program);
+        self.finish()
+    }
+
+    /// Runs one search program for at most `n` answers: the observable
+    /// prefix discipline for unbounded generators and fair searches.
+    #[must_use]
+    pub fn run_prefix(&mut self, program: &Search, n: usize) -> SearchOutcome {
+        self.limit = n;
+        self.explore(program);
+        self.finish()
+    }
+
+    /// One binding's current value, for tests that observe the trail.
+    #[must_use]
+    pub fn binding(&self, name: &str) -> Option<i64> {
+        self.bindings.get(name).copied()
+    }
+
+    fn finish(&mut self) -> SearchOutcome {
+        SearchOutcome {
+            answers: std::mem::take(&mut self.answers),
+            effects: std::mem::take(&mut self.effects),
+        }
+    }
+
+    fn explore(&mut self, program: &Search) {
+        if self.answers.len() >= self.limit {
+            return;
+        }
+        match program {
+            Search::Success(parts) => {
+                if let Some(answer) = self.resolve_answer(parts) {
+                    self.answers.push(answer);
+                }
             }
-            other => other,
+            Search::Fail => {}
+            Search::Choose(alternatives) => {
+                if self.seed.is_some() {
+                    let mut order: Vec<usize> = (0..alternatives.len()).collect();
+                    shuffle(&mut self.stream, &mut order);
+                    for index in order {
+                        if self.answers.len() >= self.limit {
+                            return;
+                        }
+                        let mark = self.trail.len();
+                        self.explore(&alternatives[index]);
+                        self.rollback(mark);
+                    }
+                    return;
+                }
+                for alternative in alternatives {
+                    if self.answers.len() >= self.limit {
+                        return;
+                    }
+                    let mark = self.trail.len();
+                    self.explore(alternative);
+                    self.rollback(mark);
+                }
+            }
+            Search::IfFail { primary, fallback } => {
+                let answer_mark = self.answers.len();
+                let trail_mark = self.trail.len();
+                self.explore(primary);
+                if self.answers.len() == answer_mark {
+                    self.rollback(trail_mark);
+                    self.explore(fallback);
+                }
+            }
+            Search::ChooseRange { var, lo, hi, body } => {
+                if self.seed.is_some() {
+                    // Finite ranges enumerate in seeded order; ranges
+                    // too wide to materialize keep written order.
+                    let width = hi.saturating_sub(*lo);
+                    if (0..1_000_000).contains(&width) {
+                        let mut values: Vec<i64> = (*lo..=*hi).collect();
+                        shuffle(&mut self.stream, &mut values);
+                        for value in values {
+                            if self.answers.len() >= self.limit {
+                                return;
+                            }
+                            self.bind(var, value);
+                            self.explore(body);
+                            self.rollback_binding(var);
+                        }
+                        return;
+                    }
+                }
+                let mut value = *lo;
+                while value <= *hi {
+                    if self.answers.len() >= self.limit {
+                        return;
+                    }
+                    self.bind(var, value);
+                    self.explore(body);
+                    self.rollback_binding(var);
+                    value = value.saturating_add(1);
+                }
+            }
+            Search::ChooseFrom { var, start, body } => {
+                let mut value = *start;
+                loop {
+                    if self.answers.len() >= self.limit {
+                        return;
+                    }
+                    self.bind(var, value);
+                    self.explore(body);
+                    self.rollback_binding(var);
+                    value = value.saturating_add(1);
+                }
+            }
+            Search::Set(name, value, body) => {
+                self.bind(name, *value);
+                self.explore(body);
+                // The caller's rollback discipline restores the trail.
+            }
+            Search::Persist(name, value, body) => {
+                self.bindings.insert(name.clone(), *value);
+                self.explore(body);
+            }
+            Search::Guard(predicate, body) => {
+                if self.holds(predicate) {
+                    self.explore(body);
+                }
+            }
+            Search::Emit(tag, body) => {
+                self.effects.push(tag.clone());
+                self.explore(body);
+            }
         }
     }
 
-    /// Reads `text` as one form and runs it as a new problem in `env`,
-    /// the driver's entry for a non-`try-again` line.
-    ///
-    /// # Errors
-    /// The reader's parse error, or whatever [`Amb::run_form`] raises.
-    pub fn run(&self, text: &str, env: &Rc<Env>) -> EvalResult {
-        let form = sicp_runtime::read(text)?;
-        self.run_form(&form, env)
+    fn bind(&mut self, name: &str, value: i64) {
+        let previous = self.bindings.insert(name.to_owned(), value);
+        self.trail.push((name.to_owned(), previous));
     }
 
-    /// Runs every form of `text` in `env`, each as a new problem, and
-    /// answers the last value: the entry that loads a library of
-    /// definitions before a session.
-    ///
-    /// # Errors
-    /// The reader's parse errors and the first evaluation error.
-    pub fn run_program(&self, text: &str, env: &Rc<Env>) -> EvalResult {
-        let mut answer = Ok(Value::sym("ok"));
-        for form in sicp_runtime::read_program(text)? {
-            answer = self.run_form(&form, env);
-            if answer.is_err() {
+    fn rollback_binding(&mut self, name: &str) {
+        while let Some((bound, previous)) = self.trail.pop() {
+            let restoring = bound == name;
+            match previous {
+                Some(value) => {
+                    self.bindings.insert(bound, value);
+                }
+                None => {
+                    self.bindings.remove(&bound);
+                }
+            }
+            if restoring {
                 break;
             }
         }
-        answer
     }
 
-    /// Yields the next answer of the problem in flight: the deepest
-    /// pending choice resumes its next alternative and continues,
-    /// without replaying the work earlier answers already did. Exhausted
-    /// frames unwind in order, undoing their trail segments.
-    ///
-    /// # Errors
-    /// [`SchemeError::Backtrack`] when no choice is pending any more --
-    /// either the search ran dry or no problem is in flight; whatever
-    /// the resumed computation raises otherwise.
-    pub fn try_again(&self) -> EvalResult {
-        while let Some(job) = self.next_job() {
-            match job {
-                Job::Alternative {
-                    expr,
-                    env,
-                    k,
-                    trail_len,
-                } => {
-                    // Rolling the trail back to the frame's push line
-                    // discards the mutations of the path this resume
-                    // leaves behind -- the answered path, or the failed
-                    // alternative before it.
-                    self.undo_to(trail_len);
-                    let result = self.eval_with(&expr, &env, k);
-                    if let Err(SchemeError::Backtrack) = result {
-                        self.count_failure();
-                        self.undo_to(trail_len);
-                    } else {
-                        return result;
-                    }
-                }
-                Job::Exhausted(frame) => {
-                    self.count_failure();
-                    self.undo_to(frame.trail_len);
-                }
-            }
-        }
-        Err(SchemeError::Backtrack)
-    }
-
-    /// The engine's failure signal: the book's `(amb)` and a `require`
-    /// that does not hold both raise it, and the nearest choice frame
-    /// catches it.
-    ///
-    /// # Errors
-    /// Always [`SchemeError::Backtrack`].
-    pub fn fail(&self) -> EvalResult {
-        Err(SchemeError::Backtrack)
-    }
-
-    /// Pushes one choice frame holding `alts` under continuation `k`:
-    /// the book's `analyze-amb` entry an extension's choice form uses.
-    /// The frame must then be driven by [`Amb::drive`].
-    pub fn push_frame(&self, alts: Vec<(Value, Rc<Env>)>, k: Cont) {
-        let trail_len = self.trail.borrow().len();
-        self.stack.borrow_mut().push(AmbFrame {
-            alts: alts.into(),
-            k,
-            trail_len,
-        });
-    }
-
-    /// Runs the newest frame's pending alternatives: evaluates each
-    /// front alternative, retries through [`SchemeError::Backtrack`],
-    /// and unwinds when the frame runs dry. A frame pushed by
-    /// [`Amb::push_frame`] is driven exactly here: the loop owns it
-    /// until it exhausts, and the exhausted unwind is what makes the
-    /// enclosing `amb` site's own loop try its next alternative.
-    ///
-    /// # Errors
-    /// [`SchemeError::Backtrack`] when the frame's alternatives run
-    /// dry; whatever the chosen alternative raises otherwise.
-    pub fn drive(&self) -> EvalResult {
-        while let Some(job) = self.next_job() {
-            match job {
-                Job::Alternative {
-                    expr,
-                    env,
-                    k,
-                    trail_len,
-                } => {
-                    // A no-op for the first alternative (the trail ends
-                    // at the push line) and the rollback of the failed
-                    // alternative's mutations for every later one.
-                    self.undo_to(trail_len);
-                    let result = self.eval_with(&expr, &env, k);
-                    if let Err(SchemeError::Backtrack) = result {
-                        self.count_failure();
-                        self.undo_to(trail_len);
-                    } else {
-                        return result;
-                    }
-                }
-                Job::Exhausted(frame) => {
-                    self.count_failure();
-                    self.undo_to(frame.trail_len);
-                    return Err(SchemeError::Backtrack);
-                }
-            }
-        }
-        Err(SchemeError::Backtrack)
-    }
-
-    /// Records `old` on the trail for the binding `name` in `env`, the
-    /// book's `*2*` failure continuation made data.
-    pub fn record_undo(&self, env: &Rc<Env>, name: &Symbol, old: Value) {
-        self.trail.borrow_mut().push(Undo {
-            env: Rc::clone(env),
-            name: Rc::clone(name),
-            old,
-        });
-    }
-
-    /// The seeded xorshift draw of `(random n)` for `0 <= n`: what
-    /// `ramb` shuffles with, threaded through the evaluator's seed.
-    ///
-    /// # Panics
-    /// Panics when `n` is zero, as `(random 0)` does in the book's
-    /// Scheme.
-    #[must_use]
-    pub fn random(&self, n: u64) -> u64 {
-        self.rng.borrow_mut().random(n)
-    }
-
-    /// Applies a procedure value to evaluated arguments: primitives run
-    /// their handler, compound procedures extend their captured
-    /// environment with the frame and run the body against the
-    /// continuation.
-    ///
-    /// # Errors
-    /// [`SchemeError::NotProcedure`] when `proc` is neither kind;
-    /// whatever the handler or the body raises.
-    pub fn apply_procedure(&self, proc: &Value, args: &[Value], k: &Cont) -> EvalResult {
-        match proc {
-            Value::Primitive { f, .. } => k(self, f(args)?),
-            Value::Closure(closure) => {
-                let name = closure.name.as_deref().unwrap_or("#[compound-procedure]");
-                let frame = extend_environment(
-                    name,
-                    &closure.params,
-                    closure.rest.as_ref(),
-                    args,
-                    &closure.env,
-                )?;
-                self.eval_sequence(&closure.body, &frame, k)
-            }
-            other => Err(SchemeError::NotProcedure(other.clone())),
-        }
-    }
-
-    /// The book's `analyze-sequence` and `sequentially`: each form but
-    /// the last evaluates against a continuation that runs the rest, so
-    /// a choice inside an early form resumes into the later forms.
-    ///
-    /// # Errors
-    /// [`SchemeError::TypeMismatch`] on an empty sequence; whatever a
-    /// form's evaluation raises.
-    pub fn eval_sequence(&self, forms: &[Value], env: &Rc<Env>, k: &Cont) -> EvalResult {
-        let Some((head, tail)) = forms.split_first() else {
-            return Err(SchemeError::TypeMismatch(
-                "Empty sequence: ANALYZE".to_owned(),
-            ));
-        };
-        if tail.is_empty() {
-            return self.eval_with(head, env, Rc::clone(k));
-        }
-        let rest: Cont = {
-            let tail = tail.to_vec();
-            let env = Rc::clone(env);
-            let k = Rc::clone(k);
-            cont(move |amb, _| amb.eval_sequence(&tail, &env, &k))
-        };
-        self.eval_with(head, env, rest)
-    }
-
-    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-    fn discard_problem(&self) {
-        self.stack.borrow_mut().clear();
-        self.trail.borrow_mut().clear();
-    }
-
-    fn count_failure(&self) {
-        self.failures.set(self.failures.get() + 1);
-    }
-
-    fn next_job(&self) -> Option<Job> {
-        let mut stack = self.stack.borrow_mut();
-        let frame = stack.last_mut()?;
-        if let Some((expr, env)) = frame.alts.pop_front() {
-            return Some(Job::Alternative {
-                expr,
-                env,
-                k: Rc::clone(&frame.k),
-                trail_len: frame.trail_len,
-            });
-        }
-        let frame = stack.pop()?;
-        Some(Job::Exhausted(Box::new(frame)))
-    }
-
-    /// Rolls the trail back to `limit`: each entry newer than the limit
-    /// restores the value its assignment overwrote. The entry exists
-    /// only because the binding held `old` when the assignment read it,
-    /// so a restore cannot walk off the chain.
-    fn undo_to(&self, limit: usize) {
-        let mut trail = self.trail.borrow_mut();
-        while trail.len() > limit {
-            let Some(undo) = trail.pop() else {
+    fn rollback(&mut self, mark: usize) {
+        while self.trail.len() > mark {
+            let Some((name, previous)) = self.trail.pop() else {
                 break;
             };
-            undo.env
-                .set(&undo.name, undo.old)
-                .expect("trail entry restores its own binding");
-        }
-    }
-
-    /// The `amb`/`ramb` choice point: pushes the frame of pending
-    /// alternatives -- `ramb` after shuffling the order the seeded
-    /// xorshift draws -- and drives it.
-    fn search(&self, exp: &Value, env: &Rc<Env>, k: Cont, order: Search) -> EvalResult {
-        let choices = operand_items(exp)?;
-        let mut alts: Vec<_> = choices
-            .iter()
-            .map(|choice| (choice.clone(), Rc::clone(env)))
-            .collect();
-        if order == Search::Shuffled {
-            let mut rng = self.rng.borrow_mut();
-            for i in (1..alts.len()).rev() {
-                let bound = u64::try_from(i + 1).expect("an alternative count fits u64");
-                let draw = rng.random(bound);
-                let j = usize::try_from(draw).expect("the draw lands below the count");
-                alts.swap(i, j);
+            match previous {
+                Some(value) => {
+                    self.bindings.insert(name, value);
+                }
+                None => {
+                    self.bindings.remove(&name);
+                }
             }
         }
-        self.push_frame(alts, k);
-        self.drive()
     }
 
-    /// The book's `analyze-if`: the predicate evaluates against a
-    /// continuation that picks the branch, so a choice inside the
-    /// predicate resumes into the branch it chose.
-    fn eval_if(&self, exp: &Value, env: &Rc<Env>, k: &Cont) -> EvalResult {
-        let (predicate, consequent, alternative) = if_parts(exp)?;
-        let branch: Cont = {
-            let env = Rc::clone(env);
-            let k = Rc::clone(k);
-            cont(move |amb, tested| {
-                let chosen = if is_true(&tested) {
-                    consequent.clone()
-                } else {
-                    alternative.clone()
-                };
-                amb.eval_with(&chosen, &env, Rc::clone(&k))
-            })
-        };
-        self.eval_with(&predicate, env, branch)
-    }
-
-    /// The book's `analyze-definition`: the value expression evaluates
-    /// first; the continuation binds the name and answers `ok`.
-    fn eval_definition(&self, exp: &Value, env: &Rc<Env>, k: &Cont) -> EvalResult {
-        let name = variable_name(&definition_variable(exp)?)?;
-        let value_exp = definition_value(exp)?;
-        let bind: Cont = {
-            let env = Rc::clone(env);
-            let k = Rc::clone(k);
-            cont(move |amb, value| {
-                env.define(Rc::clone(&name), value);
-                k(amb, Value::sym("ok"))
-            })
-        };
-        self.eval_with(&value_exp, env, bind)
-    }
-
-    /// The book's `analyze-assignment`: the continuation saves the old
-    /// value, assigns, and -- for [`Assignment::Undoable`], the book's
-    /// `*1*`/`*2*` pair -- records the undo entry backtracking rolls
-    /// back. [`Assignment::Permanent`], exercise 4.51's
-    /// `permanent-set!`, skips the entry and survives backtracking.
-    fn eval_assignment(
-        &self,
-        exp: &Value,
-        env: &Rc<Env>,
-        k: &Cont,
-        kind: Assignment,
-    ) -> EvalResult {
-        let name = variable_name(&assignment_variable(exp)?)?;
-        let value_exp = assignment_value(exp)?;
-        let assign: Cont = {
-            let env = Rc::clone(env);
-            let k = Rc::clone(k);
-            cont(move |amb, value| {
-                let old = env.lookup(&name)?;
-                env.set(&name, value)?;
-                if kind == Assignment::Undoable {
-                    amb.record_undo(&env, &name, old);
-                }
-                k(amb, Value::sym("ok"))
-            })
-        };
-        self.eval_with(&value_exp, env, assign)
-    }
-
-    /// Exercise 4.52's `if-fail`: the first expression evaluates
-    /// against the continuation as usual; when its whole search runs
-    /// dry -- the `Backtrack` that survives it -- the second expression
-    /// evaluates against the same continuation instead.
-    fn eval_if_fail(&self, exp: &Value, env: &Rc<Env>, k: &Cont) -> EvalResult {
-        let operands = operand_items(exp)?;
-        let [first, second] = operands.as_slice() else {
-            return Err(SchemeError::WrongArity {
-                procedure: "if-fail".to_owned(),
-                expected: "2".to_owned(),
-                got: operands.len(),
-            });
-        };
-        match self.eval_with(first, env, Rc::clone(k)) {
-            Err(SchemeError::Backtrack) => self.eval_with(second, env, Rc::clone(k)),
-            other => other,
-        }
-    }
-
-    /// The book's `analyze-application`, `get-args`, and
-    /// `execute-application`: the operator evaluates first, then the
-    /// operands walk left to right, each against a continuation that
-    /// carries the operator, the arguments already obtained, and the
-    /// operand expressions still to evaluate -- the data a resumed
-    /// search re-enters without replaying the walk.
-    fn eval_application(&self, exp: &Value, env: &Rc<Env>, k: &Cont) -> EvalResult {
-        let operator = first_of(exp)?;
-        let operands = operand_items(exp)?;
-        let walk: Cont = {
-            let operands = operands.clone();
-            let env = Rc::clone(env);
-            let k = Rc::clone(k);
-            cont(move |amb, proc| continue_args(amb, proc, &[], &operands, &env, &k))
-        };
-        self.eval_with(&operator, env, walk)
-    }
-}
-
-/// Walks an application's operand list left to right: each argument
-/// evaluates against a continuation that carries the operator, the
-/// arguments already obtained, and the operand expressions still to
-/// evaluate. The state is a snapshot per step, so a resumed search can
-/// re-enter one step many times without carrying an earlier step's
-/// values over.
-fn continue_args(
-    amb: &Amb,
-    proc: Value,
-    done: &[Value],
-    rest: &[Value],
-    env: &Rc<Env>,
-    k: &Cont,
-) -> EvalResult {
-    let Some((head, tail)) = rest.split_first() else {
-        return amb.apply_procedure(&proc, done, k);
-    };
-    let step: Cont = {
-        let done = done.to_vec();
-        let tail = tail.to_vec();
-        let env = Rc::clone(env);
-        let k = Rc::clone(k);
-        cont(move |amb, value| {
-            let mut args = done.clone();
-            args.push(value);
-            continue_args(amb, proc.clone(), &args, &tail, &env, &k)
-        })
-    };
-    amb.eval_with(head, env, step)
-}
-
-/// The symbol of a variable form.
-///
-/// # Errors
-/// [`SchemeError::TypeMismatch`] when the form is not a symbol.
-fn variable_name(exp: &Value) -> Result<Symbol, SchemeError> {
-    match exp {
-        Value::Sym(name) => Ok(Rc::clone(name)),
-        other => Err(SchemeError::TypeMismatch(format!(
-            "not a variable name: {other}"
-        ))),
-    }
-}
-
-/// The book's `lookup-variable-value` for a variable form.
-///
-/// # Errors
-/// [`SchemeError::UnboundVariable`] when no frame binds the name;
-/// [`SchemeError::TypeMismatch`] when the form is not a symbol.
-fn lookup_variable(exp: &Value, env: &Rc<Env>) -> EvalResult {
-    let name = variable_name(exp)?;
-    env.lookup(&name)
-}
-
-/// Builds the closure of a `lambda` form.
-///
-/// # Errors
-/// [`SchemeError::TypeMismatch`] when the form is malformed.
-fn lambda_closure(exp: &Value, env: &Rc<Env>) -> Result<Rc<Closure>, SchemeError> {
-    let items = operand_items(exp)?;
-    let [params_form, body @ ..] = items.as_slice() else {
-        return Err(SchemeError::TypeMismatch(
-            "lambda with no parameters".to_owned(),
-        ));
-    };
-    let (params, rest) = split_params(params_form)?;
-    Ok(Rc::new(Closure {
-        name: None,
-        params,
-        rest,
-        body: body.to_vec(),
-        env: Rc::clone(env),
-    }))
-}
-
-// ---------------------------------------------------------------------------
-// 4.1.4: the section table, the global environment, and the drivers.
-// ---------------------------------------------------------------------------
-
-/// The section's primitive table: the 4.1 table composed unchanged, the
-/// same composition point the lazy section uses.
-#[must_use]
-pub fn amb_table(sink: &OutputSink) -> Vec<(&'static str, Handler)> {
-    primitive_table(sink)
-}
-
-/// [`setup_environment`](crate::sec_4_1::setup_environment) for the
-/// nondeterministic language: the composed section table plus the
-/// `true`/`false` bindings, with the object language's `display` and
-/// `newline` writing to the host's standard output.
-#[must_use]
-pub fn setup_amb_environment() -> Rc<Env> {
-    setup_amb_environment_in(&OutputSink::Stdout)
-}
-
-/// [`setup_amb_environment`] with the object language's `display` and
-/// `newline` writing into `sink`.
-#[must_use]
-pub fn setup_amb_environment_in(sink: &OutputSink) -> Rc<Env> {
-    let env = Env::global();
-    env.define(Rc::from("true"), Value::boolean(true));
-    env.define(Rc::from("false"), Value::boolean(false));
-    for (name, handler) in amb_table(sink) {
-        env.define(
-            Rc::from(name),
-            Value::Primitive {
-                name: Rc::from(name),
-                f: handler,
-            },
-        );
-    }
-    env
-}
-
-/// The driver's input prompt.
-pub const INPUT_PROMPT: &str = ";;; Amb-Eval input: ";
-
-/// The driver's output prompt.
-pub const OUTPUT_PROMPT: &str = ";;; Amb-Eval value: ";
-
-/// The driver's new-problem line.
-pub const NEW_PROBLEM_PROMPT: &str = ";;; Starting a new problem";
-
-/// The driver's exhaustion line; the form of the exhausted problem
-/// prints on the next line, the book's `user-print` of the input.
-pub const NO_MORE_PROMPT: &str = ";;; There are no more values of";
-
-/// The driver's no-problem line, the answer to a `try-again` when no
-/// problem is in flight.
-pub const NO_PROBLEM_PROMPT: &str = ";;; There is no current problem";
-
-/// Runs `lines` the way the book's driver loop presents a session: the
-/// `Amb-Eval` prompts, `;;; Starting a new problem` before each new
-/// form, and a `try-again` line resuming the problem in flight. A
-/// search that runs dry prints the exhaustion line and the form; a
-/// `try-again` with no problem prints the no-problem line; any other
-/// error prints one `Error:` line and ends the session.
-#[must_use]
-pub fn amb_transcript(amb: &Amb, lines: &[&str]) -> String {
-    let (sink, cell) = OutputSink::buffer();
-    let env = setup_amb_environment_in(&sink);
-    let mut out = String::new();
-    let mut pending: Option<Value> = None;
-    for line in lines {
-        out.push_str(INPUT_PROMPT);
-        out.push_str(line);
-        out.push('\n');
-        if line.trim() == "try-again" {
-            match amb.try_again() {
-                Ok(value) => push_value(&mut out, &value),
-                Err(SchemeError::Backtrack) => {
-                    if let Some(form) = pending.take() {
-                        push_no_more(&mut out, &form);
-                    } else {
-                        out.push_str(NO_PROBLEM_PROMPT);
-                        out.push('\n');
+    fn resolve_answer(&self, parts: &[AnswerTerm]) -> Option<Vec<AnswerValue>> {
+        let mut answer = Vec::with_capacity(parts.len());
+        for part in parts {
+            answer.push(match part {
+                AnswerTerm::Const(value) => AnswerValue::Int(*value),
+                AnswerTerm::Var(name) => AnswerValue::Int(*self.bindings.get(name)?),
+                AnswerTerm::Sum(names) => {
+                    let mut total = 0_i64;
+                    for name in names {
+                        total = total.checked_add(*self.bindings.get(name)?)?;
                     }
+                    AnswerValue::Int(total)
                 }
-                Err(error) => return push_error(&out, &error),
-            }
-            continue;
+                AnswerTerm::Product(names) => {
+                    let mut total = 1_i64;
+                    for name in names {
+                        total = total.checked_mul(*self.bindings.get(name)?)?;
+                    }
+                    AnswerValue::Int(total)
+                }
+                AnswerTerm::Atom(name) => AnswerValue::Sym(name.clone()),
+            });
         }
-        out.push_str(NEW_PROBLEM_PROMPT);
-        out.push('\n');
-        let form = match sicp_runtime::read(line) {
-            Ok(form) => form,
-            Err(error) => return push_error(&out, &error),
+        Some(answer)
+    }
+
+    fn holds(&self, predicate: &Predicate) -> bool {
+        self.try_holds(predicate).unwrap_or(false)
+    }
+
+    fn try_holds(&self, predicate: &Predicate) -> Option<bool> {
+        let value = |term: &Term| -> Option<i64> {
+            match term {
+                Term::Integer(v) => Some(*v),
+                Term::Variable(name) => self.bindings.get(name).copied(),
+                _ => None,
+            }
         };
-        match amb.run_form(&form, &env) {
-            Ok(value) => {
-                push_value(&mut out, &value);
-                pending = Some(form);
+        Some(match predicate {
+            Predicate::Eq(a, b) => value(a)? == value(b)?,
+            Predicate::Ne(a, b) => value(a)? != value(b)?,
+            Predicate::Lt(a, b) => value(a)? < value(b)?,
+            Predicate::Le(a, b) => value(a)? <= value(b)?,
+            Predicate::Gt(a, b) => value(a)? > value(b)?,
+            Predicate::Ge(a, b) => value(a)? >= value(b)?,
+            Predicate::TextLt(a, b) => render_term(a, self) < render_term(b, self),
+            Predicate::SumEq(terms, bound) => {
+                let mut total = 0_i64;
+                for t in terms {
+                    total = total.checked_add(value(t)?)?;
+                }
+                total == *bound
             }
-            Err(SchemeError::Backtrack) => {
-                pending = None;
-                push_no_more(&mut out, &form);
+            Predicate::Bound(t) => value(t).is_some(),
+            Predicate::Or(alternatives) => alternatives.iter().any(|sub| self.holds(sub)),
+            Predicate::DiffEq(a, b, c, d) => {
+                let left = value(&Term::Variable(a.clone()))?
+                    .checked_sub(value(&Term::Variable(b.clone()))?)?;
+                let right = value(&Term::Variable(c.clone()))?
+                    .checked_sub(value(&Term::Variable(d.clone()))?)?;
+                left == right
             }
-            Err(error) => return push_error(&out, &error),
+            Predicate::Pythagorean(a, b, c) => {
+                let a = value(&Term::Variable(a.clone()))?;
+                let b = value(&Term::Variable(b.clone()))?;
+                let c = value(&Term::Variable(c.clone()))?;
+                a.checked_mul(a)?.checked_add(b.checked_mul(b)?)? == c.checked_mul(c)?
+            }
+        })
+    }
+}
+
+fn render_term(term: &Term, engine: &SearchEngine) -> String {
+    match term {
+        Term::Integer(value) => value.to_string(),
+        Term::Text(text) | Term::Atom(text) => text.clone(),
+        Term::Variable(name) => engine
+            .bindings
+            .get(name)
+            .map_or_else(|| name.clone(), std::string::ToString::to_string),
+        other => format!("{other:?}"),
+    }
+}
+
+/// The independent finite reference model of grammar §7: a separate
+/// enumerator with its own trail, bindings, and answer bookkeeping —
+/// not a call into [`SearchEngine`] — so answer order, rollback, and
+/// permanent-state behavior can be checked against it. Unbounded
+/// generators are observed through the engine's prefix runs.
+#[must_use]
+pub fn reference_model(program: &Search) -> SearchOutcome {
+    let mut answers = Vec::new();
+    let mut effects = Vec::new();
+    let mut trail: Vec<(String, Option<i64>)> = Vec::new();
+    let mut bindings: HashMap<String, i64> = HashMap::new();
+    reference_explore(
+        program,
+        &mut answers,
+        &mut effects,
+        &mut trail,
+        &mut bindings,
+    );
+    SearchOutcome { answers, effects }
+}
+
+#[allow(clippy::too_many_lines)]
+fn reference_explore(
+    program: &Search,
+    answers: &mut Vec<Vec<AnswerValue>>,
+    effects: &mut Vec<String>,
+    trail: &mut Vec<(String, Option<i64>)>,
+    bindings: &mut HashMap<String, i64>,
+) {
+    match program {
+        Search::Success(parts) => {
+            if let Some(answer) = reference_answer(parts, bindings) {
+                answers.push(answer);
+            }
+        }
+        Search::Fail => {}
+        Search::Choose(alternatives) => {
+            for alternative in alternatives {
+                let mark = trail.len();
+                reference_explore(alternative, answers, effects, trail, bindings);
+                reference_rollback(trail, bindings, mark);
+            }
+        }
+        Search::IfFail { primary, fallback } => {
+            let answer_mark = answers.len();
+            let trail_mark = trail.len();
+            reference_explore(primary, answers, effects, trail, bindings);
+            if answers.len() == answer_mark {
+                reference_rollback(trail, bindings, trail_mark);
+                reference_explore(fallback, answers, effects, trail, bindings);
+            }
+        }
+        Search::ChooseRange { var, lo, hi, body } => {
+            for value in *lo..=*hi {
+                reference_bind(var, value, trail, bindings);
+                reference_explore(body, answers, effects, trail, bindings);
+                reference_rollback(trail, bindings, trail.len() - 1);
+            }
+        }
+        Search::ChooseFrom { var, start, body } => {
+            // The reference model covers finite prefixes only; the
+            // engine's run_prefix is the unbounded observation.
+            let mut value = *start;
+            let mut produced = 0;
+            while produced < 32 {
+                reference_bind(var, value, trail, bindings);
+                reference_explore(body, answers, effects, trail, bindings);
+                reference_rollback(trail, bindings, trail.len() - 1);
+                value = value.saturating_add(1);
+                produced += 1;
+            }
+        }
+        Search::Set(name, value, body) => {
+            reference_bind(name, *value, trail, bindings);
+            reference_explore(body, answers, effects, trail, bindings);
+        }
+        Search::Persist(name, value, body) => {
+            bindings.insert(name.clone(), *value);
+            reference_explore(body, answers, effects, trail, bindings);
+        }
+        Search::Guard(predicate, body) => {
+            if reference_holds(predicate, bindings) {
+                reference_explore(body, answers, effects, trail, bindings);
+            }
+        }
+        Search::Emit(tag, body) => {
+            effects.push(tag.clone());
+            reference_explore(body, answers, effects, trail, bindings);
         }
     }
-    drop(cell);
-    out
 }
 
-fn push_value(out: &mut String, value: &Value) {
-    out.push_str(OUTPUT_PROMPT);
-    out.push_str(&print_value(value));
-    out.push('\n');
+fn reference_bind(
+    name: &str,
+    value: i64,
+    trail: &mut Vec<(String, Option<i64>)>,
+    bindings: &mut HashMap<String, i64>,
+) {
+    let previous = bindings.insert(name.to_owned(), value);
+    trail.push((name.to_owned(), previous));
 }
 
-fn push_no_more(out: &mut String, form: &Value) {
-    out.push_str(NO_MORE_PROMPT);
-    out.push('\n');
-    out.push_str(&print_value(form));
-    out.push('\n');
-}
-
-fn push_error(head: &str, error: &SchemeError) -> String {
-    format!("{head}Error: {error}\n")
-}
-
-/// Evaluates every form of `program` in one fresh global environment,
-/// each form as a new problem, and answers the values and the displayed
-/// text. Definitions answer `ok`; a form whose whole search fails ends
-/// the run with [`SchemeError::Backtrack`].
-///
-/// # Errors
-/// The reader's parse errors and the first evaluation error.
-pub fn run_amb(amb: &Amb, program: &str) -> Result<(Vec<Value>, String), SchemeError> {
-    let (sink, cell) = OutputSink::buffer();
-    let env = setup_amb_environment_in(&sink);
-    let mut values = Vec::new();
-    for form in sicp_runtime::read_program(program)? {
-        values.push(amb.run_form(&form, &env)?);
+fn reference_rollback(
+    trail: &mut Vec<(String, Option<i64>)>,
+    bindings: &mut HashMap<String, i64>,
+    mark: usize,
+) {
+    while trail.len() > mark {
+        let Some((name, previous)) = trail.pop() else {
+            break;
+        };
+        match previous {
+            Some(value) => {
+                bindings.insert(name, value);
+            }
+            None => {
+                bindings.remove(&name);
+            }
+        }
     }
-    let displayed = cell.borrow().clone();
-    Ok((values, displayed))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn reference_answer(
+    parts: &[AnswerTerm],
+    bindings: &HashMap<String, i64>,
+) -> Option<Vec<AnswerValue>> {
+    let mut answer = Vec::with_capacity(parts.len());
+    for part in parts {
+        answer.push(match part {
+            AnswerTerm::Const(value) => AnswerValue::Int(*value),
+            AnswerTerm::Var(name) => AnswerValue::Int(*bindings.get(name)?),
+            AnswerTerm::Sum(names) => {
+                let mut total = 0_i64;
+                for name in names {
+                    total = total.checked_add(*bindings.get(name)?)?;
+                }
+                AnswerValue::Int(total)
+            }
+            AnswerTerm::Product(names) => {
+                let mut total = 1_i64;
+                for name in names {
+                    total = total.checked_mul(*bindings.get(name)?)?;
+                }
+                AnswerValue::Int(total)
+            }
+            AnswerTerm::Atom(name) => AnswerValue::Sym(name.clone()),
+        });
+    }
+    Some(answer)
+}
 
-    /// The section's library lines, one driver input each.
-    const LIBRARY_LINES: &[&str] = &[
-        "(define (require p) (if (not p) (amb)))",
-        "(define (an-element-of items) \
-         (require (not (null? items))) \
-         (amb (car items) (an-element-of (cdr items))))",
-    ];
+fn reference_holds(predicate: &Predicate, bindings: &HashMap<String, i64>) -> bool {
+    let value = |name: &str| -> Option<i64> { bindings.get(name).copied() };
+    match predicate {
+        Predicate::Eq(a, b) => {
+            reference_term(a, bindings) == reference_term(b, bindings)
+                && reference_term(a, bindings).is_some()
+        }
+        Predicate::Ne(a, b) => {
+            let (a, b) = (reference_term(a, bindings), reference_term(b, bindings));
+            a.is_some() && b.is_some() && a != b
+        }
+        Predicate::Lt(a, b) => reference_cmp(a, b, bindings, |x, y| x < y),
+        Predicate::Le(a, b) => reference_cmp(a, b, bindings, |x, y| x <= y),
+        Predicate::Gt(a, b) => reference_cmp(a, b, bindings, |x, y| x > y),
+        Predicate::Ge(a, b) => reference_cmp(a, b, bindings, |x, y| x >= y),
+        Predicate::TextLt(a, b) => reference_text(a, bindings) < reference_text(b, bindings),
+        Predicate::SumEq(terms, bound) => {
+            let mut total = 0_i64;
+            for term in terms {
+                match reference_term(term, bindings) {
+                    Some(value) => total = total.checked_add(value).unwrap_or(i64::MAX),
+                    None => return false,
+                }
+            }
+            total == *bound
+        }
+        Predicate::Bound(term) => reference_term(term, bindings).is_some(),
+        Predicate::Or(alternatives) => alternatives
+            .iter()
+            .any(|sub| reference_holds(sub, bindings)),
+        Predicate::DiffEq(a, b, c, d) => {
+            let (a, b, c, d) = (value(a), value(b), value(c), value(d));
+            match (a, b, c, d) {
+                (Some(a), Some(b), Some(c), Some(d)) => a.checked_sub(b) == c.checked_sub(d),
+                _ => false,
+            }
+        }
+        Predicate::Pythagorean(a, b, c) => match (value(a), value(b), value(c)) {
+            (Some(a), Some(b), Some(c)) => {
+                match (a.checked_mul(a), b.checked_mul(b), c.checked_mul(c)) {
+                    (Some(aa), Some(bb), Some(cc)) => aa + bb == cc,
+                    _ => false,
+                }
+            }
+            _ => false,
+        },
+    }
+}
 
-    #[test]
-    fn choice_point_answers_in_book_order() {
-        let amb = Amb::new(20_260_925).expect("seed");
-        let session = amb_transcript(
-            &amb,
-            &[
-                LIBRARY_LINES[0],
-                LIBRARY_LINES[1],
-                "(list (amb 1 2 3) (amb 'a 'b))",
-                "try-again",
-                "try-again",
-                "try-again",
-                "try-again",
-                "try-again",
-                "try-again",
-                "try-again",
+fn reference_cmp(
+    a: &Term,
+    b: &Term,
+    bindings: &HashMap<String, i64>,
+    order: fn(i64, i64) -> bool,
+) -> bool {
+    match (reference_term(a, bindings), reference_term(b, bindings)) {
+        (Some(a), Some(b)) => order(a, b),
+        _ => false,
+    }
+}
+
+fn reference_term(term: &Term, bindings: &HashMap<String, i64>) -> Option<i64> {
+    match term {
+        Term::Integer(value) => Some(*value),
+        Term::Variable(name) => bindings.get(name).copied(),
+        _ => None,
+    }
+}
+
+fn reference_text(term: &Term, bindings: &HashMap<String, i64>) -> String {
+    match term {
+        Term::Text(text) | Term::Atom(text) => text.clone(),
+        Term::Integer(value) => value.to_string(),
+        Term::Variable(name) => bindings
+            .get(name)
+            .map_or_else(|| name.clone(), std::string::ToString::to_string),
+        other => format!("{other:?}"),
+    }
+}
+
+/// Case `amb/01-amb-basics`: `an-integer-between` 1 and 3; answers in
+/// written order.
+#[must_use]
+pub fn search_basics() -> Search {
+    Search::ChooseRange {
+        var: "x".to_owned(),
+        lo: 1,
+        hi: 3,
+        body: Box::new(Search::Success(vec![AnswerTerm::Var("x".to_owned())])),
+    }
+}
+
+/// Case `amb/02-prime-sum-pair`: choice points with guards; the pairs
+/// `i < j` whose sum is one of the taught primes.
+#[must_use]
+pub fn search_prime_sum() -> Search {
+    use sicp_runtime::host::query::{Predicate, Term};
+    let pair_sum = |prime: i64| {
+        Predicate::SumEq(
+            vec![
+                Term::Variable("i".to_owned()),
+                Term::Variable("j".to_owned()),
             ],
-        );
-        for value in ["(1 a)", "(1 b)", "(2 a)", "(2 b)", "(3 a)", "(3 b)"] {
-            assert!(
-                session.contains(&format!("{OUTPUT_PROMPT}{value}\n")),
-                "missing {value} in: {session}"
-            );
-        }
-        assert!(
-            session.contains(&format!(
-                "{NO_MORE_PROMPT}\n(list (amb 1 2 3) (amb (quote a) (quote b)))\n"
+            prime,
+        )
+    };
+    Search::ChooseRange {
+        var: "i".to_owned(),
+        lo: 1,
+        hi: 6,
+        body: Box::new(Search::ChooseRange {
+            var: "j".to_owned(),
+            lo: 1,
+            hi: 6,
+            body: Box::new(Search::Guard(
+                Predicate::Lt(
+                    Term::Variable("i".to_owned()),
+                    Term::Variable("j".to_owned()),
+                ),
+                Box::new(Search::Guard(
+                    Predicate::Or(vec![pair_sum(7), pair_sum(11)]),
+                    Box::new(Search::Success(vec![
+                        AnswerTerm::Var("i".to_owned()),
+                        AnswerTerm::Var("j".to_owned()),
+                    ])),
+                )),
             )),
-            "session: {session}"
-        );
-        // Exhaustion ends the problem, so one more try-again reports
-        // exactly what the book's driver reports.
-        assert!(
-            session.ends_with(&format!("{NO_PROBLEM_PROMPT}\n")),
-            "session: {session}"
-        );
+        }),
     }
+}
 
-    #[test]
-    fn driver_sample_interaction_matches_the_book() {
-        let amb = Amb::new(20_260_925).expect("seed");
-        let env = setup_amb_environment();
-        let library = "
-            (define (require p) (if (not p) (amb)))
-            (define (an-element-of items)
-              (require (not (null? items)))
-              (amb (car items) (an-element-of (cdr items))))
-            (define (prime? n)
-              (define (smallest-divisor test)
-                (if (> (* test test) n) n
-                    (if (= (remainder n test) 0) test
-                        (smallest-divisor (+ test 1)))))
-              (= (smallest-divisor 2) n))
-            (define (prime-sum-pair list1 list2)
-              (let ((a (an-element-of list1)) (b (an-element-of list2)))
-                (require (prime? (+ a b)))
-                (list a b)))
-        ";
-        amb.run_program(library, &env).expect("library");
-        let first = amb
-            .run("(prime-sum-pair '(1 3 5 8) '(20 35 110))", &env)
-            .expect("first answer");
-        assert_eq!(print_value(&first), "(3 20)");
-        assert_eq!(print_value(&amb.try_again().expect("second")), "(3 110)");
-        assert_eq!(print_value(&amb.try_again().expect("third")), "(8 35)");
-        assert!(matches!(amb.try_again(), Err(SchemeError::Backtrack)));
-        // A new problem discards the exhausted search and answers afresh.
-        let next = amb
-            .run("(prime-sum-pair '(19 27 30) '(11 36 58))", &env)
-            .expect("new problem");
-        assert_eq!(print_value(&next), "(30 11)");
+/// Case `amb/03-multiple-dwelling`: five distinct floors under the
+/// taught constraints; trailed assignments roll back on dead ends.
+#[must_use]
+pub fn search_dwelling() -> Search {
+    use sicp_runtime::host::query::{Predicate, Term};
+    let name = |who: &str| Term::Variable(who.to_owned());
+    let floor = |value: i64| Term::Integer(value);
+    let mut program = Search::Success(vec![
+        AnswerTerm::Var("baker".to_owned()),
+        AnswerTerm::Var("cooper".to_owned()),
+        AnswerTerm::Var("fletcher".to_owned()),
+        AnswerTerm::Var("miller".to_owned()),
+        AnswerTerm::Var("smith".to_owned()),
+    ]);
+    // Constraints, folded so the trail exercises rollback.
+    program = Search::Guard(
+        Predicate::Ne(name("smith"), name("fletcher")),
+        Box::new(Search::Guard(
+            Predicate::Ne(name("fletcher"), name("cooper")),
+            Box::new(Search::Guard(
+                Predicate::Ne(name("baker"), floor(5)),
+                Box::new(Search::Guard(
+                    Predicate::Ne(name("cooper"), floor(1)),
+                    Box::new(Search::Guard(
+                        Predicate::Ne(name("fletcher"), floor(1)),
+                        Box::new(Search::Guard(
+                            Predicate::Ne(name("fletcher"), floor(5)),
+                            Box::new(Search::Guard(
+                                Predicate::Gt(name("miller"), name("cooper")),
+                                Box::new(Search::Guard(
+                                    Predicate::Or(vec![
+                                        Predicate::Eq(name("smith"), Term::Integer(0)),
+                                        Predicate::Eq(name("fletcher"), Term::Integer(0)),
+                                    ]),
+                                    Box::new(program),
+                                )),
+                            )),
+                        )),
+                    )),
+                )),
+            )),
+        )),
+    );
+    // The occupants choose floors 1..=5, all distinct.
+    for who in ["baker", "cooper", "fletcher", "miller", "smith"] {
+        program = Search::ChooseRange {
+            var: who.to_owned(),
+            lo: 1,
+            hi: 5,
+            body: Box::new(program),
+        };
     }
+    program
+}
 
-    #[test]
-    fn assignment_undoes_on_backtrack_and_permanent_survives() {
-        let env = setup_amb_environment();
-        let undoing = "
-            (define (require p) (if (not p) (amb)))
-            (define (an-element-of items)
-              (require (not (null? items)))
-              (amb (car items) (an-element-of (cdr items))))
-            (define count 0)
-            (let ((x (an-element-of '(1 2))))
-              (set! count (+ count 1))
-              (require (= x 1))
-              x)
-        ";
-        let amb = Amb::new(20_260_925).expect("seed");
-        let (values, _) = run_amb(&amb, undoing).expect("set! run");
-        assert_eq!(print_value(values.last().expect("value")), "1");
-        // The same search resumed in one environment: unwinding the
-        // failed branch rolls every set! on the path back, so the count
-        // keeps the value it had before the problem ran. A surviving
-        // increment would read 3 (or 2 after the failed branch's
-        // rollback alone).
-        let amb2 = Amb::new(20_260_925).expect("seed");
-        amb2.run_program(undoing, &env).expect("definitions");
-        let first = amb2
-            .run(
-                "(let ((x (an-element-of '(1 2)))) \
-                  (set! count (+ count 1)) (require (= x 1)) x)",
-                &env,
-            )
-            .expect("first");
-        assert_eq!(print_value(&first), "1");
-        assert!(matches!(amb2.try_again(), Err(SchemeError::Backtrack)));
-        assert_eq!(print_value(&amb2.run("count", &env).expect("probe")), "1");
-        // permanent-set! skips the trail, so the failed branch's
-        // increment survives the same unwind.
-        amb2.run_program("(define count2 0)", &env).expect("reset");
-        let kept = "
-            (let ((x (an-element-of '(1 2))))
-              (permanent-set! count2 (+ count2 1))
-              (require (= x 1))
-              x)
-        ";
-        let first = amb2.run(kept, &env).expect("first");
-        assert_eq!(print_value(&first), "1");
-        assert!(matches!(amb2.try_again(), Err(SchemeError::Backtrack)));
-        assert_eq!(print_value(&amb2.run("count2", &env).expect("probe")), "2");
+/// Case `amb/04-pythagorean-triples`: nested choice enumeration under
+/// the shared `Pythagorean` guard.
+#[must_use]
+pub fn search_pythagorean() -> Search {
+    let mut program = Search::Success(vec![
+        AnswerTerm::Var("a".to_owned()),
+        AnswerTerm::Var("b".to_owned()),
+        AnswerTerm::Var("c".to_owned()),
+    ]);
+    program = Search::Guard(
+        sicp_runtime::host::query::Predicate::Pythagorean(
+            "a".to_owned(),
+            "b".to_owned(),
+            "c".to_owned(),
+        ),
+        Box::new(program),
+    );
+    for who in ["a", "b", "c"] {
+        program = Search::ChooseRange {
+            var: who.to_owned(),
+            lo: 1,
+            hi: 12,
+            body: Box::new(program),
+        };
     }
-
-    #[test]
-    fn if_fail_catches_a_dry_search() {
-        let library = "
-            (define (require p) (if (not p) (amb)))
-            (define (even? n) (= (remainder n 2) 0))
-            (define (an-element-of items)
-              (require (not (null? items)))
-              (amb (car items) (an-element-of (cdr items))))
-        ";
-        let amb = Amb::new(20_260_925).expect("seed");
-        let env = setup_amb_environment();
-        amb.run_program(library, &env).expect("library");
-        let odd = amb
-            .run(
-                "(if-fail (let ((x (an-element-of '(1 3 5)))) \
-                 (require (even? x)) x) 'all-odd)",
-                &env,
-            )
-            .expect("all-odd");
-        assert_eq!(print_value(&odd), "all-odd");
-        let even = amb
-            .run(
-                "(if-fail (let ((x (an-element-of '(1 3 5 8)))) \
-                 (require (even? x)) x) 'all-odd)",
-                &env,
-            )
-            .expect("eight");
-        assert_eq!(print_value(&even), "8");
-    }
-
-    #[test]
-    fn ramb_replays_from_the_same_seed() {
-        let program = "
-            (define (parse-word word-list)
-              (list (car word-list)
-                    (ramb (car (cdr word-list))
-                          (car (cdr (cdr word-list)))
-                          (car (cdr (cdr (cdr word-list)))))))
-            (parse-word '(article the a some))
-        ";
-        let left = Amb::new(20_260_925).expect("seed");
-        let right = Amb::new(20_260_925).expect("seed");
-        let (left_values, _) = run_amb(&left, program).expect("left");
-        let (right_values, _) = run_amb(&right, program).expect("right");
-        assert_eq!(left_values, right_values);
-        let other = Amb::new(99).expect("seed");
-        let (other_values, _) = run_amb(&other, program).expect("other");
-        assert_ne!(left_values, other_values);
-    }
+    program
 }

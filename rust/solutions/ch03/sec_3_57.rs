@@ -57,7 +57,7 @@ fn counting_fibs(additions: &Rc<Cell<u32>>) -> Stream<i128> {
 }
 
 /// The tree-recursive `fib` of 1.2.2 with a call meter: one increment
-/// per call. Re-forcing unmemoized `(delay exp)` tails drives this same
+/// per call. Re-forcing unmemoized delayed tails drives this same
 /// recursion shape over stream elements, which is the exponential
 /// growth the statement asks to demonstrate.
 fn counted_tree_fib(n: u32, calls: &Cell<u32>) -> i128 {

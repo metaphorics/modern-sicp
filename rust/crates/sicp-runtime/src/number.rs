@@ -8,7 +8,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use crate::error::SchemeError;
+use crate::error::SicpError;
 
 /// A number of the tower. Exact integers are checked `i128`; exact
 /// rationals carry the `make-rat` invariants — normalized by the gcd,
@@ -70,12 +70,12 @@ impl Number {
     /// `3/2`.
     ///
     /// # Errors
-    /// [`SchemeError::DivisionByZero`] on a zero denominator;
-    /// [`SchemeError::Overflow`] when normalizing `i128::MIN / -1`, whose
+    /// [`SicpError::DivisionByZero`] on a zero denominator;
+    /// [`SicpError::Overflow`] when normalizing `i128::MIN / -1`, whose
     /// positive quotient does not fit the exact width.
-    pub fn rat(num: i128, den: i128) -> Result<Self, SchemeError> {
+    pub fn rat(num: i128, den: i128) -> Result<Self, SicpError> {
         if den == 0 {
-            return Err(SchemeError::DivisionByZero);
+            return Err(SicpError::DivisionByZero);
         }
         let negative = (num < 0) != (den < 0);
         let g = gcd(num.unsigned_abs(), den.unsigned_abs());
@@ -90,9 +90,9 @@ impl Number {
             // The magnitude is 2^127 only for num == i128::MIN with gcd 1;
             // -2^127 fits as i128::MIN, +2^127 does not exist.
             Err(_) if negative => i128::MIN,
-            Err(_) => return Err(SchemeError::Overflow),
+            Err(_) => return Err(SicpError::Overflow),
         };
-        let den = i128::try_from(den.unsigned_abs() / g).map_err(|_| SchemeError::Overflow)?;
+        let den = i128::try_from(den.unsigned_abs() / g).map_err(|_| SicpError::Overflow)?;
         Ok(Number::Rat { num, den })
     }
 
@@ -152,7 +152,7 @@ impl Display for Number {
 #[cfg(test)]
 mod tests {
     use super::Number;
-    use crate::error::SchemeError;
+    use crate::error::SicpError;
 
     #[test]
     fn rat_normalizes_by_gcd_and_sign() {
@@ -165,12 +165,12 @@ mod tests {
 
     #[test]
     fn zero_denominator_is_division_by_zero() {
-        assert_eq!(Number::rat(1, 0), Err(SchemeError::DivisionByZero));
+        assert_eq!(Number::rat(1, 0), Err(SicpError::DivisionByZero));
     }
 
     #[test]
     fn min_int_over_negative_one_overflows() {
-        assert_eq!(Number::rat(i128::MIN, -1), Err(SchemeError::Overflow));
+        assert_eq!(Number::rat(i128::MIN, -1), Err(SicpError::Overflow));
         // The extreme numerator over denominator 1 is itself representable.
         assert_eq!(
             Number::rat(i128::MIN, 1),

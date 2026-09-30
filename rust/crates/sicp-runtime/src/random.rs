@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-use crate::SchemeError;
+use crate::SicpError;
 
 /// The seeded `xorshift64*` generator (Vigna 2016) behind the book's
 /// `random`; a fixed seed keeps every probabilistic interaction
@@ -14,11 +14,11 @@ impl Random {
     /// Creates a generator from `seed`.
     ///
     /// # Errors
-    /// Returns [`SchemeError::ZeroSeed`] when `seed` is zero, because
+    /// Returns [`SicpError::ZeroSeed`] when `seed` is zero, because
     /// `xorshift64*` maps zero to zero forever.
-    pub fn new(seed: u64) -> Result<Self, SchemeError> {
+    pub fn new(seed: u64) -> Result<Self, SicpError> {
         if seed == 0 {
-            return Err(SchemeError::ZeroSeed);
+            return Err(SicpError::ZeroSeed);
         }
         Ok(Self { state: seed })
     }
@@ -46,7 +46,7 @@ impl Random {
 #[cfg(test)]
 mod tests {
     use super::Random;
-    use crate::SchemeError;
+    use crate::SicpError;
 
     #[test]
     fn seed_one_yields_the_edition_vector() {
@@ -57,6 +57,6 @@ mod tests {
 
     #[test]
     fn zero_seed_is_rejected() {
-        assert!(matches!(Random::new(0), Err(SchemeError::ZeroSeed)));
+        assert!(matches!(Random::new(0), Err(SicpError::ZeroSeed)));
     }
 }

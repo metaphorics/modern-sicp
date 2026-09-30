@@ -12,10 +12,10 @@ mod ex_2_04 {
         pub exercise: &'static str,
     }
 
-    /// Exercise 2.4: an alternative procedural representation of pairs
+    /// Exercise 2.4: a procedural representation of pairs
     ///
-    /// Returns `car(cons(3, 4))` and `cdr(cons(3, 4))`, verifying that
-    /// this representation's `car` and `cdr` recover both parts.
+    /// Returns the first and second components recovered from the
+    /// closure-backed pair created with `(3, 4)`.
     pub fn ex_2_04() -> Result<(i64, i64), Pending> {
         Err(Pending { exercise: "2.4" })
     }

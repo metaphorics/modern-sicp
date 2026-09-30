@@ -1,73 +1,79 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Original exercise
 
-//! The reference solution of exercise 4.68: `reverse` as two rules over
-//! `append-to-form`. The forward direction answers the book's query and
-//! stops; the backward direction does derive the genuine answer -- the
-//! unified append chain pulls the list apart -- but the stream never
-//! runs dry, so the bounded sample pins the first answer and the fuel
-//! probe pins the endless tail.
+//! The reference solution of exercise 4.68: reverse and append as
+//! typed rules over pair terms.
 
-use std::cell::Cell;
-use std::rc::Rc;
+/// Shared typed support for this exercise.
+pub mod support;
 
-use ch04::sec_4_4::{Engine, microshaft};
-use sicp_runtime::Stream;
+use ch04::sec_4_4::{Database, Substitution, qeval};
+use sicp_runtime::host::query::Term;
+use support::{atom, fact, list, pair, relation, rule, term_text, var};
 
-mod ex_4_68 {
-    //! Exercise 4.68: reverse rules, forward and backward.
+fn reverse_rules() -> Database {
+    let mut database = Database::new();
+    database.add_rule(rule(
+        fact("reverse", vec![Term::Empty, Term::Empty]),
+        vec![],
+    ));
+    database.add_rule(rule(
+        fact(
+            "reverse",
+            vec![pair(var("item"), var("rest")), var("answer")],
+        ),
+        vec![
+            relation("reverse", vec![var("rest"), var("reversed_rest")]),
+            relation(
+                "append",
+                vec![
+                    var("reversed_rest"),
+                    pair(var("item"), Term::Empty),
+                    var("answer"),
+                ],
+            ),
+        ],
+    ));
+    database.add_rule(rule(
+        fact("append", vec![Term::Empty, var("right"), var("right")]),
+        vec![],
+    ));
+    database.add_rule(rule(
+        fact(
+            "append",
+            vec![
+                pair(var("item"), var("rest")),
+                var("right"),
+                pair(var("item"), var("appended")),
+            ],
+        ),
+        vec![relation(
+            "append",
+            vec![var("rest"), var("right"), var("appended")],
+        )],
+    ));
+    database
+}
 
-    use super::*;
-
-    /// One Microshaft engine carrying `append-to-form` and `reverse`.
-    pub fn engine() -> Engine {
-        let engine = microshaft();
-        engine.load(&[
-            "(rule (append-to-form () ?y ?y))",
-            "(rule (append-to-form (?u . ?v) ?y (?u . ?z)) (append-to-form ?v ?y ?z))",
-            "(rule (reverse () ()))",
-            "(rule (reverse (?u . ?v) ?y) (and (reverse ?v ?z) (append-to-form ?z (?u) ?y)))",
-        ]);
-        engine
-    }
-
-    /// The backward query under a simple-query fuel bound: the fallback
-    /// stops after `fuel` invocations and raises the flag.
-    pub fn fueled_backward(fuel: usize) -> (Engine, Rc<Cell<bool>>) {
-        let engine = engine();
-        let exhausted = Rc::new(Cell::new(false));
-        let counter = Rc::new(Cell::new(0usize));
-        let standard = engine.simple_query_proc();
-        let flag = Rc::clone(&exhausted);
-        let count = Rc::clone(&counter);
-        engine.set_fallback(Some(Rc::new(move |eng, pattern, frames| {
-            let n = count.get() + 1;
-            count.set(n);
-            if n > fuel {
-                flag.set(true);
-                return Stream::Empty;
-            }
-            standard(eng, pattern, frames)
-        })));
-        (engine, exhausted)
+/// Instantiates a term through the frame, the way the query driver
+/// prints an answer: every bound variable is replaced, at any depth.
+fn instantiate(term: &Term, frame: &Substitution) -> Term {
+    match term {
+        Term::Variable(name) => frame
+            .get(name)
+            .map_or_else(|| term.clone(), |bound| instantiate(bound, frame)),
+        Term::Pair(left, right) => pair(instantiate(left, frame), instantiate(right, frame)),
+        other => other.clone(),
     }
 }
 
 #[test]
 fn ex_4_68() {
-    // Forward: the one answer, then the stream runs dry.
-    assert_eq!(
-        ex_4_68::engine().answers("(reverse (1 2 3) ?x)"),
-        ["(reverse (1 2 3) (3 2 1))"]
+    let query = relation(
+        "reverse",
+        vec![list(vec![atom("a"), atom("b"), atom("c")]), var("answer")],
     );
-    // Backward: the genuine answer (3 2 1) does come out -- the append
-    // constraints and the reverse recursion meet -- but the stream then
-    // generates without end, so no second answer arrives within the
-    // fuel and the sample pins exactly one.
-    let (engine, exhausted) = ex_4_68::fueled_backward(2000);
-    assert_eq!(
-        engine.answers_upto("(reverse ?x (1 2 3))", 2),
-        ["(reverse (3 2 1) (1 2 3))"]
-    );
-    assert!(exhausted.get(), "the backward stream never runs dry");
+    let outcome = qeval(&reverse_rules(), &query);
+    assert_eq!(outcome.answers.len(), 1);
+    let answer = instantiate(&var("answer"), &outcome.answers[0]);
+    assert_eq!(term_text(&answer), "(c b a)");
 }

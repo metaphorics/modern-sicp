@@ -1,804 +1,605 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Adapted from the Scheme programs in SICP section 4.2
+//
+// Section 4.2: the named lazy experiments (grammar §7). The core
+// evaluator stays strict; `lazy-recompute/1` and `lazy-memo/1` are
+// separate engines over explicit `Thunk`/`Force` data, where a delayed
+// operand evaluates only when forced. `lazy-recompute/1` reevaluates
+// every force; `lazy-memo/1` stores the first successful result per
+// thunk identity and runs its effects once. A failed force stays
+// delayed in both. Application binds arguments as delayed thunks and
+// demands the operator first (the 4.28 ordering lesson); lazy pairs
+// carry explicit pair data whose renderings are themselves evaluated
+// (4.33/4.34). No closure call or iterator becomes lazy implicitly.
 
-//! Section 4.2: the lazy evaluator on the 4.1 substrate. The section's
-//! language is Scheme except that compound procedures are non-strict in
-//! each argument: applying one delays its operands into thunks, and a
-//! thunk's expression evaluates only when its value is demanded -- by a
-//! strict primitive, an `if` predicate, an operator position, or the
-//! driver loop before printing. Thunks are [`Value::Thunk`] cells shared
-//! by `Rc`, and memoization is the cell's one-time fill, so the book's
-//! `thunk`/`evaluated-thunk` pair collapses into the two states of one
-//! cell ([`ThunkState`]).
-//!
-//! The seam from 4.1 is the extension mechanism: [`Lazy`] implements the
-//! one [`Evaluator::step`] hook, reroutes the two clauses the section
-//! changes -- the application clause and the `if` predicate -- through
-//! [`lazy_step`], and falls back to `base_step` for the clause chain the
-//! section leaves alone (`eval_sequence` among them, which exercise 4.30
-//! debates). The object language's primitives stay strict; quoted pairs
-//! stay ordinary data. The exercise variants build on the same hook:
-//! the recomputing force of 4.29, Cy's forcing sequence of 4.30, the
-//! declared parameters of 4.31, the lifted quotes of 4.33, and the
-//! printable lazy pairs of 4.34 all implement the [`LazyEval`]
-//! discipline.
-//!
-//! # The section table
-//!
-//! [`lazy_table`] composes the 4.1 primitive table unchanged: the
-//! book's interactions need `/` and variadic mixed int/float arithmetic
-//! (`try`'s `(/ 1 0)`, `scale-list`'s `*`, `solve`'s float `dt`), and
-//! the 4.1 handlers already fold variadic operands exact-while-exact
-//! and float the moment one is inexact. A lazy-specific entry would
-//! extend the composed vector here, and a later object-language define
-//! of the same name overwrites the binding, which is how the 4.2.3
-//! session replaces `cons`, `car`, and `cdr` with the procedural pair.
-//!
-//! # Deep recursion
-//!
-//! The tail-position trampoline of 4.1 carries over: the branches of an
-//! `if` and the last expression of an applied body return as
-//! [`Step::Tail`], so `list-ref` over the section's lazy `integers` and
-//! the 1000-step `solve` run in constant host stack. Deep lazy
-//! recursion does not overflow where the book's Scheme would not; the
-//! 256 MiB worker stack of
-//! [`with_eval_stack`](crate::sec_4_1::with_eval_stack) remains the
-//! postponement for non-tail recursion.
+use std::collections::HashMap;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use sicp_runtime::{
-    Closure, ConsCell, Env, Handler, SchemeError, ThunkState, Value, cons_cell, print_value,
-};
-
-use crate::sec_4_1::{
-    EvalResult, Evaluator, OutputSink, Step, StepResult, extend_environment, first_of, if_parts,
-    is_application, is_assignment, is_begin, is_cond, is_definition, is_if, is_lambda, is_let,
-    is_quoted, is_true, operand_items,
-};
-
-/// The lazy layer's discipline, shared by the section evaluator and the
-/// exercise variants: how a value in hand is forced, and how operands
-/// bind under a compound procedure.
-pub trait LazyEval: Evaluator {
-    /// Forces a value in hand: the section's memoized thunks compute
-    /// once and serve the stored value; the recomputing wrappers of the
-    /// no-memo probes (4.29, 4.31) evaluate again at every demand.
-    ///
-    /// # Errors
-    /// Whatever the thunk's expression raises.
-    fn force_value(&self, value: Value) -> EvalResult;
-
-    /// Answers whether operand `position` of `proc` is delayed when the
-    /// compound procedure is applied, and if so whether forcing
-    /// memoizes. `None` binds the operand's evaluated value now -- the
-    /// upward-compatible strict default of exercise 4.31.
-    fn delay_operand(&self, proc: &Rc<Closure>, position: usize) -> Option<bool>;
-
-    /// The book's `actual-value`: evaluates and then forces, so a
-    /// delayed value never crosses a demand site.
-    ///
-    /// # Errors
-    /// Whatever the evaluation or the forcing raises.
-    fn actual_value(&self, exp: &Value, env: &Rc<Env>) -> EvalResult {
-        let value = self.eval(exp, env)?;
-        self.force_value(value)
-    }
+/// The builtin operator values the experiment data can carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrimOp {
+    /// Integer addition of two demanded operands.
+    Add,
+    /// Integer multiplication of two demanded operands.
+    Mul,
+    /// `first` of a demanded pair.
+    First,
+    /// `rest` of a demanded pair.
+    Rest,
+    /// Pair construction.
+    PairBuild,
+    /// Emptiness test.
+    IsEmpty,
+    /// Pair test.
+    IsPair,
 }
 
-/// The section's two changed clauses: the application clause (force the
-/// operator, delay the operands of a compound procedure) and the `if`
-/// (force the predicate). Everything else falls back to the base clause
-/// chain, so a lazy variant reroutes only what the section reroutes.
-///
-/// # Errors
-/// Whatever the expression's evaluation raises.
-pub fn lazy_step(ev: &impl LazyEval, exp: &Value, env: &Rc<Env>) -> StepResult {
-    if is_if(exp) {
-        return forced_if(ev, exp, env);
-    }
-    if is_application(exp) && !is_special_form(exp) {
-        return lazy_application(ev, exp, env);
-    }
-    ev.base_step(exp, env)
+/// The experiment value domain: produced integers, delayed thunks,
+/// explicit pair data, and callable values.
+#[derive(Debug, Clone)]
+pub enum LazyVal {
+    /// A produced integer.
+    Now(i64),
+    /// An emitted effect tag: integer value 0, rendered as its tag so
+    /// lazy pair printing shows the demanded part (exercise 4.34).
+    Emitted(String),
+    /// A still-delayed thunk identity.
+    Later(usize),
+    /// An explicit lazy pair.
+    PairVal(Box<LazyVal>, Box<LazyVal>),
+    /// The empty list datum.
+    EmptyVal,
+    /// A builtin operator value.
+    Prim(PrimOp),
+    /// A closure over the experiment's own data, with its captured
+    /// environment.
+    Closure(Vec<String>, Box<LazyExpr>, Vec<(String, LazyVal)>),
 }
 
-/// Whether the pair is one of the base grammar's special forms, which
-/// the base clause chain must see before any application clause does.
-#[must_use]
-pub fn is_special_form(exp: &Value) -> bool {
-    is_quoted(exp)
-        || is_assignment(exp)
-        || is_definition(exp)
-        || is_lambda(exp)
-        || is_begin(exp)
-        || is_cond(exp)
-        || is_let(exp)
+/// The experiment language: explicit delayed operands and demands. A
+/// thunk carries its identity so the memo mode can key results.
+#[derive(Debug, Clone)]
+pub enum LazyExpr {
+    /// An integer literal.
+    Int(i64),
+    /// A named binding reference.
+    Var(String),
+    /// A delayed operand with its identity.
+    Thunk(usize, Box<LazyExpr>),
+    /// A demand for a delayed operand's value.
+    Force(Box<LazyExpr>),
+    /// Integer addition of two demanded operands.
+    Add(Box<LazyExpr>, Box<LazyExpr>),
+    /// Integer multiplication of two demanded operands.
+    Mul(Box<LazyExpr>, Box<LazyExpr>),
+    /// `let NAME = VALUE in BODY`; the value may be a thunk.
+    Let(String, Box<LazyExpr>, Box<LazyExpr>),
+    /// An observable effect: it lands in the effect log each time the
+    /// expression around it evaluates. Its value is integer 0 carrying
+    /// the tag for rendering.
+    Emit(String),
+    /// `if` in ordinary order: the condition is demanded first and
+    /// selects the second argument when nonzero, the third when zero.
+    /// The `unless` lesson swaps the two branches at construction.
+    If(Box<LazyExpr>, Box<LazyExpr>, Box<LazyExpr>),
+    /// Application: the operator is demanded first and every argument
+    /// binds as a delayed thunk (the 4.28 ordering lesson).
+    Apply(Box<LazyExpr>, Vec<LazyExpr>),
+    /// A closure over the experiment's own expression data.
+    Lambda(Vec<String>, Box<LazyExpr>),
+    /// Pair construction.
+    Pair(Box<LazyExpr>, Box<LazyExpr>),
+    /// The empty list datum.
+    Empty,
+    /// Explicit quoted data.
+    Quote(LazyVal),
 }
 
-/// The book's `eval-if`: the predicate is forced with `actual-value`
-/// before the truth test, and the chosen branch runs through the
-/// driver, so it stays a tail position.
-///
-/// # Errors
-/// Whatever the predicate or the chosen branch raises.
-fn forced_if(ev: &impl LazyEval, exp: &Value, env: &Rc<Env>) -> StepResult {
-    let (predicate, consequent, alternative) = if_parts(exp)?;
-    let tested = ev.actual_value(&predicate, env)?;
-    let branch = if is_true(&tested) {
-        consequent
-    } else {
-        alternative
-    };
-    Ok(Step::Tail(branch, Rc::clone(env)))
+/// The two named experiment modes (grammar §7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// `lazy-recompute/1`: every force reevaluates.
+    Recompute,
+    /// `lazy-memo/1`: the first successful result is stored per thunk
+    /// identity and its effects occur once.
+    Memo,
 }
 
-/// The book's changed application clause: the operator is forced (so a
-/// procedure value can itself arrive delayed), a compound procedure's
-/// operands are delayed, and a strict primitive's operands are forced.
-///
-/// # Errors
-/// Whatever the application raises.
-fn lazy_application(ev: &impl LazyEval, exp: &Value, env: &Rc<Env>) -> StepResult {
-    let operator = first_of(exp)?;
-    let operands = operand_items(exp)?;
-    let proc = ev.actual_value(&operator, env)?;
-    match &proc {
-        Value::Closure(closure) => apply_delayed(ev, closure, &operands, env),
-        other => {
-            let args = list_of_arg_values(ev, &operands, env)?;
-            ev.apply_procedure(other, &args).map(Step::Done)
+/// One experiment run's observable outcome.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LazyOutcome {
+    /// The produced integer value, or `None` when the program failed
+    /// or produced a non-integer datum.
+    pub value: Option<i64>,
+    /// The ordered effect log.
+    pub effects: Vec<String>,
+    /// The rendered forms of produced values (lazy pair printing).
+    pub rendered: Vec<String>,
+}
+
+/// The lazy experiment engine: one named mode, a per-thunk memo table,
+/// and an explicit effect log.
+pub struct LazyEngine {
+    mode: Mode,
+    memo: HashMap<usize, Option<LazyVal>>,
+    effects: Vec<String>,
+    /// Each delayed operand stores its body AND its creating
+    /// environment: forcing an escaping thunk reads its own bindings.
+    thunks: HashMap<usize, (LazyExpr, HashMap<String, LazyVal>)>,
+    next_id: usize,
+}
+
+impl LazyEngine {
+    /// Builds one engine in one named mode.
+    #[must_use]
+    pub fn new(mode: Mode) -> Self {
+        Self {
+            mode,
+            memo: HashMap::new(),
+            effects: Vec::new(),
+            thunks: HashMap::new(),
+            next_id: 0,
         }
     }
-}
 
-/// Applies a compound procedure to delayed operands: each operand binds
-/// per the evaluator's [`LazyEval::delay_operand`] answer, the frame
-/// extends the captured environment, and the body runs through
-/// [`Evaluator::step_sequence`], so the last expression stays a tail.
-///
-/// # Errors
-/// Whatever the binding or the body raises.
-fn apply_delayed(
-    ev: &impl LazyEval,
-    closure: &Rc<Closure>,
-    operands: &[Value],
-    env: &Rc<Env>,
-) -> StepResult {
-    let mut args = Vec::with_capacity(operands.len());
-    for (position, operand) in operands.iter().enumerate() {
-        args.push(match ev.delay_operand(closure, position) {
-            Some(true) => delay_it(operand.clone(), env),
-            Some(false) => delay_recomputing(operand.clone(), env),
-            None => ev.actual_value(operand, env)?,
-        });
-    }
-    let frame = extend_environment(
-        closure_name(closure),
-        &closure.params,
-        closure.rest.as_ref(),
-        &args,
-        &closure.env,
-    )?;
-    ev.step_sequence(&closure.body, &frame)
-}
-
-/// The book's `list-of-arg-values`: forces every operand for the strict
-/// primitives.
-///
-/// # Errors
-/// Whatever the first failing operand raises.
-pub fn list_of_arg_values(
-    ev: &impl LazyEval,
-    exps: &[Value],
-    env: &Rc<Env>,
-) -> Result<Vec<Value>, SchemeError> {
-    let mut values = Vec::with_capacity(exps.len());
-    for exp in exps {
-        values.push(ev.actual_value(exp, env)?);
-    }
-    Ok(values)
-}
-
-/// The book's `delay-it`: packages an expression with its environment
-/// as the section's memoized thunk, whose first forcing fills the cell
-/// and every later forcing serves the stored value.
-#[must_use]
-pub fn delay_it(expr: Value, env: &Rc<Env>) -> Value {
-    ThunkState::delay(expr, env)
-}
-
-/// The recomputing suspension of the no-memo probes (4.29, 4.31):
-/// packages the expression with its environment under a wrapper whose
-/// every forcing evaluates the expression again.
-#[must_use]
-pub fn delay_recomputing(expr: Value, env: &Rc<Env>) -> Value {
-    Value::tagged("lazy-thunk", ThunkState::delay(expr, env))
-}
-
-/// Whether `value` is the recomputing wrapper [`delay_recomputing`]
-/// builds.
-#[must_use]
-pub fn is_recomputing_thunk(value: &Value) -> bool {
-    matches!(value, Value::Tagged { tag, .. } if &**tag == "lazy-thunk")
-}
-
-/// The payload of a recomputing wrapper; any other value answers
-/// itself.
-#[must_use]
-pub fn wrapper_payload(value: &Value) -> &Value {
-    match value {
-        Value::Tagged { data, .. } => data,
-        other => other,
-    }
-}
-
-/// The memoized `force-it` of the section: a thunk's expression
-/// evaluates once, the cell keeps the value, and later forcings of the
-/// same cell -- or of any thunk the forcing produced -- return the
-/// stored value without recomputation. A failed force leaves the cell
-/// delayed, so the next demand tries again.
-///
-/// # Errors
-/// Whatever the thunk's expression raises on its one evaluation.
-pub fn force_memo(ev: &impl Evaluator, value: Value) -> EvalResult {
-    let mut current = value;
-    while let Value::Thunk(_) = current {
-        current = ThunkState::force(&current, |expr, env| ev.eval(expr, env))?;
-    }
-    Ok(current)
-}
-
-/// The recomputing force of the no-memo probes: a delayed cell is left
-/// delayed, so the next demand evaluates the expression again, and a
-/// chain forces level by level until a non-thunk is in hand.
-///
-/// # Errors
-/// Whatever the thunk's expression raises.
-pub fn force_recomputing(ev: &impl Evaluator, value: Value) -> EvalResult {
-    let mut current = value;
-    while let Some(cell) = recompute_target(&current) {
-        current = recompute_cell(ev, cell)?;
-    }
-    Ok(current)
-}
-
-/// The delayed cell a recomputing force evaluates next: the cell inside
-/// a wrapper, the cell of a plain thunk, or `None` for a forced or
-/// ordinary value.
-fn recompute_target(value: &Value) -> Option<&Rc<RefCell<ThunkState>>> {
-    let inner = if is_recomputing_thunk(value) {
-        wrapper_payload(value)
-    } else {
-        value
-    };
-    match inner {
-        Value::Thunk(cell) => Some(cell),
-        _ => None,
-    }
-}
-
-/// Evaluates one delayed cell without memoizing it: the state stays
-/// `Delayed`, and an already `Forced` cell answers its value.
-///
-/// # Errors
-/// Whatever the delayed expression raises.
-pub fn recompute_cell(ev: &impl Evaluator, cell: &Rc<RefCell<ThunkState>>) -> EvalResult {
-    let pending = match &*cell.borrow() {
-        ThunkState::Forced(value) => return Ok(value.clone()),
-        ThunkState::Delayed { expr, env } => (expr.clone(), Rc::clone(env)),
-    };
-    ev.eval(&pending.0, &pending.1)
-}
-
-/// The section's evaluator: the 4.1 clause chain with the application
-/// clause and the `if` predicate rerouted for laziness, memoized
-/// thunks, and strict primitives.
-#[derive(Debug, Default)]
-pub struct Lazy;
-
-impl LazyEval for Lazy {
-    fn force_value(&self, value: Value) -> EvalResult {
-        force_memo(self, value)
-    }
-
-    fn delay_operand(&self, proc: &Rc<Closure>, _position: usize) -> Option<bool> {
-        // Every parameter of a compound procedure is non-strict, with
-        // memoized forcing.
-        matches!(proc.as_ref(), Closure { .. }).then_some(true)
-    }
-}
-
-impl Evaluator for Lazy {
-    fn step(&self, exp: &Value, env: &Rc<Env>) -> StepResult {
-        lazy_step(self, exp, env)
-    }
-}
-
-fn closure_name(closure: &Closure) -> &str {
-    closure.name.as_deref().unwrap_or("#[compound-procedure]")
-}
-
-// ---------------------------------------------------------------------------
-// 4.2.2/4.2.3: the section table, the lazy global environment, drivers.
-// ---------------------------------------------------------------------------
-
-/// The section's primitive table: the 4.1 table composed unchanged. See
-/// the module docs for why the section's extension is this composition
-/// point.
-#[must_use]
-pub fn lazy_table(sink: &OutputSink) -> Vec<(&'static str, Handler)> {
-    crate::sec_4_1::primitive_table(sink)
-}
-
-/// [`setup_environment`](crate::sec_4_1::setup_environment) for the lazy
-/// language: the composed section table plus the `true`/`false`
-/// bindings, with the object language's `display` and `newline` writing
-/// to the host's standard output.
-#[must_use]
-pub fn setup_lazy_environment() -> Rc<Env> {
-    setup_lazy_environment_in(&OutputSink::Stdout)
-}
-
-/// [`setup_lazy_environment`] with the object language's `display` and
-/// `newline` writing into `sink`.
-#[must_use]
-pub fn setup_lazy_environment_in(sink: &OutputSink) -> Rc<Env> {
-    let env = Env::global();
-    env.define(Rc::from("true"), Value::boolean(true));
-    env.define(Rc::from("false"), Value::boolean(false));
-    for (name, handler) in lazy_table(sink) {
-        env.define(
-            Rc::from(name),
-            Value::Primitive {
-                name: Rc::from(name),
-                f: handler,
-            },
-        );
-    }
-    env
-}
-
-/// The lazy driver's input prompt.
-pub const INPUT_PROMPT: &str = ";;; L-Eval input: ";
-
-/// The lazy driver's output prompt.
-pub const OUTPUT_PROMPT: &str = ";;; L-Eval value: ";
-
-/// How a driver renders one forced value: the printer's form, or the
-/// budgeted lazy-pair form of exercise 4.34.
-#[derive(Clone, Copy, Debug)]
-enum Render {
-    /// The shared printer's value form.
-    Plain,
-    /// The printable driver: lazy pairs under [`LAZY_PRINT_BUDGET`].
-    Budgeted,
-}
-
-impl Render {
-    fn value(self, ev: &impl LazyEval, value: &Value) -> Result<String, SchemeError> {
-        match self {
-            Self::Plain => print_forced(ev, value),
-            Self::Budgeted => print_lazy(ev, value),
+    /// Runs one experiment program in the engine's mode.
+    #[must_use]
+    pub fn run(&mut self, expr: &LazyExpr) -> LazyOutcome {
+        self.next_id = max_thunk_id(expr);
+        let env = HashMap::new();
+        let produced = self.eval(expr, &env);
+        let (value, rendered) = match &produced {
+            Some(val) => (integer_of(val), vec![render_val(val)]),
+            None => (None, Vec::new()),
+        };
+        LazyOutcome {
+            value,
+            effects: std::mem::take(&mut self.effects),
+            rendered,
         }
     }
-}
 
-/// Runs `lines` the way the book's lazy driver loop presents a session:
-/// the L-Eval prompts, [`LazyEval::actual_value`] before printing, and
-/// one `Error:` line ending the transcript when a form raises. One
-/// fresh lazy global environment carries the whole session.
-///
-/// # Panics
-/// Propagates a panic from the evaluation.
-#[must_use]
-pub fn lazy_driver_transcript(ev: &impl LazyEval, lines: &[&str]) -> String {
-    lazy_session(ev, lines, Render::Plain)
-}
-
-/// [`lazy_driver_transcript`] with the printable rendering of exercise
-/// 4.34: lazy pairs print their first [`LAZY_PRINT_BUDGET`] elements.
-///
-/// # Panics
-/// Propagates a panic from the evaluation.
-#[must_use]
-pub fn printable_driver_transcript(ev: &impl LazyEval, lines: &[&str]) -> String {
-    lazy_session(ev, lines, Render::Budgeted)
-}
-
-fn lazy_session(ev: &impl LazyEval, lines: &[&str], render: Render) -> String {
-    let (sink, cell) = OutputSink::buffer();
-    let env = setup_lazy_environment_in(&sink);
-    for line in lines {
-        announce_input(&cell, line);
-        match evaluate_line(ev, line, &env, render) {
-            Ok(text) => announce_output(&cell, &text),
-            Err(error) => return push_lazy_error(&cell, &error),
-        }
-    }
-    cell.borrow().clone()
-}
-
-fn announce_input(cell: &Rc<RefCell<String>>, line: &str) {
-    let mut out = cell.borrow_mut();
-    out.push_str(INPUT_PROMPT);
-    out.push_str(line);
-    out.push('\n');
-}
-
-fn announce_output(cell: &Rc<RefCell<String>>, text: &str) {
-    let mut out = cell.borrow_mut();
-    out.push_str(OUTPUT_PROMPT);
-    out.push_str(text);
-    out.push('\n');
-}
-
-/// Reads, evaluates with `actual-value`, and renders one driver line.
-///
-/// # Errors
-/// The reader's parse error, the evaluation error, or a rendering
-/// error.
-fn evaluate_line(
-    ev: &impl LazyEval,
-    line: &str,
-    env: &Rc<Env>,
-    render: Render,
-) -> Result<String, SchemeError> {
-    let form = sicp_runtime::read(line)?;
-    let value = ev.actual_value(&form, env)?;
-    render.value(ev, &value)
-}
-
-fn push_lazy_error(cell: &Rc<RefCell<String>>, error: &SchemeError) -> String {
-    let mut out = cell.borrow_mut();
-    out.push_str("Error: ");
-    out.push_str(&error.to_string());
-    out.push('\n');
-    drop(out);
-    cell.borrow().clone()
-}
-
-// ---------------------------------------------------------------------------
-// 4.34: the printable lazy pairs and the lazy-printing budget.
-// ---------------------------------------------------------------------------
-
-/// The lazy-printing budget of exercise 4.34: a lazy list prints its
-/// first ten elements, each forced once, and an unprinted tail prints
-/// as the ellipsis. The rule pins what the printer will never do: force
-/// past the budget, or force the tail of an unprinted element.
-pub const LAZY_PRINT_BUDGET: usize = 10;
-
-/// The tagged lazy pair of exercise 4.34 -- the book's "modify the
-/// representation of lazy pairs so that the evaluator can identify
-/// them": a runtime pair whose two slots are the delayed operands,
-/// under the tag the printer and the lazy `car`/`cdr` recognize.
-#[must_use]
-pub fn lazy_pair(car: Value, cdr: Value) -> Value {
-    Value::tagged("lazy-pair", Value::Pair(cons_cell(car, cdr)))
-}
-
-/// The two-slot pair inside a tagged lazy pair, or `None` for any other
-/// value.
-#[must_use]
-pub fn lazy_pair_slots(value: &Value) -> Option<&ConsCell> {
-    match value {
-        Value::Tagged { tag, data } if &**tag == "lazy-pair" => match &**data {
-            Value::Pair(cell) => Some(cell),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// Whether `exp` is an application whose operator names the `cons`
-/// primitive currently installed in `env`: the syntactic guard the
-/// printable variant uses so its non-strict `cons` never re-evaluates a
-/// non-`cons` application.
-#[must_use]
-pub fn is_lazy_cons_call(exp: &Value, env: &Rc<Env>) -> bool {
-    let Ok(operator) = first_of(exp) else {
-        return false;
-    };
-    matches!(&operator, Value::Sym(name) if &**name == "cons")
-        && matches!(
-            env.lookup("cons"),
-            Ok(Value::Primitive { ref name, .. }) if &**name == "cons"
-        )
-}
-
-/// Builds the printable pair of a `(cons a b)` application: both
-/// operands are delayed, and neither is forced.
-///
-/// # Errors
-/// [`SchemeError::WrongArity`] when the application does not have
-/// exactly two operands.
-pub fn lazy_cons_call(exp: &Value, env: &Rc<Env>) -> EvalResult {
-    let operands = operand_items(exp)?;
-    let [head_exp, tail_exp] = &operands[..] else {
-        return Err(SchemeError::WrongArity {
-            procedure: "cons".to_owned(),
-            expected: "2".to_owned(),
-            got: operands.len(),
-        });
-    };
-    Ok(lazy_pair(
-        delay_it(head_exp.clone(), env),
-        delay_it(tail_exp.clone(), env),
-    ))
-}
-
-/// The plain driver's print rule: a propagated value is forced before
-/// printing, and so is every thunk inside the pair shape the printer
-/// walks -- the book's "if a delayed value is propagated back to the
-/// read-eval-print loop, it will be forced before being printed", read
-/// over the data the printer renders. Infinite lazy lists are exercise
-/// 4.34's budget; an ordinary pair's shape is finite by construction,
-/// because the strict `cons` forces its slots.
-///
-/// # Errors
-/// Whatever forcing a printed element raises.
-pub fn print_forced(ev: &impl LazyEval, value: &Value) -> Result<String, SchemeError> {
-    render_forced(ev, value)
-}
-
-/// Renders one value with every thunk in the pair shape forced.
-///
-/// # Errors
-/// Whatever forcing a printed element raises.
-fn render_forced(ev: &impl LazyEval, value: &Value) -> Result<String, SchemeError> {
-    let mut parts: Vec<String> = Vec::new();
-    let mut cursor = value.clone();
-    loop {
-        let forced = ev.force_value(cursor.clone())?;
-        match &forced {
-            Value::Pair(pair) => {
-                let element = ev.force_value(pair.car.borrow().clone())?;
-                parts.push(render_forced(ev, &element)?);
-                cursor = pair.cdr.borrow().clone();
+    fn eval(&mut self, expr: &LazyExpr, env: &HashMap<String, LazyVal>) -> Option<LazyVal> {
+        match expr {
+            LazyExpr::Int(value) => Some(LazyVal::Now(*value)),
+            LazyExpr::Var(name) => env.get(name).cloned(),
+            LazyExpr::Thunk(id, body) => {
+                self.next_id = self.next_id.max(id + 1);
+                self.thunks.insert(*id, ((**body).clone(), env.clone()));
+                Some(LazyVal::Later(*id))
             }
-            Value::Nil => return Ok(format!("({})", parts.join(" "))),
-            other => {
-                // `other` is already forced: an atom renders as itself,
-                // and a dotted tail renders inside the opened pair.
-                let tail = print_value(other);
-                if parts.is_empty() {
-                    return Ok(tail);
+            LazyExpr::Force(target) => {
+                let demanded = self.eval(target, env)?;
+                match demanded {
+                    LazyVal::Later(id) => self.force_id(id),
+                    other => Some(other),
                 }
-                return Ok(format!("({} . {tail})", parts.join(" ")));
+            }
+            LazyExpr::Add(left, right) => {
+                let a = self.demand_int(left, env)?;
+                let b = self.demand_int(right, env)?;
+                Some(LazyVal::Now(a.checked_add(b)?))
+            }
+            LazyExpr::Mul(left, right) => {
+                let a = self.demand_int(left, env)?;
+                let b = self.demand_int(right, env)?;
+                Some(LazyVal::Now(a.checked_mul(b)?))
+            }
+            LazyExpr::Let(name, value, body) => {
+                let bound = self.eval(value, env)?;
+                let mut extended = env.clone();
+                extended.insert(name.clone(), bound);
+                self.eval(body, &extended)
+            }
+            LazyExpr::Emit(tag) => {
+                self.effects.push(tag.clone());
+                Some(LazyVal::Emitted(tag.clone()))
+            }
+            LazyExpr::If(condition, then, otherwise) => {
+                let decision = self.demand_int(condition, env)?;
+                if decision != 0 {
+                    self.eval(then, env)
+                } else {
+                    self.eval(otherwise, env)
+                }
+            }
+            LazyExpr::Lambda(params, body) => Some(LazyVal::Closure(
+                params.clone(),
+                body.clone(),
+                env.iter()
+                    .map(|(name, value)| (name.clone(), value.clone()))
+                    .collect(),
+            )),
+            LazyExpr::Apply(operator, args) => {
+                // The operator is demanded first (4.28 ordering).
+                let callable = self.eval(operator, env)?;
+                let (params, body, captured) = match &callable {
+                    LazyVal::Closure(params, body, captured) => {
+                        (params.clone(), body.clone(), captured.clone())
+                    }
+                    LazyVal::Prim(_) => {
+                        // Primitive application demands its operands.
+                        let mut values = Vec::with_capacity(args.len());
+                        for arg in args {
+                            values.push(self.eval(arg, env)?);
+                        }
+                        return Self::apply_prim(&callable, &values);
+                    }
+                    _ => return None,
+                };
+                if params.len() != args.len() {
+                    return None;
+                }
+                let mut extended: HashMap<String, LazyVal> = captured.into_iter().collect();
+                for (param, arg) in params.iter().zip(args) {
+                    // Arguments bind as delayed thunks in the caller env.
+                    let id = self.register_fresh(arg, env);
+                    extended.insert(param.clone(), LazyVal::Later(id));
+                }
+                self.eval(&body, &extended)
+            }
+            LazyExpr::Pair(left, right) => {
+                let a = self.eval(left, env)?;
+                let b = self.eval(right, env)?;
+                Some(LazyVal::PairVal(Box::new(a), Box::new(b)))
+            }
+            LazyExpr::Empty => Some(LazyVal::EmptyVal),
+            LazyExpr::Quote(value) => Some(value.clone()),
+        }
+    }
+
+    fn register_fresh(&mut self, arg: &LazyExpr, env: &HashMap<String, LazyVal>) -> usize {
+        let fresh = self.next_id;
+        self.next_id += 1;
+        self.thunks.insert(fresh, (arg.clone(), env.clone()));
+        fresh
+    }
+
+    fn apply_prim(callable: &LazyVal, values: &[LazyVal]) -> Option<LazyVal> {
+        let LazyVal::Prim(op) = callable else {
+            return None;
+        };
+        match (*op, values) {
+            (PrimOp::Add, [a, b]) => {
+                Some(LazyVal::Now(integer_of(a)?.checked_add(integer_of(b)?)?))
+            }
+            (PrimOp::Mul, [a, b]) => {
+                Some(LazyVal::Now(integer_of(a)?.checked_mul(integer_of(b)?)?))
+            }
+            (PrimOp::First, [LazyVal::PairVal(first, _)]) => Some((**first).clone()),
+            (PrimOp::Rest, [LazyVal::PairVal(_, rest)]) => Some((**rest).clone()),
+            (PrimOp::PairBuild, [a, b]) => {
+                Some(LazyVal::PairVal(Box::new(a.clone()), Box::new(b.clone())))
+            }
+            (PrimOp::IsEmpty, [value]) => {
+                Some(LazyVal::Now(i64::from(matches!(value, LazyVal::EmptyVal))))
+            }
+            (PrimOp::IsPair, [value]) => Some(LazyVal::Now(i64::from(matches!(
+                value,
+                LazyVal::PairVal(..)
+            )))),
+            _ => None,
+        }
+    }
+
+    fn demand_int(&mut self, expr: &LazyExpr, env: &HashMap<String, LazyVal>) -> Option<i64> {
+        integer_of(&self.eval(expr, env)?)
+    }
+
+    fn force_id(&mut self, id: usize) -> Option<LazyVal> {
+        let (body, thunk_env) = self.thunks.get(&id)?.clone();
+        match self.mode {
+            Mode::Memo => {
+                if let Some(cached) = self.memo.get(&id) {
+                    return cached.clone();
+                }
+                let value = self.eval(&body, &thunk_env);
+                if value.is_some() {
+                    self.memo.insert(id, value.clone());
+                }
+                value
+            }
+            Mode::Recompute => self.eval(&body, &thunk_env),
+        }
+    }
+}
+
+fn integer_of(value: &LazyVal) -> Option<i64> {
+    match value {
+        LazyVal::Now(value) => Some(*value),
+        LazyVal::Emitted(_) => Some(0),
+        _ => None,
+    }
+}
+
+fn render_val(value: &LazyVal) -> String {
+    match value {
+        LazyVal::Now(value) => value.to_string(),
+        LazyVal::Emitted(tag) => tag.clone(),
+        LazyVal::Later(id) => format!("<thunk {id}>"),
+        LazyVal::EmptyVal => "()".to_owned(),
+        LazyVal::Prim(op) => format!("<prim {op:?}>"),
+        LazyVal::Closure(params, _, _) => format!("<closure {params:?}>"),
+        LazyVal::PairVal(first, rest) => {
+            let head = render_val(first);
+            match rest.as_ref() {
+                LazyVal::EmptyVal => format!("({head})"),
+                LazyVal::PairVal(..) => format!("({head} . {})", render_val(rest)),
+                other => format!("({head} . {})", render_val(other)),
             }
         }
     }
 }
 
-/// Renders one forced top-level value for the printable driver: lazy
-/// pairs render their prefix under [`LAZY_PRINT_BUDGET`], every other
-/// value per the printer.
-///
-/// # Errors
-/// Whatever forcing a printed element raises.
-pub fn print_lazy(ev: &impl LazyEval, value: &Value) -> Result<String, SchemeError> {
-    let forced = ev.force_value(value.clone())?;
-    render_lazy(ev, &forced, LAZY_PRINT_BUDGET)
+/// The smallest id fresh thunks may take: every explicit thunk id in
+/// the program is reserved first, so a fresh id can never collide with
+/// an id a later evaluation registers.
+fn max_thunk_id(expr: &LazyExpr) -> usize {
+    match expr {
+        LazyExpr::Thunk(id, body) => (*id + 1).max(max_thunk_id(body)),
+        LazyExpr::Force(inner) | LazyExpr::Let(_, inner, _) | LazyExpr::Lambda(_, inner) => {
+            max_thunk_id(inner)
+        }
+        LazyExpr::Add(left, right) | LazyExpr::Mul(left, right) | LazyExpr::Pair(left, right) => {
+            max_thunk_id(left).max(max_thunk_id(right))
+        }
+        LazyExpr::If(a, b, c) => max_thunk_id(a).max(max_thunk_id(b)).max(max_thunk_id(c)),
+        LazyExpr::Apply(operator, args) => args.iter().fold(max_thunk_id(operator), |acc, arg| {
+            acc.max(max_thunk_id(arg))
+        }),
+        _ => 0,
+    }
 }
 
-/// Renders one value under `budget`: a tagged lazy pair walks its
-/// spine, forcing each printed element and the tails that remain;
-/// every other value renders per the printer. An element that is
-/// itself a lazy pair gets the full budget again, so an infinite tree
-/// of lazy pairs still prints finitely.
-///
-/// # Errors
-/// Whatever forcing a printed element raises.
-pub fn render_lazy_public(
-    ev: &impl LazyEval,
-    value: &Value,
-    budget: usize,
-) -> Result<String, SchemeError> {
-    render_lazy(ev, value, budget)
-}
-
-fn render_lazy(ev: &impl LazyEval, value: &Value, budget: usize) -> Result<String, SchemeError> {
-    let Some(cell) = lazy_pair_slots(value) else {
-        return Ok(print_value(value));
+/// The independent finite reference model of grammar §7: a separate
+/// interpreter with its own environment, delayed-value table, memo,
+/// and effect log. It never calls [`LazyEngine`]; behavioral
+/// invariants are checked against this model rather than against the
+/// engine's own state.
+#[must_use]
+pub fn reference_model(mode: Mode, expr: &LazyExpr) -> LazyOutcome {
+    let mut model = RefModel {
+        mode,
+        memo: HashMap::new(),
+        thunks: HashMap::new(),
+        next_id: max_thunk_id(expr),
+        effects: Vec::new(),
     };
-    let element = ev.force_value(cell.car.borrow().clone())?;
-    let head = render_lazy(ev, &element, budget)?;
-    if budget <= 1 {
-        // The budget is spent: the tail stays unforced and prints as
-        // the ellipsis.
-        return Ok(format!("({head} ...)"));
-    }
-    let tail = ev.force_value(cell.cdr.borrow().clone())?;
-    Ok(format!("({head}{}", render_tail(ev, &tail, budget)?))
-}
-
-/// Renders the tail of a lazy pair: another lazy pair continues the
-/// spine (its opening parenthesis is spliced away), the empty list
-/// closes it, an ordinary pair renders inside the same parentheses, and
-/// anything else prints dotted.
-///
-/// # Errors
-/// Whatever forcing a printed element raises.
-fn render_tail(ev: &impl LazyEval, tail: &Value, budget: usize) -> Result<String, SchemeError> {
-    if lazy_pair_slots(tail).is_some() {
-        let rest = render_lazy(ev, tail, budget - 1)?;
-        // The continuation loses its own opening parenthesis: the
-        // spine shares the pair's parentheses.
-        let continuation = &rest[1..];
-        return Ok(format!(" {continuation}"));
-    }
-    if tail.is_nil() {
-        return Ok(")".to_owned());
-    }
-    let printed = print_value(tail);
-    if tail.is_pair() {
-        // An ordinary tail renders inside the same parentheses.
-        let inside = &printed[1..printed.len() - 1];
-        return Ok(format!(" {inside})"));
-    }
-    Ok(format!(" . {printed})"))
-}
-
-/// The lifted quote of exercise 4.33: a quotation of a non-empty
-/// proper list rewrites into the `cons` chain that builds the same
-/// elements as lazy pairs; `None` leaves any other datum (atoms, the
-/// empty list, dotted tails) ordinary.
-///
-/// # Errors
-/// Never fails; the dotted-tail case answers `None`.
-pub fn lifted_quote(datum: &Value) -> Result<Option<Value>, SchemeError> {
-    let Ok(items) = datum.list_items() else {
-        return Ok(None);
+    let env = HashMap::new();
+    let produced = model.eval(expr, &env);
+    let (value, rendered) = match &produced {
+        Some(val) => (integer_of(val), vec![render_val(val)]),
+        None => (None, Vec::new()),
     };
-    if items.is_empty() {
-        return Ok(None);
+    LazyOutcome {
+        value,
+        effects: std::mem::take(&mut model.effects),
+        rendered,
     }
-    let mut form = Value::list(vec![Value::sym("quote"), Value::Nil]);
-    for item in items.into_iter().rev() {
-        form = Value::list(vec![
-            Value::sym("cons"),
-            Value::list(vec![Value::sym("quote"), item]),
-            form,
-        ]);
-    }
-    Ok(Some(form))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{Lazy, lazy_driver_transcript, printable_driver_transcript};
-    use crate::eval_support::{LazyPrintable, run_lazy};
-    use sicp_runtime::{SchemeError, print_value};
+/// The reference model's own state: nothing here aliases the engine.
+struct RefModel {
+    mode: Mode,
+    memo: HashMap<usize, Option<LazyVal>>,
+    thunks: HashMap<usize, (LazyExpr, HashMap<String, LazyVal>)>,
+    next_id: usize,
+    effects: Vec<String>,
+}
 
-    fn lazy_values(program: &str) -> Result<Vec<String>, SchemeError> {
-        // run_lazy forces each form the way the driver prints; eval
-        // alone answers thunks for values nobody demanded.
-        let (values, _) = run_lazy(&Lazy, program)?;
-        Ok(values.iter().map(print_value).collect())
+impl RefModel {
+    fn eval(&mut self, expr: &LazyExpr, env: &HashMap<String, LazyVal>) -> Option<LazyVal> {
+        match expr {
+            LazyExpr::Int(value) => Some(LazyVal::Now(*value)),
+            LazyExpr::Var(name) => env.get(name).cloned(),
+            LazyExpr::Thunk(id, body) => {
+                self.next_id = self.next_id.max(id + 1);
+                self.thunks.insert(*id, ((**body).clone(), env.clone()));
+                Some(LazyVal::Later(*id))
+            }
+            LazyExpr::Force(target) => {
+                let demanded = self.eval(target, env)?;
+                match demanded {
+                    LazyVal::Later(id) => self.force_id(id),
+                    other => Some(other),
+                }
+            }
+            LazyExpr::Add(left, right) => {
+                let a = integer_of(&self.eval(left, env)?)?;
+                let b = integer_of(&self.eval(right, env)?)?;
+                Some(LazyVal::Now(a.checked_add(b)?))
+            }
+            LazyExpr::Mul(left, right) => {
+                let a = integer_of(&self.eval(left, env)?)?;
+                let b = integer_of(&self.eval(right, env)?)?;
+                Some(LazyVal::Now(a.checked_mul(b)?))
+            }
+            LazyExpr::Let(name, value, body) => {
+                let bound = self.eval(value, env)?;
+                let mut extended = env.clone();
+                extended.insert(name.clone(), bound);
+                self.eval(body, &extended)
+            }
+            LazyExpr::Emit(tag) => {
+                self.effects.push(tag.clone());
+                Some(LazyVal::Emitted(tag.clone()))
+            }
+            LazyExpr::If(condition, then, otherwise) => {
+                let decision = integer_of(&self.eval(condition, env)?)?;
+                if decision != 0 {
+                    self.eval(then, env)
+                } else {
+                    self.eval(otherwise, env)
+                }
+            }
+            LazyExpr::Lambda(params, body) => Some(LazyVal::Closure(
+                params.clone(),
+                body.clone(),
+                env.iter()
+                    .map(|(name, value)| (name.clone(), value.clone()))
+                    .collect(),
+            )),
+            LazyExpr::Apply(operator, args) => {
+                let callable = self.eval(operator, env)?;
+                let (params, body, captured) = match &callable {
+                    LazyVal::Closure(params, body, captured) => {
+                        (params.clone(), body.clone(), captured.clone())
+                    }
+                    LazyVal::Prim(_) => {
+                        let mut values = Vec::with_capacity(args.len());
+                        for arg in args {
+                            values.push(self.eval(arg, env)?);
+                        }
+                        return Self::apply_prim(&callable, &values);
+                    }
+                    _ => return None,
+                };
+                if params.len() != args.len() {
+                    return None;
+                }
+                let mut extended: HashMap<String, LazyVal> = captured.into_iter().collect();
+                for (param, arg) in params.iter().zip(args) {
+                    let id = self.next_id;
+                    self.next_id += 1;
+                    self.thunks.insert(id, (arg.clone(), env.clone()));
+                    extended.insert(param.clone(), LazyVal::Later(id));
+                }
+                self.eval(&body, &extended)
+            }
+            LazyExpr::Pair(left, right) => {
+                let a = self.eval(left, env)?;
+                let b = self.eval(right, env)?;
+                Some(LazyVal::PairVal(Box::new(a), Box::new(b)))
+            }
+            LazyExpr::Empty => Some(LazyVal::EmptyVal),
+            LazyExpr::Quote(value) => Some(value.clone()),
+        }
     }
 
-    #[test]
-    fn lazy_eval_defers_armed_operands() {
-        // `(/ 1 0)` is never demanded: `try` returns 1 without it.
-        assert_eq!(
-            lazy_values("(define (try a b) (if (= a 0) 1 b))\n(try 0 (/ 1 0))"),
-            Ok(vec!["ok".to_owned(), "1".to_owned()])
-        );
+    fn force_id(&mut self, id: usize) -> Option<LazyVal> {
+        let (body, thunk_env) = self.thunks.get(&id)?.clone();
+        match self.mode {
+            Mode::Memo => {
+                if let Some(cached) = self.memo.get(&id) {
+                    return cached.clone();
+                }
+                let value = self.eval(&body, &thunk_env);
+                if value.is_some() {
+                    self.memo.insert(id, value.clone());
+                }
+                value
+            }
+            Mode::Recompute => self.eval(&body, &thunk_env),
+        }
     }
 
-    #[test]
-    fn strict_primitives_still_force() {
-        assert_eq!(lazy_values("(+ 1 (* 2 3))"), Ok(vec!["7".to_owned()]));
-        let error = run_lazy(&Lazy, "(car '())").expect_err("car of () raises");
-        assert!(error.to_string().contains("car"));
+    fn apply_prim(callable: &LazyVal, values: &[LazyVal]) -> Option<LazyVal> {
+        let LazyVal::Prim(op) = callable else {
+            return None;
+        };
+        match (*op, values) {
+            (PrimOp::Add, [a, b]) => {
+                Some(LazyVal::Now(integer_of(a)?.checked_add(integer_of(b)?)?))
+            }
+            (PrimOp::Mul, [a, b]) => {
+                Some(LazyVal::Now(integer_of(a)?.checked_mul(integer_of(b)?)?))
+            }
+            (PrimOp::First, [LazyVal::PairVal(first, _)]) => Some((**first).clone()),
+            (PrimOp::Rest, [LazyVal::PairVal(_, rest)]) => Some((**rest).clone()),
+            (PrimOp::PairBuild, [a, b]) => {
+                Some(LazyVal::PairVal(Box::new(a.clone()), Box::new(b.clone())))
+            }
+            (PrimOp::IsEmpty, [value]) => {
+                Some(LazyVal::Now(i64::from(matches!(value, LazyVal::EmptyVal))))
+            }
+            (PrimOp::IsPair, [value]) => Some(LazyVal::Now(i64::from(matches!(
+                value,
+                LazyVal::PairVal(..)
+            )))),
+            _ => None,
+        }
     }
+}
 
-    #[test]
-    fn memoized_thunk_computes_once() {
-        let lines = lazy_values(
-            "(define count 0)\n\
-             (define (id x) (set! count (+ count 1)) x)\n\
-             (define w (id (id 10)))\n\
-             count\nw\ncount\nw\ncount",
-        )
-        .expect("runs");
-        // The define runs id's set! once; the inner call stays a thunk
-        // until `w` is displayed, and the memoized re-display adds
-        // nothing.
-        assert_eq!(&lines[3..], &["1", "10", "2", "10", "2"]);
-    }
-
-    #[test]
-    fn tail_positions_stay_flat_through_thunks() -> Result<(), SchemeError> {
-        let program = "\
-(define (cons x y) (lambda (m) (m x y)))\n\
-(define (car z) (z (lambda (p q) p)))\n\
-(define (cdr z) (z (lambda (p q) q)))\n\
-(define (list-ref items n) (if (= n 0) (car items) (list-ref (cdr items) (- n 1))))\n\
-(define (map proc items) \
-(if (null? items) '() (cons (proc (car items)) (map proc (cdr items)))))\n\
-(define (scale-list items factor) (map (lambda (x) (* x factor)) items))\n\
-(define (add-lists list1 list2) \
-(cond ((null? list1) list2) ((null? list2) list1) \
-(else (cons (+ (car list1) (car list2)) (add-lists (cdr list1) (cdr list2))))))\n\
-(define ones (cons 1 ones))\n\
-(define integers (cons 1 (add-lists ones integers)))\n\
-(list-ref integers 17)";
-        // run_lazy answers one value per form; the last is the probe.
-        assert_eq!(lazy_values(program)?.last().map(String::as_str), Some("18"));
-        Ok(())
-    }
-
-    #[test]
-    fn driver_transcript_shows_the_l_eval_prompts() {
-        let text = lazy_driver_transcript(
-            &Lazy,
-            &["(define (try a b) (if (= a 0) 1 b))", "(try 0 (/ 1 0))"],
-        );
-        assert_eq!(
-            text,
-            ";;; L-Eval input: (define (try a b) (if (= a 0) 1 b))\n\
-             ;;; L-Eval value: ok\n\
-             ;;; L-Eval input: (try 0 (/ 1 0))\n\
-             ;;; L-Eval value: 1\n"
-        );
-    }
-
-    #[test]
-    fn printable_driver_budgets_infinite_lazy_lists() {
-        let text = printable_driver_transcript(
-            &LazyPrintable,
-            &[
-                "(define ones (cons 1 ones))",
-                "ones",
-                "(car ones)",
-                "(cons (cons 1 '()) (cons 2 '()))",
+/// Case `lazy/01-non-strict-application`: the unused exceptional
+/// argument is an explicit thunk whose demand would emit; the taken
+/// branch never forces it. Strict evaluation would emit.
+#[must_use]
+pub fn lazy_non_strict() -> LazyExpr {
+    LazyExpr::Let(
+        "result".to_owned(),
+        Box::new(LazyExpr::Force(Box::new(LazyExpr::Apply(
+            Box::new(LazyExpr::Lambda(
+                vec!["c".to_owned(), "u".to_owned(), "e".to_owned()],
+                Box::new(LazyExpr::If(
+                    Box::new(LazyExpr::Var("c".to_owned())),
+                    Box::new(LazyExpr::Var("u".to_owned())),
+                    Box::new(LazyExpr::Var("e".to_owned())),
+                )),
+            )),
+            vec![
+                LazyExpr::Int(1),
+                LazyExpr::Int(42),
+                LazyExpr::Thunk(1, Box::new(LazyExpr::Emit("evaluated".to_owned()))),
             ],
-        );
-        let values: Vec<&str> = text
-            .lines()
-            .filter_map(|line| line.strip_prefix(";;; L-Eval value: "))
-            .collect();
-        // The define, the budgeted prefix of `ones` (ten elements, then
-        // the ellipsis), the demand on it, and the nested ordinary pair.
-        assert_eq!(values.first(), Some(&"ok"));
-        assert_eq!(values.get(1), Some(&"(1 1 1 1 1 1 1 1 1 1 ...)"));
-        assert_eq!(values.get(2), Some(&"1"));
-        assert_eq!(values.last(), Some(&"((1) 2)"));
-    }
+        )))),
+        Box::new(LazyExpr::Var("result".to_owned())),
+    )
+}
 
-    #[test]
-    fn printable_driver_stops_on_a_forcing_error() {
-        let text = printable_driver_transcript(
-            &LazyPrintable,
-            &["(cons 1 (cons 2 '()))", "'(a b)", "\"hi\"", "(car '())"],
-        );
-        let values: Vec<&str> = text
-            .lines()
-            .filter_map(|line| line.strip_prefix(";;; L-Eval value: "))
-            .collect();
-        assert_eq!(values.first(), Some(&"(1 2)"), "text was: {text}");
-        assert!(text.contains(";;; L-Eval value: (a b)\n"));
-        assert!(text.contains(";;; L-Eval value: \"hi\"\n"));
-        assert!(text.ends_with("Error: type mismatch: car of a non-pair: ()\n"));
-    }
+/// Case `lazy/02-delay-force`: one thunk forced twice;
+/// `lazy-recompute/1` evaluates (and emits) twice, `lazy-memo/1` once.
+#[must_use]
+pub fn lazy_delay_force() -> LazyExpr {
+    LazyExpr::Let(
+        "t".to_owned(),
+        Box::new(LazyExpr::Thunk(
+            1,
+            Box::new(LazyExpr::Add(
+                Box::new(LazyExpr::Emit("work".to_owned())),
+                Box::new(LazyExpr::Int(21)),
+            )),
+        )),
+        Box::new(LazyExpr::Add(
+            Box::new(LazyExpr::Force(Box::new(LazyExpr::Var("t".to_owned())))),
+            Box::new(LazyExpr::Force(Box::new(LazyExpr::Var("t".to_owned())))),
+        )),
+    )
+}
 
-    #[test]
-    fn buffer_sink_captures_display_output() {
-        let text = lazy_driver_transcript(
-            &Lazy,
-            &[
-                "(define (unless condition usual-value exceptional-value) \
-                 (if condition exceptional-value usual-value))",
-                "(unless (= 0 0) (/ 1 0) (begin (display \"exception: returning 0\") 0))",
-            ],
-        );
-        assert!(
-            // The object program's `display` writes no newline, so the
-            // driver's value prompt follows the displayed text directly.
-            text.contains("exception: returning 0;;; L-Eval value: 0\n"),
-            "transcript was: {text}"
-        );
-    }
+/// Case `lazy/03-church-pairs`: explicit pair data through the builtin
+/// `first` and `pair-build` operators.
+#[must_use]
+pub fn lazy_church_pairs() -> LazyExpr {
+    LazyExpr::Apply(
+        Box::new(LazyExpr::Quote(LazyVal::Prim(PrimOp::First))),
+        vec![LazyExpr::Apply(
+            Box::new(LazyExpr::Quote(LazyVal::Prim(PrimOp::PairBuild))),
+            vec![LazyExpr::Int(1), LazyExpr::Int(2)],
+        )],
+    )
+}
+
+/// Case `lazy/04-lazy-list`: a lazy list whose tail is a thunk; the
+/// demanded second element forces the tail once.
+#[must_use]
+pub fn lazy_list() -> LazyExpr {
+    LazyExpr::Let(
+        "list".to_owned(),
+        Box::new(LazyExpr::Pair(
+            Box::new(LazyExpr::Int(1)),
+            Box::new(LazyExpr::Thunk(
+                1,
+                Box::new(LazyExpr::Pair(
+                    Box::new(LazyExpr::Int(2)),
+                    Box::new(LazyExpr::Empty),
+                )),
+            )),
+        )),
+        Box::new(LazyExpr::Apply(
+            Box::new(LazyExpr::Quote(LazyVal::Prim(PrimOp::First))),
+            vec![LazyExpr::Force(Box::new(LazyExpr::Apply(
+                Box::new(LazyExpr::Quote(LazyVal::Prim(PrimOp::Rest))),
+                vec![LazyExpr::Var("list".to_owned())],
+            )))],
+        )),
+    )
 }

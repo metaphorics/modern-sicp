@@ -7,7 +7,7 @@
 
 mod ex_2_09 {
     use ch02::sec_2_1::{Interval, add_interval, mul_interval};
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 2.9: the width of a sum is a function of the widths of
     /// the addends, but the width of a product is not
@@ -21,9 +21,9 @@ mod ex_2_09 {
     /// well-defined width, not about deciding the invariant.
     ///
     /// # Errors
-    /// [`SchemeError`] when the fixed bounds below fail to build an
+    /// [`SicpError`] when the fixed bounds below fail to build an
     /// interval, which they do not.
-    pub fn ex_2_09() -> Result<(f64, f64, bool), SchemeError> {
+    pub fn ex_2_09() -> Result<(f64, f64, bool), SicpError> {
         let a = Interval::new(2.0, 6.0)?;
         let b = Interval::new(10.0, 14.0)?;
         let c = Interval::new(100.0, 104.0)?;

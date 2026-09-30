@@ -11,7 +11,7 @@ use std::fmt::{self, Display, Formatter, Write as _};
 use std::rc::Rc;
 
 use crate::env::Env;
-use crate::error::SchemeError;
+use crate::error::SicpError;
 use crate::pair::{ConsCell, cons_cell};
 
 /// A binding name: the book's symbols, quoted nowhere because quotation is
@@ -21,7 +21,7 @@ pub type Symbol = Rc<str>;
 
 /// The procedure shape the table of 2.4 and the 4.1 primitive list
 /// install: `Rc<dyn Fn>` over the argument slice.
-pub type Handler = Rc<dyn Fn(&[Value]) -> Result<Value, SchemeError>>;
+pub type Handler = Rc<dyn Fn(&[Value]) -> Result<Value, SicpError>>;
 
 /// The dynamic datum: everything chapters 2 through 4 pass around. `Value`
 /// cannot derive `Eq` or `Hash` (it holds `f64` and closures), so dynamic
@@ -34,7 +34,7 @@ pub type Handler = Rc<dyn Fn(&[Value]) -> Result<Value, SchemeError>>;
 )]
 pub enum Value {
     /// An exact integer; checked arithmetic past the `i128` width raises
-    /// [`SchemeError::Overflow`].
+    /// [`SicpError::Overflow`].
     Int(i128),
     /// An inexact real.
     Real(f64),
@@ -75,8 +75,7 @@ pub enum Value {
 /// A compound procedure: the parameter names, the optional `.`-style rest
 /// parameter, the body forms evaluated in order, and the environment the
 /// `lambda` captured. The name is the definition name when the procedure
-/// was made by a `(define (name ...))` form, which the printer prints as
-/// `#[compound-procedure name]`.
+/// was made by a `(define (name ...))` form.
 #[derive(Clone, Debug)]
 pub struct Closure {
     /// The definition name, when the procedure has one.
@@ -124,16 +123,16 @@ impl ThunkState {
     /// when `eval` succeeds, so a failed force leaves the thunk delayed.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when `thunk` is not a `Value::Thunk`;
+    /// [`SicpError::TypeMismatch`] when `thunk` is not a `Value::Thunk`;
     /// whatever `eval` returns on the first force.
     pub fn force(
         thunk: &Value,
-        eval: impl FnOnce(&Value, &Rc<Env>) -> Result<Value, SchemeError>,
-    ) -> Result<Value, SchemeError> {
+        eval: impl FnOnce(&Value, &Rc<Env>) -> Result<Value, SicpError>,
+    ) -> Result<Value, SicpError> {
         let cell = match thunk {
             Value::Thunk(cell) => Rc::clone(cell),
             other => {
-                return Err(SchemeError::TypeMismatch(format!(
+                return Err(SicpError::TypeMismatch(format!(
                     "force on a non-thunk: {other}"
                 )));
             }
@@ -230,9 +229,9 @@ impl Value {
     /// Returns the items of a proper list, in order.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] when a tail is neither a pair nor
+    /// [`SicpError::TypeMismatch`] when a tail is neither a pair nor
     /// `Nil`: the list is dotted.
-    pub fn list_items(&self) -> Result<Vec<Value>, SchemeError> {
+    pub fn list_items(&self) -> Result<Vec<Value>, SicpError> {
         let mut items = Vec::new();
         let mut cursor = self.clone();
         while let Value::Pair(cell) = cursor {
@@ -242,7 +241,7 @@ impl Value {
         if cursor.is_nil() {
             Ok(items)
         } else {
-            Err(SchemeError::TypeMismatch(format!(
+            Err(SicpError::TypeMismatch(format!(
                 "not a proper list: {self}"
             )))
         }
@@ -251,12 +250,12 @@ impl Value {
     /// Applies a primitive procedure to `args`.
     ///
     /// # Errors
-    /// [`SchemeError::NotProcedure`] unless `self` is a primitive; whatever
+    /// [`SicpError::NotProcedure`] unless `self` is a primitive; whatever
     /// the primitive's body returns.
-    pub fn call(&self, args: &[Value]) -> Result<Value, SchemeError> {
+    pub fn call(&self, args: &[Value]) -> Result<Value, SicpError> {
         match self {
             Value::Primitive { f, .. } => f(args),
-            other => Err(SchemeError::NotProcedure(other.clone())),
+            other => Err(SicpError::NotProcedure(other.clone())),
         }
     }
 }
@@ -376,7 +375,7 @@ fn write_list(f: &mut Formatter<'_>, start: &Rc<ConsCell>) -> fmt::Result {
 mod tests {
     use super::*;
     use crate::env::Env;
-    use crate::error::SchemeError;
+    use crate::error::SicpError;
     use crate::pair::cons_cell;
 
     #[test]
@@ -394,7 +393,7 @@ mod tests {
         let dotted = Value::Pair(cons_cell(Value::int(1), Value::int(2)));
         assert_eq!(
             dotted.list_items(),
-            Err(SchemeError::TypeMismatch(
+            Err(SicpError::TypeMismatch(
                 "not a proper list: (1 . 2)".to_string()
             ))
         );
@@ -406,7 +405,7 @@ mod tests {
             args.iter()
                 .try_fold(0i128, |acc, v| match v {
                     Value::Int(n) => Ok(acc + n),
-                    other => Err(SchemeError::TypeMismatch(format!("not a number: {other}"))),
+                    other => Err(SicpError::TypeMismatch(format!("not a number: {other}"))),
                 })
                 .map(Value::int)
         });
@@ -424,7 +423,7 @@ mod tests {
     fn call_on_a_non_procedure_raises_not_procedure() {
         assert_eq!(
             Value::int(3).call(&[]),
-            Err(SchemeError::NotProcedure(Value::int(3)))
+            Err(SicpError::NotProcedure(Value::int(3)))
         );
     }
 

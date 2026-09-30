@@ -52,9 +52,9 @@ The same is true of the list operations we have used so far, such as
 operations.
 
 The primitive mutators for pairs are @code{set_car} and @code{set_cdr}.
-@code{Set_car} takes two arguments, the first of which must be a pair.  It
+@code{set_car} takes two arguments, the first of which must be a pair.  It
 modifies this pair, replacing the @code{car} pointer by a pointer to the second
-argument of @code{set_car}.@footnote{@code{Set_car} and @code{set_cdr} return
+argument of @code{set_car}.@footnote{@code{set_car} and @code{set_cdr} return
 the unit value @code{()}, which carries no information.  Like assignment, they
 should be used only for their effect.}
 
@@ -70,7 +70,7 @@ the pointer that was replaced, are now detached from the original
 structure.@footnote{We see from this that mutation operations on lists can
 create ``garbage'' that is not part of any accessible structure.  Rust frees a
 detached chain the moment its last handle is gone; we will see in @ref{5.3.2}
-that Lisp memory-management systems include a @newterm{garbage collector},
+that memory-management systems include a @newterm{garbage collector},
 which identifies and recycles the memory space used by unneeded pairs.}
 
 @example rust
@@ -121,7 +121,7 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @image{../../text/original/figures/chap3/Fig3.12b,,123mm,Figure 3.12: Lists x: ((a b) c d) and y: (e f).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.12b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.12:} Lists @code{x}: @code{((a b) c d)} and @code{y}: @code{(e f)}.}
@@ -131,7 +131,7 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @anchor{Figure 3.13}
 @ifinfo
 @quotation
-@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.13:} Effect of setting the first of x to y on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -159,13 +159,13 @@ x -->| * | *-+---->| * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of (set-car! x y) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.13b,,123mm,Figure 3.13: Effect of setting the first of x to y on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.13b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.13:} Effect of @code{(set-car! x y)} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.13:} Effect of setting the first of x to y on the lists in @ref{Figure 3.12}.}
 @end float
 
 Compare @ref{Figure 3.13} with @ref{Figure 3.14}, which illustrates the result
@@ -178,7 +178,7 @@ operation; the list to which @code{x} is bound is unchanged.
 @anchor{Figure 3.14}
 @ifinfo
 @quotation
-@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.14:} Effect of pairing y with the rest of x on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -206,13 +206,13 @@ z -->| * | *-+-+   +---+         +---+
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of (define z (cons y (cdr x))) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.14b,,123mm,Figure 3.14: Effect of pairing y with the rest of x on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.14b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.14:} Effect of @code{(define z (cons y (cdr x)))} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.14:} Effect of pairing y with the rest of x on the lists in @ref{Figure 3.12}.}
 @end float
 
 The @code{set_cdr} operation is similar to @code{set_car}.  The only difference
@@ -228,7 +228,7 @@ Here the @code{cdr} pointer of @code{x} has been replaced by the pointer to
 @anchor{Figure 3.15}
 @ifinfo
 @quotation
-@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.
+@strong{Figure 3.15:} Effect of setting the rest of x to y on the lists in @ref{Figure 3.12}.
 
 @example
      +---+---+     +---+---+     +---+---+
@@ -256,13 +256,13 @@ x -->| * | * |     | * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of (set-cdr! x y) on the lists in Figure 3.12.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.15b,,123mm,Figure 3.15: Effect of setting the rest of x to y on the lists in Figure 3.12.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,,123mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.15b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.15:} Effect of @code{(set-cdr! x y)} on the lists in @ref{Figure 3.12}.}
+@caption{@strong{Figure 3.15:} Effect of setting the rest of x to y on the lists in @ref{Figure 3.12}.}
 @end float
 
 @noindent
@@ -274,7 +274,7 @@ this runtime that operation is @code{cons_cell} called with two empty slots.
 We obtain the new pair, set its @code{car} and @code{cdr} pointers to the
 designated objects, and return the new pair as the result of the
 call.@footnote{Allocating that fresh cell is one of the operations that must be
-implemented as part of the memory management required by a Lisp
+implemented as part of the memory management required by a language
 implementation.  We will discuss this in @ref{5.3.1}.}
 
 @example rust
@@ -295,14 +295,17 @@ fn append(x: &Value, y: &Value) -> Value @{
     match x @{
         Value::Pair(cell) => @{
             let rest = append(&cell.cdr.borrow(), y);
-            Value::Pair(cons_cell(cell.car.borrow().clone(), rest))
+            Value::Pair(cons_cell(
+                cell.car.borrow().clone(),
+                rest,
+            ))
         @}
         _ => y.clone(),
     @}
 @}
 @end example
 
-@code{Append} forms a new list by successively @code{cons}-ing the elements of
+@code{append} forms a new list by successively @code{cons}-ing the elements of
 @code{x} onto @code{y}.  The function @code{append_bang} is similar to
 @code{append}, but it is a mutator rather than a constructor.  It appends the
 lists by splicing them together, modifying the final pair of @code{x} so that
@@ -372,7 +375,9 @@ fn make_cycle(x: &Pair) @{
 Draw a box-and-pointer diagram that shows the structure @code{z} created by
 
 @example rust
-let z = Value::list(vec![Value::sym("a"), Value::sym("b"), Value::sym("c")]);
+let z = Value::list(vec![
+    Value::sym("a"), Value::sym("b"), Value::sym("c"),
+]);
 make_cycle(&first_pair(&z));
 @end example
 
@@ -385,7 +390,10 @@ useful, although obscure:
 
 @example rust
 fn mystery(x: &Pair) -> Pair @{
-    fn loop_(x: Option<Pair>, y: Option<Pair>) -> Option<Pair> @{
+    fn loop_(
+        x: Option<Pair>,
+        y: Option<Pair>,
+    ) -> Option<Pair> @{
         let Some(cell) = x else @{
             return y;
         @};
@@ -406,7 +414,7 @@ fn mystery(x: &Pair) -> Pair @{
 @}
 @end example
 
-@code{Loop_} uses the ``temporary'' variable @code{temp} to hold the old value
+@code{loop_} uses the ``temporary'' variable @code{temp} to hold the old value
 of the @code{cdr} of @code{x}, since the assignment on the next line destroys
 the @code{cdr}.  Explain what @code{mystery} does in general.  Suppose
 @code{v} is defined by
@@ -457,7 +465,7 @@ structures.
 @anchor{Figure 3.16}
 @ifinfo
 @quotation
-@strong{Figure 3.16:} The list @code{z1} formed by @code{(cons x x)}.
+@strong{Figure 3.16:} The list @code{z1} formed by pairing x with x.
 
 @example
       +---+---+
@@ -475,13 +483,13 @@ z1 -->| * | * |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by (cons x x).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.16b,,78mm,Figure 3.16: The list z1 formed by pairing x with x.,.std.svg}
 @end ifhtml
 @iftex
 @image{../../text/original/figures/pdf/chap3/Fig3.16b.std,,78mm,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.16:} The list @code{z1} formed by @code{(cons x x)}.}
+@caption{@strong{Figure 3.16:} The list @code{z1} formed by pairing x with x.}
 @end float
 
 In contrast to @ref{Figure 3.16}, @ref{Figure 3.17} shows the structure created
@@ -498,7 +506,7 @@ let z2 = cons_cell(
 @anchor{Figure 3.17}
 @ifinfo
 @quotation
-@strong{Figure 3.17:} The list @code{z2} formed by @code{(cons (list 'a 'b) (list 'a 'b))}.
+@strong{Figure 3.17:} The list @code{z2} formed by pairing the list @code{(a b)} with the list @code{(a b)}.
 
 @example
       +---+---+     +---+---+     +---+---+
@@ -517,13 +525,13 @@ z2 -->| * | *-+---->| * | *-+---->| * | / |
 @end quotation
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by (cons (list 'a 'b) (list 'a 'b)).,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.17b,,121mm,Figure 3.17: The list z2 formed by pairing the list (a b) with the list (a b).,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,,121mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.17b.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.17:} The list @code{z2} formed by @code{(cons (list 'a 'b) (list 'a 'b))}.}
+@caption{@strong{Figure 3.17:} The list @code{z2} formed by pairing the list @code{(a b)} with the list @code{(a b)}.}
 @end float
 
 @noindent
@@ -578,7 +586,7 @@ println!("@{@}", Value::Pair(set_to_wow(&z2)));
 
 @noindent
 One way to detect sharing in list structures is to use the predicate
-@code{eq_pair}, this edition's spelling of the @code{eq?} of @ref{2.3.1}.
+@code{eq_pair}, this edition's spelling of the book's @code{eq?} of @ref{2.3.1}.
 More generally, @code{eq_pair(&x, &y)} tests whether @code{x} and @code{y} are
 the same object (that is, whether @code{x} and @code{y} are equal as pointers).
 Thus, with @code{z1} and @code{z2} as defined in @ref{Figure 3.16} and
@@ -610,8 +618,8 @@ dealing with sharing of mutable data objects reflect the underlying issues of
 ``sameness'' and ``change'' that were raised in @ref{3.1.3}.  We mentioned
 there that admitting change to our language requires that a compound object
 must have an ``identity'' that is something different from the pieces from
-which it is composed.  In Lisp, we consider this ``identity'' to be the quality
-that is tested by @code{eq?}, i.e., by equality of pointers; this edition's
+which it is composed.  We consider this ``identity'' to be the quality
+that is tested by pointer equality; this edition's
 version is the equality of @code{Rc} handles that @code{eq_pair} tests, and it
 rests on the same stipulation: a data object ``itself'' is the information
 stored in some particular set of memory locations in the computer.  This
@@ -733,7 +741,7 @@ fn procedural_cons(x: Value, y: Value) -> ProcPair @{
 @end example
 
 @noindent
-The book's application of a pair to a message, @code{(z 'car)}, is here a call
+The book's application of a pair to a message is here a call
 of the dispatch through @code{send}: @code{z.send(PairRequest::Car)} reads the
 @code{car} slot, and @code{z.send(PairRequest::SetCar(v))} changes it.  With
 the two mutator arms in place the @code{match} no longer needs the catch-all:
@@ -749,9 +757,11 @@ mutable data structure.  Thus, assignment and mutation are equipotent: Each can
 be implemented in terms of the other.}
 
 @quotation
-@strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{SICP exercise 3.20 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Suppose we evaluate the
+@strong{@anchor{Exercise 3.20}Exercise 3.20:} @emph{This edition replaces
+SICP exercise 3.20 with a host-language exercise that keeps its number and
+teaching objective.}  The original depends on the old language's own
+environment rules, so the exercise below teaches the same section material.
+Suppose we evaluate the
 following sequence against the dispatch implementation of pairs given above:
 
 @example rust
@@ -798,13 +808,13 @@ called a @newterm{FIFO} (first in, first out) buffer.
 
 @example
 Operation                Resulting Queue
-(define q (make-queue))
-(insert-queue! q 'a)     a
-(insert-queue! q 'b)     a b
-(delete-queue! q)        b
-(insert-queue! q 'c)     b c
-(insert-queue! q 'd)     b c d
-(delete-queue! q)        c d
+q := new empty queue
+enqueue a in q           a
+enqueue b in q           a b
+dequeue from q           b
+enqueue c in q           b c
+enqueue d in q           b c d
+dequeue from q           c d
 @end example
 @end quotation
 @end ifinfo
@@ -812,7 +822,7 @@ Operation                Resulting Queue
 @image{../../text/original/figures/chap3/Fig3.18,,119mm,Figure 3.18: Queue operations.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.18.std,,119mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.18.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.18:} Queue operations.}
@@ -908,7 +918,7 @@ representation.
   q -->| * | *-+-------------------+
        +-|-+---+                   |
          |                         |
-         | front-ptr               | rear-ptr
+         | front pointer               | rear pointer
          V                         V
      +---+---+    +---+---+    +---+---+
      | * | *-+--->| * | *-+--->| * | / |
@@ -924,7 +934,7 @@ representation.
 @image{../../text/original/figures/chap3/Fig3.19b,,118mm,Figure 3.19: Implementation of a queue as a list with front and rear pointers.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,,118mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.19b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.19:} Implementation of a queue as a list with front and rear pointers.}
@@ -975,10 +985,10 @@ To select the item at the front of the queue, we return the @code{car} of the
 pair indicated by the front pointer:
 
 @example rust
-fn front(&self) -> Result<Value, SchemeError> @{
+fn front(&self) -> Result<Value, SicpError> @{
     match self.front.borrow().clone() @{
         Some(pair) => Ok(pair.car.borrow().clone()),
-        None => Err(SchemeError::UserRaised @{
+        None => Err(SicpError::UserRaised @{
             message: "front called with an empty queue".into(),
             irritants: vec![],
         @}),
@@ -997,14 +1007,14 @@ also set the rear pointer to the new pair.
 @float
 @anchor{Figure 3.20}
 @ifinfo
-@strong{Figure 3.20:} Result of using @code{(insert-queue! q 'd)} on the queue of @ref{Figure 3.19}.
+@strong{Figure 3.20:} Result of enqueueing d in q on the queue of @ref{Figure 3.19}.
 
 @example
        +---+---+
   q -->| * | *-+--------------------------------+
        +-|-+---+                                |
          |                                      |
-         | front-ptr                            | rear-ptr
+         | front pointer                            | rear pointer
          V                                      V
      +---+---+    +---+---+    +---+---+    +---+---+
      | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
@@ -1016,13 +1026,13 @@ also set the rear pointer to the new pair.
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.20c,,141mm,Figure 3.20: Result of using (insert-queue! q 'd) on the queue of Figure 3.19.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.20c,,141mm,Figure 3.20: Result of enqueueing d in q on the queue of Figure 3.19.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,,141mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.20c.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.20:} Result of using @code{(insert-queue! q 'd)} on the queue of @ref{Figure 3.19}.}
+@caption{@strong{Figure 3.20:} Result of enqueueing d in q on the queue of @ref{Figure 3.19}.}
 @end float
 
 @example rust
@@ -1030,7 +1040,9 @@ fn insert(&self, item: Value) @{
     let new_pair = cons_cell(item, Value::Nil);
     let mut rear = self.rear.borrow_mut();
     match rear.as_ref() @{
-        Some(rear_pair) => set_cdr(rear_pair, Value::Pair(Rc::clone(&new_pair))),
+        Some(rear_pair) => @{
+            set_cdr(rear_pair, Value::Pair(Rc::clone(&new_pair)))
+        @}
         None => *self.front.borrow_mut() = Some(Rc::clone(&new_pair)),
     @}
     *rear = Some(new_pair);
@@ -1048,10 +1060,10 @@ to the deleted item, because @code{is_empty} looks only at the front
 pointer.}
 
 @example rust
-fn delete(&self) -> Result<(), SchemeError> @{
+fn delete(&self) -> Result<(), SicpError> @{
     let front = self.front.borrow().clone();
     let Some(pair) = front else @{
-        return Err(SchemeError::UserRaised @{
+        return Err(SicpError::UserRaised @{
             message: "delete! called with an empty queue".into(),
             irritants: vec![],
         @});
@@ -1061,7 +1073,7 @@ fn delete(&self) -> Result<(), SchemeError> @{
         Value::Pair(cell) => Some(cell),
         Value::Nil => None,
         other => @{
-            return Err(SchemeError::TypeMismatch(format!(
+            return Err(SicpError::TypeMismatch(format!(
                 "queue node with a non-list tail: @{other@}"
             )));
         @}
@@ -1073,14 +1085,14 @@ fn delete(&self) -> Result<(), SchemeError> @{
 @float
 @anchor{Figure 3.21}
 @ifinfo
-@strong{Figure 3.21:} Result of using @code{(delete-queue!  q)} on the queue of @ref{Figure 3.20}.
+@strong{Figure 3.21:} Result of dequeuing from q on the queue of @ref{Figure 3.20}.
 
 @example
        +---+---+
   q -->| * | *-+--------------------------------+
        +-|-+---+                                |
          +------------+                         |
-            front-ptr |                         | rear-ptr
+            front pointer |                         | rear pointer
                       V                         V
      +---+---+    +---+---+    +---+---+    +---+---+
      | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
@@ -1092,13 +1104,13 @@ fn delete(&self) -> Result<(), SchemeError> @{
 @end example
 @end ifinfo
 @ifhtml
-@image{../../text/original/figures/chap3/Fig3.21c,,141mm,Figure 3.21: Result of using (delete-queue! q) on the queue of Figure 3.20.,.std.svg}
+@image{../../text/original/figures/chap3/Fig3.21c,,141mm,Figure 3.21: Result of dequeuing from q on the queue of Figure 3.20.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,,141mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.21c.std,147mm,,,.pdf}
 
 @end iftex
-@caption{@strong{Figure 3.21:} Result of using @code{(delete-queue!  q)} on the queue of @ref{Figure 3.20}.}
+@caption{@strong{Figure 3.21:} Result of dequeuing from q on the queue of @ref{Figure 3.20}.}
 @end float
 
 @quotation
@@ -1146,7 +1158,8 @@ The local state will consist of pointers to the beginning and the end of an
 ordinary list.  Thus, the @code{make_queue} function will have the form
 
 @example rust
-fn make_queue() -> impl Fn(QueueMsg) -> Result<Value, SchemeError> @{
+fn make_queue() -> impl Fn(QueueMsg)
+    -> Result<Value, SicpError> @{
     let front_ptr = @r{…};
     let rear_ptr = @r{…};
     ⟨@var{definitions of internal procedures}⟩
@@ -1219,7 +1232,7 @@ table.insert(Value::sym("c"), Value::int(3));
 |            |            |            |
 V            V            V            V
 +---------+   +---+---+   +---+---+   +---+---+
-| *table* |   | * | * |   | * | * |   | * | * |
+| header  |   | * | * |   | * | * |   | * | * |
 +---------+   +-|-+-|-+   +-|-+-|-+   +-|-+-|-+
 |   |       |   |       |   |
 V   V       V   V       V   V
@@ -1232,7 +1245,7 @@ V   V       V   V       V   V
 @image{../../text/original/figures/chap3/Fig3.22c,,138mm,Figure 3.22: A table represented as a headed list.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,,138mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.22c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.22:} A table represented as a headed list.}
@@ -1242,14 +1255,14 @@ V   V       V   V       V   V
 To extract information from a table we use the table's @code{lookup}
 operation, which takes a key as argument and returns the associated value
 (or false, the absent arm of the lookup's @code{Option}, if there is no
-value stored under that key).  @code{Lookup} is defined in terms of the
+value stored under that key).  @code{lookup} is defined in terms of the
 @code{assoc} operation, which expects a key and a list of records as
 arguments.  Note that @code{assoc} never sees the dummy record.
-@code{Assoc} returns the record that has the given key as its
+@code{assoc} returns the record that has the given key as its
 @code{car}, or @code{None} if there is no such record.@footnote{Because
 keys are compared with the table's structural test, @code{assoc} can
 recognize keys that are symbols, numbers, or list structure, as the
-book's @code{equal?}-based test does.}  @code{Lookup} then matches on
+book's @code{equal?}-based test does.}  @code{lookup} then matches on
 the @code{Option} returned by @code{assoc} and returns the value (the
 @code{cdr}) of the record when there is one.
 
@@ -1296,7 +1309,10 @@ impl Table @{
             Some(record) => set_cdr(&record, value),
             None => set_cdr(
                 &header,
-                Value::Pair(cons_cell(Value::Pair(cons_cell(key, value)), records)),
+                Value::Pair(cons_cell(
+                    Value::Pair(cons_cell(key, value)),
+                    records,
+                )),
             ),
         @}
     @}
@@ -1356,7 +1372,7 @@ table
 +-|-+---+   +-|-+---+   +-|-+---+
   V           |           V
 +-------+     |         +---+---+   +---+---+   +---+---+
-|*table*|     |         | * | *-+-->| * | *-+-->| * | / |
+|header  |     |         | * | *-+-->| * | *-+-->| * | / |
 +-------+     |         +-|-+---+   +-|-+---+   +-|-+---+
               |           V           V           V
               |       +-------+     +---+---+   +---+---+
@@ -1397,7 +1413,9 @@ Then we use the second key to identify the record within the subtable.
 @example rust
 // The book's two-dimensional `lookup`: the first key names a
 // subtable, the second a record within it.
-pub fn lookup_2d(key1: &Value, key2: &Value, table: &Table) -> Option<Value> @{
+pub fn lookup_2d(
+    key1: &Value, key2: &Value, table: &Table,
+) -> Option<Value> @{
     let subtable = table.assoc(key1, &table.header().cdr.borrow())?;
     let sub_records = subtable.cdr.borrow().clone();
     table
@@ -1417,7 +1435,9 @@ one-dimensional tables described above:
 @example rust
 // The book's two-dimensional `insert!`: reuses an existing subtable
 // or builds one holding the single new record.
-pub fn insert_2d(key1: Value, key2: Value, value: Value, table: &Table) @{
+pub fn insert_2d(
+    key1: Value, key2: Value, value: Value, table: &Table,
+) @{
     let header = table.header();
     let records = header.cdr.borrow().clone();
     let Some(subtable) = table.assoc(&key1, &records) else @{
@@ -1449,8 +1469,14 @@ The table of @ref{Figure 3.23} is then:
 @example rust
 let table = Table::new();
 
-insert_2d(Value::sym("letters"), Value::sym("a"), Value::int(97), &table);
-insert_2d(Value::sym("letters"), Value::sym("b"), Value::int(98), &table);
+insert_2d(
+    Value::sym("letters"), Value::sym("a"),
+    Value::int(97), &table,
+);
+insert_2d(
+    Value::sym("letters"), Value::sym("b"),
+    Value::int(98), &table,
+);
 insert_2d(Value::sym("math"), Value::sym("+"), Value::int(43), &table);
 insert_2d(Value::sym("math"), Value::sym("-"), Value::int(45), &table);
 insert_2d(Value::sym("math"), Value::sym("*"), Value::int(42), &table);
@@ -1481,7 +1507,9 @@ two-dimensional tables represented in this fashion:
 @example rust
 let operation_table = Table::new();
 
-let get = |key1: Value, key2: Value| lookup_2d(&key1, &key2, &operation_table);
+let get = |key1: Value, key2: Value| @{
+    lookup_2d(&key1, &key2, &operation_table)
+@};
 let put = |key1: Value, key2: Value, value: Value| @{
     insert_2d(key1, key2, value, &operation_table);
 @};
@@ -1512,7 +1540,7 @@ instance, we might have a table with numeric keys in which we don't need an
 exact match to the number we're looking up, but only a number within some
 tolerance of it.  Design a table constructor @code{make_table} that takes as
 an argument a @code{same_key} predicate that will be used to test
-``equality'' of keys.  @code{Make_table} should return a table whose
+``equality'' of keys.  @code{make_table} should return a table whose
 @code{lookup} and @code{insert} operations use that test for a local table.
 @end quotation
 
@@ -1561,8 +1589,13 @@ The memoized version of the same function is
 
 @example rust
 // Every recursive level consults the one shared table first.
-fn memo_fib(n: u32, table: &MemoTable) -> Result<i128, SchemeError> @{
-    let answer = table.lookup_insert(Key::int(i128::from(n)), || match n @{
+fn memo_fib(
+    n: u32,
+    table: &MemoTable,
+) -> Result<i128, SicpError> @{
+    let answer = table.lookup_insert(
+        Key::int(i128::from(n)),
+        || match n @{
         0 => Ok(Value::int(0)),
         1 => Ok(Value::int(1)),
         _ => @{
@@ -1570,10 +1603,11 @@ fn memo_fib(n: u32, table: &MemoTable) -> Result<i128, SchemeError> @{
             let smallest = memo_fib(n - 2, table)?;
             Ok(Value::int(smaller + smallest))
         @}
-    @})?;
+        @},
+    )?;
     match answer @{
         Value::Int(total) => Ok(total),
-        _ => Err(SchemeError::TypeMismatch(
+        _ => Err(SicpError::TypeMismatch(
             "memo-fib stored a non-number".into(),
         )),
     @}
@@ -1657,7 +1691,7 @@ Inverter    And-gate     Or-gate
 @image{../../text/original/figures/chap3/Fig3.24a,,110mm,Figure 3.24: Primitive functions in the digital logic simulator.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,,110mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.24a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.24:} Primitive functions in the digital logic simulator.}
@@ -1701,7 +1735,7 @@ B -----*------|___/                        |
 @image{../../text/original/figures/chap3/Fig3.25c,,122mm,Figure 3.25: A half-adder circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,,122mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.25c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.25:} A half-adder circuit.}
@@ -1752,7 +1786,10 @@ Better yet, we can explicitly name this operation by defining a function
 the four external wires to be attached to the half-adder:
 
 @example rust
-pub fn half_adder(a: &Wire, b: &Wire, s: &Wire, c: &Wire, agenda: &Rc<Agenda>) @{
+pub fn half_adder(
+    a: &Wire, b: &Wire, s: &Wire, c: &Wire,
+    agenda: &Rc<Agenda>,
+) @{
     let d = Wire::new();
     let e = Wire::new();
     or_gate(a, b, &d, agenda);
@@ -1774,7 +1811,10 @@ bit in the corresponding position, and @math{\rm C_{out}}, which is the carry
 bit to be propagated to the left.} We can construct a full-adder as follows:
 
 @example rust
-pub fn full_adder(a: &Wire, b: &Wire, c_in: &Wire, sum: &Wire, c_out: &Wire, agenda: &Rc<Agenda>) @{
+pub fn full_adder(
+    a: &Wire, b: &Wire, c_in: &Wire, sum: &Wire,
+    c_out: &Wire, agenda: &Rc<Agenda>,
+) @{
     let c1 = Wire::new();
     let c2 = Wire::new();
     let s = Wire::new();
@@ -1807,7 +1847,7 @@ C -----+       +---------------/___/   |
 @image{../../text/original/figures/chap3/Fig3.26,,129mm,Figure 3.26: A full-adder circuit.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.26.std,,129mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.26.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.26:} A full-adder circuit.}
@@ -1887,7 +1927,7 @@ pub fn logical_not(s: u8) -> u8 @{
 @end example
 
 @noindent
-The book's @code{logical-not} signals an error for a signal other than 0 or
+The book's @code{logical_not} signals an error for a signal other than 0 or
 1.  Here the signal is a byte that the section's discipline keeps at 0 or 1,
 so no other value can reach the conversion, and @code{u8::from} maps 0 to 1
 and 1 to 0.
@@ -1900,8 +1940,12 @@ signals on the input wires and sets up a change to the new value to occur on
 the output wire after one @code{AND_GATE_DELAY}.
 
 @example rust
-pub fn and_gate(a1: &Wire, a2: &Wire, output: &Wire, agenda: &Rc<Agenda>) @{
-    // The book's `and-action-procedure`; one closure serves both inputs.
+pub fn and_gate(
+    a1: &Wire, a2: &Wire, output: &Wire,
+    agenda: &Rc<Agenda>,
+) @{
+    // The book's `and-action-procedure`;
+    // one closure serves both inputs.
     let a1 = a1.clone();
     let a2 = a2.clone();
     let output = output.clone();
@@ -1978,7 +2022,7 @@ C ------+   |     +-----+   |     +-----+   |     :  ------+   |
 @image{../../text/original/figures/chap3/Fig3.27b,,132mm,Figure 3.27: A ripple-carry adder for n-bit numbers.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,,132mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.27b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.27:} A ripple-carry adder for @math{n}-bit numbers.}
@@ -2036,7 +2080,10 @@ impl Wire @{
     /// The book's `add-action!`: the action joins the wire's list and
     /// then runs once immediately.
     pub fn add_action(&self, action: &Rc<dyn Fn()>) @{
-        self.state.actions.borrow_mut().insert(0, Rc::clone(action));
+        self.state
+        .actions
+        .borrow_mut()
+        .insert(0, Rc::clone(action));
         action();
     @}
 @}
@@ -2126,7 +2173,9 @@ to it.  The method @code{after_delay} adds new elements to it:
 @example rust
 impl Agenda @{
     /// The book's `after-delay`: schedules `action` `delay` from now.
-    pub fn after_delay(self: &Rc<Self>, delay: u64, action: Rc<dyn Fn()>) @{
+    pub fn after_delay(
+        self: &Rc<Self>, delay: u64, action: Rc<dyn Fn()>,
+    ) @{
         self.add_to(self.current_time() + delay, action);
     @}
 @}
@@ -2170,7 +2219,10 @@ current time and a name that identifies the wire, in a shared log; the log
 lines below appear in the order they were recorded:
 
 @example rust
-pub fn probe_wire(name: &str, wire: &Wire, agenda: &Rc<Agenda>, log: &ProbeLog) @{
+pub fn probe_wire(
+    name: &str, wire: &Wire,
+    agenda: &Rc<Agenda>, log: &ProbeLog,
+) @{
     let name = name.to_string();
     let wire = wire.clone();
     let agenda = Rc::clone(agenda);
@@ -2253,7 +2305,10 @@ action were attached without the immediate run, as the library's
 
 @example rust
 pub fn add_action_deferred(&self, action: &Rc<dyn Fn()>) @{
-    self.state.actions.borrow_mut().insert(0, Rc::clone(action));
+    self.state
+        .actions
+        .borrow_mut()
+        .insert(0, Rc::clone(action));
 @}
 @end example
 @end quotation
@@ -2355,7 +2410,9 @@ impl Agenda @{
     pub fn add_to(&self, time: u64, action: Rc<dyn Fn()>) @{
         let seq = self.next_seq.get();
         self.next_seq.set(seq + 1);
-        self.heap.borrow_mut().push(Reverse(Scheduled @{ time, seq, action @}));
+        self.heap.borrow_mut().push(Reverse(Scheduled @{
+            time, seq, action
+        @}));
     @}
 @}
 @end example
@@ -2478,7 +2535,7 @@ C -----+ m1      |  u  |      m1 +-------+ a1      |
 @image{../../text/original/figures/chap3/Fig3.28,,142mm,Figure 3.28: The relation 9C = 5(F - 32) expressed as a constraint network.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.28.std,,142mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.28.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.28:} The relation @math{{9C = 5(F - 32)}} expressed as a constraint network.}
@@ -2719,8 +2776,8 @@ constraint.inform_about_no_value();
 @end example
 
 @noindent
-The book's local procedures @code{process-new-value} and
-@code{process-forget-value}, and the two arms of the dispatch that route the
+The book's local procedures @code{process_new_value} and
+@code{process_forget_value}, and the two arms of the dispatch that route the
 requests to them, become the following:
 
 @example rust
@@ -2967,13 +3024,14 @@ pub struct Connector @{
 @end example
 
 @noindent
-@code{Connector::new} is the book's @code{make-connector}: a valueless
+@code{Connector::new} is the book's @code{Connector::new}: a valueless
 connector with no constraints.  The book's local procedures become methods on
 the handle:
 
 @example rust
 impl Connector @{
-    /// The book's `has-value?`: whether anyone currently owns the value.
+    /// The book's `has-value?`: whether anyone
+    /// currently owns the value.
     pub fn has_value(&self) -> bool @{
         self.state.informant.borrow().is_some()
     @}
@@ -2989,7 +3047,7 @@ impl Connector @{
 
     /// The book's `set-value!`.
     pub fn set_value(&self, new_value: f64, setter: &Informant)
-        -> Result<(), SchemeError>
+        -> Result<(), SicpError>
     @{
         if !self.has_value() @{
             *self.state.value.borrow_mut() = Some(new_value);
@@ -3006,7 +3064,7 @@ impl Connector @{
             irritants.push(Value::real(old));
         @}
         irritants.push(Value::real(new_value));
-        Err(SchemeError::UserRaised @{
+        Err(SicpError::UserRaised @{
             message: "Contradiction".into(),
             irritants,
         @})
@@ -3039,7 +3097,9 @@ impl Connector @{
         let mut constraints = self.state.constraints.borrow_mut();
         let present = constraints.iter().any(|weak| @{
             weak.upgrade()
-                .is_some_and(|known| known.informant() == constraint.informant())
+                .is_some_and(|known| @{
+                    known.informant() == constraint.informant()
+                @})
         @});
         if !present @{
             constraints.insert(0, Rc::downgrade(constraint));
@@ -3134,14 +3194,17 @@ the Network and the caller's own handles keep a system alive.
 @example rust
 let x = Value::list(vec![Value::sym("a"), Value::sym("b")]);
 let z1 = cons_cell(x.clone(), x.clone());
-set_car(&z1, Value::list(vec![Value::sym("wow"), Value::sym("b")]));
+set_car(
+    &z1,
+    Value::list(vec![Value::sym("wow"), Value::sym("b")]),
+);
 Value::Pair(z1).to_string()
 // => "((wow b) wow b)"
 @end example
 
 The book's mechanism still wins when the sharing crosses code the compiler
 never saw together, because which names hold the same Rc is a property of the
-pointers, and only Rc::ptr_eq settles it, the role eq? plays in the text.
+pointers, and only Rc::ptr_eq settles it, the role the book's @code{eq?} plays in the text.
 @end quotation
 
 @quotation
@@ -3175,7 +3238,10 @@ new primitive constraint.  Fill in the missing portions in Ben's outline for a
 constraint to implement such a device:
 
 @example rust
-fn squarer(a: &Connector, b: &Connector) -> Rc<dyn Constraint> @{
+fn squarer(
+    a: &Connector,
+    b: &Connector,
+) -> Rc<dyn Constraint> @{
     struct Squarer @{
         a: Connector,
         b: Connector,
@@ -3188,10 +3254,11 @@ fn squarer(a: &Connector, b: &Connector) -> Rc<dyn Constraint> @{
         @}
 
         fn inform_about_value(&self) @{
-            // the book's process-new-value
+            // the book's process_new_value
             if let Some(v) = self.b.value() @{
                 if v < 0.0 @{
-                    ⟨@var{report "square less than 0: SQUARER" and give up}⟩
+                    // Report "square less than 0: SQUARER".
+                    ⟨@var{give up}⟩
                 @} else @{
                     ⟨@var{alternative1}⟩
                 @}
@@ -3201,7 +3268,7 @@ fn squarer(a: &Connector, b: &Connector) -> Rc<dyn Constraint> @{
         @}
 
         fn inform_about_no_value(&self) @{
-            // the book's process-forget-value
+            // the book's process_forget_value
             ⟨@var{body1}⟩
         @}
     @}
@@ -3219,9 +3286,11 @@ fn squarer(a: &Connector, b: &Connector) -> Rc<dyn Constraint> @{
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 3.36}Exercise 3.36:} @emph{SICP exercise 3.36 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Suppose we evaluate
+@strong{@anchor{Exercise 3.36}Exercise 3.36:} @emph{This edition replaces
+SICP exercise 3.36 with a host-language exercise that keeps its number and
+teaching objective.}  The original depends on the old language's own
+environment rules, so the exercise below teaches the same section material.
+Suppose we evaluate
 
 @example rust
 let a = Connector::new();
@@ -3260,7 +3329,9 @@ never is.
 a more expression-oriented style of definition, such as
 
 @example rust
-fn celsius_fahrenheit_converter(network: &Network, x: &Connector) -> Connector @{
+fn celsius_fahrenheit_converter(
+    network: &Network, x: &Connector,
+) -> Connector @{
     let scaled = c_div(
         network,
         &c_mul(network, &cv(network, 9.0), x),
@@ -3280,7 +3351,9 @@ arguments and returns a connector that is related to these by an adder
 constraint:
 
 @example rust
-fn c_add(network: &Network, x: &Connector, y: &Connector) -> Connector @{
+fn c_add(
+    network: &Network, x: &Connector, y: &Connector,
+) -> Connector @{
     let z = network.connector();
     adder(network, x, y, &z);
     z

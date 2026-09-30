@@ -2,62 +2,115 @@
 // Adapted from the Scheme programs in SICP section 4.1
 
 //! Section 4.1.1: the core of the evaluator. The `eval`/`apply`
-//! interplay runs a small program: a definition binds a procedure, an
-//! application evaluates the operator and the operands and calls
-//! `apply_procedure`, an assignment rebinds, and a conditional branches
-//! on the object language's truth.
+//! interplay runs one checked program: a definition binds a procedure,
+//! an application evaluates its operands and applies the operator, an
+//! assignment rebinds a mutable binding, and the conditional branches
+//! on the language's own truth, a typed `bool`.
 
-use std::rc::Rc;
+use ch04::eval_support::trap_line;
+use ch04::sec_4_1::{admit, run, run_source};
+use sicp_runtime::host::diag::DiagKind;
+use sicp_runtime::host::value::Trap;
 
-use ch04::sec_4_1::{Base, Evaluator, eval_program, setup_environment, text_of_quotation};
-use sicp_runtime::{Env, Value, print_value, read, read_program};
+const CORE: &str = "\
+fn square(x: i64) -> i64 {
+    x * x
+}
+
+fn add(a: i64, b: i64) -> i64 {
+    a + b
+}
+
+fn twice(f: fn(i64, i64) -> i64, x: i64) -> i64 {
+    f(x, x)
+}
 
 fn main() {
-    let env = setup_environment();
+    println!(\"{}\", square(21));
+    let mut n = 21;
+    n = 2;
+    println!(\"{}\", square(n));
+    println!(\"{}\", twice(add, 4));
+}
+";
 
-    // The core forms: define answers ok, the call answers the product,
-    // set! rebinds, and a wrong-kind operand raises through the same
-    // error channel.
-    let values = eval_program(
-        &env,
-        "(define (square x) (* x x))\n(square 21)\n(square 1.5)\n(set! square 3)\n",
-    )
-    .expect("runs");
-    for value in &values {
-        println!("{}", print_value(value));
+const CAPTURED: &str = "\
+fn main() {
+    let base = 4;
+    let add_base = |x: i64| x + base;
+    let shift = 38;
+    println!(\"{}\", add_base(shift));
+}
+";
+
+const BRANCH: &str = "\
+fn classify(x: i64) -> i64 {
+    if x == 0 {
+        100
+    } else {
+        -x
     }
-    // => ok
+}
+
+fn main() {
+    println!(\"{}\", classify(0));
+    println!(\"{}\", classify(7));
+}
+";
+
+const STOPS: &str = "\
+fn main() {
+    println!(\"{}\", 36);
+    let d = 0;
+    println!(\"{}\", 441 / d);
+}
+";
+
+fn main() {
+    // The core interplay: a definition binds a procedure, each call
+    // evaluates its operands and applies the operator, and an
+    // assignment rebinds the mutable binding without creating one.
+    let outcome = run_source(CORE).expect("admitted");
+    println!("{}", outcome.stdout);
     // => 441
-    // => 2.25
-    // => ok
-    assert_eq!(
-        values.iter().map(print_value).collect::<Vec<_>>(),
-        vec!["ok", "441", "2.25", "ok"]
-    );
-
-    // Apply classifies its procedure: the primitive calls its handler,
-    // the compound procedure extends its captured environment.
-    let program = read_program("(define (twice f x) (apply f (list x x)))").expect("read");
-    Base.eval(&program[0], &env).expect("defines");
-    let call = read("(twice (lambda (a b) (+ a b)) 4)").expect("read");
-    let answer = Base.eval(&call, &env).expect("applies");
-    println!("{}", print_value(&answer));
+    // => 4
     // => 8
-    assert_eq!(answer, Value::int(8));
+    assert_eq!(outcome.stdout, "441\n4\n8\n");
+    assert!(outcome.trap.is_none());
 
-    // A quotation's value is its datum, unevaluated.
-    let quoted = read("'(a b c)").expect("read");
-    let datum = text_of_quotation(&quoted).expect("quoted");
-    println!("{}", print_value(&datum));
-    // => (a b c)
-    assert_eq!(print_value(&datum), "(a b c)");
+    // Apply classifies its procedure: a function pointer calls its
+    // handler directly, while a closure value carries the environment
+    // of its definition into every call.
+    let outcome = run_source(CAPTURED).expect("admitted");
+    println!("{}", outcome.stdout);
+    // => 42
+    assert_eq!(outcome.stdout, "42\n");
 
-    // The evaluator's `if` tests the object language's truth: only the
-    // explicit false object is false.
-    let env2 = Env::child(&Rc::clone(&env));
-    let program = read_program("(if 0 'zero-is-true 'zero-is-false)").expect("read");
-    let answer = Base.eval(&program[0], &Rc::clone(&env2)).expect("runs");
-    println!("{}", print_value(&answer));
-    // => zero-is-true
-    assert_eq!(print_value(&answer), "zero-is-true");
+    // The conditional tests the language's truth, which is a typed
+    // `bool`: a non-bool condition is a typing rejection raised before
+    // any effect, never a truthiness rule.
+    let outcome = run_source(BRANCH).expect("admitted");
+    println!("{}", outcome.stdout);
+    // => 100
+    // => -7
+    assert_eq!(outcome.stdout, "100\n-7\n");
+    let diag = admit("fn main() { if 0 { println!(\"no\"); } }").expect_err("not a bool");
+    assert_eq!(diag.kind, DiagKind::Type);
+
+    // Source is data until it runs: the front end checks a program
+    // whose evaluation will stop at a trap and produces no effect
+    // while doing so. Running it writes its prefix and answers the
+    // trap on the one error channel.
+    let checked = admit(STOPS).expect("checked as data");
+    let outcome = run(&checked);
+    println!("{}", outcome.stdout);
+    // => 36
+    assert_eq!(outcome.stdout, "36\n");
+    assert!(matches!(
+        outcome.trap.as_ref().map(|report| &report.trap),
+        Some(Trap::DivByZero)
+    ));
+    println!("{}", trap_line(&outcome).expect("one trap line"));
+    // => trap: DivByZero
+    assert_eq!(trap_line(&outcome).as_deref(), Some("trap: DivByZero"));
 }

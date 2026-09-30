@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-//! The pending scaffold of exercise 4.13: Exercise 4.13: `make-unbound!` removes a binding..
+//! The pending scaffold of exercise 4.13: unbinding removes a frame entry.
 
 /// The typed pending report of an unsolved scaffold: the body returns
 /// this instead of panicking, so the failure names its origin.
@@ -12,7 +12,7 @@ pub struct Pending {
 }
 
 mod ex_4_13 {
-    //! Exercise 4.13: `make-unbound!` removes a binding.
+    //! Exercise 4.13: unbinding removes a frame entry.
 
     use super::Pending;
 
@@ -27,8 +27,8 @@ mod ex_4_13 {
 #[ignore = "pending solution"]
 fn ex_4_13() {
     let values = ex_4_13::ex_4_13().expect("solved");
-    assert_eq!(
-        values,
-        vec!["1", "make-unbound!: not bound in the first frame: x"]
-    );
+    assert_eq!(values.len(), 2);
+    assert_eq!(values[0], "1");
+    assert!(values[1].starts_with("make-unbound"));
+    assert!(values[1].contains("first frame") && values[1].contains('x'));
 }

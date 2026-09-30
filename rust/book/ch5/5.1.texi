@@ -9,11 +9,10 @@ divisor (@abbr{GCD}) of two integers.  As we saw in @ref{1.2.5},
 Euclid's Algorithm can be carried out by an iterative process, as specified by
 the following procedure:
 
-@example
-(define (gcd a b)
-  (if (= b 0)
-      a
-      (gcd b (remainder a b))))
+@example rust
+fn gcd(a: i64, b: i64) -> i64 @{
+    if b == 0 @{ a @} else @{ gcd(b, a % b) @}
+@}
 @end example
 
 @noindent
@@ -82,7 +81,7 @@ represented in a data-path diagram by a triangle containing the constant).
 @image{../../text/original/figures/chap5/Fig5.1a,,105mm,Figure 5.1: Data paths for a GCD machine.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap5/Fig5.1a.std,,105mm,,.pdf}
+@image{../../text/original/figures/pdf/chap5/Fig5.1a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 5.1:} Data paths for a @abbr{GCD} machine.}
@@ -172,14 +171,22 @@ reaches @code{done}, we will find the value of the @abbr{GCD} in register
 compute factorials using the iterative algorithm specified by the following
 procedure.  Draw data-path and controller diagrams for this machine.
 
-@example
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
+@example rust
+// The iterative algorithm is a loop
+// in guest source: Rust gives no
+// tail-call guarantee, so constant-space
+// iteration is written with loop and
+// break exactly as the machine's
+// controller loops.
+fn factorial(n: i64) -> i64 @{
+    let mut product = 1;
+    let mut counter = 1;
+    loop @{
+        if counter > n @{ break product; @}
+        product = counter * product;
+        counter += 1;
+    @}
+@}
 @end example
 @end quotation
 
@@ -196,7 +203,7 @@ procedure.  Draw data-path and controller diagrams for this machine.
 
 Data-path and controller diagrams are adequate for representing simple machines
 such as @abbr{GCD}, but they are unwieldy for describing large machines such
-as a Lisp interpreter.  To make it possible to deal with complex machines, we
+as the explicit-control evaluator of @ref{5.4}.  To make it possible to deal with complex machines, we
 will create a language that presents, in textual form, all the information
 given by the data-path and controller diagrams.  We will start with a notation
 that directly mirrors the diagrams.
@@ -335,8 +342,9 @@ the machine; it is not obvious for a large machine how many registers,
 operations, and buttons there are and how they are interconnected.
 
 @item
-Because the controller instructions in a machine definition look like Lisp
-expressions, it is easy to forget that they are not arbitrary Lisp expressions.
+Because the controller instructions in a machine definition look like
+expressions, it is easy to forget that they are instructions of the machine
+notation, not arbitrary expressions of the guest language.
 They can notate only legal machine operations.  For example, operations can
 operate directly only on constants and the contents of registers, not on the
 results of other operations.
@@ -360,10 +368,10 @@ to describe the iterative factorial machine of @ref{Exercise 5.1}.
 Let us modify the @abbr{GCD} machine so that we can type in the numbers
 whose @abbr{GCD} we want and get the answer printed at our terminal.  We
 will not discuss how to make a machine that can read and print, but will assume
-(as we do when we use @code{read} and @code{display} in Scheme) that they are
+(as we do when a guest program reads and prints) that they are
 available as primitive operations.@footnote{This assumption glosses over a
 great deal of complexity.  Usually a large portion of the implementation of a
-Lisp system is dedicated to making reading and printing work.}
+language system is dedicated to making reading and printing work.}
 
 @code{Read} is like the operations we have been using in that it produces a
 value that can be stored in a register.  But @code{read} does not take inputs
@@ -463,7 +471,7 @@ loops we used in the interpreters of @ref{Chapter 4}.
 
 We will often define a machine to include ``primitive'' operations that are
 actually very complex.  For example, in @ref{5.4} and @ref{5.5} we
-will treat Scheme's environment manipulations as primitive.  Such abstraction
+will treat the guest language's environment manipulations as primitive.  Such abstraction
 is valuable because it allows us to ignore the details of parts of a machine so
 that we can concentrate on other aspects of the design.  The fact that we have
 swept a lot of complexity under the rug, however, does not mean that a machine
@@ -476,12 +484,13 @@ computes the remainder of the contents of registers @code{a} and @code{b} and
 assigns the result to register @code{t}.  If we want to construct the
 @abbr{GCD} machine without using a primitive remainder operation, we must
 specify how to compute remainders in terms of simpler operations, such as
-subtraction.  Indeed, we can write a Scheme procedure that finds remainders in
+subtraction.  Indeed, we can write a Rust function that finds remainders in
 this way:
 
-@example
-(define (remainder n d)
-  (if (< n d) n (remainder (- n d) d)))
+@example rust
+fn remainder(n: i64, d: i64) -> i64 @{
+    if n < d @{ n @} else @{ remainder(n - d, d) @}
+@}
 @end example
 
 We can thus replace the remainder operation in the @abbr{GCD} machine's data
@@ -586,20 +595,35 @@ instructions that contains a loop, as shown in @ref{Figure 5.6}.
 @strong{@anchor{Exercise 5.3}Exercise 5.3:} Design a machine to compute square
 roots using Newton's method, as described in @ref{Sec.1.1.7,,1.1.7}:
 
-@example
-(define (sqrt x)
-  (define (good-enough? guess)
-    (< (abs (- (square guess) x)) 0.001))
-  (define (improve guess)
-    (average guess (/ x guess)))
-  (define (sqrt-iter guess)
-    (if (good-enough? guess)
+@example rust
+// Integer Newton iteration.  The guest
+// computes with i64 only, so the
+// textbook's 0.001 tolerance becomes the
+// integer bound 3 on the squared error
+// (inclusive, so the iteration stops),
+// as in the
+// fixed-point sqrt lesson of 1.1.
+fn good_enough(guess: i64, x: i64) -> bool @{
+    let error = guess * guess - x;
+    -3 <= error && error <= 3
+@}
+
+fn improve(guess: i64, x: i64) -> i64 @{
+    (guess + x / guess) / 2
+@}
+
+fn sqrt_iter(guess: i64, x: i64) -> i64 @{
+    if good_enough(guess, x) @{
         guess
-        (sqrt-iter (improve guess))))
-  (sqrt-iter 1.0))
+    @} else @{
+        sqrt_iter(improve(guess, x), x)
+    @}
+@}
+
+fn sqrt(x: i64) -> i64 @{ sqrt_iter(1, x) @}
 @end example
 
-Begin by assuming that @code{good-enough?} and @code{improve} operations are
+Begin by assuming that @code{good_enough} and @code{improve} operations are
 available as primitives.  Then show how to expand these in terms of arithmetic
 operations.  Describe each version of the @code{sqrt} machine design by drawing
 a data-path diagram and writing a controller definition in the register-machine
@@ -846,22 +870,20 @@ Implementing recursive processes, however, requires an additional mechanism.
 Consider the following recursive method for computing factorials, which we
 first examined in @ref{1.2.1}:
 
-@example
-(define (factorial n)
-  (if (= n 1) 
-      1
-      (* (factorial (- n 1)) n)))
+@example rust
+fn factorial(n: i64) -> i64 @{
+    if n == 1 @{ 1 @} else @{ factorial(n - 1) * n @}
+@}
 @end example
 
 @noindent
 As we see from the procedure, computing @math{{n!}} requires computing @math{{(n - 1)!}}.
 Our @abbr{GCD} machine, modeled on the procedure
 
-@example
-(define (gcd a b)
-  (if (= b 0) 
-      a
-      (gcd b (remainder a b))))
+@example rust
+fn gcd(a: i64, b: i64) -> i64 @{
+    if b == 0 @{ a @} else @{ gcd(b, a % b) @}
+@}
 @end example
 
 @noindent
@@ -1003,11 +1025,12 @@ subcomputation, is needed.
 
 @example
 (controller
-   (assign continue (label fact-done))     @r{; set up final return address}
+   (assign continue (label fact-done))   @r{; final return address}
  fact-loop
    (test (op =) (reg n) (const 1))
    (branch (label base-case))
-   @r{;; Set up for the recursive call by saving @code{n} and @code{continue}.}
+   @r{;; Set up for the recursive call}
+   @r{;; by saving @code{n} and @code{continue}.}
    @r{;; Set up @code{continue} so that the computation will continue}
    @r{;; at @code{after-fact} when the subroutine returns.}
    (save continue)
@@ -1018,7 +1041,8 @@ subcomputation, is needed.
  after-fact
    (restore n)
    (restore continue)
-   (assign val (op *) (reg n) (reg val))   @r{; @code{val} now contains @emph{n}(@emph{n} − 1)!}
+   @r{; @code{val} now contains @emph{n}(@emph{n} − 1)!}
+   (assign val (op *) (reg n) (reg val))
    (goto (reg continue))                   @r{; return to caller}
  base-case
    (assign val (const 1))                  @r{; base case: }1! = 1
@@ -1057,11 +1081,10 @@ modified during solution of the subproblem (see @ref{Exercise 5.4}).
 Let us examine a more complex recursive process, the tree-recursive computation
 of the Fibonacci numbers, which we introduced in @ref{1.2.2}:
 
-@example
-(define (fib n)
-  (if (< n 2) 
-      n 
-      (+ (fib (- n 1)) (fib (- n 2)))))
+@example rust
+fn fib(n: i64) -> i64 @{
+    if n < 2 @{ n @} else @{ fib(n - 1) + fib(n - 2) @}
+@}
 @end example
 
 @noindent
@@ -1137,24 +1160,25 @@ controller instruction sequence and draw a diagram showing the data paths.
 @item
 Recursive exponentiation:
 
-@example
-(define (expt b n)
-  (if (= n 0)
-      1
-      (* b (expt b (- n 1)))))
+@example rust
+fn expt(b: i64, n: i64) -> i64 @{
+    if n == 0 @{ 1 @} else @{ b * expt(b, n - 1) @}
+@}
 @end example
 
 @item
 Iterative exponentiation:
 
-@example
-(define (expt b n)
-  (define (expt-iter counter product)
-    (if (= counter 0)
+@example rust
+fn expt_iter(product: i64, counter: i64, b: i64) -> i64 @{
+    if counter == 0 @{
         product
-        (expt-iter (- counter 1)
-                   (* b product))))
-  (expt-iter n 1))
+    @} else @{
+        expt_iter(b * product, counter - 1, b)
+    @}
+@}
+
+fn expt(b: i64, n: i64) -> i64 @{ expt_iter(1, n, b) @}
 @end example
 
 @end enumerate
@@ -1229,12 +1253,8 @@ Instructions to use the stack were introduced in @ref{5.1.4}:
 (restore ⟨@var{register-name}⟩)
 @end example
 
-@noindent
-The only kind of @code{⟨}@var{constant-value}@code{⟩} we have seen so far is a number,
-but later we will use strings, symbols, and lists.
-For example,@*
-@code{(const "abc")} is the string @code{"abc"},@*
-@code{(const abc)} is the symbol @code{abc},@*
-@code{(const (a b c))} is the list @code{(a b c)},@*
-and @code{(const ())} is the empty list.
+The only kind of @code{⟨}@var{constant-value}@code{⟩} this integer machine
+admits is a number: @code{(const 0)} is the machine word @code{0}.  Labels are
+a separate operand kind, written @code{(label …)}, used for return addresses
+(@ref{5.1.3}).
 

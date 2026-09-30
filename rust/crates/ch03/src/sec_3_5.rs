@@ -3,23 +3,19 @@
 
 //! Section 3.5: Streams.
 //!
-//! The section's programs live here as free functions named after the
-//! book's procedures, over the runtime's [`Stream`] and memoized
-//! [`Lazy`]. The mapping is fixed once, at the top: `the-empty-stream` is
-//! [`Stream::Empty`] and `stream-null?` is
-//! [`Stream::is_empty`](Stream::is_empty); `(cons-stream a b)` is
-//! [`cons_stream`] taking the tail as a thunk; `(delay e)` is [`delay`]
-//! and `(force p)` is [`force`], both backed by the one memoized thunk of
-//! this edition. A stream's `Clone` shares the memoized spine, so two
+//! The section's programs live here as free functions over the
+//! runtime's [`Stream`] and memoized [`Lazy`]. The empty stream is
+//! [`Stream::Empty`] and [`Stream::is_empty`](Stream::is_empty) tests
+//! for it; [`cons_stream`] takes the tail as a thunk; [`delay`] and
+//! [`force`] are backed by the one memoized thunk of this edition. A stream's `Clone` shares the memoized spine, so two
 //! references to one stream force each tail at most once -- the fact
 //! exercises 3.51, 3.52, 3.57, and 3.63 measure.
 //!
-//! The book defines many streams by naming the stream inside its own
-//! definition (`(define fibs (cons-stream 0 ... fibs ...))`). Rust
-//! definitions cannot name themselves, so [`self_stream`] hands the body
-//! a [`StreamName`]: call `name.stream()` inside tail thunks only, which
-//! run after the definition is complete, exactly the discipline the
-//! book's `define` enforces. Self-referential streams form an `Rc` cycle
+//! Many section streams are self-referential: the stream is named
+//! inside its own tail. Rust definitions cannot name themselves, so
+//! [`self_stream`] hands the body a [`StreamName`]: call
+//! `name.stream()` inside tail thunks only, which run after the
+//! definition is complete. Self-referential streams form an `Rc` cycle
 //! and leak by design, as the runtime stream documents.
 //!
 //! Nothing here prints: the display procedures answer the lines the
@@ -40,10 +36,9 @@ pub fn the_empty_stream<A>() -> Stream<A> {
     Stream::Empty
 }
 
-/// The book's `(cons-stream ⟨a⟩ ⟨b⟩)`: the head is eager, the tail thunk
-/// runs at most once. The tail is a thunk because a plain argument would
-/// be evaluated before the call, which is the one thing `cons-stream`
-/// exists to prevent.
+/// Conses an eager head onto a thunked tail that runs at most once.
+/// The tail is a thunk because a plain argument would be evaluated
+/// before the call, which this constructor exists to prevent.
 pub fn cons_stream<A: 'static>(head: A, tail: impl FnOnce() -> Stream<A> + 'static) -> Stream<A> {
     Stream::cons_stream(head, tail)
 }
@@ -68,12 +63,12 @@ pub fn stream_tail<A: Clone + 'static>(s: &Stream<A>) -> Stream<A> {
     s.tail()
 }
 
-/// The book's `(delay ⟨exp⟩)`: the one memoized promise of this edition.
+/// The one memoized promise of this edition.
 pub fn delay<T: 'static, F: FnOnce() -> T + 'static>(f: F) -> Lazy<T> {
     Lazy::new(f)
 }
 
-/// The book's `(force p)`: runs the generator once, then serves the
+/// Runs the generator once, then serves the
 /// memoized value forever.
 #[must_use]
 pub fn force<T: 'static>(promise: &Lazy<T>) -> Rc<T> {
@@ -195,9 +190,8 @@ pub fn stream_enumerate_interval(low: i128, high: i128) -> Stream<i128> {
     cons_stream(low, move || stream_enumerate_interval(low + 1, high))
 }
 
-/// The binding site of a self-referential definition: the book's
-/// `(define fibs (cons-stream 0 ... fibs ...))` names the stream inside
-/// its own tail. [`self_stream`] hands the body one of these; call
+/// The binding site of a self-referential definition, where the
+/// stream is named inside its own tail. [`self_stream`] hands the body one of these; call
 /// [`StreamName::stream`] inside tail thunks only, which run after the
 /// definition is complete.
 pub struct StreamName<A>(Rc<dyn Fn() -> Stream<A>>);
@@ -246,7 +240,7 @@ pub fn self_stream<A: Clone + 'static>(body: impl FnOnce(StreamName<A>) -> Strea
     defined
 }
 
-/// The book's `(integers-starting-from n)`.
+/// The integers from `n` upward.
 #[must_use]
 pub fn integers_starting_from(n: i128) -> Stream<i128> {
     cons_stream(n, move || integers_starting_from(n + 1))

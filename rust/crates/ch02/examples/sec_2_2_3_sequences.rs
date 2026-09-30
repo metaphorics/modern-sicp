@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // => 85000
     assert_eq!(salary_of_highest_paid_programmer(&records), 85_000);
 
-    // Nested mappings: prime-sum-pairs over `(enumerate-interval 1 n)`.
+    // Nested mappings: prime-sum-pairs over the integers from 1 to n.
     let pairs = prime_sum_pairs(6);
     println!("{pairs:?}");
     // => [(2, 1, 3), (3, 2, 5), (4, 1, 5), (4, 3, 7), (5, 2, 7), (6, 1, 7), (6, 5, 11)]

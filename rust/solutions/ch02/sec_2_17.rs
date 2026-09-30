@@ -5,7 +5,7 @@
 
 mod ex_2_17 {
     use ch02::sec_2_2::List;
-    use sicp_runtime::SchemeError;
+    use sicp_runtime::SicpError;
 
     /// Exercise 2.17: `last-pair`
     ///
@@ -14,11 +14,11 @@ mod ex_2_17 {
     /// book's recursive plan.
     ///
     /// # Errors
-    /// [`SchemeError::TypeMismatch`] on the empty list, which has no
+    /// [`SicpError::TypeMismatch`] on the empty list, which has no
     /// last pair.
-    fn last_pair(items: &List<i128>) -> Result<List<i128>, SchemeError> {
+    fn last_pair(items: &List<i128>) -> Result<List<i128>, SicpError> {
         let List::Cons(x, rest) = items else {
-            return Err(SchemeError::TypeMismatch(
+            return Err(SicpError::TypeMismatch(
                 "last-pair of the empty list".into(),
             ));
         };

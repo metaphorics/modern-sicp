@@ -18,8 +18,8 @@ import {
  * proposes to work with the whole first row, appending it to the
  * recursively defined rest:
  *
- *   pairs(s, t) = stream-append(stream-map(x -> (stream-car s, x), t),
- *                               pairs(stream-cdr s, stream-cdr t))
+ *   pairs(s, t) = streamAppend(streamMap(x -> (streamCar s, x), t),
+ *                               pairs(streamCdr s, streamCdr t))
  *
  * Does this work? The demonstration answers by execution with a step
  * budget: a meter in the row map throws past 200 steps, and the two
@@ -63,22 +63,22 @@ export const makeLouisMeter = (budget: number): LouisMeter => {
   };
 };
 
-/** The book's `stream-append`: the elements of s1 followed by the
+/** The book's `streamAppend`: the elements of s1 followed by the
  * elements of s2, empties passing through. The recursive call sits
- * behind cons-stream's delay, so s2 is reached only when s1 runs
+ * behind consStream's delay, so s2 is reached only when s1 runs
  * empty. */
 export const streamAppend = <A>(s1: Stream<A>, s2: Stream<A>): Stream<A> =>
   s1 === null ? s2 : consStream(s1.head, () => streamAppend(streamCdr(s1), s2));
 
 /** The same append with the rest spelled as the delayed argument,
- * matching cons-stream's discipline: s2 is forced only when s1 runs
+ * matching consStream's discipline: s2 is forced only when s1 runs
  * empty, so appending an infinite first row to a recursively defined
  * rest is expressible without evaluating the rest eagerly. This is the
  * spelling that gives Louis's definition its best case. */
 export const streamAppendDelayed = <A>(s1: Stream<A>, s2: Delayed<Stream<A>>): Stream<A> =>
   s1 === null ? force(s2) : consStream(s1.head, () => streamAppendDelayed(streamCdr(s1), s2));
 
-/** Louis's mapped whole first row: (stream-car s, x) for every x in t,
+/** Louis's mapped whole first row: (streamCar s, x) for every x in t,
  * with the meter in the per-element closure. */
 const meteredFirstRow = (meter: LouisMeter, s: Stream<number>, t: Stream<number>): Stream<Pair> =>
   streamMap((x): Pair => {

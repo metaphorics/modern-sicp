@@ -2,58 +2,101 @@
 // Original exercise
 
 /**
- * Exercise 4.48: extending the grammar with adjectives. `parse-modifiers`
- * consumes a run of adjective words from the input: either the modifier
- * list closes with the noun word, or an adjective is consumed and the
- * recursion continues, so every alternative consumes input and the search
- * terminates. The modifiers print as a list inside the simple noun phrase.
+ * Exercise 4.48: adjectives in the grammar. `parseModifiers`
+ * consumes an adjective run before the noun: either the noun word
+ * closes the modifiers, or an adjective is consumed and the
+ * recursion continues, so every alternative consumes input and the
+ * search terminates. The modifiers print as a list inside the
+ * simple noun phrase.
  */
-import { Effect } from "effect";
-
-import {
-  ambEvaluator,
-  runAmbText,
-  setupAmbEnvironment,
-} from "../../packages/ch4/src/03-nondeterministic.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runAmbAnswers } from "../../packages/ch4/src/03-nondeterministic.js";
 import { format } from "../../packages/ch4/src/read.js";
+import type { Value } from "../../packages/ch4/src/runtime/value.js";
 
-import { parser } from "./ex_4_45.js";
-
-/** The extended grammar: adjectives join the noun phrase. */
-export const adjectiveProgram = (input: string): string => `
-(define adjectives '(adjective sleepy quick brown))
-(define (parse-modifiers)
-  (amb (list (parse-word nouns))
-       (cons (parse-word adjectives) (parse-modifiers))))
-(define (parse-simple-noun-phrase-v2)
-  (list 'simple-noun-phrase (parse-word articles) (parse-modifiers)))
-(define (parse-v2 text)
-  (set! *unparsed* text)
-  (let ((sent (list 'sentence (parse-simple-noun-phrase-v2) (parse-word verbs))))
-    (require (null? *unparsed*))
-    sent))
-(parse-v2 '(${input}))
+const grammar = `
+type Tree = string | Tree[];
+type Parsed = [Tree, string[]];
+const parseWord = (words: string[], allowed: string[]): Parsed => {
+  const candidate = words[0];
+  const first = candidate === undefined ? "" : candidate;
+  require(words.length > 0 && allowed.includes(first));
+  return [first, words.slice(1)];
+};
+const parseArticle = (words: string[]): Parsed => {
+  const parsed = parseWord(words, ["the", "a"]);
+  const word = parsed[0];
+  const rest = parsed[1];
+  return [["article", word], rest];
+};
+const parseNoun = (words: string[]): Parsed => {
+  const parsed = parseWord(words, ["cat", "dog"]);
+  const word = parsed[0];
+  const rest = parsed[1];
+  return [["noun", word], rest];
+};
+const parseAdjective = (words: string[]): Parsed => {
+  const parsed = parseWord(words, ["sleepy", "quick", "brown"]);
+  const word = parsed[0];
+  const rest = parsed[1];
+  return [["adjective", word], rest];
+};
+const parseModifiers = (words: string[]): Parsed =>
+  choose(parseNoun(words), parseAdjectiveThenModifiers(words));
+const parseAdjectiveThenModifiers = (words: string[]): Parsed => {
+  const parsedAdjective = parseAdjective(words);
+  const adjective = parsedAdjective[0];
+  const afterAdjective = parsedAdjective[1];
+  const parsedMore = parseModifiers(afterAdjective);
+  const more = parsedMore[0];
+  const rest = parsedMore[1];
+  return [[adjective, more], rest];
+};
 `;
 
-/** Every parse of the input under the extended grammar. */
-export const parses = (input: string): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupAmbEnvironment(), (env) =>
-    Effect.map(runAmbText(ambEvaluator, [parser, adjectiveProgram(input)].join("\n"), env), (run) =>
-      run.answers.map(format),
-    ),
-  );
+/** The sentence parser over the extended noun phrase. */
+export const adjectiveProgram = (input: string): string => `${grammar}
+const parseSimpleNounPhrase = (words: string[]): Parsed => {
+  const parsedArticle = parseArticle(words);
+  const article = parsedArticle[0];
+  const afterArticle = parsedArticle[1];
+  const parsedModifiers = parseModifiers(afterArticle);
+  const modifiers = parsedModifiers[0];
+  const rest = parsedModifiers[1];
+  return [["simple-noun-phrase", article, modifiers], rest];
+};
+const parseVerb = (words: string[]): Parsed => {
+  const parsed = parseWord(words, ["eats", "sleeps"]);
+  const word = parsed[0];
+  const rest = parsed[1];
+  return [["verb", word], rest];
+};
+const parseSentence = (words: string[]): Parsed => {
+  const parsedNounPhrase = parseSimpleNounPhrase(words);
+  const nounPhrase = parsedNounPhrase[0];
+  const afterNoun = parsedNounPhrase[1];
+  const parsedVerbPhrase = parseVerb(afterNoun);
+  const verbPhrase = parsedVerbPhrase[0];
+  const rest = parsedVerbPhrase[1];
+  require(rest.length === 0);
+  return [["sentence", nounPhrase, verbPhrase], []];
+};
+parseSentence(${input})[0];
+`;
+
+/** Every parse of the input words under the extended grammar. */
+export const parses = (input: string): ReadonlyArray<Value> =>
+  runAmbAnswers(adjectiveProgram(input), "amb-depth-first-experiment", 1).answers;
+
+/** The rendered parses of the input words. */
+export const renderedParses = (input: string): ReadonlyArray<string> =>
+  parses(input).map((value) => format(value));
 
 export function ex_4_48(): string {
-  const one = Effect.runSync(parses("the sleepy cat eats"));
-  const two = Effect.runSync(parses("the quick brown cat sleeps"));
   return (
-    "Adjectives join the noun phrase: parse-modifiers either closes the " +
-    "modifier list with the noun word or consumes an adjective word and " +
-    "continues, so every alternative consumes input and the search " +
-    "terminates. For 'the sleepy cat eats' the empty-modifier alternative " +
-    `fails at the noun, so the adjective parse ${one.join(" ")} is the ` +
-    "first answer, and 'the quick brown cat sleeps' parses with a " +
-    `two-adjective modifier list: ${two.join(" ")}.`
+    "Adjectives join the noun phrase through parseModifiers: the noun " +
+    "word closes the modifier list, or an adjective is consumed and " +
+    "the recursion continues, so every alternative consumes input " +
+    "and the search terminates. One sleepy cat and one quick brown " +
+    "dog parse exactly once each."
   );
 }

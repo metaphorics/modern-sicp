@@ -15,17 +15,17 @@ export class PendingSolution extends Error {
   }
 }
 
-/** The pair the statement's `RLC` answers: the streams of the state
+/** The pair the statement's `rlc` answers: the streams of the state
  * variables, in the statement's order (`vC` first, then `iL`). */
 export interface RlcStreams {
   readonly vC: Stream<number>;
   readonly iL: Stream<number>;
 }
 
-/** The book's `RLC`: takes `R`, `L`, `C` and `dt` and answers a
+/** The book's `rlc`: takes `R`, `L`, `C` and `dt` and answers a
  * procedure from the initial values `vC0` and `iL0` to the pair of
  * state streams. */
-export function RLC(
+export function rlc(
   _R: number,
   _L: number,
   _C: number,

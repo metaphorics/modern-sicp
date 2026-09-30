@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 0.1: three Scheme sessions in TypeScript");
+test.todo("Exercise 0.1: three evaluation sessions in TypeScript");

@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { ex_4_49, sentences } from "./ex_4_49.js";
+import { renderedSentences } from "./ex_4_49.js";
 
-describe("exercise 4.49: generation", () => {
-  it("the first six sentences descend the first alternatives", async () => {
-    expect(await Effect.runPromise(sentences(6))).toStrictEqual([
-      "(sentence (simple-noun-phrase (article the) (noun student)) (verb studies))",
-      "(sentence (simple-noun-phrase (article the) (noun student)) (verb lectures))",
-      "(sentence (simple-noun-phrase (article the) (noun student)) (verb eats))",
-      "(sentence (simple-noun-phrase (article the) (noun student)) (verb sleeps))",
-      "(sentence (simple-noun-phrase (article the) (noun professor)) (verb studies))",
-      "(sentence (simple-noun-phrase (article the) (noun professor)) (verb lectures))",
-    ]);
+const first =
+  '["sentence", ["simple-noun-phrase", ["article", "the"], ["noun", "student"]], ["verb", "studies"]]';
+const sixth =
+  '["sentence", ["simple-noun-phrase", ["article", "the"], ["noun", "professor"]], ["verb", "lectures"]]';
+
+describe("exercise 4.49: Alyssa's generation", () => {
+  it("generates the first half-dozen sentences in search order", () => {
+    const six = renderedSentences(6);
+    expect(six).toHaveLength(6);
+    expect(six[0]).toBe(first);
+    expect(six[5]).toBe(sixth);
   });
 
-  it("reports the boring descent", () => {
-    expect(ex_4_49()).toContain("first alternatives");
+  it("cycles verbs fastest under fixed article and noun", () => {
+    const six = renderedSentences(6);
+    expect(six[1]).toContain('["verb", "lectures"]');
+    expect(six[4]).toContain('["noun", "professor"]');
   });
 });

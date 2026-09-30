@@ -14,7 +14,7 @@ import {
 } from "../../packages/ch2/src/02-picture-language.js";
 
 /**
- * Exercise 2.24: the structure of (list 1 (list 2 (list 3 4))). The
+ * Exercise 2.24: the structure of `[1, [2, [3, 4]]]`. The
  * edition builds the value and reads its shape back from the printers:
  * the printed form, the outer length, and the tree interpretation's
  * leaf count.

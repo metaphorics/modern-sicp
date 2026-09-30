@@ -19,10 +19,10 @@ import {
  * defers each addition to the moment a cell is actually built. The
  * transcript is the exercise's sequence over the interval 1 through
  * 20: define `seq` (accum mapped over the interval), `y` (the even
- * elements), `z` (the multiples of five), then `(stream-ref y 7)` and
- * `(display-stream z)`, reading the sum after each step. The
+ * elements), `z` (the multiples of five), then `streamRef(y, 7)` and
+ * the display of `z`, reading the sum after each step. The
  * exercise's last question, whether a plain-thunk delay without
- * `memo-proc` would answer differently, is answered by running the
+ * memoization would answer differently, is answered by running the
  * same transcript with the memoization switched off.
  */
 
@@ -37,18 +37,18 @@ export const makeAccum = (sum: Ref.Ref<number>): ((x: number) => Effect.Effect<n
   return accum;
 };
 
-/** Runs the book's `(accum x)` now: suspend defers the mutation to
+/** Runs the statement's `accum(x)` now: suspend defers the mutation to
  * this exact call. */
 export const runAccum = (accum: (x: number) => Effect.Effect<number>, x: number): number =>
   Effect.runSync(Effect.suspend(() => accum(x)));
 
-/** The edition's `delay` with a switch: the memoized `memo-proc` delay
+/** The edition's `delay` with a switch: the memoizing delay
  * the section implements, or the plain thunk the exercise's last
  * question asks about. */
 export const delaySwitch = <A>(thunk: () => A, memoized: boolean): Delayed<A> =>
   memoized ? memoProc(thunk) : thunk;
 
-/** The book's one-argument stream-map under the switch. Each cell's
+/** The book's one-argument streamMap under the switch. Each cell's
  * head computes when the cell is built, so the accumulator runs once
  * per position when memoized and once per visit when not. */
 export const mapSwitch = <A, B>(proc: (a: A) => B, s: Stream<A>, memoized: boolean): Stream<B> => {
@@ -120,7 +120,7 @@ const runTranscript = (memoized: boolean): Effect.Effect<AccumReadings> =>
   });
 
 /** The memoized run: the book's answers under the section's
- * `memo-proc` delay. */
+ * memoizing delay. */
 export const memoizedRun = (): Effect.Effect<AccumReadings> => runTranscript(true);
 
 /** The plain-thunk run: the exercise's counterfactual. */

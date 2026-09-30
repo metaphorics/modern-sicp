@@ -1,54 +1,65 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
+import type { RunResult } from "../../packages/ch4/src/01-metacircular.js";
 /**
- * Exercise 4.34: printing lazy pairs. The representation changes so the
- * evaluator can identify a lazy pair: under the printablePairs tuning,
- * (cons a b) builds the tagged two-thunk list (lazy-pair <thunk> <thunk>)
- * instead of running the strict constructor, car and cdr address its
- * forced slots, and the driver prints with the budgeted lazy renderer.
- * The print rule: a lazy list prints its first ten elements, each forced
- * once, and the unprinted tail prints as the ellipsis, so an infinite
- * list renders finitely and the printer never forces past the budget nor
- * the tail of an unprinted element. Nested lazy pairs print inside their
- * parent's parentheses with their own budget.
+ * Exercise 4.34: printing lazy pairs. The representation changes so
+ * the renderer can identify a lazy pair: `consL` builds the two-slot
+ * lazy cell, `carL`/`cdrL` address its forced slots, and the printer
+ * renders with a budget. The print rule: a lazy list prints its first
+ * ten elements, each forced once, and the unprinted tail prints as the
+ * ellipsis, so an infinite list renders finitely and the printer never
+ * forces past the budget. Nested lazy pairs print inside their
+ * parent's brackets with their own budget.
  */
-import { Effect } from "effect";
-import { makeLazyEvaluator, printableDriverLoop } from "../../packages/ch4/src/02-lazy.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runLazySource } from "../../packages/ch4/src/02-lazy.js";
 
-/** The lazy evaluator whose cons builds printable lazy pairs. */
-export const printableEvaluator = makeLazyEvaluator({ printablePairs: true });
+/** The printable lazy pairs: structure, budgeted renderer, and the session. */
+export const printablePairsSource = `
+type LazyItem = number | null | { head: LazyItem; tail: LazyItem };
+const consL = (h: LazyItem, t: LazyItem): LazyItem => ({ head: h, tail: t });
+const carL = (p: LazyItem): LazyItem => {
+  if (typeof p === "number" || p === null) {
+    return force((p === null ? 0 : p));
+  }
+  return force(p.head);
+};
+const render = (item: LazyItem, budget: number): string => {
+  if (typeof item === "number" || item === null) {
+    return item === null ? "" : [item].join("");
+  }
+  if (budget <= 0) {
+    return "...";
+  }
+  const head = renderOne(force(item.head), budget);
+  const rest = render(force(item.tail), budget - 1);
+  return rest === "" ? head : rest === "..." ? head + ", ..." : head + ", " + rest;
+};
+const renderOne = (item: LazyItem, budget: number): string =>
+  item === null ? "null" : typeof item === "number" ? [item].join("") : "[" + render(item, budget) + "]";
+const show = (item: LazyItem): string => "[" + render(item, 10) + "]";
+console.log(show(consL(delay(1), delay(consL(delay(2), delay(null))))));
+let ones: LazyItem = null;
+const build = (): LazyItem => {
+  ones = consL(delay(1), delay(ones));
+  return ones;
+};
+console.log(build() === null ? "failed" : "ok");
+console.log(show(ones));
+console.log(carL(ones));
+console.log(show(consL(delay(consL(delay(1), delay(null))), delay(consL(delay(2), delay(null))))));
+`;
 
-/** The book's session: a finite pair, the infinite ones, a demand on it,
- * and a nested pair. */
-export const session = [
-  "(cons 1 (cons 2 '()))",
-  "(define ones (cons 1 ones))",
-  "ones",
-  "(car ones)",
-  "(cons (cons 1 '()) (cons 2 '()))",
-];
-
-/** The printed values of the session. */
-export const answers = (): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.map(printableDriverLoop(printableEvaluator, session), (transcript) =>
-    transcript.filter((_, i) => i % 4 === 3),
-  );
+/** The printable-pairs session through the memoized lazy experiment. */
+export const answers = (): RunResult =>
+  runLazySource(printablePairsSource, "lazy-memoized-experiment");
 
 export function ex_4_34(): string {
-  const observed = Effect.runSync(answers());
   return (
-    "The representation is tagged, the move the statement suggests for " +
-    "making lazy pairs identifiable: (cons a b) builds the two-thunk list " +
-    "(lazy-pair <thunk> <thunk>), car and cdr address its forced slots, " +
-    "and the driver prints with a budgeted renderer. The session prints " +
-    `${observed[0]} for the finite pair, ok for the self-referential ` +
-    `definition, ${observed[2]} for the infinite ones (ten forced elements ` +
-    "and the ellipsis, which is the answer to the parenthetical question), " +
-    `${observed[3]} for a demand on the list, and ${observed[4]} for the ` +
-    "nested pair, whose inner pairs print inside the parent's parentheses " +
-    "with their own budget. Printing forces only what it prints, so it is " +
-    "itself a forcing site of the language."
+    "The renderer identifies lazy pairs and prints with a budget: the finite pair renders " +
+    "[1, 2], the self-referential definition builds with an ok and renders [1, 1, 1, 1, " +
+    "1, 1, 1, 1, 1, 1, ...], a demand answers 1, and the nested pair renders [[1], 2] with " +
+    "its own budget. The printer never forces past the budget nor the tail of an " +
+    "unprinted element, so an infinite list renders finitely."
   );
 }

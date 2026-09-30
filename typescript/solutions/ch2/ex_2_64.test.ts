@@ -12,9 +12,9 @@ import {
 import { listToTree } from "./ex_2_64.js";
 
 describe("exercise 2.64", () => {
-  it("builds the balanced tree for (1 3 5 7 9 11)", () => {
+  it("builds the balanced tree for [1, 3, 5, 7, 9, 11]", () => {
     const t = listToTree(list(1, 3, 5, 7, 9, 11));
-    // Root 5, left (1 () 3), right (9 (7) (11)): the book's drawing.
+    // Root 5, left [1, [], 3], right [9, [7], [11]]: the book's drawing.
     expect(t).toStrictEqual(
       makeTreeSet(
         5,

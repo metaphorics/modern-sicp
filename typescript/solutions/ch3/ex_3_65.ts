@@ -17,15 +17,15 @@ import {
  * themselves, their euler transform, and the accelerated sequence of
  * the tableau's first column. The statement's question, "how rapidly
  * do these sequences converge?", is answered with counted
- * `stream-limit` searches: at tolerance 0.0001 the plain partial sums
+ * `streamLimit` searches: at tolerance 0.0001 the plain partial sums
  * need about ten thousand terms, the euler transform 13, the
  * accelerated sequence 5.
  */
 
 /**
- * The book's `ln2-summands`: 1, -1/2, 1/3, -1/4, ... The statement's
- * shape is `(cons-stream (/ 1 n) (stream-map (lambda (x) (- x))
- * (ln2-summands (+ n 1))))`: each element wraps one more `stream-map`
+ * The statement's `ln2Summands`: 1, -1/2, 1/3, -1/4, ... The
+ * shape is `consStream(1 / n, () => streamMap((x) => -x,
+ * ln2Summands(n + 1)))`: each element wraps one more `streamMap`
  * negation layer around the recursive rest, so element k sits k map
  * cells deep. With memoized tails every cell is still computed once,
  * but the allocation is quadratic in the prefix length (measured: 251
@@ -40,7 +40,7 @@ const ln2SummandsSigned = (n: number, sign: number): StreamCell<number> =>
   consStream(sign / n, () => ln2SummandsSigned(n + 1, -sign));
 
 /**
- * The book's `ln2-stream`: the partial sums of the summands. The
+ * The book's `ln2Stream`: the partial sums of the summands. The
  * stream is bound locally and referenced by its own tail, the
  * exercise-3.63 shape: each partial sum is then computed once from the
  * one before. The module's `partialSums` re-invokes itself on every
@@ -91,5 +91,5 @@ export const streamLimitWithTerms = (s: Stream<number>, tolerance: number): Limi
     rest = next;
     terms += 1;
   }
-  throw new Error("stream-limit: the stream ran out before it converged");
+  throw new Error("streamLimit: the stream ran out before it converged");
 };

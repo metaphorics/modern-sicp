@@ -4,7 +4,7 @@
 import { integralDelayed, type Stream, streamMap2 } from "../../packages/ch3/src/05-streams.js";
 
 /**
- * Exercise 3.78: `solve-2nd`, the second-order feedback loop. The
+ * Exercise 3.78: `solve2nd`, the second-order feedback loop. The
  * statement's equation is `d^2y/dt^2 - a dy/dt - b y = 0`, that is
  * `y'' = a y' + b y`: the second derivative depends on both `y` and
  * its first derivative, and both of those are themselves determined
@@ -16,7 +16,7 @@ import { integralDelayed, type Stream, streamMap2 } from "../../packages/ch3/src
  * refer to each other before either is initialized.
  */
 
-/** The book's `solve-2nd`: the stream of successive values of `y`
+/** The book's `solve2nd`: the stream of successive values of `y`
  * for `y'' = a y' + b y`, from `y(0) = y0` and `y'(0) = dy0`,
  * integrated at step `dt`. The position loop integrates the
  * derivative loop; the derivative loop integrates `a y' + b y` read

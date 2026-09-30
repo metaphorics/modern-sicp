@@ -19,7 +19,7 @@ describe("exercise 2.93: rational functions", () => {
       ]),
     );
     expect(showArithDatum(rf)).toBe(
-      "(rational (polynomial x (3 1) (0 1)) (polynomial x (2 1) (0 1)))",
+      "[rational, [polynomial, x, [3, 1], [0, 1]], [polynomial, x, [2, 1], [0, 1]]]",
     );
   });
 
@@ -39,7 +39,7 @@ describe("exercise 2.93: rational functions", () => {
     const sum = addRatFn(rf, rf);
     expect(sum._tag).toBe("Ok");
     expect(show(sum)).toBe(
-      "(rational (polynomial x (5 2) (3 2) (2 2) (0 2)) (polynomial x (4 1) (2 2) (0 1)))",
+      "[rational, [polynomial, x, [5, 2], [3, 2], [2, 2], [0, 2]], [polynomial, x, [4, 1], [2, 2], [0, 1]]]",
     );
   });
 });

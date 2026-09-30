@@ -2,41 +2,74 @@
 // Original exercise
 
 import {
-  arithmeticOperations,
-  assemble,
   assign,
-  type ControllerLine,
-  getRegisterContents,
-  lbl,
-  makeMachine,
-  makeNewMachine,
-  mark,
+  constant,
+  labelRef,
+  type MachineError,
+  type MachineStatement,
   op,
-  reg,
-  renderMachineError,
-  setRegisterContents,
-  type Value,
-} from "../../packages/ch5/src/02-simulator.js";
-import { expectError, expectOk } from "./ex_5_07.js";
+  register,
+  type Source,
+} from "../../packages/ch5/src/01-register-machines.ts";
+import { mark } from "./ex_5_07.ts";
 
-/** A machine operation whose operand is written (label b). */
-const labelAsOperandController: ControllerLine[] = [assign("t", op("+", reg("a"), lbl("b")))];
+/** A machine operation whose operand is written (label b): the book's
+ * offending snippet. Labels denote instruction addresses, never operand
+ * values, so the exercise's rule rejects them inside operation calls
+ * while plain label sources (the continue register's addresses) stay
+ * legal. */
+export const labelAsOperandController: readonly MachineStatement[] = [
+  assign("t", op("+", register("a"), labelRef("b"))),
+  mark("b"),
+];
 
-/** The strict assembler's answer: the typed label-operand error, raised
- * while the machine is being built. */
-export const labelOperandOutcome = (): string => {
-  const machine = makeNewMachine(["a", "t"], arithmeticOperations);
-  const program = assemble(labelAsOperandController, machine, { strictLabels: true });
-  return program.ok ? "assembled" : renderMachineError(expectError(program));
+/** The offending label of one source tree, or null when the tree holds
+ * only values and nested operation calls. The rule is the exercise's
+ * added assembly check, stated beside the book's reason: an operation
+ * receives values, and an instruction address is not one. */
+const labelOperand = (source: Source): string | null => {
+  if (source.tag === "label") return source.name;
+  if (source.tag === "op") {
+    for (const arg of source.args) {
+      const offender = labelOperand(arg);
+      if (offender !== null) return offender;
+    }
+  }
+  return null;
 };
 
-/** The book's base assembler accepts the same controller and computes
- * the label's address (the index of the first instruction), the behavior
- * the strict variant refuses: a + address(addr) with a = 5 is 5. */
-export const labelOperandUnderBaseAssembler = (): Value => {
-  const controller: ControllerLine[] = [mark("addr"), assign("t", op("+", reg("a"), lbl("addr")))];
-  const machine = expectOk(makeMachine(["a", "t"], arithmeticOperations, controller));
-  expectOk(setRegisterContents(machine, "a", 5));
-  expectOk(machine.start());
-  return expectOk(getRegisterContents(machine, "t"));
+/** The added rule over one controller: every operation call in every
+ * assign source and every test/perform argument list is checked, and the
+ * first offending label is reported as a `bad-target` fault. */
+export const rejectLabelOperands = (
+  controller: readonly MachineStatement[],
+): MachineError | null => {
+  for (const statement of controller) {
+    const sources: ReadonlyArray<Source> =
+      statement.tag === "assign"
+        ? [statement.source]
+        : statement.tag === "test" || statement.tag === "perform"
+          ? statement.args
+          : [];
+    for (const source of sources) {
+      const offender = labelOperand(source);
+      if (offender !== null) {
+        return {
+          tag: "bad-target",
+          detail: `label ${offender} used as an operation operand`,
+        };
+      }
+    }
+  }
+  return null;
 };
+
+/** Exercise 5.9: the offending controller is rejected by the added rule;
+ * the same controller with a constant operand passes. */
+export const ex_5_09 = (): {
+  readonly offending: MachineError | null;
+  readonly fixed: MachineError | null;
+} => ({
+  offending: rejectLabelOperands(labelAsOperandController),
+  fixed: rejectLabelOperands([assign("t", op("+", register("a"), constant(2)))]),
+});

@@ -1,59 +1,70 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { evalString } from "../../packages/ch4/src/01-metacircular.js";
-import type { Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runSource } from "../../packages/ch4/src/01-metacircular.js";
 import { format } from "../../packages/ch4/src/read.js";
-import { evaMapDefinition, makeEvaEnvironment, makeLouisEnvironment } from "./ex_4_14.js";
+import { child } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { fail, ok } from "../../packages/ch4/src/runtime/errors.js";
+import {
+  isArrayValue,
+  makeArray,
+  makeClosure,
+  makePrimitive,
+  type Value,
+} from "../../packages/ch4/src/runtime/value.js";
+import { block, returnStmt } from "../../packages/ch4/src/syntax/ast.js";
+import { evaMapSource, makeHostMap } from "./ex_4_14.js";
 
-const runtimeMessage = (error: EvaluationError): string =>
-  error._tag === "RuntimeError" ? error.message : "<not a RuntimeError>";
+/** The observable result: the rendered value, or the fault category and detail. */
+const shown = (outcome: Outcome): string => {
+  if (outcome.tag === "ok") {
+    return format(outcome.value);
+  }
+  return outcome.error.tag === "bad-operand"
+    ? `error:bad-operand:${outcome.error.detail}`
+    : `error:${outcome.error.tag}`;
+};
 
-const failureOf = (run: Effect.Effect<Value, EvaluationError>): Effect.Effect<EvaluationError> =>
-  Effect.flatMap(Effect.result(run), (outcome) =>
-    outcome._tag === "Failure"
-      ? Effect.succeed(outcome.failure)
-      : Effect.die(new Error("expected a failure")),
-  );
+const headPrimitive = makePrimitive("head", (args: ReadonlyArray<Value>): Outcome => {
+  const first = args[0];
+  return isArrayValue(first)
+    ? ok(first.items[0])
+    : fail({ tag: "bad-operand", operator: "head", detail: "not an array" });
+});
 
-describe("exercise 4.14: map as a primitive", () => {
-  it.effect("Louis's host map handles a primitive procedure", () =>
-    Effect.gen(function* () {
-      const env = yield* makeLouisEnvironment();
-      const value = yield* evalString("(map car '((1 2) (3 4)))", env);
-      expect(format(value)).toBe("(1 3)");
-    }),
-  );
+const pairs = makeArray([makeArray([1, 2]), makeArray([3, 4])]);
 
-  it.effect("Louis's host map dies on an evaluator closure", () =>
-    Effect.gen(function* () {
-      const env = yield* makeLouisEnvironment();
-      const failure = yield* failureOf(evalString("(map (lambda (p) p) '((9)))", env));
-      expect(failure._tag).toBe("RuntimeError");
-      expect(runtimeMessage(failure)).toBe("map: the host could not call this procedure");
-    }),
-  );
+describe("exercise 4.14: two maps, two fates", () => {
+  it("Louis's host map calls a host primitive per element: [1, 3]", () => {
+    expect(shown(makeHostMap().fn([headPrimitive, pairs]))).toBe("[1, 3]");
+  });
 
-  it.effect("Eva's object-language map works for both calls", () =>
-    Effect.gen(function* () {
-      const env = yield* makeEvaEnvironment();
-      const pairs = yield* evalString("(map car '((1 2) (3 4)))", env);
-      expect(format(pairs)).toBe("(1 3)");
-      const squares = yield* evalString("(map (lambda (n) (* n n)) '(1 2 3))", env);
-      expect(format(squares)).toBe("(1 4 9)");
-      const identity = yield* evalString("(map (lambda (p) p) '((9)))", env);
-      expect(format(identity)).toBe("((9))");
-    }),
-  );
+  it("Louis's host map cannot call an evaluator closure", () => {
+    const identity = makeClosure(
+      ["x"],
+      null,
+      block([
+        returnStmt({ tag: "variable", name: "x", span: { start: 0, end: 0, line: 1, column: 1 } }),
+      ]),
+      child(null),
+    );
+    expect(shown(makeHostMap().fn([identity, makeArray([makeArray([9])])]))).toBe(
+      "error:bad-operand:map: the host could not call this procedure",
+    );
+  });
 
-  it.effect("Eva's map is an ordinary compound definition", () =>
-    Effect.sync(() => {
-      expect(evaMapDefinition.startsWith("(define (map p x)")).toBe(true);
-    }),
-  );
+  it("Eva's map answers [1, 3] with head and [1, 4, 9] with square", () => {
+    const heads = runSource(`${evaMapSource}\nmap(head, [[1, 2], [3, 4]]);`);
+    expect(shown(heads.outcome)).toBe("[1, 3]");
+    const squares = runSource(`${evaMapSource}\nmap(square, [1, 2, 3]);`);
+    expect(shown(squares.outcome)).toBe("[1, 4, 9]");
+  });
+
+  it("Eva's map handles the call that killed Louis's map: [[9]]", () => {
+    const identities = runSource(`${evaMapSource}\nmap((x: number[]) => x, [[9]]);`);
+    expect(shown(identities.outcome)).toBe("[[9]]");
+  });
 });

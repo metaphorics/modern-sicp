@@ -7,14 +7,14 @@ import {
   makeComplexFromMagAng,
   makeComplexFromRealImag,
   makeRational,
-  makeSchemeNumber,
+  makeTsNumber,
 } from "../../packages/ch2/src/05-generic-operations.js";
 import { equ79 } from "./ex_2_79.js";
 
 describe("exercise 2.79: generic equ?", () => {
   it("answers for ordinary numbers", () => {
-    expect(equ79(makeSchemeNumber(3n), makeSchemeNumber(3n))).toEqual({ _tag: "Ok", value: true });
-    expect(equ79(makeSchemeNumber(3n), makeSchemeNumber(4n))).toEqual({ _tag: "Ok", value: false });
+    expect(equ79(makeTsNumber(3n), makeTsNumber(3n))).toEqual({ _tag: "Ok", value: true });
+    expect(equ79(makeTsNumber(3n), makeTsNumber(4n))).toEqual({ _tag: "Ok", value: false });
   });
 
   it("answers for rationals, 1/2 equal to 2/4", () => {
@@ -36,9 +36,9 @@ describe("exercise 2.79: generic equ?", () => {
   });
 
   it("has no entry for arguments of different types", () => {
-    expect(equ79(makeSchemeNumber(3n), makeRational(3n, 1n))).toEqual({
+    expect(equ79(makeTsNumber(3n), makeRational(3n, 1n))).toEqual({
       _tag: "Error",
-      error: { _tag: "NoMethod", op: "equ?", tags: ["scheme-number", "rational"] },
+      error: { _tag: "NoMethod", op: "equ?", tags: ["ts-number", "rational"] },
     });
   });
 });

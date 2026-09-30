@@ -1,29 +1,42 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import {
-  type Cenv,
-  findVariable,
-  type LexicalAddress,
-} from "../../packages/ch5/src/05-compilation.js";
+// Original exercise
 
-const CENV: Cenv = [
-  ["y", "z"],
-  ["a", "b", "c", "d", "e"],
-  ["x", "y"],
-];
+/** The compile-time environment of exercise 5.40 and 5.41: frames of
+ * parameter names, newest first, threaded through the code generators
+ * so every variable reference can be answered at compile time. */
+export type CompileTimeEnv = ReadonlyArray<ReadonlyArray<string>>;
 
-const render = (address: LexicalAddress): string =>
-  address.found ? `(${address.frame} ${address.displacement})` : "not-found";
+/** The find-variable answer: a lexical address, or the fact that the
+ * name is free. */
+export type VariableAddress =
+  | { readonly found: true; readonly frame: number; readonly position: number }
+  | { readonly found: false };
 
-/** Exercise 5.41: find-variable answers the frame number and
- * displacement of a name in the compile-time environment. */
+/** The exercise's traversal: walk the frames outward and the names
+ * inward, and answer the first hit as a lexical address. */
+export const findVariable = (name: string, env: CompileTimeEnv): VariableAddress => {
+  for (let frame = 0; frame < env.length; frame += 1) {
+    const names = env[frame] ?? [];
+    const position = names.indexOf(name);
+    if (position >= 0) {
+      return { found: true, frame, position };
+    }
+  }
+  return { found: false };
+};
+
+/** Exercise 5.41's probes over the book's example environment. */
 export const ex_5_41 = (): readonly string[] => {
-  const answers = [
-    `c: ${render(findVariable("c", CENV))}`,
-    `x: ${render(findVariable("x", CENV))}`,
-    `w: ${render(findVariable("w", CENV))}`,
+  const env: CompileTimeEnv = [
+    ["a", "b", "c", "d", "e"],
+    ["y", "z"],
+    ["x", "y"],
   ];
-  if (answers[0] !== "c: (1 2)") throw new Error(answers[0]);
-  if (answers[1] !== "x: (2 0)") throw new Error(answers[1]);
-  if (answers[2] !== "w: not-found") throw new Error(answers[2]);
-  return answers;
+  const probes = ["a", "y", "z", "x", "free"];
+  return probes.map((name) => {
+    const address = findVariable(name, env);
+    return address.found
+      ? `${name} -> frame ${address.frame}, position ${address.position}`
+      : `${name} -> free`;
+  });
 };

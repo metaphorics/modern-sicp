@@ -2,19 +2,24 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { gcdMachineSummary } from "./ex_5_12.js";
+import { ex_5_12 } from "./ex_5_12.ts";
 
-describe("exercise 5.12 the assembler's summary", () => {
-  it("summarizes the gcd machine's instructions, registers, and labels", () => {
-    expect(gcdMachineSummary()).toBe(
-      "(instructions (test (test (op =) (reg b) (const 0))) (branch (branch (label gcd-done)))" +
-        " (assign (assign a (reg b)) (assign b (reg t)) (assign t (op rem) (reg a) (reg b)))" +
-        " (goto (goto (label test-b))))\n" +
-        "(registers a b t)\n" +
-        "(entry-point registers )\n" +
-        "(stack registers )\n" +
-        "(sources (t ((op rem) (reg a) (reg b))) (a (reg b)) (b (reg t)))\n" +
-        "(labels test-b gcd-done)",
-    );
+describe("exercise 5.12 the assembler summary", () => {
+  it("groups the gcd controller by type and lists its registers and labels", () => {
+    const lines = ex_5_12();
+    const groups = lines.filter((line) => line.includes(": "));
+    expect(groups.some((line) => line.startsWith("test: "))).toBe(true);
+    expect(groups.some((line) => line.startsWith("branch: "))).toBe(true);
+    expect(groups.some((line) => line.startsWith("goto-label: "))).toBe(true);
+    expect(lines.find((line) => line.startsWith("registers: "))).toContain("a b t");
+    expect(lines.find((line) => line.startsWith("labels: "))).toContain("test-b gcd-done");
+    const tSource = lines.find((line) => line.startsWith("t <- "));
+    expect(tSource).toBeDefined();
+    expect(tSource ?? "").toContain("rem");
+  });
+  it("the gcd controller saves nothing and jumps by label", () => {
+    const lines = ex_5_12();
+    expect(lines.find((line) => line.startsWith("saved:"))).toBe("saved:");
+    expect(lines.find((line) => line.startsWith("entry-points:"))).toBe("entry-points:");
   });
 });

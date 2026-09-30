@@ -2,13 +2,12 @@
 // Original exercise
 
 /**
- * Exercise 0.1: the three Scheme sessions of section 0.2, translated to
- * TypeScript.
+ * Exercise 0.1: three TypeScript interaction sessions.
  *
  * Each session evaluates in order and contributes its numeric responses to
- * one list, which the test asserts. The `(= a b)` response is `false`;
- * section 0.8's worked example shows it in the transcript rather than in
- * this numeric list.
+ * one list, which the test asserts. The equality comparison in session 2
+ * answers `false`; the worked example shows it in the transcript rather
+ * than in this numeric list.
  */
 export function ex_0_01(): readonly number[] {
   const a: number = 3;

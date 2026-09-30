@@ -260,8 +260,10 @@ export const sieve = (s: Stream<number>): Stream<number> => {
 /** The book's `primes`: the sieve started at 2. */
 export const primes: Stream<number> = sieve(integersStartingFrom(2));
 
-/** The book's `prime?` over the primes stream: `n` is prime when no
- * prime up to its square root divides it. */
+/** The section's primality predicate over the primes stream: `n` is prime
+ * when no prime up to its square root divides it. It tests candidates
+ * against the filtered primes stream itself — the self-reference the
+ * section teaches. */
 export const isPrimeStream = (n: number): boolean => {
   const iter = (ps: Stream<number>): boolean => {
     if (ps === null) {
@@ -275,7 +277,7 @@ export const isPrimeStream = (n: number): boolean => {
     }
     return iter(streamCdr(ps));
   };
-  return iter(primes);
+  return iter(primesFiltered);
 };
 
 /** The book's second `primes`: the filter version, testing candidates

@@ -12,8 +12,8 @@ import { firstDivisionStep, p1, p2, p3, q1, q2 } from "./ex_2_95.js";
 
 describe("exercise 2.95: where integer arithmetic fails the gcd", () => {
   it("builds the book's products", () => {
-    expect(show(q1())).toBe("(polynomial x (4 11) (3 -22) (2 18) (1 -14) (0 7))");
-    expect(show(q2())).toBe("(polynomial x (3 13) (2 -21) (1 3) (0 5))");
+    expect(show(q1())).toBe("[polynomial, x, [4, 11], [3, -22], [2, 18], [1, -14], [0, 7]]");
+    expect(show(q2())).toBe("[polynomial, x, [3, 13], [2, -21], [1, 3], [0, 5]]");
   });
 
   it("the first division step already truncates to zero and cycles", () => {
@@ -31,8 +31,8 @@ describe("exercise 2.95: where integer arithmetic fails the gcd", () => {
   });
 
   it("pins the book's three polynomials", () => {
-    expect(showArithDatum(p1)).toBe("(polynomial x (2 1) (1 -2) (0 1))");
-    expect(showArithDatum(p2)).toBe("(polynomial x (2 11) (0 7))");
-    expect(showArithDatum(p3)).toBe("(polynomial x (1 13) (0 5))");
+    expect(showArithDatum(p1)).toBe("[polynomial, x, [2, 1], [1, -2], [0, 1]]");
+    expect(showArithDatum(p2)).toBe("[polynomial, x, [2, 11], [0, 7]]");
+    expect(showArithDatum(p3)).toBe("[polynomial, x, [1, 13], [0, 5]]");
   });
 });

@@ -18,8 +18,8 @@ import {
  * shared pair, and every pair reachable by two routes.
  */
 
-/** Whether a value is a mutable list: the book's `pair?` over the
- * section's tagged records, so a nested element can be walked. */
+/** Whether a value is a mutable list: a tag check over the section's
+ * tagged records, so a nested element can be walked. */
 export const isMListValue = (value: unknown): value is MList<unknown> =>
   typeof value === "object" &&
   value !== null &&

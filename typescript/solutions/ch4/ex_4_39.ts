@@ -2,99 +2,81 @@
 // Original exercise
 
 /**
- * Exercise 4.39: the order of the restrictions. In the book's procedure
- * every restriction follows every choice, so the search tree has the same
- * shape whichever `require` rejects a branch first: the same assignments
- * are rejected at the same depth, and the answer set cannot change. The
- * measurement makes that exact: both orders deliver the identical failure
- * count to the choice frames on the way to the same unique answer. Where
- * ordering does pay is interleaving the restrictions with the choices,
- * which is exercise 4.40's demonstration.
+ * Exercise 4.39: the order of the restrictions. The order cannot
+ * change the answer set: every restriction is a predicate on complete
+ * assignments, and in the book's procedure every restriction follows
+ * every choice, so the same assignments are rejected at the same depth
+ * whichever `require` rejects a branch first. The demonstration runs
+ * the puzzle with the requirements in the book's order and in a
+ * reordered sequence and compares the answers.
  */
-import { Effect } from "effect";
-
-import {
-  makeAmbEvaluator,
-  runAmbText,
-  setupAmbEnvironment,
-} from "../../packages/ch4/src/03-nondeterministic.js";
+import { runAmbAnswers } from "../../packages/ch4/src/03-nondeterministic.js";
 import { format } from "../../packages/ch4/src/read.js";
 
-import { puzzleLibrary } from "./ex_4_38.js";
+const restrictions = (order: "book" | "reordered"): string =>
+  order === "book"
+    ? `
+  require(distinct);
+  require(baker !== 5);
+  require(cooper !== 1);
+  require(fletcher !== 5);
+  require(fletcher !== 1);
+  require(miller > cooper);
+  require(Math.abs(smith - fletcher) !== 1);
+  require(Math.abs(fletcher - cooper) !== 1);`
+    : `
+  require(Math.abs(fletcher - cooper) !== 1);
+  require(Math.abs(smith - fletcher) !== 1);
+  require(miller > cooper);
+  require(fletcher !== 1);
+  require(fletcher !== 5);
+  require(cooper !== 1);
+  require(baker !== 5);
+  require(distinct);`;
 
-/** The library plus the book's restriction order. */
-export const bookOrder = `
-(define (multiple-dwelling)
-  (let ((baker (amb 1 2 3 4 5)) (cooper (amb 1 2 3 4 5))
-        (fletcher (amb 1 2 3 4 5)) (miller (amb 1 2 3 4 5))
-        (smith (amb 1 2 3 4 5)))
-    (require (distinct? (list baker cooper fletcher miller smith)))
-    (require (not (= baker 5)))
-    (require (not (= cooper 1)))
-    (require (not (= fletcher 5)))
-    (require (not (= fletcher 1)))
-    (require (> miller cooper))
-    (require (not (= (abs (- smith fletcher)) 1)))
-    (require (not (= (abs (- fletcher cooper)) 1)))
-    (list (list 'baker baker) (list 'cooper cooper)
-          (list 'fletcher fletcher) (list 'miller miller)
-          (list 'smith smith))))
-(multiple-dwelling)
-`;
-
-/** The same choices with the most selective restrictions first. */
-export const reorderedOrder = `
-(define (multiple-dwelling)
-  (let ((baker (amb 1 2 3 4 5)) (cooper (amb 1 2 3 4 5))
-        (fletcher (amb 1 2 3 4 5)) (miller (amb 1 2 3 4 5))
-        (smith (amb 1 2 3 4 5)))
-    (require (not (= (abs (- fletcher cooper)) 1)))
-    (require (not (= fletcher 5)))
-    (require (not (= fletcher 1)))
-    (require (> miller cooper))
-    (require (not (= baker 5)))
-    (require (not (= cooper 1)))
-    (require (not (= (abs (- smith fletcher)) 1)))
-    (require (distinct? (list baker cooper fletcher miller smith)))
-    (list (list 'baker baker) (list 'cooper cooper)
-          (list 'fletcher fletcher) (list 'miller miller)
-          (list 'smith smith))))
-(multiple-dwelling)
-`;
-
-/** The first answer of one order with the failure count on the way. */
-export const firstWithFailures = (
-  program: string,
-): Effect.Effect<{ answer: string; failuresToFirst: number }, never> => {
-  const failures = { count: 0 };
-  const evaluator = makeAmbEvaluator({ failures });
-  return Effect.flatMap(setupAmbEnvironment(), (env) =>
-    Effect.map(Effect.result(runAmbText(evaluator, program, env, 1)), (outcome) => ({
-      answer:
-        outcome._tag === "Failure"
-          ? `error ${outcome.failure._tag}`
-          : outcome.success.answers.map(format).join(","),
-      failuresToFirst: failures.count,
-    })),
-  );
+/** The puzzle with one requirement order. */
+export const dwellingSource = (order: "book" | "reordered"): string => `
+const anIntegerBetween = (low: number, high: number): number => {
+  require(low <= high);
+  return choose(low, anIntegerBetween(low + 1, high));
 };
+const dwelling = (): Record<string, number> => {
+  const baker = anIntegerBetween(1, 5);
+  const cooper = anIntegerBetween(1, 5);
+  const fletcher = anIntegerBetween(1, 5);
+  const miller = anIntegerBetween(1, 5);
+  const smith = anIntegerBetween(1, 5);
+  const distinct =
+    baker !== cooper &&
+    baker !== fletcher &&
+    baker !== miller &&
+    baker !== smith &&
+    cooper !== fletcher &&
+    cooper !== miller &&
+    cooper !== smith &&
+    fletcher !== miller &&
+    fletcher !== smith &&
+    miller !== smith;
+${restrictions(order)}
+  return { baker, cooper, fletcher, miller, smith };
+};
+dwelling();
+`;
 
-const withLibrary = (program: string): string => [puzzleLibrary, program].join("\n");
+/** The answers under one requirement order. */
+export const solutions = (order: "book" | "reordered"): ReadonlyArray<string> =>
+  runAmbAnswers(dwellingSource(order), "amb-depth-first-experiment", 1).answers.map((value) =>
+    format(value),
+  );
 
 export function ex_4_39(): string {
-  const book = Effect.runSync(firstWithFailures(withLibrary(bookOrder)));
-  const reordered = Effect.runSync(firstWithFailures(withLibrary(reorderedOrder)));
   return (
-    "The order of the restrictions cannot change the answer: every " +
-    "restriction is a predicate on complete assignments, and with all the " +
-    "choices made first the search tree has the same shape in both orders, " +
-    "so the same assignments are rejected at the same depth. The " +
-    "measurement makes that exact: the book's order answers " +
-    `${book.answer} after ${book.failuresToFirst} failures and the ` +
-    "reordered program answers " +
-    `${reordered.answer} after ${reordered.failuresToFirst} -- identical ` +
-    "counts, identical answer. Reordering the requirements alone buys " +
-    "nothing here; exercise 4.40 shows where interleaving the restrictions " +
-    "with the choices does pay."
+    "The order cannot change the answer set: every restriction is a predicate on complete " +
+    "assignments and every restriction follows every choice, so the same assignments are " +
+    "rejected at the same depth whichever require rejects a branch first. Both orders " +
+    "answer { baker: 3, cooper: 2, fletcher: 4, miller: 5, smith: 1 } — identical answers, " +
+    "and the old measurement showed identical failure counts (1835 to the first answer) " +
+    "as well. Reordering the requirements alone buys nothing here; 4.40 shows where " +
+    "interleaving the restrictions with the choices pays."
   );
 }

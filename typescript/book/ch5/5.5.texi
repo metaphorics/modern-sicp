@@ -2,12 +2,12 @@
 @section Compilation
 
 The explicit-control evaluator of @ref{5.4} is a register machine whose
-controller interprets Scheme programs.  In this section we will see how to run
-Scheme programs on a register machine whose controller is not a Scheme
+controller interprets guest programs.  In this section we will see how to run
+guest programs on a register machine whose controller is not a guest
 interpreter.
 
 The explicit-control evaluator machine is universal---it can carry out any
-computational process that can be described in Scheme.  The evaluator's
+computational process that can be described in the guest language.  The evaluator's
 controller orchestrates the use of its data paths to perform the desired
 computation.  Thus, the evaluator's data paths are universal: They are
 sufficient to perform any computation we desire, given an appropriate
@@ -45,7 +45,7 @@ In this section, we explore the alternative strategy of @newterm{compilation}.
 A compiler for a given source language and machine translates a source program
 into an equivalent program (called the @newterm{object program}) written in the
 machine's native language.  The compiler that we implement in this section
-translates programs written in Scheme into sequences of instructions to be
+translates guest programs into sequences of instructions to be
 executed using the explicit-control evaluator machine's data
 paths.@footnote{Actually, the machine that runs compiled code can be simpler
 than the interpreter machine, because we won't use the @code{exp} and
@@ -66,8 +66,8 @@ modified.  In addition, because the entire library of primitives is present,
 new programs can be constructed and added to the system during debugging.
 
 In view of the complementary advantages of compilation and interpretation,
-modern program-development environments pursue a mixed strategy.  Lisp
-interpreters are generally organized so that interpreted procedures and
+modern program-development environments pursue a mixed strategy.  Language
+systems are generally organized so that interpreted procedures and
 compiled procedures can call each other.  This enables a programmer to compile
 those parts of a program that are assumed to be debugged, thus gaining the
 efficiency advantage of compilation, while retaining the interpretive mode of
@@ -128,15 +128,19 @@ to obtain the result in @code{val}, restores the saved registers, and finally
 moves the result from @code{val} to @code{proc}.  However, in the particular
 expression we are dealing with, the operator is the symbol @code{f}, whose
 evaluation is accomplished by the machine operation
-@code{lookup-variable-value}, which does not alter any registers.  The compiler
+@code{lookupVariableValue}, which does not alter any registers.  The compiler
 that we implement in this section will take advantage of this fact and generate
 code that evaluates the operator using the instruction
 
-@example
-(assign proc 
-        (op lookup-variable-value)
-        (const f)
-        (reg env))
+@example typescript
+assign(
+  "proc",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "f" @}),
+    register("env")
+  )
+),
 @end example
 
 @noindent
@@ -147,7 +151,7 @@ obtain the result in @code{val} and then move this to @code{proc}.
 A compiler can also optimize access to the environment.  Having analyzed the
 code, the compiler can in many cases know in which frame a particular variable
 will be located and access that frame directly, rather than performing the
-@code{lookup-variable-value} search.  We will discuss how to implement such
+@code{lookupVariableValue} search.  We will discuss how to implement such
 variable access in @ref{5.5.6}.  Until then, however, we will focus on
 the kind of register and stack optimizations described above.  There are many
 other optimizations that can be performed by a compiler, such as coding
@@ -181,37 +185,78 @@ corresponds to the @code{eval} procedure of @ref{4.1.1}, the
 @code{analyze} procedure of @ref{4.1.7}, and the @code{eval-dispatch}
 entry point of the explicit-control-evaluator in @ref{5.4.1}.  The
 compiler, like the interpreters, uses the expression-syntax procedures defined
-in @ref{4.1.2}.@footnote{Notice, however, that our compiler is a Scheme
+in @ref{4.1.2}.@footnote{Notice, however, that our compiler is a guest-language
 program, and the syntax procedures that it uses to manipulate expressions are
-the actual Scheme procedures used with the metacircular evaluator.  For the
+the actual guest procedures used with the metacircular evaluator.  For the
 explicit-control evaluator, in contrast, we assumed that equivalent syntax
 operations were available as operations for the register machine.  (Of course,
-when we simulated the register machine in Scheme, we used the actual Scheme
+when we simulated the register machine in the guest language, we used the actual guest
 procedures in our register machine simulation.)}  @code{Compile} performs a
 case analysis on the syntactic type of the expression to be compiled.  For each
-type of expression, it dispatches to a specialized @newterm{code generator}:
+type of expression, it dispatches to a specialized @newterm{code generator}.
+Statement and declaration forms are dispatched by their own
+@code{compileStatement} and @code{compileDeclaration} procedures, mirroring the
+evaluator's separation of expression evaluation from statement execution in
+@ref{4.1.1}; the compiler required here is the compiler over the typed
+@code{Expr}/@code{Stmt}/@code{Decl} nodes of @ref{4.1.2}, and code generators
+answer an @code{InstructionSequence} or a typed @code{GuestError} through
+@code{CompileResult} (a caller distinguishes the two by the instruction
+sequence's @code{needs}/@code{modifies}/@code{statements} fields versus the
+error's kebab-case tag):
+
+@example typescript
+type CompileResult = InstructionSequence | GuestError;
+
+const compileError = (error: GuestError): CompileResult => error;
+@end example
 
 @example typescript
 export const compile = (
   cfg: CompilerConfig,
   state: CompilerState,
   cenv: Cenv,
-  exp: Word,
+  exp: Expr,
   target: string,
   linkage: Linkage,
-): Seq => @{
-  if (isSelfEvaluating(exp)) return compileSelfEvaluating(cfg, exp, target, linkage);
-  if (isTaggedForm(exp, "quote")) return compileQuoted(cfg, exp, target, linkage);
-  if (isSymbolWord(exp)) return compileVariable(cfg, cenv, exp, target, linkage);
-  if (isTaggedForm(exp, "set!")) return compileAssignment(cfg, state, cenv, exp, target, linkage);
-  if (isTaggedForm(exp, "define")) return compileDefinition(cfg, state, cenv, exp, target, linkage);
-  if (isTaggedForm(exp, "if")) return compileIf(cfg, state, cenv, exp, target, linkage);
-  if (isTaggedForm(exp, "lambda")) return compileLambda(cfg, state, cenv, exp, target, linkage);
-  if (isTaggedForm(exp, "begin"))
-    return compileSequence(cfg, state, cenv, bodyOf(exp), target, linkage);
-  if (isTaggedForm(exp, "cond")) return compile(cfg, state, cenv, condToIf(exp), target, linkage);
-  if (isPair(exp)) return compileApplication(cfg, state, cenv, exp, target, linkage);
-  throw new EvaluatorFault("Unknown expression type: COMPILE");
+): CompileResult => @{
+  switch (exp.tag) @{
+    case "number":
+    case "string":
+    case "boolean":
+    case "null":
+    case "undefined":
+    case "array":
+    case "object":
+      return compileSelfEvaluating(cfg, exp, target, linkage);
+    case "variable":
+      return compileVariable(cfg, cenv, exp, target, linkage);
+    case "assign":
+      return compileAssignment(cfg, state, cenv, exp, target, linkage);
+    case "conditional":
+      return compileConditional(cfg, state, cenv, exp, target, linkage);
+    case "arrow":
+      return compileLambda(cfg, state, cenv, exp, target, linkage);
+    case "call":
+      return compileApplication(cfg, state, cenv, exp, target, linkage);
+    case "binary":
+    case "logical":
+    case "unary":
+    case "member":
+    case "index":
+    case "template":
+    case "new-error":
+    case "new-map":
+    case "new-set":
+      return compilePrimitiveOperation(
+          cfg,
+          state,
+          cenv,
+          exp,
+          target,
+          linkage
+        );
+  @}
+  return compileError(@{ tag: "unknown-syntax", construct: exp.tag @});
 @};
 @end example
 
@@ -246,17 +291,21 @@ For example, compiling the expression @code{5} (which is self-evaluating) with
 a target of the @code{val} register and a linkage of @code{next} should produce
 the instruction
 
-@example
-(assign val (const 5))
+@example typescript
+const controller: Instruction[] = [
+  assign("val", constant(5)),
+];
 @end example
 
 @noindent
 Compiling the same expression with a linkage of @code{return} should produce
 the instructions
 
-@example
-(assign val (const 5))
-(goto (reg continue))
+@example typescript
+const controller: Instruction[] = [
+assign("val", constant(5)),
+gotoRegister("continue"),
+];
 @end example
 
 @noindent
@@ -274,14 +323,14 @@ generators for component expressions, just as evaluation of a compound
 expression is accomplished by evaluating the component expressions.
 
 The simplest method for combining instruction sequences is a procedure called
-@code{append-instruction-sequences}.  It takes as arguments any number of
+@code{appendInstructionSequences}.  It takes as arguments any number of
 instruction sequences that are to be executed sequentially; it appends them and
 returns the combined sequence.  That is, if @math{{⟨\kern0.1em seq_1⟩}} 
 and @math{{⟨\kern0.1em seq_2⟩}} are sequences of instructions, then 
 evaluating
 
 @example
-(append-instruction-sequences ⟨@var{seq₁}⟩ ⟨@var{seq₂}⟩)
+(appendInstructionSequences ⟨@var{seq₁}⟩ ⟨@var{seq₂}⟩)
 @end example
 
 @noindent
@@ -340,14 +389,14 @@ use @math{{⟨\kern0.1em reg_1⟩}} and @math{{⟨\kern0.1em reg_2⟩}}:
 @ifinfo
 
 @smallexample
-<seq_1> | (save <reg_1>)    | (save <reg_2>)    | (save <reg_2>)
-<seq_2> | <seq_1>           | <seq_1>           | (save <reg_1>)
-        | (restore <reg_1>) | (restore <reg_2>) | <seq_1>
-        | <seq_2>           | <seq_2>           | (restore <reg_1>)
-        |                   |                   | (restore <reg_2>)
-        |                   |                   | <seq_2>
-@end smallexample
+seq@sub{1}  | save r@sub{1}       | save r@sub{2}       | save r@sub{2}
+seq@sub{2}  | seq@sub{1}          | seq@sub{1}          | save r@sub{1}
+           | restore r@sub{1}    | restore r@sub{2}    | seq@sub{1}
+           | seq@sub{2}          | seq@sub{2}          | restore r@sub{1}
+           |                    |                    | restore r@sub{2}
+           |                    |                    | seq@sub{2}
 
+@end smallexample
 @end ifinfo
 
 @noindent
@@ -400,8 +449,8 @@ constructor for instruction sequences is thus
 const makeInstructionSequence = (
   needs: readonly string[],
   modifies: readonly string[],
-  stmts: readonly ControllerLine[],
-): Seq => (@{ needs, modifies, stmts @});
+  statements: readonly MachineStatement[],
+): InstructionSequence => (@{ needs, modifies, statements @});
 @end example
 
 @noindent
@@ -411,22 +460,18 @@ and then returns, requires registers @code{env} and @code{continue} to have
 been initialized, and modifies register @code{val}.  This sequence would
 therefore be constructed as
 
-@example
-(make-instruction-sequence
- '(env continue)
- '(val)
- '((assign val
-           (op lookup-variable-value)
-           (const x)
-           (reg env))
-   (goto (reg continue))))
-@end example
-
-@noindent
-We sometimes need to construct an instruction sequence with no statements:
-
 @example typescript
-const emptyInstructionSequence = (): Seq => (@{ needs: [], modifies: [], stmts: [] @});
+makeInstructionSequence(["env", "continue"], ["val"], [
+  assign(
+    "val",
+    op(
+      "lookupVariableValue",
+      constant(@{ tag: "symbol", name: "x" @}),
+      register("env")
+    )
+  ),
+  gotoRegister("continue"),
+])
 @end example
 
 @noindent
@@ -485,14 +530,16 @@ In this section and the next we implement the code generators to which the
 @subsubheading Compiling linkage code
 
 In general, the output of each code generator will end with
-instructions---generated by the procedure @code{compile-linkage}---that
+instructions---generated by the procedure @code{compileLinkage}---that
 implement the required linkage.  If the linkage is @code{return} then we must
 generate the instruction @code{(goto (reg continue))}.  This needs the
 @code{continue} register and does not modify any registers.  If the linkage is
 @code{next}, then we needn't include any additional instructions.  Otherwise,
 the linkage is a label, and we generate a @code{goto} to that label, an
 instruction that does not need or modify any registers.@footnote{This procedure
-uses a feature of Lisp called @newterm{backquote} (or @newterm{quasiquote})
+uses a template shorthand the book calls @newterm{backquote} (or
+@newterm{quasiquote}); this edition builds the same records with typed
+constructors
 that is handy for constructing lists.  Preceding a list with a backquote symbol
 is much like quoting it, except that anything in the list that is flagged with
 a comma is evaluated.
@@ -501,19 +548,19 @@ For example, if the value of @code{linkage} is the symbol @code{branch25},
 then the expression 
 
 @example
-`((goto (label ,linkage)))
+[gotoLabel(linkage)]
 @end example
 
 evaluates to the list 
 	
 @example
-((goto (label branch25))) 
+[gotoLabel("branch25")] 
 @end example
 
 Similarly, if the value of @code{x} is the list @code{(a b c)}, then 
 
 @example
-`(1 2 ,(car x)) 
+[1, 2, firstOf(x)] 
 @end example
 
 evaluates to the list 
@@ -524,14 +571,21 @@ evaluates to the list
 }
 
 @example typescript
-const compileLinkage = (linkage: Linkage): Seq => @{
+const compileLinkage = (linkage: Linkage): InstructionSequence => @{
   switch (linkage.kind) @{
     case "return":
-      return makeInstructionSequence(["continue"], [], [jumpReg("continue")]);
+      return makeInstructionSequence(
+          ["continue"],
+          [],
+          [gotoRegister("continue")]
+        );
     case "next":
       return emptyInstructionSequence();
-    case "label":
-      return makeInstructionSequence([], [], [jump(linkage.name)]);
+    case "goto":
+      return makeInstructionSequence(
+        [],
+        [],
+        [gotoLabel(linkage.label)]);
   @}
 @};
 @end example
@@ -544,8 +598,17 @@ the @code{continue} register, since a @code{return} linkage will require the
 and restored.
 
 @example typescript
-const endWithLinkage = (cfg: CompilerConfig, linkage: Linkage, seq: Seq): Seq =>
-  preservingInstructionSequences(cfg, ["continue"], seq, compileLinkage(linkage));
+const endWithLinkage = (
+  cfg: CompilerConfig,
+  linkage: Linkage,
+  seq: InstructionSequence
+): InstructionSequence =>
+  preservingInstructionSequences(
+    cfg,
+    ["continue"],
+    seq,
+    compileLinkage(linkage)
+  );
 @end example
 
 @subsubheading Compiling simple expressions
@@ -557,22 +620,31 @@ register and then proceed as specified by the linkage descriptor.
 @example typescript
 const compileSelfEvaluating = (
   cfg: CompilerConfig,
-  exp: Word,
+  exp: Expr,
   target: string,
   linkage: Linkage,
-): Seq =>
-  endWithLinkage(cfg, linkage, makeInstructionSequence([], [target], [assign(target, wconst(exp))]));
+): InstructionSequence =>
+  endWithLinkage(
+    cfg,
+    linkage,
+    makeInstructionSequence(
+      [],
+      [target],
+      [assign(target, constant(literalValue(exp)))]
+    )
+  );
 @end example
 
 @noindent
 All these assignment instructions modify the target register, and the one that
 looks up a variable needs the @code{env} register.
 
-Assignments and definitions are handled much as they are in the interpreter.
+Assignments and declarations are handled much as they are in the interpreter.
 We recursively generate code that computes the value to be assigned to the
 variable, and append to it a two-instruction sequence that actually sets or
-defines the variable and assigns the value of the whole expression (the symbol
-@code{ok}) to the target register.  The recursive compilation has target
+defines the variable and assigns the value of the whole expression (the
+assigned value itself, since assignment answers the assigned value and a
+declaration is a statement) to the target register.  The recursive compilation has target
 @code{val} and linkage @code{next} so that the code will put its result into
 @code{val} and continue with the code that is appended after it.  The appending
 is done preserving @code{env}, since the environment is needed for setting or
@@ -581,12 +653,28 @@ compilation of a complex expression that might modify the registers in
 arbitrary ways.
 
 @example typescript
-const valueCode = compile(cfg, state, cenv, value, "val", LinkageNext);
+const valueCode = compile(
+  cfg,
+  state,
+  cenv,
+  value,
+  "val",
+  @{ kind: "next" @}
+);
 const tail = makeInstructionSequence(["env", "val"], [target], [
-  perform("set-variable-value!", wconst(symbol(name)), reg("val"), reg("env")),
-  assign(target, wconst(symbol("ok"))),
+  perform(
+    "setVariableValue",
+    symbol(name),
+    register("val"),
+    register("env")
+  ),
+  assign(target, register("val")),
 ]);
-return endWithLinkage(cfg, linkage, preservingInstructionSequences(cfg, ["env"], valueCode, tail));
+return endWithLinkage(
+    cfg,
+    linkage,
+    preservingInstructionSequences(cfg, ["env"], valueCode, tail)
+  );
 @end example
 
 @noindent
@@ -604,17 +692,20 @@ The code for an @code{if} expression compiled with a given target and linkage
 has the form
 
 @example
-⟨@emph{compilation of predicate, 
- target @code{val}, linkage @code{next}}⟩
- (test (op false?) (reg val))
- (branch (label false-branch))
-true-branch
- ⟨@emph{compilation of consequent with given 
+⟨@emph{save @code{continue}, @code{env} if modified by
+ predicate and needed by branches}⟩
+  ⟨@emph{compilation of predicate,
+   target @code{val}, linkage @code{next}}⟩
+  ⟨@emph{restore @code{continue}, @code{env} if saved above}⟩
+test("isFalse", register("val")),
+branch("false-branch"),
+@{ tag: "label", name: "true-branch" @},
+ ⟨@emph{compilation of consequent with given
   target and given linkage or @code{after-if}}⟩
-false-branch
- ⟨@emph{compilation of alternative 
+@{ tag: "label", name: "false-branch" @},
+ ⟨@emph{compilation of alternative
   with given target and linkage}⟩
-after-if
+@{ tag: "label", name: "after-if" @},
 @end example
 
 @noindent
@@ -624,24 +715,22 @@ and with newly generated labels to mark the true and false branches and the end
 of the conditional.@footnote{We can't just use the labels @code{true-branch},
 @code{false-branch}, and @code{after-if} as shown above, because there might be
 more than one @code{if} in the program.  The compiler uses the procedure
-@code{make-label} to generate labels.  @code{Make-label} takes a symbol as
+@code{makeLabel} to generate labels.  @code{makeLabel} takes a symbol as
 argument and returns a new symbol that begins with the given symbol.  For
-example, successive calls to @code{(make-label 'a)} would return @code{a1},
-@code{a2}, and so on.  @code{Make-label} can be implemented similarly to the
+example, successive calls to @code{makeLabel("a")} would return @code{a1},
+@code{a2}, and so on.  @code{makeLabel} can be implemented similarly to the
 generation of unique variable names in the query language, as follows:
 
-@example
-(define label-counter 0)
+@example typescript
+let labelCounter = 0;
 
-(define (new-label-number)
-  (set! label-counter (+ 1 label-counter))
-  label-counter)
+const newLabelNumber = (): number => @{
+  labelCounter = labelCounter + 1;
+  return labelCounter;
+@};
 
-(define (make-label name)
-  (string->symbol
-   (string-append 
-    (symbol->string name)
-    (number->string (new-label-number)))))
+const makeLabel = (name: string): string =>
+  `$@{name@}$@{newLabelNumber()@}`;
 @end example
 } In this arrangement of code, we must branch around the true branch if the
 test is false.  The only slight complication is in how the linkage for the true
@@ -654,10 +743,33 @@ for the false branch to the label at the end of the conditional.
 const afterIf = makeLabel(state, "after-if");
 const fBranch = makeLabel(state, "false-branch");
 const tBranch = makeLabel(state, "true-branch");
-const consequentLinkage = linkage.kind === "next" ? linkageLabel(afterIf) : linkage;
-const aCode = compile(cfg, state, cenv, alternativeExp, target, linkage);
-const cCode = compile(cfg, state, cenv, consequent, target, consequentLinkage);
-const pCode = compile(cfg, state, cenv, predicate, "val", LinkageNext);
+const consequentLinkage = linkage.kind === "next"
+  ? linkageLabel(afterIf)
+  : linkage;
+const aCode = compile(
+  cfg,
+  state,
+  cenv,
+  alternativeExp,
+  target,
+  linkage
+);
+const cCode = compile(
+  cfg,
+  state,
+  cenv,
+  consequent,
+  target,
+  consequentLinkage
+);
+const pCode = compile(
+  cfg,
+  state,
+  cenv,
+  predicate,
+  "val",
+  @{ kind: "next" @}
+);
 @end example
 
 @noindent
@@ -665,11 +777,11 @@ const pCode = compile(cfg, state, cenv, predicate, "val", LinkageNext);
 the true and false branches, and @code{continue} is preserved because it could
 be needed by the linkage code in those branches.  The code for the true and
 false branches (which are not executed sequentially) is appended using a
-special combiner @code{parallel-instruction-sequences} described in 
+special combiner @code{parallelInstructionSequences} described in 
 @ref{5.5.4}.
 
 Note that @code{cond} is a derived expression, so all that the compiler needs
-to do handle it is to apply the @code{cond->if} transformer (from 
+to do handle it is to apply the @code{switchToIf} transformer (from 
 @ref{4.1.2}) and compile the resulting @code{if} expression.
 
 @subsubheading Compiling sequences
@@ -684,9 +796,28 @@ for the rest of the sequence) and @code{continue} (possibly needed for the
 linkage at the end of the sequence) are preserved.
 
 @example typescript
-const firstCode = compile(cfg, state, cenv, first, target, LinkageNext);
-const restCode = compileSequence(cfg, state, cenv, rest, target, linkage);
-return preservingInstructionSequences(cfg, ["env", "continue"], firstCode, restCode);
+const firstCode = compile(
+  cfg,
+  state,
+  cenv,
+  first,
+  target,
+  @{ kind: "next" @}
+);
+const restCode = compileSequence(
+  cfg,
+  state,
+  cenv,
+  rest,
+  target,
+  linkage
+);
+return preservingInstructionSequences(
+    cfg,
+    ["env", "continue"],
+    firstCode,
+    restCode
+  );
 @end example
 
 @subsubheading Compiling @code{lambda} expressions
@@ -714,7 +845,7 @@ object code thus has the form
 ⟨@emph{construct procedure object 
  and assign it to target register}⟩
  ⟨@emph{code for given linkage}⟩ @emph{or} 
-  @code{(goto (label after-lambda))}
+  @code{goto after-lambda}
  ⟨@emph{compilation of procedure body}⟩
 after-lambda
 @end example
@@ -730,10 +861,16 @@ procedures, analogous to the structure for compound procedures described in
 @ref{4.1.3}:
 
 @example typescript
-const compiledProcedureWord = (entry: Value, environment: Word): TaggedWord =>
-  makeTaggedWord("compiled-procedure", @{ entry, env: envIndex(environment) @});
+// The compiled-procedure word is the machine's own value; its entry and
+// environment are projected by the compiledProcedureEntry and
+// compiledProcedureEnvironment operations:
+const makeCompiledProcedure = (
+  entry: Value,
+  environment: Value
+): Value =>
+  compiledProcedureWord(entry, environment);
 @end example
-}
+
 
 @example typescript
 const afterLambda = makeLabel(state, "after-lambda");
@@ -742,26 +879,33 @@ const construct = endWithLinkage(
   cfg,
   lambdaLinkage,
   makeInstructionSequence(["env"], [target], [
-    assign(target, op("make-compiled-procedure", wconst(@{ label: procEntry @}), reg("env"))),
+    assign(
+      target,
+      op(
+        "makeCompiledProcedure",
+        constant(@{ label: procEntry @}),
+        register("env")
+      )
+    ),
   ]),
 );
 const body = compileLambdaBody(cfg, state, cenv, exp, procEntry);
-return @{ ...tackOnInstructionSequence(construct, body), stmts: [
-  ...tackOnInstructionSequence(construct, body).stmts,
+return @{ ...tackOnInstructionSequence(construct, body), statements: [
+  ...tackOnInstructionSequence(construct, body).statements,
   mark(afterLambda),
 ] @};
 @end example
 
 @noindent
 @code{Compile-lambda} uses the special combiner
-@code{tack-on-instruction-sequence} rather than
-@code{append-instruction-sequences} (@ref{5.5.4}) to append the procedure body to the
+@code{tackOnInstructionSequence} rather than
+@code{appendInstructionSequences} (@ref{5.5.4}) to append the procedure body to the
 @code{lambda} expression code, because the body is not part of the sequence of
 instructions that will be executed when the combined sequence is entered;
 rather, it is in the sequence only because that was a convenient place to put
 it.
 
-@code{Compile-lambda-body} constructs the code for the body of the procedure.
+@code{compileLambdaBody} constructs the code for the body of the procedure.
 This code begins with a label for the entry point.  Next come instructions that
 will cause the run-time evaluation environment to switch to the correct
 environment for evaluating the procedure body---namely, the definition
@@ -775,12 +919,28 @@ procedure result in @code{val}.
 @example typescript
 const head = makeInstructionSequence(["env", "proc", "argl"], ["env"], [
   mark(procEntry),
-  assign("env", op("compiled-procedure-env", reg("proc"))),
-  assign("env", op("extend-environment", wconst(list(names.map(symbol))), reg("argl"), reg("env"))),
+  assign("env", op("compiledProcedureEnvironment", register("proc"))),
+  assign(
+    "env",
+    op(
+      "extendEnvironment",
+      constant(list(names.map(symbol))),
+      register("argl"),
+      register("env")
+    )
+  ),
 ]);
-const bodyCode = compileSequence(cfg, state, extendCenv(names, cenv), body, "val", LinkageReturn);
+const bodyCode = compileSequence(
+  cfg,
+  state,
+  extendCenv(names, cenv),
+  body,
+  "val",
+  LinkageReturn
+);
 return append2Sequences(head, bodyCode);
 @end example
+}
 
 @node	5.5.3, 5.5.4, 5.5.2, 5.5
 @subsection Compiling Combinations
@@ -790,9 +950,9 @@ applications.  The code for a combination compiled with a given target and
 linkage has the form
 
 @example
-⟨@emph{compilation of operator, 
+⟨@emph{compilation of callCallee, 
  target @code{proc}, linkage @code{next}}⟩
-⟨@emph{evaluate operands and construct 
+⟨@emph{evaluate callArgs and construct 
  argument list in @code{argl}}⟩
 ⟨@emph{compilation of procedure call 
  with given target and linkage}⟩
@@ -803,7 +963,7 @@ The registers @code{env}, @code{proc}, and @code{argl} may have to be saved and
 restored during evaluation of the operator and operands.  Note that this is the
 only place in the compiler where a target other than @code{val} is specified.
 
-The required code is generated by @code{compile-application}.  This recursively
+The required code is generated by @code{compileApplication}.  This recursively
 compiles the operator, to produce code that puts the procedure to be applied
 into @code{proc}, and compiles the operands, to produce code that evaluates the
 individual operands of the application.  The instruction sequences for the
@@ -820,13 +980,30 @@ modify @code{proc}, which will be needed for the actual procedure application).
 linkage in the procedure call.
 
 @example typescript
-const procCode = compile(cfg, state, cenv, operator, "proc", LinkageNext);
-const operandCodes = operands.map((operand) =>
-  compile(cfg, state, cenv, operand, "val", LinkageNext));
+const procCode = compile(
+  cfg,
+  state,
+  cenv,
+  callCallee,
+  "proc",
+  @{ kind: "next" @}
+);
+const operandCodes = callArgs.map((operand) =>
+  compile(cfg, state, cenv, operand, "val", @{ kind: "next" @}));
 const arglistCode = constructArglist(cfg, operandCodes);
 const call = compileProcedureCall(cfg, state, target, linkage);
-const inner = preservingInstructionSequences(cfg, ["proc", "continue"], arglistCode, call);
-return preservingInstructionSequences(cfg, ["env", "continue"], procCode, inner);
+const inner = preservingInstructionSequences(
+  cfg,
+  ["proc", "continue"],
+  arglistCode,
+  call
+);
+return preservingInstructionSequences(
+    cfg,
+    ["env", "continue"],
+    procCode,
+    inner
+  );
 @end example
 
 @noindent
@@ -842,12 +1019,12 @@ argument-list construction is thus as follows:
 
 @example
 ⟨@emph{compilation of last operand, targeted to @code{val}}⟩
-(assign argl (op list) (reg val))
+argl ← list(val)
 ⟨@emph{compilation of next operand, targeted to @code{val}}⟩
-(assign argl (op cons) (reg val) (reg argl))
+argl ← cons(val, argl)
 @r{…}
 ⟨@emph{compilation of first operand, targeted to @code{val}}⟩
-(assign argl (op cons) (reg val) (reg argl))
+argl ← cons(val, argl)
 @end example
 
 @noindent
@@ -862,22 +1039,28 @@ of the first operand to be evaluated and the need to preserve @code{argl} and
 as arguments the code that evaluates the individual operands.  If there are no
 operands at all, it simply emits the instruction
 
-@example
-(assign argl (const ()))
+@example typescript
+assign("argl", constant(@{ tag: "list", items: [] @}))
 @end example
-
 @noindent
 Otherwise, @code{construct-arglist} creates code that initializes @code{argl}
 with the last argument, and appends code that evaluates the rest of the
 arguments and adjoins them to @code{argl} in succession.  In order to process
 the arguments from last to first, we must reverse the list of operand code
-sequences from the order supplied by @code{compile-application}.
+sequences from the order supplied by @code{compileApplication}.
 
 @example typescript
-const ordered = cfg.leftToRight ? [...operandCodes] : [...operandCodes].toReversed();
+const ordered = cfg.leftToRight
+  ? [...operandCodes]
+  : [...operandCodes].toReversed();
+const firstSeq = ordered[0];
 const codeToGetLastArg = append2Sequences(
-  ordered[0] ?? emptyInstructionSequence(),
-  makeInstructionSequence(["val"], ["argl"], [assign("argl", op("list", reg("val")))]),
+  (firstSeq !== undefined ? firstSeq : emptyInstructionSequence()),
+  makeInstructionSequence(
+    ["val"],
+    ["argl"],
+    [assign("argl", op("list", register("val")))]
+  ),
 );
 @end example
 
@@ -890,20 +1073,16 @@ metacircular evaluator of @ref{4.1.1} or the @code{apply-dispatch}
 entry point in the explicit-control evaluator of @ref{5.4.1}.  It
 checks whether the procedure to be applied is a primitive procedure or a
 compiled procedure.  For a primitive procedure, it uses
-@code{apply-primitive-procedure}; we will see shortly how it handles compiled
+@code{applyProcedure}; we will see shortly how it handles compiled
 procedures.  The procedure-application code has the following form:
 
 @example
-(test (op primitive-procedure?) (reg proc))
- (branch (label primitive-branch))
+if isPrimitiveProcedure(proc) then goto primitive-branch
 compiled-branch
  ⟨@emph{code to apply compiled procedure 
   with given target and appropriate linkage}⟩
 primitive-branch
- (assign ⟨@var{target}⟩
-         (op apply-primitive-procedure)
-         (reg proc)
-         (reg argl))
+ ⟨@var{target}⟩ ← applyProcedure(proc, argl)
  ⟨@var{linkage}⟩
 after-call
 @end example
@@ -913,67 +1092,69 @@ Observe that the compiled branch must skip around the primitive branch.
 Therefore, if the linkage for the original procedure call was @code{next}, the
 compound branch must use a linkage that jumps to a label that is inserted after
 the primitive branch.  (This is similar to the linkage used for the true branch
-in @code{compile-if}.)
+in @code{compileIf}.)
 
 @example typescript
 const afterCall = makeLabel(state, "after-call");
 const compiledBranch = makeLabel(state, "compiled-branch");
 const primitiveBranch = makeLabel(state, "primitive-branch");
-const compiledLinkage = linkage.kind === "next" ? linkageLabel(afterCall) : linkage;
+const compiledLinkage = linkage.kind === "next"
+  ? linkageLabel(afterCall)
+  : linkage;
 const applCode = compileProcAppl(state, target, compiledLinkage);
-const primitiveCode = endWithLinkage(cfg, linkage, makeInstructionSequence(
+const primitiveCode = endWithLinkage(
+  cfg,
+  linkage,
+  makeInstructionSequence(
   ["proc", "argl"], [target],
-  [assign(target, op("apply-primitive-procedure", reg("proc"), reg("argl")))],
+  [assign(target,
+    op("applyProcedure", register("proc"), register("argl")))],
 ));
 @end example
 
 @noindent
 The primitive and compound branches, like the true and false branches in
-@code{compile-if}, are appended using @code{parallel-instruction-sequences}
-rather than the ordinary @code{append-instruction-sequences}, because they will
+@code{compileIf}, are appended using @code{parallelInstructionSequences}
+rather than the ordinary @code{appendInstructionSequences}, because they will
 not be executed sequentially.
 
 @subsubheading Applying compiled procedures
 
 The code that handles procedure application is the most subtle part of the
 compiler, even though the instruction sequences it generates are very short.  A
-compiled procedure (as constructed by @code{compile-lambda}) has an entry
+compiled procedure (as constructed by @code{compileLambda}) has an entry
 point, which is a label that designates where the code for the procedure
 starts.  The code at this entry point computes a result in @code{val} and
 returns by executing the instruction @code{(goto (reg continue))}.  Thus, we
 might expect the code for a compiled-procedure application (to be generated by
-@code{compile-proc-appl}) with a given target and linkage to look like this if
+@code{compileProcAppl}) with a given target and linkage to look like this if
 the linkage is a label
 
 @example
-(assign continue 
-        (label proc-return))
- (assign val
-         (op compiled-procedure-entry)
-         (reg proc))
- (goto (reg val))
+assign("continue", labelRef("proc-return")),
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
 proc-return
- (assign ⟨@var{target}⟩ 
-         (reg val))   @r{; included if target is not @code{val}}
- (goto (label ⟨@var{linkage}⟩))   @r{; linkage code}
+assign("⟨@var{target}⟩", register("val")),
+  @r{; included if target is not @code{val}}
+gotoLabel("⟨@var{linkage}⟩"),
+  @r{; linkage code}
 @end example
 
 @noindent
 or like this if the linkage is @code{return}.
 
 @example
-(save continue)
- (assign continue 
-         (label proc-return))
- (assign val 
-         (op compiled-procedure-entry)
-         (reg proc))
- (goto (reg val))
+save("continue"),
+assign("continue", labelRef("proc-return")),
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
 proc-return
- (assign ⟨@var{target}⟩
-         (reg val))   @r{; included if target is not @code{val}}
- (restore continue)
- (goto (reg continue))   @r{; linkage code}
+assign("⟨@var{target}⟩", register("val")),
+  @r{; included if target is not @code{val}}
+restore("continue"),
+gotoRegister("continue"),
+  @r{; linkage code}
 @end example
 
 @noindent
@@ -999,10 +1180,8 @@ specified by the caller's linkage:
 
 @example
 ⟨@emph{set up @code{continue} for linkage}⟩
-(assign val 
-        (op compiled-procedure-entry)
-        (reg proc))
-(goto (reg val))
+val ← compiledProcedureEntry(proc)
+goto val
 @end example
 
 @noindent
@@ -1011,26 +1190,23 @@ return to that label.  (That is, the @code{(goto (reg continue))} the procedure
 ends with becomes equivalent to the @code{(goto (label ⟨@var{linkage}⟩))} at
 @code{proc-return} above.)
 
-@example
-(assign continue 
-        (label ⟨@var{linkage}⟩))
-(assign val
-        (op compiled-procedure-entry)
-        (reg proc))
-(goto (reg val))
+@example typescript
+assign("continue", labelRef("⟨@var{linkage}⟩")),
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
 @end example
 
 @noindent
 If the linkage is @code{return}, we don't need to set up @code{continue} at
-all: It already holds the desired location.  (That is, the @code{(goto (reg
-continue))} the procedure ends with goes directly to the place where the
-@code{(goto (reg continue))} at @code{proc-return} would have gone.)
+all: It already holds the desired location.  (That is, the @code{gotoRegister("continue")} the procedure ends with goes
+directly to the place where the @code{gotoRegister("continue")} at
+@code{proc-return} would have gone.)
 
-@example
-(assign val
-        (op compiled-procedure-entry)
-        (reg proc))
-(goto (reg val))
+@example typescript
+const controller: Instruction[] = [
+  assign("val", op("compiledProcedureEntry", register("proc"))),
+  gotoRegister("val"),
+];
 @end example
 
 @noindent
@@ -1050,18 +1226,18 @@ and Pascal, do not do this, and therefore these languages cannot represent
 iterative processes in terms of procedure call alone.  The difficulty with tail
 recursion in these languages is that their implementations use the stack to
 store procedure arguments and local variables as well as return addresses.  The
-Scheme implementations described in this book store arguments and variables in
+The implementations described in this book store arguments and variables in
 memory to be garbage-collected.  The reason for using the stack for variables
 and arguments is that it avoids the need for garbage collection in languages
 that would not otherwise require it, and is generally believed to be more
-efficient.  Sophisticated Lisp compilers can, in fact, use the stack for
+efficient.  Sophisticated compilers can, in fact, use the stack for
 arguments without destroying tail recursion.  (See @ref{Hanson 1990} for a
 description.)  There is also some debate about whether stack allocation is
 actually more efficient than garbage collection in the first place, but the
 details seem to hinge on fine points of computer architecture.  (See @ref{Appel 1987}
 and @ref{Miller and Rozas 1994} for opposing views on this issue.)}
 
-@code{Compile-proc-appl} generates the above procedure-application code by
+@code{compileProcAppl} generates the above procedure-application code by
 considering four cases, depending on whether the target for the call is
 @code{val} and whether the linkage is @code{return}.  Observe that the
 instruction sequences are declared to modify all the registers, since executing
@@ -1069,7 +1245,64 @@ the procedure body can change the registers in arbitrary ways.@footnote{The
 variable @code{all-regs} is bound to the list of names of all the registers:
 
 @example typescript
-const ALL_REGS: readonly string[] = ["env", "proc", "val", "argl", "continue"];
+const compileProcAppl = (
+  state: CompilerState,
+  target: string,
+  linkage: Linkage
+): CompileResult => @{
+  const entry = assign(
+    "val",
+    op("compiledProcedureEntry", register("proc"))
+  );
+  const goto = gotoRegister("val");
+  switch (linkage.kind) @{
+    case "return":
+      if (target !== "val")
+        return compileError(
+            @{ tag: "bad-operand",
+            operator: "return",
+            detail: "target is not val" @}
+          );
+      return makeInstructionSequence(
+          ["proc", "continue"],
+          ALL_REGS,
+          [entry, goto]
+        );
+    case "goto":
+      if (target === "val")
+        return makeInstructionSequence(["proc"], ALL_REGS, [
+          assign("continue", labelRef(linkage.label)),
+          entry,
+          goto,
+        ]);
+      @{
+        const procReturn = makeLabel("proc-return");
+        return makeInstructionSequence(["proc"], ALL_REGS, [
+          assign("continue", labelRef(procReturn)),
+          entry,
+          goto,
+          @{ tag: "label", name: procReturn @},
+          assign(target, register("val")),
+          gotoLabel(linkage.label),
+        ]);
+      @}
+    case "next":
+      return compileError(
+          @{ tag: "bad-operand",
+          operator: "compile-proc-appl",
+          detail: "the call carries no next linkage" @}
+        );
+  @}
+@};
+@end example
+
+@example typescript
+const ALL_REGS: readonly string[] = [
+  "env",
+  "proc",
+  "val",
+  "argl",
+  "continue"];
 @end example
 }
 Also note that the code sequence for the case with target @code{val} and
@@ -1077,35 +1310,6 @@ linkage @code{return} is declared to need @code{continue}: Even though
 @code{continue} is not explicitly used in the two-instruction sequence, we must
 be sure that @code{continue} will have the correct value when we enter the
 compiled procedure.
-
-@example typescript
-const compileProcAppl = (state: CompilerState, target: string, linkage: Linkage): Seq => @{
-  const entry = assign("val", op("compiled-procedure-entry", reg("proc")));
-  const goto = jumpReg("val");
-  if (linkage.kind === "return") @{
-    if (target !== "val") throw new EvaluatorFault("return linkage, target not val: COMPILE");
-    return makeInstructionSequence(["proc", "continue"], ALL_REGS, [entry, goto]);
-  @}
-  if (linkage.kind === "label") @{
-    if (target === "val")
-      return makeInstructionSequence(["proc"], ALL_REGS, [
-        assign("continue", wconst(@{ label: linkage.name @})),
-        entry,
-        goto,
-      ]);
-    const procReturn = makeLabel(state, "proc-return");
-    return makeInstructionSequence(["proc"], ALL_REGS, [
-      assign("continue", wconst(@{ label: procReturn @})),
-      entry,
-      goto,
-      mark(procReturn),
-      assign(target, reg("val")),
-      jump(linkage.name),
-    ]);
-  @}
-  throw new EvaluatorFault("compile-proc-appl: the call carries no next linkage");
-@};
-@end example
 
 @node	5.5.4, 5.5.5, 5.5.3, 5.5
 @subsection Combining Instruction Sequences
@@ -1127,14 +1331,17 @@ and to determine whether a given
 sequence needs or modifies a given register we use the predicates
 
 @example typescript
-const isNeeded = (seq: Seq, name: string): boolean => seq.needs.includes(name);
+const isNeeded = (
+  seq: InstructionSequence,
+  name: string
+): boolean => seq.needs.includes(name);
 @end example
 
 @noindent
 In terms of these predicates and selectors, we can implement the various
 instruction sequence combiners used throughout the compiler.
 
-The basic combiner is @code{append-instruction-sequences}.  This takes as
+The basic combiner is @code{appendInstructionSequences}.  This takes as
 arguments an arbitrary number of instruction sequences that are to be executed
 sequentially and returns an instruction sequence whose statements are the
 statements of all the sequences appended together.  The subtle point is to
@@ -1145,7 +1352,7 @@ those registers that must be initialized before the first sequence can be run
 needed by any of the other sequences that are not initialized (modified) by
 sequences preceding it.
 
-The sequences are appended two at a time by @code{append-2-sequences}.  This
+The sequences are appended two at a time by @code{append2Sequences}.  This
 takes two instruction sequences @code{seq1} and @code{seq2} and returns the
 instruction sequence whose statements are the statements of @code{seq1}
 followed by the statements of @code{seq2}, whose modified registers are those
@@ -1155,13 +1362,18 @@ registers needed by @code{seq2} that are not modified by @code{seq1}.  (In
 terms of set operations, the new set of needed registers is the union of the
 set of registers needed by @code{seq1} with the set difference of the registers
 needed by @code{seq2} and the registers modified by @code{seq1}.)  Thus,
-@code{append-instruction-sequences} is implemented as follows:
+@code{appendInstructionSequences} is implemented as follows:
 
 @example typescript
-const append2Sequences = (seq1: Seq, seq2: Seq): Seq => (@{
-  needs: listUnion(seq1.needs, listDifference(seq2.needs, seq1.modifies)),
+const append2Sequences = (
+  seq1: InstructionSequence,
+  seq2: InstructionSequence
+): InstructionSequence => (@{
+  needs: listUnion(
+    seq1.needs,
+    listDifference(seq2.needs, seq1.modifies)),
   modifies: listUnion(seq1.modifies, seq2.modifies),
-  stmts: [...seq1.stmts, ...seq2.stmts],
+  statements: [...seq1.statements, ...seq2.statements],
 @});
 @end example
 
@@ -1171,7 +1383,10 @@ lists, similar to the (unordered) set representation described in
 @ref{2.3.3}:
 
 @example typescript
-const listUnion = (s1: readonly string[], s2: readonly string[]): string[] => @{
+const listUnion = (
+  s1: readonly string[],
+  s2: readonly string[]
+): string[] => @{
   const out = [...s1];
   for (const name of s2) if (!out.includes(name)) out.push(name);
   return out;
@@ -1195,24 +1410,26 @@ augmented sequence and @code{seq2} are then appended in the usual way.  The
 following procedure implements this strategy recursively, walking down the list
 of registers to be preserved:@footnote{Note that @code{preserving} calls
 @code{append} with three arguments.  Though the definition of @code{append}
-shown in this book accepts only two arguments, Scheme standardly provides an
+shown in this book accepts only two arguments, the standard library provides an
 @code{append} procedure that takes an arbitrary number of arguments.}
 
 @example typescript
 const preservingInstructionSequences = (
   cfg: CompilerConfig,
   regs: readonly string[],
-  seq1: Seq,
-  seq2: Seq,
-): Seq => @{
+  seq1: InstructionSequence,
+  seq2: InstructionSequence,
+): InstructionSequence => @{
   let current = seq1;
   for (const name of regs) @{
-    const needed = seq2.needs.includes(name) && current.modifies.includes(name);
+    const needed = seq2.needs.includes(
+      name) && current.modifies.includes(name
+    );
     if (cfg.preservingOn ? needed : true) @{
       current = @{
         needs: listUnion([name], current.needs),
         modifies: listDifference(current.modifies, [name]),
-        stmts: [save(name), ...current.stmts, restore(name)],
+        statements: [save(name), ...current.statements, restore(name)],
       @};
     @}
   @}
@@ -1221,24 +1438,27 @@ const preservingInstructionSequences = (
 @end example
 
 @noindent
-Another sequence combiner, @code{tack-on-instruction-sequence}, is used by
-@code{compile-lambda} to append a procedure body to another sequence.  Because
+Another sequence combiner, @code{tackOnInstructionSequence}, is used by
+@code{compileLambda} to append a procedure body to another sequence.  Because
 the procedure body is not ``in line'' to be executed as part of the combined
 sequence, its register use has no impact on the register use of the sequence in
 which it is embedded.  We thus ignore the procedure body's sets of needed and
 modified registers when we tack it onto the other sequence.
 
 @example typescript
-const tackOnInstructionSequence = (seq: Seq, bodySeq: Seq): Seq => (@{
+const tackOnInstructionSequence = (
+  seq: InstructionSequence,
+  bodySeq: InstructionSequence
+): InstructionSequence => (@{
   needs: seq.needs,
   modifies: seq.modifies,
-  stmts: [...seq.stmts, ...bodySeq.stmts],
+  statements: [...seq.statements, ...bodySeq.statements],
 @});
 @end example
 
 @noindent
 @code{Compile-if} and @code{compile-procedure-call} use a special combiner
-called @code{parallel-instruction-sequences} to append the two alternative
+called @code{parallelInstructionSequences} to append the two alternative
 branches that follow a test.  The two branches will never be executed
 sequentially; for any particular evaluation of the test, one branch or the
 other will be entered.  Because of this, the registers needed by the second
@@ -1246,10 +1466,13 @@ branch are still needed by the combined sequence, even if these are modified by
 the first branch.
 
 @example typescript
-const parallelInstructionSequences = (seq1: Seq, seq2: Seq): Seq => (@{
+const parallelInstructionSequences = (
+  seq1: InstructionSequence,
+  seq2: InstructionSequence
+): InstructionSequence => (@{
   needs: listUnion(seq1.needs, seq2.needs),
   modifies: listUnion(seq1.modifies, seq2.modifies),
-  stmts: [...seq1.stmts, ...seq2.stmts],
+  statements: [...seq1.statements, ...seq2.statements],
 @});
 @end example
 
@@ -1260,14 +1483,15 @@ Now that we have seen all the elements of the compiler, let us examine an
 example of compiled code to see how things fit together.  We will compile the
 definition of a recursive @code{factorial} procedure by calling @code{compile}:
 
-@example
-(compile
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n)))
- 'val
- 'next)
+@example typescript
+compileProgram(
+  parseProgram(`
+    function factorial(n: number): number @{
+      return n <= 1 ? 1 : factorial(n - 1) * n;
+    @}
+  `),
+  @{ target: "val", linkage: @{ kind: "next" @} @},
+);
 @end example
 
 @noindent
@@ -1277,7 +1501,7 @@ after executing the @code{define}, so our choice of @code{next} as the linkage
 descriptor is arbitrary.
 
 @code{Compile} determines that the expression is a definition, so it calls
-@code{compile-definition} to compile code to compute the value to be assigned
+@code{compileDeclaration} to compile code to compute the value to be assigned
 (targeted to @code{val}), followed by code to install the definition, followed
 by code to put the value of the @code{define} (which is the symbol @code{ok})
 into the target register, followed finally by the linkage code.  @code{Env} is
@@ -1290,18 +1514,19 @@ linkage code in this case.  The skeleton of the compiled code is thus
   ⟨@emph{compilation of definition value, 
    target @code{val}, linkage @code{next}}⟩
   ⟨@emph{restore @code{env} if saved above}⟩
-  (perform (op define-variable!)
-           (const factorial)
-           (reg val)
-           (reg env))
-  (assign val (const ok))
+perform("defineVariableValue",
+  constant(@{ tag: "symbol", name: "factorial" @}),
+  register("val"),
+  register("env")),
+assign("val", register("val")),
+  @r{; the defined value stays in @code{val}}
 @end example
 
 @noindent
 The expression that is to be compiled to produce the value for the variable
 @code{factorial} is a @code{lambda} expression whose value is the procedure
 that computes factorials.  @code{Compile} handles this by calling
-@code{compile-lambda}, which compiles the procedure body, labels it as a new
+@code{compileLambda}, which compiles the procedure body, labels it as a new
 entry point, and generates the instruction that will combine the procedure body
 at the new entry point with the run-time environment and assign the result to
 @code{val}.  The sequence then skips around the compiled procedure code, which
@@ -1314,35 +1539,46 @@ generated.  (The procedure code at @code{entry2} isn't executed at this point,
 so its use of @code{env} is irrelevant.)  Therefore, the skeleton for the
 compiled code becomes
 
-@example
-  (assign val (op make-compiled-procedure)
-              (label entry2)
-              (reg env))
-  (goto (label after-lambda1))
-entry2
-  (assign env (op compiled-procedure-env)
-              (reg proc))
-  (assign env (op extend-environment)
-              (const (n))
-              (reg argl)
-              (reg env))
-  ⟨@emph{compilation of procedure body}⟩
-after-lambda1
-  (perform (op define-variable!)
-           (const factorial)
-           (reg val) (reg env))
-  (assign val (const ok))
+@example typescript
+assign(
+  "val",
+  op(
+    "makeCompiledProcedure",
+    labelRef("entry2"),
+    register("env"),
+  )
+),
+gotoLabel("after-lambda1"),
+@{ tag: "label", name: "entry2" @},
+assign(
+  "env",
+  op("compiledProcedureEnvironment", register("proc")),
+),
+assign("env", op("extendEnvironment",
+                 constant(
+                   @{ tag: "list",
+                   items: [constant(@{ tag: "symbol", name: "n" @})] @}
+                 ),
+                 register("argl"),
+                 register("env"))),
+⟨@emph{compilation of procedure body}⟩
+@{ tag: "label", name: "after-lambda1" @},
+perform(
+  "defineVariableValue",
+  constant(@{ tag: "symbol", name: "factorial" @}),
+  register("val"),
+  register("env")
+),
+assign("val", register("val")),
 @end example
 
 @noindent
-A procedure body is always compiled (by @code{compile-lambda-body}) as a
+A procedure body is always compiled (by @code{compileLambdaBody}) as a
 sequence with target @code{val} and linkage @code{return}.  The sequence in
 this case consists of a single @code{if} expression:
 
-@example
-(if (= n 1)
-    1
-    (* (factorial (- n 1)) n))
+@example typescript
+read("n <= 1 ? 1 : factorial(n - 1) * n")
 @end example
 
 @noindent
@@ -1363,59 +1599,66 @@ branches, is the value of the procedure.)
   ⟨@emph{compilation of predicate, 
    target @code{val}, linkage @code{next}}⟩
   ⟨@emph{restore @code{continue}, @code{env} if saved above}⟩
-  (test (op false?) (reg val))
-  (branch (label false-branch4))
-true-branch5
+test("isFalse", register("val")),
+branch("false-branch4"),
+@{ tag: "label", name: "true-branch5" @},
   ⟨@emph{compilation of true branch, 
    target @code{val}, linkage @code{return}}⟩
-false-branch4
+@{ tag: "label", name: "false-branch4" @},
   ⟨@emph{compilation of false branch, 
    target @code{val}, linkage @code{return}}⟩
-after-if3
+@{ tag: "label", name: "after-if3" @},
 @end example
 
 @noindent
-The predicate @code{(= n 1)} is a procedure call.  This looks up the operator
-(the symbol @code{=}) and places this value in @code{proc}.  It then assembles
-the arguments @code{1} and the value of @code{n} into @code{argl}.  Then it
-tests whether @code{proc} contains a primitive or a compound procedure, and
+This code tests whether @code{proc} contains a primitive or a compound procedure, and
 dispatches to a primitive branch or a compound branch accordingly.  Both
 branches resume at the @code{after-call} label.  The requirements to preserve
-registers around the evaluation of the operator and operands don't result in
+registers around the evaluation of the callCallee and callArgs don't result in
 any saving of registers, because in this case those evaluations don't modify
 the registers in question.
 
-@example
-  (assign proc (op lookup-variable-value)
-               (const =) 
-               (reg env))
-  (assign val (const 1))
-  (assign argl (op list) (reg val))
-  (assign val (op lookup-variable-value)
-              (const n)
-              (reg env))
-  (assign argl (op cons) (reg val) (reg argl))
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch17))
-compiled-branch16
-  (assign continue (label after-call15))
-  (assign val (op compiled-procedure-entry)
-              (reg proc))
-  (goto (reg val))
-primitive-branch17
-  (assign val (op apply-primitive-procedure)
-              (reg proc)
-              (reg argl))
-after-call15
+@example typescript
+const controller: Instruction[] = [
+  assign(
+    "proc",
+    op(
+      "lookupVariableValue",
+      constant(@{ tag: "symbol", name: "=" @}),
+      register("env")
+    )
+  ),
+  assign("val", constant(1)),
+  assign("argl", op("list", register("val"))),
+  assign(
+    "val",
+    op(
+      "lookupVariableValue",
+      constant(@{ tag: "symbol", name: "n" @}),
+      register("env")
+    )
+  ),
+  assign("argl", op("cons", register("val"), register("argl"))),
+  test("isPrimitiveProcedure", register("proc")),
+  branch("primitive-branch17"),
+  @{ tag: "label", name: "compiled-branch16" @},
+  assign("continue", labelRef("after-call15")),
+  assign("val", op("compiledProcedureEntry", register("proc"))),
+  gotoRegister("val"),
+  @{ tag: "label", name: "primitive-branch17" @},
+  assign(
+    "val",
+    op("applyProcedure", register("proc"), register("argl"))
+  ),
+  @{ tag: "label", name: "after-call15" @},
+];
 @end example
 
-@noindent
-The true branch, which is the constant 1, compiles (with target @code{val} and
-linkage @code{return}) to
-
-@example
-(assign val (const 1))
-(goto (reg continue))
+@example typescript
+const controller: Instruction[] = [
+  assign("val", constant(1)),
+  gotoRegister("continue"),
+];
 @end example
 
 @noindent
@@ -1433,155 +1676,208 @@ procedure call in the predicate and needed for the procedure call and the
 @quotation
 @strong{@anchor{Figure 5.17}Figure 5.17:} @math{\downarrow} Compilation of the definition of the @code{factorial} procedure.
 
-@example
+@example typescript
 @r{;; construct the procedure and skip over code}
 @r{;; for the procedure body}
-  (assign val
-          (op make-compiled-procedure) 
-          (label entry2) 
-          (reg env))
-  (goto (label after-lambda1))
-entry2     @r{; calls to @code{factorial} will enter here}
-  (assign env 
-          (op compiled-procedure-env)
-          (reg proc))
-  (assign env
-          (op extend-environment) 
-          (const (n)) 
-          (reg argl) 
-          (reg env))
+assign(
+  "val",
+  op(
+    "makeCompiledProcedure",
+    labelRef("entry2"),
+    register("env"),
+  )
+),
+gotoLabel("after-lambda1"),
+@{ tag: "label", name: "entry2" @},
+@r{; calls to @code{factorial} will enter here}
+assign(
+  "env",
+  op("compiledProcedureEnvironment", register("proc")),
+),
+assign(
+  "env",
+  op(
+    "extendEnvironment",
+    constant(
+      @{ tag: "list",
+      items: [constant(@{ tag: "symbol", name: "n" @})] @}
+    ),
+    register("argl"),
+    register("env")
+  )
+),
 @r{;; begin actual procedure body}
-  (save continue)
-  (save env)
+save("continue"),
+save("env"),
 @r{;; compute @code{(= n 1)}}
-  (assign proc 
-          (op lookup-variable-value) 
-          (const =) 
-          (reg env))
-  (assign val (const 1))
-  (assign argl (op list) (reg val))
-  (assign val 
-          (op lookup-variable-value) 
-          (const n) 
-          (reg env))
-  (assign argl (op cons) (reg val) (reg argl))
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch17))
-compiled-branch16
-  (assign continue (label after-call15))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch17
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-after-call15   @r{; @code{val} now contains result of @code{(= n 1)}}
-  (restore env)
-  (restore continue)
-  (test (op false?) (reg val))
-  (branch (label false-branch4))
-true-branch5  @r{; return 1}
-  (assign val (const 1))
-  (goto (reg continue))
-
-false-branch4
+assign(
+  "proc",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "=" @}),
+    register("env")
+  )
+),
+assign("val", constant(1)),
+assign("argl", op("list", register("val"))),
+assign(
+  "val",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "n" @}),
+    register("env")
+  )
+),
+assign("argl", op("cons", register("val"), register("argl"))),
+test("isPrimitiveProcedure", register("proc")),
+branch("primitive-branch17"),
+@{ tag: "label", name: "compiled-branch16" @},
+assign("continue", labelRef("after-call15")),
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
+@{ tag: "label", name: "primitive-branch17" @},
+assign(
+  "val",
+  op(
+    "applyProcedure",
+    register("proc"),
+    register("argl"),
+  ),
+),
+@{ tag: "label", name: "after-call15" @},
+@r{; @code{val} now contains result of @code{(= n 1)}}
+restore("env"),
+restore("continue"),
+test("isFalse", register("val")),
+branch("false-branch4"),
+@{ tag: "label", name: "true-branch5" @},  @r{; return 1}
+assign("val", constant(1)),
+gotoRegister("continue"),
+@{ tag: "label", name: "false-branch4" @},
 @r{;; compute and return @code{(* (factorial (- n 1)) n)}}
-  (assign proc 
-          (op lookup-variable-value) 
-          (const *) 
-          (reg env))
-  (save continue)
-  (save proc)   @r{; save @code{*}} procedure
-  (assign val 
-          (op lookup-variable-value) 
-          (const n) 
-          (reg env))
-  (assign argl (op list) (reg val))
-  (save argl)   @r{; save partial argument list for @code{*}}
-@r{;; compute @code{(factorial (- n 1))},} 
+assign(
+  "proc",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "*" @}),
+    register("env")
+  )
+),
+save("continue"),
+save("proc"),   @r{; save @code{*}} procedure
+assign(
+  "val",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "n" @}),
+    register("env")
+  )
+),
+assign("argl", op("list", register("val"))),
+save("argl"),   @r{; save partial argument list for @code{*}}
+@r{;; compute @code{(factorial (- n 1))},}
 @r{;; which is the other argument for @code{*}}
-  (assign proc
-          (op lookup-variable-value) 
-          (const factorial) 
-          (reg env))
-  (save proc)  @r{; save @code{factorial} procedure}
+assign(
+  "proc",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "factorial" @}),
+    register("env")
+  )
+),
+save("proc"),  @r{; save @code{factorial} procedure}
 @r{;; compute @code{(- n 1)}, which is the argument for @code{factorial}}
-  (assign proc 
-          (op lookup-variable-value)
-          (const -) 
-          (reg env))
-  (assign val (const 1))
-  (assign argl (op list) (reg val))
-  (assign val 
-          (op lookup-variable-value) 
-          (const n) 
-          (reg env))
-  (assign argl (op cons) (reg val) (reg argl))
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch8))
-compiled-branch7
-  (assign continue (label after-call6))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch8
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-
-after-call6   @r{; @code{val} now contains result of @code{(- n 1)}}
-  (assign argl (op list) (reg val))
-  (restore proc) @r{; restore @code{factorial}}
+assign(
+  "proc",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "-" @}),
+    register("env")
+  )
+),
+assign("val", constant(1)),
+assign("argl", op("list", register("val"))),
+assign(
+  "val",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "n" @}),
+    register("env")
+  )
+),
+assign("argl", op("cons", register("val"), register("argl"))),
+test("isPrimitiveProcedure", register("proc")),
+branch("primitive-branch8"),
+@{ tag: "label", name: "compiled-branch7" @},
+assign("continue", labelRef("after-call6")),
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
+@{ tag: "label", name: "primitive-branch8" @},
+assign(
+  "val",
+  op(
+    "applyProcedure",
+    register("proc"),
+    register("argl"),
+  ),
+),
+@{ tag: "label", name: "after-call6" @},
+@r{; @code{val} now contains result of @code{(- n 1)}}
+assign("argl", op("list", register("val"))),
+restore("proc"), @r{; restore @code{factorial}}
 @r{;; apply @code{factorial}}
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch11))
-compiled-branch10
-  (assign continue (label after-call9))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch11
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-after-call9      @r{; @code{val} now contains result} 
-                 @r{; of @code{(factorial (- n 1))}}
-  (restore argl) @r{; restore partial argument list for @code{*}}
-  (assign argl (op cons) (reg val) (reg argl))
-  (restore proc) @r{; restore @code{*}}
-  (restore continue)
+test("isPrimitiveProcedure", register("proc")),
+branch("primitive-branch11"),
+@{ tag: "label", name: "compiled-branch10" @},
+assign("continue", labelRef("after-call9")),
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
+@{ tag: "label", name: "primitive-branch11" @},
+assign(
+  "val",
+  op(
+    "applyProcedure",
+    register("proc"),
+    register("argl"),
+  ),
+),
+@{ tag: "label", name: "after-call9" @},
+@r{; @code{val} now contains result}
+@r{; of @code{(factorial (- n 1))}}
+restore("argl"), @r{; restore partial argument list for @code{*}}
+assign("argl", op("cons", register("val"), register("argl"))),
+restore("proc"), @r{; restore @code{*}}
+restore("continue"),
 @r{;; apply @code{*} and return its value}
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-branch14))
-compiled-branch13
+test("isPrimitiveProcedure", register("proc")),
+branch("primitive-branch14"),
+@{ tag: "label", name: "compiled-branch13" @},
 @r{;; note that a compound procedure here}
 @r{;; is called tail-recursively}
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch14
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-  (goto (reg continue))
-after-call12
-after-if3
-after-lambda1
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
+@{ tag: "label", name: "primitive-branch14" @},
+assign(
+  "val",
+  op(
+    "applyProcedure",
+    register("proc"),
+    register("argl"),
+  ),
+),
+gotoRegister("continue"),
+@{ tag: "label", name: "after-call12" @},
+@{ tag: "label", name: "after-if3" @},
+@{ tag: "label", name: "after-lambda1" @},
 @r{;; assign the procedure to the variable @code{factorial}}
-  (perform (op define-variable!) 
-           (const factorial) 
-           (reg val) 
-           (reg env))
-  (assign val (const ok))
+perform(
+  "defineVariableValue",
+  constant(@{ tag: "symbol", name: "factorial" @}),
+  register("val"),
+  register("env")
+),
+assign("val", register("val")),
+@r{; the defined value stays in @code{val}}
 @end example
 @end quotation
 
@@ -1589,11 +1885,10 @@ after-lambda1
 @strong{@anchor{Exercise 5.33}Exercise 5.33:} Consider the following definition
 of a factorial procedure, which is slightly different from the one given above:
 
-@example
-(define (factorial-alt n)
-  (if (= n 1)
-      1
-      (* n (factorial-alt (- n 1)))))
+@example typescript
+function factorialAlt(n: number): number @{
+  return n === 1 ? 1 : n * factorialAlt(n - 1);
+@}
 @end example
 
 Compile this procedure and compare the resulting code with that produced for
@@ -1605,14 +1900,19 @@ execute more efficiently than the other?
 @strong{@anchor{Exercise 5.34}Exercise 5.34:} Compile the iterative factorial
 procedure
 
-@example
-(define (factorial n)
-  (define (iter product counter)
-    (if (> counter n)
-        product
-        (iter (* counter product)
-              (+ counter 1))))
-  (iter 1 1))
+@example typescript
+readAll(`
+  function factorial(n: number): number @{
+    const iter = (
+      product: number,
+      counter: number,
+    ): number =>
+      counter > n
+        ? product
+        : iter(counter * product, counter + 1);
+    return iter(1, 1);
+  @}
+`);
 @end example
 
 Annotate the resulting code, showing the essential difference between the code
@@ -1628,102 +1928,148 @@ produce the code shown in @ref{Figure 5.18}?
 @quotation
 @strong{@anchor{Figure 5.18}Figure 5.18:} @math{\downarrow} An example of compiler output.  See
 @ref{Exercise 5.35}.
+@end quotation
 
-@example
-(assign val (op make-compiled-procedure) 
-            (label entry16) 
-            (reg env))
-  (goto (label after-lambda15))
-entry16
-  (assign env (op compiled-procedure-env)
-              (reg proc))
-  (assign env (op extend-environment) 
-              (const (x)) 
-              (reg argl) 
-              (reg env))
-  (assign proc (op lookup-variable-value) 
-               (const +) 
-               (reg env))
-  (save continue) (save proc) (save env)
-  (assign proc (op lookup-variable-value) 
-               (const g) 
-               (reg env))
-  (save proc)
-  (assign proc (op lookup-variable-value) 
-               (const +) 
-               (reg env))
-  (assign val (const 2))
-  (assign argl (op list) (reg val))
-  (assign val (op lookup-variable-value)
-              (const x) 
-              (reg env))
-  (assign argl (op cons)
-               (reg val)
-               (reg argl))
-  (test (op primitive-procedure?)
-        (reg proc))
-  (branch (label primitive-branch19))
-compiled-branch18
-  (assign continue (label after-call17))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch19
-  (assign val
-          (op apply-primitive-procedure)
-          (reg proc) 
-          (reg argl))
-after-call17
-  (assign argl (op list) (reg val))
-  (restore proc)
-  (test (op primitive-procedure?)
-        (reg proc))
-  (branch (label primitive-branch22))
-compiled-branch21
-  (assign continue (label after-call20))
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
-primitive-branch22
-  (assign val 
-          (op apply-primitive-procedure) 
-          (reg proc) 
-          (reg argl))
-after-call20
-  (assign argl (op list) (reg val))
-  (restore env)
-  (assign val
-          (op lookup-variable-value) 
-          (const x) 
-          (reg env))
-  (assign argl
-          (op cons)
-          (reg val)
-          (reg argl))
-  (restore proc)
-  (restore continue)
-  (test (op primitive-procedure?)
-        (reg proc))
-  (branch (label primitive-branch25))
-compiled-branch24
-  (assign val (op compiled-procedure-entry)
-              (reg proc))
-  (goto (reg val))
-primitive-branch25
-  (assign val 
-          (op apply-primitive-procedure)
-          (reg proc) 
-          (reg argl))
-  (goto (reg continue))
-after-call23
-after-lambda15
-  (perform (op define-variable!) 
-           (const f) 
-           (reg val) 
-           (reg env))
-  (assign val (const ok))
+@quotation
+
+@example typescript
+assign(
+  "val",
+  op(
+    "makeCompiledProcedure",
+    labelRef("entry16"),
+    register("env"),
+  )
+),
+gotoLabel("after-lambda15"),
+@{ tag: "label", name: "entry16" @},
+assign(
+  "env",
+  op("compiledProcedureEnvironment", register("proc")),
+),
+assign(
+  "env",
+  op(
+    "extendEnvironment",
+    constant(
+      @{ tag: "list",
+      items: [constant(@{ tag: "symbol", name: "x" @})] @}
+    ),
+    register("argl"),
+    register("env")
+  )
+),
+assign(
+  "proc",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "+" @}),
+    register("env")
+  )
+),
+save("continue"),
+save("proc"),
+save("env"),
+assign(
+  "proc",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "g" @}),
+    register("env")
+  )
+),
+save("proc"),
+assign(
+  "proc",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "+" @}),
+    register("env")
+  )
+),
+assign("val", constant(2)),
+assign("argl", op("list", register("val"))),
+assign(
+  "val",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "x" @}),
+    register("env")
+  )
+),
+assign("argl", op("cons", register("val"), register("argl"))),
+test("isPrimitiveProcedure", register("proc")),
+branch("primitive-branch19"),
+@{ tag: "label", name: "compiled-branch18" @},
+assign("continue", labelRef("after-call17")),
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
+@{ tag: "label", name: "primitive-branch19" @},
+assign(
+  "val",
+  op(
+    "applyProcedure",
+    register("proc"),
+    register("argl"),
+  ),
+),
+@{ tag: "label", name: "after-call17" @},
+assign("argl", op("list", register("val"))),
+restore("proc"),
+test("isPrimitiveProcedure", register("proc")),
+branch("primitive-branch22"),
+@{ tag: "label", name: "compiled-branch21" @},
+assign("continue", labelRef("after-call20")),
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
+@{ tag: "label", name: "primitive-branch22" @},
+assign(
+  "val",
+  op(
+    "applyProcedure",
+    register("proc"),
+    register("argl"),
+  ),
+),
+@{ tag: "label", name: "after-call20" @},
+assign("argl", op("list", register("val"))),
+restore("env"),
+assign(
+  "val",
+  op(
+    "lookupVariableValue",
+    constant(@{ tag: "symbol", name: "x" @}),
+    register("env")
+  )
+),
+assign("argl", op("cons", register("val"), register("argl"))),
+restore("proc"),
+restore("continue"),
+test("isPrimitiveProcedure", register("proc")),
+branch("primitive-branch25"),
+@{ tag: "label", name: "compiled-branch24" @},
+assign("val", op("compiledProcedureEntry", register("proc"))),
+gotoRegister("val"),
+@{ tag: "label", name: "primitive-branch25" @},
+assign(
+  "val",
+  op(
+    "applyProcedure",
+    register("proc"),
+    register("argl"),
+  ),
+),
+gotoRegister("continue"),
+@{ tag: "label", name: "after-call23" @},
+@{ tag: "label", name: "after-lambda15" @},
+perform(
+  "defineVariableValue",
+  constant(@{ tag: "symbol", name: "f" @}),
+  register("val"),
+  register("env")
+),
+assign("val", register("val")),
+@r{; the defined value stays in @code{val}}
 @end example
 @end quotation
 
@@ -1769,13 +2115,14 @@ compiled into something as simple as@footnote{We have used the same symbol
 operation.  In general there will not be a one-to-one correspondence between
 primitives of the source language and primitives of the machine.}
 
-@example
-(assign val (op lookup-variable-value) 
-            (const a) 
-            (reg env))
-(assign val (op +)
-            (reg val)
-            (const 1))
+@example typescript
+const controller: Instruction[] = [
+  assign(
+    "val",
+    op("lookupVariableValue", constant("a"), register("env"))
+  ),
+  assign("val", op("+", register("val"), constant(1))),
+];
 @end example
 
 In this exercise we will extend our compiler to support open coding of selected
@@ -1834,7 +2181,7 @@ only two inputs.
 
 One of the most common optimizations performed by compilers is the optimization
 of variable lookup.  Our compiler, as we have implemented it so far, generates
-code that uses the @code{lookup-variable-value} operation of the evaluator
+code that uses the @code{lookupVariableValue} operation of the evaluator
 machine.  This searches for a variable by comparing it with each variable that
 is currently bound, working frame by frame outward through the run-time
 environment.  This search can be expensive if the frames are deeply nested or
@@ -1843,11 +2190,18 @@ the value of @code{x} while evaluating the expression @code{(* x y z)} in an
 application of the procedure that is returned by
 
 @example
-(let ((x 3) (y 4))
-  (lambda (a b c d e)
-    (let ((y (* a b x))
-          (z (+ c d x)))
-      (* x y z))))
+readAll(`
+  const makeClosure = (x: number, y: number) =>
+    (a: number,
+      b: number,
+      c: number,
+      d: number,
+      e: number): number => @{
+      const y = a * b * x;
+      const z = c + d * x;
+      return x * y * z;
+    @};
+`);
 @end example
 
 @noindent
@@ -1855,17 +2209,17 @@ Since a @code{let} expression is just syntactic sugar for a @code{lambda}
 combination, this expression is equivalent to
 
 @example
-((lambda (x y)
-   (lambda (a b c d e)
-     ((lambda (y z) (* x y z))
-      (* a b x)
-      (+ c d x))))
- 3
- 4)
+readAll(`
+  ((x: number, y: number) =>
+    (a: number, b: number, c: number, d: number, e: number): number =>
+      ((y: number, z: number): number => x * y * z)(
+        a * b * x,
+        c + d * x))(3, 4);
+`);
 @end example
 
 @noindent
-Each time @code{lookup-variable-value} searches for @code{x}, it must determine
+Each time @code{lookupVariableValue} searches for @code{x}, it must determine
 that the symbol @code{x} is not @code{eq?} to @code{y} or @code{z} (in the
 first frame), nor to @code{a}, @code{b}, @code{c}, @code{d}, or @code{e} (in
 the second frame).  We will assume, for the moment, that our programs do not
@@ -1880,17 +2234,17 @@ two frames out from the current frame and will be the first variable in that
 frame.
 
 We can exploit this fact by inventing a new kind of variable-lookup operation,
-@code{lexical-address-lookup}, that takes as arguments an environment and a
+@code{lexicalAddressLookup}, that takes as arguments an environment and a
 @newterm{lexical address} that consists of two numbers: a @newterm{frame number}, 
 which specifies how many frames to pass over, and a
 @newterm{displacement number}, which specifies how many variables to pass over
 in that frame.  @code{Lexical-address-lookup} will produce the value of the
 variable stored at that lexical address relative to the current environment.
-If we add the @code{lexical-address-lookup} operation to our machine, we can
+If we add the @code{lexicalAddressLookup} operation to our machine, we can
 make the compiler generate code that references variables using this operation,
-rather than @code{lookup-variable-value}.  Similarly, our compiled code can use
-a new @code{lexical-address-set!}  operation instead of
-@code{set-variable-value!}.
+rather than @code{lookupVariableValue}.  Similarly, our compiled code can use
+a new @code{lexicalAddressSet}  operation instead of
+@code{setVariableValue}.
 
 In order to generate such code, the compiler must be able to determine the
 lexical address of a variable it is about to compile a reference to.  The
@@ -1902,13 +2256,9 @@ expression @code{⟨}@var{e2}@code{⟩}, @code{x} is at (1, 0), @code{y} is at (
 is at (0, 2).
 
 @example
-((lambda (x y)
-   (lambda (a b c d e)
-     ((lambda (y z) ⟨@var{e1}⟩)
-      ⟨@var{e2}⟩
-      (+ c d x))))
- 3
- 4)
+// the same expansion with the body forms left abstract:
+// ((x, y) => (a, b, c, d, e) => ((y, z) => ⟨e1⟩)(⟨e2⟩, c + d * x))(3,
+// 4)
 @end example
 
 @noindent
@@ -1922,10 +2272,10 @@ since values are not computed at compile time.)  The compile-time environment
 becomes an additional argument to @code{compile} and is passed along to each
 code generator.  The top-level call to @code{compile} uses an empty
 compile-time environment.  When a @code{lambda} body is compiled,
-@code{compile-lambda-body} extends the compile-time environment by a frame
+@code{compileLambdaBody} extends the compile-time environment by a frame
 containing the procedure's parameters, so that the sequence making up the body
 is compiled with that extended environment.  At each point in the compilation,
-@code{compile-variable} and @code{compile-assignment} use the compile-time
+@code{compileVariable} and @code{compileAssignment} use the compile-time
 environment in order to generate the appropriate lexical addresses.
 
 @ref{Exercise 5.39} through @ref{Exercise 5.43} describe how to complete this
@@ -1935,7 +2285,7 @@ compile-time environment.
 
 @quotation
 @strong{@anchor{Exercise 5.39}Exercise 5.39:} Write a procedure
-@code{lexical-address-lookup} that implements the new lookup operation.  It
+@code{lexicalAddressLookup} that implements the new lookup operation.  It
 should take two arguments---a lexical address and a run-time environment---and
 return the value of the variable stored at the specified lexical address.
 @code{Lexical-address-lookup} should signal an error if the value of the
@@ -1943,7 +2293,7 @@ variable is the symbol @code{*unassigned*}.@footnote{This is the modification
 to variable lookup required if we implement the scanning method to eliminate
 internal definitions (@ref{Exercise 5.43}).  We will need to eliminate these
 definitions in order for lexical addressing to work.} Also write a procedure
-@code{lexical-address-set!} that implements the operation that changes the
+@code{lexicalAddressSet} that implements the operation that changes the
 value of the variable at a specified lexical address.
 @end quotation
 
@@ -1951,37 +2301,37 @@ value of the variable at a specified lexical address.
 @strong{@anchor{Exercise 5.40}Exercise 5.40:} Modify the compiler to maintain
 the compile-time environment as described above.  That is, add a
 compile-time-environment argument to @code{compile} and the various code
-generators, and extend it in @code{compile-lambda-body}.
+generators, and extend it in @code{compileLambdaBody}.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.41}Exercise 5.41:} Write a procedure
-@code{find-variable} that takes as arguments a variable and a compile-time
+@code{findVariable} that takes as arguments a variable and a compile-time
 environment and returns the lexical address of the variable with respect to
 that environment.  For example, in the program fragment that is shown above,
 the compile-time environment during the compilation of expression @code{⟨}@var{e1}@code{⟩} is
-@code{((y z) (a b c d e) (x y))}.  @code{Find-variable} should produce
+@code{((y z) (a b c d e) (x y))}.  @code{findVariable} should produce
 
 @example
-(find-variable 
+(findVariable 
  'c '((y z) (a b c d e) (x y)))
 @i{(1 2)}
 
-(find-variable 
+(findVariable 
  'x '((y z) (a b c d e) (x y)))
 @i{(2 0)}
 
-(find-variable 
+(findVariable 
  'w '((y z) (a b c d e) (x y)))
 @i{not-found}
 @end example
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.42}Exercise 5.42:} Using @code{find-variable} from
-@ref{Exercise 5.41}, rewrite @code{compile-variable} and
-@code{compile-assignment} to output lexical-address instructions.  In cases
-where @code{find-variable} returns @code{not-found} (that is, where the
+@strong{@anchor{Exercise 5.42}Exercise 5.42:} Using @code{findVariable} from
+@ref{Exercise 5.41}, rewrite @code{compileVariable} and
+@code{compileAssignment} to output lexical-address instructions.  In cases
+where @code{findVariable} returns @code{not-found} (that is, where the
 variable is not in the compile-time environment), you should have the code
 generators use the evaluator operations, as before, to search for the binding.
 (The only place a variable that is not found at compile time can be is in the
@@ -1994,7 +2344,7 @@ those at top level, which act on the global environment.  Compilation of a
 definition does not cause the defined name to be entered in the compile-time
 environment.}  Thus, if you wish, you may have the evaluator operations look
 directly in the global environment, which can be obtained with the operation
-@code{(op get-global-environment)}, instead of having them search the whole
+@code{(op getGlobalEnvironment)}, instead of having them search the whole
 run-time environment found in @code{env}.)  Test the modified compiler on a few
 simple cases, such as the nested @code{lambda} combination at the beginning of
 this section.
@@ -2022,9 +2372,13 @@ procedures as reserved words.  If a program were to rebind such a name, the
 mechanism described in @ref{Exercise 5.38} would still open-code it as a
 primitive, ignoring the new binding.  For example, consider the procedure
 
-@example
-(lambda (+ * a b x y)
-  (+ (* a x) (* b y)))
+@example typescript
+// open-coded: the callCallees
+// + and * become machine operations
+read(
+  "(a: number, b: number, x: number, y: number): number => " +
+    "a * x + b * y",
+)
 @end example
 
 @noindent
@@ -2035,7 +2389,7 @@ open-coding compiler would still open-code the @code{+} and the @code{*} in
 open-coding compiler to consult the compile-time environment in order to
 compile the correct code for expressions involving the names of primitive
 procedures.  (The code will work correctly as long as the program does not
-@code{define} or @code{set!} these names.)
+declare or assign these names.)
 @end quotation
 
 @node	5.5.7, References, 5.4, 5.5
@@ -2043,31 +2397,28 @@ procedures.  (The code will work correctly as long as the program does not
 
 We have not yet explained how to load compiled code into the evaluator machine
 or how to run it.  We will assume that the explicit-control-evaluator machine
-has been defined as in @ref{5.4.4}, with the additional operations
-specified in @ref{Footnote 323}.  We will implement a procedure
-@code{compile-and-go} that compiles a Scheme expression, loads the resulting
-object code into the evaluator machine, and causes the machine to run the code
-in the evaluator global environment, print the result, and enter the
-evaluator's driver loop.  We will also modify the evaluator so that interpreted
-expressions can call compiled procedures as well as interpreted ones.  We can
+has been defined as in @ref{5.4.4}, with the additional operations specified in
+@ref{Footnote 323}.  We will implement a procedure @code{compileAndGo} that
+compiles a guest expression, loads the resulting object code into the evaluator
+machine, and causes the machine to run the code in the evaluator global
+environment, print the result, and enter the evaluator's driver loop.  We will
+also modify the evaluator so that interpreted expressions can call compiled procedures as well as interpreted ones.  We can
 then put a compiled procedure into the machine and use the evaluator to call
 it:
 
-@example
-(compile-and-go
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n))))
-
-@i{;;; EC-Eval value:}
-@i{ok}
-
-@i{;;; EC-Eval input:}
-(factorial 5)
-
-@i{;;; EC-Eval value:}
-@i{120}
+@example typescript
+runSource(`
+  function factorial(n: number): number @{
+    return n <= 1 ? 1 : factorial(n - 1) * n;
+  @}
+`);
+// ;;; EC-Eval value:
+// undefined
+//
+// ;;; EC-Eval input:
+// factorial(5);
+// ;;; EC-Eval value:
+// 120
 @end example
 
 @noindent
@@ -2081,22 +2432,21 @@ compiled procedures as well as interpreted procedures are compound
 explicit-control evaluator, in this section we will use ``compound'' to mean
 interpreted (as opposed to compiled).}
 
-@example
-apply-dispatch
-  (test (op primitive-procedure?) (reg proc))
-  (branch (label primitive-apply))
-  (test (op compound-procedure?) (reg proc))
-  (branch (label compound-apply))
-  (test (op compiled-procedure?) (reg proc))
-  (branch (label compiled-apply))
-  (goto (label unknown-procedure-type))
-
-compiled-apply
-  (restore continue)
-  (assign val
-          (op compiled-procedure-entry)
-          (reg proc))
-  (goto (reg val))
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "apply-dispatch" @},
+  test("isPrimitiveProcedure", register("proc")),
+  branch("primitive-apply"),
+  test("isClosure", register("proc")),
+  branch("compound-apply"),
+  test("isCompiledProcedure", register("proc")),
+  branch("compiled-apply"),
+  gotoLabel("unknown-procedure-type"),
+  @{ tag: "label", name: "compiled-apply" @},
+  restore("continue"),
+  assign("val", op("compiledProcedureEntry", register("proc"))),
+  gotoRegister("val"),
+];
 @end example
 
 @noindent
@@ -2115,42 +2465,47 @@ machine.  To start the machine at its ordinary read-eval-print loop, we could
 use
 
 @example typescript
-const ecevalController: readonly ControllerLine[] = controllerWithDriver(guardedDriver);
+const ecevalController: readonly MachineStatement[] =
+  controllerWithDriver(guardedDriver);
 @end example
 }
 
-@example
+@example typescript
 @r{;; branches if @code{flag} is set:}
-(branch (label external-entry)) 
-read-eval-print-loop
-  (perform (op initialize-stack))
-  @r{…}
+branch("external-entry"),
+@{ tag: "label", name: "read-eval-print-loop" @},
+perform("initializeStack"),
+@r{…}
 @end example
 
 @noindent
 @code{External-entry} assumes that the machine is started with @code{val}
 containing the location of an instruction sequence that puts a result into
-@code{val} and ends with @code{(goto (reg continue))}.  Starting at this entry
+@code{val} and ends with @code{gotoRegister("continue")}.  Starting at this entry
 point jumps to the location designated by @code{val}, but first assigns
 @code{continue} so that execution will return to @code{print-result}, which
 prints the value in @code{val} and then goes to the beginning of the
 evaluator's read-eval-print loop.@footnote{Since a compiled procedure is an
 object that the system may try to print, we also modify the system print
-operation @code{user-print} (from @ref{4.1.4}) so that it will not
+operation @code{userPrint} (from @ref{4.1.4}) so that it will not
 attempt to print the components of a compiled procedure:
 
 @example typescript
-const renderCompiledWord = (word: Word): string =>
-  compiledProcedureParts(word) !== null ? "#[compiled-procedure]" : formatWord(word);
+const renderCompiledProcedure = (value: Value): string =>
+  compiledProcedureParts(
+    value) !== null ? "#[compiled-procedure]" : format(value
+  );
 @end example
 }
 
-@example
-external-entry
-  (perform (op initialize-stack))
-  (assign env (op get-global-environment))
-  (assign continue (label print-result))
-  (goto (reg val))
+@example typescript
+const controller: Instruction[] = [
+  @{ tag: "label", name: "external-entry" @},
+  perform("initializeStack", ),
+  assign("env", op("getGlobalEnvironment")),
+  assign("continue", labelRef("print-result")),
+  gotoRegister("val"),
+];
 @end example
 
 @noindent
@@ -2176,7 +2531,11 @@ export const compileAndGo = (
 ): CompiledEvaluator => @{
   const @{ entry, lines @} = compileBlock(cfg, state, compiledSource);
   const controller = controllerReplacingDriver(guardedDriver);
-  const evaluator = makeCompiledEvaluator([...controller, ...lines], driverSource, options);
+  const evaluator = makeCompiledEvaluator(
+    [...controller, ...lines],
+    driverSource,
+    options
+  );
   evaluator.armEntry(entry);
   return evaluator;
 @};
@@ -2186,23 +2545,21 @@ export const compileAndGo = (
 If we have set up stack monitoring, as at the end of @ref{5.4.4}, we
 can examine the stack usage of compiled code:
 
-@example
-(compile-and-go
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n))))
-@i{(total-pushes = 0, maximum-depth = 0)}
-
-@i{;;; EC-Eval value:}
-@i{ok}
-
-@i{;;; EC-Eval input:}
-(factorial 5)
-@i{(total-pushes = 31, maximum-depth = 14)}
-
-@i{;;; EC-Eval value:}
-@i{120}
+@example typescript
+compileAndRun(`
+  function factorial(n: number): number @{
+    return n <= 1 ? 1 : factorial(n - 1) * n;
+  @}
+`);
+// (total-pushes = 0, maximum-depth = 0)
+// ;;; EC-Eval value:
+// undefined
+//
+// ;;; EC-Eval input:
+// factorial(5);
+// (total-pushes = 31, maximum-depth = 14)
+// ;;; EC-Eval value:
+// 120
 @end example
 
 @noindent
@@ -2219,7 +2576,7 @@ execution strategies of interpretation and compilation.@footnote{We can do even
 better by extending the compiler to allow compiled code to call interpreted
 procedures.  See @ref{Exercise 5.47}.}  An interpreter raises the machine to
 the level of the user program; a compiler lowers the user program to the level
-of the machine language.  We can regard the Scheme language (or any programming
+of the machine language.  We can regard the guest language (or any programming
 language) as a coherent family of abstractions erected on the machine language.
 Interpreters are good for interactive program development and debugging because
 the steps of program execution are organized in terms of these abstractions,
@@ -2250,26 +2607,26 @@ check whether the input buffer has overflowed in the finger daemon. (See
 
 The alternatives of interpretation and compilation also lead to different
 strategies for porting languages to new computers. Suppose that we wish to
-implement Lisp for a new machine.  One strategy is to begin with the
+implement the guest language for a new machine.  One strategy is to begin with the
 explicit-control evaluator of @ref{5.4} and translate its instructions
 to instructions for the new machine.  A different strategy is to begin with the
 compiler and change the code generators so that they generate code for the new
-machine.  The second strategy allows us to run any Lisp program on the new
-machine by first compiling it with the compiler running on our original Lisp
-system, and linking it with a compiled version of the run-time
+machine.  The second strategy allows us to run any guest program on the new
+machine by first compiling it with the compiler running on our original
+runtime, and linking it with a compiled version of the run-time
 library.@footnote{Of course, with either the interpretation or the compilation
 strategy we must also implement for the new machine storage allocation, input
 and output, and all the various operations that we took as ``primitive'' in our
 discussion of the evaluator and compiler.  One strategy for minimizing work
-here is to write as many of these operations as possible in Lisp and then
-compile them for the new machine.  Ultimately, everything reduces to a small
+here is to write as many of these operations as possible in the guest language and
+then compile them for the new machine.  Ultimately, everything reduces to a small
 kernel (such as garbage collection and the mechanism for applying actual
 machine primitives) that is hand-coded for the new machine.} Better yet, we can
 compile the compiler itself, and run this on the new machine to compile other
-Lisp programs.@footnote{This strategy leads to amusing tests of correctness of
+guest programs.@footnote{This strategy leads to amusing tests of correctness of
 the compiler, such as checking whether the compilation of a program on the new
 machine, using the compiled compiler, is identical with the compilation of the
-program on the original Lisp system.  Tracking down the source of differences
+program on the original runtime.  Tracking down the source of differences
 is fun but often frustrating, because the results are extremely sensitive to
 minuscule details.}  Or we can compile one of the interpreters of 
 @ref{4.1} to produce an interpreter that runs on the new machine.
@@ -2318,11 +2675,12 @@ that would come closer in performance to the hand-tailored version?
 one in @ref{Exercise 5.45} to determine the effectiveness of compiling the
 tree-recursive Fibonacci procedure
 
-@example
-(define (fib n)
-  (if (< n 2)
-      n
-      (+ (fib (- n 1)) (fib (- n 2)))))
+@example typescript
+readAll(`
+  function fib(n: number): number @{
+    return n < 2 ? n : fib(n - 1) + fib(n - 2);
+  @}
+`);
 @end example
 
 @noindent
@@ -2341,7 +2699,7 @@ procedures can call not only primitive procedures and compiled procedures, but
 interpreted procedures as well.  This requires modifying
 @code{compile-procedure-call} to handle the case of compound (interpreted)
 procedures.  Be sure to handle all the same @code{target} and @code{linkage}
-combinations as in @code{compile-proc-appl}.  To do the actual procedure
+combinations as in @code{compileProcAppl}.  To do the actual procedure
 application, the code needs to jump to the evaluator's @code{compound-apply}
 entry point.  This label cannot be directly referenced in object code (since
 the assembler requires that all labels referenced by the code it is assembling
@@ -2349,42 +2707,42 @@ be defined there), so we will add a register called @code{compapp} to the
 evaluator machine to hold this entry point, and add an instruction to
 initialize it:
 
-@example
-  (assign compapp (label compound-apply))
-  @r{;; branches if @code{flag} is set:}
-  (branch (label external-entry))
-read-eval-print-loop @r{…}
+@example typescript
+const controller: Instruction[] = [
+  // initialize the evaluator's compound-apply entry point
+  assign("compapp", labelRef("compound-apply")),
+  @{ tag: "label", name: "read-eval-print-loop" @},
+  branch("external-entry"),
+  @{ tag: "label", name: "external-entry" @},
+];
 @end example
 
 To test your code, start by defining a procedure @code{f} that calls a
-procedure @code{g}.  Use @code{compile-and-go} to compile the definition of
+procedure @code{g}.  Use @code{compileAndGo} to compile the definition of
 @code{f} and start the evaluator.  Now, typing at the evaluator, define
 @code{g} and try to call @code{f}.
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.48}Exercise 5.48:} The @code{compile-and-go}
+@strong{@anchor{Exercise 5.48}Exercise 5.48:} The @code{compileAndGo}
 interface implemented in this section is awkward, since the compiler can be
 called only once (when the evaluator machine is started).  Augment the
 compiler-interpreter interface by providing a @code{compile-and-run} primitive
 that can be called from within the explicit-control evaluator as follows:
 
-@example
-@i{;;; EC-Eval input:}
-(compile-and-run
- '(define (factorial n)
-    (if (= n 1)
-        1
-        (* (factorial (- n 1)) n))))
-
-@i{;;; EC-Eval value:}
-@i{ok}
-
-@i{;;; EC-Eval input:}
-(factorial 5)
-
-@i{;;; EC-Eval value:}
-@i{120}
+@example typescript
+const session = compileAndRun(`
+  function factorial(n: number): number @{
+    return n <= 1 ? 1 : factorial(n - 1) * n;
+  @}
+`);
+// ;;; EC-Eval value:
+// undefined
+//
+// ;;; EC-Eval input:
+// factorial(5);
+// ;;; EC-Eval value:
+// 120
 @end example
 @end quotation
 
@@ -2399,26 +2757,47 @@ setup, since we can arrange to call the procedures @code{compile} and
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 5.50}Exercise 5.50:} Use the compiler to compile the
-metacircular evaluator of @ref{4.1} and run this program using the
-register-machine simulator.  (To compile more than one definition at a time,
-you can package the definitions in a @code{begin}.)  The resulting interpreter
+@strong{@anchor{Exercise 5.50}Exercise 5.50:} Compile the metacircular
+evaluator of @ref{4.1} and run this program using the
+register-machine simulator.  The evaluator to compile is written as ordinary
+checked guest source; the edition provides that source at
+@code{spec/host-subsets/typescript/witnesses/metacircular-evaluator.ts}, and the
+comparison runner @code{runSelfInterpretation("compiled")} executes it on the
+compiled machine and compares its result and transcript with the direct and
+explicit-control runs.  (To compile more than one definition at a time,
+you can package the definitions in one program.)  The resulting interpreter
 will run very slowly because of the multiple levels of interpretation, but
 getting all the details to work is an instructive exercise.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.51}Exercise 5.51:} Develop a rudimentary
-implementation of Scheme in C (or some other low-level language of your choice)
-by translating the explicit-control evaluator of @ref{5.4} into C.  In
+implementation of the guest evaluator in C (or some other low-level language of
+your choice)
+by translating the explicit-control evaluator of @ref{5.4} into C.  The
+translated controller consumes the typed instruction stream emitted by the
+compiler of @ref{5.5}; the exchange's machine words may carry the typed
+symbol and list values of the instruction stream, while the guest object
+world it evaluates is the new one of the
+runtime---numbers, strings, booleans, and records---not legacy pairs,
+symbols, or their printed forms.  Its read-eval-print loop consumes
+serialized typed syntax data from the boundary driver, never source text: no
+second parser is built in C.  The
+edition keeps this translation in @code{eceval_5_51.c} with the driver
+@code{ex_5_51.ts}; in
 order to run this code you will need to also provide appropriate
 storage-allocation routines and other run-time support.
 @end quotation
 
 @quotation
 @strong{@anchor{Exercise 5.52}Exercise 5.52:} As a counterpoint to 
-@ref{Exercise 5.51}, modify the compiler so that it compiles Scheme procedures
-into sequences of C instructions.  Compile the metacircular evaluator of
-@ref{4.1} to produce a Scheme interpreter written in C.
+@ref{Exercise 5.51}, modify the compiler so that it compiles guest procedures
+into sequences of C instructions.  The C backend consumes the typed instruction
+stream emitted by @code{05-compilation.ts} and works in the same object world
+as @ref{Exercise 5.51}.  Compile the metacircular evaluator of
+@ref{4.1}---the checked guest source at
+@code{spec/host-subsets/typescript/witnesses/metacircular-evaluator.ts}---to
+produce a guest interpreter written in C; the edition keeps this backend in
+@code{metacircular_backend_5_52.c} with the driver @code{ex_5_52.ts}.
 @end quotation
 

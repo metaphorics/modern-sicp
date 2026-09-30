@@ -22,7 +22,7 @@ export const randomInRange = (
   rand: Effect.Effect<number>,
 ): Effect.Effect<number> => Effect.map(rand, (r) => low + (high - low) * (r / 4294967296));
 
-/** The book's `estimate-integral`: estimate the area of the region the
+/** `estimateIntegral`: estimate the area of the region the
  * `predicate` describes inside the rectangle (x1, y1) to (x2, y2), by
  * `trials` random points. */
 export const estimateIntegral = (

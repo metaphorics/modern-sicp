@@ -1,73 +1,88 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { evaluate, setupEnvironment } from "../../packages/ch4/src/01-metacircular.js";
-import type { Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import { read } from "../../packages/ch4/src/read.js";
-import { analyzeLet, evalAnalyzedWithLet, ex_4_22, runAnalyzed } from "./ex_4_22.js";
+import { evaluate, type Outcome, Session } from "../../packages/ch4/src/01-metacircular.js";
+import { format } from "../../packages/ch4/src/read.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import { bin, call, exprStmt, ident, lam, num, param } from "../../packages/ch4/src/syntax/ast.js";
+import { noSpan } from "../../packages/ch4/src/syntax/diagnostics.js";
+import { letNode, letToCall } from "./ex_4_06.js";
+import { analyzeLet, evalAnalyzedLet } from "./ex_4_22.js";
 
-const directValue = (sources: ReadonlyArray<string>): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) =>
-    Effect.flatMap(
-      Effect.forEach(sources, (source) => evaluate(read(source), env)),
-      (values) => {
-        const last = values[values.length - 1];
-        return last !== undefined
-          ? Effect.succeed(last)
-          : Effect.die(new Error("no forms evaluated"));
-      },
-    ),
-  );
+const session = (): { session: Session; env: Env } => {
+  const engine = new Session("core");
+  return { session: engine, env: engine.globalEnv() };
+};
+
+const shown = (outcome: Outcome): string =>
+  outcome.tag === "ok" ? format(outcome.value) : `error:${outcome.error.tag}`;
 
 describe("exercise 4.22: let in the analyzed evaluator", () => {
-  it.effect("a let expression analyzes and evaluates through evalAnalyzed", () =>
-    Effect.gen(function* () {
-      expect(
-        yield* evalAnalyzedWithLet(read("(let ((x 3)) (+ x 4))"), yield* setupEnvironment()),
-      ).toStrictEqual({ _tag: "Number", n: 7 });
-    }),
-  );
+  it("a grouped binding through analysis answers 7", () => {
+    const { env } = session();
+    const node = letNode(
+      [{ name: "x", init: num(3) }],
+      [exprStmt(bin("+", ident("x"), num(4)))],
+      noSpan,
+    );
+    expect(shown(evalAnalyzedLet(node, env))).toBe("7");
+  });
 
-  it.effect("a let nested in a lambda body analyzes once per closure", () =>
-    Effect.gen(function* () {
-      expect(
-        yield* runAnalyzed(["(define (f y) (let ((x (* y y))) (+ x y)))", "(f 4)"]),
-      ).toStrictEqual({ _tag: "Number", n: 20 });
-    }),
-  );
+  it("a lowered let call in a procedure body answers 20 for 4", () => {
+    const { env } = session();
+    const inner = letNode(
+      [{ name: "x", init: bin("*", ident("y"), ident("y")) }],
+      [exprStmt(bin("+", ident("x"), ident("y")))],
+      noSpan,
+    );
+    const f = lam([param("y")], [exprStmt(letToCall(inner))]);
+    expect(shown(evalAnalyzedLet(call(f, [num(4)]), env))).toBe("20");
+  });
 
-  it.effect("direct evaluation of the derived form agrees with analyzed let", () =>
-    Effect.gen(function* () {
-      const letSource = "(let ((x 3)) (let ((y (+ x 1))) (* x y)))";
-      const derivedSource = "((lambda (x) ((lambda (y) (* x y)) (+ x 1))) 3)";
-      expect(yield* directValue([derivedSource])).toStrictEqual({ _tag: "Number", n: 12 });
-      expect(yield* evalAnalyzedWithLet(read(letSource), yield* setupEnvironment())).toStrictEqual({
-        _tag: "Number",
-        n: 12,
-      });
-    }),
-  );
+  it("nested grouped bindings answer 12, agreeing with the derived form", () => {
+    const nested = letNode(
+      [{ name: "x", init: num(3) }],
+      [
+        exprStmt(
+          letToCall(
+            letNode(
+              [{ name: "y", init: bin("+", ident("x"), num(1)) }],
+              [exprStmt(bin("*", ident("x"), ident("y")))],
+              noSpan,
+            ),
+          ),
+        ),
+      ],
+      noSpan,
+    );
+    const { session: engine, env } = session();
+    expect(shown(evalAnalyzedLet(nested, env))).toBe("12");
+    const manual = call(
+      lam(
+        [param("x")],
+        [
+          exprStmt(
+            call(lam([param("y")], [exprStmt(bin("*", ident("x"), ident("y")))]), [
+              bin("+", ident("x"), num(1)),
+            ]),
+          ),
+        ],
+      ),
+      [num(3)],
+    );
+    expect(shown(evaluate(manual, engine.globalEnv()))).toBe("12");
+  });
 
-  it.effect("analyzeLet runs the combination's execution procedure", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      const form = read("(let ((x 3)) (+ x 4))");
-      if (form._tag !== "Cons") {
-        return yield* Effect.die(new Error("expected a cons form"));
-      }
-      expect(yield* analyzeLet(form)(env)).toStrictEqual({
-        _tag: "Number",
-        n: 7,
-      });
-    }),
-  );
-
-  it("describes the derivation", () => {
-    expect(ex_4_22()).toContain("derived expression");
+  it("the execution procedure from analyzeLet answers 7 on a fresh environment", () => {
+    const node = letNode(
+      [{ name: "x", init: num(3) }],
+      [exprStmt(bin("+", ident("x"), num(4)))],
+      noSpan,
+    );
+    const procedure = analyzeLet(node);
+    expect(shown(procedure(new Session("core").globalEnv()))).toBe("7");
+    expect(letToCall(node).tag).toBe("call");
   });
 });

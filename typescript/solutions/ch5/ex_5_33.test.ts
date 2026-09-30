@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { describe, expect, it } from "vitest";
-import { ex_5_33 } from "./ex_5_33.js";
+// Original exercise
 
-describe("exercise 5.33", () => {
-  it("runs both orders and reports their sizes", () => {
-    const answers = ex_5_33();
-    expect(answers[0]).toMatch(/\d+ statements, \d+ save sites/);
-    expect(answers[1]).toMatch(/\d+ statements, \d+ save sites/);
-    expect(answers[2]).toContain("120");
-    expect(answers[3]).toContain("120");
-    expect(answers[4]).toContain("which register is live");
+import { describe, expect, it } from "vitest";
+import { ex_5_33, summary } from "./ex_5_33.ts";
+
+describe("exercise 5.33 factorial-alt compilation", () => {
+  it("the two orderings compile to the same shape", () => {
+    const alt = summary(
+      "function factorialAlt(n: number): number { return n === 1 ? 1 : n * factorialAlt(n - 1); }",
+    );
+    const book = summary(
+      "function factorial(n: number): number { return n === 1 ? 1 : factorial(n - 1) * n; }",
+    );
+    expect(alt.statements).toBe(book.statements);
+    expect(alt.saves).toBe(book.saves);
+  });
+  it("reports the comparison", () => {
+    expect(ex_5_33()[2]).toContain("operand order");
   });
 });

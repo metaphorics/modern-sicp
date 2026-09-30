@@ -9,9 +9,9 @@ import {
 
 /**
  * Exercise 3.39: which of the five possibilities remain when the
- * square's computation runs under the serializer but its `set!` does
- * not, while the increment is serialized whole. The book's `(s (lambda
- * () (* x x)))` becomes a two-chunk process: one serialized chunk that
+ * square's computation runs under the serializer but its assignment
+ * does not, while the increment is serialized whole. The statement's
+ * `s(() => x * x)` becomes a two-chunk process: one serialized chunk that
  * reads `x` twice and computes the product, then the plain write; the
  * increment is one serialized chunk. Three chunks, run in every order,
  * are the complete answer.
@@ -28,7 +28,7 @@ export const exercise39Outcomes = (): ReadonlyArray<number> => {
   const outcomes = new Set<number>();
   for (const order of allInterleavings([2, 1])) {
     const cell: XCell = { x: 10 };
-    // P1: the serialized product computation, then the unserialized set!.
+    // P1: the serialized product computation, then the unserialized assignment.
     const square: Process = (function* () {
       const a = cell.x;
       const b = cell.x;

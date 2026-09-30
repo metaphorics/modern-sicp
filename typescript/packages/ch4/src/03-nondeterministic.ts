@@ -1,732 +1,1118 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted-from-SICP: section 4.3
 
-/**
- * The amb evaluator: the book's section 4.3 in this edition's rendering. The
- * language is the one `01-metacircular.ts` evaluates plus the `amb` special
- * form: an expression may have more than one possible value, a dead end
- * backtracks to the most recent choice point, and the driver can ask for the
- * next alternative with `try-again`. The book builds this evaluator on the
- * analyzing evaluator of 4.1.7, and the edition keeps that shape: every
- * expression analyzes once into an execution procedure that takes the
- * environment and two continuation procedures, a success continuation of
- * `(value, fail)` and a failure continuation of no arguments. Dead ends
- * travel through the failure continuations only; the error channel stays
- * reserved for program bugs (an unbound variable, a bad primitive
- * application), which are not failed choices.
- *
- * The module reuses the 4.1 exports wholesale: the syntax predicates and
- * selectors, the environment operations, `makeProcedure`,
- * `applyPrimitiveProcedure`, `condToIf`, and the primitive table of
- * `setupEnvironment`. Three seams are added here and nowhere else:
- *
- * - the failure-continuation seam itself: `Fail` and `Succeed` thread the
- *   two continuations through every execution procedure, the one change the
- *   section makes to the 4.1.7 machinery;
- * - the `let` clause: the section's programs bind with `let` (the book
- *   notes the evaluator "supports let, see exercise 4.22"), which the 4.1
- *   dispatch lacks; `letToApplication` rewrites it into the lambda
- *   application of exercise 4.22 before analysis;
- * - the tuning knobs of the exercise variants: `ramb` (4.50),
- *   `permanent-set!` (4.51), `if-fail` (4.52), and `require` as a special
- *   form (4.54), each a clause the dispatch gains under its knob, plus the
- *   optional `failures` counter the measurement exercises read and the
- *   `random` generator `ramb` shuffles with.
- *
- * The dispatch is built once by `makeAmbEvaluator` over an `AmbTuning`
- * record; the section's evaluator is the default, and no exercise forks the
- * evaluator.
- */
-import { Effect, type Result } from "effect";
 import {
-  applyPrimitiveProcedure,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  condToIf,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
-  extendEnvironment,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isApplication,
-  isAssignment,
-  isBegin,
-  isCond,
-  isDefinition,
-  isIf,
-  isLambda,
-  isQuoted,
-  isSelfEvaluating,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  lookupVariableValue,
-  makeLambda,
-  makeProcedure,
-  ok,
-  setupEnvironment,
-  setVariableValue,
-  symbol,
-  taggedList,
-  textOfQuotation,
-} from "./01-metacircular.js";
-import type { Env, SymbolValue, Value } from "./core.js";
-import { type EvaluationError, NotAProcedure, RuntimeError, UnknownSyntax } from "./errors.js";
-import { type Cons, cons, type List, nil, toArray } from "./list.js";
-import { format, ReadError, read, readAll } from "./read.js";
+  applyBinaryOperation,
+  applyUnaryOperation,
+  type RunResult,
+  Session,
+  splitParams,
+} from "./01-metacircular.ts";
+import type { Cell, Env } from "./runtime/env.ts";
+import { child, findCell, makeCell } from "./runtime/env.ts";
+import type { GuestError, Outcome } from "./runtime/errors.ts";
+import { fail, ok } from "./runtime/errors.ts";
+import {
+  isArrayValue,
+  isClosure,
+  isMapValue,
+  isPrimitive,
+  isRecordValue,
+  makeArray,
+  makeClosure,
+  makeErrorValue,
+  makeMap,
+  makeRecord,
+  makeSet,
+  type Value,
+} from "./runtime/value.ts";
+/**
+ * The named search experiments (host-subsets grammar section 6):
+ * `amb-depth-first-experiment` runs alternatives left-to-right depth-first
+ * over the shared checked syntax; `amb-ramb-experiment` runs them in a seeded
+ * deterministic random order and is a separately named experiment. `require`
+ * fails the current branch; failure re-enters the nearest untried choice.
+ * Assignments are undone newest-first during backtracking; `permanentAssign`
+ * retains explicit writes, and `ifFail` runs its fallback only after the
+ * primary expression exhausts its solutions. Search uses only its named
+ * `choose`/`require`/`ramb`/`permanentAssign`/`ifFail` forms, never core
+ * TypeScript behavior or the native oracle as if JavaScript were nondeterministic.
+ * Every continuation threads its resume: each success carries the failure
+ * continuation that re-enters the choice it came from.
+ */
+import type { Arg, Decl, Expr, Stmt } from "./syntax/ast.ts";
+import { admitSource } from "./syntax/check.ts";
 
-// ---------------------------------------------------------------------
-// 4.3.1 Amb and search: the syntax of the special form
-// ---------------------------------------------------------------------
+/** The two search execution modes. */
+export type SearchMode = "amb-depth-first-experiment" | "amb-ramb-experiment";
 
-/** The book's `amb?`: the tagged `amb` form. */
-export const isAmb = (exp: Value): exp is Cons<Value> => taggedList("amb", exp);
-
-/** The book's `amb-choices`: the alternatives, unevaluated. */
-export const ambChoices = (exp: Cons<Value>): List<Value> => exp.tail;
-
-/** The book's `let?`: the tagged `let` form, the clause this module adds. */
-export const isLet = (exp: Value): exp is Cons<Value> => taggedList("let", exp);
-
-// Selectors below follow the 4.1 convention: shapes the reader produces are
-// assumed well formed, and a malformed shape yields a `<malformed>` symbol no
-// predicate accepts, so evaluation ends in a checked error.
-
-const cadrOf = (v: Value): Value => (v._tag === "Cons" ? v.head : symbol("<malformed>"));
-
-const listValue = (v: Value): List<Value> => (v._tag === "Cons" || v._tag === "Nil" ? v : nil);
-
-/** The book's `let-bindings`: the `((v e) ...)` list. */
-export const letBindings = (exp: Cons<Value>): List<Value> => listValue(cadrOf(exp.tail));
-
-/** The book's `let-body`: the body expressions. */
-export const letBody = (exp: Cons<Value>): List<Value> =>
-  exp.tail._tag === "Cons" ? listValue(exp.tail.tail) : nil;
-
-/** Exercise 4.22's derivation: `(let ((v e) ...) body...)` becomes
- * `((lambda (v ...) body...) e ...)`, so the combination machinery does the
- * binding and no let machinery runs at execution time. */
-export const letToApplication = (exp: Cons<Value>): Value => {
-  const pairs = toArray(letBindings(exp));
-  return cons(
-    makeLambda(
-      pairs.reduceRight<List<Value>>((tail, pair) => {
-        const name = cadrOf(pair);
-        return cons(isVariable(name) ? name : symbol("<malformed>"), tail);
-      }, nil),
-      letBody(exp),
-    ),
-    pairs.reduceRight<List<Value>>(
-      (tail, pair) => cons(cadrOf(pair._tag === "Cons" ? pair.tail : nil), tail),
-      nil,
-    ),
-  );
-};
-
-// ---------------------------------------------------------------------
-// 4.3.3 Execution procedures and continuations
-// ---------------------------------------------------------------------
-
-/** The book's failure continuation: no arguments, tries another branch. The
- * driver installs the outermost one; every dead end in the program ends at
- * one of these. */
-export type Fail = () => Effect.Effect<Value, EvaluationError>;
-
-/** The book's success continuation: receives the value just obtained and
- * another failure continuation to call if that value leads to a dead end. */
-export type Succeed = (value: Value, fail: Fail) => Effect.Effect<Value, EvaluationError>;
-
-/** The book's execution procedure in the amb evaluator: environment plus
- * the two continuations, where the 4.1.7 execution procedure took only the
- * environment. This is the failure-continuation seam. */
-export type AmbExecute = (
-  env: Env,
-  succeed: Succeed,
-  fail: Fail,
-) => Effect.Effect<Value, EvaluationError>;
-
-/** The book's `analyze` over the three-argument execution procedures. */
-export type AmbAnalyze = (exp: Value) => AmbExecute;
-
-/** The failure the driver sees when the outermost failure continuation runs:
- * the whole search ran dry, and there are no more values. The book's driver
- * answers with a report; the helpers of this module catch the class and
- * report exhaustion instead. It rides the error channel as a `RuntimeError`
- * so a search that dries in a definition position still fails the session
- * through the checked channel. */
-export class AmbExhausted extends RuntimeError {
-  constructor() {
-    super({ message: "the amb search ran dry", detail: "there are no more values" });
-    this.name = "AmbExhausted";
-  }
+/** One search run: every answer found, in search order, with its transcript. */
+export interface SearchRun {
+  readonly answers: ReadonlyArray<Value>;
+  readonly transcript: ReadonlyArray<string>;
+  readonly outcome: Outcome;
+  /** Failed candidate computations that scheduled backtracking; exhaustion propagation does not count. */
+  readonly failures: number;
+  /** Deferred continuations actually executed, including successful resumptions. */
+  readonly steps: number;
+  /** `completed` when the retry queue drained; `cut-off` when a limit stopped it. */
+  readonly status: "completed" | "cut-off";
 }
 
-// ---------------------------------------------------------------------
-// The seeded generator of exercise 4.50
-// ---------------------------------------------------------------------
-
-/** The stateful host generator `ramb` shuffles with: a 32-bit xorshift
- * stream over `[0, 1)`. The seed must be a nonzero 32-bit integer; a zero
- * seed would fix the stream at zero. Two generators from one seed draw the
- * same stream, which is what makes a ramb session reproducible. */
-export const makeXorshift32 = (seed: number): (() => number) => {
-  if (!Number.isInteger(seed) || seed <= 0 || seed > 0xffffffff) {
-    throw new RangeError("the xorshift seed must be a nonzero 32-bit integer");
-  }
-  let state = seed >>> 0;
-  return () => {
-    state ^= state << 13;
-    state >>>= 0;
-    state ^= state >>> 17;
-    state ^= state << 5;
-    state >>>= 0;
-    return state / 0x100000000;
-  };
-};
-
-// The shuffle `ramb` applies to its alternatives before the search descends:
-// Fisher-Yates over a copy, one draw per position, the order the generator
-// chooses. The generator is an argument, so one evaluator's ramb order is
-// exactly its tuning's stream and nothing hides in module state.
-const shuffled = <A>(items: ReadonlyArray<A>, draw: () => number): ReadonlyArray<A> => {
-  const out = [...items];
-  for (let i = out.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(draw() * (i + 1));
-    const swap = out[i];
-    const target = out[j];
-    if (swap !== undefined && target !== undefined) {
-      out[i] = target;
-      out[j] = swap;
-    }
-  }
-  return out;
-};
-
-// ---------------------------------------------------------------------
-// 4.3.3 Structure of the evaluator
-// ---------------------------------------------------------------------
-
-/** Exercise 4.50's `ramb?`: the tagged `ramb` form. */
-export const isRamb = (exp: Value): exp is Cons<Value> => taggedList("ramb", exp);
-
-/** Exercise 4.50's `ramb-choices`. */
-export const rambChoices = (exp: Cons<Value>): List<Value> => exp.tail;
-
-/** Exercise 4.51's `permanent-set!?`. */
-export const isPermanentSet = (exp: Value): exp is Cons<Value> => taggedList("permanent-set!", exp);
-
-/** Exercise 4.52's `if-fail?`. */
-export const isIfFail = (exp: Value): exp is Cons<Value> => taggedList("if-fail", exp);
-
-/** Exercise 4.52's first expression, the one whose search is caught. */
-export const ifFailExp = (exp: Cons<Value>): Value => cadrOf(exp.tail);
-
-/** Exercise 4.52's alternative, the value of a dry search. */
-export const ifFailAlternative = (exp: Cons<Value>): Value => {
-  const rest = exp.tail._tag === "Cons" ? exp.tail.tail : nil;
-  return cadrOf(rest);
-};
-
-/** Exercise 4.54's `require?`: the tagged `require` form. */
-export const isRequire = (exp: Value): exp is Cons<Value> => taggedList("require", exp);
-
-/** Exercise 4.54's `require-predicate`. */
-export const requirePredicate = (exp: Cons<Value>): Value => cadrOf(exp.tail);
-
-/**
- * The knobs the exercise variants flip; the section leaves every knob off.
- * `ramb` is exercise 4.50: the dispatch recognizes a `ramb` form whose
- * alternatives shuffle through `random` before the search descends.
- * `permanentSet` is exercise 4.51: the dispatch recognizes
- * `permanent-set!`, an assignment no backtrack undoes. `ifFail` is exercise
- * 4.52: the dispatch recognizes `if-fail`, whose alternative evaluates when
- * the first expression's search runs dry. `requireForm` is exercise 4.54:
- * the dispatch recognizes `(require p)` as a special form analyzed by
- * `analyzeRequire`, instead of require being an ordinary procedure the
- * program defines. `failures`, when supplied, counts the Fail deliveries the
- * choice frames see: one per alternative replay and one per frame
- * exhaustion, the measurement the timing exercises (4.37, 4.39, 4.40) read.
- * `random` is the stateful generator `ramb` draws from; it defaults to a
- * nonzero seed, and one generator shared by two evaluators makes them ramble
- * in step.
- */
-export interface AmbTuning {
-  readonly ramb?: boolean;
-  readonly permanentSet?: boolean;
-  readonly ifFail?: boolean;
-  readonly requireForm?: boolean;
-  readonly random?: () => number;
-  readonly failures?: { count: number };
+/** Limits checked before each pending continuation; `maxSteps` excludes initial evaluation. */
+export interface SearchLimits {
+  /** Maximum answers returned; zero stops before evaluating guest source. */
+  readonly maxAnswers?: number;
+  /** Maximum deferred continuations executed. */
+  readonly maxSteps?: number;
 }
 
-/**
- * Exercise 4.54's `analyze-require`, the definition the exercise completes:
- * the first blank is the truth test on the predicate's value, the second is
- * the `(fail2)` that rejects the branch when the predicate fails, so the
- * predicate's own alternatives are tried before the failure propagates. A
- * true predicate succeeds with the symbol `ok`.
- */
-export const analyzeRequire = (exp: Cons<Value>, analyze: AmbAnalyze): AmbExecute => {
-  const pproc = analyze(requirePredicate(exp));
-  return (env, succeed, fail) =>
-    pproc(env, (predValue, fail2) => (isTrue(predValue) ? succeed(ok, fail2) : fail2()), fail);
-};
-
-/**
- * One amb evaluator: the dispatch and the continuation machinery bound to
- * each other, the book's `analyze` and `ambeval` as first-class procedures.
- * Exercise variants build an evaluator by tuning; the section's evaluator is
- * `ambEvaluator`.
- */
-export interface AmbEvaluator {
-  /** The book's `analyze`: syntax once, an `AmbExecute` to run many times. */
-  readonly analyze: AmbAnalyze;
-  /** The book's `ambeval`: analyze the expression, apply the execution
-   * procedure to the environment and the two continuations. */
-  readonly ambeval: (
-    exp: Value,
-    env: Env,
-    succeed: Succeed,
-    fail: Fail,
-  ) => Effect.Effect<Value, EvaluationError>;
+/** Success receives the found value and the continuation that resumes the search. */
+type Success = (value: Value, next: Failure) => void;
+/** Failure re-enters the nearest untried alternative. */
+type Failure = () => void;
+/** Prior target state used to undo one successful assignment on backtracking. */
+interface TargetSnapshot {
+  readonly restore: () => Outcome;
+}
+type TargetCapture =
+  | { readonly tag: "snapshot"; readonly snapshot: TargetSnapshot }
+  | { readonly tag: "error"; readonly error: GuestError };
+/** A resolved target reference, captured before evaluating the right-hand side. */
+interface TargetLocation {
+  readonly capture: () => TargetCapture;
+  readonly write: (value: Value) => Outcome;
 }
 
-/** Builds one amb evaluator over the tuning. The internal procedures close
- * over the dispatch, so an object-level procedure body analyzes and runs
- * under the same evaluator that recognized its forms. */
-export const makeAmbEvaluator = (tuning: AmbTuning = {}): AmbEvaluator => {
-  const ramb = tuning.ramb === true;
-  const permanentSet = tuning.permanentSet === true;
-  const ifFail = tuning.ifFail === true;
-  const requireForm = tuning.requireForm === true;
-  const random = tuning.random ?? makeXorshift32(0x5eed);
-  const noteFailure = (): void => {
-    if (tuning.failures !== undefined) {
-      tuning.failures.count += 1;
+class Searcher {
+  readonly session = new Session("core");
+  readonly #ramb: boolean;
+  #randomState: number;
+
+  constructor(ramb: boolean, seed: number) {
+    this.#ramb = ramb;
+    this.#randomState = seed >>> 0 || 1;
+  }
+
+  readonly #deferred: Failure[] = [];
+  #failures = 0;
+  #steps = 0;
+
+  /** Defers a failed candidate computation and records one actual failure. */
+  retry(fail: Failure): void {
+    this.#failures += 1;
+    this.defer(fail);
+  }
+
+  /** Defers a continuation without counting a new failure. */
+  defer(continuation: Failure): void {
+    this.#deferred.push(continuation);
+  }
+
+  /** Whether another deferred continuation can be executed. */
+  get hasPending(): boolean {
+    return this.#deferred.length > 0;
+  }
+
+  /** Failed computations observed so far. */
+  get failures(): number {
+    return this.#failures;
+  }
+
+  /** Deferred continuations executed so far. */
+  get steps(): number {
+    return this.#steps;
+  }
+
+  /** Runs one deferred continuation; does not count an empty queue poll. */
+  step(): void {
+    const work = this.#deferred.shift();
+    if (work === undefined) {
+      return;
     }
-  };
+    this.#steps += 1;
+    work();
+  }
 
-  const analyzeSelfEvaluating =
-    (exp: Value): AmbExecute =>
-    (_env, succeed, fail) =>
-      succeed(exp, fail);
-
-  const analyzeQuoted = (exp: Cons<Value>): AmbExecute => {
-    const qval = textOfQuotation(exp);
-    return (_env, succeed, fail) => succeed(qval, fail);
-  };
-
-  const analyzeVariable =
-    (exp: SymbolValue): AmbExecute =>
-    (env, succeed, fail) =>
-      Effect.flatMap(lookupVariableValue(exp, env), (value) => succeed(value, fail));
-
-  /** The book's `analyze-lambda`: the procedure records the environment of
-   * the execution that runs the lambda form. */
-  const analyzeLambda =
-    (exp: Cons<Value>): AmbExecute =>
-    (env, succeed, fail) =>
-      succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env), fail);
-
-  const analyzeIf = (exp: Cons<Value>): AmbExecute => {
-    const pproc = analyze(ifPredicate(exp));
-    const cproc = analyze(ifConsequent(exp));
-    const aproc = analyze(ifAlternative(exp));
-    return (env, succeed, fail) =>
-      pproc(
-        env,
-        (predValue, fail2) =>
-          isTrue(predValue) ? cproc(env, succeed, fail2) : aproc(env, succeed, fail2),
-        fail,
-      );
-  };
-
-  const analyzeSequence = (exps: List<Value>): AmbExecute => {
-    if (exps._tag === "Nil") {
-      return () =>
-        Effect.fail(new RuntimeError({ message: "Empty sequence: AMB-EVAL", detail: "" }));
-    }
-    const procs = toArray(exps).map(analyze);
-    const sequentially =
-      (a: AmbExecute, b: AmbExecute): AmbExecute =>
-      (env, succeed, fail) =>
-        a(env, (_value, fail2) => b(env, succeed, fail2), fail);
-    return procs.reduce(sequentially);
-  };
-
-  /** The book's `analyze-definition`: the value computes, then the name
-   * defines, then the success propagates with the new failure continuation. */
-  const analyzeDefinition = (exp: Cons<Value>): AmbExecute => {
-    const variable = definitionVariable(exp);
-    const vproc = analyze(definitionValue(exp));
-    return (env, succeed, fail) =>
-      vproc(
-        env,
-        (value, fail2) =>
-          Effect.flatMap(defineVariableValue(variable, value, env), () => succeed(ok, fail2)),
-        fail,
-      );
-  };
-
-  /** The write of the book's `analyze-assignment` plus its undo record:
-   * the old value is read before the write, and the success is handed a
-   * failure continuation that restores the old value before propagating,
-   * so a backtrack unwrites the branch's assignments, newest first. */
-  const assignWithUndo = (
-    variable: SymbolValue,
-    value: Value,
-    env: Env,
-    succeed: Succeed,
-    fail2: Fail,
-  ): Effect.Effect<Value, EvaluationError> =>
-    Effect.flatMap(lookupVariableValue(variable, env), (oldValue) =>
-      Effect.flatMap(setVariableValue(variable, value, env), () =>
-        succeed(ok, () => Effect.flatMap(setVariableValue(variable, oldValue, env), () => fail2())),
-      ),
+  #assignWithUndo(target: Expr, valueExpr: Expr, env: Env, succeed: Success, fail: Failure): void {
+    this.resolveTarget(
+      target,
+      env,
+      (location, targetNext) => {
+        this.evalExpr(
+          valueExpr,
+          env,
+          (value, valueNext) => this.#commitReversible(location, value, valueNext, succeed),
+          targetNext,
+        );
+      },
+      fail,
     );
+  }
 
-  /** The book's `analyze-assignment`: the first place the continuations do
-   * real work. The old value is read before the write, and the success is
-   * handed a failure continuation that undoes the assignment before
-   * propagating, so backtracking unwrites every assignment made on the
-   * branch, newest first. */
-  const analyzeAssignment = (exp: Cons<Value>): AmbExecute => {
-    const variable = assignmentVariable(exp);
-    const vproc = analyze(assignmentValue(exp));
-    return (env, succeed, fail) =>
-      vproc(env, (value, fail2) => assignWithUndo(variable, value, env, succeed, fail2), fail);
-  };
+  #commitReversible(location: TargetLocation, value: Value, next: Failure, succeed: Success): void {
+    const captured = location.capture();
+    if (captured.tag === "error") {
+      this.retry(next);
+      return;
+    }
+    if (location.write(value).tag === "error") {
+      this.retry(next);
+      return;
+    }
+    succeed(value, () => this.#restoreAndResume(captured.snapshot, next));
+  }
 
-  /** Exercise 4.51's `analyze-permanent-set!`: the assignment skips the undo
-   * record, so no backtrack ever restores the old value. */
-  const analyzePermanentSet = (exp: Cons<Value>): AmbExecute => {
-    const variable = assignmentVariable(exp);
-    const vproc = analyze(assignmentValue(exp));
-    return (env, succeed, fail) =>
-      vproc(
-        env,
-        (value, fail2) =>
-          Effect.flatMap(setVariableValue(variable, value, env), () => succeed(ok, fail2)),
-        fail,
-      );
-  };
+  #restoreAndResume(snapshot: TargetSnapshot, next: Failure): void {
+    if (snapshot.restore().tag === "error") {
+      this.retry(next);
+      return;
+    }
+    next();
+  }
 
-  /** Exercise 4.52's `analyze-if-fail`: the first expression runs against
-   * the continuation as usual; only its outermost failure is intercepted,
-   * and the alternative evaluates against the same success and the same
-   * outer failure. A failure after the first expression has succeeded is
-   * past this boundary and propagates untouched. */
-  const analyzeIfFail = (exp: Cons<Value>): AmbExecute => {
-    const pproc = analyze(ifFailExp(exp));
-    const aproc = analyze(ifFailAlternative(exp));
-    return (env, succeed, fail) => pproc(env, succeed, () => aproc(env, succeed, fail));
-  };
-
-  /** The choice machinery of `analyze-amb` and `analyze-ramb`: the analyzed
-   * alternatives run in order, each handed a failure continuation that tries
-   * the next; when the alternatives run out, the form's own failure
-   * continuation propagates. Each delivery of a failure continuation to the
-   * frame counts one Fail when the tuning measures: one per alternative
-   * replay, one per frame exhaustion. */
-  const tryChoices = (
-    cprocs: ReadonlyArray<AmbExecute>,
+  #assignPermanently(
+    target: Expr,
+    valueExpr: Expr,
     env: Env,
-    succeed: Succeed,
-    fail: Fail,
-  ): Effect.Effect<Value, EvaluationError> => {
-    const tryNext = (rest: ReadonlyArray<AmbExecute>): Effect.Effect<Value, EvaluationError> => {
-      const first = rest[0];
-      if (first === undefined) {
-        return fail();
-      }
-      return first(env, succeed, () => {
-        noteFailure();
-        return tryNext(rest.slice(1));
-      });
-    };
-    return tryNext(cprocs);
-  };
+    succeed: Success,
+    fail: Failure,
+  ): void {
+    this.resolveTarget(
+      target,
+      env,
+      (location, targetNext) => {
+        this.evalExpr(
+          valueExpr,
+          env,
+          (value, valueNext) => this.#commitPermanent(location, value, valueNext, succeed),
+          targetNext,
+        );
+      },
+      fail,
+    );
+  }
 
-  const analyzeAmb = (exp: Cons<Value>): AmbExecute => {
-    const cprocs = toArray(ambChoices(exp)).map(analyze);
-    return (env, succeed, fail) => tryChoices(cprocs, env, succeed, fail);
-  };
+  #commitPermanent(location: TargetLocation, value: Value, next: Failure, succeed: Success): void {
+    if (location.write(value).tag === "error") {
+      this.retry(next);
+      return;
+    }
+    succeed(undefined, next);
+  }
 
-  /** Exercise 4.50's `analyze-ramb`: the amb machinery over a shuffled copy
-   * of the alternatives, the order the generator draws. The shuffle runs per
-   * execution, so a ramb inside a recursive procedure draws again each time
-   * the search re-enters it. */
-  const analyzeRamb = (exp: Cons<Value>): AmbExecute => {
-    const cprocs = toArray(rambChoices(exp)).map(analyze);
-    return (env, succeed, fail) => tryChoices(shuffled(cprocs, random), env, succeed, fail);
-  };
+  // ------------------------------------------------------------------
+  // Expressions
+  // ------------------------------------------------------------------
 
-  /** The book's `get-args`: the operand execution procedures run left to
-   * right, each handed a success continuation that accumulates the argument
-   * and continues the walk, so the operand order is the walk order. */
-  const getArgs =
-    (aprocs: ReadonlyArray<AmbExecute>): AmbExecute =>
-    (env, succeed, fail) => {
-      const first = aprocs[0];
-      if (first === undefined) {
-        return succeed(nil, fail);
-      }
-      return first(
-        env,
-        (arg, fail2) =>
-          getArgs(aprocs.slice(1))(
-            env,
-            (args, fail3) => succeed(cons(arg, listValue(args)), fail3),
-            fail2,
-          ),
-        fail,
-      );
-    };
-
-  /** The book's `execute-application`: a primitive sees the values; a
-   * compound procedure's body runs in the extended environment against the
-   * same continuations. Anything else is the ordinary checked error. */
-  const executeApplication = (
-    procedure: Value,
-    args: List<Value>,
-    succeed: Succeed,
-    fail: Fail,
-  ): Effect.Effect<Value, EvaluationError> => {
-    if (procedure._tag === "Primitive") {
-      return Effect.flatMap(applyPrimitiveProcedure(procedure, args), (value) =>
-        succeed(value, fail),
-      );
-    }
-    if (procedure._tag === "Compound") {
-      return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-        analyzeSequence(procedure.body)(newEnv, succeed, fail),
-      );
-    }
-    return Effect.fail(new NotAProcedure({ value: format(procedure) }));
-  };
-
-  const analyzeApplication = (exp: Cons<Value>): AmbExecute => {
-    const fproc = analyze(exp.head);
-    const aprocs = toArray(exp.tail).map(analyze);
-    return (env, succeed, fail) =>
-      fproc(
-        env,
-        (proc, fail2) =>
-          getArgs(aprocs)(
-            env,
-            (args, fail3) => executeApplication(proc, listValue(args), succeed, fail3),
-            fail2,
-          ),
-        fail,
-      );
-  };
-
-  const analyze: AmbAnalyze = (exp: Value): AmbExecute => {
-    if (isSelfEvaluating(exp)) {
-      return analyzeSelfEvaluating(exp);
-    }
-    if (isVariable(exp)) {
-      return analyzeVariable(exp);
-    }
-    if (isQuoted(exp)) {
-      return analyzeQuoted(exp);
-    }
-    if (isAssignment(exp)) {
-      return analyzeAssignment(exp);
-    }
-    if (permanentSet && isPermanentSet(exp)) {
-      return analyzePermanentSet(exp);
-    }
-    if (isDefinition(exp)) {
-      return analyzeDefinition(exp);
-    }
-    if (ifFail && isIfFail(exp)) {
-      return analyzeIfFail(exp);
-    }
-    if (isIf(exp)) {
-      return analyzeIf(exp);
-    }
-    if (isLambda(exp)) {
-      return analyzeLambda(exp);
-    }
-    if (isLet(exp)) {
-      return analyze(letToApplication(exp));
-    }
-    if (isBegin(exp)) {
-      return analyzeSequence(beginActions(exp));
-    }
-    if (isCond(exp)) {
-      return analyze(condToIf(exp));
-    }
-    if (isAmb(exp)) {
-      return analyzeAmb(exp);
-    }
-    if (ramb && isRamb(exp)) {
-      return analyzeRamb(exp);
-    }
-    if (requireForm && isRequire(exp)) {
-      return analyzeRequire(exp, analyze);
-    }
-    if (isApplication(exp)) {
-      return analyzeApplication(exp);
-    }
-    return () => Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-  };
-
-  return {
-    analyze,
-    ambeval: (exp, env, succeed, fail) => analyze(exp)(env, succeed, fail),
-  };
-};
-
-/** The section's evaluator: amb, plain `set!` with its undo, require as an
- * ordinary procedure, and no exercise forms. */
-export const ambEvaluator = makeAmbEvaluator();
-
-/** The book's `ambeval` of the section. */
-export const ambeval = ambEvaluator.ambeval;
-
-/** A fresh global environment for an amb session: the 4.1 setup, the same
- * primitive table the book's `setup-environment` builds. Takes the sink the
- * object-language `display` and `newline` write to. */
-export const setupAmbEnvironment = setupEnvironment;
-
-// ---------------------------------------------------------------------
-// The driver loop
-// ---------------------------------------------------------------------
-
-/** The book's `driver-loop` over a finite session. An input equal to
- * `"try-again"` resumes the search for the next alternative; any other
- * input starts a new problem. The transcript carries the book's prompts:
- * each new problem prints `;;; Amb-Eval input:`, the input, and
- * `;;; Starting a new problem`, then the value or the exhaustion report; a
- * resume prints the value or the exhaustion report alone, and a resume with
- * no current problem reports that. A hard error fails the whole session on
- * the error channel. The object-language `display` and `newline` write to
- * the sink the environment was built with. */
-export const ambDriverLoop = (
-  evaluator: AmbEvaluator,
-  env: Env,
-  inputs: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.gen(function* () {
-    const lines: string[] = [];
-    let next: Fail | undefined;
-    let current: string | undefined;
-    const record: Succeed = (value, fail) => {
-      next = fail;
-      return Effect.succeed(value);
-    };
-    const terminalFail: Fail = () => Effect.fail(new AmbExhausted());
-    const runForm = (input: string): Effect.Effect<Value, EvaluationError> =>
-      Effect.flatMap(
-        Effect.try({
-          try: () => read(input),
-          catch: (e) =>
-            new RuntimeError({
-              message: "read failed",
-              detail: e instanceof ReadError || e instanceof Error ? e.message : String(e),
-            }),
-        }),
-        (exp) => evaluator.ambeval(exp, env, record, terminalFail),
-      );
-    const settle = (
-      outcome: Result.Result<Value, EvaluationError>,
-      input: string,
-    ): Effect.Effect<void, EvaluationError> => {
-      if (outcome._tag === "Success") {
-        lines.push(";;; Amb-Eval value:", format(outcome.success));
-        return Effect.void;
-      }
-      if (outcome.failure instanceof AmbExhausted) {
-        lines.push(";;; There are no more values of", input);
-        next = undefined;
-        return Effect.void;
-      }
-      return Effect.fail(outcome.failure);
-    };
-    for (const input of inputs) {
-      if (input === "try-again") {
-        lines.push(";;; Amb-Eval input:", input);
-        if (next === undefined) {
-          lines.push(";;; There is no current problem");
-          continue;
+  evalExpr(expr: Expr, env: Env, succeed: Success, fail: Failure): void {
+    switch (expr.tag) {
+      case "number":
+      case "string":
+      case "boolean":
+        succeed(expr.value, fail);
+        return;
+      case "null":
+        succeed(null, fail);
+        return;
+      case "undefined":
+        succeed(undefined, fail);
+        return;
+      case "template":
+        this.evalTemplate(expr.chunks, expr.exprs, env, "", succeed, fail);
+        return;
+      case "variable": {
+        const cell = findCell(env, expr.name);
+        if (cell === undefined || !cell.initialized) {
+          this.retry(fail);
+          return;
         }
-        yield* settle(yield* Effect.result(next()), current ?? input);
+        succeed(cell.value, fail);
+        return;
+      }
+      case "array":
+        this.evalOperands(
+          expr.elements,
+          env,
+          (values, next) => succeed(makeArray(values), next),
+          fail,
+        );
+        return;
+      case "object":
+        this.evalFields(expr.fields, env, 0, [], succeed, fail);
+        return;
+      case "unary":
+        this.evalExpr(
+          expr.operand,
+          env,
+          (value, next) => {
+            const result = applyUnaryOperation(expr.op, value);
+            if (result.tag === "error") {
+              this.retry(next);
+              return;
+            }
+            succeed(result.value, next);
+          },
+          fail,
+        );
+        return;
+      case "binary":
+        this.evalExpr(
+          expr.left,
+          env,
+          (left, leftNext) => {
+            this.evalExpr(
+              expr.right,
+              env,
+              (right, rightNext) => {
+                const result = applyBinaryOperation(expr.op, left, right);
+                if (result.tag === "error") {
+                  this.retry(rightNext);
+                  return;
+                }
+                succeed(result.value, rightNext);
+              },
+              leftNext,
+            );
+          },
+          fail,
+        );
+        return;
+      case "logical":
+        this.evalExpr(
+          expr.left,
+          env,
+          (left, leftNext) => {
+            if (typeof left !== "boolean") {
+              this.retry(leftNext);
+              return;
+            }
+            const shortCircuits = expr.op === "&&" ? !left : left;
+            if (shortCircuits) {
+              succeed(left, leftNext);
+              return;
+            }
+            this.evalExpr(
+              expr.right,
+              env,
+              (right, rightNext) => {
+                if (typeof right !== "boolean") {
+                  this.retry(rightNext);
+                  return;
+                }
+                succeed(right, rightNext);
+              },
+              leftNext,
+            );
+          },
+          fail,
+        );
+        return;
+      case "conditional":
+        this.evalExpr(
+          expr.test,
+          env,
+          (test, testNext) => {
+            this.evalExpr(
+              test === true ? expr.consequent : expr.alternative,
+              env,
+              succeed,
+              testNext,
+            );
+          },
+          fail,
+        );
+        return;
+      case "assign":
+        this.#assignWithUndo(expr.target, expr.value, env, succeed, fail);
+        return;
+      case "permanent-assign":
+        this.#assignPermanently(expr.target, expr.value, env, succeed, fail);
+        return;
+      case "if-fail":
+        this.evalExpr(expr.expression, env, succeed, () => {
+          this.evalExpr(expr.fallback, env, succeed, fail);
+        });
+        return;
+      case "arrow": {
+        const { params, rest } = splitParams(expr.params);
+        succeed(makeClosure(params, rest, expr.body, env), fail);
+        return;
+      }
+      case "call": {
+        const callee = expr.callee;
+        if (
+          callee.tag === "member" &&
+          callee.object.tag === "variable" &&
+          callee.object.name === "console" &&
+          callee.name === "log"
+        ) {
+          this.evalOperands(
+            expr.args,
+            env,
+            (values, next) => {
+              if (values.length !== 1) {
+                this.retry(next);
+                return;
+              }
+              this.session.transcript.push(this.session.render(values[0]));
+              succeed(undefined, next);
+            },
+            fail,
+          );
+          return;
+        }
+        if (callee.tag === "member") {
+          this.evalExpr(
+            callee.object,
+            env,
+            (receiver, receiverNext) => {
+              this.evalOperands(
+                expr.args,
+                env,
+                (values, argsNext) => {
+                  const result = this.session.callMember(receiver, callee.name, values);
+                  if (result.tag === "error") {
+                    this.retry(argsNext);
+                    return;
+                  }
+                  succeed(result.value, argsNext);
+                },
+                receiverNext,
+              );
+            },
+            fail,
+          );
+          return;
+        }
+        this.evalExpr(
+          expr.callee,
+          env,
+          (target, targetNext) => {
+            this.evalOperands(
+              expr.args,
+              env,
+              (values, argsNext) => {
+                this.apply(target, values, succeed, argsNext);
+              },
+              targetNext,
+            );
+          },
+          fail,
+        );
+        return;
+      }
+      case "member":
+        this.evalExpr(
+          expr.object,
+          env,
+          (object, next) => {
+            const result = this.session.memberGet(object, expr.name);
+            if (result.tag === "error") {
+              this.retry(next);
+              return;
+            }
+            succeed(result.value, next);
+          },
+          fail,
+        );
+        return;
+      case "index":
+        this.evalExpr(
+          expr.object,
+          env,
+          (object, objectNext) => {
+            this.evalExpr(
+              expr.index,
+              env,
+              (index, indexNext) => {
+                const result = this.session.indexGet(object, index);
+                if (result.tag === "error") {
+                  this.retry(indexNext);
+                  return;
+                }
+                succeed(result.value, indexNext);
+              },
+              objectNext,
+            );
+          },
+          fail,
+        );
+        return;
+      case "new-error":
+        this.evalExpressions(
+          expr.args,
+          env,
+          (values, next) => {
+            const message = values[0];
+            succeed(
+              makeErrorValue(message === undefined ? "" : this.session.render(message)),
+              next,
+            );
+          },
+          fail,
+        );
+        return;
+      case "new-map":
+        this.evalExpressions(
+          expr.args,
+          env,
+          (values, next) => {
+            const entries = values[0];
+            if (entries === undefined) {
+              succeed(makeMap(), next);
+              return;
+            }
+            if (!isArrayValue(entries)) {
+              this.retry(next);
+              return;
+            }
+            const pairs: Array<readonly [Value, Value]> = [];
+            for (const pair of entries.items) {
+              if (!isArrayValue(pair) || pair.items.length !== 2) {
+                this.retry(next);
+                return;
+              }
+              pairs.push([pair.items[0], pair.items[1]]);
+            }
+            succeed(makeMap(pairs), next);
+          },
+          fail,
+        );
+        return;
+      case "new-set":
+        this.evalExpressions(
+          expr.args,
+          env,
+          (values, next) => {
+            const items = values[0];
+            if (items === undefined) {
+              succeed(makeSet(), next);
+              return;
+            }
+            if (!isArrayValue(items)) {
+              this.retry(next);
+              return;
+            }
+            succeed(makeSet(items.items), next);
+          },
+          fail,
+        );
+        return;
+      case "choose":
+      case "ramb": {
+        const ordered =
+          expr.tag === "ramb" ? this.shuffle([...expr.alternatives]) : expr.alternatives;
+        this.evalAlternatives(ordered, 0, env, succeed, fail);
+        return;
+      }
+      case "require":
+        this.evalExpr(
+          expr.condition,
+          env,
+          (condition, next) => {
+            if (condition === true) {
+              succeed(undefined, next);
+              return;
+            }
+            this.retry(next);
+          },
+          fail,
+        );
+        return;
+      default:
+        this.retry(fail);
+    }
+  }
+
+  evalTemplate(
+    chunks: ReadonlyArray<string>,
+    exprs: ReadonlyArray<Expr>,
+    env: Env,
+    collected: string,
+    succeed: Success,
+    fail: Failure,
+  ): void {
+    const runAt = (at: number, acc: string, resume: Failure): void => {
+      const prefix = acc + (chunks[at] ?? "");
+      const inner = exprs[at];
+      if (inner === undefined) {
+        succeed(prefix, resume);
+        return;
+      }
+      this.evalExpr(
+        inner,
+        env,
+        (value, next) => {
+          runAt(at + 1, prefix + this.session.render(value), () => next());
+        },
+        resume,
+      );
+    };
+    runAt(0, collected, fail);
+  }
+
+  evalOperands(
+    args: ReadonlyArray<Arg>,
+    env: Env,
+    succeed: (values: Value[], next: Failure) => void,
+    fail: Failure,
+  ): void {
+    const runAt = (index: number, collected: ReadonlyArray<Value>, resume: Failure): void => {
+      const arg = args[index];
+      if (arg === undefined) {
+        succeed([...collected], resume);
+        return;
+      }
+      this.evalExpr(
+        arg.expr,
+        env,
+        (value, next) => {
+          if (arg.kind === "spread") {
+            if (!isArrayValue(value)) {
+              this.retry(next);
+              return;
+            }
+            runAt(index + 1, [...collected, ...value.items], () => next());
+            return;
+          }
+          runAt(index + 1, [...collected, value], () => next());
+        },
+        resume,
+      );
+    };
+    runAt(0, [], fail);
+  }
+
+  evalExpressions(
+    expressions: ReadonlyArray<Expr>,
+    env: Env,
+    succeed: (values: Value[], next: Failure) => void,
+    fail: Failure,
+  ): void {
+    const runAt = (index: number, collected: ReadonlyArray<Value>, resume: Failure): void => {
+      const expression = expressions[index];
+      if (expression === undefined) {
+        succeed([...collected], resume);
+        return;
+      }
+      this.evalExpr(
+        expression,
+        env,
+        (value, next) => {
+          runAt(index + 1, [...collected, value], () => next());
+        },
+        resume,
+      );
+    };
+    runAt(0, [], fail);
+  }
+
+  evalFields(
+    fields: ReadonlyArray<{ key: string; value: Expr }>,
+    env: Env,
+    index: number,
+    collected: ReadonlyArray<readonly [string, Value]>,
+    succeed: Success,
+    fail: Failure,
+  ): void {
+    const field = fields[index];
+    if (field === undefined) {
+      succeed(makeRecord(collected), fail);
+      return;
+    }
+    this.evalExpr(
+      field.value,
+      env,
+      (value, next) => {
+        const entry: readonly [string, Value] = [field.key, value];
+        this.evalFields(fields, env, index + 1, [...collected, entry], succeed, () => next());
+      },
+      fail,
+    );
+  }
+
+  evalAlternatives(
+    alternatives: ReadonlyArray<Expr>,
+    index: number,
+    env: Env,
+    succeed: Success,
+    fail: Failure,
+  ): void {
+    const alternative = alternatives[index];
+    if (alternative === undefined) {
+      if (index === 0) {
+        this.retry(fail);
+      } else {
+        this.defer(fail);
+      }
+      return;
+    }
+    this.evalExpr(alternative, env, succeed, () => {
+      this.evalAlternatives(alternatives, index + 1, env, succeed, fail);
+    });
+  }
+
+  apply(procedure: Value, args: ReadonlyArray<Value>, succeed: Success, fail: Failure): void {
+    if (isPrimitive(procedure)) {
+      const result = procedure.fn(args);
+      if (result.tag === "error") {
+        this.retry(fail);
+        return;
+      }
+      succeed(result.value, fail);
+      return;
+    }
+    if (!isClosure(procedure)) {
+      this.retry(fail);
+      return;
+    }
+    const required = procedure.params.length;
+    const fits = procedure.rest === null ? args.length === required : args.length >= required;
+    if (!fits) {
+      this.retry(fail);
+      return;
+    }
+    const frame = child(procedure.env);
+    for (let i = 0; i < required; i += 1) {
+      const name = procedure.params[i];
+      if (name !== undefined) {
+        frame.bindings.set(name, makeCell(args[i], true));
+      }
+    }
+    if (procedure.rest !== null) {
+      frame.bindings.set(procedure.rest, makeCell(makeArray(args.slice(required)), true));
+    }
+    this.execBody(procedure.body.body, frame, succeed, fail);
+  }
+
+  // ------------------------------------------------------------------
+  // Statements
+  // ------------------------------------------------------------------
+
+  execStmt(
+    stmt: Stmt,
+    env: Env,
+    succeed: Success,
+    fail: Failure,
+    returnFromBody: Success = succeed,
+  ): void {
+    switch (stmt.tag) {
+      case "block":
+        this.execBody(stmt.body, env, succeed, fail, returnFromBody);
+        return;
+      case "if":
+        this.evalExpr(
+          stmt.test,
+          env,
+          (test, testNext) => {
+            const branch =
+              test === true
+                ? stmt.consequent
+                : (stmt.alternative ?? { tag: "block" as const, body: [], span: stmt.span });
+            this.execStmt(branch, env, succeed, testNext, returnFromBody);
+          },
+          fail,
+        );
+        return;
+      case "while": {
+        const iterate = (resume: Failure): void => {
+          this.evalExpr(
+            stmt.test,
+            env,
+            (test, testNext) => {
+              if (test !== true) {
+                succeed(undefined, testNext);
+                return;
+              }
+              this.execStmt(
+                stmt.body,
+                env,
+                (_value, bodyNext) => {
+                  iterate(() => this.defer(bodyNext));
+                },
+                testNext,
+                returnFromBody,
+              );
+            },
+            resume,
+          );
+        };
+        iterate(fail);
+        return;
+      }
+      case "for-of":
+        this.evalExpr(
+          stmt.iterable,
+          env,
+          (iterable, iterableNext) => {
+            if (!isArrayValue(iterable)) {
+              this.retry(iterableNext);
+              return;
+            }
+            const items = iterable.items;
+            const visitAt = (index: number, resume: Failure): void => {
+              const item = items[index];
+              if (item === undefined) {
+                succeed(undefined, resume);
+                return;
+              }
+              const frame = child(env);
+              frame.bindings.set(stmt.name, makeCell(item, true));
+              this.execStmt(
+                stmt.body,
+                frame,
+                (_value, bodyNext) => {
+                  visitAt(index + 1, () => this.defer(bodyNext));
+                },
+                () => visitAt(index + 1, resume),
+                returnFromBody,
+              );
+            };
+            visitAt(0, iterableNext);
+          },
+          fail,
+        );
+        return;
+      case "return": {
+        if (stmt.argument === null) {
+          returnFromBody(undefined, fail);
+          return;
+        }
+        this.evalExpr(stmt.argument, env, (value, next) => returnFromBody(value, next), fail);
+        return;
+      }
+      case "expr-stmt":
+        this.evalExpr(stmt.expr, env, succeed, fail);
+        return;
+      default:
+        this.retry(fail);
+    }
+  }
+
+  execBody(
+    items: ReadonlyArray<Decl | Stmt>,
+    env: Env,
+    succeed: Success,
+    fail: Failure,
+    returnFromBody: Success = succeed,
+  ): void {
+    const frame = child(env);
+    this.session.predeclare(items, frame);
+    this.execSequence(items, frame, succeed, fail, returnFromBody);
+  }
+
+  execSequence(
+    items: ReadonlyArray<Decl | Stmt>,
+    frame: Env,
+    succeed: Success,
+    fail: Failure,
+    returnFromBody: Success = succeed,
+  ): void {
+    const runAt = (index: number, last: Value, resume: Failure): void => {
+      const item = items[index];
+      if (item === undefined) {
+        succeed(last, resume);
+        return;
+      }
+      this.execItem(
+        item,
+        frame,
+        (value, next) => {
+          runAt(index + 1, value, () => next());
+        },
+        resume,
+        returnFromBody,
+      );
+    };
+    runAt(0, undefined, fail);
+  }
+
+  execItem(
+    item: Decl | Stmt,
+    frame: Env,
+    succeed: Success,
+    fail: Failure,
+    returnFromBody: Success = succeed,
+  ): void {
+    if (item.tag === "var-decl") {
+      this.evalExpr(
+        item.init,
+        frame,
+        (value, next) => {
+          const cell = findCell(frame, item.name);
+          if (cell === undefined) {
+            frame.bindings.set(item.name, makeCell(value, true, item.kind === "let"));
+          } else {
+            cell.value = value;
+            cell.initialized = true;
+          }
+          succeed(value, next);
+        },
+        fail,
+      );
+      return;
+    }
+    if (item.tag === "function-decl") {
+      this.session.predeclare([item], frame);
+      succeed(undefined, fail);
+      return;
+    }
+    if (item.tag === "type-decl" || item.tag === "interface-decl" || item.tag === "import") {
+      succeed(undefined, fail);
+      return;
+    }
+    this.execStmt(item, frame, succeed, fail, returnFromBody);
+  }
+
+  resolveTarget(
+    target: Expr,
+    env: Env,
+    succeed: (target: TargetLocation, next: Failure) => void,
+    fail: Failure,
+  ): void {
+    if (target.tag === "variable") {
+      const cell = findCell(env, target.name);
+      if (cell === undefined || !cell.initialized) {
+        this.retry(fail);
+        return;
+      }
+      succeed(this.#variableTarget(cell, target.name, env), fail);
+      return;
+    }
+    if (target.tag === "member") {
+      this.evalExpr(
+        target.object,
+        env,
+        (object, next) => succeed(this.#memberTarget(object, target.name), next),
+        fail,
+      );
+      return;
+    }
+    if (target.tag === "index") {
+      this.evalExpr(
+        target.object,
+        env,
+        (object, objectNext) => {
+          this.evalExpr(
+            target.index,
+            env,
+            (index, next) => succeed(this.#indexTarget(object, index), next),
+            objectNext,
+          );
+        },
+        fail,
+      );
+      return;
+    }
+    this.retry(fail);
+  }
+
+  #variableTarget(cell: Cell, name: string, env: Env): TargetLocation {
+    return {
+      capture: () => {
+        const value = cell.value;
+        return {
+          tag: "snapshot",
+          snapshot: {
+            restore: () => {
+              cell.value = value;
+              return ok(value);
+            },
+          },
+        };
+      },
+      write: (value) => this.session.setVariableValue(name, value, env),
+    };
+  }
+
+  #memberTarget(object: Value, name: string): TargetLocation {
+    return {
+      capture: () => this.#captureMember(object, name),
+      write: (value) => this.session.memberSet(object, name, value),
+    };
+  }
+
+  #captureMember(object: Value, name: string): TargetCapture {
+    const previous = this.session.memberGet(object, name);
+    if (previous.tag === "error") {
+      return { tag: "error", error: previous.error };
+    }
+    const value = previous.value;
+    if (!isRecordValue(object)) {
+      return {
+        tag: "snapshot",
+        snapshot: { restore: () => this.session.memberSet(object, name, value) },
+      };
+    }
+    const existed = object.fields.has(name);
+    return {
+      tag: "snapshot",
+      snapshot: {
+        restore: () => {
+          if (existed) {
+            object.fields.set(name, value);
+          } else {
+            object.fields.delete(name);
+          }
+          return ok(value);
+        },
+      },
+    };
+  }
+
+  #indexTarget(object: Value, index: Value): TargetLocation {
+    return {
+      capture: () => this.#captureIndex(object, index),
+      write: (value) => this.session.indexSet(object, index, value),
+    };
+  }
+
+  #captureIndex(object: Value, index: Value): TargetCapture {
+    const previous = this.session.indexGet(object, index);
+    if (previous.tag === "error") {
+      return { tag: "error", error: previous.error };
+    }
+    const value = previous.value;
+    if (isArrayValue(object) && typeof index === "number") {
+      const length = object.items.length;
+      const existed = Number.isInteger(index) && index >= 0 && index < length;
+      return {
+        tag: "snapshot",
+        snapshot: {
+          restore: () => {
+            if (existed) {
+              object.items[index] = value;
+            } else {
+              object.items.length = length;
+            }
+            return ok(value);
+          },
+        },
+      };
+    }
+    if (isRecordValue(object) && typeof index === "string") {
+      const existed = object.fields.has(index);
+      return {
+        tag: "snapshot",
+        snapshot: {
+          restore: () => {
+            if (existed) {
+              object.fields.set(index, value);
+            } else {
+              object.fields.delete(index);
+            }
+            return ok(value);
+          },
+        },
+      };
+    }
+    if (isMapValue(object)) {
+      const existed = object.entries.has(index);
+      return {
+        tag: "snapshot",
+        snapshot: {
+          restore: () => {
+            if (existed) {
+              object.entries.set(index, value);
+            } else {
+              object.entries.delete(index);
+            }
+            return ok(value);
+          },
+        },
+      };
+    }
+    return {
+      tag: "snapshot",
+      snapshot: { restore: () => this.session.indexSet(object, index, value) },
+    };
+  }
+
+  shuffle(items: ReadonlyArray<Expr>): ReadonlyArray<Expr> {
+    const out = [...items];
+    for (let i = out.length - 1; i > 0; i -= 1) {
+      this.#randomState = (Math.imul(this.#randomState, 1664525) + 1013904223) >>> 0;
+      const j = this.#randomState % (i + 1);
+      const held = out[i];
+      const other = out[j];
+      if (held === undefined || other === undefined) {
         continue;
       }
-      current = input;
-      next = undefined;
-      lines.push(";;; Amb-Eval input:", input, ";;; Starting a new problem");
-      yield* settle(yield* Effect.result(runForm(input)), input);
+      out[i] = other;
+      out[j] = held;
     }
-    return lines;
-  });
-
-// ---------------------------------------------------------------------
-// Answer collection for the exercises
-// ---------------------------------------------------------------------
-
-/** One program run: the answers of the last form's search, in order, and
- * whether the search ran dry (false when `limit` cut the run first). */
-export interface AmbRun {
-  readonly answers: ReadonlyArray<Value>;
-  readonly exhausted: boolean;
+    return out;
+  }
 }
 
-/** Runs a program: every form but the last evaluates for effect (the
- * definitions of the session), then the last form's search yields each
- * answer in turn until it runs dry or `limit` answers have been collected.
- * A definition whose own search runs dry raises `AmbExhausted`. */
-export const runAmbForms = (
-  evaluator: AmbEvaluator,
-  forms: ReadonlyArray<Value>,
-  env: Env,
-  limit: number = Number.POSITIVE_INFINITY,
-): Effect.Effect<AmbRun, EvaluationError> =>
-  Effect.gen(function* () {
-    const terminalFail: Fail = () => Effect.fail(new AmbExhausted());
-    const head = forms.slice(0, -1);
-    const last = forms.at(-1);
-    for (const form of head) {
-      yield* evaluator.ambeval(form, env, (value) => Effect.succeed(value), terminalFail);
-    }
-    if (last === undefined) {
-      return { answers: [], exhausted: true };
-    }
-    const answers: Value[] = [];
-    let exhausted = false;
-    let next: Fail | undefined;
-    const record: Succeed = (value, fail) => {
-      next = fail;
-      return Effect.succeed(value);
-    };
-    while (answers.length < limit && !exhausted) {
-      const outcome = yield* Effect.result(
-        next === undefined ? evaluator.ambeval(last, env, record, terminalFail) : next(),
-      );
-      if (outcome._tag === "Failure") {
-        if (outcome.failure instanceof AmbExhausted) {
-          exhausted = true;
-        } else {
-          return yield* Effect.fail(outcome.failure);
-        }
-      } else {
-        answers.push(outcome.success);
-      }
-    }
-    return { answers, exhausted };
-  });
-
-/** Reads every form of `text` and runs it with `runAmbForms`: the exercises'
- * entry point. */
-export const runAmbText = (
-  evaluator: AmbEvaluator,
+/** Reads, admits, and searches one unit, collecting answers until exhaustion or a limit. */
+export const runAmbAnswers = (
   text: string,
-  env: Env,
-  limit: number = Number.POSITIVE_INFINITY,
-): Effect.Effect<AmbRun, EvaluationError> => runAmbForms(evaluator, readAll(text), env, limit);
+  mode: SearchMode,
+  seed = 1,
+  limits: SearchLimits = {},
+): SearchRun => {
+  const admission = admitSource(text, mode);
+  if (!admission.ok) {
+    return {
+      answers: [],
+      transcript: [],
+      outcome: fail({
+        tag: "unknown-syntax",
+        construct:
+          admission.diagnostics[0]?.construct ?? `TS${admission.hostDiagnostics[0]?.code ?? 0}`,
+      }),
+      failures: 0,
+      steps: 0,
+      status: "completed",
+    };
+  }
+  if (limits.maxAnswers === 0) {
+    return {
+      answers: [],
+      transcript: [],
+      outcome: ok(undefined),
+      failures: 0,
+      steps: 0,
+      status: "cut-off",
+    };
+  }
+  const searcher = new Searcher(mode === "amb-ramb-experiment", seed);
+  const answers: Value[] = [];
+  searcher.execBody(
+    admission.program,
+    searcher.session.globalEnv(),
+    (value, next) => {
+      answers.push(value);
+      searcher.defer(next);
+    },
+    () => undefined,
+  );
+  let status: "completed" | "cut-off" = "completed";
+  while (searcher.hasPending) {
+    if (limits.maxAnswers !== undefined && answers.length >= limits.maxAnswers) {
+      status = "cut-off";
+      break;
+    }
+    if (limits.maxSteps !== undefined && searcher.steps >= limits.maxSteps) {
+      status = "cut-off";
+      break;
+    }
+    searcher.step();
+  }
+  return {
+    answers,
+    transcript: searcher.session.transcript,
+    outcome: ok(answers[answers.length - 1]),
+    failures: searcher.failures,
+    steps: searcher.steps,
+    status,
+  };
+};
+
+/** Reads, admits, and searches one source unit in a named search mode. */
+export const runAmbSource = (text: string, mode: SearchMode, seed = 1): RunResult => {
+  const run = runAmbAnswers(text, mode, seed);
+  return { outcome: run.outcome, transcript: run.transcript };
+};

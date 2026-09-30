@@ -23,7 +23,7 @@ import {
 
 export const runOffTreeMessage = "bits ran off the tree: the walk stood at a branch";
 
-const badBit = (bit: number): string => `bad bit: DECODE-NARROWED ${String(bit)}`;
+const badBit = (bit: number): string => `chooseBranch: bad bit ${bit}`;
 
 export const decodeNarrowed = (bits: List<number>, tree: HuffTree): Result<List<Symb>, string> => {
   const walk = (rest: List<number>, current: HuffTree): Result<List<Symb>, string> => {

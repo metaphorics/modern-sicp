@@ -12,8 +12,8 @@ import {
 
 import { addStreamsN, integersThroughMapN, streamMapN } from "./ex_3_50.js";
 
-describe("exercise 3.50: the multi-stream stream-map", () => {
-  it("adds two streams element-wise like the text's add-streams", () => {
+describe("exercise 3.50: the multi-stream streamMap", () => {
+  it("adds two streams element-wise like the text's addStreams", () => {
     expect(streamTake(addStreamsN(integers, integers), 6)).toEqual([2, 4, 6, 8, 10, 12]);
   });
 

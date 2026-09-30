@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.20: letrec as a derived expression");
+test.todo("Exercise 4.20: recursive local bindings as a derived expression");

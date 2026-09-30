@@ -275,13 +275,13 @@ Expressions such as these, formed by writing an operator between the
 expressions that denote its arguments, are the closest TypeScript comes to the
 book's @newterm{combinations}.  The vocabulary differs from Lisp's in one
 visible way: Lisp writes every combination in @newterm{prefix notation}, with
-the operator leftmost, while TypeScript writes its primitive arithmetic
-operators in the customary infix position (@code{137 + 349}, not
-@code{(+ 137 349)}).  A function call is prefix-shaped the way a Lisp
+the operator leftmost and its operands following it, while TypeScript writes
+its primitive arithmetic operators in the customary infix position
+(@code{137 + 349}).  A function call is prefix-shaped the way a Lisp
 combination is---the procedure's name comes first, @code{square(2 + 5)}---but
-the operators proper are written between their operands, and each operator
-takes a fixed number of arguments, so the book's variadic forms such as
-@code{(+ 21 35 12 7)} become @code{21 + 35 + 12 + 7}, one operator repeated.
+the operators proper are written between their operands, and each primitive
+operator takes a fixed number of arguments, so the original's variadic
+operator calls become @code{21 + 35 + 12 + 7}, one operator repeated.
 What matters for this chapter is what the two notations share: in both, the
 value of a compound expression is obtained by applying the procedure specified
 by the @newterm{operator} to the @newterm{arguments} that are the values of
@@ -618,7 +618,11 @@ procedures that have already been created.  We will see how to do this in
 The general form of a procedure definition is
 
 @example typescript
-const @code{⟨}@var{name}@code{⟩} = (@code{⟨}@var{formal} @w{parameters}@code{⟩}: @code{⟨}@var{parameter types}@code{⟩}): @code{⟨}@var{result type}@code{⟩} => @code{⟨}@var{body}@code{⟩};
+const @code{⟨}@var{name}@code{⟩} = (
+  @code{⟨}@var{formal} @w{parameters}@code{⟩}:
+    @code{⟨}@var{parameter types}@code{⟩}
+): @code{⟨}@var{result type}@code{⟩} =>
+  @code{⟨}@var{body}@code{⟩};
 @end example
 
 @noindent
@@ -666,7 +670,8 @@ We can easily define a procedure @code{sumOfSquares} that, given any two
 numbers as arguments, produces the sum of their squares:
 
 @example typescript
-const sumOfSquares = (x: number, y: number): number => square(x) + square(y);
+const sumOfSquares = (x: number, y: number): number =>
+  square(x) + square(y);
 
 sumOfSquares(3, 4)
 // => 25
@@ -866,7 +871,7 @@ valuable tool, and we will investigate some of its implications in @ref{Chapter
 data structures by incorporating a limited form of normal-order evaluation; in
 TypeScript, the generator pipelines of @ref{0.3} are the same tool under
 another name.  In @ref{4.2} we will modify the interpreter of @ref{Chapter 4}
-to evaluate the book's Scheme subset with normal-order delay, and the
+to evaluate the edition's guest language with normal-order delay, and the
 zero-argument arrow @code{() => @w{...}} is the ordinary-language stand-in for
 a thunk.}
 
@@ -1057,7 +1062,8 @@ As another example, we can define a predicate to test whether one number is
 greater than or equal to another as
 
 @example typescript
-const greaterOrEqual = (x: number, y: number): boolean => x > y || x === y;
+const greaterOrEqual = (x: number, y: number): boolean =>
+  x > y || x === y;
 @end example
 
 @noindent
@@ -1096,7 +1102,8 @@ a === 4 ? 6 : b === 4 ? 6 + 7 + a : 25
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 1.2}Exercise 1.2:} @emph{SICP exercise 1.2 is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.} The book's expression
+@strong{@anchor{Exercise 1.2}Exercise 1.2:} @emph{This edition replaces SICP exercise 1.2 with a host-language
+exercise that keeps its number and teaching objective.} The book's expression
 @displaymath
 {{5 + 4 + (2 - (3 - (6 + {4 \over 5}))) \over 3(6 - 2)(2 - 7)}.}
 @end displaymath
@@ -1161,7 +1168,8 @@ following two procedures:
 @example typescript
 const p = (): never => p();
 
-const test = (x: number, y: number): number => (x === 0 ? 0 : y);
+const test = (x: number, y: number): number =>
+  x === 0 ? 0 : y;
 @end example
 
 @noindent
@@ -1277,7 +1285,9 @@ basic strategy as a procedure:
 
 @example typescript
 const sqrtIter = (guess: number, x: number): number =>
-  goodEnough(guess, x) ? guess : sqrtIter(improve(guess, x), x);
+  goodEnough(guess, x)
+    ? guess
+    : sqrtIter(improve(guess, x), x);
 @end example
 
 @noindent
@@ -1285,7 +1295,8 @@ A guess is improved by averaging it with the quotient of the radicand and the
 old guess:
 
 @example typescript
-const improve = (guess: number, x: number): number => average(guess, x / guess);
+const improve = (guess: number, x: number): number =>
+  average(guess, x / guess);
 @end example
 
 @noindent
@@ -1300,8 +1311,8 @@ We also have to say what we mean by ``good enough.''  The following will do for
 illustration, but it is not really a very good test.  (See @ref{Exercise 1.7}.)
 The idea is to improve the answer until it is close
 enough so that its square differs from the radicand by less than a
-predetermined tolerance (here 0.001):@footnote{The book names predicates in
-the Lisp style, with a trailing question mark: @code{good-enough?}.  TypeScript
+predetermined tolerance (here 0.001):@footnote{The original names predicates in
+the Lisp style, with a trailing question mark.  TypeScript
 identifiers cannot contain @code{?}, so this edition writes
 @code{goodEnough}---camelCase takes the place of the hyphen, and the name is
 still a predicate: it returns a @code{boolean}.}
@@ -1369,7 +1380,11 @@ Eva Lu Ator claims this can indeed be done, and she defines a new version of
 @code{if}:
 
 @example typescript
-const newIf = <T>(predicate: boolean, thenClause: T, elseClause: T): T =>
+const newIf = <T>(
+  predicate: boolean,
+  thenClause: T,
+  elseClause: T,
+): T =>
   predicate ? thenClause : elseClause;
 @end example
 
@@ -1387,7 +1402,11 @@ Delighted, Alyssa uses @code{newIf} to rewrite the square-root program:
 
 @example typescript
 const sqrtIterNewIf = (guess: number, x: number): number =>
-  newIf(goodEnough(guess, x), guess, sqrtIterNewIf(improve(guess, x), x));
+  newIf(
+    goodEnough(guess, x),
+    guess,
+    sqrtIterNewIf(improve(guess, x), x),
+  );
 @end example
 
 What happens when Alyssa attempts to use this to compute square roots?
@@ -1505,7 +1524,8 @@ of detail a black box is allowed to hide.)
 @example typescript
 const square = (x: number): number => x * x;
 
-const squareByLog = (x: number): number => Math.exp(double(Math.log(x)));
+const squareByLog = (x: number): number =>
+  Math.exp(double(Math.log(x)));
 
 const double = (x: number): number => x + x;
 @end example
@@ -1602,12 +1622,15 @@ the use of names.  The existing program consists of separate procedures:
 const sqrt = (x: number): number => sqrtIter(1.0, x);
 
 const sqrtIter = (guess: number, x: number): number =>
-  goodEnough(guess, x) ? guess : sqrtIter(improve(guess, x), x);
+  goodEnough(guess, x)
+    ? guess
+    : sqrtIter(improve(guess, x), x);
 
 const goodEnough = (guess: number, x: number): boolean =>
   abs(square(guess) - x) < 0.001;
 
-const improve = (guess: number, x: number): number => average(guess, x / guess);
+const improve = (guess: number, x: number): number =>
+  average(guess, x / guess);
 @end example
 
 @noindent

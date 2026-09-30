@@ -11,24 +11,24 @@ import {
 } from "../../packages/ch3/src/05-streams.js";
 
 /**
- * Exercise 3.63: Louis Reasoner asks why `sqrt-stream` was not written
- * without the local `guesses` variable, mapping `sqrt-improve` over a
+ * Exercise 3.63: Louis Reasoner asks why `sqrtStream` was not written
+ * without the local `guesses` variable, mapping `improve` over a
  * fresh recursive call instead. Alyssa answers that his version
  * "performs redundant computation". The mechanism: the module's
- * `cons-stream` memoizes every tail, so Alyssa's local binding builds
+ * `consStream` memoizes every tail, so Alyssa's local binding builds
  * one shared stream in which each guess is computed exactly once from
- * its predecessor. Louis's version evaluates `(sqrt-stream x)` again
+ * its predecessor. Louis's version calls `sqrtStream(x)` again
  * every time a tail is forced, so each level of the map sits over a
  * fresh copy whose own tails build further copies: reaching the n-th
  * guess recomputes the k-th guess k times. The second question asks
  * whether the versions still differ if `delay` is a plain
- * `(lambda () exp)` without `memo-proc`. Measured answer below: the
+ * `() => exp` thunk without memoization. Measured answer below: the
  * local shape loses its advantage entirely (every re-reference
  * recomputes the whole prefix), and at the counted sizes the two
  * versions then perform the same number of improvement steps.
  */
 
-/** A sqrt-stream builder parameterized by the Newton step, so the
+/** A sqrtStream builder parameterized by the Newton step, so the
  * calls to that step can be counted by the probes below. */
 export type SqrtStreamMaker = (
   x: number,
@@ -48,7 +48,7 @@ export interface ImproveCounter {
 export const sqrt2ConvergedGuess = 1.414213562373095;
 
 /** Alyssa's shape (the module's own `sqrtStream`): the local `guesses`
- * binding makes the stream self-referential, so `cons-stream`'s
+ * binding makes the stream self-referential, so `consStream`'s
  * memoized tails compute each guess once. */
 export const sqrtStreamLocal: SqrtStreamMaker = (x, improve) => {
   const guesses: StreamCell<number> = consStream(1, () =>
@@ -62,14 +62,14 @@ export const sqrtStreamLocal: SqrtStreamMaker = (x, improve) => {
 export const sqrtStreamExternal: SqrtStreamMaker = (x, improve) =>
   consStream(1, () => streamMap((guess) => improve(guess, x), sqrtStreamExternal(x, improve)));
 
-/** The book's `cons-stream` with the `memo-proc` optimization removed:
- * the tail is a plain lambda, recomputed on every force. */
+/** The statement's `consStream` with memoization removed: the tail is
+ * a plain thunk, recomputed on every force. */
 const consUnmemoized = (head: number, tail: () => Stream<number>): StreamCell<number> => ({
   head,
   tail,
 });
 
-/** The book's `stream-map` over plain-lambda tails. */
+/** The book's `streamMap` over plain-lambda tails. */
 const streamMapUnmemoized = (proc: (guess: number) => number, s: Stream<number>): Stream<number> =>
   s === null ? null : consUnmemoized(proc(s.head), () => streamMapUnmemoized(proc, s.tail()));
 

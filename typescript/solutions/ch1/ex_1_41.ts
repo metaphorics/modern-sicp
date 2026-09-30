@@ -9,7 +9,7 @@
  * applying its input sixteen times, so with inc it answers 5 + 16 = 21.
  * The statement's own expression forces double to accept a procedure
  * transformer as well as a number-to-number procedure, so f's type is
- * a parameter - Scheme's universal application given its host-honest
+ * a parameter - the original's universal application given its host-honest
  * spelling.
  */
 export function double<T>(f: (x: T) => T): (x: T) => T {

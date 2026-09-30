@@ -17,7 +17,7 @@ import {
 /**
  * Exercise 2.89: the dense term-list representation. A dense
  * polynomial stores only the coefficients, highest order first, so
- * the book's A = x^5 + 2x^4 + 3x^2 - 2x - 5 is (1 2 0 3 -2 -5). The
+ * the book's A = x^5 + 2x^4 + 3x^2 - 2x - 5 is [1, 2, 0, 3, -2, -5]. The
  * order of a term is the length of the list from its coefficient to
  * the end, decremented by one; the selectors and constructor below
  * keep the same (order, coefficient) interface the sparse procedures

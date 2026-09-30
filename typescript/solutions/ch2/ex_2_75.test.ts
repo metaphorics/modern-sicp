@@ -30,7 +30,7 @@ describe("exercise 2.75: message-passing make-from-mag-ang", () => {
     const missed = makeFromMagAngMessage(5, angleOf34)("spin");
     expect(missed).toEqual({
       _tag: "Error",
-      error: { _tag: "UnknownMessage", op: "spin", source: "MAKE-FROM-MAG-ANG" },
+      error: { _tag: "UnknownMessage", op: "spin", source: "makeFromMagAng" },
     });
   });
 });

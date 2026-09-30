@@ -17,65 +17,65 @@ language by introducing the ability to work with arbitrary symbols as data.
 
 If we can form compound data using symbols, we can have lists such as
 
-@example typescript
+@smallexample
 showSymbols(list(sym("a"), sym("b"), sym("c"), sym("d")));
-// => (a b c d)
+// => "[a, b, c, d]"
 
 showList(list(23, 45, 17));
-// => (23 45 17)
+// => "[23, 45, 17]"
 
-showDatum(qlist(
-  qlist(qsym("Norah"), qnum(12)),
-  qlist(qsym("Molly"), qnum(9)),
-  qlist(qsym("Anna"), qnum(7)),
-  qlist(qsym("Lauren"), qnum(6)),
-  qlist(qsym("Charlotte"), qnum(4)),
+showDatum(listDatum(
+  listDatum(symDatum("Norah"), numDatum(12)),
+  listDatum(symDatum("Molly"), numDatum(9)),
+  listDatum(symDatum("Anna"), numDatum(7)),
+  listDatum(symDatum("Lauren"), numDatum(6)),
+  listDatum(symDatum("Charlotte"), numDatum(4)),
 ));
-// => ((Norah 12) (Molly 9) (Anna 7) (Lauren 6) (Charlotte 4))
-@end example
+// => "[[Norah, 12], [Molly, 9], [Anna, 7], [Lauren, 6], [Charlotte, 4]]"
+@end smallexample
 
 @noindent
-Where the book writes a bare @code{(a b)} and relies on its reader to see
-symbols rather than unevaluated names, this edition builds the same data with
-plain functions: @code{sym("a")} brands the string @code{"a"} as a
-@code{Symb}, the edition's symbol type, and @code{qlist} glues symbol and
-number data into one list.  The name/age table is the first compound value in
+All of it is built by plain functions and nothing else: @code{sym("a")} brands
+the string @code{"a"} as a @code{Symb}, the edition's symbol type, and
+@code{listDatum} glues symbol and number data into one list.  The name/age
+table is the first compound value in
 this book whose elements mix symbols and numbers; the section's @code{Datum}
 type carries exactly that mixture, which is why the nested lists above need no
 further machinery.
 
-Lists containing symbols can look just like the expressions of our language:
+A list of symbols and numbers can also spell out an expression without
+computing it:
 
 @example typescript
-showExpr(naiveConstructors.makeProduct(
-  naiveConstructors.makeSum(constant(23), constant(45)),
-  naiveConstructors.makeSum(variable("x"), constant(9))),
-);
-// => (* (+ 23 45) (+ x 9))
+showDatum(listDatum(symDatum("+"), symDatum("x"), numDatum(3)));
+// => "[+, x, 3]"
+
+showDatum(listDatum(
+  symDatum("*"),
+  listDatum(symDatum("+"), numDatum(23), numDatum(45)),
+  listDatum(symDatum("+"), symDatum("x"), numDatum(9)),
+));
+// => "[*, [+, 23, 45], [+, x, 9]]"
 @end example
 
 @noindent
-Except that here they cannot: @code{naiveConstructors.makeProduct(@dots{})} is a
-value being constructed by ordinary function calls, and no sequence of tokens
-that builds it could also be read by the TypeScript compiler as executable code
-computing something else.  Lisp lists and Lisp expressions share one surface
-syntax, so the interpreter has to be told, token by token, which meaning is
-intended.  TypeScript's syntax for building a value and its syntax for computing
-one are different from the start, which is exactly why the language we work in
-never needs a @newterm{quote} operator to tell them apart.@footnote{Strictly,
-the book's use of the quotation mark violates the general rule that all
-compound expressions in its language should be delimited by parentheses and
-look like lists; the interpreter recovers the consistency through a special
-form @code{quote}, of which the quotation mark is a one-character abbreviation
-for wrapping the next complete expression.  This edition's constructors are
-that special form made explicit: @code{qlist} plays @code{quote}'s role in the
-open, building the data by a function call, with no surface syntax left to
-abbreviate.}
+The first datum describes the sum of @code{x} and 3, the second a product of
+two sums.  Each is a value built by ordinary function calls --- calls to
+@code{listDatum}, @code{symDatum}, and @code{numDatum}, which answer data ---
+and no such call could also be read by the TypeScript compiler as executable
+code computing something else.  A language whose programs and data share one
+surface spelling needs a marker --- @newterm{quote} --- to say which of the two
+a written form is.  TypeScript's syntax for building a value and its syntax
+for computing one are different from the start, so the language we work in
+never needs such a marker, and the constructors above are the whole of
+it.@footnote{The original book marked data forms with a quotation sign that
+its reader consumed before evaluation; this edition's constructors are the
+same idea made explicit, building the data with ordinary calls and leaving
+nothing for a reader to expand.}
 
-In Scheme, quoting is what makes @code{(a b)} available as a list of symbols
-rather than a call to a function named @code{a} on a value named @code{b}.
-@code{(list a b)} builds a list of the @newterm{values} of @code{a} and
-@code{b}, not the symbols themselves.  This issue is well known in the
+This issue --- is a written name the thing itself, or a name standing for the
+thing? --- is the distinction between a symbol and the @newterm{values} of the
+names that happen to share its spelling, and it is well known in the
 context of natural languages, where words and sentences may be regarded either
 as semantic entities or as character strings (syntactic entities).  The common
 practice in natural languages is to use quotation marks to indicate that a word
@@ -98,13 +98,13 @@ from the statement ``the evening star is Venus'' we can deduce ``the morning
 star is Venus.''  However, given that ``John knows that the evening star is
 Venus'' we cannot infer that ``John knows that the morning star is Venus.''}
 
-TypeScript never needs the marker that natural language, and Scheme, reach for
-here, because a TypeScript value is never ambiguous between ``the thing itself''
-and ``a name that stands for the thing.''  @code{list(sym("a"), sym("b"))} is
-the list @code{(a b)}: there is no reading of this call under which
+TypeScript never needs the marker that natural language reaches for here,
+because a TypeScript value is never ambiguous between ``the thing itself'' and
+``a name that stands for the thing.''  @code{list(sym("a"), sym("b"))} builds
+a list of exactly two symbols: there is no reading of this call under which
 @code{sym("a")} could instead denote the value of some variable named
 @code{a}, because @code{sym} always takes a string and always returns a fresh
-@code{Symb}.  The confusion the book's @code{'} solves does not arise, so
+@code{Symb}.  The confusion a quotation sign solves does not arise, so
 there is nothing here for a marker to disambiguate.@footnote{A TypeScript
 string literal such as @code{"a"} is a further, unrelated distinction the book
 does not need to draw at this point: @code{"a"} is an ordinary string meant to
@@ -120,13 +120,13 @@ const a = 1;
 const b = 2;
 
 showList(list(a, b));
-// => (1 2)
+// => "[1, 2]"
 
 showSymbols(list(sym("a"), sym("b")));
-// => (a b)
+// => "[a, b]"
 
-showDatum(qlist(qsym("a"), qnum(b)));
-// => (a 2)
+showDatum(listDatum(symDatum("a"), numDatum(b)));
+// => "[a, 2]"
 @end example
 
 @noindent
@@ -137,7 +137,7 @@ list needs no quotation at all: it is the value @code{nil} of @ref{2.2.1},
 and @code{list()} with no arguments builds it too.
 
 One additional primitive used in manipulating symbols is @code{eqQ}, which
-takes two pieces of quoted data and tests whether they are the same symbol
+takes two data objects and tests whether they are the same symbol
 (or the same number).@footnote{We can consider two symbols to be ``the same''
 if they consist of the same characters in the same order.  Such a definition
 skirts a deep issue that we are not yet ready to address: the meaning of
@@ -149,7 +149,10 @@ in the list), then @code{memq} returns nothing.  Otherwise, it returns the
 sublist of the list beginning with the first occurrence of the datum:
 
 @example typescript
-export const memq = (item: Datum, x: List<Datum>): Option<List<Datum>> => @{
+export const memq = (
+  item: Datum,
+  x: List<Datum>,
+): Option<List<Datum>> => @{
   if (x._tag === "Nil") @{
     return none;
   @}
@@ -164,50 +167,87 @@ export const memq = (item: Datum, x: List<Datum>): Option<List<Datum>> => @{
 For example, the value of
 
 @example typescript
-memq(qsym("apple"), list(qsym("pear"), qsym("banana"), qsym("prune")));
-// => None
+memq(
+  symDatum("apple"),
+  list(symDatum("pear"), symDatum("banana"), symDatum("prune")),
+);
+// => @{ _tag: "None" @}
 @end example
 
 @noindent
-is nothing, whereas the value of
+is nothing, whereas
 
 @example typescript
-memq(
-  qsym("apple"),
-  list(qsym("x"), qlist(qsym("apple"), qsym("sauce")), qsym("y"), qsym("apple"), qsym("pear")),
+const fruit = list(
+  symDatum("x"),
+  listDatum(symDatum("apple"), symDatum("sauce")),
+  symDatum("y"),
+  symDatum("apple"),
+  symDatum("pear"),
 );
-// => Some((apple pear))
+
+showDataList(getOrElse(memq(symDatum("apple"), fruit), nil));
+// => "[apple, pear]"
 @end example
 
 @noindent
-is the sublist @code{(apple pear)}.
+renders the sublist @code{[apple, pear]} --- the tail of @code{fruit} that begins
+at its first @code{apple}.
 
 @quotation
-@strong{@anchor{Exercise 2.53}Exercise 2.53:} @emph{SICP exercise 2.53 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  Predict the value of each of
+@strong{@anchor{Exercise 2.53}Exercise 2.53:} @emph{This edition replaces SICP exercise 2.53 with a host-language
+exercise that keeps its number and teaching objective.}  Predict the value of each of
 the following expressions, printed the way this edition prints symbolic data
 (@code{showDatum}, @code{showDataList}, and @code{showSymbols}):
 
 @example typescript
-showDatum(qlist(qsym("a"), qsym("b"), qsym("c")));
-showDatum(qlist(qlist(qsym("george"))));
+showDatum(
+  listDatum(symDatum("a"), symDatum("b"), symDatum("c")),
+);
+showDatum(listDatum(listDatum(symDatum("george"))));
 
-const xy = list(qlist(qsym("x1"), qsym("x2")), qlist(qsym("y1"), qsym("y2")));
+const xy = list(
+  listDatum(symDatum("x1"), symDatum("x2")),
+  listDatum(symDatum("y1"), symDatum("y2")),
+);
 showDataList(getOrElse(cdr(xy), nil));
-showDatum(getOrElse(car(getOrElse(cdr(xy), nil)), qnum(0)));
+showDatum(
+  getOrElse(car(getOrElse(cdr(xy), nil)), numDatum(0)),
+);
 
-const headOfA = getOrElse(car(list(qsym("a"), qsym("short"), qsym("list"))), qnum(0));
+const headOfA = getOrElse(
+  car(
+    list(symDatum("a"), symDatum("short"), symDatum("list")),
+  ),
+  numDatum(0),
+);
 headOfA._tag === "Lst";
 
 showDataList(
   getOrElse(
-    memq(qsym("red"), list(qlist(qsym("red"), qsym("shoes")), qlist(qsym("blue"), qsym("socks")))),
+    memq(
+      symDatum("red"),
+      list(
+        listDatum(symDatum("red"), symDatum("shoes")),
+        listDatum(symDatum("blue"), symDatum("socks")),
+      ),
+    ),
     nil,
   ),
 );
 showDataList(
-  getOrElse(memq(qsym("red"), list(qsym("red"), qsym("shoes"), qsym("blue"), qsym("socks"))), nil),
+  getOrElse(
+    memq(
+      symDatum("red"),
+      list(
+        symDatum("red"),
+        symDatum("shoes"),
+        symDatum("blue"),
+        symDatum("socks"),
+      ),
+    ),
+    nil,
+  ),
 );
 @end example
 @end quotation
@@ -218,8 +258,18 @@ showDataList(
 example,
 
 @example typescript
-const a = qlist(qsym("this"), qsym("is"), qsym("a"), qsym("list"));
-const b = qlist(qsym("this"), qsym("is"), qsym("a"), qsym("list"));
+const a = listDatum(
+  symDatum("this"),
+  symDatum("is"),
+  symDatum("a"),
+  symDatum("list"),
+);
+const b = listDatum(
+  symDatum("this"),
+  symDatum("is"),
+  symDatum("a"),
+  symDatum("list"),
+);
 equalQ(a, b);
 @end example
 
@@ -227,7 +277,11 @@ equalQ(a, b);
 is true, but
 
 @example typescript
-const c = qlist(qsym("this"), qlist(qsym("is"), qsym("a")), qsym("list"));
+const c = listDatum(
+  symDatum("this"),
+  listDatum(symDatum("is"), symDatum("a")),
+  symDatum("list"),
+);
 equalQ(a, c);
 @end example
 
@@ -248,25 +302,25 @@ well.}
 @end quotation
 
 @quotation
-@strong{@anchor{Exercise 2.55}Exercise 2.55:} @emph{SICP exercise 2.55 is
-about Scheme itself, so this edition replaces it; the exercise below keeps the
-number and teaches the same section material.}  In the book, Eva Lu Ator types
-@code{(car ''abracadabra)} to the interpreter and is surprised to see the
-symbol @code{quote} printed back.  This edition has no reader and no quote
-mark, so nothing can be typed; the same value, however, can be built by hand.
-The book's reader expands @code{''abracadabra} to @code{(quote (quote
-abracadabra))}, whose evaluation wraps the inner list once more, so the value
-of @code{''abracadabra} is the two-element list whose first item is the symbol
-@code{quote}:
+@strong{@anchor{Exercise 2.55}Exercise 2.55:} @emph{This edition replaces SICP exercise 2.55 with a host-language
+exercise that keeps its number and teaching objective.}  The original's
+puzzle is a fact about quotation as data: the value of a doubly quoted word
+is a two-item list whose first item is the symbol naming the quotation
+operation --- a description of a quotation, not a quotation performed.  This
+edition builds that value with one call, since there is no reader to expand
+anything:
 
 @example typescript
-const valueOfDoubleQuote = qlist(qsym("quote"), qsym("abracadabra"));
+const valueOfDoubleQuote =
+  listDatum(symDatum("quote"), symDatum("abracadabra"));
 @end example
 
 @noindent
-Show, with this construction and the section's list primitives, why the book's
-@code{(car ''abracadabra)} prints @code{quote}, and explain which layer of the
-hand-built datum corresponds to which quote mark of the typed expression.
+Predict what @code{showDatum(valueOfDoubleQuote)} renders, and what the first
+item of its list renders when @code{car} takes it and @code{showDatum} prints
+it; then run both and compare.  Explain which constructor call stands for the
+outer quotation and which list item stands for the inner one, and why a datum
+may name an operation here while the operation is never performed.
 @end quotation
 
 @node	2.3.2, 2.3.3, 2.3.1, 2.3
@@ -362,13 +416,24 @@ export const derivVia = (
     case "Num":
       return constant(0);
     case "Var":
-      return sameVariableQ(exp, v) ? constant(1) : constant(0);
+      return sameVariableQ(exp, v)
+        ? constant(1)
+        : constant(0);
     case "Sum":
-      return ctors.makeSum(derivVia(exp.addend, v, ctors), derivVia(exp.augend, v, ctors));
+      return ctors.makeSum(
+        derivVia(exp.addend, v, ctors),
+        derivVia(exp.augend, v, ctors),
+      );
     case "Prod":
       return ctors.makeSum(
-        ctors.makeProduct(exp.multiplier, derivVia(exp.multiplicand, v, ctors)),
-        ctors.makeProduct(derivVia(exp.multiplier, v, ctors), exp.multiplicand),
+        ctors.makeProduct(
+          exp.multiplier,
+          derivVia(exp.multiplicand, v, ctors),
+        ),
+        ctors.makeProduct(
+          derivVia(exp.multiplier, v, ctors),
+          exp.multiplicand,
+        ),
       );
   @}
 @};
@@ -379,24 +444,23 @@ This @code{derivVia} procedure incorporates the complete differentiation
 algorithm.  Since it is expressed in terms of abstract data, it will work no
 matter how we choose to represent algebraic expressions, as long as we design a
 proper set of tag checks and constructors.  This is the issue we must address
-next.  The book's final @code{(else (error @dots{}))} clause is gone for a
-structural reason: the union has no other shape, so the switch
-is exhaustive, and the compiler flags any missing case instead of waiting for
-an unknown expression to show up at run time.
+next.  The original's final catch-all clause, which signals an error for an
+unknown expression, is gone for a structural reason: the union has no other
+shape, so the switch is exhaustive, and the compiler flags any missing case
+instead of waiting for an unknown expression to show up at run time.
 
 @subsubheading Representing algebraic expressions
 
 We can imagine many ways to represent algebraic expressions.  For example, we
-could use lists of symbols that mirror the usual algebraic notation,
-representing @math{{ax + b}} as the datum @code{(a * x + b)}.  However, one
-especially straightforward choice --- and the one Scheme takes with its
-parenthesized prefix notation, representing @math{{ax + b}} as
-@code{(+ (* a x) b)} --- is to name each shape with a tag.  Then our data
-representation for the differentiation problem is the following union, which
-replaces the book's list-structure representation and its nine little
-procedures: @code{variable?} and @code{number?} become the @code{Var} and
-@code{Num} tags; @code{sum?} and @code{product?} become the @code{Sum} and
-@code{Prod} tags; the selectors @code{addend}, @code{augend},
+could use lists of symbols that mirror the usual algebraic notation, spelling
+@math{{ax + b}} as the flat datum @code{[a, *, x, +, b]}.  However, one
+especially straightforward choice --- and the one this edition takes --- is to
+name each shape with a tag.  Then our data representation for the
+differentiation problem is the following union, which replaces the original's
+list-structure representation and its nine little procedures: the variable and
+number predicates become the @code{Var} and @code{Num} tags; the sum and
+product predicates become the @code{Sum} and @code{Prod} tags; the selectors
+@code{addend}, @code{augend},
 @code{multiplier}, and @code{multiplicand} become the union's fields; and the
 constructors are the two function-valued fields of
 @code{SumProductConstructors}, which @code{derivVia} takes as an argument so
@@ -406,10 +470,19 @@ that the section can swap them without touching the differentiation program:
 export type Expr =
   | @{ readonly _tag: "Var"; readonly name: Symb @}
   | @{ readonly _tag: "Num"; readonly n: number @}
-  | @{ readonly _tag: "Sum"; readonly addend: Expr; readonly augend: Expr @}
-  | @{ readonly _tag: "Prod"; readonly multiplier: Expr; readonly multiplicand: Expr @};
+  | @{
+      readonly _tag: "Sum";
+      readonly addend: Expr;
+      readonly augend: Expr;
+    @}
+  | @{
+      readonly _tag: "Prod";
+      readonly multiplier: Expr;
+      readonly multiplicand: Expr;
+    @};
 
-export const variable = (name: string): Expr => (@{ _tag: "Var", name: sym(name) @});
+export const variable = (name: string): Expr =>
+  (@{ _tag: "Var", name: sym(name) @});
 export const constant = (n: number): Expr => (@{ _tag: "Num", n @});
 
 export const sameVariableQ = (e: Expr, v: Symb): boolean =>
@@ -422,7 +495,8 @@ export interface SumProductConstructors @{
 
 export const naiveConstructors: SumProductConstructors = @{
   makeSum: (a1, a2) => (@{ _tag: "Sum", addend: a1, augend: a2 @}),
-  makeProduct: (m1, m2) => (@{ _tag: "Prod", multiplier: m1, multiplicand: m2 @}),
+  makeProduct: (m1, m2) =>
+    (@{ _tag: "Prod", multiplier: m1, multiplicand: m2 @}),
 @};
 @end example
 
@@ -431,7 +505,8 @@ Two variables are the same if the symbols representing them are @code{===}
 equal, which is what @code{sameVariableQ} tests.  Thus, we need only combine
 these with the algorithm as embodied by @code{derivVia} in order to have a
 working symbolic-differentiation program.  Let us look at some examples of its
-behavior, rendering expressions with @code{showExpr} (the book's printed form):
+behavior, rendering expressions with @code{showExpr} in the usual
+mathematical notation:
 
 @example typescript
 const x = variable("x");
@@ -442,13 +517,13 @@ const prodXY = naiveConstructors.makeProduct(x, y);
 const third = naiveConstructors.makeProduct(prodXY, sumX3);
 
 showExpr(derivVia(sumX3, sym("x"), naiveConstructors));
-// => (+ 1 0)
+// => "1 + 0"
 
 showExpr(derivVia(prodXY, sym("x"), naiveConstructors));
-// => (+ (* x 0) (* 1 y))
+// => "x * 0 + 1 * y"
 
 showExpr(derivVia(third, sym("x"), naiveConstructors));
-// => (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))
+// => "x * y * (1 + 0) + (x * 0 + 1 * y) * (x + 3)"
 @end example
 
 @noindent
@@ -482,7 +557,8 @@ their sum.  Also, if one of the summands is 0, then @code{makeSum} will return
 the other summand:
 
 @example typescript
-export const equalsNumber = (e: Expr, n: number): boolean => e._tag === "Num" && e.n === n;
+export const equalsNumber = (e: Expr, n: number): boolean =>
+  e._tag === "Num" && e.n === n;
 
 export const makeSum = (a1: Expr, a2: Expr): Expr => @{
   if (equalsNumber(a1, 0)) @{
@@ -528,13 +604,13 @@ Here is how this version works on our three examples, with @code{deriv} ---
 
 @example typescript
 showExpr(deriv(sumX3, sym("x")));
-// => 1
+// => "1"
 
 showExpr(deriv(prodXY, sym("x")));
-// => y
+// => "y"
 
 showExpr(deriv(third, sym("x")));
-// => (+ (* x y) (* y (+ x 3)))
+// => "x * y + y * (x + 3)"
 @end example
 
 @noindent
@@ -561,12 +637,11 @@ d(u^n)            du
 
 @end ifinfo
 @noindent
-by adding a fifth case to the expression union for exponentiation, written
-@code{(** u n)} in the book's notation, and an arm to the differentiation
-switch, together with the appropriate pieces the book names
-@code{exponentiation?}, @code{base}, @code{exponent}, and
-@code{make-exponentiation} as tag checks, fields, and a constructor.  Build in
-the rules that anything raised to the power 0 is 1 and anything raised to the
+by adding a fifth case to the expression union for exponentiation --- a
+@code{Pow} tag carrying @code{base} and @code{exponent} fields, rendered
+@code{u ** n} --- and an arm to the differentiation switch, together with a
+@code{makeExponentiation} constructor that builds the case.  Build in the
+rules that anything raised to the power 0 is 1 and anything raised to the
 power 1 is the thing itself.
 @end quotation
 
@@ -577,7 +652,11 @@ terms.  Then the last example above could be expressed as
 
 @example typescript
 derivN(
-  prodN(variable("x"), variable("y"), sumN(variable("x"), constant(3))),
+    prodN(
+      variable("x"),
+      variable("y"),
+      sumN(variable("x"), constant(3)),
+    ),
   sym("x"),
 );
 @end example
@@ -605,10 +684,22 @@ in infix form, such as @code{(x + (3 * (x + (y + 2))))}.  In this edition the
 expression arrives as quoted data built from the section's constructors,
 
 @example typescript
-const infixA = qlist(
-  qsym("x"),
-  qsym("+"),
-  qlist(qnum(3), qsym("*"), qlist(qsym("x"), qsym("+"), qlist(qsym("y"), qsym("+"), qnum(2)))),
+const infixA = listDatum(
+  symDatum("x"),
+  symDatum("+"),
+  listDatum(
+    numDatum(3),
+    symDatum("*"),
+    listDatum(
+      symDatum("x"),
+      symDatum("+"),
+      listDatum(
+        symDatum("y"),
+        symDatum("+"),
+        numDatum(2),
+      ),
+    ),
+  ),
 );
 @end example
 
@@ -684,14 +775,17 @@ is false (informally: ``No object is an element of the empty set'').
 
 One way to represent a set is as a list of its elements in which no element
 appears more than once.  The empty set is represented by the empty list.  The
-book's unordered @code{element-of-set?} compares elements with @code{equal?}
+original's unordered membership compares elements with its generic equality
 so that they need not be symbols; this edition keeps the section's numeric
 examples and compares them with @code{===}, which plays exactly the same role
 here (exercise 2.54 develops the structural equality over the section's
 @code{Datum} union for the general case):
 
 @example typescript
-export const elementOfSetUnordered = (x: number, set: List<number>): boolean => @{
+export const elementOfSetUnordered = (
+  x: number,
+  set: List<number>,
+): boolean => @{
   if (set._tag === "Nil") @{
     return false;
   @}
@@ -708,7 +802,10 @@ adjoined is already in the set, we just return the set.  Otherwise, we use
 @code{cons} to add the object to the list that represents the set:
 
 @example typescript
-export const adjoinSetUnordered = (x: number, set: List<number>): List<number> =>
+export const adjoinSetUnordered = (
+  x: number,
+  set: List<number>,
+): List<number> =>
   elementOfSetUnordered(x, set) ? set : cons(x, set);
 @end example
 
@@ -720,7 +817,10 @@ in this.  But this depends on whether the head of @code{set1} is also in
 @code{set2}.  Here is the resulting procedure:
 
 @example typescript
-export const intersectionSetUnordered = (set1: List<number>, set2: List<number>): List<number> => @{
+export const intersectionSetUnordered = (
+  set1: List<number>,
+  set2: List<number>,
+): List<number> => @{
   if (set1._tag === "Nil" || set2._tag === "Nil") @{
     return nil;
   @}
@@ -757,8 +857,8 @@ sets.
 @quotation
 @strong{@anchor{Exercise 2.60}Exercise 2.60:} We specified that a set would be
 represented as a list with no duplicates.  Now suppose we allow duplicates.
-For instance, the set @math{{\{1, 2, 3\}}} could be represented as the list @code{(2 3 2 1
-3 2 2)}.  Design procedures @code{elementOfSet}, @code{adjoinSet},
+For instance, the set @math{{\{1, 2, 3\}}} could be represented as the list
+@code{[2, 3, 2, 1, 3, 2, 2]}.  Design procedures @code{elementOfSet}, @code{adjoinSet},
 @code{unionSet}, and @code{intersectionSet} that operate on this
 representation.  How does the efficiency of each compare with the corresponding
 procedure for the non-duplicate representation?  Are there applications for
@@ -777,8 +877,8 @@ consider only the case where the set elements are numbers, so that we can
 compare elements using @code{>} and @code{<}.  We will represent a set of
 numbers by listing its elements in increasing order.  Whereas our first
 representation above allowed us to represent the set @math{{\{1, 3, 6, 10\}}} by listing
-the elements in any order, our new representation allows only the list @code{(1
-3 6 10)}.
+the elements in any order, our new representation allows only the list
+@code{[1, 3, 6, 10]}.
 
 One advantage of ordering shows up in @code{elementOfSetOrdered}: In checking
 for the presence of an item, we no longer have to scan the entire set.  If we
@@ -786,7 +886,10 @@ reach a set element that is larger than the item we are looking for, then we
 know that the item is not in the set:
 
 @example typescript
-export const elementOfSetOrdered = (x: number, set: List<number>): boolean => @{
+export const elementOfSetOrdered = (
+  x: number,
+  set: List<number>,
+): boolean => @{
   if (set._tag === "Nil") @{
     return false;
   @}
@@ -825,7 +928,10 @@ intersection of @code{set1} with the tail of @code{set2}.  Here is the
 procedure:
 
 @example typescript
-export const intersectionSetOrdered = (set1: List<number>, set2: List<number>): List<number> => @{
+export const intersectionSetOrdered = (
+  set1: List<number>,
+  set2: List<number>,
+): List<number> => @{
   if (set1._tag === "Nil" || set2._tag === "Nil") @{
     return nil;
   @}
@@ -894,7 +1000,7 @@ different ways.  The only thing we require for a valid representation is that
 @image{../../text/original/figures/chap2/Fig2.16c,,120mm,Figure 2.16: Various binary trees that represent the set @{1@comma{} 3@comma{} 5@comma{} 7@comma{} 9@comma{} 11@}.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,,120mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.16c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.16:} Various binary trees that represent the set @math{{\{1, 3, 5, 7, 9, 11\}}}.}
@@ -923,8 +1029,8 @@ The book represents trees by using lists: each node is a list of three items
 --- the entry at the node, the left subtree, and the right subtree --- with an
 empty list marking a missing subtree.  This edition gives the tree its own
 discriminated union instead: the @code{Empty} tag replaces the empty-list
-subtree, and the book's @code{entry}, @code{left-branch},
-@code{right-branch}, and @code{make-tree} collapse into the union's fields and
+subtree, and the original's four tree procedures --- the entry, the left
+branch, the right branch, and construction --- collapse into the union's fields and
 one constructor:@footnote{We are representing sets in terms of trees, and the
 trees as a union of their two possible shapes.  The union isolates the
 abstraction of a ``binary tree'' from any other representation the exercises
@@ -943,7 +1049,11 @@ export type TreeSet =
 
 export const emptyTreeSet: TreeSet = @{ _tag: "Empty" @};
 
-export const makeTreeSet = (entry: number, left: TreeSet, right: TreeSet): TreeSet => (@{
+export const makeTreeSet = (
+  entry: number,
+  left: TreeSet,
+  right: TreeSet,
+): TreeSet => (@{
   _tag: "Node",
   entry,
   left,
@@ -1057,13 +1167,22 @@ procedures converts a binary tree to a list.
 export const treeToList1 = (tree: TreeSet): List<number> =>
   tree._tag === "Empty"
     ? nil
-    : append(treeToList1(tree.left), cons(tree.entry, treeToList1(tree.right)));
+    : append(
+        treeToList1(tree.left),
+        cons(tree.entry, treeToList1(tree.right)),
+      );
 
 export const treeToList2 = (tree: TreeSet): List<number> => @{
-  const copyToList = (t: TreeSet, resultList: List<number>): List<number> =>
+  const copyToList = (
+    t: TreeSet,
+    resultList: List<number>,
+  ): List<number> =>
     t._tag === "Empty"
       ? resultList
-      : copyToList(t.left, cons(t.entry, copyToList(t.right, resultList)));
+      : copyToList(
+          t.left,
+          cons(t.entry, copyToList(t.right, resultList)),
+        );
   return copyToList(tree, nil);
 @};
 @end example
@@ -1097,7 +1216,10 @@ component is the list of elements not included in the tree.
 export const listToTree = (elements: List<number>): TreeSet =>
   partialTree(elements, length(elements))[0];
 
-export const partialTree = (elts: List<number>, n: number): [TreeSet, List<number>] => @{
+export const partialTree = (
+  elts: List<number>,
+  n: number,
+): [TreeSet, List<number>] => @{
   if (n === 0) @{
     return [emptyTreeSet, elts];
   @}
@@ -1109,7 +1231,10 @@ export const partialTree = (elts: List<number>, n: number): [TreeSet, List<numbe
     getOrElse(cdr(nonLeftElts), nil),
     rightSize,
   );
-  return [makeTreeSet(thisEntry, leftTree, rightTree), remainingElts];
+  return [
+    makeTreeSet(thisEntry, leftTree, rightTree),
+    remainingElts,
+  ];
 @};
 @end example
 
@@ -1118,7 +1243,7 @@ export const partialTree = (elts: List<number>, n: number): [TreeSet, List<numbe
 @item
 Write a short paragraph explaining as clearly as you can how
 @code{partialTree} works.  Draw the tree produced by @code{listToTree} for
-the list @code{(1 3 5 7 9 11)}.
+the list @code{[1, 3, 5, 7, 9, 11]}.
 
 @item
 What is the order of growth in the number of steps required by
@@ -1315,7 +1440,7 @@ other letters each with relative frequency 1.
 @image{../../text/original/figures/chap2/Fig2.18a,,135mm,Figure 2.18: A Huffman encoding tree.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,,135mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.18a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.18:} A Huffman encoding tree.}
@@ -1409,15 +1534,18 @@ encode and decode messages and generates Huffman trees according to the
 algorithm outlined above.  We will begin by discussing how trees are
 represented.
 
-The book represents a leaf by a list consisting of the symbol @code{leaf}, the
-symbol at the leaf, and the weight, and a general tree by a list of a left
-branch, a right branch, a set of symbols, and a weight.  This edition gives
-the two shapes one discriminated union, so the book's @code{leaf?} test and
-its three leaf procedures collapse into the union's tags and fields:
+A leaf stores a symbol and its weight.  A branch stores its left and right
+subtrees, the symbols they contain, and their total weight.  A discriminated
+union separates these shapes; its tags select the case and its fields provide
+the corresponding components:
 
 @example typescript
 export type HuffTree =
-  | @{ readonly _tag: "Leaf"; readonly symbol: Symb; readonly weight: number @}
+  | @{
+      readonly _tag: "Leaf";
+      readonly symbol: Symb;
+      readonly weight: number;
+    @}
   | @{
       readonly _tag: "Branch";
       readonly left: HuffTree;
@@ -1441,7 +1569,10 @@ lists, we can form the union by using the @code{append} procedure we defined
 in @ref{2.2.1}:
 
 @example typescript
-export const makeCodeTree = (left: HuffTree, right: HuffTree): HuffTree => (@{
+export const makeCodeTree = (
+  left: HuffTree,
+  right: HuffTree,
+): HuffTree => (@{
   _tag: "Branch",
   left,
   right,
@@ -1476,8 +1607,14 @@ The following procedure implements the decoding algorithm.  It takes as
 arguments a list of zeros and ones, together with a Huffman tree.
 
 @example typescript
-export const decode = (bits: List<number>, tree: HuffTree): Result<List<Symb>, string> => @{
-  const walk = (rest: List<number>, current: HuffTree): Result<List<Symb>, string> => @{
+export const decode = (
+  bits: List<number>,
+  tree: HuffTree,
+): Result<List<Symb>, string> => @{
+  const walk = (
+    rest: List<number>,
+    current: HuffTree,
+  ): Result<List<Symb>, string> => @{
     if (rest._tag === "Nil") @{
       return ok(nil);
     @}
@@ -1487,16 +1624,21 @@ export const decode = (bits: List<number>, tree: HuffTree): Result<List<Symb>, s
     @}
     if (next.value._tag === "Leaf") @{
       const decoded = walk(rest.tail, tree);
-      return decoded._tag === "Ok" ? ok(cons(next.value.symbol, decoded.value)) : decoded;
+      return decoded._tag === "Ok"
+        ? ok(cons(next.value.symbol, decoded.value))
+        : decoded;
     @}
     return walk(rest.tail, next.value);
   @};
   return walk(bits, tree);
 @};
 
-export const chooseBranch = (bit: number, branch: HuffTree): Result<HuffTree, string> => @{
+export const chooseBranch = (
+  bit: number,
+  branch: HuffTree,
+): Result<HuffTree, string> => @{
   if (branch._tag === "Leaf") @{
-    return err("bad position: CHOOSE-BRANCH cannot branch at a leaf");
+    return err("chooseBranch: cannot branch at a leaf");
   @}
   if (bit === 0) @{
     return ok(branch.left);
@@ -1504,7 +1646,7 @@ export const chooseBranch = (bit: number, branch: HuffTree): Result<HuffTree, st
   if (bit === 1) @{
     return ok(branch.right);
   @}
-  return err(`bad bit: CHOOSE-BRANCH $@{bit@}`);
+  return err(`chooseBranch: bad bit $@{bit@}`);
 @};
 @end example
 
@@ -1527,10 +1669,10 @@ const littleTree = makeCodeTree(
 );
 
 showSymbols(getOrElse(decode(list(0, 1, 0, 1, 1), littleTree), nil));
-// => (a b c)
+// => "[a, b, c]"
 
 decode(list(2), littleTree);
-// => Error: bad bit: CHOOSE-BRANCH 2
+// => Error: chooseBranch: bad bit 2
 @end example
 
 @subsubheading Sets of weighted elements
@@ -1549,7 +1691,10 @@ however, items are compared by their weights, and the element being added to
 the set is never already in it:
 
 @example typescript
-export const adjoinSetWeighted = (x: HuffTree, set: List<HuffTree>): List<HuffTree> => @{
+export const adjoinSetWeighted = (
+  x: HuffTree,
+  set: List<HuffTree>,
+): List<HuffTree> => @{
   if (set._tag === "Nil") @{
     return list(x);
   @}
@@ -1562,19 +1707,25 @@ export const adjoinSetWeighted = (x: HuffTree, set: List<HuffTree>): List<HuffTr
 
 @noindent
 The following procedure takes a list of symbol-frequency pairs such as
-@code{((A 4) (B 2) (C 1) (D 1))} --- in this edition, a list of the
+@code{[[A, 4], [B, 2], [C, 1], [D, 1]]} --- in this edition, a list of the
 two-element tuples of @code{SymbolFrequency} --- and constructs an initial
 ordered set of leaves, ready to be merged according to the Huffman algorithm:
 
 @example typescript
-export type SymbolFrequency = readonly [symbol: Symb, frequency: number];
+export type SymbolFrequency =
+  readonly [symbol: Symb, frequency: number];
 
-export const makeLeafSet = (pairs: List<SymbolFrequency>): List<HuffTree> => @{
+export const makeLeafSet = (
+  pairs: List<SymbolFrequency>,
+): List<HuffTree> => @{
   if (pairs._tag === "Nil") @{
     return nil;
   @}
   const [symbol, frequency] = pairs.head;
-  return adjoinSetWeighted(makeLeaf(symbol, frequency), makeLeafSet(pairs.tail));
+  return adjoinSetWeighted(
+    makeLeaf(symbol, frequency),
+    makeLeafSet(pairs.tail),
+  );
 @};
 @end example
 
@@ -1587,11 +1738,16 @@ const sampleTree = makeCodeTree(
   makeLeaf(sym("A"), 4),
   makeCodeTree(
     makeLeaf(sym("B"), 2),
-    makeCodeTree(makeLeaf(sym("D"), 1), makeLeaf(sym("C"), 1)),
+    makeCodeTree(
+      makeLeaf(sym("D"), 1),
+      makeLeaf(sym("C"), 1),
+    ),
   ),
 );
 
-const sampleMessage = list(0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0);
+const sampleMessage = list(
+  0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0,
+);
 @end example
 
 Use the @code{decode} procedure to decode the message, and give the result.
@@ -1617,7 +1773,10 @@ as arguments a message and a tree and produces the list of bits that gives the
 encoded message.
 
 @example typescript
-export const encode = (message: List<Symb>, tree: HuffTree): Result<List<Symb>, string> => @{
+export const encode = (
+  message: List<Symb>,
+  tree: HuffTree,
+): Result<List<Symb>, string> => @{
   if (message._tag === "Nil") @{
     return ok(nil);
   @}
@@ -1648,7 +1807,9 @@ than one pair) and generates a Huffman encoding tree according to the Huffman
 algorithm.
 
 @example typescript
-export const generateHuffmanTree = (pairs: List<SymbolFrequency>): HuffTree =>
+export const generateHuffmanTree = (
+  pairs: List<SymbolFrequency>,
+): HuffTree =>
   successiveMerge(makeLeafSet(pairs));
 @end example
 
@@ -1683,9 +1844,11 @@ encode the following message:
 @example typescript
 const song = list(
   sym("Get"), sym("a"), sym("Job"),
-  sym("Sha"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"),
+  sym("Sha"), sym("Na"), sym("Na"), sym("Na"), sym("Na"),
+  sym("Na"), sym("Na"), sym("Na"), sym("Na"),
   sym("Get"), sym("a"), sym("Job"),
-  sym("Sha"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"), sym("Na"),
+  sym("Sha"), sym("Na"), sym("Na"), sym("Na"), sym("Na"),
+  sym("Na"), sym("Na"), sym("Na"), sym("Na"),
   sym("Wah"), sym("Yip"), sym("Yip"), sym("Yip"), sym("Yip"),
   sym("Yip"), sym("Yip"), sym("Yip"), sym("Yip"), sym("Yip"),
   sym("Sha"), sym("Boom"),

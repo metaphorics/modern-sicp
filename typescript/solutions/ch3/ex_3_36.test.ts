@@ -34,7 +34,7 @@ const buildTracedCelsiusNetwork = (log: TraceEvent[]): { c: Connector; f: Connec
 };
 
 describe("exercise 3.36: the connector's environment, as a trace", () => {
-  it("set-value! on C traces the for-each-except arrows the book drew", () => {
+  it("setValue on C traces the forEachExcept arrows the book drew", () => {
     const log: TraceEvent[] = [];
     const { c, f } = buildTracedCelsiusNetwork(log);
     expect(log.slice(0, 6)).toEqual([

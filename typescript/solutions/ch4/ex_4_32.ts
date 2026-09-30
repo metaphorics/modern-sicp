@@ -1,100 +1,96 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
+import type { RunResult } from "../../packages/ch4/src/01-metacircular.js";
+import { runSource } from "../../packages/ch4/src/01-metacircular.js";
 /**
- * Exercise 4.32: streams versus lazy lists. The 4.2.3 procedural pairs
- * delay both slots, so a pair constructs without computing and a dormant
- * armed slot forces only when it is the one demanded, which is lazier
- * than the chapter 3 streams whose cons-stream evaluates the car at
- * construction. The demonstrations: (car (cons 7 (/ 1 0))) answers 7
- * under the lazy evaluator and the armed (/ 1 0) answers only when cdr is
- * demanded; the same procedural cons under the strict base evaluator
- * dies in the arm at construction, which is the eager discipline the
- * chapter 3 car has; and the self-referential ones defines in one step
- * because nothing is forced.
+ * Exercise 4.32: streams versus lazy lists. The procedural pair delays
+ * both slots, so a pair constructs without computing and a dormant
+ * armed slot forces only when it is the one demanded. The
+ * demonstrations run the armed pair under the lazy experiment and the
+ * same procedural cons under the strict base evaluator, which is the
+ * eager discipline the chapter 3 comparison rests on. The
+ * self-referential `ones` is the constructive demonstration: the pair
+ * builds with nothing forced.
  */
-import { Effect } from "effect";
+import { runLazySource } from "../../packages/ch4/src/02-lazy.js";
 
-import { evaluate, setupEnvironment } from "../../packages/ch4/src/01-metacircular.js";
-import { lazyDriverWith, lazyEvaluator } from "../../packages/ch4/src/02-lazy.js";
-import type { EvaluationError, RuntimeError } from "../../packages/ch4/src/errors.js";
-import { read } from "../../packages/ch4/src/read.js";
+/** The lazy pair demonstrations: demand is what computes. */
+export const lazyPairsSource = `
+let marks = 0;
+const mark = (n: number): number => {
+  marks = marks + 1;
+  return n;
+};
+const consL = (h: number, t: number): number[] => [h, t];
+const slot = (p: number[], index: number): number => {
+  const item = p[index];
+  return item === undefined ? 0 : item;
+};
+const carL = (p: number[]): number => force(slot(p, 0));
+const cdrL = (p: number[]): number => force(slot(p, 1));
+`;
 
-export const proceduralPairs = [
-  "(define (cons x y) (lambda (m) (m x y)))",
-  "(define (car z) (z (lambda (p q) p)))",
-  "(define (cdr z) (z (lambda (p q) q)))",
-];
+/** `car` of the armed pair: the head forces, the armed slot never does. */
+export const carSource = `${lazyPairsSource}
+console.log(carL(consL(delay(mark(7)), delay(mark(force(5))))));
+console.log(marks);
+`;
 
-export const armedPair = "(car (cons 7 (/ 1 0)))";
-export const armedTail = "(cdr (cons 7 (/ 1 0)))";
-export const eagerConstruction = "(car (cons (/ 1 0) 7))";
-export const selfReference = "(define ones (cons 1 ones))";
+/** `cdr` of the armed pair: the division runs only on demand. */
+export const cdrSource = `${lazyPairsSource}
+console.log(cdrL(consL(delay(mark(7)), delay(mark(1 / 0)))));
+console.log(marks);
+`;
 
-/** The lazy run: the armed slot stays dormant until demanded. */
-export const lazyCarOfArmed = (): Effect.Effect<string, EvaluationError> =>
-  Effect.map(
-    lazyDriverWith(lazyEvaluator, [...proceduralPairs, armedPair]),
-    (transcript) => transcript[transcript.length - 1] ?? "",
-  );
+/** The self-referential `ones`: constructs with nothing forced. */
+export const onesSource = `${lazyPairsSource}
+let ones: number[] = [];
+const build = (): number[] => {
+  ones = consL(delay(mark(1)), delay(mark(force(slot(ones, 0)))));
+  return ones;
+};
+console.log(build().length);
+console.log(marks);
+`;
 
-const lastFailureMessage = (
-  effect: Effect.Effect<ReadonlyArray<string>, EvaluationError>,
-): Effect.Effect<string, EvaluationError> =>
-  Effect.flatMap(Effect.result(effect), (outcome) => {
-    if (outcome._tag === "Failure" && outcome.failure._tag === "RuntimeError") {
-      const error: RuntimeError = outcome.failure;
-      return Effect.succeed(error.message);
-    }
-    return Effect.die(new Error("expected a RuntimeError"));
-  });
+/** The strict contrast: both slots evaluate at construction. */
+export const strictPairsSource = `
+let marks = 0;
+const mark = (n: number): number => {
+  marks = marks + 1;
+  return n;
+};
+const consS = (h: number, t: number): number[] => [h, t];
+const carS = (p: number[]): number => {
+  const head = p[0];
+  return head === undefined ? 0 : head;
+};
+console.log(carS(consS(mark(1 / 0), mark(7))));
+console.log(marks);
+`;
 
-/** The lazy run of the armed tail: the division answers on demand. */
-export const lazyCdrOfArmed = (): Effect.Effect<string, EvaluationError> =>
-  lastFailureMessage(lazyDriverWith(lazyEvaluator, [...proceduralPairs, armedTail]));
+const run = (source: string): RunResult => runLazySource(source, "lazy-memoized-experiment");
 
-/** The same procedural cons under the strict base evaluator: the armed
- * arm evaluates at construction, before car is ever applied. */
-export const strictEagerConstruction = (): Effect.Effect<string, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) => {
-    const run = Effect.forEach([...proceduralPairs, eagerConstruction], (source) =>
-      Effect.map(evaluate(read(source), env), () => "done"),
-    );
-    return lastFailureMessage(run);
-  });
-
-/** The self-referential definition under the lazy evaluator: ok, with
- * nothing forced. */
-export const lazySelfReference = (): Effect.Effect<string, EvaluationError> =>
-  Effect.map(
-    lazyDriverWith(lazyEvaluator, [...proceduralPairs, selfReference]),
-    (transcript) => transcript[transcript.length - 1] ?? "",
-  );
-
-/** The four observed answers. */
-export const answers = (): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(lazyCarOfArmed(), (car) =>
-    Effect.flatMap(lazyCdrOfArmed(), (cdr) =>
-      Effect.flatMap(strictEagerConstruction(), (eager) =>
-        Effect.map(lazySelfReference(), (ones) => [car, cdr, eager, ones]),
-      ),
-    ),
-  );
+/** The four observed runs. */
+export const answers = (): {
+  readonly car: ReadonlyArray<string>;
+  readonly cdr: ReadonlyArray<string>;
+  readonly ones: ReadonlyArray<string>;
+  readonly strict: ReadonlyArray<string>;
+} => ({
+  car: run(carSource).transcript,
+  cdr: run(cdrSource).transcript,
+  ones: run(onesSource).transcript,
+  strict: runSource(strictPairsSource).transcript,
+});
 
 export function ex_4_32(): string {
-  const observed = Effect.runSync(answers());
   return (
-    "The extra laziness is in the car slot. Under the lazy evaluator the " +
-    `procedural pair constructs without computing: (car (cons 7 (/ 1 0))) ` +
-    `answers ${observed[0]} because the armed arm is never demanded, while ` +
-    `(cdr (cons 7 (/ 1 0))) answers the division on demand (${observed[1]}). ` +
-    "The chapter 3 stream discipline delays only the cdr: the same " +
-    "procedural cons under the strict base evaluator dies in the arm at " +
-    `construction (${observed[2]}), which is exactly how cons-stream would ` +
-    "treat the car. The lazier pair also builds self-referential data in " +
-    `one step: (define ones (cons 1 ones)) answers ${observed[3]} with ` +
-    "nothing forced, and selective forcing walks any path of the structure " +
-    "without computing the rest, which is the tool the lazy tree of the " +
-    "chapter's footnote generalizes."
+    "A delayed pair constructs without computing: car of the armed pair answers 7 with one " +
+    "mark, cdr answers the division only on demand with one, and the self-referential " +
+    "ones builds with nothing forced. Under the strict base evaluator both slots evaluate " +
+    "at construction — the division runs before car is ever entered — which is the eager " +
+    "discipline the chapter 3 comparison rests on."
   );
 }

@@ -1,50 +1,55 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import {
-  arithmeticOperations,
-  type Machine,
-  makeMachine,
-  setRegisterContents,
-} from "../../packages/ch5/src/02-simulator.js";
-import { expectOk, gcdController } from "./ex_5_07.js";
+import type { MachineStatement } from "../../packages/ch5/src/01-register-machines.ts";
+import type { Machine } from "../../packages/ch5/src/02-simulator.ts";
+import { makeMachine } from "../../packages/ch5/src/02-simulator.ts";
+import { arithmeticOperations, expectOk, gcdController } from "./ex_5_07.ts";
+import { instructionTrace } from "./ex_5_14.ts";
 
-/** The tracing machine: when the switch is on, every instruction's text
- * is appended to the transcript before the instruction executes. */
+/** The tracing machine of exercise 5.16: when the switch is on, every
+ * executed instruction's text is appended to the transcript before the
+ * instruction executes, so the trace is exactly the executed
+ * instructions in execution order. Switched off, tracing adds output
+ * and nothing else: the same machine answers both halves. */
 export const makeTracingMachine = (
-  registerNames: string[],
-): { machine: Machine; setTrace: (on: boolean) => void } => {
-  let traceOn = false;
-  const machine = expectOk(
-    makeMachine(registerNames, arithmeticOperations, gcdController, {
-      onInstruction: (m, inst) => {
-        if (traceOn) m.transcript.push(inst.text);
-      },
-    }),
-  );
-  return { machine, setTrace: (on) => (traceOn = on) };
+  controller: readonly MachineStatement[],
+): {
+  machine: Machine;
+  setTrace: (on: boolean) => void;
+  trace: () => readonly string[];
+} => {
+  const machine = makeMachine({
+    registers: ["a", "b", "t"],
+    operations: arithmeticOperations,
+    controller,
+  });
+  let on = false;
+  return {
+    machine,
+    setTrace: (next: boolean) => {
+      on = next;
+    },
+    trace: () =>
+      on ? instructionTrace(controller, machine.result().trace).map((entry) => entry.text) : [],
+  };
 };
 
-const runGcd = (machine: Machine): void => {
-  expectOk(setRegisterContents(machine, "a", 206));
-  expectOk(setRegisterContents(machine, "b", 40));
-  expectOk(machine.start());
-};
-
-/** One traced gcd run: the transcript is exactly the executed
- * instructions, from the first (test (op =) (reg b) (const 0)) to the
- * final taken (branch (label gcd-done)), never the trailing label. */
-export const tracedGcdTrace = (): string[] => {
-  const { machine, setTrace } = makeTracingMachine(["a", "b", "t"]);
-  setTrace(true);
-  runGcd(machine);
-  return [...machine.transcript];
-};
-
-/** The switch off leaves no trace lines. */
-export const untracedRunTranscript = (): string[] => {
-  const { machine, setTrace } = makeTracingMachine(["a", "b", "t"]);
-  setTrace(false);
-  runGcd(machine);
-  return [...machine.transcript];
+/** Exercise 5.16 on the gcd machine. */
+export const ex_5_16 = (): {
+  readonly traced: readonly string[];
+  readonly silent: readonly string[];
+  readonly answer: number;
+} => {
+  const tracer = makeTracingMachine(gcdController);
+  tracer.setTrace(true);
+  tracer.machine.writeRegister("a", 206);
+  tracer.machine.writeRegister("b", 40);
+  const run = tracer.machine.run();
+  expectOk(run);
+  const traced = tracer.trace();
+  const answer = tracer.machine.readRegister("a");
+  tracer.setTrace(false);
+  const silent = tracer.trace();
+  return { traced, silent, answer: typeof answer === "number" ? answer : 0 };
 };

@@ -111,16 +111,25 @@ product exact, so the formulas translate term for term:
 
 @example typescript
 const addRat = (x: Rat, y: Rat): Rat =>
-  makeRat(numer(x) * denom(y) + numer(y) * denom(x), denom(x) * denom(y));
+  makeRat(
+    numer(x) * denom(y) + numer(y) * denom(x),
+    denom(x) * denom(y),
+  );
 
 const subRat = (x: Rat, y: Rat): Rat =>
-  makeRat(numer(x) * denom(y) - numer(y) * denom(x), denom(x) * denom(y));
+  makeRat(
+    numer(x) * denom(y) - numer(y) * denom(x),
+    denom(x) * denom(y),
+  );
 
-const mulRat = (x: Rat, y: Rat): Rat => makeRat(numer(x) * numer(y), denom(x) * denom(y));
+const mulRat = (x: Rat, y: Rat): Rat =>
+  makeRat(numer(x) * numer(y), denom(x) * denom(y));
 
-const divRat = (x: Rat, y: Rat): Rat => makeRat(numer(x) * denom(y), denom(x) * numer(y));
+const divRat = (x: Rat, y: Rat): Rat =>
+  makeRat(numer(x) * denom(y), denom(x) * numer(y));
 
-const equalRat = (x: Rat, y: Rat): boolean => numer(x) * denom(y) === numer(y) * denom(x);
+const equalRat = (x: Rat, y: Rat): boolean =>
+  numer(x) * denom(y) === numer(y) * denom(x);
 @end example
 
 @noindent
@@ -231,18 +240,12 @@ const denom = (x: Rat): bigint => x[1];
 @end example
 
 @noindent
-Also, in order to display the results of our computations, we can print
-rational numbers by printing the numerator, a slash, and the
-denominator:@footnote{In the Scheme original, @code{display} is the primitive
-for printing data and @code{newline} starts a new line, and neither returns a
-useful value, so the interactions below show only what @code{print-rat}
-prints.  This edition has no printing primitive in its pure code:
-@code{printRat} renders the same three pieces --- the numerator, a slash, and
-the denominator --- into a string, and the interaction shows that string as
-the result.}
+To display a rational number, @code{printRat} renders the numerator, a slash,
+and the denominator as a string.  The function is pure: the interaction below
+shows its returned string rather than output from a printing side effect.
 
 @example typescript
-const printRat = (x: Rat): string => `@{numer(x)@}/@{denom(x)@}`;
+const printRat = (x: Rat): string => `$@{numer(x)@}/$@{denom(x)@}`;
 @end example
 
 @noindent
@@ -363,7 +366,7 @@ barriers and connect the different levels.
 @image{../../text/original/figures/chap2/Fig2.1d,,125mm,Figure 2.1: Data-abstraction barriers in the rational-number package.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.1d.std,,125mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.1d.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.1:} Data-abstraction barriers in the rational-number package.}
@@ -437,7 +440,8 @@ midpoint (the point whose coordinates are the average of the coordinates of the
 endpoints).  To try your procedures, you'll need a way to print points:
 
 @example typescript
-const printPoint = (p: Point): string => `(@{xPoint(p)@},@{yPoint(p)@})`;
+const printPoint = (p: Point): string =>
+  `(@{xPoint(p)@},@{yPoint(p)@})`;
 @end example
 @end quotation
 
@@ -472,14 +476,14 @@ In other words, @code{makeRat}, @code{numer}, and @code{denom} must satisfy
 the condition that, for any integer @code{n} and any non-zero integer @code{d},
 if @code{x} is @code{makeRat(n, d)}, then
 @displaymath
-{\hbox{(numer x)} \over \hbox{(denom x)}} = {{\hbox{n} \over \hbox{d}}.}
+{\hbox{numer(x)} \over \hbox{denom(x)}} = {{\hbox{n} \over \hbox{d}}.}
 @end displaymath
 @ifinfo
 
 @example
-(numer x)    n
---------- = ---
-(denom x)    d
+numer(x)    n
+-------- = ---
+denom(x)    d
 @end example
 
 @end ifinfo
@@ -526,11 +530,14 @@ the definitions:
 
 @example typescript
 const consProc = <T>(x: T, y: T): ProcPair<T> => (m) =>
-  (m === 0 ? ok(x) : m === 1 ? ok(y) : err(@{ _tag: "UnknownMessage", m @}));
+  (m === 0 ? ok(x) : m === 1 ? ok(y)
+    : err(@{ _tag: "UnknownMessage", m @}));
 
-const carProc = <T>(z: ProcPair<T>): Result<T, PairMessageError> => z(0);
+const carProc = <T>(z: ProcPair<T>): Result<T, PairMessageError> =>
+  z(0);
 
-const cdrProc = <T>(z: ProcPair<T>): Result<T, PairMessageError> => z(1);
+const cdrProc = <T>(z: ProcPair<T>): Result<T, PairMessageError> =>
+  z(1);
 @end example
 
 @noindent
@@ -579,8 +586,7 @@ simulation.
 
 @quotation
 @strong{@anchor{Exercise 2.4}Exercise 2.4:} Here is an alternative procedural
-representation of pairs, in the style of the original @code{(lambda (m) (m x
-y))}: @code{cons} returns a function whose only operation is handing both
+representation of pairs: @code{cons} returns a function whose only operation is handing both
 parts to a selector, and the selector determines the result's type.  A
 function's type is fixed once, at its own definition, so the pair is spelled
 as the function pair type @code{Pair<A, B>}, generic in its result:
@@ -716,7 +722,10 @@ const mulInterval = (x: Interval, y: Interval): Interval => @{
   const p2 = x.lo * y.hi;
   const p3 = x.hi * y.lo;
   const p4 = x.hi * y.hi;
-  return @{ lo: Math.min(p1, p2, p3, p4), hi: Math.max(p1, p2, p3, p4) @};
+  return @{
+    lo: Math.min(p1, p2, p3, p4),
+    hi: Math.max(p1, p2, p3, p4),
+  @};
 @};
 @end example
 
@@ -736,7 +745,8 @@ because she has not specified the implementation of the interval abstraction.
 Here is a definition of the interval constructor:
 
 @example typescript
-const makeInterval = (a: number, b: number): Interval => (@{ lo: a, hi: b @});
+const makeInterval = (a: number, b: number): Interval =>
+  (@{ lo: a, hi: b @});
 @end example
 
 Define selectors @code{upperBound} and @code{lowerBound} to complete the
@@ -806,10 +816,10 @@ const width = (i: Interval): number => (i.hi - i.lo) / 2;
 @end example
 
 @noindent
-(The book's @code{make-center-width} routes through @code{make-interval};
-constructing the ordered interval directly is safe here exactly because
-@code{w} is nonnegative in every caller, so @code{c - w <= c + w} and the
-ordered-bounds invariant of @code{makeInterval} holds on sight.)
+Constructing the interval directly requires nonnegative @code{w}.  Then
+@code{c - w <= c + w}, so the ordered-bounds invariant holds.  A caller that
+accepts arbitrary widths must enforce this precondition or use the checked
+@code{makeInterval} constructor.
 
 Unfortunately, most of Alyssa's users are engineers.  Real engineering
 situations usually involve measurements with only a small uncertainty, measured
@@ -873,7 +883,10 @@ const par1 = (r1: Interval, r2: Interval): Interval =>
 
 const par2 = (r1: Interval, r2: Interval): Interval => @{
   const one: Interval = @{ lo: 1, hi: 1 @};
-  return divInterval(one, addInterval(divInterval(one, r1), divInterval(one, r2)));
+  return divInterval(
+    one,
+    addInterval(divInterval(one, r1), divInterval(one, r2)),
+  );
 @};
 @end example
 

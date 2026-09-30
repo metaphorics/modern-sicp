@@ -2,26 +2,23 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { basicCondTranscript } from "./ex_5_24.js";
+import { ex_5_24 } from "./ex_5_24.ts";
 
-const valuesOf = (transcript: readonly string[]): string[] => {
-  const values: string[] = [];
-  for (let i = 0; i < transcript.length; i += 1) {
-    if (transcript[i] === ";;; EC-Eval value:") values.push(transcript[i + 1] as string);
-  }
-  return values;
-};
-
-describe("exercise 5.24 cond as a basic form", () => {
-  it("walks clauses, selects else, and answers the book's edge cases", () => {
-    expect(valuesOf(basicCondTranscript())).toEqual([
-      "ok",
-      "zero",
-      "one",
-      "many",
-      "#t",
-      "#f",
-      "10",
-    ]);
+describe("exercise 5.24 switch as a basic controller form", () => {
+  it("selects the matching clause and the default", () => {
+    const lines = ex_5_24();
+    expect(lines.some((line) => line.includes("zero"))).toBe(true);
+    expect(lines.some((line) => line.includes("one"))).toBe(true);
+    expect(lines.some((line) => line.includes("many"))).toBe(true);
+  });
+  it("reports selected-body effects without relying on implicit fallthrough", () => {
+    const lines = ex_5_24();
+    expect(lines).toContain("11");
+    expect(lines).toContain("10");
+    expect(lines).toContain("100");
+  });
+  it("evaluates a clause test that is itself a variable read", () => {
+    const lines = ex_5_24();
+    expect(lines.some((line) => line.includes("matched"))).toBe(true);
   });
 });

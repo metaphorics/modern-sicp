@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 2.55: the double quote, built by hand");
+test.todo("Exercise 2.55: the datum naming the quotation operation");

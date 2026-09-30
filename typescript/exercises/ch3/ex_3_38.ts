@@ -6,7 +6,7 @@ import type { Process } from "../../packages/ch3/src/04-concurrency.js";
 /**
  * Exercise 3.38: Peter deposits 10, Paul withdraws 20, and Mary
  * withdraws half the balance, all on a joint account that starts at
- * 100. Each command is the book's three-step `set!`: access the
+ * 100. Each command is a three-step assignment: access the
  * balance, compute the new value, set it. Pending scaffold; the
  * solution and its rationale live in solutions/ch3/ex_3_38.ts and
  * .md.
@@ -28,17 +28,17 @@ export function makeJointAccount(): JointAccount {
   throw new PendingSolution();
 }
 
-/** Peter's `(set! balance (+ balance 10))` as three steps. */
+/** Peter's `balance = balance + 10` as three steps. */
 export function peterProcess(_account: JointAccount): Process {
   throw new PendingSolution();
 }
 
-/** Paul's `(set! balance (- balance 20))` as three steps. */
+/** Paul's `balance = balance - 20` as three steps. */
 export function paulProcess(_account: JointAccount): Process {
   throw new PendingSolution();
 }
 
-/** Mary's `(set! balance (- balance (/ balance 2)))` as three steps:
+/** Mary's `balance = balance - balance / 2` as three steps:
  * the two accesses of the book's expression are two separate steps, so
  * an interleaving can change the balance between them. */
 export function maryProcess(_account: JointAccount): Process {

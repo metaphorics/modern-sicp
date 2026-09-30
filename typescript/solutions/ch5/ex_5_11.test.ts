@@ -2,20 +2,25 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { restoreDisciplineRuns } from "./ex_5_11.js";
+import { ex_5_11 } from "./ex_5_11.ts";
 
 describe("exercise 5.11 the three save and restore disciplines", () => {
-  it("runs the disciplines on the same machines and the elimination", () => {
-    expect(restoreDisciplineRuns()).toEqual([
-      "out-of-order restore under (a) name-blind: y = 2",
-      "out-of-order restore under (b) checking: restore y but the stack holds x",
-      "out-of-order restore under (c) per-register: y = 1",
-      "fib(3) under (a): val = 2",
-      "fib(3) under (b): val = 2",
-      "fib(3) under (c): val = 2",
-      "fib(3) with the eliminated assign, discipline (a): val = 2",
-      "fib(5) with the eliminated assign, discipline (a): val = 5",
-      "the eliminated controller under (b): restore n but the stack holds val",
-    ]);
+  it("the disciplines disagree exactly on the out-of-order sequence", () => {
+    const result = ex_5_11();
+    expect(result.blind).toBe(2);
+    expect(result.checking?.tag).toBe("restore-mismatch");
+    expect(result.perRegister).toBe(1);
+  });
+  it("all three answer the Fibonacci machine", () => {
+    const result = ex_5_11().fib;
+    expect(result.blind).toBe(2);
+    expect(result.checking).toBe(2);
+    expect(result.perRegister).toBe(2);
+  });
+  it("the part-(a) elimination works name-blind and is refused checked", () => {
+    const collapsed = ex_5_11().collapsed;
+    expect(collapsed.blind[0]).toBe(2);
+    expect(collapsed.blind[1]).toBe(5);
+    expect(collapsed.checking?.tag).toBe("restore-mismatch");
   });
 });

@@ -2,203 +2,395 @@
 // Original exercise
 
 /**
- * Exercise 4.4: and and or as new special forms. (and e1 ... en)
- * evaluates the expressions left to right: if any evaluates to false,
- * false is returned and the rest are never evaluated; otherwise the value
- * of the last expression is returned, and (and) with no expressions is
- * true. (or e1 ... en) returns the first value that is not false and
- * never evaluates the rest; (or) is false. The full dispatch below keeps
- * the recursion inside this evaluator, so and and or also work in nested
- * positions such as procedure bodies.
+ * Exercise 4.4: variadic short-circuit `all` and `any` as special forms
+ * next to the binary `logical` node. The extension nodes live beside
+ * `logical` in the syntax data and are admitted only by this exercise's
+ * own evaluator, exactly as the book's `and`/`or` are new special forms.
+ * The pinned route is the special form: each operand is evaluated at
+ * most once, operands must be boolean or the call is a `bad-operand`
+ * fault, evaluation stops at the first decisive operand, and the result
+ * is boolean — the same strict rule the guest `logical` node enforces.
+ * `allToConditional` and `anyToConditional` keep the exercise's second
+ * route: derivation over the conditional expression, whose evaluation
+ * counts and fault behavior the tests compare against the special form.
  */
-import { Effect } from "effect";
-
 import {
-  applyPrimitiveProcedure,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
+  applyBinaryOperation,
+  applyUnaryOperation,
   extendEnvironment,
-  falseValue,
-  firstExp,
-  firstOperand,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isAssignment,
-  isBegin,
-  isDefinition,
-  isIf,
-  isLambda,
-  isLastExp,
-  isPair,
-  isQuoted,
-  isSelfEvaluating,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  lookupVariableValue,
-  makeProcedure,
-  noOperands,
-  ok,
-  operands,
-  operator,
-  restExps,
-  restOperands,
+  Session,
   setVariableValue,
-  taggedList,
-  textOfQuotation,
-  trueValue,
+  splitParams,
 } from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Evaluate, Value } from "../../packages/ch4/src/core.js";
+import { type Env, findCell, makeCell } from "../../packages/ch4/src/runtime/env.js";
+import type { Completion, Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { fail, failed, normal, ok, outcomeOf } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  type EvaluationError,
-  NotAProcedure,
-  RuntimeError,
-  UnknownSyntax,
-} from "../../packages/ch4/src/errors.js";
-import type { Cons, List } from "../../packages/ch4/src/list.js";
-import { cons, nil } from "../../packages/ch4/src/list.js";
-import { format } from "../../packages/ch4/src/read.js";
+  isArrayValue,
+  isClosure,
+  isPrimitive,
+  makeArray,
+  makeClosure,
+  makeErrorValue,
+  makeMap,
+  makeRecord,
+  makeSet,
+  ThunkValue,
+  type Value,
+} from "../../packages/ch4/src/runtime/value.js";
+import { bool, cond, type Decl, type Expr, type Stmt } from "../../packages/ch4/src/syntax/ast.js";
+import { noSpan, type Span } from "../../packages/ch4/src/syntax/diagnostics.js";
 
-/** The book's `and?`. */
-export const isAnd = (exp: Value): exp is Cons<Value> => taggedList("and", exp);
+/** The variadic `all` special form: true when every operand is true. */
+export interface AllNode {
+  readonly tag: "all";
+  readonly operands: ReadonlyArray<Expr>;
+  readonly span: Span;
+}
 
-/** The book's `or?`. */
-export const isOr = (exp: Value): exp is Cons<Value> => taggedList("or", exp);
+/** The variadic `any` special form: true when some operand is true. */
+export interface AnyNode {
+  readonly tag: "any";
+  readonly operands: ReadonlyArray<Expr>;
+  readonly span: Span;
+}
 
-const tailOf = (exp: Cons<Value>): List<Value> => exp.tail;
+/** The two extension nodes, beside the binary `logical` node. */
+export type VariadicLogic = AllNode | AnyNode;
 
-export const evalWithAndOr: Evaluate = (exp, env) => {
-  if (isSelfEvaluating(exp)) {
-    return Effect.succeed(exp);
+/** The syntax this exercise evaluates: the shared expressions plus its own forms. */
+export type ExtendedExpr = Expr | VariadicLogic;
+
+/** Builds the `all` form. */
+export const allOf = (operands: ReadonlyArray<Expr>, span: Span = noSpan): AllNode => ({
+  tag: "all",
+  operands,
+  span,
+});
+
+/** Builds the `any` form. */
+export const anyOf = (operands: ReadonlyArray<Expr>, span: Span = noSpan): AnyNode => ({
+  tag: "any",
+  operands,
+  span,
+});
+
+const bad = (operator: string, detail: string): Outcome =>
+  fail({ tag: "bad-operand", operator, detail });
+
+// ---------------------------------------------------------------------
+// The special-form evaluator
+// ---------------------------------------------------------------------
+
+const applyForm = (procedure: Value, args: ReadonlyArray<Value>, session: Session): Outcome => {
+  if (isClosure(procedure)) {
+    const required = procedure.params.length;
+    const bound = procedure.rest === null ? args : args.slice(0, required);
+    const extended = extendEnvironment(procedure.params, bound, procedure.env);
+    if (extended.tag === "error") {
+      return fail(extended.error);
+    }
+    const frame = extended.env;
+    if (procedure.rest !== null) {
+      frame.bindings.set(procedure.rest, makeCell(makeArray(args.slice(required)), true));
+    }
+    return outcomeOf(execFormSequence(procedure.body.body, frame, session));
   }
-  if (isVariable(exp)) {
-    return lookupVariableValue(exp, env);
+  if (isPrimitive(procedure)) {
+    return procedure.fn(args);
   }
-  if (isQuoted(exp)) {
-    return Effect.succeed(textOfQuotation(exp));
-  }
-  if (isAssignment(exp)) {
-    return evalAssignmentLocal(exp, env);
-  }
-  if (isDefinition(exp)) {
-    return evalDefinitionLocal(exp, env);
-  }
-  if (isAnd(exp)) {
-    return evalConjunction(tailOf(exp), env);
-  }
-  if (isOr(exp)) {
-    return evalDisjunction(tailOf(exp), env);
-  }
-  if (isIf(exp)) {
-    return evalIfLocal(exp, env);
-  }
-  if (isLambda(exp)) {
-    return Effect.succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env));
-  }
-  if (isBegin(exp)) {
-    return evalSequenceLocal(beginActions(exp), env);
-  }
-  if (isPair(exp)) {
-    return Effect.flatMap(evalWithAndOr(operator(exp), env), (procedure) =>
-      Effect.flatMap(listOfValuesLocal(operands(exp), env), (args) => applyLocal(procedure, args)),
-    );
-  }
-  return Effect.fail(new UnknownSyntax({ expr: format(exp) }));
+  return fail({ tag: "not-callable", detail: "and/or evaluator: value is not a procedure" });
 };
 
-const evalConjunction = (
-  conjuncts: List<Value>,
+const execFormItem = (item: Decl | Stmt, env: Env, session: Session): Completion => {
+  switch (item.tag) {
+    case "var-decl": {
+      const init = evalWithAllAny(item.init, env, session);
+      if (init.tag === "error") {
+        return failed(init.error);
+      }
+      const cell = env.bindings.get(item.name);
+      if (cell === undefined) {
+        env.bindings.set(item.name, makeCell(init.value, true, item.kind === "let"));
+      } else {
+        cell.value = init.value;
+        cell.initialized = true;
+      }
+      return normal(init.value);
+    }
+    case "function-decl":
+    case "import":
+    case "type-decl":
+    case "interface-decl":
+      return normal(undefined);
+    case "expr-stmt": {
+      const value = evalWithAllAny(item.expr, env, session);
+      return value.tag === "error" ? failed(value.error) : normal(value.value);
+    }
+    case "return": {
+      if (item.argument === null) {
+        return normal(undefined);
+      }
+      const value = evalWithAllAny(item.argument, env, session);
+      return value.tag === "error" ? failed(value.error) : { tag: "return", value: value.value };
+    }
+    case "block":
+      return execFormSequence(item.body, { bindings: new Map(), parent: env }, session);
+    case "if": {
+      const test = evalWithAllAny(item.test, env, session);
+      if (test.tag === "error") {
+        return failed(test.error);
+      }
+      const branch = test.value === true ? item.consequent : item.alternative;
+      return branch === null ? normal(undefined) : execFormItem(branch, env, session);
+    }
+    default:
+      return session.execStatement(item, env);
+  }
+};
+
+const execFormSequence = (
+  items: ReadonlyArray<Decl | Stmt>,
   env: Env,
-): Effect.Effect<Value, EvaluationError> => {
-  if (conjuncts._tag === "Nil") {
-    return Effect.succeed(trueValue);
+  session: Session,
+): Completion => {
+  for (const item of items) {
+    if (item.tag === "var-decl") {
+      env.bindings.set(item.name, makeCell(undefined, false, item.kind === "let"));
+    }
+    if (item.tag === "function-decl") {
+      const { params, rest } = splitParams(item.params);
+      env.bindings.set(item.name, makeCell(makeClosure(params, rest, item.body, env), true));
+    }
   }
-  if (isLastExp(conjuncts)) {
-    return evalWithAndOr(firstExp(conjuncts), env);
+  let last: Completion = normal(undefined);
+  for (const item of items) {
+    last = execFormItem(item, env, session);
+    if (last.tag !== "normal") {
+      return last;
+    }
   }
-  return Effect.flatMap(evalWithAndOr(firstExp(conjuncts), env), (value) =>
-    isTrue(value) ? evalConjunction(restExps(conjuncts), env) : Effect.succeed(falseValue),
-  );
+  return last;
 };
 
-const evalDisjunction = (
-  disjuncts: List<Value>,
+/**
+ * The special-form evaluator. `all` and `any` are its own cases: each
+ * operand is evaluated at most once, must be boolean, and evaluation
+ * stops at the first decisive operand. These extension nodes sit beside
+ * the shared `Expr` union, so shared `Stmt` procedure bodies cannot embed
+ * them; nested-body examples must use the derived conditional expressions.
+ */
+export const evalWithAllAny = (
+  expr: ExtendedExpr,
   env: Env,
-): Effect.Effect<Value, EvaluationError> => {
-  if (disjuncts._tag === "Nil") {
-    return Effect.succeed(falseValue);
+  session: Session = new Session("core"),
+): Outcome => {
+  switch (expr.tag) {
+    case "all": {
+      for (const operand of expr.operands) {
+        const value = evalWithAllAny(operand, env, session);
+        if (value.tag === "error") {
+          return value;
+        }
+        if (typeof value.value !== "boolean") {
+          return bad("all", "operand is not a boolean");
+        }
+        if (!value.value) {
+          return ok(false);
+        }
+      }
+      return ok(true);
+    }
+    case "any": {
+      for (const operand of expr.operands) {
+        const value = evalWithAllAny(operand, env, session);
+        if (value.tag === "error") {
+          return value;
+        }
+        if (typeof value.value !== "boolean") {
+          return bad("any", "operand is not a boolean");
+        }
+        if (value.value) {
+          return ok(true);
+        }
+      }
+      return ok(false);
+    }
+    case "call": {
+      const procedure = evalWithAllAny(expr.callee, env, session);
+      if (procedure.tag === "error") {
+        return procedure;
+      }
+      const args: Value[] = [];
+      for (const arg of expr.args) {
+        const value = evalWithAllAny(arg.expr, env, session);
+        if (value.tag === "error") {
+          return value;
+        }
+        if (arg.kind === "spread") {
+          if (!isArrayValue(value.value)) {
+            return bad("spread", "spread argument is not an array");
+          }
+          args.push(...value.value.items);
+          continue;
+        }
+        args.push(value.value);
+      }
+      return applyForm(procedure.value, args, session);
+    }
+    case "assign": {
+      const target = expr.target;
+      if (target.tag === "variable") {
+        const cell = findCell(env, target.name);
+        if (cell === undefined) {
+          return fail({ tag: "unbound-name", name: target.name });
+        }
+        const value = evalWithAllAny(expr.value, env, session);
+        if (value.tag === "error") {
+          return value;
+        }
+        return setVariableValue(target.name, value.value, env);
+      }
+      if (target.tag === "member") {
+        const object = evalWithAllAny(target.object, env, session);
+        if (object.tag === "error") {
+          return object;
+        }
+        const value = evalWithAllAny(expr.value, env, session);
+        return value.tag === "error"
+          ? value
+          : session.memberSet(object.value, target.name, value.value);
+      }
+      if (target.tag === "index") {
+        const object = evalWithAllAny(target.object, env, session);
+        if (object.tag === "error") {
+          return object;
+        }
+        const index = evalWithAllAny(target.index, env, session);
+        if (index.tag === "error") {
+          return index;
+        }
+        const value = evalWithAllAny(expr.value, env, session);
+        return value.tag === "error"
+          ? value
+          : session.indexSet(object.value, index.value, value.value);
+      }
+      return fail({ tag: "unknown-syntax", construct: "assignment-target" });
+    }
+    case "logical": {
+      const left = evalWithAllAny(expr.left, env, session);
+      if (left.tag === "error") {
+        return left;
+      }
+      if (typeof left.value !== "boolean") {
+        return bad(expr.op, "left operand is not a boolean");
+      }
+      const shortCircuits = expr.op === "&&" ? !left.value : left.value;
+      if (shortCircuits) {
+        return ok(left.value);
+      }
+      const right = evalWithAllAny(expr.right, env, session);
+      if (right.tag === "error") {
+        return right;
+      }
+      return typeof right.value === "boolean"
+        ? ok(right.value)
+        : bad(expr.op, "right operand is not a boolean");
+    }
+    case "conditional": {
+      const test = evalWithAllAny(expr.test, env, session);
+      if (test.tag === "error") {
+        return test;
+      }
+      return evalWithAllAny(test.value === true ? expr.consequent : expr.alternative, env, session);
+    }
+    case "binary": {
+      const left = evalWithAllAny(expr.left, env, session);
+      if (left.tag === "error") {
+        return left;
+      }
+      const right = evalWithAllAny(expr.right, env, session);
+      return right.tag === "error" ? right : applyBinaryOperation(expr.op, left.value, right.value);
+    }
+    case "unary": {
+      const operand = evalWithAllAny(expr.operand, env, session);
+      return operand.tag === "error" ? operand : applyUnaryOperation(expr.op, operand.value);
+    }
+    case "arrow": {
+      const { params, rest } = splitParams(expr.params);
+      return ok(makeClosure(params, rest, expr.body, env));
+    }
+    case "member": {
+      const object = evalWithAllAny(expr.object, env, session);
+      return object.tag === "error" ? object : session.memberGet(object.value, expr.name);
+    }
+    case "index": {
+      const object = evalWithAllAny(expr.object, env, session);
+      if (object.tag === "error") {
+        return object;
+      }
+      const index = evalWithAllAny(expr.index, env, session);
+      return index.tag === "error" ? index : session.indexGet(object.value, index.value);
+    }
+    case "number":
+    case "string":
+    case "boolean":
+      return ok(expr.value);
+    case "null":
+      return ok(null);
+    case "undefined":
+      return ok(undefined);
+    case "variable":
+      return session.lookupVariableValue(expr.name, env);
+    default:
+      return session.evaluate(expr, env);
   }
-  if (isLastExp(disjuncts)) {
-    return evalWithAndOr(firstExp(disjuncts), env);
-  }
-  return Effect.flatMap(evalWithAndOr(firstExp(disjuncts), env), (value) =>
-    isTrue(value) ? Effect.succeed(value) : evalDisjunction(restExps(disjuncts), env),
-  );
 };
 
-const evalSequenceLocal = (seq: List<Value>, env: Env): Effect.Effect<Value, EvaluationError> => {
-  if (seq._tag === "Nil") {
-    return Effect.fail(new RuntimeError({ message: "Empty sequence: EVAL", detail: "" }));
+// ---------------------------------------------------------------------
+// The derived route: over the conditional expression
+// ---------------------------------------------------------------------
+
+/**
+ * The `all` form derived over the conditional: `all(a, b, c)` becomes
+ * `a ? (b ? c : false) : false`. Each operand appears once, so the
+ * derivation evaluates each reached operand once as a conditional test.
+ */
+export const allToConditional = (operands: ReadonlyArray<Expr>): Expr => {
+  const first = operands[0];
+  if (first === undefined) {
+    return bool(true);
   }
-  if (isLastExp(seq)) {
-    return evalWithAndOr(firstExp(seq), env);
-  }
-  return Effect.flatMap(evalWithAndOr(firstExp(seq), env), () =>
-    evalSequenceLocal(restExps(seq), env),
-  );
+  const second = operands[1];
+  return second === undefined
+    ? first
+    : cond(first, allToConditional(operands.slice(1)), bool(false));
 };
 
-const applyLocal = (procedure: Value, args: List<Value>): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag === "Primitive") {
-    return applyPrimitiveProcedure(procedure, args);
+/**
+ * The `any` form derived over the conditional: `any(a, b, c)` becomes
+ * `a ? true : (b ? true : c)`, again one evaluation per reached operand.
+ */
+export const anyToConditional = (operands: ReadonlyArray<Expr>): Expr => {
+  const first = operands[0];
+  if (first === undefined) {
+    return bool(false);
   }
-  if (procedure._tag === "Compound") {
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      evalSequenceLocal(procedure.body, newEnv),
-    );
-  }
-  return Effect.fail(new NotAProcedure({ value: format(procedure) }));
+  const second = operands[1];
+  return second === undefined
+    ? first
+    : cond(first, bool(true), anyToConditional(operands.slice(1)));
 };
-
-const listOfValuesLocal = (
-  exps: List<Value>,
-  env: Env,
-): Effect.Effect<List<Value>, EvaluationError> =>
-  noOperands(exps)
-    ? Effect.succeed(nil)
-    : Effect.flatMap(evalWithAndOr(firstOperand(exps), env), (first) =>
-        Effect.map(listOfValuesLocal(restOperands(exps), env), (rest) => cons(first, rest)),
-      );
-
-const evalIfLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithAndOr(ifPredicate(exp), env), (predicate) =>
-    isTrue(predicate)
-      ? evalWithAndOr(ifConsequent(exp), env)
-      : evalWithAndOr(ifAlternative(exp), env),
-  );
-
-const evalAssignmentLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithAndOr(assignmentValue(exp), env), (value) =>
-    Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-  );
-
-const evalDefinitionLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithAndOr(definitionValue(exp), env), (value) =>
-    Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-  );
 
 export function ex_4_04(): string {
   return (
-    "(and) with no conjuncts is true and (or) with no disjuncts is false; and evaluates its " +
-    "expressions in turn and stops with false as soon as one is false, otherwise returning " +
-    "the last value, while or stops with the first non-false value and otherwise returns " +
-    "false. Because the dispatch re-enters itself for every subexpression, both forms also " +
-    "work inside procedure bodies, where the module's own evaluate would never see them."
+    "The variadic `all` and `any` are special forms beside the binary `logical` node: " +
+    "each operand is evaluated at most once, non-boolean operands are a bad-operand " +
+    "fault, and evaluation stops at the first decisive operand, so `all(true, true, " +
+    "true)` is true, `all(true, false, ...)` is false without touching its tail, and " +
+    "`all(1, 2, 3)` faults instead of answering. The extension nodes cannot be embedded " +
+    "in shared procedure-body statements; those examples use the derived conditional " +
+    "route, which reaches operands once each but silently treats a non-`true` test as " +
+    "false instead of faulting — the comparison the exercise asks for."
   );
 }

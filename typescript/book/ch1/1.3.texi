@@ -156,7 +156,8 @@ define @code{sumCubes}:
 @example typescript
 const inc = (n: number): number => n + 1;
 
-const sumCubesViaSum = (a: number, b: number): number => sum(cube, a, inc, b);
+const sumCubesViaSum = (a: number, b: number): number =>
+  sum(cube, a, inc, b);
 @end example
 
 @noindent
@@ -174,7 +175,8 @@ With the aid of an identity procedure to compute the term, we can define
 @example typescript
 const identity = (x: number): number => x;
 
-const sumIntegersViaSum = (a: number, b: number): number => sum(identity, a, inc, b);
+const sumIntegersViaSum = (a: number, b: number): number =>
+  sum(identity, a, inc, b);
 @end example
 
 @noindent
@@ -497,7 +499,8 @@ Like any expression that has a procedure as its value, an arrow function
 can be used as the operator in a combination such as
 
 @example typescript
-((x: number, y: number, z: number): number => x + y + square(z))(1, 2, 3);
+((x: number, y: number, z: number): number =>
+  x + y + square(z))(1, 2, 3);
 // => 12
 @end example
 
@@ -567,7 +570,8 @@ single call to that procedure:
 
 @example typescript
 const fxyAnonymous = (x: number, y: number): number =>
-  ((a: number, b: number): number => x * square(a) + y * b + a * b)(1 + x * y, 1 - y);
+  ((a: number, b: number): number =>
+    x * square(a) + y * b + a * b)(1 + x * y, 1 - y);
 @end example
 
 @noindent
@@ -794,7 +798,8 @@ very subtle consideration, requiring help from a numerical analyst or some
 other kind of magician.}
 
 @example typescript
-const closeEnough = (x: number, y: number): boolean => abs(x - y) < 0.001;
+const closeEnough = (x: number, y: number): boolean =>
+  abs(x - y) < 0.001;
 @end example
 
 @noindent
@@ -811,7 +816,11 @@ value, the way @ref{0.6} introduced.}
 @example typescript
 type HalfIntervalResult =
   | @{ readonly _tag: "Ok"; readonly value: number @}
-  | @{ readonly _tag: "SameSign"; readonly a: number; readonly b: number @};
+  | @{
+      readonly _tag: "SameSign";
+      readonly a: number;
+      readonly b: number;
+    @};
 
 const halfIntervalMethod = (
   f: (x: number) => number,
@@ -875,7 +884,10 @@ repeatedly-improving guess runs as a loop over the state:
 @example typescript
 const TOLERANCE = 0.00001;
 
-const fixedPoint = (f: (x: number) => number, firstGuess: number): number => @{
+const fixedPoint = (
+  f: (x: number) => number,
+  firstGuess: number,
+): number => @{
   let guess = firstGuess;
   for (;;) @{
     const next = f(guess);
@@ -921,7 +933,8 @@ that is, the function whose value at @math{y} is @math{{x / y}}.} @math{{y \maps
 and we can therefore try to compute square roots as
 
 @example typescript
-const sqrtByFixedPointNaive = (x: number): number => fixedPoint((y) => x / y, 1.0);
+const sqrtByFixedPointNaive = (x: number): number =>
+  fixedPoint((y) => x / y, 1.0);
 @end example
 
 @noindent
@@ -941,7 +954,8 @@ guesses is simply the process of looking for a fixed point of
 @math{y \mapsto {{1\over2}(y + x / y)}}:
 
 @example typescript
-const sqrtByAverageDamp = (x: number): number => fixedPoint((y) => average(y, x / y), 1.0);
+const sqrtByAverageDamp = (x: number): number =>
+  fixedPoint((y) => average(y, x / y), 1.0);
 
 sqrtByAverageDamp(2.0);
 // => 1.4142135623746899
@@ -1252,7 +1266,10 @@ const newtonTransform =
   (x) =>
     x - g(x) / deriv(g)(x);
 
-const newtonsMethod = (g: (x: number) => number, guess: number): number =>
+const newtonsMethod = (
+  g: (x: number) => number,
+  guess: number,
+): number =>
   fixedPoint(newtonTransform(g), guess);
 @end example
 
@@ -1269,7 +1286,8 @@ from any starting point.}
 This provides yet another form of the square-root procedure:
 
 @example typescript
-const sqrtByNewtonsMethod = (x: number): number => newtonsMethod((y) => square(y) - x, 1.0);
+const sqrtByNewtonsMethod = (x: number): number =>
+  newtonsMethod((y) => square(y) - x, 1.0);
 @end example
 
 @subsubheading Abstractions and first-class procedures
@@ -1557,7 +1575,12 @@ presents no difficulty if the arguments are to be numbers, because we
 can readily define the procedure
 
 @example typescript
-const linearCombination = (a: number, b: number, x: number, y: number): number =>
+const linearCombination = (
+  a: number,
+  b: number,
+  x: number,
+  y: number,
+): number =>
   a * x + b * y;
 @end example
 

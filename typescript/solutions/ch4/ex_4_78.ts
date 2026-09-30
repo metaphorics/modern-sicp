@@ -1,41 +1,77 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import {
-  type Frame,
-  listValue,
-  microshaft,
-  Stream,
-  streamAppendDelayed,
-  streamFlatmap,
-} from "../../packages/ch4/src/04-logic.js";
-import { toArray } from "../../packages/ch4/src/list.js";
+/**
+ * Exercise 4.78: the query language as a nondeterministic program.
+ * Each query becomes a search program over the amb evaluator: one
+ * answer per success, more on resumption, chosen among the driver's
+ * real answer lines embedded as guest data. The bridge runs both
+ * directions — a populated query and an empty one — so the
+ * behavioral differences show as data: backtracking re-executes
+ * where streams memoize, and failure is silent resumption where
+ * the driver prints its empty-answer line.
+ */
+import { runAmbAnswers } from "../../packages/ch4/src/03-nondeterministic.js";
+import { type Query, qlist, qtext, queryAtom } from "../../packages/ch4/src/04-logic.js";
+import { format } from "../../packages/ch4/src/read.js";
+import { answerLines, microshaftDatabase, supervisedByBen } from "./ex_4_55.js";
 
-/** The book's or example: Ben's supervisees against Alyssa's. */
-export const orQuery = "(or (supervisor ?x (Bitdiddle Ben)) (supervisor ?x (Hacker Alyssa P)))";
+/** The driver's supervisee lines, the bridge's guest data. */
+export const superviseeLines = (): ReadonlyArray<string> => {
+  const db = microshaftDatabase();
+  return [...answerLines(db, supervisedByBen)];
+};
 
 /**
- * The amb engine's depth-first order over the same query. Each query
- * produces one answer and try-again resumes the choice points, so the
- * first disjunct's whole subtree comes out before the second's: an
- * appending disjoin over the branch streams reproduces it.
+ * A search program choosing among embedded lines with a required
+ * substring. The alternatives come from real driver output, joined
+ * as a guest choice.
  */
-export const depthFirstOr = (): ReadonlyArray<string> => {
-  const engine = microshaft();
-  engine.put("or", (operands, frames) =>
-    streamFlatmap((frame: Frame) => {
-      const branches = toArray(listValue(operands));
-      const walk = (index: number): Stream<Frame> => {
-        const branch = branches[index];
-        if (branch === undefined) return Stream.empty();
-        return streamAppendDelayed(engine.query(branch, frame), () => walk(index + 1));
-      };
-      return walk(0);
-    }, frames),
+export const choiceSource = (lines: ReadonlyArray<string>, required: string): string => {
+  const alternatives = lines.map((line) => JSON.stringify(line)).join(", ");
+  return [
+    `const pick = choose(${alternatives});`,
+    `require(pick.includes(${JSON.stringify(required)}));`,
+    "pick;",
+  ].join("\n");
+};
+
+/** The amb answers over the bridge program, rendered. */
+export const bridgeAnswers = (required: string): ReadonlyArray<string> => {
+  const run = runAmbAnswers(
+    choiceSource(superviseeLines(), required),
+    "amb-depth-first-experiment",
+    1,
   );
-  return engine.answers(orQuery);
+  return run.answers.map((value) => format(value));
+};
+
+/** Ben supervises nobody so named: a genuinely empty driver query. */
+export const selfSupervised: Query = queryAtom(
+  "supervisor",
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+  qlist(qtext("Bitdiddle"), qtext("Ben")),
+);
+
+/** The driver's empty answer against the search's silent one. */
+export const emptyComparison = (): readonly [ReadonlyArray<string>, number] => {
+  const db = microshaftDatabase();
+  const driver = answerLines(db, selfSupervised);
+  const run = runAmbAnswers(
+    choiceSource(superviseeLines(), "Nobody"),
+    "amb-depth-first-experiment",
+    1,
+  );
+  return [driver, run.answers.length];
 };
 
 export function ex_4_78(): string {
-  return "Much of the stream machinery is subsumed by backtracking choice points with try-again, but depth-first search answers the or branches in turn while the stream engine interleaves them.";
+  const hacker = bridgeAnswers("Hacker");
+  const [driverEmpty, searchEmpty] = emptyComparison();
+  return (
+    `The bridge answers ${hacker.length} Hacker line by search; the empty ` +
+    `query prints ${driverEmpty.length} driver line against ${searchEmpty} ` +
+    `search answers. Streams memoize derivations, backtracking re-executes ` +
+    `them — same answers, different work.`
+  );
 }

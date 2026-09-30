@@ -52,11 +52,11 @@ describe("section 3.3.1: mutable list structure", () => {
     const ab = mlist("a", "b");
     const x = mcons<MList<string> | string>(ab, mlist("c", "d"));
     const y = mlist("e", "f");
-    expect(showMList(x)).toBe("((a b) c d)");
+    expect(showMList(x)).toBe("[[a, b], c, d]");
     setCar(x, y);
-    expect(showMList(x)).toBe("((e f) c d)");
+    expect(showMList(x)).toBe("[[e, f], c, d]");
     // The replaced pointer leaves the old branch intact but detached.
-    expect(showMList(ab)).toBe("(a b)");
+    expect(showMList(ab)).toBe("[a, b]");
   });
 
   it("set-cdr! splices structure, and every alias sees the change", () => {
@@ -67,19 +67,19 @@ describe("section 3.3.1: mutable list structure", () => {
       throw new Error("expected a second pair");
     }
     setCdr(secondPair, y);
-    expect(showMList(x)).toBe("(a b c d)");
+    expect(showMList(x)).toBe("[a, b, c, d]");
     // y itself is now the tail of x's second pair: one structure, shared.
     expect(secondPair.tail).toBe(y);
   });
 
   it("mlist and showMList render nesting the way the book prints it", () => {
-    expect(showMList(mlist(1, 2, 3))).toBe("(1 2 3)");
-    expect(showMList(mnil)).toBe("()");
+    expect(showMList(mlist(1, 2, 3))).toBe("[1, 2, 3]");
+    expect(showMList(mnil)).toBe("[]");
     type Nested = number | MCons<Nested>;
     const two = mcons<Nested>(2, mnil);
     const oneTwo = mcons<Nested>(1, mcons<Nested>(two, mnil));
     const outer = mcons<Nested>(oneTwo, mcons<Nested>(3, mnil));
-    expect(showMList(outer)).toBe("((1 (2)) 3)");
+    expect(showMList(outer)).toBe("[[1, [2]], 3]");
   });
 });
 
@@ -88,14 +88,14 @@ describe("section 3.3.2: queues", () => {
     const q = makeQueue<string>();
     insertQueue(q, "a");
     insertQueue(q, "b");
-    expect(showMList(queueItems(q))).toBe("(a b)");
+    expect(showMList(queueItems(q))).toBe("[a, b]");
     deleteQueue(q);
-    expect(showMList(queueItems(q))).toBe("(b)");
+    expect(showMList(queueItems(q))).toBe("[b]");
     insertQueue(q, "c");
     insertQueue(q, "d");
-    expect(showMList(queueItems(q))).toBe("(b c d)");
+    expect(showMList(queueItems(q))).toBe("[b, c, d]");
     deleteQueue(q);
-    expect(showMList(queueItems(q))).toBe("(c d)");
+    expect(showMList(queueItems(q))).toBe("[c, d]");
     expect(frontQueue(q)).toBe("c");
   });
 
@@ -106,7 +106,7 @@ describe("section 3.3.2: queues", () => {
     expect(isEmptyQueue(q)).toBe(true);
     // A queue emptied by deletion must accept insertions again.
     insertQueue(q, "next");
-    expect(showMList(queueItems(q))).toBe("(next)");
+    expect(showMList(queueItems(q))).toBe("[next]");
   });
 
   it("fails on front or delete of an empty queue", () => {

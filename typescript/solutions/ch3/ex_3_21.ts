@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { type Queue, queueItems, showMList } from "../../packages/ch3/src/03-mutable-data.js";
+import { type MList, type Queue, queueItems } from "../../packages/ch3/src/03-mutable-data.js";
 
 /**
  * Exercise 3.21: Ben types the queue interactions at the REPL and
- * reads `((a) a)`, `((a b) b)`, `((b) b)`, `(() b)` as evidence the
+ * reads `[[a], a]`, `[[a, b], b]`, `[[b], b]`, `[[], b]` as evidence the
  * last item is inserted twice and never deleted. Eva Lu explains the
  * standard printer is just rendering the queue's representation pair:
  * its car is the front pointer (a list it prints fine) and its cdr is
@@ -16,20 +16,27 @@ import { type Queue, queueItems, showMList } from "../../packages/ch3/src/03-mut
  * view", is the print procedure she asks for.
  */
 
-/** The queue's items rendered the way the book prints a list: the
- * print procedure Eva Lu asks for, the front pointer shown as the
- * sequence it names. */
-export const printQueue = <A>(queue: Queue<A>): string => showMList(queueItems(queue));
+/** The edition's bracket-comma list rendering: `[]`, `[a, b]`. */
+const showBracketList = (l: MList<unknown>): string => {
+  const items: string[] = [];
+  for (let rest = l; rest._tag === "MCons"; rest = rest.tail) {
+    items.push(String(rest.head));
+  }
+  return `[${items.join(", ")}]`;
+};
 
-/** The queue's representation pair rendered the way the standard
- * printer shows it to Ben: the front pointer as a list, then the
- * rear pointer labeled as what it is. The rear pointer is not part of
- * the queue's items, which is exactly the confusion: after the last
- * item leaves, the book's rear pointer still points at the deleted
- * pair, so the raw view keeps showing an item the front pointer no
- * longer names. */
+/** The queue's items rendered as the edition's bracket-comma list:
+ * the print procedure Eva Lu asks for, the front pointer shown as the
+ * sequence it names. */
+export const printQueue = <A>(queue: Queue<A>): string => showBracketList(queueItems(queue));
+
+/** The queue's representation pair rendered as Ben's raw view: the
+ * front pointer as a list, then the rear pointer labeled as what it
+ * is. The rear pointer is not part of the queue's items, which is
+ * exactly the confusion: after the last item leaves, the book's rear
+ * pointer still points at the deleted pair, so the raw view keeps
+ * showing an item the front pointer no longer names. */
 export const benPrintQueue = <A>(queue: Queue<A>): string => {
   const rear = queue.rear;
-  const rearText = rear === null ? "null" : showMList(rear);
-  return `(front ${showMList(queueItems(queue))} rear ${rearText})`;
+  return `[front ${showBracketList(queueItems(queue))}, rear ${rear === null ? "null" : showBracketList(rear)}]`;
 };

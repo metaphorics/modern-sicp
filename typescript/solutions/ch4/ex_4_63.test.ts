@@ -2,20 +2,24 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { ex_4_63, genealogyAnswers } from "./ex_4_63.js";
+import { familyAnswers } from "./ex_4_63.js";
 
-describe("exercise 4.63: genealogy", () => {
-  it("deduces Cain's grandson, Lamech's sons, and Methushael's grandsons", () => {
-    const [cainsGrandsons, lamechsSons, methushaelsGrandsons] = genealogyAnswers();
-    expect(cainsGrandsons).toStrictEqual(["(grandson Cain Irad)"]);
-    expect(lamechsSons).toStrictEqual(["(son Lamech Jabal)", "(son Lamech Jubal)"]);
-    expect(methushaelsGrandsons).toStrictEqual([
-      "(grandson Methushael Jabal)",
-      "(grandson Methushael Jubal)",
-    ]);
+describe("exercise 4.63: family rules", () => {
+  it("finds Cain's grandson through the son chain", () => {
+    const [cain] = familyAnswers();
+    expect(cain).toStrictEqual(['grandson("Irad", "Cain")']);
   });
 
-  it("summarizes the three deductions", () => {
-    expect(ex_4_63()).toContain("Jabal");
+  it("finds Lamech's sons through the wife rule", () => {
+    const [, lamech] = familyAnswers();
+    expect(lamech).toStrictEqual(['son("Lamech", "Jabal")', 'son("Lamech", "Jubal")']);
+  });
+
+  it("finds Methushael's grandsons through both rules", () => {
+    const [, , methushael] = familyAnswers();
+    expect(methushael).toStrictEqual([
+      'grandson("Jabal", "Methushael")',
+      'grandson("Jubal", "Methushael")',
+    ]);
   });
 });

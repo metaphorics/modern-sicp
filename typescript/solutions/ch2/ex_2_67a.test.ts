@@ -29,7 +29,7 @@ describe("exercise 2.67a", () => {
   it("still refuses a bad bit", () => {
     expect(decodeNarrowed(list(2), sampleTree)).toStrictEqual({
       _tag: "Error",
-      error: "bad bit: DECODE-NARROWED 2",
+      error: "chooseBranch: bad bit 2",
     });
   });
 });

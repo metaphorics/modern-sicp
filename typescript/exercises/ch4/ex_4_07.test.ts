@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.7: let* as nested lets");
+test.todo("Exercise 4.7: sequential-let as nested lets");

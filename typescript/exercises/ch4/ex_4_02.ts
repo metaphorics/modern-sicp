@@ -2,14 +2,13 @@
 // Original exercise
 
 /**
- * Exercise 4.2: Louis Reasoner wants the clause for procedure applications
- * to appear before the clause for assignments in eval. (a) Show what goes
- * wrong: under applications-first dispatch, a definition like
- * (define x 3) is itself a pair, so it reaches the application clause and
- * the evaluator tries to apply the symbol define. (b) Change the syntax of
- * the evaluated language instead: every procedure application must begin
- * with the keyword call, as in (call + 1 2), and build the evaluator that
- * dispatches on that form.
+ * Exercise 4.2: reorder the cases in `evaluate` so the call case precedes
+ * the assignment case. (a) Explain the failure: the declaration
+ * `const x = 3;` is not a call expression and cannot be dispatched as one.
+ * (b) Change the tagged syntax so application nodes carry an explicit
+ * `call` tag. Typed premise data represents both `factorial(3)` and
+ * `square(x) + 1` as call nodes plus arithmetic, without introducing a
+ * second source grammar.
  */
 export class PendingSolution extends Error {
   constructor() {
@@ -17,6 +16,17 @@ export class PendingSolution extends Error {
     this.name = "PendingSolution";
   }
 }
+
+/** Typed syntax premise for the explicit call-tag examples. */
+export type DispatchNode =
+  | { readonly kind: "call"; readonly callee: string; readonly arguments: readonly number[] }
+  | { readonly kind: "add"; readonly left: DispatchNode; readonly right: number };
+export const factorialCall: DispatchNode = { kind: "call", callee: "factorial", arguments: [3] };
+export const squareCallPlusOne: DispatchNode = {
+  kind: "add",
+  left: { kind: "call", callee: "square", arguments: [1] },
+  right: 1,
+};
 
 export function ex_4_02(): string {
   throw new PendingSolution();

@@ -2,15 +2,14 @@
 // Original exercise
 
 /**
- * Exercise 3.27: memo-fib. The book's memoizer wraps the fib lambda
+ * Exercise 3.27: memoFib. The book's memoizer wraps the naive recursive procedure
  * in a local table: each call first looks its argument up, answers a
  * previously computed value when it is there, and otherwise computes
  * in the ordinary way, stores, and answers. The wrapped body must
- * recurse into the memoized procedure itself (the book defines
- * `memo-fib` as `memoize` of a lambda whose body calls `memo-fib`),
+ * recurse into the memoized procedure itself (the `memoFib` procedure closes over one table and its body calls `memoFib`),
  * so the nested calls share the one table and each fib value is
  * computed once: the steps grow proportional to n. Whether the
- * scheme would work over plain `fib` (it would not: the recursive
+ * plan would work over plain recursion (it would not: the recursive
  * calls would never consult the table) is a question about exactly
  * this sharing, which the trace makes visible.
  */
@@ -22,7 +21,7 @@ export type MemoFibEvent =
   | { readonly _tag: "Compute"; readonly n: number }
   | { readonly _tag: "Recall"; readonly n: number };
 
-/** Builds the book's memo-fib over one local `Map` table, appending
+/** Builds the book's memoFib over one local `Map` table, appending
  * one event per call to `log`; the wrapped lambda's body recurses
  * into the memoized procedure, so nested calls fill the same table. */
 const buildMemoFib = (log: MemoFibEvent[]): ((n: number) => number) => {
@@ -41,11 +40,11 @@ const buildMemoFib = (log: MemoFibEvent[]): ((n: number) => number) => {
   return memoFib;
 };
 
-/** The book's memo-fib: the n-th Fibonacci number, each value
+/** The book's memoFib: the n-th Fibonacci number, each value
  * computed once and recalled from the table ever after. */
 export const memoFib = (n: number): number => buildMemoFib([])(n);
 
-/** Runs the book's memo-fib and answers the log of the calls it
+/** Runs the book's memoFib and answers the log of the calls it
  * answered: the environment structure of the computation, as
  * events. */
 export const memoFibTrace = (n: number): MemoFibEvent[] => {

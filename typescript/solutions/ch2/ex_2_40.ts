@@ -19,7 +19,7 @@ import {
  * nothing about pairing order left in the open.
  */
 
-/** The pairs (i j) with 1 <= j < i <= n, i descending outermost. */
+/** The pairs `[i, j]` with 1 <= j < i <= n, i descending outermost. */
 export const uniquePairs = (n: number): List<List<number>> =>
   flatmap((i) => map((j) => list(i, j), enumerateInterval(1, i - 1)), enumerateInterval(1, n));
 

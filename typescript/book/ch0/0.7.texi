@@ -46,7 +46,9 @@ it("a property test runs the assertion over generated inputs", () => @{
 
 it("boundary cases stay explicit", () => @{
   expect(absDiff(0, 0)).toBe(0);
-  expect(absDiff(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)).toBe(0);
+  expect(
+    absDiff(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
+  ).toBe(0);
 @});
 @end example
 

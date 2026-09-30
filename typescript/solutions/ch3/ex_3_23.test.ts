@@ -22,13 +22,13 @@ describe("exercise 3.23: the deque with constant-time ends", () => {
     const deque = makeDeque<string>();
     insertRearDeque(deque, "a");
     insertRearDeque(deque, "b");
-    expect(showDeque(deque)).toBe("(a b)");
+    expect(showDeque(deque)).toBe("[a, b]");
     expect(deleteFrontDeque(deque)).toBe("a");
     insertFrontDeque(deque, "c");
     insertRearDeque(deque, "d");
-    expect(showDeque(deque)).toBe("(c b d)");
+    expect(showDeque(deque)).toBe("[c, b, d]");
     expect(deleteRearDeque(deque)).toBe("d");
-    expect(showDeque(deque)).toBe("(c b)");
+    expect(showDeque(deque)).toBe("[c, b]");
   });
 
   it("keeps both links consistent after every operation", () => {
@@ -36,7 +36,7 @@ describe("exercise 3.23: the deque with constant-time ends", () => {
     insertRearDeque(deque, "a");
     insertFrontDeque(deque, "b");
     insertRearDeque(deque, "c");
-    // (b a c): forward walk and backward walk agree.
+    // [b, a, c]: forward walk and backward walk agree.
     const front = deque.front;
     const rear = deque.rear;
     expect(front?.item).toBe("b");
@@ -47,11 +47,11 @@ describe("exercise 3.23: the deque with constant-time ends", () => {
     expect(front?.prev).toBeNull();
     expect(rear?.next).toBeNull();
     deleteFrontDeque(deque);
-    // (a c): the new front's prev link is reset.
+    // [a, c]: the new front's prev link is reset.
     expect(deque.front?.item).toBe("a");
     expect(deque.front?.prev).toBeNull();
     deleteRearDeque(deque);
-    // (a): the new rear's next link is reset.
+    // [a]: the new rear's next link is reset.
     expect(deque.rear?.item).toBe("a");
     expect(deque.rear?.next).toBeNull();
   });
@@ -63,7 +63,7 @@ describe("exercise 3.23: the deque with constant-time ends", () => {
     expect(isEmptyDeque(frontOnly)).toBe(true);
     expect(frontOnly.rear).toBeNull();
     insertRearDeque(frontOnly, "next");
-    expect(showDeque(frontOnly)).toBe("(next)");
+    expect(showDeque(frontOnly)).toBe("[next]");
     const rearOnly = makeDeque<string>();
     insertRearDeque(rearOnly, "only");
     expect(deleteRearDeque(rearOnly)).toBe("only");

@@ -13,7 +13,7 @@ describe("exercise 2.41", () => {
 
   it("keeps both order directions of a qualifying set", () => {
     const shown = showList(orderedTriples(5, 10));
-    expect(shown.includes("(1 4 5)")).toBe(true);
-    expect(shown.includes("(5 4 1)")).toBe(true);
+    expect(shown.includes("[1, 4, 5]")).toBe(true);
+    expect(shown.includes("[5, 4, 1]")).toBe(true);
   });
 });

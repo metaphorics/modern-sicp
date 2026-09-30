@@ -9,7 +9,7 @@ import {
 } from "../../packages/ch3/src/05-streams.js";
 
 /**
- * Exercise 3.80: the series RLC circuit. The statement combines the
+ * Exercise 3.80: the series rlc circuit. The statement combines the
  * component laws `vR = iR R`, `vL = L diL/dt`, `iC = C dvC/dt` with
  * the connection laws `iR = iL = -iC` and `vC = vL + vR` into a pair
  * of differential equations for the state of the circuit:
@@ -25,18 +25,18 @@ import {
  * the sum of `vC` scaled by `1/L` and `iL` scaled by `-R/L`.
  */
 
-/** The pair the statement's `RLC` answers: the streams of the state
+/** The pair the statement's `rlc` answers: the streams of the state
  * variables, in the statement's order (`vC` first, then `iL`). */
 export interface RlcStreams {
   readonly vC: Stream<number>;
   readonly iL: Stream<number>;
 }
 
-/** The book's `RLC`: takes the circuit parameters and the time step
+/** The book's `rlc`: takes the circuit parameters and the time step
  * and answers a procedure from the initial values `vC0` and `iL0` to
  * the pair of state streams, the two integrators wired in a loop
  * exactly as Figure 3.37 draws them. */
-export const RLC =
+export const rlc =
   (R: number, L: number, C: number, dt: number): ((vC0: number, iL0: number) => RlcStreams) =>
   (vC0, iL0) => {
     const vC: Stream<number> = integralDelayed(() => streamMap((i) => -i / C, iL), vC0, dt);

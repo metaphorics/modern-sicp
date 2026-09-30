@@ -4,8 +4,8 @@
 import { err, ok, type Result } from "../../packages/ch2/src/01-data-abstraction.js";
 
 /**
- * Exercise 2.77: Louis Reasoner's `magnitude` surprise. The book's
- * `apply-generic` strips exactly one type tag per dispatch, so an
+ * Exercise 2.77: Louis Reasoner's `magnitude` surprise. The section dispatch strips
+ * exactly one type tag per dispatch, so an
  * operation must be installed at every tagged level its datum carries.
  * The answer is the layered-dispatch spelling: complex-level selectors
  * that strip the outer `complex` tag and re-dispatch on the inner
@@ -48,7 +48,7 @@ const lookupMagnitude = (
   byTag: Record<string, (z: InnerRep) => number>,
   z: Complex77,
 ): Result<number, Miss77> => {
-  // apply-generic reads the OUTER tag first: the lookup key is the
+  // The dispatch reads the OUTER tag first: the lookup key is the
   // datum's own tag, and the found selector works one tag down.
   const selector = byTag[z._tag];
   return selector === undefined
@@ -67,7 +67,7 @@ export const magnitudeWithoutSelectors = (z: Complex77): Result<number, Miss77> 
 export const magnitudeWithSelectors = (z: Complex77): Result<number, Miss77> =>
   lookupMagnitude(magnitudeByTagAfterFix, z);
 
-/** Builds the book's (complex rectangular 3 4) at this exercise's
+/** Builds the statement's [complex, rectangular, 3, 4] at this exercise's
  * scale. */
 export const makeComplex77 = (x: number, y: number): Complex77 => ({
   _tag: "complex",

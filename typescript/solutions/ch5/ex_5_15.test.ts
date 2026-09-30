@@ -2,38 +2,33 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { setRegisterContents } from "../../packages/ch5/src/02-simulator.js";
-import { expectOk, gcdController } from "./ex_5_07.js";
-import { fibSimController } from "./ex_5_11.js";
-import { gcdInstructionCounts, makeCountingMachine, printAndReset } from "./ex_5_15.js";
+import {
+  ex_5_15,
+  factorialInstructionCount,
+  fibInstructionCount,
+  gcdInstructionCounts,
+  printAndReset,
+} from "./ex_5_15.ts";
 
 describe("exercise 5.15 instruction counting", () => {
-  it("totals every executed instruction, transfers included", () => {
-    expect(gcdInstructionCounts()).toEqual([
-      "gcd(206, 40): 26 instructions",
-      "factorial(5): 49 instructions",
-    ]);
+  it("counts every executed instruction, transfers included", () => {
+    expect(gcdInstructionCounts(206, 40)).toBe(26);
+    expect(factorialInstructionCount(5)).toBe(49);
   });
-  it("counts the fibonacci machine's runs from 5 to 281", () => {
-    const counts = [0, 1, 2, 3, 6].map((n) => {
-      const counting = makeCountingMachine(["n", "continue", "val"], fibSimController);
-      expectOk(setRegisterContents(counting.machine, "n", n));
-      expectOk(counting.machine.start());
-      return counting.instructionCount();
-    });
-    expect(counts).toEqual([5, 5, 28, 51, 281]);
+  it("the Fibonacci boundaries of the book's table", () => {
+    expect(fibInstructionCount(0)).toBe(5);
+    expect(fibInstructionCount(1)).toBe(5);
+    expect(fibInstructionCount(2)).toBe(28);
+    expect(fibInstructionCount(3)).toBe(51);
+    expect(fibInstructionCount(6)).toBe(281);
   });
-  it("answers the print-and-reset message with the count and zeroes it", () => {
+  it("print-and-reset measures only later runs", () => {
     const result = printAndReset();
-    expect(result.printed).toBe(27);
-    expect(result.after).toBe(0);
+    expect(result.message).toBe(27);
     expect(result.transcript).toEqual(["27"]);
+    expect(result.after).toBe(0);
   });
-  it("keeps the shared gcd controller's count stable across machines", () => {
-    const counting = makeCountingMachine(["a", "b", "t"], gcdController);
-    expectOk(setRegisterContents(counting.machine, "a", 206));
-    expectOk(setRegisterContents(counting.machine, "b", 40));
-    expectOk(counting.machine.start());
-    expect(counting.instructionCount()).toBe(26);
+  it("the answer table is complete", () => {
+    expect(ex_5_15()).toHaveLength(7);
   });
 });

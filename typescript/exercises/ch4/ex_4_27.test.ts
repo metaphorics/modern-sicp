@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 4.27: lazy identity with set!");
+test.todo("Exercise 4.27: lazy identity with assignment");

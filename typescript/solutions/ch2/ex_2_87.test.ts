@@ -7,11 +7,11 @@ import {
   adjoinTerm,
   isZeroQ,
   makePolynomial,
-  makeSchemeNumber,
+  makeTsNumber,
   show,
 } from "../../packages/ch2/src/05-generic-operations.js";
 
-const sn = (n: bigint) => makeSchemeNumber(n);
+const sn = (n: bigint) => makeTsNumber(n);
 
 describe("exercise 2.87: polynomial =zero?", () => {
   it("answers true for the empty polynomial", () => {

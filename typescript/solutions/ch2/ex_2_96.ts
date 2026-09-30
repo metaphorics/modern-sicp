@@ -10,8 +10,8 @@ import {
   firstTerm,
   type GenError,
   isEmptyTermListQ,
-  makeSchemeNumber,
   makeTerm,
+  makeTsNumber,
   mulTerms,
   orderOf,
   remainderTerms,
@@ -43,7 +43,7 @@ export const integerizingFactorTo = (
   c: ArithDatum,
   o1: bigint,
   o2: bigint,
-): Result<ArithDatum, GenError> => applyGeneric("exp", c, makeSchemeNumber(1n + o1 - o2));
+): Result<ArithDatum, GenError> => applyGeneric("exp", c, makeTsNumber(1n + o1 - o2));
 
 const integerizingFactor = (p: TermList, q: TermList): Result<ArithDatum, GenError> =>
   integerizingFactorTo(coeffOf(firstTerm(q)), orderOf(firstTerm(p)), orderOf(firstTerm(q)));

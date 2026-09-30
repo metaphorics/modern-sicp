@@ -13,7 +13,7 @@ import {
 
 /**
  * Exercise 2.22: Louis Reasoner's two iterative rewrites of
- * square-list, and why neither produces (1 4 9 16). The first conses
+ * square-list, and why neither produces [1, 4, 9, 16]. The first conses
  * each square onto the front of the answer, so the squares come out in
  * reverse order. In the second the cons arguments are interchanged; the
  * literal cons(answer, square) does not typecheck against the edition's

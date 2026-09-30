@@ -8,7 +8,7 @@ import { isMListValue } from "./ex_3_16.js";
  * Exercise 3.17: a correct count-pairs. The book's hint: traverse the
  * structure with an auxiliary record of the pairs already counted.
  * The edition uses a host `Set<object>`, whose membership test is
- * object identity, the book's `eq?`. Walking head and tail then
+ * JavaScript object identity. Walking head and tail then
  * counts every distinct pair exactly once and terminates on rings.
  */
 

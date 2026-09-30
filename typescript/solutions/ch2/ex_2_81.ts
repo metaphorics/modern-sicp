@@ -10,14 +10,13 @@ import {
   contentsOf,
   type GenError,
   makeComplexFromRealImag,
-  makeSchemeNumber,
+  makeTsNumber,
   typeTagOf,
 } from "../../packages/ch2/src/05-generic-operations.js";
 
 /**
  * Exercise 2.81: Louis Reasoner's self-coercions. Part (a) installs
- * identity entries in the coercion table and shows where that sends
- * `apply-generic`; part (b) judges the design; part (c) is the guard:
+ * identity entries in the coercion table and shows where that sends the generic dispatch; part (b) judges the design; part (c) is the guard:
  * when the arguments already share a type, coercion is not tried.
  * This file builds its own operation and coercion tables so Louis's
  * identities never leak into the section system.
@@ -81,19 +80,19 @@ const repPart2 = (c: ArithContents): number | undefined => {
 
 // The section's entries: exponentiation for ordinary numbers only, and
 // addition for ordinary numbers and for complex numbers.
-putOp81("exp", ["scheme-number", "scheme-number"], (args) => {
+putOp81("exp", ["ts-number", "ts-number"], (args) => {
   const x = args[0];
   const y = args[1];
   return typeof x === "bigint" && typeof y === "bigint"
-    ? ok(makeSchemeNumber(x ** y))
-    : miss81("exp", ["scheme-number", "scheme-number"]);
+    ? ok(makeTsNumber(x ** y))
+    : miss81("exp", ["ts-number", "ts-number"]);
 });
-putOp81("add", ["scheme-number", "scheme-number"], (args) => {
+putOp81("add", ["ts-number", "ts-number"], (args) => {
   const x = args[0];
   const y = args[1];
   return typeof x === "bigint" && typeof y === "bigint"
-    ? ok(makeSchemeNumber(x + y))
-    : miss81("add", ["scheme-number", "scheme-number"]);
+    ? ok(makeTsNumber(x + y))
+    : miss81("add", ["ts-number", "ts-number"]);
 });
 putOp81("add", ["complex", "complex"], (args) => {
   const a = args[0];
@@ -108,23 +107,23 @@ putOp81("add", ["complex", "complex"], (args) => {
 });
 
 // The ordinary-number to complex coercion of the section.
-putCoercion81("scheme-number", "complex", (n) => {
+putCoercion81("ts-number", "complex", (n) => {
   const c = contentsOf(n);
   return typeof c === "bigint"
     ? ok(makeComplexFromRealImag(Number(c), 0))
-    : miss81("scheme-number->complex", ["scheme-number"]);
+    : miss81("ts-number->complex", ["ts-number"]);
 });
 
 /** Part (a): Louis's identity self-coercions, installed under each
  * type back to itself. */
 export const installSelfCoercions81 = (): void => {
-  putCoercion81("scheme-number", "scheme-number", (n) => ok(n));
+  putCoercion81("ts-number", "ts-number", (n) => ok(n));
   putCoercion81("complex", "complex", (z) => ok(z));
 };
 
 const getOp81 = (op: string, tags: ReadonlyArray<string>): Option<Entry> => get(table81, op, tags);
 
-/** The book's apply-generic with Louis's table: try the operation;
+/** The book's generic dispatch with Louis's table: try the operation;
  * then, for two arguments, try coercing the first toward the second,
  * then the second toward the first. With identity self-coercions
  * installed and a same-type operation missing, the retry re-creates

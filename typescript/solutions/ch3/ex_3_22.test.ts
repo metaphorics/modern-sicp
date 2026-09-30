@@ -13,21 +13,21 @@ describe("exercise 3.22", () => {
     expect(q("empty?")).toBe(true);
     q("insert!", "a");
     q("insert!", "b");
-    expect(q("print")).toBe("(a b)");
+    expect(q("print")).toBe("[a, b]");
     expect(q("front")).toBe("a");
     q("delete!");
-    expect(q("print")).toBe("(b)");
+    expect(q("print")).toBe("[b]");
     q("insert!", "c");
     q("insert!", "d");
     q("delete!");
-    expect(q("print")).toBe("(c d)");
+    expect(q("print")).toBe("[c, d]");
     expect(q("empty?")).toBe(false);
   });
 
   it("insert returns the queue so calls chain", () => {
     const q = makeQueueClosure<string>();
     const returned = q("insert!", "a")("insert!", "b");
-    expect(returned("print")).toBe("(a b)");
+    expect(returned("print")).toBe("[a, b]");
   });
 
   it("two queues are independent objects", () => {
@@ -53,7 +53,7 @@ describe("exercise 3.22", () => {
     q("insert!", "only");
     q("delete!");
     expect(q("empty?")).toBe(true);
-    expect(q("print")).toBe("()");
+    expect(q("print")).toBe("[]");
     expect(() => q("front")).toThrow(EmptyQueueError);
   });
 });

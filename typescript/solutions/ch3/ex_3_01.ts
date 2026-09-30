@@ -6,7 +6,7 @@ import { type Effect, Ref } from "effect";
 /**
  * Exercise 3.1: make-accumulator. The accumulator's local state is the
  * edition's `Ref` (the section module carries the argument for that
- * rendering of the book's `set!`); each generated accumulator owns one
+ * rendering of assignment); each generated accumulator owns one
  * Ref, so two accumulators never share a sum. A call adds its argument
  * and answers the accumulated sum so far, the book's `begin` of
  * increment-and-return rendered as one atomic `Ref.modify`.

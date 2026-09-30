@@ -60,11 +60,14 @@ sections' listings in @file{packages/ch0/src/}, and @ref{0.2} through
 The @command{just} recipes wrap the commands worth remembering:
 
 @example
-just setup      # mise install, corepack enable, pnpm install --frozen-lockfile
+just setup      # mise install, corepack enable,
+                # pnpm install --frozen-lockfile
 just fmt        # pnpm biome format .
-just lint       # pnpm biome check . + tsc --noEmit in every chapter package
+just lint       # pnpm biome check . + tsc --noEmit
+                # in every chapter package
 just test       # pnpm vitest run
-just scaffold   # the pending report: pnpm vitest run --reporter=verbose, todo lines only
+just scaffold   # pnpm vitest run --reporter=verbose
+                # pending report: todo lines only
 @end example
 
 @noindent

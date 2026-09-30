@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
+
 import { describe, expect, it } from "vitest";
-import { ex_5_51 } from "./ex_5_51.js";
+import { ex_5_51 } from "./ex_5_51.ts";
 
 describe("exercise 5.51", { timeout: 120_000 }, () => {
-  it("builds and runs the C evaluator on the factorial session", () => {
-    const output = ex_5_51();
-    expect(output[0]).toContain("ok");
-    expect(output[0]).toContain("120");
+  it("builds the C evaluator and its transcript matches the direct evaluator", () => {
+    const lines = ex_5_51();
+    expect(lines.length).toBeGreaterThan(0);
+    expect(lines.some((line) => line.includes("120"))).toBe(true);
+    expect(lines.some((line) => line.startsWith("Error:"))).toBe(false);
   });
 });

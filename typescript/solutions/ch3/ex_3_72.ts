@@ -23,7 +23,7 @@ export type Pair = [number, number];
 /** A weighting function over pairs, exercise 3.70's W(i, j). */
 export type Weight = (pair: Pair) => number;
 
-/** Exercise 3.70's `merge-weighted`, restated here because exercise
+/** Exercise 3.70's `mergeWeighted`, restated here because exercise
  * files do not import from each other: like `merge`, ordered by
  * weight, keeping both elements on equal weights. */
 export const mergeWeighted = (s1: Stream<Pair>, s2: Stream<Pair>, weight: Weight): Stream<Pair> => {
@@ -39,8 +39,8 @@ export const mergeWeighted = (s1: Stream<Pair>, s2: Stream<Pair>, weight: Weight
   return consStream(s2.head, () => mergeWeighted(s1, streamCdr(s2), weight));
 };
 
-/** Exercise 3.70's `weighted-pairs`, restated: the module's `pairs`
- * shape with `merge-weighted` in place of the interleave. */
+/** Exercise 3.70's `weightedPairs`, restated: the module's `pairs`
+ * shape with `mergeWeighted` in place of the interleave. */
 export const weightedPairs = (
   s: Stream<number>,
   t: Stream<number>,

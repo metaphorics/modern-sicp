@@ -2,8 +2,25 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { flattenPrefix } from "./ex_4_73.js";
+import { flattenOrders } from "./ex_4_73.js";
 
-describe("4.73", () =>
-  it("takes a prefix from infinite nested streams", () =>
-    expect(flattenPrefix()).toEqual([1, 1, 2, 1, 3, 2])));
+const hacker = '["Hacker", "Alyssa", "P"]';
+const louis = '["Reasoner", "Louis"]';
+
+describe("exercise 4.73: why flattenStream delays", () => {
+  it("interleaves the second stream instead of burying it", () => {
+    const [flattened, appended] = flattenOrders();
+    expect(flattened).toStrictEqual([
+      hacker,
+      louis,
+      '["Fect", "Cy", "D"]',
+      '["Tweakit", "Lem", "E"]',
+    ]);
+    expect(appended).toStrictEqual([
+      hacker,
+      '["Fect", "Cy", "D"]',
+      '["Tweakit", "Lem", "E"]',
+      louis,
+    ]);
+  });
+});

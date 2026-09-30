@@ -19,7 +19,7 @@ describe("exercise 2.38", () => {
     const nest = (x: number, y: List<Showable>): List<Showable> =>
       list<number | List<Showable>>(x, y);
     expect(showList(accumulate<number, List<Showable>>(nest, nil, list(1, 2, 3)))).toBe(
-      "(1 (2 (3 ())))",
+      "[1, [2, [3, []]]]",
     );
   });
 
@@ -27,7 +27,7 @@ describe("exercise 2.38", () => {
     const nest = (x: List<Showable>, y: number): List<Showable> =>
       list<List<Showable> | number>(x, y);
     expect(showList(foldLeft<number, List<Showable>>(nest, nil, list(1, 2, 3)))).toBe(
-      "(((() 1) 2) 3)",
+      "[[[[], 1], 2], 3]",
     );
   });
 });

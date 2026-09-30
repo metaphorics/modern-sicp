@@ -2,11 +2,11 @@
 // Original exercise
 
 /**
- * Exercise 4.7: let* binds sequentially, each binding made in an
+ * Exercise 4.7: sequential let binds sequentially, each binding made in an
  * environment where the previous ones are visible. The book's example
- * (let* ((x 3) (y (+ x 2)) (z (+ x y 5))) (* x z)) returns 39. Write the
- * transformation let*->nested-lets and say whether adding the eval clause
- * (eval (let*->nested-lets exp) env) is enough once let exists.
+ * sequential-let of x=3, y=x+2, z=x+y+5 computes x*z returns 39. Write the
+ * transformation sequential-let->nested-lets and say whether adding the eval clause
+ * analyzeSequentialLet(exp) is enough once let exists.
  */
 export class PendingSolution extends Error {
   constructor() {

@@ -13,13 +13,18 @@ export class PendingSolution extends Error {
   }
 }
 
-/** The program the three are arguing about. */
-export const debatedProgram = `(let ((a 1))
-  (define (f x)
-    (define b (+ a x))
-    (define a 5)
-    (+ a b))
-  (f 10))`;
+/** Typed definition-order premise the three are arguing about. */
+export type DebateBinding = {
+  readonly scope: "outer" | "function";
+  readonly name: "a" | "b";
+  readonly initializer: "1" | "5" | "outerAPlusX";
+  readonly readsBeforeDeclaration: ReadonlyArray<"a">;
+};
+export const debatedBindings: readonly DebateBinding[] = [
+  { scope: "outer", name: "a", initializer: "1", readsBeforeDeclaration: [] },
+  { scope: "function", name: "b", initializer: "outerAPlusX", readsBeforeDeclaration: ["a"] },
+  { scope: "function", name: "a", initializer: "5", readsBeforeDeclaration: [] },
+];
 
 export function ex_4_19(): string {
   throw new PendingSolution();

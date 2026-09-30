@@ -31,12 +31,12 @@ export function sqrtStreamExternal(_x: number, _improve: SqrtImprove): StreamCel
   throw new PendingSolution();
 }
 
-/** Alyssa's shape with plain-lambda tails, no memo-proc. */
+/** Alyssa's shape with plain-function tails, no memo-proc. */
 export function sqrtStreamUnmemoizedLocal(_x: number, _improve: SqrtImprove): StreamCell<number> {
   throw new PendingSolution();
 }
 
-/** Louis's shape with plain-lambda tails. */
+/** Louis's shape with plain-function tails. */
 export function sqrtStreamUnmemoizedExternal(
   _x: number,
   _improve: SqrtImprove,

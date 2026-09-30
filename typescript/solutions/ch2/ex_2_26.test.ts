@@ -19,17 +19,17 @@ describe("exercise 2.26", () => {
   const y: List<number> = list(4, 5, 6);
 
   it("append concatenates into one six-element list", () => {
-    expect(showList(append(x, y))).toBe("(1 2 3 4 5 6)");
-    expect(appendResult()).toBe("(1 2 3 4 5 6)");
+    expect(showList(append(x, y))).toBe("[1, 2, 3, 4, 5, 6]");
+    expect(appendResult()).toBe("[1, 2, 3, 4, 5, 6]");
   });
 
   it("cons makes x the first element over y's spine", () => {
-    expect(showList(cons<Showable>(x, y))).toBe("((1 2 3) 4 5 6)");
-    expect(consResult()).toBe("((1 2 3) 4 5 6)");
+    expect(showList(cons<Showable>(x, y))).toBe("[[1, 2, 3], 4, 5, 6]");
+    expect(consResult()).toBe("[[1, 2, 3], 4, 5, 6]");
   });
 
   it("list makes a two-element list of the lists", () => {
-    expect(showList(list<Showable>(x, y))).toBe("((1 2 3) (4 5 6))");
-    expect(listResult()).toBe("((1 2 3) (4 5 6))");
+    expect(showList(list<Showable>(x, y))).toBe("[[1, 2, 3], [4, 5, 6]]");
+    expect(listResult()).toBe("[[1, 2, 3], [4, 5, 6]]");
   });
 });

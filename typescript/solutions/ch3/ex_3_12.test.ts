@@ -11,9 +11,9 @@ describe("exercise 3.12: append copies, append! splices", () => {
     const x = mlist("a", "b");
     const y = mlist("c", "d");
     const z = append(x, y);
-    expect(showMList(z)).toBe("(a b c d)");
-    expect(showMList(x)).toBe("(a b)");
-    expect(showMList(y)).toBe("(c d)");
+    expect(showMList(z)).toBe("[a, b, c, d]");
+    expect(showMList(x)).toBe("[a, b]");
+    expect(showMList(y)).toBe("[c, d]");
   });
 
   it("lastPair returns the final pair by identity", () => {
@@ -27,8 +27,8 @@ describe("exercise 3.12: append copies, append! splices", () => {
     const finalPair = lastPair(x);
     const w = appendBang(x, y);
     expect(Object.is(w, x)).toBe(true);
-    expect(showMList(w)).toBe("(a b c d)");
-    expect(showMList(x)).toBe("(a b c d)");
+    expect(showMList(w)).toBe("[a, b, c, d]");
+    expect(showMList(x)).toBe("[a, b, c, d]");
     expect(Object.is(finalPair.tail, y)).toBe(true);
   });
 
@@ -38,10 +38,10 @@ describe("exercise 3.12: append copies, append! splices", () => {
 
   it("the demo pins the book's interaction", () => {
     expect(appendDemo()).toEqual({
-      zAfterAppend: "(a b c d)",
-      cdrXAfterAppend: "(b)",
-      wAfterAppendBang: "(a b c d)",
-      cdrXAfterAppendBang: "(b c d)",
+      zAfterAppend: "[a, b, c, d]",
+      cdrXAfterAppend: "[b]",
+      wAfterAppendBang: "[a, b, c, d]",
+      cdrXAfterAppendBang: "[b, c, d]",
       xTailIsY: true,
     });
   });

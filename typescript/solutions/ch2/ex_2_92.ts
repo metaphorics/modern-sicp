@@ -10,8 +10,8 @@ import {
   firstTerm,
   type GenError,
   isEmptyTermListQ,
-  makeSchemeNumber,
   makeTerm,
+  makeTsNumber,
   mulPoly,
   orderOf,
   type Poly,
@@ -191,7 +191,7 @@ export const poly92 = (
   terms: ReadonlyArray<readonly [bigint, bigint]>,
 ): Poly => ({
   variable,
-  terms: terms.map(([o, c]) => makeTerm(o, makeSchemeNumber(c))),
+  terms: terms.map(([o, c]) => makeTerm(o, makeTsNumber(c))),
 });
 
 /** Builds a poly from (order, datum) pairs, bare or polynomial

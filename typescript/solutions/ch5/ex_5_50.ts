@@ -1,68 +1,72 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
+
 import { readFileSync } from "node:fs";
-import {
-  compileAndGo,
-  defaultConfig,
-  makeCompiledEvaluator,
-  monitoredEcevalController,
-  newState,
-} from "../../packages/ch5/src/05-compilation.js";
+import type { RunResult } from "../../packages/ch4/src/01-metacircular.ts";
+import type { Value } from "../../packages/ch4/src/runtime/value.ts";
+import { runSelfInterpretation } from "../../packages/ch5/src/06-selfinterp.ts";
 
-const FACTORIAL = "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n)))";
+const SELF_INTERPRETER_SOURCE = readFileSync(
+  new URL(
+    "../../../spec/host-subsets/typescript/witnesses/metacircular-evaluator.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
-const metacircularSource = (): string =>
-  readFileSync(new URL("../../packages/ch5/src/metacircular.scm", import.meta.url), "utf8");
+/** One clean engine session: the outcome is ok, with its value and
+ * transcript. */
+type SelfRun = {
+  readonly value: Value;
+  readonly transcript: ReadonlyArray<string>;
+};
 
-const metacircularSession = (): { transcript: readonly string[]; steps: number } => {
-  const evaluator = compileAndGo(
-    defaultConfig(),
-    newState(),
-    metacircularSource(),
-    "(m-eval '(factorial 5) the-global-environment)",
-    { stepLimit: 50_000_000 },
+/** Structural rendering used only to compare two engine results: maps
+ * and sets keep their entries, everything else its JSON shape. */
+const renderResult = (value: Value): string =>
+  JSON.stringify(value, (_key, item: Value | Map<Value, Value> | Set<Value> | object) =>
+    item instanceof Map
+      ? { mapEntries: [...item] }
+      : item instanceof Set
+        ? { setItems: [...item] }
+        : item,
   );
-  evaluator.run();
-  return { transcript: evaluator.transcript, steps: evaluator.instructionCount() };
+
+const session = (engine: "direct" | "eceval" | "compiled"): SelfRun => {
+  const run: RunResult = runSelfInterpretation(engine, SELF_INTERPRETER_SOURCE);
+  if (run.outcome.tag !== "ok") {
+    throw new Error(
+      `the ${engine} self-interpretation run faulted: ${JSON.stringify(run.outcome.error)}`,
+    );
+  }
+  return { value: run.outcome.value, transcript: run.transcript };
 };
 
-const level0Steps = (n: number): number => {
-  const evaluator = compileAndGo(defaultConfig(), newState(), FACTORIAL, `(factorial ${n})`);
-  evaluator.run();
-  return evaluator.instructionCount();
-};
-
-const level1Pushes = (n: number): number => {
-  const evaluator = makeCompiledEvaluator(
-    monitoredEcevalController,
-    `${FACTORIAL}\n(factorial ${n})`,
-  );
-  evaluator.run();
-  return [...evaluator.transcript]
-    .filter((line) => line.startsWith("(total-pushes = "))
-    .map((line) => Number(line.split("total-pushes = ")[1]?.split(" ")[0]))
-    .reduce((sum, pushes) => sum + pushes, 0);
-};
-
-/** Exercise 5.50: the metacircular evaluator compiled and run on the
- * 5.5.7 machine prints the values (tick tick tick) then 120: the
- * external entry answers the compiled source's last form, the tick
- * session, and the driver form (m-eval '(factorial 5) ...) then runs
- * an interpreted factorial through the compiled interpreter. The
- * three measurements price each interpretation level: compiled
- * machine steps, interpreted stack pushes, and the compiled
- * metacircular's machine steps for the same computation. */
+/** Exercise 5.50: the metacircular evaluator, written as ordinary
+ * checked guest source, runs as a guest program through three engines:
+ * the direct evaluator, the explicit-control evaluator, and the
+ * evaluator compiled by the 5.5 compiler and executed on the register
+ * machine. The solution requires the three runs to agree on both the
+ * result value and the whole transcript. The compiled run interprets
+ * the guest evaluator itself, one more interpretation level than the
+ * direct run, by construction. The observable output is the shared
+ * guest session transcript. */
 export const ex_5_50 = (): readonly string[] => {
-  const { transcript, steps } = metacircularSession();
-  if (!transcript.includes("120")) throw new Error("the compiled metacircular lost 120");
-  if (!transcript.includes("(tick tick tick)")) throw new Error("the tick session is missing");
-  const l0 = level0Steps(5);
-  const l1 = level1Pushes(5);
-  const price = `${steps}/${l0}`;
-  return [
-    `compiled metacircular session: ${transcript.join(" ")}`,
-    `level 0 (compiled factorial), machine steps = ${l0}`,
-    `level 1 (interpreted factorial), monitored pushes = ${l1}`,
-    `level 2 (compiled metacircular), machine steps = ${steps}`,
-    `interpretation price: level 2 over level 0 = ${price} machine steps`,
-  ];
+  const direct = session("direct");
+  const eceval = session("eceval");
+  const compiled = session("compiled");
+  const value = renderResult(direct.value);
+  if (renderResult(eceval.value) !== value || renderResult(compiled.value) !== value) {
+    throw new Error("the engines disagreed on the guest program's result value");
+  }
+  for (const [engine, run] of [
+    ["eceval", eceval],
+    ["compiled", compiled],
+  ] as const) {
+    const same =
+      run.transcript.length === direct.transcript.length &&
+      run.transcript.every((line, i) => line === direct.transcript[i]);
+    if (!same) throw new Error(`the ${engine} transcript diverged from the direct transcript`);
+  }
+  return direct.transcript;
 };

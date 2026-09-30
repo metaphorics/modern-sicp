@@ -2,60 +2,48 @@
 // Original exercise
 
 /**
- * Exercise 4.52: if-fail. The variant dispatch recognizes if-fail and
- * analyzes it as: the first expression runs against the continuations as
- * usual, and only its outermost failure is intercepted and replaced by the
- * alternative's value; a failure after the first expression has succeeded
- * propagates untouched, which is why the answered value cannot be asked
- * for twice.
+ * Exercise 4.52: if-fail. The special form catches primary-search
+ * exhaustion once: all primary answers arrive first; only when the
+ * primary's failure continuation is exhausted does the fallback
+ * answer. Subsequent failure backtracks normally. Both book
+ * programs run as actual guest ifFail forms and expose live search
+ * failure/step counts.
  */
-import { Effect } from "effect";
-
-import {
-  makeAmbEvaluator,
-  runAmbText,
-  setupAmbEnvironment,
-} from "../../packages/ch4/src/03-nondeterministic.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runAmbAnswers, type SearchRun } from "../../packages/ch4/src/03-nondeterministic.js";
 import { format } from "../../packages/ch4/src/read.js";
 
-import { library } from "./ex_4_35.js";
-
-const evenDefinition = `
-(define (even? n) (= (remainder n 2) 0))
-(define (remainder a b) (if (< a b) a (remainder (- a b) b)))
+/** Even-finding over a choose-drawn element with recursive remainder. */
+export const evenSource = (items: string): string => `
+const remainder = (a: number, b: number): number => (a < b ? a : remainder(a - b, b));
+const anElementOf = (rest: number[]): number => {
+  require(rest.length > 0);
+  const first = rest[0];
+  return choose(first === undefined ? -1 : first, anElementOf(rest.slice(1)));
+};
+const evenChoice = (): number => {
+  const x = anElementOf([${items}]);
+  require(remainder(x, 2) === 0);
+  return x;
+};
+ifFail(evenChoice(), "all-odd");
 `;
 
-/** The book's two if-fail programs. */
-export const ifFailProgram = (items: string): string =>
-  [
-    library,
-    evenDefinition,
-    `(if-fail (let ((x (an-element-of '(${items}))))
-  (require (even? x))
-  x)
- 'all-odd)`,
-  ].join("\n");
+/** A real ifFail search, including live failure counters. */
+export const ifFailRun = (items: string): SearchRun =>
+  runAmbAnswers(evenSource(items), "amb-depth-first-experiment", 1);
 
-/** The answers of one program until the search runs dry. */
-export const run = (items: string): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupAmbEnvironment(), (env) =>
-    Effect.map(runAmbText(makeAmbEvaluator({ ifFail: true }), ifFailProgram(items), env), (run) =>
-      run.answers.map(format),
-    ),
-  );
+/** The real search answers for one list, rendered. */
+export const ifFailAnswers = (items: string): ReadonlyArray<string> =>
+  ifFailRun(items).answers.map((value) => format(value));
 
 export function ex_4_52(): string {
-  const odd = Effect.runSync(run("1 3 5"));
-  const with8 = Effect.runSync(run("1 3 5 8"));
+  const odd = ifFailRun("1, 3, 5");
+  const withEight = ifFailRun("1, 3, 5, 8");
   return (
-    "if-fail catches the first failure of its first expression once and " +
-    "succeeds with its second expression in its place; after the catch the " +
-    "handler stands down, so failures later in the branch propagate. " +
-    "Without an even element the search runs dry at once and the value is " +
-    `${odd.join(", ")}. With 8 in the list the first expression answers 8, ` +
-    "the try-again-driven failure falls back to all-odd, and only then " +
-    `reports exhaustion (${with8.join(", ")}): the book's transcript, ` +
-    "pinned."
+    `Without an even element the fallback answers ${odd.answers.map((value) => format(value)).join(", ")}; ` +
+    `with 8 the ordered answers are ${withEight.answers.map((value) => format(value)).join(", ")}. ` +
+    `The runs record ${odd.failures} and ${withEight.failures} failed computations, ` +
+    `and ${odd.steps} and ${withEight.steps} deferred steps. The fallback is delivered ` +
+    `once after primary exhaustion. `
   );
 }

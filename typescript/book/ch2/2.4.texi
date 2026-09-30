@@ -93,7 +93,7 @@ and install alternative representations.
 @image{../../text/original/figures/chap2/Fig2.19a,,147mm,Figure 2.19: Data-abstraction barriers in the complex-number system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.19a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.19:} Data-abstraction barriers in the complex-number system.}
@@ -179,7 +179,7 @@ Imaginary-part(z_1 + z_2) = Imaginary-part(z_1) + Imaginary-part(z_2)
 @image{../../text/original/figures/chap2/Fig2.20,,147mm,Figure 2.20: Complex numbers as points in the plane.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.20.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.20.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.20:} Complex numbers as points in the plane.}
@@ -231,8 +231,14 @@ with specified magnitude and angle.  These procedures have the property that,
 for any complex number @code{z}, both
 
 @example typescript
-benRectangular.makeFromRealImag(benRectangular.realPart(z), benRectangular.imagPart(z));
-benRectangular.makeFromMagAng(benRectangular.magnitude(z), benRectangular.angle(z));
+benRectangular.makeFromRealImag(
+  benRectangular.realPart(z),
+  benRectangular.imagPart(z),
+);
+benRectangular.makeFromMagAng(
+  benRectangular.magnitude(z),
+  benRectangular.angle(z),
+);
 @end example
 
 @noindent
@@ -252,25 +258,41 @@ of real and imaginary parts while multiplying and dividing complex numbers in
 terms of magnitudes and angles:
 
 @example typescript
-export const addComplex = <Z>(arith: ComplexArith<Z>, z1: Z, z2: Z): Z =>
+export const addComplex = <Z>(
+  arith: ComplexArith<Z>,
+  z1: Z,
+  z2: Z,
+): Z =>
   arith.makeFromRealImag(
     arith.realPart(z1) + arith.realPart(z2),
     arith.imagPart(z1) + arith.imagPart(z2),
   );
 
-export const subComplex = <Z>(arith: ComplexArith<Z>, z1: Z, z2: Z): Z =>
+export const subComplex = <Z>(
+  arith: ComplexArith<Z>,
+  z1: Z,
+  z2: Z,
+): Z =>
   arith.makeFromRealImag(
     arith.realPart(z1) - arith.realPart(z2),
     arith.imagPart(z1) - arith.imagPart(z2),
   );
 
-export const mulComplex = <Z>(arith: ComplexArith<Z>, z1: Z, z2: Z): Z =>
+export const mulComplex = <Z>(
+  arith: ComplexArith<Z>,
+  z1: Z,
+  z2: Z,
+): Z =>
   arith.makeFromMagAng(
     arith.magnitude(z1) * arith.magnitude(z2),
     arith.angle(z1) + arith.angle(z2),
   );
 
-export const divComplex = <Z>(arith: ComplexArith<Z>, z1: Z, z2: Z): Z =>
+export const divComplex = <Z>(
+  arith: ComplexArith<Z>,
+  z1: Z,
+  z2: Z,
+): Z =>
   arith.makeFromMagAng(
     arith.magnitude(z1) / arith.magnitude(z2),
     arith.angle(z1) - arith.angle(z2),
@@ -345,7 +367,10 @@ export const alyssaPolar: ComplexArith<ComplexPair> = @{
   imagPart: (z) => z[0] * Math.sin(z[1]),
   magnitude: (z) => z[0],
   angle: (z) => z[1],
-  makeFromRealImag: (x, y) => [Math.sqrt(x * x + y * y), Math.atan2(y, x)],
+  makeFromRealImag: (x, y) => [
+    Math.sqrt(x * x + y * y),
+    Math.atan2(y, x),
+  ],
   makeFromMagAng: (r, a) => [r, a],
 @};
 @end example
@@ -398,9 +423,13 @@ alyssaPolar.magnitude(mulComplex(alyssaPolar, p1, p2));
 // => 6
 alyssaPolar.angle(mulComplex(alyssaPolar, p1, p2));
 // => 1.5707963267948966
-alyssaPolar.magnitude(divComplex(alyssaPolar, mulComplex(alyssaPolar, p1, p2), p2));
+alyssaPolar.magnitude(
+  divComplex(alyssaPolar, mulComplex(alyssaPolar, p1, p2), p2),
+);
 // => 2
-alyssaPolar.angle(divComplex(alyssaPolar, mulComplex(alyssaPolar, p1, p2), p2));
+alyssaPolar.angle(
+  divComplex(alyssaPolar, mulComplex(alyssaPolar, p1, p2), p2),
+);
 // => 0.7853981633974483
 @end example
 
@@ -441,9 +470,15 @@ the datum's two fields, and the bad-datum check is unrepresentable --- there is
 no tagged datum that is not tagged:
 
 @example typescript
-export type Tagged<T extends string, A> = @{ readonly _tag: T; readonly contents: A @};
+export type Tagged<T extends string, A> = @{
+  readonly _tag: T;
+  readonly contents: A;
+@};
 
-export const attachTag = <T extends string, A>(tag: T, contents: A): Tagged<T, A> => (@{
+export const attachTag = <T extends string, A>(
+  tag: T,
+  contents: A,
+): Tagged<T, A> => (@{
   _tag: tag,
   contents,
 @});
@@ -464,9 +499,11 @@ Using the discriminant, we can define the predicates @code{isRectangular} and
 @code{isPolar}, which recognize rectangular and polar numbers, respectively:
 
 @example typescript
-export const isRectangular = (z: TaggedComplex): boolean => z._tag === "rectangular";
+export const isRectangular = (z: TaggedComplex): boolean =>
+  z._tag === "rectangular";
 
-export const isPolar = (z: TaggedComplex): boolean => z._tag === "polar";
+export const isPolar = (z: TaggedComplex): boolean =>
+  z._tag === "polar";
 @end example
 
 @noindent
@@ -488,7 +525,8 @@ export const imagPartRectangular = (z: ComplexPair): number => z[1];
 
 export const magnitudeRectangular = (z: ComplexPair): number =>
   Math.sqrt(z[0] * z[0] + z[1] * z[1]);
-export const angleRectangular = (z: ComplexPair): number => Math.atan2(z[1], z[0]);
+export const angleRectangular = (z: ComplexPair): number =>
+  Math.atan2(z[1], z[0]);
 
 export const makeFromRealImagRectangular = (
   x: number,
@@ -511,18 +549,26 @@ export const makeFromMagAngRectangular = (
 and here is Alyssa's revised polar representation:
 
 @example typescript
-export const realPartPolar = (z: ComplexPair): number => z[0] * Math.cos(z[1]);
-export const imagPartPolar = (z: ComplexPair): number => z[0] * Math.sin(z[1]);
+export const realPartPolar = (z: ComplexPair): number =>
+  z[0] * Math.cos(z[1]);
+export const imagPartPolar = (z: ComplexPair): number =>
+  z[0] * Math.sin(z[1]);
 
 export const magnitudePolar = (z: ComplexPair): number => z[0];
 export const anglePolar = (z: ComplexPair): number => z[1];
 
-export const makeFromRealImagPolar = (x: number, y: number): Tagged<"polar", ComplexPair> => (@{
+export const makeFromRealImagPolar = (
+  x: number,
+  y: number,
+): Tagged<"polar", ComplexPair> => (@{
   _tag: "polar",
   contents: [Math.sqrt(x * x + y * y), Math.atan2(y, x)],
 @});
 
-export const makeFromMagAngPolar = (r: number, a: number): Tagged<"polar", ComplexPair> => (@{
+export const makeFromMagAngPolar = (
+  r: number,
+  a: number,
+): Tagged<"polar", ComplexPair> => (@{
   _tag: "polar",
   contents: [r, a],
 @});
@@ -539,16 +585,24 @@ procedure as required:
 
 @example typescript
 export const realPartExplicit = (z: TaggedComplex): number =>
-  z._tag === "rectangular" ? realPartRectangular(z.contents) : realPartPolar(z.contents);
+  z._tag === "rectangular"
+    ? realPartRectangular(z.contents)
+    : realPartPolar(z.contents);
 
 export const imagPartExplicit = (z: TaggedComplex): number =>
-  z._tag === "rectangular" ? imagPartRectangular(z.contents) : imagPartPolar(z.contents);
+  z._tag === "rectangular"
+    ? imagPartRectangular(z.contents)
+    : imagPartPolar(z.contents);
 
 export const magnitudeExplicit = (z: TaggedComplex): number =>
-  z._tag === "rectangular" ? magnitudeRectangular(z.contents) : magnitudePolar(z.contents);
+  z._tag === "rectangular"
+    ? magnitudeRectangular(z.contents)
+    : magnitudePolar(z.contents);
 
 export const angleExplicit = (z: TaggedComplex): number =>
-  z._tag === "rectangular" ? angleRectangular(z.contents) : anglePolar(z.contents);
+  z._tag === "rectangular"
+    ? angleRectangular(z.contents)
+    : anglePolar(z.contents);
 @end example
 
 @noindent
@@ -577,13 +631,16 @@ export const taggedArith: ComplexArith<TaggedComplex> = @{
   makeFromMagAng: makeFromMagAngPolar,
 @};
 
-export const addComplexTagged = (z1: TaggedComplex, z2: TaggedComplex): TaggedComplex =>
+export const addComplexTagged = (
+  z1: TaggedComplex,
+  z2: TaggedComplex,
+): TaggedComplex =>
   addComplex(taggedArith, z1, z2);
 @end example
 
 @noindent
-For example, the procedure @code{addComplexTagged} is the book's
-@code{add-complex} verbatim, reading the generic selectors:
+For example, @code{addComplexTagged} applies @code{addComplex} through the
+generic selectors supplied by @code{taggedArith}:
 
 @example typescript
 const u = makeFromRealImagRectangular(1, 2);
@@ -634,7 +691,7 @@ interface.
 @image{../../text/original/figures/chap2/Fig2.21a,,147mm,Figure 2.21: Structure of the generic complex-arithmetic system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.21a.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.21:} Structure of the generic complex-arithmetic system.}
@@ -725,7 +782,7 @@ angle      | angle-polar     | angle-rectangular
 @image{../../text/original/figures/chap2/Fig2.22,,147mm,Figure 2.22: Table of operations for the complex-number system.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap2/Fig2.22.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap2/Fig2.22.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 2.22:} Table of operations for the complex-number system.}
@@ -808,23 +865,32 @@ entries to the table that tell the system how to operate on rectangular
 numbers.  This is accomplished by calling the following procedure:
 
 @example typescript
-export const installRectangularPackage = (table: OpTable<ComplexHandler>): void => @{
+export const installRectangularPackage = (
+  table: OpTable<ComplexHandler>,
+): void => @{
   // internal procedures
   const realPart = (z: ComplexPair): number => z[0];
   const imagPart = (z: ComplexPair): number => z[1];
-  const makeFromRealImag = (x: number, y: number): ComplexPair => [x, y];
-  const magnitude = (z: ComplexPair): number => Math.sqrt(z[0] * z[0] + z[1] * z[1]);
+  const makeFromRealImag = (x: number, y: number): ComplexPair =>
+    [x, y];
+  const magnitude = (z: ComplexPair): number =>
+    Math.sqrt(z[0] * z[0] + z[1] * z[1]);
   const angle = (z: ComplexPair): number => Math.atan2(z[1], z[0]);
   const makeFromMagAng = (r: number, a: number): ComplexPair => [
     r * Math.cos(a),
     r * Math.sin(a),
   ];
   // interface to the rest of the system
-  const tag = (x: ComplexPair): TaggedComplex => attachTag("rectangular", x);
-  put(table, "real-part", ["rectangular"], @{ _tag: "Selector", fn: realPart @});
-  put(table, "imag-part", ["rectangular"], @{ _tag: "Selector", fn: imagPart @});
-  put(table, "magnitude", ["rectangular"], @{ _tag: "Selector", fn: magnitude @});
-  put(table, "angle", ["rectangular"], @{ _tag: "Selector", fn: angle @});
+  const tag = (x: ComplexPair): TaggedComplex =>
+    attachTag("rectangular", x);
+  put(table, "real-part", ["rectangular"],
+    @{ _tag: "Selector", fn: realPart @});
+  put(table, "imag-part", ["rectangular"],
+    @{ _tag: "Selector", fn: imagPart @});
+  put(table, "magnitude", ["rectangular"],
+    @{ _tag: "Selector", fn: magnitude @});
+  put(table, "angle", ["rectangular"],
+    @{ _tag: "Selector", fn: angle @});
   put(table, "make-from-real-imag", ["rectangular"], @{
     _tag: "Constructor",
     fn: (x, y) => tag(makeFromRealImag(x, y)),
@@ -860,7 +926,9 @@ Ben's internally defined constructors, except that they attach the tag.
 Alyssa's polar package is analogous:
 
 @example typescript
-export const installPolarPackage = (table: OpTable<ComplexHandler>): void => @{
+export const installPolarPackage = (
+  table: OpTable<ComplexHandler>,
+): void => @{
   // internal procedures
   const magnitude = (z: ComplexPair): number => z[0];
   const angle = (z: ComplexPair): number => z[1];
@@ -873,9 +941,12 @@ export const installPolarPackage = (table: OpTable<ComplexHandler>): void => @{
   ];
   // interface to the rest of the system
   const tag = (x: ComplexPair): TaggedComplex => attachTag("polar", x);
-  put(table, "real-part", ["polar"], @{ _tag: "Selector", fn: realPart @});
-  put(table, "imag-part", ["polar"], @{ _tag: "Selector", fn: imagPart @});
-  put(table, "magnitude", ["polar"], @{ _tag: "Selector", fn: magnitude @});
+  put(table, "real-part", ["polar"],
+    @{ _tag: "Selector", fn: realPart @});
+  put(table, "imag-part", ["polar"],
+    @{ _tag: "Selector", fn: imagPart @});
+  put(table, "magnitude", ["polar"],
+    @{ _tag: "Selector", fn: magnitude @});
   put(table, "angle", ["polar"], @{ _tag: "Selector", fn: angle @});
   put(table, "make-from-real-imag", ["polar"], @{
     _tag: "Constructor",
@@ -906,7 +977,7 @@ as its value an array of the remaining arguments.  The handler is called with
 the bare contents of the arguments in order --- one array spread into the
 call's parameter list --- which is the work the book's primitive @code{apply}
 does on a list.  For example, @code{[1, 2, 3, 4].reduce((sum, n) => sum + n, 0)}
-folds the list @code{(1 2 3 4)} of additions into 10.}
+folds the list @code{[1, 2, 3, 4]} of additions into 10.}
 
 @example typescript
 export const applyGeneric = (
@@ -919,7 +990,9 @@ export const applyGeneric = (
     return err(@{ _tag: "NoMethod", op, tags @});
   @}
   const [z] = args;
-  return z === undefined ? err(@{ _tag: "NoMethod", op, tags @}) : ok(proc.value(z.contents));
+  return z === undefined
+    ? err(@{ _tag: "NoMethod", op, tags @})
+    : ok(proc.value(z.contents));
 @};
 @end example
 
@@ -933,16 +1006,24 @@ and the tag list that had no method.  Using @code{applyGeneric}, we can define
 our generic selectors as follows:
 
 @example typescript
-export const realPart = (z: TaggedComplex): Result<number, ApplyGenericError> =>
+export const realPart = (
+  z: TaggedComplex,
+): Result<number, ApplyGenericError> =>
   applyGeneric("real-part", z);
 
-export const imagPart = (z: TaggedComplex): Result<number, ApplyGenericError> =>
+export const imagPart = (
+  z: TaggedComplex,
+): Result<number, ApplyGenericError> =>
   applyGeneric("imag-part", z);
 
-export const magnitude = (z: TaggedComplex): Result<number, ApplyGenericError> =>
+export const magnitude = (
+  z: TaggedComplex,
+): Result<number, ApplyGenericError> =>
   applyGeneric("magnitude", z);
 
-export const angle = (z: TaggedComplex): Result<number, ApplyGenericError> =>
+export const angle = (
+  z: TaggedComplex,
+): Result<number, ApplyGenericError> =>
   applyGeneric("angle", z);
 @end example
 
@@ -951,13 +1032,19 @@ The generic selectors answer the edition's @code{Result}; @code{valueOr}
 unwraps a success and answers its fallback only when the table had no method:
 
 @example typescript
-const z = valueOr(makeFromRealImag(3, 4), makeFromRealImagRectangular(0, 0));
+const z = valueOr(
+  makeFromRealImag(3, 4),
+  makeFromRealImagRectangular(0, 0),
+);
 valueOr(realPart(z), 0);
 // => 3
 valueOr(imagPart(z), 0);
 // => 4
 
-const p = valueOr(makeFromMagAng(2, Math.PI / 2), makeFromMagAngPolar(0, 0));
+const p = valueOr(
+  makeFromMagAng(2, Math.PI / 2),
+  makeFromMagAngPolar(0, 0),
+);
 valueOr(magnitude(p), 0);
 // => 2
 valueOr(angle(p), 0);
@@ -969,11 +1056,14 @@ Observe that these do not change at all if a new representation is added to the
 system.  A datum the table knows nothing about is the one way the lookup can
 miss, and the miss names itself:
 
-@example typescript
-const unknownShape: Tagged<string, ComplexPair> = @{ _tag: "oblique", contents: [3, 4] @};
+@smallexample
+const unknownShape: Tagged<string, ComplexPair> = @{
+  _tag: "oblique",
+  contents: [3, 4],
+@};
 applyGeneric("real-part", unknownShape);
-// => Error: No method for these types: APPLY-GENERIC (real-part (oblique))
-@end example
+// => Error: No method for these types: applyGeneric("real-part", ["oblique"])
+@end smallexample
 
 @noindent
 We can also extract from the table the constructors to be used by the programs
@@ -987,9 +1077,15 @@ export const makeFromRealImag = (
   x: number,
   y: number,
 ): Result<TaggedComplex, ApplyGenericError> => @{
-  const ctor = getConstructor(complexTable, "make-from-real-imag", "rectangular");
+  const ctor = getConstructor(
+    complexTable, "make-from-real-imag", "rectangular",
+  );
   return ctor._tag === "None"
-    ? err(@{ _tag: "NoMethod", op: "make-from-real-imag", tags: ["rectangular"] @})
+    ? err(@{
+        _tag: "NoMethod",
+        op: "make-from-real-imag",
+        tags: ["rectangular"],
+      @})
     : ok(ctor.value(x, y));
 @};
 
@@ -997,9 +1093,15 @@ export const makeFromMagAng = (
   r: number,
   a: number,
 ): Result<TaggedComplex, ApplyGenericError> => @{
-  const ctor = getConstructor(complexTable, "make-from-mag-ang", "polar");
+  const ctor = getConstructor(
+    complexTable, "make-from-mag-ang", "polar",
+  );
   return ctor._tag === "None"
-    ? err(@{ _tag: "NoMethod", op: "make-from-mag-ang", tags: ["polar"] @})
+    ? err(@{
+        _tag: "NoMethod",
+        op: "make-from-mag-ang",
+        tags: ["polar"],
+      @})
     : ok(ctor.value(r, a));
 @};
 @end example
@@ -1014,13 +1116,24 @@ export const deriv = (exp: Expr, v: Symb): Expr => @{
     case "Num":
       return constant(0);
     case "Var":
-      return sameVariableQ(exp, v) ? constant(1) : constant(0);
+      return sameVariableQ(exp, v)
+        ? constant(1)
+        : constant(0);
     case "Sum":
-      return makeSum(deriv(exp.addend, v), deriv(exp.augend, v));
+      return makeSum(
+        deriv(exp.addend, v),
+        deriv(exp.augend, v),
+      );
     case "Prod":
       return makeSum(
-        makeProduct(exp.multiplier, deriv(exp.multiplicand, v)),
-        makeProduct(deriv(exp.multiplier, v), exp.multiplicand),
+        makeProduct(
+          exp.multiplier,
+          deriv(exp.multiplicand, v),
+        ),
+        makeProduct(
+          deriv(exp.multiplier, v),
+          exp.multiplicand,
+        ),
       );
     // ⟨@var{more rules can be added here}⟩
   @}
@@ -1034,16 +1147,24 @@ being performed is @code{deriv}.  We can transform this program into
 data-directed style by rewriting the basic derivative procedure as
 
 @example typescript
-export const derivDataDirected = (exp: Expr, v: Symb): Result<Expr, DerivError> => @{
+export const derivDataDirected = (
+  exp: Expr,
+  v: Symb,
+): Result<Expr, DerivError> => @{
   if (exp._tag === "Num") @{
     return ok(constant(0));
   @}
   if (exp._tag === "Var") @{
-    return ok(sameVariableQ(exp, v) ? constant(1) : constant(0));
+    return ok(
+      sameVariableQ(exp, v) ? constant(1) : constant(0),
+    );
   @}
   const rule = get(derivTable, "deriv", [operatorOf(exp)]);
   if (rule._tag === "None") @{
-    return err(@{ _tag: "UnknownExpressionType", op: operatorOf(exp) @});
+    return err(@{
+      _tag: "UnknownExpressionType",
+      op: operatorOf(exp),
+    @});
   @}
   return rule.value(operandsOf(exp), v);
 @};
@@ -1051,7 +1172,9 @@ export const derivDataDirected = (exp: Expr, v: Symb): Result<Expr, DerivError> 
 export const operatorOf = (exp: CompoundExpr): string =>
   exp._tag === "Sum" ? "+" : exp._tag === "Prod" ? "*" : "**";
 
-export const operandsOf = (exp: CompoundExpr): ReadonlyArray<Expr> => @{
+export const operandsOf = (
+  exp: CompoundExpr,
+): ReadonlyArray<Expr> => @{
   switch (exp._tag) @{
     case "Sum":
       return [exp.addend, exp.augend];
@@ -1084,7 +1207,11 @@ operator that binds it together.  Suppose, however, we indexed the procedures
 in the opposite way, so that the dispatch line in @code{deriv} looked like
 
 @example typescript
-const rule = get(derivTableFlipped, operatorOf(exp), ["deriv"]);
+const rule = get(
+  derivTableFlipped,
+  operatorOf(exp),
+  ["deriv"],
+);
 @end example
 
 @noindent
@@ -1162,7 +1289,10 @@ operation name and performs the operation indicated.  In such a discipline,
 @code{makeFromRealImag} could be written as
 
 @example typescript
-export const makeFromRealImagMessage = (x: number, y: number): MessageObject => @{
+export const makeFromRealImagMessage = (
+  x: number,
+  y: number,
+): MessageObject => @{
   const dispatch = (op: string): Result<number, MessageError> => @{
     switch (op) @{
       case "real-part":
@@ -1174,7 +1304,11 @@ export const makeFromRealImagMessage = (x: number, y: number): MessageObject => 
       case "angle":
         return ok(Math.atan2(y, x));
       default:
-        return err(@{ _tag: "UnknownMessage", op, source: "MAKE-FROM-REAL-IMAG" @});
+        return err(@{
+          _tag: "UnknownMessage",
+          op,
+          source: "MAKE-FROM-REAL-IMAG",
+        @});
     @}
   @};
   return dispatch;
@@ -1203,9 +1337,15 @@ keeps the book's default arm: a message the object does not answer names
 itself in the typed error.
 
 @example typescript
-valueOr(applyGenericMessage(makeFromRealImagMessage(3, 4), "real-part"), 0);
+valueOr(
+  applyGenericMessage(makeFromRealImagMessage(3, 4), "real-part"),
+  0,
+);
 // => 3
-valueOr(applyGenericMessage(makeFromRealImagMessage(3, 4), "magnitude"), 0);
+valueOr(
+  applyGenericMessage(makeFromRealImagMessage(3, 4), "magnitude"),
+  0,
+);
 // => 5
 @end example
 

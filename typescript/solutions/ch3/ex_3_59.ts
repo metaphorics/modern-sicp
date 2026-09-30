@@ -12,7 +12,7 @@ import {
 /**
  * Exercise 3.59: power series as coefficient streams. The statement's
  * integral rule: the integral of a0 + a1*x + a2*x^2 + ... is
- * c + a0*x + (1/2)a1*x^2 + (1/3)a2*x^3 + ..., so `integrate-series`
+ * c + a0*x + (1/2)a1*x^2 + (1/3)a2*x^3 + ..., so `integrateSeries`
  * divides the nth coefficient by n+1 and conses no constant. Since
  * d/dx e^x = e^x, the exp series is the constant e^0 = 1 followed by
  * the integral of itself. Since d/dx sin = cos and d/dx cos = -sin,
@@ -21,7 +21,7 @@ import {
  * = 1 followed by the integral of negative sine.
  */
 
-/** The book's `integrate-series`: the non-constant coefficients of
+/** The statement's `integrateSeries`: the non-constant coefficients of
  * the integral, a0, a1/2, a2/3, ..., with the constant left for the
  * caller to cons. */
 export const integrateSeries = (s: Stream<number>): Stream<number> =>

@@ -15,7 +15,10 @@ export class PendingSolution extends Error {
 }
 
 /** A recursive, arithmetic-heavy workload for the comparison. */
-export const fibSource = "(define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))";
+export const fibSource = `function fib(n: number): number {
+  return n < 2 ? n : fib(n - 1) + fib(n - 2);
+}
+fib(20);`;
 
 export function ex_4_24(): string {
   throw new PendingSolution();

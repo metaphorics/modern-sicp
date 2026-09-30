@@ -20,7 +20,7 @@ describe("exercise 2.85: drop", () => {
   it("lowers (1.5 + 0i) as far as real", () => {
     const dropped = drop(makeComplexFromRealImag(1.5, 0));
     expect(dropped._tag === "Ok" && typeTagOf(dropped.value) === "real").toBe(true);
-    expect(show(dropped)).toBe("(real 1.5)");
+    expect(show(dropped)).toBe("[real, 1.5]");
   });
 
   it("lowers (1 + 0i) as far as the integers", () => {
@@ -33,12 +33,12 @@ describe("exercise 2.85: drop", () => {
   });
 
   it("keeps a real that is not integer-valued", () => {
-    expect(show(drop(real83(2.5)))).toBe("(real 2.5)");
+    expect(show(drop(real83(2.5)))).toBe("[real, 2.5]");
   });
 
   it("lowers a whole rational to the integers it hides", () => {
     expect(show(drop(makeRational(6n, 3n)))).toBe("2");
-    expect(show(drop(makeRational(1n, 2n)))).toBe("(rational 1 2)");
+    expect(show(drop(makeRational(1n, 2n)))).toBe("[rational, 1, 2]");
   });
 
   it("simplifies the answers of apply-generic: (2 + 3i) + (4 - 3i) is 6", () => {
@@ -51,6 +51,6 @@ describe("exercise 2.85: drop", () => {
       show(
         applyGenericDropping("add", makeComplexFromRealImag(1, 2), makeComplexFromRealImag(3, 4)),
       ),
-    ).toBe("(complex rectangular 4 6)");
+    ).toBe("[complex, rectangular, 4, 6]");
   });
 });

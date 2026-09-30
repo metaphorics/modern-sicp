@@ -8,7 +8,7 @@
  * insert created on the way down keeps the tree's shape even before
  * it carries a value; `isValueEntry` says whether the record holds
  * the value stored under its key. The fields are mutable, the
- * section's spelling of the book's set-car!/set-cdr!: insert rewrites
+ * section's spelling of the book's setCar/setCdr: insert rewrites
  * the tree in place, never rebuilding it.
  */
 

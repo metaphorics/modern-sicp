@@ -15,10 +15,10 @@ export class PendingSolution extends Error {
   }
 }
 
-/** The book's `RC`: takes R, C, and dt and answers a procedure from
+/** The book's `rc`: takes R, C, and dt and answers a procedure from
  * the current stream and the initial capacitor voltage v0 to the
  * voltage stream. */
-export function RC(
+export function rc(
   _R: number,
   _C: number,
   _dt: number,
@@ -27,6 +27,6 @@ export function RC(
 }
 
 /** The statement's example: R = 5 ohms, C = 1 farad, dt = 0.5 s. */
-export function RC1(): (current: Stream<number>, v0: number) => Stream<number> {
+export function rc1(_current: Stream<number>, _v0: number): Stream<number> {
   throw new PendingSolution();
 }

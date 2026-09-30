@@ -14,7 +14,7 @@ export class PendingSolution extends Error {
 }
 
 /** One call the memoizer answered: a `Compute` ran the wrapped
- * lambda for `n` and stored the result in the table, a `Recall`
+ * function for `n` and stored the result in the table, a `Recall`
  * found `n` already there and answered without computing. */
 export type MemoFibEvent =
   | { readonly _tag: "Compute"; readonly n: number }

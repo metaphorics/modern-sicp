@@ -11,7 +11,7 @@ import {
 } from "../../packages/ch2/src/02-picture-language.js";
 
 /**
- * Exercise 2.26: with x = (1 2 3) and y = (4 5 6), what does each
+ * Exercise 2.26: with x = [1, 2, 3] and y = [4, 5, 6], what does each
  * combination print? Each function builds the value with the module's
  * own combinator and reads the printed form back. The cons of two
  * lists is the mixed spine the book's picture shows, typed here as

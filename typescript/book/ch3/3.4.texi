@@ -160,7 +160,7 @@ access.}
 @strong{Figure 3.29:} Timing diagram showing how interleaving the order of events 
 in two banking withdrawals can lead to an incorrect final balance.
 
-@example
+@smallexample
  |           Peter              Bank              Paul
  |                              ____
  |                             /    \
@@ -176,7 +176,7 @@ in two banking withdrawals can lead to an incorrect final balance.
  |  `----------+-----------'            `----------+-----------'
  |             V                                   |
  |  .----------------------.                       |
- |  | set! balance to $90  |                       |
+ |  | set balance to $90   |                       |
  |  `----------+-----------'    ____               |
  |             |               /    \              |
  |             `------------->| $ 90 |             V
@@ -187,13 +187,13 @@ in two banking withdrawals can lead to an incorrect final balance.
  |                            | $ 90 |<------------'
  V                             \____/
 time
-@end example
+@end smallexample
 @end ifinfo
 @ifhtml
 @image{../../text/original/figures/chap3/Fig3.29b,,147mm,Figure 3.29: Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.29b.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.29:} Timing diagram showing how interleaving the order of events in two banking withdrawals can lead to an incorrect final balance.}
@@ -275,7 +275,7 @@ time
 @image{../../text/original/figures/chap3/Fig3.30c,,147mm,Figure 3.30: Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.,.std.svg}
 @end ifhtml
 @iftex
-@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,,147mm,,.pdf}
+@image{../../text/original/figures/pdf/chap3/Fig3.30c.std,147mm,,,.pdf}
 
 @end iftex
 @caption{@strong{Figure 3.30:} Concurrent deposits and withdrawals from a joint account in Bank1 and a private account in Bank2.}
@@ -439,19 +439,19 @@ This creates two concurrent processes: @math{P_1}, which sets @code{x} to
 execution is complete, @code{x} will be left with one of five possible values,
 depending on the interleaving of the events of @math{P_1} and @math{P_2}:
 
-@example
+@smallexample
 101: @math{P_1} sets @code{x} to 100 and then @math{P_2} increments
      @code{x} to 101.
 121: @math{P_2} increments @code{x} to 11 and then @math{P_1} sets
      @code{x} to @code{x} times @code{x}.
 110: @math{P_2} changes @code{x} from 10 to 11 between the 
      two times that @math{P_1} accesses the value of 
-     @code{x} during the evaluation of @code{(* x x)}.
+     @code{x} during the evaluation of @code{x * x}.
  11: @math{P_2} accesses @code{x}, then @math{P_1} sets @code{x} to 100, 
      then @math{P_2} sets @code{x}.
 100: @math{P_1} accesses @code{x} (twice), then @math{P_2} sets
      @code{x} to 11, then @math{P_1} sets @code{x}.
-@end example
+@end smallexample
 
 @noindent
 We can constrain the concurrency by using serialized computations, which are
@@ -492,7 +492,9 @@ Here is a version of the @code{makeAccount} object from @ref{3.1.1}, where
 the deposits and withdrawals have been serialized:
 
 @example typescript
-export const makeAccount = (initialBalance: number): Account => @{
+export const makeAccount = (
+  initialBalance: number,
+): Account => @{
   const balance = Ref.makeUnsafe(initialBalance);
   const protectedOperation = makeSerializer();
   const withdraw = (amount: number) =>
@@ -503,7 +505,10 @@ export const makeAccount = (initialBalance: number): Account => @{
         if (current < amount) @{
           return yield* new InsufficientFunds();
         @}
-        return yield* Ref.setAndGet(balance, current - amount);
+        return yield* Ref.setAndGet(
+          balance,
+          current - amount,
+        );
       @}),
     );
   const deposit = (amount: number) =>
@@ -511,7 +516,10 @@ export const makeAccount = (initialBalance: number): Account => @{
       Effect.gen(function* () @{
         const current = yield* Ref.get(balance);
         yield* Effect.yieldNow;
-        return yield* Ref.setAndGet(balance, current + amount);
+        return yield* Ref.setAndGet(
+          balance,
+          current + amount,
+        );
       @}),
     );
   return @{
@@ -620,7 +628,9 @@ would be better to implement the bank account as follows (where the commented
 line has been changed):
 
 @example typescript
-export const makeAccount = (initialBalance: number): Account => @{
+export const makeAccount = (
+  initialBalance: number,
+): Account => @{
   const balance = Ref.makeUnsafe(initialBalance);
   const protectedOperation = makeSerializer();
   const withdraw = (amount: number) =>
@@ -631,7 +641,10 @@ export const makeAccount = (initialBalance: number): Account => @{
         if (current < amount) @{
           return yield* new InsufficientFunds();
         @}
-        return yield* Ref.setAndGet(balance, current - amount);
+        return yield* Ref.setAndGet(
+          balance,
+          current - amount,
+        );
       @}),
     );
   const deposit = (amount: number) =>
@@ -639,13 +652,17 @@ export const makeAccount = (initialBalance: number): Account => @{
       Effect.gen(function* () @{
         const current = yield* Ref.get(balance);
         yield* Effect.yieldNow;
-        return yield* Ref.setAndGet(balance, current + amount);
+        return yield* Ref.setAndGet(
+          balance,
+          current + amount,
+        );
       @}),
     );
   return @{
     withdraw,
     deposit,
-    balance: () => protectedOperation(Ref.get(balance)), // serialized
+    balance: () =>
+      protectedOperation(Ref.get(balance)), // serialized
   @};
 @};
 @end example
@@ -666,7 +683,9 @@ would answer the same serialized procedure (which was created at the same
 time as the account) each time it is asked for a withdrawal.
 
 @example typescript
-export const makeAccount = (initialBalance: number): Account => @{
+export const makeAccount = (
+  initialBalance: number,
+): Account => @{
   const balance = Ref.makeUnsafe(initialBalance);
   const protectedOperation = makeSerializer();
   const protectedWithdraw = (amount: number) =>
@@ -677,7 +696,10 @@ export const makeAccount = (initialBalance: number): Account => @{
         if (current < amount) @{
           return yield* new InsufficientFunds();
         @}
-        return yield* Ref.setAndGet(balance, current - amount);
+        return yield* Ref.setAndGet(
+          balance,
+          current - amount,
+        );
       @}),
     );
   const protectedDeposit = (amount: number) =>
@@ -685,7 +707,10 @@ export const makeAccount = (initialBalance: number): Account => @{
       Effect.gen(function* () @{
         const current = yield* Ref.get(balance);
         yield* Effect.yieldNow;
-        return yield* Ref.setAndGet(balance, current + amount);
+        return yield* Ref.setAndGet(
+          balance,
+          current + amount,
+        );
       @}),
     );
   return @{
@@ -760,7 +785,9 @@ export interface AccountWithSerializer extends Account @{
   readonly serializer: Serializer;
 @}
 
-export const makeAccountAndSerializer = (initialBalance: number): AccountWithSerializer => @{
+export const makeAccountAndSerializer = (
+  initialBalance: number,
+): AccountWithSerializer => @{
   const balance = Ref.makeUnsafe(initialBalance);
   const balanceSerializer = makeSerializer();
   const withdraw = (amount: number) =>
@@ -813,7 +840,9 @@ export const serializedExchange = (
   account2: AccountWithSerializer,
 ): Effect.Effect<void, InsufficientFunds> =>
   Effect.gen(function* () @{
-    yield* account1.serializer(account2.serializer(exchange(account1, account2)));
+    yield* account1.serializer(
+      account2.serializer(exchange(account1, account2)),
+    );
   @});
 @end example
 
@@ -855,7 +884,7 @@ Louis Reasoner claims that there is a problem here, and that we need to use a
 more sophisticated method, such as the one required for dealing with the
 exchange problem.  Is Louis right?  If not, what is the essential difference
 between the transfer problem and the exchange problem?  (You should assume that
-the balance in @code{from-account} is at least @code{amount}.)
+the balance in @code{fromAccount} is at least @code{amount}.)
 @end quotation
 
 @quotation
@@ -872,7 +901,9 @@ export interface AccountWithSerializer extends Account @{
   readonly serializer: Serializer;
 @}
 
-export const makeAccountAndSerializer = (initialBalance: number): AccountWithSerializer => @{
+export const makeAccountAndSerializer = (
+  initialBalance: number,
+): AccountWithSerializer => @{
   const balance = Ref.makeUnsafe(initialBalance);
   const balanceSerializer = makeSerializer();
   const withdraw = (amount: number) =>
@@ -883,7 +914,10 @@ export const makeAccountAndSerializer = (initialBalance: number): AccountWithSer
         if (current < amount) @{
           return yield* new InsufficientFunds();
         @}
-        return yield* Ref.setAndGet(balance, current - amount);
+        return yield* Ref.setAndGet(
+          balance,
+          current - amount,
+        );
       @}),
     );
   const deposit = (amount: number) =>
@@ -891,7 +925,10 @@ export const makeAccountAndSerializer = (initialBalance: number): AccountWithSer
       Effect.gen(function* () @{
         const current = yield* Ref.get(balance);
         yield* Effect.yieldNow;
-        return yield* Ref.setAndGet(balance, current + amount);
+        return yield* Ref.setAndGet(
+          balance,
+          current + amount,
+        );
       @}),
     );
   return @{
@@ -909,7 +946,8 @@ Then deposits are handled as with the original @code{makeAccount}:
 export const deposit = (
   account: AccountWithSerializer,
   amount: number,
-): Effect.Effect<number, InsufficientFunds> => account.deposit(amount);
+): Effect.Effect<number, InsufficientFunds> =>
+  account.deposit(amount);
 @end example
 
 Explain what is wrong with Louis's reasoning.  In particular, consider what

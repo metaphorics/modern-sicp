@@ -3,8 +3,8 @@
 
 /**
  * Exercise 2.4: the alternative procedural representation of pairs, where
- * cons returns a function that hands both parts to a selector. The
- * statement's car and the corresponding cdr must satisfy the pair law.
+ * consPair returns a function that hands both parts to a selector. The
+ * statement's carPair and the corresponding cdrPair must satisfy the pair law.
  */
 export class PendingSolution extends Error {
   constructor() {

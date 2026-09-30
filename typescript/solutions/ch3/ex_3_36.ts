@@ -12,14 +12,14 @@ import {
 /**
  * Exercise 3.36: the environment structure the book draws for
  *
- *   (define a (make-connector))
- *   (define b (make-connector))
- *   (set-value! a 10 'user)
+ *   const a = makeConnector();
+ *   const b = makeConnector();
+ *   setValue(a, 10, "user");
  *
- * with the connector's local `for-each-except` call live in it. The
+ * with the connector's local `forEachExcept` call live in it. The
  * edition's connectors are closures over exactly that local state,
  * so the drawing becomes an execution trace: one line per message
- * the wiring and the set-value! exchange, every arrow the book drew
+ * in the wiring and the `setValue` exchange, every arrow the book drew
  * visible as a from/to event. The traced connector is the module's
  * connector plus the log; the traced constraint boxes are the
  * module's adder, multiplier, and constant with their labels
@@ -28,7 +28,7 @@ import {
 
 /** One line of the trace: a message `what` sent `from` a connector
  * or constraint label `to` one. `setValue` is a setter claiming a
- * value; the other two are the connector's `for-each-except`
+ * value; the other two are the connector's `forEachExcept`
  * notifications the book's diagram centers on. */
 export interface TraceEvent {
   readonly from: string;
@@ -46,8 +46,8 @@ const nameOf = (who: Informant): string =>
   typeof who === "string" ? who : (constraintLabels.get(who) ?? "constraint");
 
 /** Builds the module's connector plus a trace: a claim logs the
- * `setValue` line and then the `for-each-except` value notices, a
- * lost value logs the `for-each-except` lost notices, and a late
+ * `setValue` line and then the `forEachExcept` value notices, a
+ * lost value logs the `forEachExcept` lost notices, and a late
  * `connect` logs the catch-up notice the module's connector sends. */
 export const makeTracedConnector = (label: string, log: TraceEvent[]): Connector => {
   let value: number | undefined;

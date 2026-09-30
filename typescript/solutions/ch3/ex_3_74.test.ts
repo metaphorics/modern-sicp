@@ -7,7 +7,7 @@ import { makeZeroCrossings, streamTake } from "../../packages/ch3/src/05-streams
 
 import { senseData, zeroCrossings } from "./ex_3_74.js";
 
-describe("exercise 3.74: zero crossings via the generalized stream-map", () => {
+describe("exercise 3.74: zero crossings via the generalized streamMap", () => {
   it("reproduces the book's transcript over the sense data", () => {
     expect(streamTake(senseData, 13)).toEqual([
       1, 2, 1.5, 1, 0.5, -0.1, -2, -3, -2, -0.5, 0.2, 3, 4,

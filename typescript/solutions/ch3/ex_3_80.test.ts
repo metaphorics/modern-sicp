@@ -5,11 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import { streamRef, streamTake } from "../../packages/ch3/src/05-streams.js";
 
-import { RLC } from "./ex_3_80.js";
+import { rlc } from "./ex_3_80.js";
 
-describe("exercise 3.80: the series RLC circuit", () => {
+describe("exercise 3.80: the series rlc circuit", () => {
   it("starts the state streams from vC0 = 10 and iL0 = 0", () => {
-    const { vC, iL } = RLC(1, 1, 0.2, 0.1)(10, 0);
+    const { vC, iL } = rlc(1, 1, 0.2, 0.1)(10, 0);
     expect(streamTake(vC, 8)).toEqual([
       10, 10, 9.5, 8.55, 7.220000000000001, 5.5955, 3.77245, 1.8519300000000003,
     ]);
@@ -17,7 +17,7 @@ describe("exercise 3.80: the series RLC circuit", () => {
   });
 
   it("agrees step for step with a direct Euler integration of the two ODEs", () => {
-    const { vC, iL } = RLC(1, 1, 0.2, 0.1)(10, 0);
+    const { vC, iL } = rlc(1, 1, 0.2, 0.1)(10, 0);
     const dt = 0.1;
     const R = 1;
     const L = 1;

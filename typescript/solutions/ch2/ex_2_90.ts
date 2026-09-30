@@ -47,7 +47,7 @@ export interface TermListOps<L> {
   readonly adjoin: (t: Term, l: L) => Result<L, GenError>;
 }
 
-/** The sparse package: the section's own list of (order coeff) pairs. */
+/** The sparse package: the section's own list of `[order, coeff]` pairs. */
 export const sparseOps: TermListOps<TermList> = {
   theEmpty: theEmptyTermList,
   isEmpty: isEmptyTermListQ,
@@ -141,7 +141,7 @@ export const addPoly90 = (p1: Poly90, p2: Poly90): Result<Poly90, GenError> => {
   if (!sameVar(p1, p2)) {
     return err({
       _tag: "NotSameVar",
-      proc: "ADD-POLY-90",
+      proc: "addPoly90",
       left: showPoly90(p1),
       right: showPoly90(p2),
     });
@@ -172,7 +172,7 @@ export const addPoly90 = (p1: Poly90, p2: Poly90): Result<Poly90, GenError> => {
   }
   return err({
     _tag: "NotSameVar",
-    proc: "ADD-POLY-90",
+    proc: "addPoly90",
     left: showPoly90(p1),
     right: showPoly90(p2),
   });

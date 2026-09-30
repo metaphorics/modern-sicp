@@ -3,19 +3,19 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  exerciseMemory,
+  memoryVectorDrawing,
+  structureReadBack,
+  yElementsShareX,
+} from "./ex_5_20.ts";
+import {
   car,
   cons,
   type MemoryError,
   MemoryFault,
   makeMemory,
   readTheCars,
-} from "../../packages/ch5/src/03-storage.js";
-import {
-  exerciseMemory,
-  memoryVectorDrawing,
-  structureReadBack,
-  yElementsShareX,
-} from "./ex_5_20.js";
+} from "./exercise-memory.ts";
 
 const expectMemoryFault = (run: () => unknown, fault: MemoryError): void => {
   try {

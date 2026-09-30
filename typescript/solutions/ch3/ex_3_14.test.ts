@@ -24,10 +24,10 @@ describe("exercise 3.14: mystery reverses the pointers in place", () => {
   it("returns (d c b a) and consumes v to (a)", () => {
     const v = mlist("a", "b", "c", "d");
     const w = mystery(v);
-    expect(showMList(w)).toBe("(d c b a)");
+    expect(showMList(w)).toBe("[d, c, b, a]");
     // The caller's binding kept its first pair, whose tail the loop
     // rewrote to the empty list: v now prints as the one-element list.
-    expect(showMList(v)).toBe("(a)");
+    expect(showMList(v)).toBe("[a]");
   });
 
   it("the reversed chain is the input's own pairs, pointed backwards", () => {
@@ -51,6 +51,6 @@ describe("exercise 3.14: mystery reverses the pointers in place", () => {
   });
 
   it("the empty list reverses to the empty list", () => {
-    expect(showMList(mystery(mnil))).toBe("()");
+    expect(showMList(mystery(mnil))).toBe("[]");
   });
 });

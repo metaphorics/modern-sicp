@@ -2,277 +2,252 @@
 // Original exercise
 
 import {
-  type AssemblerOptions,
-  arithmeticOperations,
-  assemble,
   assign,
   branch,
-  type ControllerLine,
-  c,
-  type Exec,
-  fail,
-  getRegisterContents,
-  type Instruction,
-  jump,
-  jumpReg,
-  lbl,
-  type Machine,
-  makeNewMachine,
-  mark,
-  type Outcome,
-  ok,
+  constant,
+  gotoLabel,
+  gotoRegister,
+  labelRef,
+  type MachineError,
+  type MachineStatement,
+  type MachineValue,
+  type Operation,
   op,
-  reg,
-  renderMachineError,
-  renderValue,
+  perform,
+  register,
   restore,
   save,
-  setRegisterContents,
   test,
-  type Value,
-} from "../../packages/ch5/src/02-simulator.js";
-import { expectError, expectOk } from "./ex_5_07.js";
+} from "../../packages/ch5/src/01-register-machines.ts";
+import { type Machine, makeMachine } from "../../packages/ch5/src/02-simulator.ts";
+import { fibonacciRecursiveController, type HandTrace } from "./ex_5_05.ts";
+import { arithmeticOperations, expectOk, mark } from "./ex_5_07.ts";
 
-/** The recursive Fibonacci machine of figure 5.12, transcribed line for
- * line: each level saves continue before the first call, saves n beside
- * it, and restores the pair at afterfib-n-1, so the second call can be
- * set up over them. */
-export const fibSimController: ControllerLine[] = [
-  assign("continue", lbl("fib-done")),
-  mark("fib-loop"),
-  test("<", reg("n"), c(2)),
-  branch("immediate-answer"),
-  save("continue"),
-  assign("continue", lbl("afterfib-n-1")),
-  save("n"),
-  assign("n", op("-", reg("n"), c(1))),
-  jump("fib-loop"),
-  mark("afterfib-n-1"),
-  restore("n"),
-  restore("continue"),
-  assign("n", op("-", reg("n"), c(2))),
-  save("continue"),
-  assign("continue", lbl("afterfib-n-2")),
-  save("val"),
-  jump("fib-loop"),
-  mark("afterfib-n-2"),
-  assign("n", reg("val")),
-  restore("val"),
-  restore("continue"),
-  assign("val", op("+", reg("val"), reg("n"))),
-  jumpReg("continue"),
-  mark("immediate-answer"),
-  assign("val", reg("n")),
-  jumpReg("continue"),
-  mark("fib-done"),
-];
+/** Discipline (a): the name-blind pop. Saves push their register's
+ * value; a restore pops whatever was saved last, whatever its register. */
+export const blindOps = (): {
+  operations: Readonly<Record<string, Operation>>;
+  pop: () => MachineValue;
+} => {
+  const stack: MachineValue[] = [];
+  return {
+    operations: {
+      "blind-push": (args) => {
+        stack.push(args[0] ?? null);
+        return args[0] ?? null;
+      },
+      "blind-pop": () => {
+        const value = stack.pop();
+        return value === undefined ? null : value;
+      },
+    },
+    pop: () => {
+      const value = stack.pop();
+      return value === undefined ? null : value;
+    },
+  };
+};
 
-/** The afterfib-n-2 entry of the figure, trimmed by part (a)'s
- * elimination: (restore n) pops the saved val directly, so (assign n
- * (reg val)) is gone and the final sum's operands are swapped. */
-export const fibNameBlindController: ControllerLine[] = [
-  ...fibSimController.slice(
-    0,
-    fibSimController.findIndex((line) => line.tag === "label" && line.name === "afterfib-n-2"),
-  ),
-  mark("afterfib-n-2"),
-  restore("n"),
-  restore("continue"),
-  assign("val", op("+", reg("val"), reg("n"))),
-  jumpReg("continue"),
-  mark("immediate-answer"),
-  assign("val", reg("n")),
-  jumpReg("continue"),
-  mark("fib-done"),
-];
+/** Discipline (c): one stack per register. Saves push onto the named
+ * register's own stack; a restore pops only from that stack. */
+export const perRegisterOps = (): Readonly<Record<string, Operation>> => {
+  const stacks = new Map<string, MachineValue[]>();
+  const stackOf = (name: string): MachineValue[] => {
+    const found = stacks.get(name);
+    if (found !== undefined) return found;
+    const fresh: MachineValue[] = [];
+    stacks.set(name, fresh);
+    return fresh;
+  };
+  return {
+    "named-push": (args) => {
+      const name = args[0];
+      const value = args[1];
+      if (typeof name !== "string") throw new Error("named-push: expected a register name");
+      stackOf(name).push(value ?? null);
+      return value ?? null;
+    },
+    "named-pop": (args) => {
+      const name = args[0];
+      if (typeof name !== "string") throw new Error("named-pop: expected a register name");
+      const value = stackOf(name).pop();
+      return value === undefined ? null : value;
+    },
+  };
+};
 
-/** The book's out-of-order sequence: restore y after x, not y, was
- * saved last. */
-const outOfOrderController: ControllerLine[] = [
-  assign("y", c(1)),
-  assign("x", c(2)),
+/** Rewrites one controller onto a discipline: (a) and (c) replace the
+ * stack instructions with the discipline's operations, (b) is the
+ * standard checking stack and stays as written. */
+export const withDiscipline = (
+  discipline: "blind" | "checking" | "per-register",
+  controller: readonly MachineStatement[],
+): readonly MachineStatement[] => {
+  if (discipline === "checking") return controller;
+  const push = discipline === "blind" ? "blind-push" : "named-push";
+  const pop = discipline === "blind" ? "blind-pop" : "named-pop";
+  return controller.map((statement) => {
+    if (statement.tag === "save") {
+      return perform(
+        push,
+        ...(discipline === "blind"
+          ? [register(statement.register)]
+          : [constant(statement.register), register(statement.register)]),
+      );
+    }
+    if (statement.tag === "restore") {
+      return assign(
+        statement.register,
+        op(pop, ...(discipline === "blind" ? [] : [constant(statement.register)])),
+      );
+    }
+    return statement;
+  });
+};
+
+/** The book's diagnostic sequence: save y, save x, restore y. */
+export const outOfOrderController: readonly MachineStatement[] = [
+  assign("y", constant(1)),
+  assign("x", constant(2)),
   save("y"),
   save("x"),
   restore("y"),
-  mark("done"),
 ];
 
-export type Discipline = "a" | "b" | "c";
-
-/** Discipline (b)'s saved cells: one word per entry, tagged with the
- * register it was saved from. */
-interface SavedWord {
-  readonly reg: string;
-  readonly value: Value;
-}
-
-/** The tagged save: pushes the register's content with its name. */
-const taggedSave = (
-  instr: Extract<Instruction, { tag: "save" }>,
-  machine: Machine,
-  saved: SavedWord[],
-): Outcome<Exec> => {
-  const source = machine.registerFor(instr.reg);
-  if (!source.ok) return source;
-  const register = source.value;
-  return ok(() => {
-    saved.push({ reg: instr.reg, value: register.content() });
-    machine.pc += 1;
-    return ok(null);
+const runSequence = (
+  discipline: "blind" | "checking" | "per-register",
+): { readonly value: MachineValue | null; readonly error: MachineError | null } => {
+  const extra =
+    discipline === "blind"
+      ? blindOps().operations
+      : discipline === "per-register"
+        ? perRegisterOps()
+        : {};
+  const machine: Machine = makeMachine({
+    registers: ["x", "y"],
+    operations: { ...arithmeticOperations, ...extra },
+    controller: withDiscipline(discipline, outOfOrderController),
   });
+  const run = machine.run();
+  return {
+    value: run.error === null ? (machine.readRegister("y") ?? null) : null,
+    error: run.error,
+  };
 };
 
-/** The tagged restore: pops the most recent cell, refusing a differently
- * named register with the typed mismatch. */
-const taggedRestore = (
-  instr: Extract<Instruction, { tag: "restore" }>,
-  machine: Machine,
-  saved: SavedWord[],
-): Outcome<Exec> => {
-  const target = machine.registerFor(instr.reg);
-  if (!target.ok) return target;
-  const register = target.value;
-  return ok(() => {
-    const entry = saved.pop();
-    if (!entry) return fail({ tag: "StackUnderflow", reg: instr.reg });
-    if (entry.reg !== instr.reg) {
-      return fail({ tag: "RestoreMismatch", wanted: instr.reg, found: entry.reg });
-    }
-    register.store(entry.value);
-    machine.pc += 1;
-    return ok(null);
-  });
-};
-
-/** The per-register save: pushes onto the register's own stack. */
-const perRegisterSave = (
-  instr: Extract<Instruction, { tag: "save" }>,
-  machine: Machine,
-  stacks: Map<string, Value[]>,
-): Outcome<Exec> => {
-  const source = machine.registerFor(instr.reg);
-  if (!source.ok) return source;
-  const register = source.value;
-  return ok(() => {
-    const cells = stacks.get(instr.reg) ?? [];
-    cells.push(register.content());
-    stacks.set(instr.reg, cells);
-    machine.pc += 1;
-    return ok(null);
-  });
-};
-
-/** The per-register restore: pops the register's own stack. */
-const perRegisterRestore = (
-  instr: Extract<Instruction, { tag: "restore" }>,
-  machine: Machine,
-  stacks: Map<string, Value[]>,
-): Outcome<Exec> => {
-  const target = machine.registerFor(instr.reg);
-  if (!target.ok) return target;
-  const register = target.value;
-  return ok(() => {
-    const cells = stacks.get(instr.reg) ?? [];
-    const value = cells.pop();
-    if (value === undefined) return fail({ tag: "StackUnderflow", reg: instr.reg });
-    register.store(value);
-    machine.pc += 1;
-    return ok(null);
-  });
-};
-
-/** One machine with its discipline: (a) the standard simulator, (b) the
- * tagged stack, (c) one stack per register. The variant state is born
- * with the machine, and the assembler options wire the save and restore
- * builders; every other instruction uses the standard builders. */
-export const makeDisciplineMachine = (
-  registerNames: string[],
-  discipline: Discipline,
-): { machine: Machine; options: AssemblerOptions } => {
-  const machine = makeNewMachine(registerNames, arithmeticOperations);
-  if (discipline === "b") {
-    const saved: SavedWord[] = [];
-    return {
-      machine,
-      options: {
-        saveRestore: (instr) =>
-          instr.tag === "save"
-            ? taggedSave(instr, machine, saved)
-            : instr.tag === "restore"
-              ? taggedRestore(instr, machine, saved)
-              : ok(null),
-      },
-    };
-  }
-  if (discipline === "c") {
-    const stacks = new Map<string, Value[]>();
-    return {
-      machine,
-      options: {
-        saveRestore: (instr) =>
-          instr.tag === "save"
-            ? perRegisterSave(instr, machine, stacks)
-            : instr.tag === "restore"
-              ? perRegisterRestore(instr, machine, stacks)
-              : ok(null),
-      },
-    };
-  }
-  return { machine, options: {} };
-};
-
-/** Runs controller under discipline with n in register n, answering
- * val; every run is a fresh machine, so no stack carries over. */
 const runFib = (
-  controller: ReadonlyArray<ControllerLine>,
-  discipline: Discipline,
+  discipline: "blind" | "checking" | "per-register",
   n: number,
-): Value => {
-  const { machine, options } = makeDisciplineMachine(["n", "continue", "val"], discipline);
-  const program = assemble(controller, machine, options);
-  if (!program.ok) throw new Error(renderMachineError(program.error));
-  machine.install(program.value);
-  expectOk(setRegisterContents(machine, "n", n));
-  expectOk(machine.start());
-  return expectOk(getRegisterContents(machine, "val"));
+): HandTrace | MachineError => {
+  const extra =
+    discipline === "blind"
+      ? blindOps().operations
+      : discipline === "per-register"
+        ? perRegisterOps()
+        : {};
+  const machine = makeMachine({
+    registers: ["n", "val", "continue"],
+    operations: { ...arithmeticOperations, ...extra },
+    controller: withDiscipline(discipline, fibonacciRecursiveController),
+  });
+  machine.writeRegister("n", n);
+  const run = machine.run();
+  if (run.error !== null) return run.error;
+  const value = machine.readRegister("val");
+  return {
+    value: typeof value === "number" ? value : 0,
+    instructionCount: run.instructionCount,
+    maxDepth: run.stackStats.maxDepth,
+    events: [],
+  };
 };
 
-/** The book's out-of-order sequence under one discipline letter,
- * answering y's content or the typed error's text. */
-const outOfOrderOutcome = (discipline: Discipline): string => {
-  const { machine, options } = makeDisciplineMachine(["x", "y"], discipline);
-  const program = assemble(outOfOrderController, machine, options);
-  if (!program.ok) return renderMachineError(expectError(program));
-  machine.install(program.value);
-  const ran = machine.start();
-  if (!ran.ok) return renderMachineError(expectError(ran));
-  return `y = ${renderValue(expectOk(getRegisterContents(machine, "y")))}`;
-};
-
-/** The eliminated controller under the checking discipline: (restore n)
- * finds a value saved from val, the typed mismatch. */
-const eliminatedUnderChecking = (): string => {
-  const { machine, options } = makeDisciplineMachine(["n", "continue", "val"], "b");
-  const program = assemble(fibNameBlindController, machine, options);
-  if (!program.ok) return renderMachineError(expectError(program));
-  machine.install(program.value);
-  expectOk(setRegisterContents(machine, "n", 3));
-  const ran = machine.start();
-  if (!ran.ok) return renderMachineError(expectError(ran));
-  return `val = ${renderValue(expectOk(getRegisterContents(machine, "val")))}`;
-};
-
-/** The three disciplines on the same out-of-order sequence and on the
- * same fib run, then part (a)'s elimination running on the name-blind
- * assembler and failing the checking one. */
-export const restoreDisciplineRuns = (): string[] => [
-  `out-of-order restore under (a) name-blind: ${outOfOrderOutcome("a")}`,
-  `out-of-order restore under (b) checking: ${outOfOrderOutcome("b")}`,
-  `out-of-order restore under (c) per-register: ${outOfOrderOutcome("c")}`,
-  `fib(3) under (a): val = ${runFib(fibSimController, "a", 3)}`,
-  `fib(3) under (b): val = ${runFib(fibSimController, "b", 3)}`,
-  `fib(3) under (c): val = ${runFib(fibSimController, "c", 3)}`,
-  `fib(3) with the eliminated assign, discipline (a): val = ${runFib(fibNameBlindController, "a", 3)}`,
-  `fib(5) with the eliminated assign, discipline (a): val = ${runFib(fibNameBlindController, "a", 5)}`,
-  `the eliminated controller under (b): ${eliminatedUnderChecking()}`,
+/** The part-(a) elimination: afterfib-n-2's `(assign n (reg val))`,
+ * `(restore val)` collapses to one `(restore n)`. */
+export const collapsedFibController: readonly MachineStatement[] = [
+  assign("continue", labelRef("fib-done")),
+  mark("fib-loop"),
+  test("<", register("n"), constant(2)),
+  branch("immediate-answer"),
+  save("continue"),
+  assign("continue", labelRef("afterfib-n-1")),
+  save("n"),
+  assign("n", op("-", register("n"), constant(1))),
+  gotoLabel("fib-loop"),
+  mark("afterfib-n-1"),
+  restore("n"),
+  restore("continue"),
+  assign("n", op("-", register("n"), constant(2))),
+  save("continue"),
+  assign("continue", labelRef("afterfib-n-2")),
+  save("val"),
+  gotoLabel("fib-loop"),
+  mark("afterfib-n-2"),
+  restore("n"),
+  restore("continue"),
+  assign("val", op("+", register("val"), register("n"))),
+  gotoRegister("continue"),
+  mark("immediate-answer"),
+  assign("val", register("n")),
+  gotoRegister("continue"),
+  mark("fib-done"),
 ];
+
+const runCollapsed = (
+  discipline: "blind" | "checking",
+  n: number,
+): { readonly value: MachineValue | null; readonly error: MachineError | null } => {
+  const extra = discipline === "blind" ? blindOps().operations : {};
+  const machine = makeMachine({
+    registers: ["n", "val", "continue"],
+    operations: { ...arithmeticOperations, ...extra },
+    controller: withDiscipline(discipline, collapsedFibController),
+  });
+  machine.writeRegister("n", n);
+  const run = machine.run();
+  return {
+    value: run.error === null ? (machine.readRegister("val") ?? null) : null,
+    error: run.error,
+  };
+};
+
+/** Exercise 5.11: the three readings of `restore` over one controller.
+ * The disciplines agree on the Fibonacci machine and disagree exactly on
+ * the sequence the book distinguishes them by. */
+export const ex_5_11 = (): {
+  readonly blind: MachineValue | null;
+  readonly checking: MachineError | null;
+  readonly perRegister: MachineValue | null;
+  readonly fib: { readonly blind: number; readonly checking: number; readonly perRegister: number };
+  readonly collapsed: {
+    readonly blind: readonly MachineValue[];
+    readonly checking: MachineError | null;
+  };
+} => {
+  const sequence = {
+    blind: runSequence("blind"),
+    checking: runSequence("checking"),
+    perRegister: runSequence("per-register"),
+  };
+  const fib = {
+    blind: runFib("blind", 3),
+    checking: runFib("checking", 3),
+    perRegister: runFib("per-register", 3),
+  };
+  const collapsedBlind3 = runCollapsed("blind", 3);
+  const collapsedBlind5 = runCollapsed("blind", 5);
+  return {
+    blind: sequence.blind.value,
+    checking: sequence.checking.error,
+    perRegister: sequence.perRegister.value,
+    fib: {
+      blind: "value" in fib.blind ? fib.blind.value : 0,
+      checking: "value" in fib.checking ? fib.checking.value : 0,
+      perRegister: "value" in fib.perRegister ? fib.perRegister.value : 0,
+    },
+    collapsed: {
+      blind: [collapsedBlind3.value, collapsedBlind5.value] as readonly MachineValue[],
+      checking: runCollapsed("checking", 3).error,
+    },
+  };
+};

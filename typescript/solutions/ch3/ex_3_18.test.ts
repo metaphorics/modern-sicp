@@ -8,7 +8,7 @@ import { type MCons, type MList, mcons, mlist } from "../../packages/ch3/src/03-
 import { hasCycle } from "./ex_3_18.js";
 
 /** The book's ring: the last tail of `l` is set to `backTo`, the
- * set-cdr! that exercise 3.13 used. */
+ * setCdr that exercise 3.13 used. */
 const ringWithLastTail = <A>(l: MList<A>, backTo: MList<A>): MCons<A> => {
   if (l._tag === "MNil") {
     throw new Error("ring needs a first pair");

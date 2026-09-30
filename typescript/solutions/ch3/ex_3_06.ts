@@ -24,7 +24,7 @@ export type RandRequest =
  * state for a reset. */
 export type ResettableRand = (request: RandRequest) => Effect.Effect<number>;
 
-/** Builds the generator over the section's `rand-update`, seeded. */
+/** Builds the generator over the section's `randUpdate`, seeded. */
 export const makeResettableRand = (seed: number): ResettableRand => {
   const x = Ref.makeUnsafe(seed);
   return (request) =>

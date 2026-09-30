@@ -2,20 +2,20 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { ex_4_65, wheelAnswers } from "./ex_4_65.js";
+import { distinctWheels, wheelAnswers } from "./ex_4_65.js";
 
-describe("exercise 4.65: wheel proof multiplicity", () => {
-  it("preserves all five proofs in query order", () => {
-    expect(wheelAnswers()).toStrictEqual([
-      "(wheel (Bitdiddle Ben))",
-      "(wheel (Warbucks Oliver))",
-      "(wheel (Warbucks Oliver))",
-      "(wheel (Warbucks Oliver))",
-      "(wheel (Warbucks Oliver))",
-    ]);
+const warbucks = 'wheel(["Warbucks", "Oliver"])';
+const ben = 'wheel(["Bitdiddle", "Ben"])';
+
+describe("exercise 4.65: the wheel listed four times", () => {
+  it("derives one line per middle path, not per wheel", () => {
+    const answers = wheelAnswers();
+    expect(answers).toHaveLength(5);
+    expect(answers.filter((line) => line === warbucks)).toHaveLength(4);
+    expect(answers.filter((line) => line === ben)).toHaveLength(1);
   });
 
-  it("counts Oliver's four proofs rather than collapsing them", () => {
-    expect(ex_4_65()).toContain("produced 4 times");
+  it("dedupes to the two wheels in first-appearance order", () => {
+    expect(distinctWheels()).toStrictEqual([ben, warbucks]);
   });
 });

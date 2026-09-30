@@ -9,8 +9,8 @@ import {
   firstTerm,
   type GenError,
   makePolynomial,
-  makeSchemeNumber,
   makeTerm,
+  makeTsNumber,
   mul,
   mulTerms,
   orderOf,
@@ -37,7 +37,7 @@ const bindL = <A, B>(
 const poly95 = (terms: ReadonlyArray<readonly [bigint, bigint]>) =>
   makePolynomial(
     "x",
-    terms.map(([o, c]) => [o, makeSchemeNumber(c)] as const),
+    terms.map(([o, c]) => [o, makeTsNumber(c)] as const),
   );
 
 /** The book's P1: x^2 - 2x + 1. */

@@ -2,20 +2,22 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { ex_4_61, nextToAnswers } from "./ex_4_61.js";
+import { nextToAnswers } from "./ex_4_61.js";
 
-describe("exercise 4.61: next-to", () => {
-  it("finds nested and repeated adjacent values in the input order", () => {
-    const [nested, repeated] = nextToAnswers();
-    expect(nested).toHaveLength(2);
-    expect(nested.some((answer) => answer.includes("1 next-to (2 3)"))).toBe(true);
-    expect(nested.some((answer) => answer.includes("(2 3) next-to 4"))).toBe(true);
-    expect(repeated).toHaveLength(2);
-    expect(repeated.some((answer) => answer.includes("2 next-to 1"))).toBe(true);
-    expect(repeated.some((answer) => answer.includes("3 next-to 1"))).toBe(true);
+describe("exercise 4.61: next-to as atoms", () => {
+  it("finds both adjacent pairs of the mixed list", () => {
+    const [mixed] = nextToAnswers();
+    expect(mixed).toStrictEqual([
+      'next-to("1", ["2", "3"], ["1", ["2", "3"], "4"])',
+      'next-to(["2", "3"], "4", ["1", ["2", "3"], "4"])',
+    ]);
   });
 
-  it("reports both result sequences", () => {
-    expect(ex_4_61()).toContain("next-to");
+  it("finds both predecessors of 1", () => {
+    const [, before] = nextToAnswers();
+    expect(before).toStrictEqual([
+      'next-to("2", "1", ["2", "1", "3", "1"])',
+      'next-to("3", "1", ["2", "1", "3", "1"])',
+    ]);
   });
 });

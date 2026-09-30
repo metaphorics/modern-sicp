@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Result } from "../../packages/ch2/src/01-data-abstraction.js";
-import { type GenError, makeSchemeNumber } from "../../packages/ch2/src/05-generic-operations.js";
+import { type GenError, makeTsNumber } from "../../packages/ch2/src/05-generic-operations.js";
 import type { DenseList } from "./ex_2_89.js";
 import {
   addTermsDense,
@@ -15,7 +15,7 @@ import {
   showDense,
 } from "./ex_2_89.js";
 
-const sn = (n: bigint) => makeSchemeNumber(n);
+const sn = (n: bigint) => makeTsNumber(n);
 const A = (): Result<DenseList, GenError> =>
   denseOf([
     [5n, sn(1n)],
@@ -75,7 +75,7 @@ describe("exercise 2.89: dense term lists", () => {
     }
     const sum = addTermsDense(a.value, b.value);
     expect(sum._tag === "Ok" && showDense("x", sum.value)).toBe(
-      "(polynomial x (5 1) (4 2) (2 4) (1 -2) (0 -2))",
+      "[polynomial, x, [5, 1], [4, 2], [2, 4], [1, -2], [0, -2]]",
     );
   });
 });

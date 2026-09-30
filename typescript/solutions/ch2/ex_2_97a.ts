@@ -63,7 +63,7 @@ const termsOfDatum = (r: Result<ArithDatum, GenError>): Result<TermList, GenErro
     return r;
   }
   if (typeof r.value === "bigint") {
-    return err({ _tag: "NoMethod", op: "terms", tags: ["scheme-number"] });
+    return err({ _tag: "NoMethod", op: "terms", tags: ["ts-number"] });
   }
   return r.value._tag === "polynomial"
     ? ok(r.value.contents.terms)

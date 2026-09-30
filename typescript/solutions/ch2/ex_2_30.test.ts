@@ -10,10 +10,10 @@ const tree = node(leaf(1), node(leaf(2), node(leaf(3), leaf(4)), leaf(5)), node(
 
 describe("exercise 2.30", () => {
   it("direct recursion squares the leaves in place", () => {
-    expect(showTree(squareTreeDirect(tree))).toBe("(1 (4 (9 16) 25) (36 49))");
+    expect(showTree(squareTreeDirect(tree))).toBe("[1, [4, [9, 16], 25], [36, 49]]");
   });
 
   it("the map spelling squares the same tree identically", () => {
-    expect(showTree(squareTreeViaMap(tree))).toBe("(1 (4 (9 16) 25) (36 49))");
+    expect(showTree(squareTreeViaMap(tree))).toBe("[1, [4, [9, 16], 25], [36, 49]]");
   });
 });

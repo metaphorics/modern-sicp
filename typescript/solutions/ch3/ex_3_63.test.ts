@@ -15,7 +15,7 @@ import {
   sqrtStreamUnmemoizedLocal,
 } from "./ex_3_63.js";
 
-describe("exercise 3.63: why sqrt-stream localizes its guesses", () => {
+describe("exercise 3.63: why sqrtStream localizes its guesses", () => {
   it("computes each guess once with the memoized local binding", () => {
     expect(improveCallsFor(sqrtStreamLocal, 2, 5)).toEqual({
       guess: sqrt2ConvergedGuess,
@@ -70,7 +70,7 @@ describe("exercise 3.63: why sqrt-stream localizes its guesses", () => {
     });
   });
 
-  it("answers the second question: without memo-proc the two versions count the same", () => {
+  it("answers the second question: without memoization the two versions count the same", () => {
     expect(improveCallsFor(sqrtStreamUnmemoizedExternal, 2, 5)).toEqual(
       improveCallsFor(sqrtStreamUnmemoizedLocal, 2, 5),
     );

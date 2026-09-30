@@ -2,243 +2,113 @@
 // Original exercise
 
 /**
- * Exercise 4.15: the halting diagonal, executed rather than argued. The
- * object language gets the book's run-forever and try; halts? is provided
- * by the host as an oracle with an adjustable answer. A step counter
- * wrapped around a complete dispatch turns "runs forever" into an
- * observable failure: past its fuel limit the evaluator fails with a
- * RuntimeError instead of hanging, so (try try) under the true oracle
- * exhausts its fuel, and (try (lambda (u) u)) under the false oracle
- * returns 'halted, the wrong answer.
+ * Exercise 4.15: the halting diagonal, executed. `halts` is provided by
+ * the host as an oracle with an adjustable answer, and the object
+ * language gets the book's `runForever` and `tryProgram`. Because a
+ * diverging evaluation never returns, a fuel counter is wrapped around
+ * the recursion: every application of `runForever` spends one unit, and
+ * one spend past the limit fails instead of hanging, which turns "runs
+ * forever" into an observable, pinnable outcome. The theorem the runs
+ * demonstrate: no `halts` correctly decides halting. If the oracle says
+ * true for `tryProgram(tryProgram)`, the try drives into `runForever`
+ * and diverges, so the answer was false; if it says false, the try
+ * halts with "halted", so the answer was true.
  */
-import { Effect, Ref } from "effect";
-
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { fail, ok } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  addBindingToFrame,
-  applyPrimitiveProcedure,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  condToIf,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
-  extendEnvironment,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isApplication,
-  isAssignment,
-  isBegin,
-  isCond,
-  isDefinition,
-  isIf,
-  isLambda,
-  isQuoted,
-  isSelfEvaluating,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  lookupVariableValue,
-  makeProcedure,
-  ok,
-  operands,
-  operator,
-  setupEnvironment,
-  setVariableValue,
-  symbol,
-  textOfQuotation,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Evaluate, Value } from "../../packages/ch4/src/core.js";
+  makePrimitive,
+  type PrimitiveProcedure,
+  type Value,
+} from "../../packages/ch4/src/runtime/value.js";
 import {
-  type EvaluationError,
-  NotAProcedure,
-  RuntimeError,
-  UnknownSyntax,
-} from "../../packages/ch4/src/errors.js";
-import { type Cons, cons, type List, nil, toArray } from "../../packages/ch4/src/list.js";
-import { format, ReadError, read } from "../../packages/ch4/src/read.js";
+  call,
+  type Expr,
+  exprStmt,
+  ident,
+  ifStmt,
+  lam,
+  num,
+  param,
+  returnStmt,
+  str,
+} from "../../packages/ch4/src/syntax/ast.js";
+import { noSpan } from "../../packages/ch4/src/syntax/diagnostics.js";
+/** The host's `halts` oracle: an adjustable answer, never a real decision. */
+export const makeHaltsOracle = (answer: boolean): PrimitiveProcedure =>
+  makePrimitive("halts", (_args: ReadonlyArray<Value>): Outcome => ok(answer));
 
-/** The book's given definitions, spelled in the object language. */
-export const RUN_FOREVER = "(define (run-forever) (run-forever))";
-export const TRY = "(define (try p) (if (halts? p p) (run-forever) 'halted))";
+/** A fuel counter: each spend draws one unit; the first spend past the
+ * limit fails with `bad-operand`, so divergence becomes observable. */
+export const makeFuel = (limit: number): { spend: PrimitiveProcedure; spent: () => number } => {
+  let spent = 0;
+  return {
+    spend: makePrimitive("@@spend", (_args: ReadonlyArray<Value>): Outcome => {
+      spent += 1;
+      return spent > limit
+        ? fail({ tag: "bad-operand", operator: "@@spend", detail: "out of fuel" })
+        : ok(spent);
+    }),
+    spent: () => spent,
+  };
+};
 
-/** A claimed decision procedure for halting, correct by assumption only. */
-export interface HaltsOracle {
-  readonly name: string;
-  readonly decides: (procedure: Value, input: Value) => boolean;
-}
+/** `function runForever(): void { runForever(); }`, spending one unit
+ * of fuel per iteration. */
+export const runForeverProgram = (): Expr =>
+  lam([], [exprStmt(call(ident("@@spend"), [])), exprStmt(call(ident("runForever"), []))]);
 
-export const trueOracle: HaltsOracle = { name: "always true", decides: () => true };
-export const falseOracle: HaltsOracle = { name: "always false", decides: () => false };
-
-export const installOracle = (env: Env, oracle: HaltsOracle): Effect.Effect<void> =>
-  addBindingToFrame(
-    symbol("halts?"),
-    {
-      _tag: "Primitive",
-      name: "halts?",
-      fn: (args) => {
-        const items = toArray(args);
-        const procedure = items[0] ?? nil;
-        const input = items[1] ?? nil;
-        return Effect.succeed({ _tag: "Boolean", b: oracle.decides(procedure, input) });
-      },
-    },
-    env,
+/**
+ * `function tryProgram(p) { if (halts(p, p)) { runForever(); } return
+ * "halted"; }` — the book's try, over the host oracle.
+ */
+export const tryProgramProgram = (): Expr =>
+  lam(
+    [param("p")],
+    [
+      ifStmt(call(ident("halts"), [ident("p"), ident("p")]), {
+        tag: "block",
+        body: [exprStmt(call(ident("runForever"), []))],
+        span: noSpan,
+      }),
+      returnStmt(str("halted")),
+    ],
   );
 
-export interface FueledEvaluator {
-  readonly evaluate: Evaluate;
-  readonly stepsUsed: Effect.Effect<number>;
-  readonly limit: number;
-}
-
-/** A complete dispatch wrapped in a step counter: every dispatch spends
- * one unit of fuel, and one step past the limit fails with a RuntimeError
- * instead of diverging. */
-export const makeFueledEvaluator = (limit: number): Effect.Effect<FueledEvaluator> =>
-  Effect.map(Ref.make(0), (steps) => {
-    const spend = (): Effect.Effect<void, EvaluationError> =>
-      Effect.flatMap(
-        Ref.updateAndGet(steps, (used) => used + 1),
-        (used) =>
-          used > limit
-            ? Effect.fail(
-                new RuntimeError({
-                  message: "out of fuel",
-                  detail: `${used} steps exceeds the limit of ${limit}`,
-                }),
-              )
-            : Effect.asVoid(Effect.void),
-      );
-
-    const evalIf = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-      Effect.flatMap(evaluate(ifPredicate(exp), env), (predicate) =>
-        isTrue(predicate) ? evaluate(ifConsequent(exp), env) : evaluate(ifAlternative(exp), env),
-      );
-
-    const evalSequence = (exps: List<Value>, env: Env): Effect.Effect<Value, EvaluationError> => {
-      if (exps._tag === "Nil") {
-        return Effect.fail(new RuntimeError({ message: "Empty sequence: EVAL", detail: "" }));
-      }
-      if (exps.tail._tag === "Nil") {
-        return evaluate(exps.head, env);
-      }
-      return Effect.flatMap(evaluate(exps.head, env), () => evalSequence(exps.tail, env));
-    };
-
-    const listOfValues = (
-      exps: List<Value>,
-      env: Env,
-    ): Effect.Effect<List<Value>, EvaluationError> => {
-      if (exps._tag === "Nil") {
-        return Effect.succeed(nil);
-      }
-      return Effect.flatMap(evaluate(exps.head, env), (first) =>
-        Effect.map(listOfValues(exps.tail, env), (rest) => cons(first, rest)),
-      );
-    };
-
-    const applyFueled = (
-      procedure: Value,
-      args: List<Value>,
-    ): Effect.Effect<Value, EvaluationError> => {
-      if (procedure._tag === "Primitive") {
-        return applyPrimitiveProcedure(procedure, args);
-      }
-      if (procedure._tag === "Compound") {
-        return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (callEnv) =>
-          evalSequence(procedure.body, callEnv),
-        );
-      }
-      return Effect.fail(new NotAProcedure({ value: format(procedure) }));
-    };
-
-    const evalApplication = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-      Effect.flatMap(evaluate(operator(exp), env), (procedure) =>
-        Effect.flatMap(listOfValues(operands(exp), env), (args) => applyFueled(procedure, args)),
-      );
-
-    const evalAssignment = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-      Effect.flatMap(evaluate(assignmentValue(exp), env), (value) =>
-        Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-      );
-
-    const evalDefinition = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-      Effect.flatMap(evaluate(definitionValue(exp), env), (value) =>
-        Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-      );
-
-    const evaluate: Evaluate = (exp, env) =>
-      Effect.flatMap(spend(), () => {
-        if (isSelfEvaluating(exp)) {
-          return Effect.succeed(exp);
-        }
-        if (isVariable(exp)) {
-          return lookupVariableValue(exp, env);
-        }
-        if (isQuoted(exp)) {
-          return Effect.succeed(textOfQuotation(exp));
-        }
-        if (isAssignment(exp)) {
-          return evalAssignment(exp, env);
-        }
-        if (isDefinition(exp)) {
-          return evalDefinition(exp, env);
-        }
-        if (isIf(exp)) {
-          return evalIf(exp, env);
-        }
-        if (isLambda(exp)) {
-          return Effect.succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env));
-        }
-        if (isBegin(exp)) {
-          return evalSequence(beginActions(exp), env);
-        }
-        if (isCond(exp)) {
-          return evaluate(condToIf(exp), env);
-        }
-        if (isApplication(exp)) {
-          return evalApplication(exp, env);
-        }
-        return Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-      });
-
-    return { evaluate, stepsUsed: Ref.get(steps), limit };
-  });
-
-/** Reads and evaluates each form in order with the fueled evaluator. */
-export const runFueled = (
-  fueled: FueledEvaluator,
-  sources: ReadonlyArray<string>,
-  env: Env,
-): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(
-    Effect.forEach(sources, (source) =>
-      Effect.flatMap(
-        Effect.try({
-          try: () => read(source),
-          catch: (error) =>
-            new RuntimeError({
-              message: "read failed",
-              detail:
-                error instanceof ReadError || error instanceof Error
-                  ? error.message
-                  : String(error),
-            }),
-        }),
-        (exp) => fueled.evaluate(exp, env),
-      ),
-    ),
-    (values) => Effect.succeed(values[values.length - 1] ?? nil),
-  );
-
-/** A global environment with the book's definitions and one oracle. */
-export const makeDiagonalEnvironment = (oracle: HaltsOracle): Effect.Effect<Env, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) => Effect.map(installOracle(env, oracle), () => env));
+/** Installs the oracle, the fuel, and both programs in one frame. */
+export const haltingEnv = (
+  answer: boolean,
+  limit: number,
+): { session: Session; env: Env; spent: () => number } => {
+  const session = new Session("core");
+  const env = session.globalEnv();
+  const fuel = makeFuel(limit);
+  env.bindings.set("@@spend", { value: fuel.spend, initialized: true, mutable: true });
+  env.bindings.set("halts", { value: makeHaltsOracle(answer), initialized: true, mutable: true });
+  for (const [name, expression] of [
+    ["runForever", runForeverProgram()],
+    ["tryProgram", tryProgramProgram()],
+  ] as const) {
+    const outcome = session.evaluate(expression, env);
+    if (outcome.tag === "error") {
+      throw new Error(`failed to install ${name}: ${outcome.error.tag}`);
+    }
+    session.defineVariableValue(name, outcome.value, env);
+  }
+  return { session, env, spent: fuel.spent };
+};
 
 export function ex_4_15(): string {
-  return "halts? cannot exist: suppose it does and run-forever and try are defined as the book gives them. If halts? answers true for (try try), try calls run-forever and diverges, so the answer was false; if it answers false, (try try) halts with 'halted, so the answer was true. Both oracles here are run: the true one drives (try try) until the fuel-limited evaluator gives up, the false one answers 'halted for a procedure that halts on itself. Every answer is wrong, so no such decision procedure exists.";
+  return (
+    "No `halts` correctly decides halting. Under the true oracle, `tryProgram(tryProgram)` " +
+    "drives into `runForever` and exhausts its fuel at the 501st spend — the first spend " +
+    "past the 500-unit limit is the failure — so the oracle's answer was false. Under the " +
+    'false oracle the same call answers "halted" having spent well under 500 units, so ' +
+    "the answer was true. Under the true oracle even a procedure that halts on itself " +
+    "exhausts the fuel, because the oracle says true and the try drives into " +
+    "`runForever`. Divergence is observable because the fuel cap turns it into a typed " +
+    "failure instead of a hang."
+  );
 }

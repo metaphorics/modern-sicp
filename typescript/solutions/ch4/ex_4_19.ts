@@ -2,413 +2,262 @@
 // Original exercise
 
 /**
- * Exercise 4.19: Ben, Alyssa, and Eva debate the program in
- * `debatedProgram`. The exercise is answered empirically: one evaluator per
- * viewpoint, one shared dispatch. Sequential defines (the base rule) give
- * Ben's 16. Scanning out defines with the *unassigned* guard (Alyssa's
- * 4.16 mechanism) gives an error. Eva's rule, simultaneous definitions
- * whose value expressions see each other's final values, is implemented by
- * pre-binding every internal name to *unassigned* and forcing a name's
- * value expression on first read, memoizing it into the frame; the answer
- * is Eva's 20.
+ * Exercise 4.19: the internal definition scoping debate. One body, three
+ * rules. Sequential keeps the engine's own application; the guest
+ * runtime pre-binds internal names as uninitialized cells, so this
+ * reading settles on Alyssa's side: the sibling read faults with TDZ
+ * instead of silently seeing an outer binding. Scanned is the 4.16
+ * mechanism and answers the same fault. Eva's rule is simultaneous
+ * definitions whose value expressions see each other's final values:
+ * every internal name is pre-bound uninitialized, and reading one forces
+ * that name's value expression in the current frame and memoizes the
+ * value by writing it back; forcing a name already being forced is a
+ * circular-definition error. The forcing reader covers the expression
+ * forms a value expression can use; statement forms inside value
+ * expressions are outside the rule's shape.
  */
-import { Effect } from "effect";
 import {
-  applyProcedure,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  condToIf,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
+  applyBinaryOperation,
+  applyUnaryOperation,
   extendEnvironment,
-  firstExp,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isApplication,
-  isAssignment,
-  isBegin,
-  isCond,
-  isDefinition,
-  isIf,
-  isLambda,
-  isLastExp,
-  isQuoted,
-  isSelfEvaluating,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  listOfValues,
-  lookupVariableValue,
-  makeProcedure,
-  ok,
-  operands,
-  operator,
-  restExps,
-  setupEnvironment,
+  Session,
   setVariableValue,
-  symbol,
-  textOfQuotation,
 } from "../../packages/ch4/src/01-metacircular.js";
-import type {
-  CompoundProc,
-  Env,
-  Evaluate,
-  SymbolValue,
-  Value,
-} from "../../packages/ch4/src/core.js";
+import { type Env, makeCell } from "../../packages/ch4/src/runtime/env.js";
+import type { Completion, Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import { fail, failed, normal, ok, outcomeOf } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  type EvaluationError,
-  RuntimeError,
-  UnknownSyntax,
-} from "../../packages/ch4/src/errors.js";
-import { type Cons, cons, type List, nil, toArray } from "../../packages/ch4/src/list.js";
-import { format, read } from "../../packages/ch4/src/read.js";
+  isClosure,
+  isPrimitive,
+  makeArray,
+  makeClosure,
+  type Value,
+} from "../../packages/ch4/src/runtime/value.js";
+import {
+  assign,
+  type Decl,
+  type Expr,
+  exprStmt,
+  ident,
+  type Stmt,
+} from "../../packages/ch4/src/syntax/ast.js";
+import { addUninitialized, scanOutDefinitions } from "./ex_4_16.js";
 
-/** The program the three are arguing about. */
-export const debatedProgram =
-  "(let ((a 1)) (define (f x) (define b (+ a x)) (define a 5) (+ a b)) (f 10))";
-
-/** Which internal-definition rule an evaluator follows. */
-export type DefinitionScope = "sequential" | "scanned" | "eva";
-
-const unassignedName = "*unassigned*";
-
-const unassigned = (): Value => symbol(unassignedName);
-
-const isUnassigned = (value: Value): boolean =>
-  value._tag === "Symbol" && value.name === unassignedName;
-
-/** One scanned-out internal definition. */
-interface ScannedDefine {
-  readonly name: SymbolValue;
-  readonly value: Value;
+/** The simultaneous rule's forcing state: value expressions and memo. */
+interface Forcing {
+  readonly values: Map<string, Expr>;
+  readonly progress: Set<string>;
+  readonly session: Session;
 }
 
-const listOf = (items: ReadonlyArray<Value>): List<Value> =>
-  items.reduceRight<List<Value>>((tail, head) => cons(head, tail), nil);
-
-const list = (...items: Value[]): List<Value> => listOf(items);
-
-const concatLists = (lists: ReadonlyArray<List<Value>>): List<Value> =>
-  listOf(lists.flatMap((items) => toArray(items)));
-
-/** Takes the leading defines of a body. */
-const takeDefines = (
-  body: List<Value>,
-): { readonly defines: ReadonlyArray<ScannedDefine>; readonly rest: List<Value> } => {
-  const defines: ScannedDefine[] = [];
-  let rest: List<Value> = body;
-  while (rest._tag === "Cons" && isDefinition(rest.head)) {
-    defines.push({ name: definitionVariable(rest.head), value: definitionValue(rest.head) });
-    rest = rest.tail;
+const forceName = (name: string, env: Env, forcing: Forcing): Outcome => {
+  const cell = env.bindings.get(name);
+  if (cell === undefined) {
+    return fail({ tag: "unbound-name", name });
   }
-  return { defines, rest };
+  if (cell.initialized) {
+    return ok(cell.value);
+  }
+  if (forcing.progress.has(name)) {
+    return fail({ tag: "bad-operand", operator: "letrec", detail: `circular definition: ${name}` });
+  }
+  const value = forcing.values.get(name);
+  if (value === undefined) {
+    return fail({ tag: "tdz-access", name });
+  }
+  forcing.progress.add(name);
+  const computed = evalForcing(value, env, forcing);
+  forcing.progress.delete(name);
+  if (computed.tag === "error") {
+    return computed;
+  }
+  cell.value = computed.value;
+  cell.initialized = true;
+  return ok(computed.value);
 };
 
-/** Alyssa's scanned body: one lambda application, *unassigned* bindings, set!s. */
-const scanOutDefines = (body: List<Value>): List<Value> => {
-  const { defines, rest } = takeDefines(body);
-  if (defines.length === 0) {
-    return body;
-  }
-  const lambda = cons<Value>(
-    symbol("lambda"),
-    cons(
-      listOf(defines.map((d) => d.name)),
-      concatLists([listOf(defines.map((d) => list(symbol("set!"), d.name, d.value))), rest]),
-    ),
-  );
-  const quotedUnassigned = list(symbol("quote"), unassigned());
-  return cons<Value>(cons(lambda, listOf(defines.map(() => quotedUnassigned))), nil);
-};
-
-const makeProcedureScanned = (parameters: List<Value>, body: List<Value>, env: Env): CompoundProc =>
-  makeProcedure(parameters, scanOutDefines(body), env);
-
-// ---------------------------------------------------------------------
-// Eva's simultaneous rule: names forced on demand, memoized in the frame
-// ---------------------------------------------------------------------
-
-/** Per-call-frame state: each internal name's value expression and the set
- * of names currently being forced, for circularity detection. */
-interface EvaFrame {
-  readonly exprs: Map<string, Value>;
-  readonly busy: Set<string>;
-}
-
-const evaFrames = new WeakMap<Env, EvaFrame>();
-
-/** The defines stripped from each letrec-style procedure's body. */
-const evaDefines = new WeakMap<CompoundProc, ReadonlyArray<ScannedDefine>>();
-
-const makeProcedureEva = (parameters: List<Value>, body: List<Value>, env: Env): CompoundProc => {
-  const { defines, rest } = takeDefines(body);
-  const procedure = makeProcedure(parameters, rest, env);
-  if (defines.length > 0) {
-    evaDefines.set(procedure, defines);
-  }
-  return procedure;
-};
-
-const lookupChecked = (variable: SymbolValue, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(lookupVariableValue(variable, env), (value) =>
-    isUnassigned(value)
-      ? Effect.fail(
-          new RuntimeError({
-            message: `variable used before assignment: ${variable.name}`,
-            detail: unassignedName,
-          }),
-        )
-      : Effect.succeed(value),
-  );
-
-/** Eva's lookup: forcing a *unassigned* name computes and memoizes its
- * value expression in this frame; a cycle is an error. */
-const lookupEva = (
-  variable: SymbolValue,
-  env: Env,
-  evaluate: Evaluate,
-): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(lookupVariableValue(variable, env), (value) => {
-    if (!isUnassigned(value)) {
-      return Effect.succeed(value);
-    }
-    const frame = evaFrames.get(env);
-    const expr = frame?.exprs.get(variable.name);
-    if (frame === undefined || expr === undefined) {
-      return Effect.fail(
-        new RuntimeError({
-          message: `variable used before assignment: ${variable.name}`,
-          detail: unassignedName,
-        }),
-      );
-    }
-    if (frame.busy.has(variable.name)) {
-      return Effect.fail(
-        new RuntimeError({
-          message: `circular internal definition: ${variable.name}`,
-          detail: unassignedName,
-        }),
-      );
-    }
-    frame.busy.add(variable.name);
-    return Effect.flatMap(
-      Effect.flatMap(evaluate(expr, env), (final) =>
-        Effect.map(setVariableValue(variable, final, env), () => final),
-      ),
-      (final) => {
-        frame.busy.delete(variable.name);
-        return Effect.succeed(final);
-      },
-    );
-  });
-
-const applyProcedureEva = (
+const applyForced = (
   procedure: Value,
-  args: List<Value>,
-  evalSequenceFrom: (exps: List<Value>, env: Env) => Effect.Effect<Value, EvaluationError>,
-): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag !== "Compound") {
-    return applyProcedure(procedure, args);
-  }
-  const defines = evaDefines.get(procedure) ?? [];
-  return Effect.flatMap(
-    extendEnvironment(
-      concatLists([procedure.params, listOf(defines.map((d) => d.name))]),
-      concatLists([args, listOf(defines.map(() => unassigned()))]),
-      procedure.env,
-    ),
-    (newEnv) => {
-      evaFrames.set(newEnv, {
-        exprs: new Map(defines.map((d) => [d.name.name, d.value])),
-        busy: new Set<string>(),
-      });
-      return evalSequenceFrom(procedure.body, newEnv);
-    },
-  );
-};
-
-/** Applies a compound body through this dispatch, not the module's. */
-const applyProcedureFromDispatch = (
-  procedure: Value,
-  args: List<Value>,
-  evalSequenceFrom: (exps: List<Value>, env: Env) => Effect.Effect<Value, EvaluationError>,
-): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag !== "Compound") {
-    return applyProcedure(procedure, args);
-  }
-  return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-    evalSequenceFrom(procedure.body, newEnv),
-  );
-};
-
-// ---------------------------------------------------------------------
-// let, so the debated program can be written as the book writes it
-// ---------------------------------------------------------------------
-
-export const isLet = (exp: Value): exp is Cons<Value> =>
-  exp._tag === "Cons" && exp.head._tag === "Symbol" && exp.head.name === "let";
-
-/** The book's let->combination: ((lambda (names...) body...) inits...). */
-export const letToCombination = (exp: Cons<Value>): Value => {
-  const bindingList = exp.tail;
-  if (bindingList._tag !== "Cons") {
-    throw new RuntimeError({ message: "malformed let: missing bindings", detail: format(exp) });
-  }
-  const names: Value[] = [];
-  const inits: Value[] = [];
-  const first = bindingList.head;
-  let rest: List<Value>;
-  if (first._tag === "Cons" || first._tag === "Nil") {
-    rest = first;
-  } else {
-    throw new RuntimeError({
-      message: "malformed let: bindings must be a list",
-      detail: format(first),
-    });
-  }
-  while (rest._tag === "Cons") {
-    const binding = rest.head;
-    if (binding._tag !== "Cons" || binding.tail._tag !== "Cons") {
-      throw new RuntimeError({ message: "malformed let binding", detail: format(binding) });
-    }
-    names.push(binding.head);
-    inits.push(binding.tail.head);
-    rest = rest.tail;
-  }
-  const lambda = cons<Value>(symbol("lambda"), cons(listOf(names), bindingList.tail));
-  return cons<Value>(lambda, listOf(inits));
-};
-
-// ---------------------------------------------------------------------
-// the three evaluators over one dispatch
-// ---------------------------------------------------------------------
-
-const evalSequenceWith = (
-  evaluate: Evaluate,
-  exps: List<Value>,
+  args: ReadonlyArray<Value>,
   env: Env,
-): Effect.Effect<Value, EvaluationError> => {
-  if (exps._tag === "Nil") {
-    return Effect.fail(new RuntimeError({ message: "Empty sequence: EVAL", detail: "" }));
+  forcing: Forcing,
+): Outcome => {
+  if (isPrimitive(procedure)) {
+    return procedure.fn(args);
   }
-  if (isLastExp(exps)) {
-    return evaluate(firstExp(exps), env);
+  if (!isClosure(procedure)) {
+    return fail({ tag: "not-callable", detail: "simultaneous rule: value is not a procedure" });
   }
-  return Effect.flatMap(evaluate(firstExp(exps), env), () =>
-    evalSequenceWith(evaluate, restExps(exps), env),
-  );
+  const extended = extendEnvironment(procedure.params, args, procedure.env);
+  if (extended.tag === "error") {
+    return fail(extended.error);
+  }
+  return outcomeOf(forcing.session.execSequence(procedure.body.body, extended.env));
 };
 
-/** Builds the evaluator that follows `scope`'s rule for internal defines. */
-export const makeDefineScopingEvaluator = (scope: DefinitionScope): Evaluate => {
-  const evaluate: Evaluate = (exp, env) => {
-    if (isSelfEvaluating(exp)) {
-      return Effect.succeed(exp);
-    }
-    if (isVariable(exp)) {
-      if (scope === "sequential") {
-        return lookupVariableValue(exp, env);
+/** The forcing reader: sibling reads force their value expression. */
+export const evalForcing = (expr: Expr, env: Env, forcing: Forcing): Outcome => {
+  switch (expr.tag) {
+    case "number":
+    case "string":
+    case "boolean":
+      return ok(expr.value);
+    case "null":
+      return ok(null);
+    case "undefined":
+      return ok(undefined);
+    case "variable":
+      return forcing.values.has(expr.name)
+        ? forceName(expr.name, env, forcing)
+        : forcing.session.lookupVariableValue(expr.name, env);
+    case "binary": {
+      const left = evalForcing(expr.left, env, forcing);
+      if (left.tag === "error") {
+        return left;
       }
-      if (scope === "scanned") {
-        return lookupChecked(exp, env);
+      const right = evalForcing(expr.right, env, forcing);
+      return right.tag === "error" ? right : applyBinaryOperation(expr.op, left.value, right.value);
+    }
+    case "unary": {
+      const operand = evalForcing(expr.operand, env, forcing);
+      return operand.tag === "error" ? operand : applyUnaryOperation(expr.op, operand.value);
+    }
+    case "logical": {
+      const left = evalForcing(expr.left, env, forcing);
+      if (left.tag === "error") {
+        return left;
       }
-      return lookupEva(exp, env, evaluate);
+      if (typeof left.value !== "boolean") {
+        return fail({
+          tag: "bad-operand",
+          operator: expr.op,
+          detail: "left operand is not a boolean",
+        });
+      }
+      const shortCircuits = expr.op === "&&" ? !left.value : left.value;
+      if (shortCircuits) {
+        return ok(left.value);
+      }
+      const right = evalForcing(expr.right, env, forcing);
+      if (right.tag === "error") {
+        return right;
+      }
+      return typeof right.value === "boolean"
+        ? ok(right.value)
+        : fail({ tag: "bad-operand", operator: expr.op, detail: "right operand is not a boolean" });
     }
-    if (isQuoted(exp)) {
-      return Effect.succeed(textOfQuotation(exp));
+    case "conditional": {
+      const test = evalForcing(expr.test, env, forcing);
+      if (test.tag === "error") {
+        return test;
+      }
+      return evalForcing(test.value === true ? expr.consequent : expr.alternative, env, forcing);
     }
-    if (isAssignment(exp)) {
-      return Effect.flatMap(evaluate(assignmentValue(exp), env), (value) =>
-        Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-      );
+    case "assign": {
+      if (expr.target.tag !== "variable") {
+        return forcing.session.evaluate(expr, env);
+      }
+      const value = evalForcing(expr.value, env, forcing);
+      return value.tag === "error" ? value : setVariableValue(expr.target.name, value.value, env);
     }
-    if (isDefinition(exp)) {
-      return Effect.flatMap(evaluate(definitionValue(exp), env), (value) =>
-        Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-      );
+    case "arrow": {
+      const names: string[] = [];
+      let rest: string | null = null;
+      for (const parameter of expr.params) {
+        if (parameter.kind === "rest") {
+          rest = parameter.name;
+          continue;
+        }
+        names.push(parameter.name);
+      }
+      return ok(makeClosure(names, rest, expr.body, env));
     }
-    if (isIf(exp)) {
-      return Effect.flatMap(evaluate(ifPredicate(exp), env), (predicate) =>
-        isTrue(predicate) ? evaluate(ifConsequent(exp), env) : evaluate(ifAlternative(exp), env),
-      );
+    case "call": {
+      const procedure = evalForcing(expr.callee, env, forcing);
+      if (procedure.tag === "error") {
+        return procedure;
+      }
+      const args: Value[] = [];
+      for (const arg of expr.args) {
+        const value = evalForcing(arg.expr, env, forcing);
+        if (value.tag === "error") {
+          return value;
+        }
+        args.push(value.value);
+      }
+      return applyForced(procedure.value, args, env, forcing);
     }
-    if (isLet(exp)) {
-      return evaluate(letToCombination(exp), env);
-    }
-    if (isLambda(exp)) {
-      const maker =
-        scope === "sequential"
-          ? makeProcedure
-          : scope === "scanned"
-            ? makeProcedureScanned
-            : makeProcedureEva;
-      return Effect.succeed(maker(lambdaParameters(exp), lambdaBody(exp), env));
-    }
-    if (isBegin(exp)) {
-      return evalSequenceWith(evaluate, beginActions(exp), env);
-    }
-    if (isCond(exp)) {
-      return evaluate(condToIf(exp), env);
-    }
-    if (isApplication(exp)) {
-      return Effect.flatMap(evaluate(operator(exp), env), (procedure) =>
-        Effect.flatMap(
-          scope === "sequential"
-            ? listOfValues(operands(exp), env)
-            : listOfValuesFrom(operands(exp), env),
-          (args) => {
-            if (scope === "sequential") {
-              return applyProcedure(procedure, args);
-            }
-            if (scope === "scanned") {
-              return applyProcedureFromDispatch(procedure, args, (exps2, env2) =>
-                evalSequenceWith(evaluate, exps2, env2),
-              );
-            }
-            return applyProcedureEva(procedure, args, (exps2, env2) =>
-              evalSequenceWith(evaluate, exps2, env2),
-            );
-          },
-        ),
-      );
-    }
-    return Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-  };
-  const listOfValuesFrom = (
-    exps: List<Value>,
-    env: Env,
-  ): Effect.Effect<List<Value>, EvaluationError> => {
-    if (exps._tag === "Nil") {
-      return Effect.succeed(nil);
-    }
-    return Effect.flatMap(evaluate(exps.head, env), (first) =>
-      Effect.map(listOfValuesFrom(exps.tail, env), (rest) => cons(first, rest)),
-    );
-  };
-  return evaluate;
+    default:
+      return forcing.session.evaluate(expr, env);
+  }
 };
 
-/** Runs the debated program under one of the three rules. */
-export const runDebatedProgram = (scope: DefinitionScope): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(setupEnvironment(), (env) =>
-    makeDefineScopingEvaluator(scope)(read(debatedProgram), env),
-  );
+/**
+ * Eva's rule: simultaneous definitions with memoized forcing. Every
+ * internal name is pre-bound uninitialized; each write's value
+ * expression forces its siblings to their final values.
+ */
+export const execSimultaneous = (
+  items: ReadonlyArray<Decl | Stmt>,
+  env: Env,
+  session: Session = new Session("core"),
+): Completion => {
+  const scanned = scanOutDefinitions(items);
+  const values = new Map<string, Expr>();
+  for (const item of scanned.body) {
+    if (
+      item.tag === "expr-stmt" &&
+      item.expr.tag === "assign" &&
+      item.expr.target.tag === "variable"
+    ) {
+      values.set(item.expr.target.name, item.expr.value);
+    }
+  }
+  const forcing: Forcing = { values, progress: new Set(), session };
+  for (const name of scanned.names) {
+    addUninitialized(name, env);
+  }
+  const rest: Array<Decl | Stmt> = [];
+  for (const item of scanned.body) {
+    if (
+      item.tag === "expr-stmt" &&
+      item.expr.tag === "assign" &&
+      item.expr.target.tag === "variable"
+    ) {
+      const forced = forceName(item.expr.target.name, env, forcing);
+      if (forced.tag === "error") {
+        return failed(forced.error);
+      }
+      continue;
+    }
+    rest.push(item);
+  }
+  return session.execSequence(rest, env);
+};
+
+/** Sequential application: the engine's own rule. */
+export const applyRuleSequential = (
+  items: ReadonlyArray<Decl | Stmt>,
+  args: ReadonlyArray<Value>,
+  params: ReadonlyArray<string>,
+  env: Env,
+  session: Session = new Session("core"),
+): Outcome => {
+  const extended = extendEnvironment(params, args, env);
+  if (extended.tag === "error") {
+    return fail(extended.error);
+  }
+  return outcomeOf(session.execSequence(items, extended.env));
+};
 
 export function ex_4_19(): string {
   return (
-    "The sequential rule gives 16, Alyssa's scanned simultaneous rule gives an error, and " +
-    "Eva's simultaneous rule with value expressions that see each other's final values " +
-    "gives 20. I support the Alyssa/MIT position for real systems: when a program's " +
-    "internal defines violate the restrictions that make the readings agree, an error is " +
-    "better than whichever answer falls out of the mechanism. Eva's reading is still " +
-    "implementable, and this file implements it: pre-bind every internal name to " +
-    "*unassigned* and force each name's value expression on first read, memoizing the " +
-    "value into the frame, so every expression sees final values; a forced name that " +
-    "reads itself is a circular definition and errors."
+    "The guest runtime settles the debate on Alyssa's side: internal names are pre-bound " +
+    "as uninitialized cells, so the sibling read in `const b = a + x; const a = 5;` faults " +
+    "with tdz-access instead of silently answering 16, and the scanned rule answers the " +
+    "same fault. Ben's 16 is unreachable in this guest — it needs sequential define " +
+    "semantics the typed runtime excludes. Eva's rule answers 20: forcing a to its final " +
+    "value 5 gives b = 15 and the answer a + b = 20. A force cycle is a circular-definition " +
+    "error, not a hang."
   );
 }

@@ -16,7 +16,7 @@ export function squareListIter(_items: List<number>): List<number> {
   throw new PendingSolution();
 }
 
-/** The second rewrite's shape with the cons arguments interchanged. */
+/** The second rewrite's shape with the consPair arguments interchanged. */
 export function squareListSwapped(_items: List<number>): Tree<number> {
   throw new PendingSolution();
 }

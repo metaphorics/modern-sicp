@@ -10,7 +10,7 @@ import {
   type GenError,
   makeComplexFromRealImag,
   makeRational,
-  makeSchemeNumber,
+  makeTsNumber,
   op,
   put,
 } from "../../packages/ch2/src/05-generic-operations.js";
@@ -36,10 +36,10 @@ const realContents = (c: ArithContents): number | undefined =>
 export const installRaise = (): void => {
   put(
     "raise",
-    ["scheme-number"],
+    ["ts-number"],
     op((args) => {
       const x = args[0];
-      return typeof x === "bigint" ? ok(makeRational(x, 1n)) : missRaise("scheme-number");
+      return typeof x === "bigint" ? ok(makeRational(x, 1n)) : missRaise("ts-number");
     }),
   );
   put(
@@ -74,6 +74,6 @@ const missRaise = (tag: string): Result<ArithDatum, GenError> => ({
 export const raise = (x: ArithDatum): Result<ArithDatum, GenError> => applyGeneric("raise", x);
 
 /** The tower's constructors, for the tests. */
-export const sn83 = (n: bigint): bigint => makeSchemeNumber(n);
+export const sn83 = (n: bigint): bigint => makeTsNumber(n);
 export const rat83 = (n: bigint, d: bigint) => makeRational(n, d);
 export const real83 = (x: number): Tagged<"real", number> => attachTag("real", x);

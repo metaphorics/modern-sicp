@@ -1,82 +1,133 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { setupEnvironment } from "../../packages/ch4/src/01-metacircular.js";
-import type { Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import { cons, type List, nil } from "../../packages/ch4/src/list.js";
-import { format, readAll } from "../../packages/ch4/src/read.js";
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import { format } from "../../packages/ch4/src/read.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  evalStringScanned,
-  ex_4_16,
-  fDefinition,
-  scanOutDefines,
-  unassignedMarker,
-} from "./ex_4_16.js";
+  bin,
+  bool,
+  call,
+  cond,
+  type Decl,
+  exprStmt,
+  functionDecl,
+  ident,
+  num,
+  param,
+  returnStmt,
+  type Stmt,
+  varDecl,
+} from "../../packages/ch4/src/syntax/ast.js";
+import { noSpan } from "../../packages/ch4/src/syntax/diagnostics.js";
+import { applyScanned, execScanned, scannedProcedure, scanOutDefinitions } from "./ex_4_16.js";
 
-const fromValues = (items: ReadonlyArray<Value>): List<Value> =>
-  items.reduceRight<List<Value>>((tail, head) => cons(head, tail), nil);
+const session = (): { session: Session; env: Env } => {
+  const engine = new Session("core");
+  return { session: engine, env: engine.globalEnv() };
+};
 
-const failureOf = (run: Effect.Effect<Value, EvaluationError>): Effect.Effect<EvaluationError> =>
-  Effect.flatMap(Effect.result(run), (outcome) =>
-    outcome._tag === "Failure"
-      ? Effect.succeed(outcome.failure)
-      : Effect.die(new Error("expected a failure")),
-  );
+/** The observable result: the rendered value, or the fault category and name. */
+const shown = (outcome: Outcome): string => {
+  if (outcome.tag === "ok") {
+    return format(outcome.value);
+  }
+  return outcome.error.tag === "tdz-access" || outcome.error.tag === "unbound-name"
+    ? `error:${outcome.error.tag}:${outcome.error.name}`
+    : `error:${outcome.error.tag}`;
+};
 
-const runtimeDetail = (error: EvaluationError): string =>
-  error._tag === "RuntimeError" ? error.detail : "<not a RuntimeError>";
+/** Erases spans so two constructed trees can be compared structurally. */
+const normalize = (value: object): unknown =>
+  JSON.parse(JSON.stringify(value, (key, item) => (key === "span" ? null : item)));
 
 describe("exercise 4.16: scan out internal defines", () => {
-  it.effect("scan-out-defines produces the let-and-set! shape", () =>
-    Effect.sync(() => {
-      const body = fromValues(readAll("(define a 1) (define b 2) (+ a b)"));
-      const scanned = scanOutDefines(body);
-      expect(format(scanned)).toBe(
-        "((let ((a (quote *unassigned*)) (b (quote *unassigned*))) (set! a 1) (set! b 2) (+ a b)))",
-      );
-    }),
-  );
+  it("the scan keeps one pre-bound name per declaration and the writes in place", () => {
+    const items: Array<Decl> = [
+      varDecl("const", "a", num(1), null, noSpan),
+      varDecl("const", "b", num(2), null, noSpan),
+    ];
+    const scanned = scanOutDefinitions(items);
+    expect(scanned.names).toEqual(["a", "b"]);
+    const { session: engine, env } = session();
+    const run = execScanned(scanned, env, engine);
+    expect(run.tag).toBe("normal");
+  });
 
-  it.effect("a body with no defines is unchanged", () =>
-    Effect.sync(() => {
-      const body = fromValues(readAll("(set! a 1) (+ a 1)"));
-      expect(scanOutDefines(body)).toStrictEqual(body);
-    }),
-  );
+  it("a define-free body is unchanged", () => {
+    const items: Array<Decl | Stmt> = [exprStmt(bin("+", num(1), num(2)), noSpan)];
+    const scanned = scanOutDefinitions(items);
+    expect(scanned.names).toEqual([]);
+    expect(normalize(scanned.body)).toEqual(normalize(items));
+  });
 
-  it.effect("the scanned marker is the *unassigned* symbol", () =>
-    Effect.sync(() => {
-      expect(unassignedMarker).toStrictEqual({ _tag: "Symbol", name: "*unassigned*" });
-    }),
-  );
+  it("mutually recursive internal definitions answer false for 7 and true for 8", () => {
+    const evenOdd = (callName: string): Array<Decl | Stmt> => [
+      functionDecl(
+        "even?",
+        [param("n")],
+        [
+          exprStmt(
+            cond(
+              bin("===", ident("n"), num(0)),
+              bool(true),
+              call(ident("odd?"), [bin("-", ident("n"), num(1))]),
+            ),
+          ),
+        ],
+      ),
+      functionDecl(
+        "odd?",
+        [param("n")],
+        [
+          exprStmt(
+            cond(
+              bin("===", ident("n"), num(0)),
+              bool(false),
+              call(ident("even?"), [bin("-", ident("n"), num(1))]),
+            ),
+          ),
+        ],
+      ),
+      returnStmt(call(ident(callName), [num(7)])),
+    ];
+    const first = session();
+    const procedure7 = scannedProcedure([], evenOdd("even?"), first.env);
+    expect(shown(applyScanned(procedure7, [], first.session))).toBe("false");
+    const second = session();
+    const items = evenOdd("even?").slice(0, 2);
+    items.push(returnStmt(call(ident("even?"), [num(8)])));
+    const procedure8 = scannedProcedure([], items, second.env);
+    expect(shown(applyScanned(procedure8, [], second.session))).toBe("true");
+  });
 
-  it.effect("the book's mutual even?/odd? f works under the scan", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      yield* evalStringScanned(fDefinition, env);
-      expect(yield* evalStringScanned("(f 7)", env)).toStrictEqual({ _tag: "Boolean", b: false });
-      expect(yield* evalStringScanned("(f 8)", env)).toStrictEqual({ _tag: "Boolean", b: true });
-    }),
-  );
+  it("a write that reads a sibling before its write fails with tdz-access on that name", () => {
+    const { session: engine, env } = session();
+    const scanned = scanOutDefinitions([
+      varDecl("const", "a", ident("b"), null, noSpan),
+      varDecl("const", "b", num(1), null, noSpan),
+      returnStmt(ident("a"), noSpan),
+    ]);
+    const run = execScanned(scanned, env, engine);
+    expect(run.tag).toBe("error");
+    if (run.tag === "error") {
+      expect(shown({ tag: "error", error: run.error })).toBe("error:tdz-access:b");
+    }
+  });
 
-  it.effect("reading a name before its set! fails", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      yield* evalStringScanned("(define (g) (define a b) (define b 1) a)", env);
-      const failure = yield* failureOf(evalStringScanned("(g)", env));
-      expect(failure._tag).toBe("RuntimeError");
-      expect(runtimeDetail(failure)).toBe("b");
-    }),
-  );
-
-  it.effect("the answer names make-procedure as the installation point", () =>
-    Effect.sync(() => {
-      expect(ex_4_16()).toContain("make-procedure");
-    }),
-  );
+  it("the scan runs at procedure creation, not per body read", () => {
+    let scans = 0;
+    const { env } = session();
+    const procedure = scannedProcedure([], [returnStmt(num(1))], env, () => {
+      scans += 1;
+    });
+    const again = session();
+    applyScanned(procedure, [], again.session);
+    applyScanned(procedure, [], again.session);
+    applyScanned(procedure, [], again.session);
+    expect(scans).toBe(1);
+  });
 });

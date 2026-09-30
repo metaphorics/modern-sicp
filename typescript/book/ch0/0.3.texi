@@ -15,7 +15,8 @@ exactly this way:
 const factorial = (n: number): number =>
   n <= 1 ? 1 : n * factorial(n - 1);
 
-const fib = (n: number): number => (n < 2 ? n : fib(n - 1) + fib(n - 2));
+const fib = (n: number): number =>
+  n < 2 ? n : fib(n - 1) + fib(n - 2);
 
 factorial(18)
 // => 6402373705728000
@@ -129,7 +130,7 @@ The streams of @ref{3.5} need two properties a generator does not have.
 They are memoized, so two cursors over one stream force each element
 once; and they permit self-reference, where a tail must capture the very
 stream being defined. Chapter 3 therefore ships a second type, the
-memoized @code{LazyList} of @ref{3.5.1}, and the rule this book follows
+memoized @code{Stream} of @ref{3.5.1}, and the rule this book follows
 from @ref{3.5} onward: a generator carries a pipeline whose elements are
 consumed as they are produced, and a stream carries a shared, memoized
 structure that may observe and reuse its own past.

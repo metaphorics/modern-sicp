@@ -2,7 +2,7 @@
 // Original exercise
 
 /**
- * Exercise 4.25: suppose that in ordinary applicative-order Scheme we define
+ * Exercise 4.25: suppose that in ordinary applicative-order evaluation we define
  * unless as a procedure and then define factorial in terms of it. What happens
  * when we evaluate (factorial 5)? Do the definitions work in a normal-order
  * language?

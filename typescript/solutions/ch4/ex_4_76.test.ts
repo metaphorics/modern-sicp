@@ -2,17 +2,35 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { frameOf, readQuery } from "../../packages/ch4/src/04-logic.js";
-import { joinFrames, mergeFrames } from "./ex_4_76.js";
+import { makeBinding } from "../../packages/ch4/src/04-logic.js";
+import { compatiblePair, conflictingPair, mergedAndAgreement, mergeFrames } from "./ex_4_76.js";
 
-describe("4.76", () =>
-  it("merges compatible frames and rejects conflicts", () => {
-    const x = readQuery("?x"),
-      y = readQuery("?y"),
-      one = readQuery("1"),
-      two = readQuery("2");
-    const a = frameOf([[x, one]]);
-    expect(mergeFrames(a, frameOf([[y, two]]))?.bindings).toHaveLength(2);
-    expect(mergeFrames(a, frameOf([[x, two]]))).toBeUndefined();
-    expect(joinFrames([a], [frameOf([[y, two]])])).toHaveLength(1);
-  }));
+describe("exercise 4.76: merging frames for and", () => {
+  it("merges compatible frames across shared variables", () => {
+    const merged = mergeFrames(compatiblePair[0], compatiblePair[1]);
+    expect(merged).toHaveLength(2);
+    expect(merged?.map((binding) => binding.name).sort()).toStrictEqual(["x", "y"]);
+  });
+
+  it("rejects frames disagreeing on a shared variable", () => {
+    expect(mergeFrames(conflictingPair[0], conflictingPair[1])).toBeUndefined();
+  });
+
+  it("unions disjoint frames", () => {
+    const merged = mergeFrames(
+      [makeBinding("a", { tag: "text", value: 1 })],
+      [makeBinding("b", { tag: "text", value: 2 })],
+    );
+    expect(merged).toHaveLength(2);
+  });
+
+  it("agrees clause-at-a-time merging with the delivered conjunction", () => {
+    const [pairwise, direct] = mergedAndAgreement();
+    expect(pairwise).toStrictEqual([
+      'and(supervisor(["Hacker", "Alyssa", "P"], ["Bitdiddle", "Ben"]), address(["Hacker", "Alyssa", "P"], ["Cambridge", ["Mass", "Ave"], "78"]))',
+      'and(supervisor(["Fect", "Cy", "D"], ["Bitdiddle", "Ben"]), address(["Fect", "Cy", "D"], ["Cambridge", ["Ames", "Street"], "3"]))',
+      'and(supervisor(["Tweakit", "Lem", "E"], ["Bitdiddle", "Ben"]), address(["Tweakit", "Lem", "E"], ["Boston", ["Bay", "State", "Road"], "22"]))',
+    ]);
+    expect(direct).toStrictEqual(pairwise);
+  });
+});

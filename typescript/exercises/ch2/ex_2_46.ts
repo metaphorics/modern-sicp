@@ -25,7 +25,7 @@ export function xCorVect(_v: Vect2): number {
   throw new PendingSolution();
 }
 
-/** The book's ycor-vect: the second coordinate. */
+/** The second coordinate selector. */
 export function yCorVect(_v: Vect2): number {
   throw new PendingSolution();
 }

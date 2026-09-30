@@ -5,17 +5,17 @@ import { describe, expect, it } from "vitest";
 
 import { consStream, ones, type Stream, streamTake } from "../../packages/ch3/src/05-streams.js";
 
-import { RC1 } from "./ex_3_73.js";
+import { rc1 } from "./ex_3_73.js";
 
 describe("exercise 3.73: the RC circuit as a signal processor", () => {
-  it("charging from a constant current, RC1 answers the first eight voltages", () => {
-    expect(streamTake(RC1(ones, 0), 8)).toEqual([
+  it("charging from a constant current, rc1 answers the first eight voltages", () => {
+    expect(streamTake(rc1(ones, 0), 8)).toEqual([
       0, 0.5, 0.95, 1.355, 1.7195, 2.04755, 2.342795, 2.6085155,
     ]);
   });
 
   it("tracks the closed form v(t) = R i (1 - e^(-t/RC)) within the step error", () => {
-    const voltages = streamTake(RC1(ones, 0), 8);
+    const voltages = streamTake(rc1(ones, 0), 8);
     const R = 5;
     const C = 1;
     const dt = 0.5;
@@ -31,7 +31,7 @@ describe("exercise 3.73: the RC circuit as a signal processor", () => {
     const zeros: Stream<number> = consStream(0, () => zeros);
     const pulse = (n: number): Stream<number> =>
       n <= 0 ? zeros : consStream(1, () => pulse(n - 1));
-    const voltage = streamTake(RC1(pulse(10), 0), 31);
+    const voltage = streamTake(rc1(pulse(10), 0), 31);
     const charging = voltage.slice(0, 11);
     const discharging = voltage.slice(10);
     expect(charging.every((v, i) => i === 0 || v > (charging[i - 1] ?? 0))).toBe(true);

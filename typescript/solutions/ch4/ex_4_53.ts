@@ -2,75 +2,53 @@
 // Original exercise
 
 /**
- * Exercise 4.53: permanent-set! under if-fail. The trailing (amb) fails
- * every time, but each failure unwinds to the most recent choice point
- * (the prime-sum-pair choices), so each try-again-driven attempt
- * accumulates the next prime-sum pair into pairs under permanent-set!,
- * whose assignment survives. Only when the combinations are spent does the
- * failure reach if-fail, which succeeds with the accumulated list.
+ * Exercise 4.53: permanent accumulation under failure. Every prime-sum
+ * pair is permanently consed onto the list, then the branch fails so
+ * the nearest choice tries another pair. When the choices are spent,
+ * `ifFail` catches the primary failure and returns the accumulated list
+ * once. The answer therefore reverses discovery order; all effects and
+ * fallback delivery happen in the guest evaluator.
  */
-import { Effect } from "effect";
-
-import {
-  makeAmbEvaluator,
-  runAmbText,
-  setupAmbEnvironment,
-} from "../../packages/ch4/src/03-nondeterministic.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runAmbAnswers, type SearchRun } from "../../packages/ch4/src/03-nondeterministic.js";
 import { format } from "../../packages/ch4/src/read.js";
 
-import { library } from "./ex_4_35.js";
-
-/** The prime? machinery the statement's program assumes defined. */
-export const primeDefinitions = `
-(define (remainder a b) (if (< a b) a (remainder (- a b) b)))
-(define (prime? n)
-  (define (smallest-divisor d)
-    (cond ((> (* d d) n) n)
-          ((= (remainder n d) 0) d)
-          (else (smallest-divisor (+ d 1)))))
-  (= (smallest-divisor 2) n))
-(define (prime-sum-pair list1 list2)
-  (let ((a (an-element-of list1))
-        (b (an-element-of list2)))
-    (require (prime? (+ a b)))
-    (list a b)))
+/** The book's prime-sum search, permanent accumulation, and ifFail. */
+export const pairsSource = `
+const remainder = (a: number, b: number): number => a % b;
+const smallest = (n: number, d: number): number =>
+  (d * d > n ? n : (remainder(n, d) === 0 ? d : smallest(n, d + 1)));
+const isPrime = (n: number): boolean => n > 1 && smallest(n, 2) === n;
+const anElementOf = (items: number[]): number => {
+  require(items.length > 0);
+  const first = items[0];
+  return choose(first === undefined ? -1 : first, anElementOf(items.slice(1)));
+};
+let pairs: number[][] = [];
+const findAndAccumulate = (): number[] => {
+  const a = anElementOf([1, 3, 5, 8]);
+  const b = anElementOf([20, 35, 110]);
+  require(isPrime(a + b));
+  const pair = [a, b];
+  permanentAssign(pairs, [pair, ...pairs]);
+  require(false);
+  return pair;
+};
+ifFail(findAndAccumulate(), pairs);
 `;
 
-/** The statement's program: prime-sum pairs accumulate under a failing amb. */
-export const pairsProgram = `
-(let ((pairs '()))
-  (if-fail (let ((p (prime-sum-pair '(1 3 5 8) '(20 35 110))))
-             (permanent-set! pairs (cons p pairs))
-             (amb))
-           pairs))
-`;
+/** The actual search run, with live failure and step counters. */
+export const pairRun = (): SearchRun => runAmbAnswers(pairsSource, "amb-depth-first-experiment", 1);
 
-/** The accumulated list and whether the search ran dry after it. */
-export const result = (): Effect.Effect<{ value: string; exhausted: boolean }, EvaluationError> =>
-  Effect.flatMap(setupAmbEnvironment(), (env) =>
-    Effect.map(
-      runAmbText(
-        makeAmbEvaluator({ permanentSet: true, ifFail: true }),
-        library + primeDefinitions + pairsProgram,
-        env,
-      ),
-      (run) => ({
-        value: run.answers.map(format).join(""),
-        exhausted: run.exhausted,
-      }),
-    ),
-  );
+/** The handler's accumulated list, rendered. */
+export const accumulatedPairs = (): ReadonlyArray<string> =>
+  pairRun().answers.map((value) => format(value));
 
 export function ex_4_53(): string {
-  const observed = Effect.runSync(result());
+  const run = pairRun();
   return (
-    "The trailing (amb) fails every time, but each failure unwinds to the " +
-    "most recent choice point, so each attempt accumulates the next " +
-    "prime-sum pair into pairs under permanent-set!, whose assignment " +
-    "survives the backtrack. Only when the combinations are spent does the " +
-    "failure reach if-fail, which succeeds with the accumulated list: " +
-    `${observed.value}, and try-again reports exhaustion ` +
-    `${observed.exhausted ? "as predicted" : "unexpectedly"}.`
+    `The guest handler delivers ${run.answers.map((value) => format(value)).join("")}; ` +
+    `the search records ${run.failures} failed computations and ${run.steps} ` +
+    `deferred steps before exhaustion. The permanent writes survive each ` +
+    `failed branch; ifFail runs only after the combinations are spent.`
   );
 }

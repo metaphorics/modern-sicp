@@ -8,14 +8,14 @@ import {
   divPoly,
   divTerms,
   makePolynomial,
-  makeSchemeNumber,
+  makeTsNumber,
   type Polynomial,
   remainderTerms,
   show,
   showPoly,
 } from "../../packages/ch2/src/05-generic-operations.js";
 
-const sn = (n: bigint) => makeSchemeNumber(n);
+const sn = (n: bigint) => makeTsNumber(n);
 const poly = (terms: ReadonlyArray<readonly [bigint, bigint]>) =>
   terms.map(([o, c]) => [o, sn(c)] as const);
 
@@ -39,7 +39,7 @@ const divisor = (): Polynomial =>
 describe("exercise 2.91: polynomial division", () => {
   it("divides x^5 - 1 by x^2 - 1, the book's example", () => {
     expect(show(div(dividend(), divisor()))).toBe(
-      "(quotient-remainder (polynomial x (3 1) (1 1)) (polynomial x (1 1) (0 -1)))",
+      "[quotient-remainder, [polynomial, x, [3, 1], [1, 1]], [polynomial, x, [1, 1], [0, -1]]]",
     );
   });
 
@@ -88,7 +88,7 @@ describe("exercise 2.91: polynomial division", () => {
       ]),
     );
     expect(r._tag === "Ok" && showPoly({ variable: "x", terms: r.value })).toBe(
-      "(polynomial x (1 1) (0 -1))",
+      "[polynomial, x, [1, 1], [0, -1]]",
     );
   });
 

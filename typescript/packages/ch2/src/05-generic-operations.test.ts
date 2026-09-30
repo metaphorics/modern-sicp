@@ -10,6 +10,7 @@ import {
   divPoly,
   equQ,
   exp,
+  get,
   greatestCommonDivisor,
   imagPart,
   isZeroQ,
@@ -18,7 +19,7 @@ import {
   makeComplexFromRealImag,
   makePolynomial,
   makeRational,
-  makeSchemeNumber,
+  makeTsNumber,
   mul,
   mulTerms,
   realPart,
@@ -26,7 +27,7 @@ import {
   sub,
 } from "./05-generic-operations.js";
 
-const sn = (n: bigint): bigint => makeSchemeNumber(n);
+const sn = (n: bigint): bigint => makeTsNumber(n);
 const rat = (n: bigint, d: bigint) => makeRational(n, d);
 const cpx = (x: number, y: number) => makeComplexFromRealImag(x, y);
 const poly = (v: string, terms: ReadonlyArray<readonly [bigint, bigint]>) =>
@@ -39,21 +40,28 @@ describe("section 2.5: systems with generic operations", () => {
   it("2.5.1 dispatches add, sub, mul, and div through the table", () => {
     expect(show(add(sn(3n), sn(4n)))).toBe("7");
     expect(show(sub(sn(3n), sn(4n)))).toBe("-1");
-    expect(show(add(rat(1n, 2n), rat(1n, 3n)))).toBe("(rational 5 6)");
-    expect(show(mul(rat(2n, 3n), rat(3n, 4n)))).toBe("(rational 1 2)");
-    expect(show(div(rat(1n, 2n), rat(1n, 3n)))).toBe("(rational 3 2)");
-    expect(show(add(cpx(1, 2), cpx(3, 4)))).toBe("(complex rectangular 4 6)");
-    expect(show(sub(cpx(3, 4), cpx(1, 2)))).toBe("(complex rectangular 2 2)");
+    expect(show(add(rat(1n, 2n), rat(1n, 3n)))).toBe("[rational, 5, 6]");
+    expect(show(mul(rat(2n, 3n), rat(3n, 4n)))).toBe("[rational, 1, 2]");
+    expect(show(div(rat(1n, 2n), rat(1n, 3n)))).toBe("[rational, 3, 2]");
+    expect(show(add(cpx(1, 2), cpx(3, 4)))).toBe("[complex, rectangular, 4, 6]");
+    expect(show(sub(cpx(3, 4), cpx(1, 2)))).toBe("[complex, rectangular, 2, 2]");
     expect(show(mul(cpx(1, 2), cpx(3, 4)))).toBe(
-      "(complex polar 11.180339887498949 2.0344439357957027)",
+      "[complex, polar, 11.180339887498949, 2.0344439357957027]",
     );
     expect(show(div(cpx(1, 2), cpx(3, 4)))).toBe(
-      "(complex polar 0.447213595499958 0.17985349979247822)",
+      "[complex, polar, 0.447213595499958, 0.17985349979247822]",
     );
   });
 
+  it("registers constructors and polynomial operations under their canonical keys", () => {
+    expect(get("make-from-real-imag", ["complex"])._tag).toBe("Some");
+    expect(get("add", ["polynomial", "polynomial"])._tag).toBe("Some");
+    expect(get("mul", ["polynomial", "polynomial"])._tag).toBe("Some");
+    expect(get("div", ["polynomial", "polynomial"])._tag).toBe("Some");
+  });
+
   it("2.5.1 builds every kind of number through the table's constructors", () => {
-    expect(makeSchemeNumber(7n)).toBe(7n);
+    expect(makeTsNumber(7n)).toBe(7n);
     expect(rat(3n, 6n)).toEqual({ _tag: "rational", contents: [1n, 2n] });
     expect(cpx(3, 4)).toEqual({
       _tag: "complex",
@@ -71,15 +79,15 @@ describe("section 2.5: systems with generic operations", () => {
     expect(show(magnitude(cpx(3, 4)))).toBe("5");
     expect(show(magnitude(makeComplexFromMagAng(2, 1.5707963267948966)))).toBe("2");
     expect(show(magnitude(sn(3n)))).toBe(
-      "No method for these types: APPLY-GENERIC (magnitude (scheme-number))",
+      'No method for these types: applyGeneric("magnitude", ["ts-number"])',
     );
   });
 
   it("2.5.2 combines complex and ordinary numbers by coercion", () => {
-    expect(show(add(cpx(1, 2), sn(4n)))).toBe("(complex rectangular 5 2)");
-    expect(show(mul(sn(2n), cpx(3, 4)))).toBe("(complex polar 10 0.9272952180016122)");
+    expect(show(add(cpx(1, 2), sn(4n)))).toBe("[complex, rectangular, 5, 2]");
+    expect(show(mul(sn(2n), cpx(3, 4)))).toBe("[complex, polar, 10, 0.9272952180016122]");
     expect(show(exp(cpx(1, 2), cpx(3, 4)))).toBe(
-      "No method for these types: APPLY-GENERIC (exp (complex complex))",
+      'No method for these types: applyGeneric("exp", ["complex", "complex"])',
     );
     expect(show(exp(sn(2n), sn(10n)))).toBe("1024");
   });
@@ -105,8 +113,8 @@ describe("section 2.5: systems with generic operations", () => {
       [1n, 1n],
       [0n, 3n],
     ]);
-    expect(show(add(p, q))).toBe("(polynomial x (2 1) (1 -1) (0 4))");
-    expect(show(mul(p, q))).toBe("(polynomial x (3 1) (2 1) (1 -5) (0 3))");
+    expect(show(add(p, q))).toBe("[polynomial, x, [2, 1], [1, -1], [0, 4]]");
+    expect(show(mul(p, q))).toBe("[polynomial, x, [3, 1], [2, 1], [1, -5], [0, 3]]");
   });
 
   it("2.5.3 recurses data-directedly through polynomial coefficients", () => {
@@ -151,7 +159,7 @@ describe("section 2.5: systems with generic operations", () => {
       ],
     ]);
     expect(show(mul(p, q))).toBe(
-      "(polynomial x (3 (polynomial y (2 1) (1 -1) (0 -2))) (2 (polynomial y (4 1) (3 2) (2 -2) (1 8) (0 5))) (1 (polynomial y (5 1) (3 1) (2 8) (1 -3) (0 9))) (0 (polynomial y (4 1) (3 -1) (1 7) (0 -7))))",
+      "[polynomial, x, [3, [polynomial, y, [2, 1], [1, -1], [0, -2]]], [2, [polynomial, y, [4, 1], [3, 2], [2, -2], [1, 8], [0, 5]]], [1, [polynomial, y, [5, 1], [3, 1], [2, 8], [1, -3], [0, 9]]], [0, [polynomial, y, [4, 1], [3, -1], [1, 7], [0, -7]]]]",
     );
   });
 
@@ -159,7 +167,7 @@ describe("section 2.5: systems with generic operations", () => {
     const inX = poly("x", [[1n, 1n]]);
     const inY = poly("y", [[1n, 1n]]);
     expect(show(add(inX, inY))).toBe(
-      "Polys not in same var: ADD-POLY ((polynomial x (1 1)) (polynomial y (1 1)))",
+      "Polys not in same var: add([polynomial, x, [1, 1]], [polynomial, y, [1, 1]])",
     );
   });
 
@@ -175,7 +183,7 @@ describe("section 2.5: systems with generic operations", () => {
       ]),
     );
     expect(show(qr)).toBe(
-      "(quotient-remainder (polynomial x (3 1) (1 1)) (polynomial x (1 1) (0 -1)))",
+      "[quotient-remainder, [polynomial, x, [3, 1], [1, 1]], [polynomial, x, [1, 1], [0, -1]]]",
     );
     expect(
       divPoly(
@@ -220,7 +228,7 @@ describe("section 2.5: systems with generic operations", () => {
       [3n, 1n],
       [1n, -1n],
     ]);
-    expect(show(greatestCommonDivisor(p1, p2))).toBe("(polynomial x (2 -1) (1 1))");
+    expect(show(greatestCommonDivisor(p1, p2))).toBe("[polynomial, x, [2, -1], [1, 1]]");
     expect(show(greatestCommonDivisor(sn(24n), sn(36n)))).toBe("12");
   });
 

@@ -14,7 +14,7 @@ export class PendingSolution extends Error {
 }
 
 /** Builds a withdrawal processor over a balance cell created by the
- * immediately applied lambda the `let` desugars to. */
+ * immediately invoked closure that the local binding desugars to. */
 export function makeWithdrawLet(_initialAmount: number): never {
   throw new PendingSolution();
 }

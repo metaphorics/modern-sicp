@@ -2,85 +2,126 @@
 // Original exercise
 
 import {
-  arithmeticOperations,
   assign,
   branch,
-  type ControllerLine,
-  c,
-  getRegisterContents,
-  jump,
-  jumpReg,
-  lbl,
-  type Machine,
-  makeMachine,
-  mark,
+  constant,
+  formatMachineStatement,
+  gotoLabel,
+  gotoRegister,
+  labelRef,
+  type MachineStatement,
   op,
-  perform,
-  reg,
+  register,
   restore,
   save,
-  setRegisterContents,
   test,
-  type Value,
-} from "../../packages/ch5/src/02-simulator.js";
-import { expectOk } from "./ex_5_07.js";
+} from "../../packages/ch5/src/01-register-machines.ts";
+import { makeMachine } from "../../packages/ch5/src/02-simulator.ts";
+import { arithmeticOperations, expectOk, mark } from "./ex_5_07.ts";
 
-/** The recursive factorial controller of figure 5.11, transcribed line
- * for line: each level saves continue and n for the recursive call and
- * restores the pair at after-fact. */
-export const recursiveFactorialSimController: ControllerLine[] = [
-  assign("continue", lbl("fact-done")),
+/** Figure 5.11's recursive factorial, transcribed line for line as the
+ * simulator exercises measure it. */
+export const recursiveFactorialSimController: readonly MachineStatement[] = [
+  assign("continue", labelRef("fact-done")),
   mark("fact-loop"),
-  test("=", reg("n"), c(1)),
+  test("=", register("n"), constant(1)),
   branch("base-case"),
   save("continue"),
   save("n"),
-  assign("n", op("-", reg("n"), c(1))),
-  assign("continue", lbl("after-fact")),
-  jump("fact-loop"),
+  assign("n", op("-", register("n"), constant(1))),
+  assign("continue", labelRef("after-fact")),
+  gotoLabel("fact-loop"),
   mark("after-fact"),
   restore("n"),
   restore("continue"),
-  assign("val", op("*", reg("n"), reg("val"))),
-  jumpReg("continue"),
+  assign("val", op("*", register("n"), register("val"))),
+  gotoRegister("continue"),
   mark("base-case"),
-  assign("val", c(1)),
-  jumpReg("continue"),
+  assign("val", constant(1)),
+  gotoRegister("continue"),
   mark("fact-done"),
 ];
 
-/** The controller with the book's measuring perform before fact-done. */
-const measuredController: ControllerLine[] = [
-  ...recursiveFactorialSimController.slice(0, -1),
-  perform("print-stack-statistics"),
-  ...recursiveFactorialSimController.slice(-1),
-];
-
-const runStatistics = (controller: ReadonlyArray<ControllerLine>, n: number): string => {
-  const machine: Machine = expectOk(
-    makeMachine(["n", "continue", "val"], arithmeticOperations, controller),
+/** The executed instructions of one run, label markers excluded: the
+ * trace is the machine's ordered renderings, and the label renderings
+ * in it carry the label-in-effect information the tracing exercises
+ * print. */
+export const instructionTrace = (
+  controller: readonly MachineStatement[],
+  trace: readonly string[],
+): readonly { label: string | null; text: string }[] => {
+  const labels = new Set(
+    controller
+      .filter((line): line is Extract<MachineStatement, { tag: "label" }> => line.tag === "label")
+      .map((line) => formatMachineStatement(line)),
   );
-  expectOk(setRegisterContents(machine, "n", n));
-  expectOk(machine.start());
-  return machine.stack.statisticsLine();
+  let current: string | null = null;
+  const out: { label: string | null; text: string }[] = [];
+  for (const line of trace) {
+    if (labels.has(line)) {
+      current = line.slice(0, -1);
+      continue;
+    }
+    out.push({ label: current, text: line });
+  }
+  return out;
 };
 
-/** One run of a controller with input n, answering the stack statistics
- * line the machine's stack reports. */
-export const factorialStackStatistics = (): string[] => {
-  const table = [1, 2, 3, 4, 5, 6].map(
-    (n) => `n = ${n}: ${runStatistics(recursiveFactorialSimController, n)}`,
-  );
-  const printed = `the measured machine for n = 5 prints: ${runStatistics(measuredController, 5)}`;
-  return [...table, printed];
+const runFactorial = (n: number): { value: number; pushes: number; maxDepth: number } => {
+  const machine = makeMachine({
+    registers: ["n", "val", "continue"],
+    operations: arithmeticOperations,
+    controller: recursiveFactorialSimController,
+  });
+  machine.writeRegister("n", n);
+  const run = machine.run();
+  expectOk(run);
+  const value = machine.readRegister("val");
+  return {
+    value: typeof value === "number" ? value : 0,
+    pushes: run.stackStats.pushes,
+    maxDepth: run.stackStats.maxDepth,
+  };
 };
 
-/** The factorial value itself, for the oracle pairing in the test. */
-export const factorialMachineFactorial = (n: number): Value => {
-  const machine = expectOk(
-    makeMachine(["n", "continue", "val"], arithmeticOperations, recursiveFactorialSimController),
-  );
-  expectOk(setRegisterContents(machine, "n", n));
-  expectOk(machine.start());
-  return expectOk(getRegisterContents(machine, "val"));
+/** The monitored table of exercise 5.14: each level saves continue and
+ * n once, so the counts are exactly 2(n - 1), linear because the
+ * controller is linear-recursive. */
+export const factorialStackStatistics = (): readonly {
+  n: number;
+  pushes: number;
+  maxDepth: number;
+}[] => [1, 2, 3, 4, 5, 6].map((n) => ({ n, ...runFactorial(n) }));
+
+/** The book's own measuring message: the rendered line and the read
+ * counters come from the same run and agree. */
+export const measuredFactorial = (
+  n: number,
+): {
+  printedLine: string;
+  pushes: number;
+  maxDepth: number;
+  value: number;
+} => {
+  const run = runFactorial(n);
+  return {
+    printedLine: `(total-pushes = ${run.pushes} maximum-depth = ${run.maxDepth})`,
+    pushes: run.pushes,
+    maxDepth: run.maxDepth,
+    value: run.value,
+  };
+};
+
+/** The machine whose stack is measured is the factorial machine. */
+export const factorialMachineFactorial = (n: number): number => runFactorial(n).value;
+
+/** Exercise 5.14 answers. */
+export const ex_5_14 = (): readonly string[] => {
+  const table = factorialStackStatistics();
+  const measured = measuredFactorial(5);
+  return [
+    ...table.map((row) => `n = ${row.n}: pushes = ${row.pushes}, maximum depth = ${row.maxDepth}`),
+    `measured n = 5: ${measured.printedLine}`,
+    `factorial machine: ${factorialMachineFactorial(5)}`,
+  ];
 };

@@ -2,190 +2,272 @@
 // Original exercise
 
 /**
- * Exercise 4.6: let expressions are derived expressions. The
- * transformation here is the book's: (let ((v1 e1) ... (vn en)) body)
- * becomes ((lambda (v1 ... vn) body) e1 ... en), built as data with the
- * module's make-lambda, and the eval clause simply evaluates the
- * combination. The full dispatch keeps the recursion inside this file, so
- * let works in nested positions such as procedure bodies.
+ * Exercise 4.6: `let` as a derived expression. The grouped binding node
+ * `LetNode { tag: "let", bindings, body, span }` is the extension this
+ * exercise adds beside the shared syntax — the core parser rejects it,
+ * so it exists only in this experiment's constructed data. `letToCall`
+ * is the book's derivation, `((x1, ..., xn) => { body })(e1, ..., en)`:
+ * one `call` of one `arrow` over the group's names, applied to the
+ * group's initializers, every constructed node carrying the source
+ * node's span. The evaluator's single case lowers and re-evaluates, and
+ * the lowering is total — nested grouped bindings in expressions and in
+ * procedure bodies lower too — so the derived form works everywhere.
  */
-import { Effect } from "effect";
-
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  applyPrimitiveProcedure,
-  assignmentValue,
-  assignmentVariable,
-  beginActions,
-  defineVariableValue,
-  definitionValue,
-  definitionVariable,
-  extendEnvironment,
-  firstExp,
-  firstOperand,
-  ifAlternative,
-  ifConsequent,
-  ifPredicate,
-  isAssignment,
-  isBegin,
-  isDefinition,
-  isIf,
-  isLambda,
-  isLastExp,
-  isPair,
-  isQuoted,
-  isSelfEvaluating,
-  isSymbol,
-  isTrue,
-  isVariable,
-  lambdaBody,
-  lambdaParameters,
-  lookupVariableValue,
-  makeLambda,
-  makeProcedure,
-  noOperands,
-  ok,
-  operands,
-  operator,
-  restExps,
-  restOperands,
-  setVariableValue,
-  taggedList,
-  textOfQuotation,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Evaluate, Value } from "../../packages/ch4/src/core.js";
-import {
-  type EvaluationError,
-  NotAProcedure,
-  RuntimeError,
-  UnknownSyntax,
-} from "../../packages/ch4/src/errors.js";
-import type { Cons, List } from "../../packages/ch4/src/list.js";
-import { cons, nil } from "../../packages/ch4/src/list.js";
-import { format } from "../../packages/ch4/src/read.js";
+  type CaseClause,
+  call,
+  type Decl,
+  type Expr,
+  lam,
+  type ObjectField,
+  param,
+  type Stmt,
+} from "../../packages/ch4/src/syntax/ast.js";
 
-const cadrOf = (exp: Cons<Value>): Value => {
-  const rest = exp.tail;
-  return rest._tag === "Cons" ? rest.head : nil;
-};
+/** One binding of a grouped binding: a name and its initializer. */
+export interface LetBinding {
+  readonly name: string;
+  readonly init: Expr;
+}
 
-const cddrOf = (exp: Cons<Value>): List<Value> => (exp.tail._tag === "Cons" ? exp.tail.tail : nil);
+/** The grouped binding extension node beside the shared syntax. */
+export interface LetNode {
+  readonly tag: "let";
+  readonly bindings: ReadonlyArray<LetBinding>;
+  readonly body: ReadonlyArray<Decl | Stmt>;
+  readonly span: Expr["span"];
+}
 
-/** The book's `let?`: a let whose bindings slot holds a list, not a name. */
-export const isLet = (exp: Value): exp is Cons<Value> =>
-  taggedList("let", exp) && !isSymbol(cadrOf(exp));
+/** The syntax this exercise evaluates: shared expressions plus grouped bindings. */
+export type LetExpr = Expr | LetNode;
 
-const bindingsOf = (exp: Cons<Value>): List<Value> => {
-  const bindings = cadrOf(exp);
-  return bindings._tag === "Cons" || bindings._tag === "Nil" ? bindings : nil;
-};
+/** Builds a grouped binding node. */
+export const letNode = (
+  bindings: ReadonlyArray<LetBinding>,
+  body: ReadonlyArray<Decl | Stmt>,
+  span: Expr["span"],
+): LetNode => ({ tag: "let", bindings, body, span });
 
-const bodyOf = (exp: Cons<Value>): List<Value> => cddrOf(exp);
-
-const bindingVariable = (binding: Value): Value => (isPair(binding) ? binding.head : binding);
-
-const bindingInitializer = (binding: Value): Value => (isPair(binding) ? cadrOf(binding) : binding);
-
-const bindingParts = (bindings: List<Value>, part: (binding: Value) => Value): List<Value> =>
-  bindings._tag === "Cons" ? cons(part(bindings.head), bindingParts(bindings.tail, part)) : nil;
-
-/** The book's `let->combination`: the lambda form as data. */
-export const letToCombination = (exp: Cons<Value>): Value =>
-  cons(
-    makeLambda(bindingParts(bindingsOf(exp), bindingVariable), bodyOf(exp)),
-    bindingParts(bindingsOf(exp), bindingInitializer),
+/**
+ * The book's derivation: `((x1, ..., xn) => { body })(e1, ..., en)`.
+ * Every constructed node copies the source node's span.
+ */
+export const letToCall = (node: LetNode): Expr =>
+  call(
+    lam(
+      node.bindings.map((binding) => param(binding.name, null, node.span)),
+      node.body,
+      node.span,
+    ),
+    node.bindings.map((binding) => binding.init),
+    node.span,
   );
 
-export const evalWithLet: Evaluate = (exp, env) => {
-  if (isSelfEvaluating(exp)) {
-    return Effect.succeed(exp);
+// ---------------------------------------------------------------------
+// Lowering the extension at its typed expression boundary
+// ---------------------------------------------------------------------
+
+export const lowerLetExpr = (expr: LetExpr): Expr => {
+  if (expr.tag === "let") {
+    return letToCall({
+      ...expr,
+      bindings: expr.bindings.map((binding) => ({
+        name: binding.name,
+        init: lowerLetExpr(binding.init),
+      })),
+      body: lowerLetItems(expr.body),
+    });
   }
-  if (isVariable(exp)) {
-    return lookupVariableValue(exp, env);
+  switch (expr.tag) {
+    case "number":
+    case "string":
+    case "boolean":
+    case "null":
+    case "undefined":
+    case "variable":
+      return expr;
+    case "template":
+      return { ...expr, exprs: expr.exprs.map(lowerLetExpr) };
+    case "array":
+      return {
+        ...expr,
+        elements: expr.elements.map((arg) => ({ kind: arg.kind, expr: lowerLetExpr(arg.expr) })),
+      };
+    case "object": {
+      const fields: ObjectField[] = expr.fields.map((field) => ({
+        key: field.key,
+        value: lowerLetExpr(field.value),
+        span: field.span,
+      }));
+      return { ...expr, fields };
+    }
+    case "unary":
+      return { ...expr, operand: lowerLetExpr(expr.operand) };
+    case "binary":
+      return { ...expr, left: lowerLetExpr(expr.left), right: lowerLetExpr(expr.right) };
+    case "logical":
+      return { ...expr, left: lowerLetExpr(expr.left), right: lowerLetExpr(expr.right) };
+    case "conditional":
+      return {
+        ...expr,
+        test: lowerLetExpr(expr.test),
+        consequent: lowerLetExpr(expr.consequent),
+        alternative: lowerLetExpr(expr.alternative),
+      };
+    case "permanent-assign":
+    case "assign":
+      return { ...expr, target: lowerLetExpr(expr.target), value: lowerLetExpr(expr.value) };
+    case "if-fail":
+      return {
+        ...expr,
+        expression: lowerLetExpr(expr.expression),
+        fallback: lowerLetExpr(expr.fallback),
+      };
+    case "arrow":
+      return { ...expr, body: { body: lowerLetItems(expr.body.body), span: expr.body.span } };
+    case "call":
+      return {
+        ...expr,
+        callee: lowerLetExpr(expr.callee),
+        args: expr.args.map((arg) => ({ kind: arg.kind, expr: lowerLetExpr(arg.expr) })),
+      };
+    case "member":
+      return { ...expr, object: lowerLetExpr(expr.object) };
+    case "index":
+      return { ...expr, object: lowerLetExpr(expr.object), index: lowerLetExpr(expr.index) };
+    case "new-error":
+      return { ...expr, args: expr.args.map(lowerLetExpr) };
+    case "new-map":
+      return { ...expr, args: expr.args.map(lowerLetExpr) };
+    case "new-set":
+      return { ...expr, args: expr.args.map(lowerLetExpr) };
+    case "delay":
+      return { ...expr, expr: lowerLetExpr(expr.expr) };
+    case "force":
+      return { ...expr, expr: lowerLetExpr(expr.expr) };
+    case "require":
+      return { ...expr, condition: lowerLetExpr(expr.condition) };
+    case "choose":
+      return { ...expr, alternatives: expr.alternatives.map(lowerLetExpr) };
+    case "ramb":
+      return { ...expr, alternatives: expr.alternatives.map(lowerLetExpr) };
   }
-  if (isQuoted(exp)) {
-    return Effect.succeed(textOfQuotation(exp));
+};
+function isStmt(item: Decl | Stmt): item is Stmt {
+  switch (item.tag) {
+    case "import":
+    case "type-decl":
+    case "interface-decl":
+    case "var-decl":
+    case "function-decl":
+      return false;
+    default:
+      return true;
   }
-  if (isAssignment(exp)) {
-    return evalAssignmentLocal(exp, env);
+}
+
+function lowerLetStmt(item: Stmt): Stmt {
+  const lowered = lowerLetItem(item);
+  if (!isStmt(lowered)) {
+    throw new Error("statement lowering produced a declaration");
   }
-  if (isDefinition(exp)) {
-    return evalDefinitionLocal(exp, env);
+  return lowered;
+}
+
+const lowerLetItem = (item: Decl | Stmt): Decl | Stmt => {
+  switch (item.tag) {
+    case "import":
+    case "type-decl":
+    case "interface-decl":
+    case "break":
+    case "continue":
+      return item;
+    case "var-decl":
+      return { ...item, init: lowerLetExpr(item.init) };
+    case "function-decl":
+      return { ...item, body: { body: lowerLetItems(item.body.body), span: item.body.span } };
+    case "expr-stmt":
+      return { ...item, expr: lowerLetExpr(item.expr) };
+    case "return":
+      return item.argument === null ? item : { ...item, argument: lowerLetExpr(item.argument) };
+    case "throw":
+      return { ...item, argument: lowerLetExpr(item.argument) };
+    case "if": {
+      const alternative = item.alternative === null ? null : lowerLetStmt(item.alternative);
+      return {
+        ...item,
+        test: lowerLetExpr(item.test),
+        consequent: lowerLetStmt(item.consequent),
+        alternative,
+      };
+    }
+    case "while":
+      return { ...item, test: lowerLetExpr(item.test), body: lowerLetStmt(item.body) };
+    case "for-of":
+      return { ...item, iterable: lowerLetExpr(item.iterable), body: lowerLetStmt(item.body) };
+    case "block":
+      return { ...item, body: lowerLetItems(item.body) };
+    case "switch": {
+      const cases: CaseClause[] = item.cases.map((clause) => ({
+        test: lowerLetExpr(clause.test),
+        body: lowerLetItems(clause.body),
+        span: clause.span,
+      }));
+      return {
+        ...item,
+        discriminant: lowerLetExpr(item.discriminant),
+        cases,
+        defaultBody: item.defaultBody === null ? null : lowerLetItems(item.defaultBody),
+      };
+    }
+    case "try": {
+      const blockOf = (body: {
+        readonly body: ReadonlyArray<Decl | Stmt>;
+        readonly span: Expr["span"];
+      }): {
+        readonly body: ReadonlyArray<Decl | Stmt>;
+        readonly span: Expr["span"];
+      } => ({ body: lowerLetItems(body.body), span: body.span });
+      return {
+        ...item,
+        block: blockOf(item.block),
+        handler:
+          item.handler === null
+            ? null
+            : { param: item.handler.param, body: blockOf(item.handler.body) },
+        finalizer: item.finalizer === null ? null : blockOf(item.finalizer),
+      };
+    }
   }
-  if (isLet(exp)) {
-    return evalWithLet(letToCombination(exp), env);
-  }
-  if (isIf(exp)) {
-    return evalIfLocal(exp, env);
-  }
-  if (isLambda(exp)) {
-    return Effect.succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env));
-  }
-  if (isBegin(exp)) {
-    return evalSequenceLocal(beginActions(exp), env);
-  }
-  if (isPair(exp)) {
-    return Effect.flatMap(evalWithLet(operator(exp), env), (procedure) =>
-      Effect.flatMap(listOfValuesLocal(operands(exp), env), (args) => applyLocal(procedure, args)),
-    );
-  }
-  return Effect.fail(new UnknownSyntax({ expr: format(exp) }));
 };
 
-const evalSequenceLocal = (seq: List<Value>, env: Env): Effect.Effect<Value, EvaluationError> => {
-  if (seq._tag === "Nil") {
-    return Effect.fail(new RuntimeError({ message: "Empty sequence: EVAL", detail: "" }));
-  }
-  if (isLastExp(seq)) {
-    return evalWithLet(firstExp(seq), env);
-  }
-  return Effect.flatMap(evalWithLet(firstExp(seq), env), () =>
-    evalSequenceLocal(restExps(seq), env),
-  );
-};
+const lowerLetItems = (items: ReadonlyArray<Decl | Stmt>): ReadonlyArray<Decl | Stmt> =>
+  items.map(lowerLetItem);
 
-const applyLocal = (procedure: Value, args: List<Value>): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag === "Primitive") {
-    return applyPrimitiveProcedure(procedure, args);
-  }
-  if (procedure._tag === "Compound") {
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      evalSequenceLocal(procedure.body, newEnv),
-    );
-  }
-  return Effect.fail(new NotAProcedure({ value: format(procedure) }));
-};
-
-const listOfValuesLocal = (
-  exps: List<Value>,
+/**
+ * The evaluator's single case for the derived form: lower the grouped
+ * bindings to the call form and evaluate the result in the same
+ * environment.
+ */
+export const evalWithLet = (
+  expr: LetExpr,
   env: Env,
-): Effect.Effect<List<Value>, EvaluationError> =>
-  noOperands(exps)
-    ? Effect.succeed(nil)
-    : Effect.flatMap(evalWithLet(firstOperand(exps), env), (first) =>
-        Effect.map(listOfValuesLocal(restOperands(exps), env), (rest) => cons(first, rest)),
-      );
-
-const evalIfLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithLet(ifPredicate(exp), env), (predicate) =>
-    isTrue(predicate) ? evalWithLet(ifConsequent(exp), env) : evalWithLet(ifAlternative(exp), env),
-  );
-
-const evalAssignmentLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithLet(assignmentValue(exp), env), (value) =>
-    Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-  );
-
-const evalDefinitionLocal = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evalWithLet(definitionValue(exp), env), (value) =>
-    Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-  );
+  session: Session = new Session("core"),
+): Outcome => session.evaluate(lowerLetExpr(expr), env);
 
 export function ex_4_06(): string {
   return (
-    "let is a derived expression: let->combination rebuilds it as the combination " +
-    "((lambda (v1 ... vn) body) e1 ... en) using the module's make-lambda, and the eval " +
-    "clause is just evaluate(letToCombination(exp), env). The transformed data is " +
-    "structurally equal to the hand-written lambda form, and evaluating the let evaluates " +
-    "to the same value as evaluating that combination."
+    "The grouped binding is a derived expression: `letToCall` rebuilds " +
+    "`((x1, ..., xn) => { body })(e1, ..., en)` with every constructed node carrying the " +
+    "source node's span, and the evaluator's one case lowers then evaluates. The lowerer " +
+    "recurses through the shared expressions and grouped-binding initializers, but the " +
+    "experiment's LetNode is not a shared Expr or Stmt, so procedure-body statements cannot " +
+    "embed one directly; body examples carry its lowered call. A let evaluates as its " +
+    "combination (7 for x = 3, y = 4 over x + y), the lowering is structurally the " +
+    "hand-written lambda call, and a lowered call in a procedure body answers 42. The body " +
+    "also runs as a sequence in its new frame: x = 10 then x is 10."
   );
 }

@@ -3,4 +3,4 @@
 
 import { test } from "vitest";
 
-test.todo("Exercise 5.22: append and append! machines");
+test.todo("Exercise 5.22: append and appendBang machines");

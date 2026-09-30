@@ -1,69 +1,154 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
-import { format, read } from "../../packages/ch4/src/read.js";
-import { ex_4_20, letrecToLet, runProgramsWithLetrec, runWithLetrec } from "./ex_4_20.js";
+import { describe, expect, it } from "vitest";
 
-const evenOddLetrec =
-  "(letrec ((even? (lambda (n) (if (= n 0) true (odd? (- n 1))))) (odd? (lambda (n) (if (= n 0) false (even? (- n 1)))))) (even? 5))";
+import { Session } from "../../packages/ch4/src/01-metacircular.js";
+import { format } from "../../packages/ch4/src/read.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
+import {
+  bin,
+  bool,
+  call,
+  cond,
+  exprStmt,
+  ident,
+  lam,
+  num,
+  param,
+  returnStmt,
+  varDecl,
+} from "../../packages/ch4/src/syntax/ast.js";
+import { noSpan } from "../../packages/ch4/src/syntax/diagnostics.js";
+import {
+  evalWithRecursive,
+  type RecursiveBinding,
+  recursiveNode,
+  recursiveToCall,
+} from "./ex_4_20.js";
 
-const factorialLetrec =
-  "(letrec ((fact (lambda (n) (if (= n 1) 1 (* n (fact (- n 1))))))) (fact 10))";
+const session = (): { session: Session; env: ReturnType<Session["globalEnv"]> } => {
+  const engine = new Session("core");
+  return { session: engine, env: engine.globalEnv() };
+};
 
-const louisLet = "(let ((a 1) (b (+ a 1))) b)";
+const shown = (outcome: Outcome): string =>
+  outcome.tag === "ok" ? format(outcome.value) : `error:${outcome.error.tag}`;
 
-const louisLetrec = "(letrec ((a 1) (b (+ a 1))) b)";
+const normalize = (value: object): unknown =>
+  JSON.parse(JSON.stringify(value, (key, item) => (key === "span" ? null : item)));
 
-describe("exercise 4.20: letrec as a derived expression", () => {
-  it.effect("mutually recursive letrec bindings answer the book's even?", () =>
-    Effect.gen(function* () {
-      expect(yield* runWithLetrec(evenOddLetrec)).toStrictEqual({ _tag: "Boolean", b: false });
-    }),
-  );
+const bindings = (
+  ...pairs: ReadonlyArray<readonly [string, ReturnType<typeof lam>]>
+): RecursiveBinding[] => pairs.map(([name, init]) => ({ name, init }));
 
-  it.effect("a recursive fact binding evaluates 10 factorial", () =>
-    Effect.gen(function* () {
-      expect(yield* runWithLetrec(factorialLetrec)).toStrictEqual({ _tag: "Number", n: 3628800 });
-    }),
-  );
-
-  it.effect("letrec works nested inside a lambda body", () =>
-    Effect.gen(function* () {
-      expect(
-        yield* runProgramsWithLetrec([
-          "(define (f x) (letrec ((double (lambda (n) (* 2 n)))) (double x)))",
-          "(f 21)",
-        ]),
-      ).toStrictEqual({ _tag: "Number", n: 42 });
-    }),
-  );
-
-  it.effect("Louis's plain let fails where the letrec analog works", () =>
-    Effect.gen(function* () {
-      const outcome = yield* Effect.result(runWithLetrec(louisLet));
-      expect(outcome._tag).toBe("Failure");
-      if (outcome._tag === "Failure") {
-        expect(outcome.failure._tag).toBe("UnboundVariable");
-      }
-      expect(yield* runWithLetrec(louisLetrec)).toStrictEqual({ _tag: "Number", n: 2 });
-    }),
-  );
-
-  it("letrecToLet emits the let-and-set! shape the book asks for", () => {
-    const form = read("(letrec ((a 1) (b (+ a 1))) (+ a b))");
-    if (form._tag !== "Cons") {
-      throw new Error("expected a cons form");
-    }
-    const transformed = letrecToLet(form);
-    expect(format(transformed)).toBe(
-      "(let ((a (quote *unassigned*)) (b (quote *unassigned*))) (set! a 1) (set! b (+ a 1)) (+ a b))",
+describe("exercise 4.20: recursive bindings as a derived expression", () => {
+  it("mutually recursive even?/odd? answers false for 5", () => {
+    const even = lam(
+      [param("n")],
+      [
+        exprStmt(
+          cond(
+            bin("===", ident("n"), num(0)),
+            bool(true),
+            call(ident("odd"), [bin("-", ident("n"), num(1))]),
+          ),
+        ),
+      ],
     );
+    const odd = lam(
+      [param("n")],
+      [
+        exprStmt(
+          cond(
+            bin("===", ident("n"), num(0)),
+            bool(false),
+            call(ident("even"), [bin("-", ident("n"), num(1))]),
+          ),
+        ),
+      ],
+    );
+    const node = recursiveNode(
+      bindings(["even", even], ["odd", odd]),
+      [exprStmt(call(ident("even"), [num(5)]))],
+      noSpan,
+    );
+    const { session: engine, env } = session();
+    expect(shown(evalWithRecursive(node, env, engine))).toBe("false");
   });
 
-  it("explains what is loose about Louis's reasoning", () => {
-    expect(ex_4_20()).toContain("evaluates its inits outside the new bindings");
+  it("factorial 10 by recursive binding is 3628800", () => {
+    const fact = lam(
+      [param("n")],
+      [
+        exprStmt(
+          cond(
+            bin("===", ident("n"), num(0)),
+            num(1),
+            bin("*", ident("n"), call(ident("fact"), [bin("-", ident("n"), num(1))])),
+          ),
+        ),
+      ],
+    );
+    const node = recursiveNode(
+      bindings(["fact", fact]),
+      [exprStmt(call(ident("fact"), [num(10)]))],
+      noSpan,
+    );
+    const { session: engine, env } = session();
+    expect(shown(evalWithRecursive(node, env, engine))).toBe("3628800");
+  });
+
+  it("a nested recursive binding answers 42 for 21", () => {
+    const double = lam([param("n")], [exprStmt(bin("*", num(2), ident("n")))]);
+    const inner = recursiveNode(
+      bindings(["double", double]),
+      [exprStmt(call(ident("double"), [ident("x")]))],
+      noSpan,
+    );
+    const f = lam([param("x")], [returnStmt(recursiveToCall(inner))]);
+    const { session: engine, env } = session();
+    expect(shown(evalWithRecursive(call(f, [num(21)]), env, engine))).toBe("42");
+  });
+
+  it("a plain grouped binding leaves its initializers outside", () => {
+    const { session: engine, env } = session();
+    const plain = call(lam([param("a"), param("b")], [exprStmt(ident("b"))]), [
+      num(1),
+      bin("+", ident("a"), num(1)),
+    ]);
+    expect(shown(evalWithRecursive(plain, env, engine))).toBe("error:unbound-name");
+    const rec = recursiveNode(
+      [
+        { name: "a", init: num(1) },
+        { name: "b", init: bin("+", ident("a"), num(1)) },
+      ],
+      [exprStmt(ident("b"))],
+      noSpan,
+    );
+    expect(shown(evalWithRecursive(rec, env, engine))).toBe("2");
+  });
+
+  it("the derivation is the grouped-binding-with-writes shape", () => {
+    const node = recursiveNode(
+      [
+        { name: "a", init: num(1) },
+        { name: "b", init: bin("+", ident("a"), num(1)) },
+      ],
+      [exprStmt(bin("+", ident("a"), ident("b")))],
+      noSpan,
+    );
+    const manual = call(
+      lam(
+        [],
+        [
+          varDecl("let", "a", num(1), null, noSpan),
+          varDecl("let", "b", bin("+", ident("a"), num(1)), null, noSpan),
+          exprStmt(bin("+", ident("a"), ident("b"))),
+        ],
+      ),
+      [],
+    );
+    expect(normalize(recursiveToCall(node))).toEqual(normalize(manual));
   });
 });

@@ -2,55 +2,45 @@
 // Original exercise
 
 /**
- * Exercise 4.51: permanent-set!. The variant dispatch recognizes
- * permanent-set! and analyzes it without the undo record, so the trial
- * that eventually fails still leaves its count behind: each answer's count
- * runs ahead of its position because the rejected (a a), (b b), (c c)
- * trials raised the counter too. Under plain set! the undo restores the
- * count before the next alternative, so every answer reads 1.
+ * Exercise 4.51: reversible set! versus permanent assignment. The
+ * same counting program is run twice: choice-sensitive `=` restores
+ * the prior value when a branch fails, while `permanentAssign`
+ * leaves it for later choices. Rejected equal pairs therefore do
+ * not affect the `set!` answers (all count 1), but they advance the
+ * permanent count (2,3,4,6,7,8).
  */
-import { Effect } from "effect";
-
-import {
-  makeAmbEvaluator,
-  runAmbText,
-  setupAmbEnvironment,
-} from "../../packages/ch4/src/03-nondeterministic.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
+import { runAmbAnswers, type SearchRun } from "../../packages/ch4/src/03-nondeterministic.js";
 import { format } from "../../packages/ch4/src/read.js";
 
-import { library } from "./ex_4_35.js";
+export type AssignmentKind = "reversible" | "permanent";
 
-/** The book's counting example under one assignment kind. */
-export const countProgram = (kind: string): string =>
-  [
-    library,
-    `(define count 0)
-(let ((x (an-element-of '(a b c)))
-      (y (an-element-of '(a b c))))
-  (${kind} count (+ count 1))
-  (require (not (eq? x y)))
-  (list x y count))`,
-  ].join("\n");
+/** The book's counter experiment, changing only its assignment form. */
+export const countSource = (kind: AssignmentKind): string => `
+let count = 0;
+const x = choose("a", "b", "c");
+const y = choose("a", "b", "c");
+${kind === "reversible" ? "count = count + 1;" : "permanentAssign(count, count + 1);"}
+require(!(x === y));
+[x, y, count];
+`;
 
-/** All answers of the counting program for one assignment kind. */
-export const answers = (kind: string): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.flatMap(setupAmbEnvironment(), (env) =>
-    Effect.map(
-      runAmbText(makeAmbEvaluator({ permanentSet: true }), countProgram(kind), env),
-      (run) => run.answers.map(format),
-    ),
-  );
+/** The actual evaluator run for one assignment discipline. */
+export const countRun = (kind: AssignmentKind): SearchRun =>
+  runAmbAnswers(countSource(kind), "amb-depth-first-experiment", 1);
+
+/** Rendered answers for one discipline. */
+export const countAnswers = (kind: AssignmentKind): ReadonlyArray<string> =>
+  countRun(kind).answers.map((value) => format(value));
 
 export function ex_4_51(): string {
-  const permanent = Effect.runSync(answers("permanent-set!"));
-  const plain = Effect.runSync(answers("set!"));
+  const reversible = countRun("reversible");
+  const permanent = countRun("permanent");
+  const reversibleAnswers = reversible.answers.map((value) => format(value));
+  const permanentAnswers = permanent.answers.map((value) => format(value));
   return (
-    "permanent-set! assigns without installing the undo record, so the " +
-    "trials that fail still leave their count behind: the answers are " +
-    `${permanent.join(" ")} -- each count runs ahead of its position ` +
-    "because the rejected same-letter trials raised the counter too. Under " +
-    "plain set! the undo restores the count before the next alternative, " +
-    `so the same program answers ${plain.join(" ")}: every count reads 1.`
+    `Reversible set! answers: ${reversibleAnswers.join("; ")}. Permanent assignment: ` +
+    `${permanentAnswers.join("; ")}. The runs record ${reversible.failures} and ` +
+    `${permanent.failures} failed computations; rejected trials restore only ` +
+    `the reversible write.`
   );
 }

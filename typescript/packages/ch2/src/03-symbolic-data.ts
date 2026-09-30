@@ -41,41 +41,37 @@ export type Datum =
   | { readonly _tag: "Lst"; readonly items: List<Datum> };
 
 /** Builds the symbol datum printed as `name`. */
-export const qsym = (name: string): Datum => ({ _tag: "Sym", name: sym(name) });
+export const symDatum = (name: string): Datum => ({ _tag: "Sym", name: sym(name) });
 
 /** Builds the number datum holding `n`. */
-export const qnum = (n: number): Datum => ({ _tag: "Num", n });
+export const numDatum = (n: number): Datum => ({ _tag: "Num", n });
 
-/** Builds the list datum of `items`: the book's `'(a b c)`, a helper
- * that builds the list instead of reading a quote mark. */
-export const qlist = (...items: ReadonlyArray<Datum>): Datum => ({
+/** Builds the list datum of `items`: a helper that builds the list directly. */
+export const listDatum = (...items: ReadonlyArray<Datum>): Datum => ({
   _tag: "Lst",
   items: list(...items),
 });
 
-/** Renders quoted data the way the book prints it: symbols bare,
- * numbers in decimal, lists between parentheses. */
+/** Renders quoted data: symbols bare, numbers in decimal, lists in brackets. */
 export const showDatum = (d: Datum): string =>
   d._tag === "Sym" ? d.name : d._tag === "Num" ? String(d.n) : showDataList(d.items);
 
-/** Renders a list of quoted data the way the book prints a list:
- * elements between parentheses. */
+/** Renders quoted data in bracket-comma notation. */
 export const showDataList = (items: List<Datum>): string => {
   const parts: string[] = [];
   for (let rest = items; rest._tag === "Cons"; rest = rest.tail) {
     parts.push(showDatum(rest.head));
   }
-  return `(${parts.join(" ")})`;
+  return `[${parts.join(", ")}]`;
 };
 
-/** Renders a list of symbols the way the book prints it: bare names
- * between parentheses. */
+/** Renders symbols in bracket-comma notation. */
 export const showSymbols = (items: List<Symb>): string => {
   const parts: string[] = [];
   for (let rest = items; rest._tag === "Cons"; rest = rest.tail) {
     parts.push(rest.head);
   }
-  return `(${parts.join(" ")})`;
+  return `[${parts.join(", ")}]`;
 };
 
 /** The book's `eq?` over quoted data: true for the same symbol or the
@@ -139,19 +135,32 @@ export const equalsNumber = (e: Expr, n: number): boolean => e._tag === "Num" &&
  * `same-variable?` after the `variable?` check. */
 export const sameVariableQ = (e: Expr, v: Symb): boolean => e._tag === "Var" && e.name === v;
 
-/** Renders an expression in the book's printed form: prefix `+` and
- * `*` between parentheses. */
+/** Renders an expression in infix notation with minimal precedence parens. */
 export const showExpr = (e: Expr): string => {
-  switch (e._tag) {
-    case "Var":
-      return e.name;
-    case "Num":
-      return String(e.n);
-    case "Sum":
-      return `(+ ${showExpr(e.addend)} ${showExpr(e.augend)})`;
-    case "Prod":
-      return `(* ${showExpr(e.multiplier)} ${showExpr(e.multiplicand)})`;
-  }
+  const precedence = (expr: Expr): number =>
+    expr._tag === "Sum" ? 1 : expr._tag === "Prod" ? 2 : 3;
+  const render = (
+    expr: Expr,
+    parentPrecedence: number,
+    childSide: "root" | "left" | "right",
+  ): string => {
+    if (expr._tag === "Var") {
+      return expr.name;
+    }
+    if (expr._tag === "Num") {
+      return String(expr.n);
+    }
+    const currentPrecedence = precedence(expr);
+    const text =
+      expr._tag === "Sum"
+        ? `${render(expr.addend, currentPrecedence, "left")} + ${render(expr.augend, currentPrecedence, "right")}`
+        : `${render(expr.multiplier, currentPrecedence, "left")} * ${render(expr.multiplicand, currentPrecedence, "right")}`;
+    return currentPrecedence < parentPrecedence ||
+      (childSide === "right" && currentPrecedence === parentPrecedence)
+      ? `(${text})`
+      : text;
+  };
+  return render(e, 0, "root");
 };
 
 /** The two constructors `deriv` builds results with. Swapping the
@@ -421,7 +430,7 @@ export const weightOf = (tree: HuffTree): number => tree.weight;
  * refuses any other bit. */
 export const chooseBranch = (bit: number, branch: HuffTree): Result<HuffTree, string> => {
   if (branch._tag === "Leaf") {
-    return err("bad position: CHOOSE-BRANCH cannot branch at a leaf");
+    return err("chooseBranch: cannot branch at a leaf");
   }
   if (bit === 0) {
     return ok(branch.left);
@@ -429,7 +438,7 @@ export const chooseBranch = (bit: number, branch: HuffTree): Result<HuffTree, st
   if (bit === 1) {
     return ok(branch.right);
   }
-  return err(`bad bit: CHOOSE-BRANCH ${String(bit)}`);
+  return err(`chooseBranch: bad bit ${bit}`);
 };
 
 /** The book's `decode`: walks the tree one bit at a time, restarting

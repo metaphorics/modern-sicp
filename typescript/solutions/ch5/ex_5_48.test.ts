@@ -1,11 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { describe, expect, it } from "vitest";
-import { ex_5_48 } from "./ex_5_48.js";
+// Original exercise
 
-describe("exercise 5.48", () => {
-  it("records a block and runs it on the next assembly", () => {
-    const answers = ex_5_48();
-    expect(answers[0]).toContain("ok");
-    expect(answers[1]).toContain("120");
+import { describe, expect, it } from "vitest";
+import { makeEvaluator } from "../../packages/ch5/src/04-eceval.ts";
+import { compileRunController, ex_5_48, makeCompileRunOperations } from "./ex_5_48.ts";
+
+describe("exercise 5.48 compile-and-run inside the evaluator", () => {
+  it("compiles and runs new code at run time", () => {
+    const lines = ex_5_48();
+    expect(lines.some((line) => line.includes("7"))).toBe(true);
+    expect(lines.some((line) => line.includes("6"))).toBe(true);
+  });
+  it("the splice runs before the generic application path", () => {
+    expect(
+      compileRunController.some(
+        (line) => line.tag === "test" && line.operation === "isCompileRunCall",
+      ),
+    ).toBe(true);
+    const result = makeEvaluator(
+      [
+        'function compileAndRun(source: string): number { throw new Error("compileAndRun must be intercepted by the controller"); }',
+        'console.log(compileAndRun("2 + 3;"));',
+      ].join("\n"),
+      makeCompileRunOperations(),
+      compileRunController,
+    ).run();
+    expect(result.outcome.tag).toBe("ok");
   });
 });

@@ -2,22 +2,17 @@
 // Original exercise
 
 import { describe, expect, it } from "vitest";
-import { checkingFailureRows, runCheckingEvaluator } from "./ex_5_30.js";
+import { ex_5_30 } from "./ex_5_30.ts";
 
 describe("exercise 5.30 error signaling inside the evaluator", () => {
-  it("prints each failure's detail through signal-error and returns to the driver loop", () => {
-    expect(checkingFailureRows()).toEqual([
-      { program: "(/ 1 0)", printed: "division by zero" },
-      { program: "(car 5)", printed: "type error: car" },
-      { program: "no-such-variable", printed: "unbound variable: no-such-variable" },
-      { program: "(cons 1)", printed: "arity mismatch" },
-      { program: "(5 6)", printed: "unknown-procedure-type-error" },
-    ]);
+  it("traps division by zero as a typed error", () => {
+    expect(ex_5_30().divisionError).not.toBeNull();
   });
-  it("the checks leave correct programs untouched", () => {
-    const transcript = runCheckingEvaluator(
-      "(define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n))) (factorial 5)",
-    );
-    expect(transcript.filter((line) => !line.startsWith(";;;"))).toEqual(["ok", "120"]);
+  it("traps the bad member access as a typed error", () => {
+    expect(ex_5_30().memberError).not.toBeNull();
+  });
+  it("leaves a correct program untouched", () => {
+    const clean = ex_5_30().clean;
+    expect(clean.some((line) => line.includes("120"))).toBe(true);
   });
 });

@@ -11,16 +11,13 @@ import {
 /**
  * Exercise 3.57: the statement asks how many additions are performed
  * computing the n-th Fibonacci number with the text's fibs based on
- * add-streams,
+ * addStreams,
  *
- *   (define fibs
- *     (cons-stream
- *      0 (cons-stream
- *         1 (add-streams
- *            (stream-cdr fibs) fibs))))
+ *   const fibs = consStream(0, () =>
+ *     consStream(1, () => addStreams(streamCdr(fibs), fibs)));
  *
  * and to show the count would be exponentially greater had delay been
- * just (lambda () exp) instead of the section's memo-proc. The answer
+ * just `() => exp` instead of the section's memoizing delay. The answer
  * the instrumented streams below measure: under memoized delay,
  * elements 0 and 1 are given and each later element costs exactly one
  * addition, so reaching element n costs n - 1 additions. Under plain
@@ -34,7 +31,7 @@ export interface AdditionCounter {
   additions: number;
 }
 
-/** The text's add-streams fibs, instrumented: each element-wise
+/** The text's addStreams fibs, instrumented: each element-wise
  * addition bumps the counter. The memoized tails of `consStream` make
  * each element's addition happen once, so streamRef to index n
  * reports n - 1. */
@@ -49,8 +46,8 @@ export const fibsCounting = (counter: AdditionCounter): StreamCell<number> => {
   return stream;
 };
 
-/** The book's cons-stream with delay spelled as a plain thunk: the
- * same pair shape without the memo-proc wrapping, the alternative the
+/** The book's consStream with delay spelled as a plain thunk: the
+ * same pair shape without the memoization wrapping, the alternative the
  * statement asks about. */
 export interface PlainStreamCell<A> {
   readonly head: A;
@@ -61,13 +58,13 @@ export interface PlainStreamCell<A> {
  * whose tails recompute on every reference. */
 export type PlainStream<A> = PlainStreamCell<A> | null;
 
-/** The book's (cons-stream a b) with (delay b) as (lambda () b). */
+/** The statement's `consStream(a, b)` with `delay(b)` spelled `() => b`. */
 export const consPlain = <A>(head: A, tail: () => PlainStream<A>): PlainStreamCell<A> => ({
   head,
   tail,
 });
 
-/** stream-cdr for plain cells: re-runs the tail every time. */
+/** `streamCdr` for plain cells: re-runs the tail every time. */
 const cdrPlain = <A>(s: PlainStream<A>): PlainStream<A> => (s === null ? null : s.tail());
 
 /** The same instrumented fibs built on plain thunks: identical shape,

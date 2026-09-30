@@ -1,905 +1,1344 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Adapted-from-SICP: section 4.1
 
+import { format } from "./read.ts";
+import {
+  MATH_NAMES,
+  makeBuiltins,
+  NUMBER_NAMES,
+  namespaceValue,
+  type OpTable,
+} from "./runtime/builtins.ts";
+import { child, type Env, findCell, makeCell } from "./runtime/env.ts";
+import {
+  type Completion,
+  fail,
+  type GuestError,
+  normal,
+  type Outcome,
+  ok,
+} from "./runtime/errors.ts";
+import {
+  type ArrayValue,
+  type Closure,
+  isArrayValue,
+  isClosure,
+  isErrorValue,
+  isMapValue,
+  isPrimitive,
+  isRecordValue,
+  isSetValue,
+  isThunkValue,
+  makeArray,
+  makeClosure,
+  makeErrorValue,
+  makeMap,
+  makeRecord,
+  makeSet,
+  ThunkValue,
+  type Value,
+} from "./runtime/value.ts";
 /**
- * The metacircular evaluator: the book's section 4.1 in this edition's
- * rendering. Expressions are values - the same cons-list data `read.ts`
- * produces - so the syntax predicates do the book's car/cdr surgery, and
- * `evaluate` is the book's case analysis over that data. Evaluation runs
- * in `Effect` with the checked failures of `errors.ts`; environments are
- * the mutable frame chains of `env.ts`. Sections 4.1.1 through 4.1.7 each
- * own their block, in the book's order.
+ * The direct evaluator and the analyzer (host-subsets grammar sections 3, 5,
+ * and 6): one case analysis over the shared checked AST, with lexical cells,
+ * TDZ reads, shared captured writes, left-to-right evaluation order, and the
+ * declared `Outcome` error channel — no host exceptions cross the evaluator
+ * boundary and no host evaluator runs guest code. `analyze` separates
+ * syntactic analysis from execution (4.1.7): it traverses the syntax once and
+ * returns an execution procedure that runs against many environments. The
+ * transcript is data the session collects; only boundary drivers print it.
  */
-import { Effect } from "effect";
-import type {
-  BooleanValue,
-  CompoundProc,
-  Env,
-  Evaluate,
-  Primitive,
-  SymbolValue,
-  Value,
-} from "./core.js";
-import {
-  defineVariable as defineInFrame,
-  extendEnv,
-  lookupVariable,
-  makeGlobalEnv,
-  setVariable,
-} from "./env.js";
-import {
-  ArityMismatch,
-  type EvaluationError,
-  NotAProcedure,
-  RuntimeError,
-  UnknownSyntax,
-} from "./errors.js";
-import { type Cons, cons, type List, nil, toArray } from "./list.js";
-import { format, ReadError, read } from "./read.js";
+import type { Arg, Decl, Expr, Param, Program, Stmt } from "./syntax/ast.ts";
+import { admitSource } from "./syntax/check.ts";
+import type { ExperimentMode } from "./syntax/parse.ts";
 
-// ---------------------------------------------------------------------
-// Values and the truth test (4.1.3)
-// ---------------------------------------------------------------------
+/** One engine run: the outcome plus the ordered transcript it produced. */
+export interface RunResult {
+  readonly outcome: Outcome;
+  readonly transcript: ReadonlyArray<string>;
+}
 
-/** The book's `true` object. */
-export const trueValue: BooleanValue = { _tag: "Boolean", b: true };
+/** An execution procedure: analysis done, only the environment remains. */
+export type ExecutionProcedure = (env: Env) => Outcome;
+export type { Outcome } from "./runtime/errors.ts";
 
-/** The book's `false` object: the only false value there is. */
-export const falseValue: BooleanValue = { _tag: "Boolean", b: false };
+/** The result of extending an environment with new bindings. */
+export type EnvOutcome =
+  | { readonly tag: "ok"; readonly env: Env }
+  | { readonly tag: "error"; readonly error: GuestError };
 
-/** The value `display` and `newline` answer: nothing worth printing. */
-export const unspecified: Value = { _tag: "Unspecified" };
+/** Evaluated arguments or the error that stopped them. */
+type ArgsOutcome =
+  | { readonly tag: "args"; readonly values: ReadonlyArray<Value> }
+  | { readonly tag: "error"; readonly error: GuestError };
 
-/** What `define` and `set!` answer, the book's `ok` symbol. */
-export const ok: SymbolValue = { _tag: "Symbol", name: "ok" };
+const bad = (operator: string, detail: string): Outcome =>
+  fail({ tag: "bad-operand", operator, detail });
 
-/** Builds a symbol value; the reader interns nothing, names compare by text. */
-export const symbol = (name: string): SymbolValue => ({ _tag: "Symbol", name });
-
-/** The book's `true?`: false is the false object, everything else is true. */
-export const isTrue = (value: Value): boolean => !(value._tag === "Boolean" && !value.b);
-
-/** The book's `eq?` on values: symbols and leaves compare by content,
- * pairs and procedures by identity. */
-export const eqValue = (a: Value, b: Value): boolean => {
-  switch (a._tag) {
-    case "Symbol":
-      return b._tag === "Symbol" && a.name === b.name;
-    case "Number":
-      return b._tag === "Number" && a.n === b.n;
-    case "String":
-      return b._tag === "String" && a.s === b.s;
-    case "Boolean":
-      return b._tag === "Boolean" && a.b === b.b;
-    case "Nil":
-      return b._tag === "Nil";
-    case "Unspecified":
-      return b._tag === "Unspecified";
-    default:
-      return a === b;
-  }
+/** Array methods that must call guest procedures; they live in the evaluator. */
+const CALLBACK_METHODS: Readonly<Record<string, true>> = {
+  map: true,
+  flatMap: true,
+  filter: true,
+  find: true,
+  some: true,
+  every: true,
+  reduce: true,
+  reduceRight: true,
+  forEach: true,
 };
 
-/** The book's `equal?`: structural comparison over pairs. */
-export const equalValue = (a: Value, b: Value): boolean => {
-  if (a._tag === "Cons" && b._tag === "Cons") {
-    return equalValue(a.head, b.head) && equalValue(a.tail, b.tail);
+/** One evaluator session: modes, transcript, and experiment counters. */
+export class Session {
+  readonly mode: ExperimentMode;
+  readonly transcript: string[] = [];
+  /** How many thunk computations ran (the 4.2 counting exercises). */
+  evaluations = 0;
+  readonly #builtins: OpTable = makeBuiltins();
+  readonly #globals = new Map<string, Value>();
+
+  constructor(mode: ExperimentMode) {
+    this.mode = mode;
+    this.#globals.set("Math", namespaceValue(this.#builtins, "math", MATH_NAMES));
+    this.#globals.set("Number", namespaceValue(this.#builtins, "number", NUMBER_NAMES));
   }
-  return eqValue(a, b);
-};
 
-// ---------------------------------------------------------------------
-// Pair accessors: the book's car, cdr, and friends (4.1.2)
-// ---------------------------------------------------------------------
-
-/** The book's `car` of a pair; callers narrow with `isPair` first. */
-export const car = (p: Cons<Value>): Value => p.head;
-
-/** The book's `cdr` of a pair. */
-export const cdr = (p: Cons<Value>): List<Value> => p.tail;
-
-/** Whether a value is a pair, the book's `pair?`. */
-export const isPair = (v: Value): v is Cons<Value> => v._tag === "Cons";
-
-/** Whether a value is a symbol, the book's `symbol?`. */
-export const isSymbol = (v: Value): v is SymbolValue => v._tag === "Symbol";
-
-// Syntax accessors below assume the well-formed shapes the reader
-// produces, as the book assumes them of `read`; a malformed shape yields
-// a name no predicate accepts and evaluation ends in a checked error.
-
-const cadr = (p: Cons<Value>): Value => {
-  const tail = p.tail;
-  return tail._tag === "Cons" ? tail.head : symbol("<malformed>");
-};
-
-const caddr = (p: Cons<Value>): Value => {
-  const tail = p.tail;
-  if (tail._tag === "Cons") {
-    const rest = tail.tail;
-    return rest._tag === "Cons" ? rest.head : symbol("<malformed>");
+  /** The session's global environment: builtins plus namespace values. */
+  globalEnv(): Env {
+    const env = child(null);
+    for (const [name, value] of this.#globals) {
+      env.bindings.set(name, makeCell(value, true));
+    }
+    return env;
   }
-  return symbol("<malformed>");
-};
 
-/** Converts a parameter value to its frame name; parameters are symbols. */
-const nameOf = (v: Value): string => (isSymbol(v) ? v.name : "<non-symbol-parameter>");
+  // ------------------------------------------------------------------
+  // Expressions
+  // ------------------------------------------------------------------
 
-// ---------------------------------------------------------------------
-// 4.1.2 Representing expressions
-// ---------------------------------------------------------------------
-
-/** The book's `tagged-list?`: a pair whose car is the given symbol. */
-export const taggedList = (tag: string, exp: Value): exp is Cons<Value> =>
-  isPair(exp) && isSymbol(exp.head) && exp.head.name === tag;
-
-/** The book's `self-evaluating?`: numbers, strings, and booleans. */
-export const isSelfEvaluating = (exp: Value): boolean =>
-  exp._tag === "Number" || exp._tag === "String" || exp._tag === "Boolean";
-
-/** The book's `variable?`: a symbol. */
-export const isVariable = (exp: Value): exp is SymbolValue => isSymbol(exp);
-
-/** The book's `quoted?`. */
-export const isQuoted = (exp: Value): exp is Cons<Value> => taggedList("quote", exp);
-
-/** The book's `text-of-quotation`. */
-export const textOfQuotation = (exp: Cons<Value>): Value => cadr(exp);
-
-/** The book's `assignment?`. */
-export const isAssignment = (exp: Value): exp is Cons<Value> => taggedList("set!", exp);
-
-/** The book's `assignment-variable`. */
-export const assignmentVariable = (exp: Cons<Value>): SymbolValue => {
-  const target = cadr(exp);
-  return isSymbol(target) ? target : symbol("<malformed>");
-};
-
-/** The book's `assignment-value`. */
-export const assignmentValue = (exp: Cons<Value>): Value => caddr(exp);
-
-/** The book's `definition?`. */
-export const isDefinition = (exp: Value): exp is Cons<Value> => taggedList("define", exp);
-
-/** The book's `definition-variable`: the name, or the procedure's name
- * in the `(define (f args) ...)` sugar. */
-export const definitionVariable = (exp: Cons<Value>): SymbolValue => {
-  const target = cadr(exp);
-  return isSymbol(target)
-    ? target
-    : isPair(target) && isSymbol(target.head)
-      ? target.head
-      : symbol("<malformed>");
-};
-
-/** The book's `definition-value`: the expression, or a lambda built from
- * the parameter list and body of the sugared form. */
-export const definitionValue = (exp: Cons<Value>): Value => {
-  const target = cadr(exp);
-  if (isSymbol(target)) {
-    return caddr(exp);
+  evaluate(expr: Expr, env: Env): Outcome {
+    switch (expr.tag) {
+      case "number":
+      case "string":
+      case "boolean":
+        return ok(expr.value);
+      case "null":
+        return ok(null);
+      case "undefined":
+        return ok(undefined);
+      case "template":
+        return this.evalTemplate(expr.chunks, expr.exprs, env);
+      case "variable":
+        return this.lookupVariableValue(expr.name, env);
+      case "array":
+        return this.evalArray(expr.elements, env);
+      case "object":
+        return this.evalObject(expr.fields, env);
+      case "unary":
+        return this.evalUnary(expr.op, expr.operand, env);
+      case "binary":
+        return this.evalBinary(expr.op, expr.left, expr.right, env);
+      case "logical":
+        return this.evalLogical(expr.op, expr.left, expr.right, env);
+      case "conditional": {
+        const test = this.evaluate(expr.test, env);
+        if (test.tag === "error") {
+          return test;
+        }
+        return this.evaluate(test.value === true ? expr.consequent : expr.alternative, env);
+      }
+      case "assign":
+        return this.evalAssignment(expr, env);
+      case "arrow": {
+        const { params, rest } = splitParams(expr.params);
+        return ok(makeClosure(params, rest, expr.body, env));
+      }
+      case "call":
+        return this.evalCall(expr.callee, expr.args, env);
+      case "member": {
+        const object = this.evaluate(expr.object, env);
+        return object.tag === "error" ? object : this.memberGet(object.value, expr.name);
+      }
+      case "index": {
+        const object = this.evaluate(expr.object, env);
+        if (object.tag === "error") {
+          return object;
+        }
+        const index = this.evaluate(expr.index, env);
+        return index.tag === "error" ? index : this.indexGet(object.value, index.value);
+      }
+      case "new-error": {
+        const args = this.evalExprList(expr.args, env);
+        if (args.tag === "error") {
+          return fail(args.error);
+        }
+        const message = args.values[0];
+        return ok(makeErrorValue(message === undefined ? "" : this.render(message)));
+      }
+      case "new-map":
+        return this.evalNewMap(expr.args, env);
+      case "new-set": {
+        const args = this.evalExprList(expr.args, env);
+        if (args.tag === "error") {
+          return fail(args.error);
+        }
+        const items = args.values[0];
+        if (items === undefined) {
+          return ok(makeSet());
+        }
+        if (!isArrayValue(items)) {
+          return bad("new Set", "argument is not an array");
+        }
+        return ok(makeSet(items.items));
+      }
+      case "delay":
+        return ok(new ThunkValue(expr.expr, env));
+      case "force":
+        return this.evalForce(expr.expr, env);
+      case "require":
+      case "choose":
+      case "ramb":
+      case "permanent-assign":
+      case "if-fail":
+        return fail({
+          tag: "unknown-syntax",
+          construct: "search-experiment (run through runAmbSource)",
+        });
+    }
   }
-  if (isPair(target)) {
-    return makeLambda(target.tail, cddr(exp));
+
+  evalTemplate(chunks: ReadonlyArray<string>, exprs: ReadonlyArray<Expr>, env: Env): Outcome {
+    let text = "";
+    for (let i = 0; i < chunks.length; i += 1) {
+      text += chunks[i] ?? "";
+      const inner = exprs[i];
+      if (inner === undefined) {
+        continue;
+      }
+      const value = this.evaluate(inner, env);
+      if (value.tag === "error") {
+        return value;
+      }
+      text += this.render(value.value);
+    }
+    return ok(text);
   }
-  return symbol("<malformed>");
-};
 
-const cddr = (p: Cons<Value>): List<Value> => {
-  const tail = p.tail;
-  return tail._tag === "Cons" ? tail.tail : nil;
-};
-
-/** The book's `lambda?`. */
-export const isLambda = (exp: Value): exp is Cons<Value> => taggedList("lambda", exp);
-
-/** The book's `lambda-parameters`: the symbol list. */
-export const lambdaParameters = (exp: Cons<Value>): List<Value> => cadrOfList(cadr(exp));
-
-const cadrOfList = (v: Value): List<Value> => (v._tag === "Cons" || v._tag === "Nil" ? v : nil);
-
-/** The book's `lambda-body`: the list of body expressions. */
-export const lambdaBody = (exp: Cons<Value>): List<Value> => cddr(exp);
-
-/** The book's `make-lambda`: builds the lambda expression as data. */
-export const makeLambda = (parameters: List<Value>, body: List<Value>): Value =>
-  cons(symbol("lambda"), cons(parameters, body));
-
-/** The book's `if?`. */
-export const isIf = (exp: Value): exp is Cons<Value> => taggedList("if", exp);
-
-/** The book's `if-predicate`. */
-export const ifPredicate = (exp: Cons<Value>): Value => cadr(exp);
-
-/** The book's `if-consequent`. */
-export const ifConsequent = (exp: Cons<Value>): Value => caddr(exp);
-
-/** The book's `if-alternative`: `false` when the expression omits it. */
-export const ifAlternative = (exp: Cons<Value>): Value => {
-  const rest = cddr(exp);
-  const tail = rest._tag === "Cons" ? rest.tail : nil;
-  return tail._tag === "Cons" ? tail.head : falseValue;
-};
-
-/** The book's `make-if`. */
-export const makeIf = (predicate: Value, consequent: Value, alternative: Value): Value =>
-  cons(symbol("if"), cons(predicate, cons(consequent, cons(alternative, nil))));
-
-/** The book's `begin?`. */
-export const isBegin = (exp: Value): exp is Cons<Value> => taggedList("begin", exp);
-
-/** The book's `begin-actions`. */
-export const beginActions = (exp: Cons<Value>): List<Value> => cdr(exp);
-
-/** The book's `last-exp?`: the rest is the empty list. */
-export const isLastExp = (seq: List<Value>): boolean => {
-  const tail = seq._tag === "Cons" ? seq.tail : seq;
-  return tail._tag === "Nil";
-};
-
-/** The book's `first-exp`. */
-export const firstExp = (seq: List<Value>): Value =>
-  seq._tag === "Cons" ? seq.head : symbol("<malformed>");
-
-/** The book's `rest-exps`. */
-export const restExps = (seq: List<Value>): List<Value> => (seq._tag === "Cons" ? seq.tail : nil);
-
-/** The book's `sequence->exp`: one expression, or a begin of them. */
-export const sequenceToExp = (seq: List<Value>): Value => {
-  if (seq._tag === "Nil") {
-    return seq;
+  evalArray(elements: ReadonlyArray<Arg>, env: Env): Outcome {
+    const items: Value[] = [];
+    for (const element of elements) {
+      const value = this.evaluate(element.expr, env);
+      if (value.tag === "error") {
+        return value;
+      }
+      if (element.kind === "spread") {
+        if (!isArrayValue(value.value)) {
+          return bad("spread", "spread argument is not an array");
+        }
+        items.push(...value.value.items);
+        continue;
+      }
+      items.push(value.value);
+    }
+    return ok(makeArray(items));
   }
-  return isLastExp(seq) ? firstExp(seq) : makeBegin(seq);
-};
 
-/** The book's `make-begin`. */
-export const makeBegin = (seq: List<Value>): Value => cons(symbol("begin"), seq);
-
-/** The book's `cond?`. */
-export const isCond = (exp: Value): exp is Cons<Value> => taggedList("cond", exp);
-
-/** The book's `cond-clauses`. */
-export const condClauses = (exp: Cons<Value>): List<Value> => cdr(exp);
-
-/** The book's `cond-else-clause?`. */
-export const isCondElseClause = (clause: Value): boolean =>
-  isPair(clause) && isSymbol(clause.head) && clause.head.name === "else";
-
-/** The book's `cond-predicate`. */
-export const condPredicate = (clause: Cons<Value>): Value => car(clause);
-
-/** The book's `cond-actions`. */
-export const condActions = (clause: Cons<Value>): List<Value> => cdr(clause);
-
-/** The book's `expand-clauses`: folds the clause list into nested ifs. */
-const expandClauses = (clauses: List<Value>): Value => {
-  if (clauses._tag === "Nil") {
-    return falseValue;
+  evalObject(fields: ReadonlyArray<{ key: string; value: Expr }>, env: Env): Outcome {
+    const entries: Array<readonly [string, Value]> = [];
+    for (const field of fields) {
+      const value = this.evaluate(field.value, env);
+      if (value.tag === "error") {
+        return value;
+      }
+      entries.push([field.key, value.value]);
+    }
+    return ok(makeRecord(entries));
   }
-  const first = clauses.head;
-  if (!isPair(first)) {
-    return falseValue;
-  }
-  if (isCondElseClause(first)) {
-    return sequenceToExp(condActions(first));
-  }
-  return makeIf(
-    condPredicate(first),
-    sequenceToExp(condActions(first)),
-    expandClauses(clauses.tail),
-  );
-};
 
-/** The book's `cond->if`. */
-export const condToIf = (exp: Cons<Value>): Value => expandClauses(condClauses(exp));
+  evalUnary(op: "!" | "+" | "-" | "typeof", operand: Expr, env: Env): Outcome {
+    const value = this.evaluate(operand, env);
+    return value.tag === "error" ? value : applyUnaryOperation(op, value.value);
+  }
 
-/** The book's `application?`: any other pair. */
-export const isApplication = (exp: Value): exp is Cons<Value> => isPair(exp);
+  evalBinary(
+    op: "+" | "-" | "*" | "/" | "%" | "<" | "<=" | ">" | ">=" | "===" | "!==",
+    left: Expr,
+    right: Expr,
+    env: Env,
+  ): Outcome {
+    const first = this.evaluate(left, env);
+    if (first.tag === "error") {
+      return first;
+    }
+    const second = this.evaluate(right, env);
+    if (second.tag === "error") {
+      return second;
+    }
+    return applyBinaryOperation(op, first.value, second.value);
+  }
 
-/** The book's `operator`. */
-export const operator = (exp: Cons<Value>): Value => car(exp);
+  evalLogical(op: "&&" | "||", left: Expr, right: Expr, env: Env): Outcome {
+    const first = this.evaluate(left, env);
+    if (first.tag === "error") {
+      return first;
+    }
+    if (typeof first.value !== "boolean") {
+      return bad(op, "left operand is not a boolean");
+    }
+    const shortCircuits = op === "&&" ? !first.value : first.value;
+    if (shortCircuits) {
+      return ok(first.value);
+    }
+    const second = this.evaluate(right, env);
+    if (second.tag === "error") {
+      return second;
+    }
+    return typeof second.value === "boolean"
+      ? ok(second.value)
+      : bad(op, "right operand is not a boolean");
+  }
 
-/** The book's `operands`: the raw operand expression list. */
-export const operands = (exp: Cons<Value>): List<Value> => cdr(exp);
+  /** A simple assignment: target reference first, then the right-hand side. */
+  evalAssignment(expr: Extract<Expr, { tag: "assign" }>, env: Env): Outcome {
+    const target = expr.target;
+    if (target.tag === "variable") {
+      const cell = findCell(env, target.name);
+      if (cell === undefined) {
+        return fail({ tag: "unbound-name", name: target.name });
+      }
+      if (!cell.mutable) {
+        return bad("=", "assignment to a const binding");
+      }
+      const value = this.evaluate(expr.value, env);
+      if (value.tag === "error") {
+        return value;
+      }
+      cell.value = value.value;
+      cell.initialized = true;
+      return ok(value.value);
+    }
+    if (target.tag === "member") {
+      const object = this.evaluate(target.object, env);
+      if (object.tag === "error") {
+        return object;
+      }
+      const value = this.evaluate(expr.value, env);
+      return value.tag === "error" ? value : this.memberSet(object.value, target.name, value.value);
+    }
+    if (target.tag === "index") {
+      const object = this.evaluate(target.object, env);
+      if (object.tag === "error") {
+        return object;
+      }
+      const index = this.evaluate(target.index, env);
+      if (index.tag === "error") {
+        return index;
+      }
+      const value = this.evaluate(expr.value, env);
+      return value.tag === "error" ? value : this.indexSet(object.value, index.value, value.value);
+    }
+    return fail({ tag: "unknown-syntax", construct: "assignment-target" });
+  }
 
-/** The book's `no-operands?`. */
-export const noOperands = (ops: List<Value>): boolean => ops._tag === "Nil";
+  evalArgs(args: ReadonlyArray<Arg>, env: Env): ArgsOutcome {
+    const values: Value[] = [];
+    for (const arg of args) {
+      const value = this.evaluate(arg.expr, env);
+      if (value.tag === "error") {
+        return { tag: "error", error: value.error };
+      }
+      if (arg.kind === "spread") {
+        if (!isArrayValue(value.value)) {
+          return {
+            tag: "error",
+            error: {
+              tag: "bad-operand",
+              operator: "spread",
+              detail: "spread argument is not an array",
+            },
+          };
+        }
+        values.push(...value.value.items);
+        continue;
+      }
+      values.push(value.value);
+    }
+    return { tag: "args", values };
+  }
 
-/** The book's `first-operand`. */
-export const firstOperand = (ops: List<Value>): Value => firstExp(ops);
-
-/** The book's `rest-operands`. */
-export const restOperands = (ops: List<Value>): List<Value> => restExps(ops);
-
-// ---------------------------------------------------------------------
-// 4.1.1 The core of the evaluator
-// ---------------------------------------------------------------------
-
-/** The book's `list-of-values` as the edition writes it: operands are
- * evaluated left to right, the order the host fixes (exercise 4.1). */
-export const listOfValues = (
-  exps: List<Value>,
-  env: Env,
-): Effect.Effect<List<Value>, EvaluationError> => {
-  if (noOperands(exps)) {
-    return Effect.succeed(nil);
-  }
-  return Effect.flatMap(evaluate(firstOperand(exps), env), (first) =>
-    Effect.map(listOfValues(restOperands(exps), env), (rest) => cons(first, rest)),
-  );
-};
-
-/** The book's `eval`: one case analysis over the expression data. */
-export const evaluate: Evaluate = (exp, env) => {
-  if (isSelfEvaluating(exp)) {
-    return Effect.succeed(exp);
-  }
-  if (isVariable(exp)) {
-    return lookupVariableValue(exp, env);
-  }
-  if (isQuoted(exp)) {
-    return Effect.succeed(textOfQuotation(exp));
-  }
-  if (isAssignment(exp)) {
-    return evalAssignment(exp, env);
-  }
-  if (isDefinition(exp)) {
-    return evalDefinition(exp, env);
-  }
-  if (isIf(exp)) {
-    return evalIf(exp, env);
-  }
-  if (isLambda(exp)) {
-    return Effect.succeed(makeProcedure(lambdaParameters(exp), lambdaBody(exp), env));
-  }
-  if (isBegin(exp)) {
-    return evalSequence(beginActions(exp), env);
-  }
-  if (isCond(exp)) {
-    return evaluate(condToIf(exp), env);
-  }
-  if (isApplication(exp)) {
-    return Effect.flatMap(evaluate(operator(exp), env), (procedure) =>
-      Effect.flatMap(listOfValues(operands(exp), env), (args) => applyProcedure(procedure, args)),
+  evalExprList(exprs: ReadonlyArray<Expr>, env: Env): ArgsOutcome {
+    return this.evalArgs(
+      exprs.map((expr): Arg => ({ kind: "item", expr })),
+      env,
     );
   }
-  return Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-};
 
-/** The book's `make-procedure` (4.1.3): packages a compound procedure. */
-export const makeProcedure = (
-  parameters: List<Value>,
-  body: List<Value>,
-  env: Env,
-): CompoundProc => ({
-  _tag: "Compound",
-  params: parameters,
-  body,
-  env,
+  evalNewMap(args: ReadonlyArray<Expr>, env: Env): Outcome {
+    const evaluated = this.evalExprList(args, env);
+    if (evaluated.tag === "error") {
+      return fail(evaluated.error);
+    }
+    const entriesValue = evaluated.values[0];
+    if (entriesValue === undefined) {
+      return ok(makeMap());
+    }
+    if (!isArrayValue(entriesValue)) {
+      return bad("new Map", "argument is not an entries array");
+    }
+    const entries: Array<readonly [Value, Value]> = [];
+    for (const pair of entriesValue.items) {
+      if (!isArrayValue(pair) || pair.items.length !== 2) {
+        return bad("new Map", "entry is not a two-element array");
+      }
+      const key = pair.items[0];
+      const value = pair.items[1];
+      entries.push([key, value]);
+    }
+    return ok(makeMap(entries));
+  }
+
+  evalForce(expr: Expr, env: Env): Outcome {
+    const value = this.evaluate(expr, env);
+    if (value.tag === "error") {
+      return value;
+    }
+    if (!isThunkValue(value.value)) {
+      return bad("force", "argument is not a thunk");
+    }
+    const thunk = value.value;
+    if (this.mode === "lazy-memoized-experiment" && thunk.evaluated) {
+      return ok(thunk.computed);
+    }
+    this.evaluations += 1;
+    const computed = this.evaluate(thunk.expr, thunk.env);
+    if (computed.tag === "error") {
+      return computed;
+    }
+    if (this.mode === "lazy-memoized-experiment") {
+      thunk.computed = computed.value;
+      thunk.evaluated = true;
+    }
+    return ok(computed.value);
+  }
+
+  // ------------------------------------------------------------------
+  // Names, members, and indices
+  // ------------------------------------------------------------------
+
+  lookupVariableValue(name: string, env: Env): Outcome {
+    const cell = findCell(env, name);
+    if (cell === undefined) {
+      return fail({ tag: "unbound-name", name });
+    }
+    if (!cell.initialized) {
+      return fail({ tag: "tdz-access", name });
+    }
+    return ok(cell.value);
+  }
+
+  setVariableValue(name: string, value: Value, env: Env): Outcome {
+    const cell = findCell(env, name);
+    if (cell === undefined) {
+      return fail({ tag: "unbound-name", name });
+    }
+    if (!cell.mutable) {
+      return bad("=", "assignment to a const binding");
+    }
+    cell.value = value;
+    cell.initialized = true;
+    return ok(value);
+  }
+
+  defineVariableValue(name: string, value: Value, env: Env): void {
+    env.bindings.set(name, makeCell(value, true));
+  }
+
+  memberGet(object: Value, name: string): Outcome {
+    if (typeof object === "string") {
+      return name === "length" ? ok(object.length) : fail({ tag: "unknown-field", field: name });
+    }
+    if (isArrayValue(object)) {
+      return name === "length"
+        ? ok(object.items.length)
+        : fail({ tag: "unknown-field", field: name });
+    }
+    if (isMapValue(object)) {
+      return name === "size"
+        ? ok(object.entries.size)
+        : fail({ tag: "unknown-field", field: name });
+    }
+    if (isSetValue(object)) {
+      return name === "size" ? ok(object.items.size) : fail({ tag: "unknown-field", field: name });
+    }
+    if (isErrorValue(object)) {
+      return name === "message" ? ok(object.message) : fail({ tag: "unknown-field", field: name });
+    }
+    if (isRecordValue(object)) {
+      return ok(object.fields.get(name));
+    }
+    return fail({ tag: "unknown-field", field: name });
+  }
+
+  memberSet(object: Value, name: string, value: Value): Outcome {
+    if (!isRecordValue(object)) {
+      return bad("assign", "member target is not a record");
+    }
+    if (object.readonlyFields.has(name)) {
+      return fail({ tag: "readonly-field", field: name });
+    }
+    object.fields.set(name, value);
+    return ok(value);
+  }
+
+  indexGet(object: Value, index: Value): Outcome {
+    if (isArrayValue(object) && typeof index === "number") {
+      return ok(itemAt(object.items, index));
+    }
+    if (typeof object === "string" && typeof index === "number") {
+      return ok(itemAt([...object], index));
+    }
+    if (isRecordValue(object) && typeof index === "string") {
+      return ok(object.fields.get(index));
+    }
+    if (isMapValue(object)) {
+      return ok(object.entries.get(index));
+    }
+    return bad("index", "receiver or index has the wrong kind");
+  }
+
+  indexSet(object: Value, index: Value, value: Value): Outcome {
+    if (isArrayValue(object) && typeof index === "number") {
+      if (!Number.isInteger(index) || index < 0) {
+        return bad("index", "array index is not a non-negative integer");
+      }
+      while (object.items.length < index) {
+        object.items.push(undefined);
+      }
+      object.items[index] = value;
+      return ok(value);
+    }
+    if (isRecordValue(object) && typeof index === "string") {
+      return this.memberSet(object, index, value);
+    }
+    if (isMapValue(object)) {
+      object.entries.set(index, value);
+      return ok(value);
+    }
+    return bad("index", "receiver or index has the wrong kind");
+  }
+
+  // ------------------------------------------------------------------
+  // Application
+  // ------------------------------------------------------------------
+
+  evalCall(callee: Expr, args: ReadonlyArray<Arg>, env: Env): Outcome {
+    if (
+      callee.tag === "member" &&
+      callee.object.tag === "variable" &&
+      callee.object.name === "console" &&
+      callee.name === "log"
+    ) {
+      return this.emitOutput(args, env);
+    }
+    if (callee.tag === "member") {
+      const receiver = this.evaluate(callee.object, env);
+      if (receiver.tag === "error") {
+        return receiver;
+      }
+      const values = this.evalArgs(args, env);
+      if (values.tag === "error") {
+        return fail(values.error);
+      }
+      return this.callMember(receiver.value, callee.name, values.values);
+    }
+    const target = this.evaluate(callee, env);
+    if (target.tag === "error") {
+      return target;
+    }
+    const values = this.evalArgs(args, env);
+    if (values.tag === "error") {
+      return fail(values.error);
+    }
+    return this.applyProcedure(target.value, values.values);
+  }
+
+  /** The admitted output operation: one argument, appended to the transcript. */
+  emitOutput(args: ReadonlyArray<Arg>, env: Env): Outcome {
+    const values = this.evalArgs(args, env);
+    if (values.tag === "error") {
+      return fail(values.error);
+    }
+    if (values.values.length !== 1) {
+      return fail({
+        tag: "bad-operand",
+        operator: "console.log",
+        detail: "expected exactly one argument",
+      });
+    }
+    this.transcript.push(this.render(values.values[0]));
+    return ok(undefined);
+  }
+
+  applyProcedure(procedure: Value, args: ReadonlyArray<Value>): Outcome {
+    if (isPrimitive(procedure)) {
+      return procedure.fn(args);
+    }
+    if (!isClosure(procedure)) {
+      return fail({ tag: "not-callable", detail: renderShallow(procedure) });
+    }
+    return this.callClosure(procedure, args);
+  }
+
+  callClosure(closure: Closure, args: ReadonlyArray<Value>): Outcome {
+    const required = closure.params.length;
+    const fits = closure.rest === null ? args.length === required : args.length >= required;
+    if (!fits) {
+      return fail({ tag: "wrong-arity", expected: required, given: args.length });
+    }
+    const frame = child(closure.env);
+    for (let i = 0; i < required; i += 1) {
+      const name = closure.params[i];
+      if (name !== undefined) {
+        frame.bindings.set(name, makeCell(args[i], true));
+      }
+    }
+    if (closure.rest !== null) {
+      frame.bindings.set(closure.rest, makeCell(makeArray(args.slice(required)), true));
+    }
+    return completionToOutcome(this.execSequence(closure.body.body, frame));
+  }
+
+  callMember(receiver: Value, name: string, args: ReadonlyArray<Value>): Outcome {
+    if (isArrayValue(receiver) && CALLBACK_METHODS[name] === true) {
+      return this.callArrayCallback(receiver, name, args);
+    }
+    const table = tableKeyOf(receiver, name);
+    const builtin = table === undefined ? undefined : this.#builtins.get(table);
+    if (builtin !== undefined) {
+      return builtin([receiver, ...args]);
+    }
+    if (isRecordValue(receiver)) {
+      const field = receiver.fields.get(name);
+      if (field === undefined) {
+        return fail({ tag: "not-callable", detail: `missing field ${name}` });
+      }
+      return this.applyProcedure(field, args);
+    }
+    return fail({ tag: "not-callable", detail: `${kindOf(receiver)}.${name}` });
+  }
+
+  callArrayCallback(receiver: ArrayValue, name: string, args: ReadonlyArray<Value>): Outcome {
+    const fn = args[0];
+    if (fn === undefined || (!isClosure(fn) && !isPrimitive(fn))) {
+      return fail({ tag: "not-callable", detail: `${name} needs a procedure` });
+    }
+    const call = (callArgs: ReadonlyArray<Value>): Outcome => this.applyProcedure(fn, callArgs);
+    const items = receiver.items;
+    if (name === "forEach") {
+      for (const item of items) {
+        const result = call([item]);
+        if (result.tag === "error") {
+          return result;
+        }
+      }
+      return ok(undefined);
+    }
+    if (name === "map" || name === "flatMap" || name === "filter") {
+      const out: Value[] = [];
+      for (const item of items) {
+        const result = call([item]);
+        if (result.tag === "error") {
+          return result;
+        }
+        if (name === "filter") {
+          if (result.value === true) {
+            out.push(item);
+          }
+          continue;
+        }
+        if (name === "flatMap" && isArrayValue(result.value)) {
+          out.push(...result.value.items);
+          continue;
+        }
+        out.push(result.value);
+      }
+      return ok(makeArray(out));
+    }
+    if (name === "find" || name === "some" || name === "every") {
+      for (const item of items) {
+        const result = call([item]);
+        if (result.tag === "error") {
+          return result;
+        }
+        const holds = result.value === true;
+        if (name === "find" && holds) {
+          return ok(item);
+        }
+        if (name === "some" && holds) {
+          return ok(true);
+        }
+        if (name === "every" && !holds) {
+          return ok(false);
+        }
+      }
+      return ok(name === "find" ? undefined : name === "every");
+    }
+    return this.reduceItems(items, name, args, call);
+  }
+
+  reduceItems(
+    items: ReadonlyArray<Value>,
+    name: string,
+    args: ReadonlyArray<Value>,
+    call: (callArgs: ReadonlyArray<Value>) => Outcome,
+  ): Outcome {
+    const right = name === "reduceRight";
+    const ordered = right ? [...items].reverse() : [...items];
+    const hasInit = args.length > 1;
+    if (!hasInit && ordered.length === 0) {
+      return bad(name, "empty array without an initial value");
+    }
+    let acc = hasInit ? args[1] : ordered[0];
+    for (const item of ordered.slice(hasInit ? 0 : 1)) {
+      const result = call([acc, item]);
+      if (result.tag === "error") {
+        return result;
+      }
+      acc = result.value;
+    }
+    return ok(acc);
+  }
+
+  // ------------------------------------------------------------------
+  // Statements
+  // ------------------------------------------------------------------
+
+  execStatement(stmt: Stmt, env: Env): Completion {
+    switch (stmt.tag) {
+      case "block":
+        return this.execBody(stmt.body, env);
+      case "if": {
+        const test = this.evaluate(stmt.test, env);
+        if (test.tag === "error") {
+          return { tag: "error", error: test.error };
+        }
+        return this.execStatement(
+          test.value === true ? stmt.consequent : (stmt.alternative ?? emptyBlock()),
+          env,
+        );
+      }
+      case "while": {
+        for (;;) {
+          const test = this.evaluate(stmt.test, env);
+          if (test.tag === "error") {
+            return { tag: "error", error: test.error };
+          }
+          if (test.value !== true) {
+            return normal(undefined);
+          }
+          const body = this.execStatement(stmt.body, env);
+          if (body.tag === "break") {
+            return normal(undefined);
+          }
+          if (body.tag === "return" || body.tag === "throw" || body.tag === "error") {
+            return body;
+          }
+        }
+      }
+      case "for-of":
+        return this.execForOf(stmt.name, stmt.iterable, stmt.body, env);
+      case "switch":
+        return this.execSwitch(stmt, env);
+      case "return": {
+        if (stmt.argument === null) {
+          return { tag: "return", value: undefined };
+        }
+        const value = this.evaluate(stmt.argument, env);
+        return value.tag === "error"
+          ? { tag: "error", error: value.error }
+          : { tag: "return", value: value.value };
+      }
+      case "break":
+        return { tag: "break" };
+      case "continue":
+        return { tag: "continue" };
+      case "throw": {
+        const value = this.evaluate(stmt.argument, env);
+        return value.tag === "error"
+          ? { tag: "error", error: value.error }
+          : { tag: "throw", value: value.value };
+      }
+      case "try":
+        return this.execTry(stmt, env);
+      case "expr-stmt": {
+        const value = this.evaluate(stmt.expr, env);
+        return value.tag === "error" ? { tag: "error", error: value.error } : normal(value.value);
+      }
+    }
+  }
+
+  execForOf(name: string, iterable: Expr, body: Stmt, env: Env): Completion {
+    const value = this.evaluate(iterable, env);
+    if (value.tag === "error") {
+      return { tag: "error", error: value.error };
+    }
+    if (!isArrayValue(value.value)) {
+      return {
+        tag: "error",
+        error: { tag: "bad-operand", operator: "for-of", detail: "iterable is not an array" },
+      };
+    }
+    for (const item of value.value.items) {
+      const frame = child(env);
+      frame.bindings.set(name, makeCell(item, true));
+      const completion = this.execStatement(body, frame);
+      if (completion.tag === "break") {
+        return normal(undefined);
+      }
+      if (completion.tag === "return" || completion.tag === "throw" || completion.tag === "error") {
+        return completion;
+      }
+    }
+    return normal(undefined);
+  }
+
+  execSwitch(stmt: Extract<Stmt, { tag: "switch" }>, env: Env): Completion {
+    const disc = this.evaluate(stmt.discriminant, env);
+    if (disc.tag === "error") {
+      return { tag: "error", error: disc.error };
+    }
+    const items: Array<Decl | Stmt> = [];
+    for (const clause of stmt.cases) {
+      items.push(...clause.body);
+    }
+    if (stmt.defaultBody !== null) {
+      items.push(...stmt.defaultBody);
+    }
+    const frame = child(env);
+    this.predeclare(items, frame);
+    for (const clause of stmt.cases) {
+      const test = this.evaluate(clause.test, env);
+      if (test.tag === "error") {
+        return { tag: "error", error: test.error };
+      }
+      if (test.value === disc.value) {
+        return this.asSwitchBody(clause.body, frame);
+      }
+    }
+    return stmt.defaultBody === null
+      ? normal(undefined)
+      : this.asSwitchBody(stmt.defaultBody, frame);
+  }
+
+  asSwitchBody(items: ReadonlyArray<Decl | Stmt>, frame: Env): Completion {
+    const completion = this.execSequence(items, frame);
+    return completion.tag === "break" ? normal(undefined) : completion;
+  }
+
+  execTry(stmt: Extract<Stmt, { tag: "try" }>, env: Env): Completion {
+    const body = this.execBody(stmt.block.body, env);
+    let through: Completion = body;
+    const thrown: { caught: true; value: Value } | { caught: false } =
+      body.tag === "throw"
+        ? { caught: true, value: body.value }
+        : body.tag === "error" && body.error.tag === "guest-throw"
+          ? { caught: true, value: body.error.value }
+          : { caught: false };
+    if (thrown.caught && stmt.handler !== null) {
+      const frame = child(env);
+      if (stmt.handler.param !== null) {
+        frame.bindings.set(stmt.handler.param, makeCell(thrown.value, true));
+      }
+      through = this.execBody(stmt.handler.body.body, frame);
+    }
+    if (stmt.finalizer === null) {
+      return through;
+    }
+    const finishing = this.execBody(stmt.finalizer.body, env);
+    return finishing.tag === "normal" ? through : finishing;
+  }
+
+  predeclare(items: ReadonlyArray<Decl | Stmt>, frame: Env): void {
+    for (const item of items) {
+      if (item.tag === "var-decl") {
+        frame.bindings.set(item.name, makeCell(undefined, false, item.kind === "let"));
+        continue;
+      }
+      if (item.tag === "function-decl") {
+        const { params, rest } = splitParams(item.params);
+        const closure = makeClosure(params, rest, item.body, frame);
+        frame.bindings.set(item.name, makeCell(closure, true));
+      }
+    }
+  }
+
+  execBody(items: ReadonlyArray<Decl | Stmt>, env: Env): Completion {
+    return this.execSequence(items, child(env));
+  }
+
+  execSequence(items: ReadonlyArray<Decl | Stmt>, frame: Env): Completion {
+    this.predeclare(items, frame);
+    let last: Value;
+    for (const item of items) {
+      const completion = this.execItem(item, frame);
+      if (completion.tag !== "normal") {
+        return completion;
+      }
+      last = completion.value;
+    }
+    return normal(last);
+  }
+
+  execItem(item: Decl | Stmt, frame: Env): Completion {
+    if (item.tag === "var-decl") {
+      const value = this.evaluate(item.init, frame);
+      if (value.tag === "error") {
+        return { tag: "error", error: value.error };
+      }
+      const cell = findCell(frame, item.name);
+      if (cell === undefined) {
+        frame.bindings.set(item.name, makeCell(value.value, true));
+      } else {
+        cell.value = value.value;
+        cell.initialized = true;
+      }
+      return normal(value.value);
+    }
+    if (item.tag === "function-decl") {
+      const { params, rest } = splitParams(item.params);
+      const closure = makeClosure(params, rest, item.body, frame);
+      frame.bindings.set(item.name, makeCell(closure, true));
+      return normal(undefined);
+    }
+    if (item.tag === "type-decl" || item.tag === "interface-decl" || item.tag === "import") {
+      return normal(undefined);
+    }
+    return this.execStatement(item, frame);
+  }
+
+  render(value: Value): string {
+    if (typeof value === "string") {
+      return value;
+    }
+    if (value === null) {
+      return "null";
+    }
+    if (value === undefined) {
+      return "undefined";
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (isArrayValue(value)) {
+      return `[${value.items.map((item) => this.render(item)).join(", ")}]`;
+    }
+    return renderShallow(value);
+  }
+}
+
+// ---------------------------------------------------------------------
+// Pure helpers
+// ---------------------------------------------------------------------
+
+const emptyBlock = (): Stmt => ({
+  tag: "block",
+  body: [],
+  span: { start: 0, end: 0, line: 1, column: 1 },
 });
 
-/** The book's `apply` over evaluator values. */
-export const applyProcedure = (
-  procedure: Value,
-  args: List<Value>,
-): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag === "Primitive") {
-    return applyPrimitiveProcedure(procedure, args);
+const itemAt = (items: ReadonlyArray<Value>, index: number): Value =>
+  Number.isInteger(index) && index >= 0 && index < items.length ? items[index] : undefined;
+
+const kindOf = (value: Value): string => {
+  if (value === null) {
+    return "object";
   }
-  if (procedure._tag === "Compound") {
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      evalSequence(procedure.body, newEnv),
-    );
+  if (isClosure(value) || isPrimitive(value)) {
+    return "function";
   }
-  return Effect.fail(new NotAProcedure({ value: format(procedure) }));
+  return typeof value;
 };
 
-/** The book's `apply-primitive-procedure`: runs the host function. */
-export const applyPrimitiveProcedure = (
-  procedure: Extract<Value, { _tag: "Primitive" }>,
-  args: List<Value>,
-): Effect.Effect<Value, EvaluationError> => procedure.fn(args);
-
-/** The book's `eval-if`; a missing alternative arms false, so `(if p c)`
- * behaves as the edition defines it. */
-export const evalIf = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluate(ifPredicate(exp), env), (predicate) =>
-    isTrue(predicate) ? evaluate(ifConsequent(exp), env) : evaluate(ifAlternative(exp), env),
-  );
-
-/** The book's `eval-sequence`: every expression but the last for effect. */
-export const evalSequence = (
-  exps: List<Value>,
-  env: Env,
-): Effect.Effect<Value, EvaluationError> => {
-  if (exps._tag === "Nil") {
-    return Effect.fail(new RuntimeError({ message: "Empty sequence: EVAL", detail: "" }));
+const renderShallow = (value: Value): string => {
+  if (typeof value === "string") {
+    return value;
   }
-  if (isLastExp(exps)) {
-    return evaluate(firstExp(exps), env);
-  }
-  return Effect.flatMap(evaluate(firstExp(exps), env), () => evalSequence(restExps(exps), env));
+  return String(value ?? "undefined");
 };
 
-/** The book's `eval-assignment`: computes, writes the found frame. */
-export const evalAssignment = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluate(assignmentValue(exp), env), (value) =>
-    Effect.map(setVariableValue(assignmentVariable(exp), value, env), () => ok),
-  );
+/** Splits a parameter list into positional names and one rest name. */
+export const splitParams = (
+  params: ReadonlyArray<Param>,
+): { params: ReadonlyArray<string>; rest: string | null } => {
+  const names: string[] = [];
+  let rest: string | null = null;
+  for (const entry of params) {
+    if (entry.kind === "rest") {
+      rest = entry.name;
+      continue;
+    }
+    names.push(entry.name);
+  }
+  return { params: names, rest };
+};
 
-/** The book's `eval-definition`: computes, binds in this frame. */
-export const evalDefinition = (exp: Cons<Value>, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(evaluate(definitionValue(exp), env), (value) =>
-    Effect.map(defineVariableValue(definitionVariable(exp), value, env), () => ok),
-  );
+/** Applies a unary operation to an evaluated operand. */
+export const applyUnaryOperation = (op: "!" | "+" | "-" | "typeof", value: Value): Outcome => {
+  if (op === "typeof") {
+    return ok(kindOf(value));
+  }
+  if (op === "!") {
+    return typeof value === "boolean" ? ok(!value) : bad("!", "operand is not a boolean");
+  }
+  return typeof value === "number"
+    ? ok(op === "+" ? +value : -value)
+    : bad(op, "operand is not a number");
+};
+
+/** Applies a binary operation to two evaluated operands. */
+export const applyBinaryOperation = (
+  op: "+" | "-" | "*" | "/" | "%" | "<" | "<=" | ">" | ">=" | "===" | "!==",
+  left: Value,
+  right: Value,
+): Outcome => {
+  if (op === "===" || op === "!==") {
+    const same = left === right;
+    return ok(op === "===" ? same : !same);
+  }
+  if (op === "+") {
+    if (typeof left === "number" && typeof right === "number") {
+      return ok(left + right);
+    }
+    if (typeof left === "string" && typeof right === "string") {
+      return ok(left + right);
+    }
+    return bad("+", "operands are not both numbers or both strings");
+  }
+  if (typeof left !== "number" || typeof right !== "number") {
+    return bad(op, "operands are not numbers");
+  }
+  switch (op) {
+    case "-":
+      return ok(left - right);
+    case "*":
+      return ok(left * right);
+    case "/":
+      return ok(left / right);
+    case "%":
+      return ok(left % right);
+    case "<":
+      return ok(left < right);
+    case "<=":
+      return ok(left <= right);
+    case ">":
+      return ok(left > right);
+    default:
+      return ok(left >= right);
+  }
+};
+
+const tableKeyOf = (receiver: Value, name: string): string | undefined => {
+  if (isArrayValue(receiver)) {
+    return `array.${name}`;
+  }
+  if (typeof receiver === "string") {
+    return `string.${name}`;
+  }
+  if (isMapValue(receiver)) {
+    return `map.${name}`;
+  }
+  if (isSetValue(receiver)) {
+    return `set.${name}`;
+  }
+  return undefined;
+};
 
 // ---------------------------------------------------------------------
-// 4.1.3 Evaluator data structures: environment operations
+// Public engine API
 // ---------------------------------------------------------------------
+
+/** The book's `eval`: one case analysis over the checked syntax. */
+export const evaluate = (expr: Expr, env: Env): Outcome => new Session("core").evaluate(expr, env);
+
+/** The book's `list-of-values`: operands evaluated left to right. */
+export const listOfValues = (exps: ReadonlyArray<Expr>, env: Env): Outcome => {
+  const session = new Session("core");
+  return session.evalArray(
+    exps.map((expr): Arg => ({ kind: "item", expr })),
+    env,
+  );
+};
+
+/** The book's `eval-if` over the shared `if` node, preserving completion. */
+export const evalIf = (stmt: Extract<Stmt, { tag: "if" }>, env: Env): Completion =>
+  new Session("core").execStatement(stmt, env);
+
+/** The book's `eval-sequence`: every form but the last for effect. */
+export const evalSequence = (items: ReadonlyArray<Decl | Stmt>, env: Env): Completion =>
+  new Session("core").execSequence(items, env);
+
+/** The book's `eval-declaration`: bind the declaration in the frame. */
+export const evalDeclaration = (decl: Decl, env: Env): Completion =>
+  new Session("core").execItem(decl, env);
+
+/** The book's `eval-assignment`: compute, then write the found cell. */
+export const evalAssignment = (expr: Expr, env: Env): Outcome =>
+  expr.tag === "assign"
+    ? new Session("core").evalAssignment(expr, env)
+    : fail({ tag: "unknown-syntax", construct: "eval-assignment expects an assign node" });
+
+/** The book's `make-procedure`: packages a closure over its environment. */
+export const makeProcedure = (params: ReadonlyArray<string>, body: Program, env: Env): Closure => {
+  const span = body[0]?.span ?? { start: 0, end: 0, line: 1, column: 1 };
+  return makeClosure(params, null, { body, span }, env);
+};
+
+/** The book's `extend-environment`: one frame binding names to values. */
+export const extendEnvironment = (
+  names: ReadonlyArray<string>,
+  args: ReadonlyArray<Value>,
+  base: Env,
+): EnvOutcome => {
+  if (names.length !== args.length) {
+    return {
+      tag: "error",
+      error: { tag: "wrong-arity", expected: names.length, given: args.length },
+    };
+  }
+  const frame = child(base);
+  for (let i = 0; i < names.length; i += 1) {
+    const name = names[i];
+    if (name !== undefined) {
+      frame.bindings.set(name, makeCell(args[i], true));
+    }
+  }
+  return { tag: "ok", env: frame };
+};
 
 /** The book's `lookup-variable-value`. */
-export const lookupVariableValue = (
-  variable: SymbolValue,
-  env: Env,
-): Effect.Effect<Value, EvaluationError> => lookupVariable(env, variable.name);
+export const lookupVariableValue = (name: string, env: Env): Outcome =>
+  new Session("core").lookupVariableValue(name, env);
 
-/** The book's `set-variable-value!`: writes the frame that defines it. */
-export const setVariableValue = (
-  variable: SymbolValue,
-  value: Value,
-  env: Env,
-): Effect.Effect<void, EvaluationError> => setVariable(env, variable.name, value);
+/** The book's `set-variable-value!`: write the cell the chain finds. */
+export const setVariableValue = (name: string, value: Value, env: Env): Outcome =>
+  new Session("core").setVariableValue(name, value, env);
 
-/** The book's `define-variable!`: binds in this frame, shadowing outer ones. */
-export const defineVariableValue = (
-  variable: SymbolValue,
-  value: Value,
-  env: Env,
-): Effect.Effect<void> => defineInFrame(env, variable.name, value);
+/** The book's `define-variable!`: bind in this frame, shadowing outer ones. */
+export const defineVariableValue = (name: string, value: Value, env: Env): void =>
+  new Session("core").defineVariableValue(name, value, env);
 
-/** The book's `add-binding-to-frame!`: one more binding in this frame. */
-export const addBindingToFrame = (
-  variable: SymbolValue,
-  value: Value,
-  env: Env,
-): Effect.Effect<void> => defineInFrame(env, variable.name, value);
+/** A fresh global environment with the builtin and namespace bindings. */
+export const globalEnvironment = (): Env => new Session("core").globalEnv();
 
-const fillFrame = (
-  env: Env,
-  vars: List<Value>,
-  vals: List<Value>,
-): Effect.Effect<Env, EvaluationError> => {
-  if (vars._tag === "Cons" && vals._tag === "Cons") {
-    return Effect.flatMap(defineInFrame(env, nameOf(vars.head), vals.head), () =>
-      fillFrame(env, vars.tail, vals.tail),
-    );
+/** Maps a statement completion to the evaluator outcome channel. */
+const completionToOutcome = (completion: Completion): Outcome => {
+  switch (completion.tag) {
+    case "normal":
+    case "return":
+      return ok(completion.value);
+    case "throw":
+      return fail({ tag: "guest-throw", value: completion.value });
+    case "error":
+      return fail(completion.error);
+    case "break":
+    case "continue":
+      return fail({ tag: "unknown-syntax", construct: `unexpected-${completion.tag}` });
   }
-  if (vars._tag === "Nil" && vals._tag === "Nil") {
-    return Effect.succeed(env);
-  }
-  return Effect.fail(new ArityMismatch({ expected: countList(vars), given: countList(vals) }));
 };
 
-const countList = (items: List<Value>): number => toArray(items).length;
+/** Runs an admitted program in the given session, mapping completions. */
+export const executeProgram = (program: Program, session: Session): Outcome =>
+  completionToOutcome(session.execBody(program, session.globalEnv()));
 
-/** The book's `extend-environment`: a fresh frame binding `vars` to `vals`. */
-export const extendEnvironment = (
-  vars: List<Value>,
-  vals: List<Value>,
-  baseEnv: Env,
-): Effect.Effect<Env, EvaluationError> =>
-  Effect.flatMap(extendEnv(baseEnv), (env) => fillFrame(env, vars, vals));
-
-// ---------------------------------------------------------------------
-// 4.1.4 Running the evaluator as a program
-// ---------------------------------------------------------------------
-
-/** Where `display` and `newline` write; a session collects its transcript. */
-export type Sink = (chunk: string) => void;
-
-const numberArgs = (
-  args: List<Value>,
-  who: string,
-): Effect.Effect<ReadonlyArray<number>, EvaluationError> => {
-  const nums: number[] = [];
-  let rest: List<Value> = args;
-  while (rest._tag === "Cons") {
-    const head = rest.head;
-    if (head._tag !== "Number") {
-      return Effect.fail(
-        new RuntimeError({ message: `${who}: expected numbers`, detail: format(head) }),
-      );
-    }
-    nums.push(head.n);
-    rest = rest.tail;
-  }
-  return Effect.succeed(nums);
+const runProgram = (program: Program, mode: ExperimentMode): RunResult => {
+  const session = new Session(mode);
+  return { outcome: executeProgram(program, session), transcript: session.transcript };
 };
 
-const primitive = (name: string, fn: Primitive): [string, Primitive] => [name, fn];
-
-const foldNumbers =
-  (
-    who: string,
-    zero: number,
-    step: (a: number, b: number) => number,
-    unary?: (n: number) => number,
-  ): Primitive =>
-  (args) =>
-    Effect.flatMap(numberArgs(args, who), (ns) => {
-      if (ns.length === 0) {
-        return Effect.succeed({ _tag: "Number", n: zero });
-      }
-      if (ns.length === 1 && unary !== undefined) {
-        const only = ns[0];
-        return Effect.succeed({ _tag: "Number", n: unary(only ?? zero) });
-      }
-      return Effect.succeed({ _tag: "Number", n: ns.reduce(step) });
-    });
-
-const compareNumbers =
-  (who: string, holds: (a: number, b: number) => boolean): Primitive =>
-  (args) =>
-    Effect.flatMap(numberArgs(args, who), (ns) => {
-      let ordered = true;
-      let previous: number | undefined;
-      for (const n of ns) {
-        if (previous !== undefined && !holds(previous, n)) {
-          ordered = false;
-        }
-        previous = n;
-      }
-      return Effect.succeed({ _tag: "Boolean", b: ordered });
-    });
-
-/** Builds the book's primitive-procedures table: name plus host function.
- * `display` and `newline` write to the given sink. */
-export const makePrimitiveProcedures = (
-  sink: Sink,
-): ReadonlyArray<readonly [string, Primitive]> => [
-  primitive("car", (args) => {
-    const first = toArray(args)[0];
-    return first !== undefined && isPair(first)
-      ? Effect.succeed(car(first))
-      : Effect.fail(new RuntimeError({ message: "car: expected a pair", detail: argsText(args) }));
-  }),
-  primitive("cdr", (args) => {
-    const first = toArray(args)[0];
-    return first !== undefined && isPair(first)
-      ? Effect.succeed(cdr(first))
-      : Effect.fail(new RuntimeError({ message: "cdr: expected a pair", detail: argsText(args) }));
-  }),
-  primitive("cons", (args) => {
-    const [a, b] = toArray(args);
-    return a !== undefined && b !== undefined
-      ? Effect.succeed(cons(a, asList(b)))
-      : Effect.fail(
-          new RuntimeError({ message: "cons: expected two arguments", detail: argsText(args) }),
-        );
-  }),
-  primitive("null?", (args) => {
-    const first = toArray(args)[0];
-    return Effect.succeed({ _tag: "Boolean", b: first !== undefined && first._tag === "Nil" });
-  }),
-  primitive("pair?", (args) => {
-    const first = toArray(args)[0];
-    return Effect.succeed({ _tag: "Boolean", b: first !== undefined && isPair(first) });
-  }),
-  primitive("eq?", (args) => {
-    const [a, b] = toArray(args);
-    return Effect.succeed({
-      _tag: "Boolean",
-      b: a !== undefined && b !== undefined && eqValue(a, b),
-    });
-  }),
-  primitive("equal?", (args) => {
-    const [a, b] = toArray(args);
-    return Effect.succeed({
-      _tag: "Boolean",
-      b: a !== undefined && b !== undefined && equalValue(a, b),
-    });
-  }),
-  primitive("symbol?", (args) => {
-    const first = toArray(args)[0];
-    return Effect.succeed({ _tag: "Boolean", b: first !== undefined && isSymbol(first) });
-  }),
-  primitive("number?", (args) => {
-    const first = toArray(args)[0];
-    return Effect.succeed({ _tag: "Boolean", b: first !== undefined && first._tag === "Number" });
-  }),
-  primitive("string?", (args) => {
-    const first = toArray(args)[0];
-    return Effect.succeed({ _tag: "Boolean", b: first !== undefined && first._tag === "String" });
-  }),
-  primitive("boolean?", (args) => {
-    const first = toArray(args)[0];
-    return Effect.succeed({ _tag: "Boolean", b: first !== undefined && first._tag === "Boolean" });
-  }),
-  primitive(
-    "+",
-    foldNumbers("+", 0, (a, b) => a + b),
-  ),
-  primitive(
-    "-",
-    foldNumbers(
-      "-",
-      0,
-      (a, b) => a - b,
-      (n) => 0 - n,
-    ),
-  ),
-  primitive(
-    "*",
-    foldNumbers("*", 1, (a, b) => a * b),
-  ),
-  primitive("/", (args) =>
-    Effect.flatMap(numberArgs(args, "/"), (ns) => {
-      const [head, ...rest] = ns;
-      if (head === undefined || rest.length === 0 || rest.some((d) => d === 0)) {
-        return Effect.fail(
-          new RuntimeError({
-            message: "/: expects a nonzero divisor list",
-            detail: argsText(args),
-          }),
-        );
-      }
-      return Effect.succeed({ _tag: "Number", n: rest.reduce((a, b) => a / b, head) });
-    }),
-  ),
-  primitive(
-    "=",
-    compareNumbers("=", (a, b) => a === b),
-  ),
-  primitive(
-    "<",
-    compareNumbers("<", (a, b) => a < b),
-  ),
-  primitive(
-    ">",
-    compareNumbers(">", (a, b) => a > b),
-  ),
-  primitive("not", (args) => {
-    const first = toArray(args)[0];
-    return Effect.succeed({ _tag: "Boolean", b: first === undefined || !isTrue(first) });
-  }),
-  primitive("list", (args) => Effect.succeed(args)),
-  primitive("append", (args) => Effect.succeed(appendLists(toArray(args)))),
-  primitive("display", (args) => {
-    const first = toArray(args)[0];
-    sink(first === undefined ? "()" : format(first));
-    return Effect.succeed(unspecified);
-  }),
-  primitive("newline", () => {
-    sink("\n");
-    return Effect.succeed(unspecified);
-  }),
-  primitive("error", (args) => {
-    const items = toArray(args);
-    const message =
-      items[0] !== undefined && items[0]._tag === "String" ? items[0].s : format(items[0] ?? nil);
-    return Effect.fail(new RuntimeError({ message, detail: items.slice(1).map(format).join(" ") }));
-  }),
-];
-
-const argsText = (args: List<Value>): string => (args._tag === "Cons" ? format(args.head) : "()");
-
-const asList = (v: Value): List<Value> => (v._tag === "Cons" || v._tag === "Nil" ? v : nil);
-
-const appendLists = (lists: ReadonlyArray<Value>): List<Value> => {
-  const parts: ReadonlyArray<Value>[] = lists.map((l) =>
-    l._tag === "Cons" || l._tag === "Nil" ? toArray(l) : [],
-  );
-  const out: Value[] = [];
-  for (const part of parts) {
-    out.push(...part);
+/** Reads, admits, and runs one source unit; no guest effect on rejection. */
+export const runSource = (text: string, mode: ExperimentMode = "core"): RunResult => {
+  const admission = admitSource(text, mode);
+  if (!admission.ok) {
+    return {
+      outcome: fail({
+        tag: "unknown-syntax",
+        construct:
+          admission.diagnostics[0]?.construct ?? `TS${admission.hostDiagnostics[0]?.code ?? 0}`,
+      }),
+      transcript: [],
+    };
   }
-  return fromValues(out);
+  return runProgram(admission.program, mode);
 };
 
-const fromValues = (items: ReadonlyArray<Value>): List<Value> =>
-  items.reduceRight<List<Value>>((tail, head) => cons(head, tail), nil);
-
-/** The book's `setup-environment`: the global frame with the primitives
- * and the `true` and `false` variables bound. */
-export const setupEnvironment = (sink: Sink = () => {}): Effect.Effect<Env, never> =>
-  Effect.gen(function* () {
-    const env = yield* makeGlobalEnv();
-    for (const [name, fn] of makePrimitiveProcedures(sink)) {
-      yield* defineInFrame(env, name, { _tag: "Primitive", name, fn });
-    }
-    yield* defineInFrame(env, "true", trueValue);
-    yield* defineInFrame(env, "false", falseValue);
-    return env;
-  });
-
-/** The book's driver loop over a finite session: reads each input,
- * evaluates it in the global environment, and prints the value. */
-export const driverLoop = (
-  env: Env,
-  inputs: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, EvaluationError> =>
-  Effect.forEach(inputs, (input) =>
-    Effect.flatMap(evalString(input, env), (value) =>
-      Effect.succeed([";;; M-Eval input:", input, ";;; M-Eval value:", format(value)]),
-    ),
-  ).pipe(Effect.map((lines) => lines.flat()));
-
-/** Reads one form and evaluates it; a read failure lands on the error
- * channel as a `RuntimeError`. */
-export const evalString = (text: string, env: Env): Effect.Effect<Value, EvaluationError> =>
-  Effect.flatMap(
-    Effect.try({
-      try: () => read(text),
-      catch: (e) =>
-        new RuntimeError({
-          message: "read failed",
-          detail: e instanceof ReadError || e instanceof Error ? e.message : String(e),
+/** The book's driver loop over a finite REPL session. */
+export const driverLoop = (env: Env, inputs: ReadonlyArray<string>): RunResult => {
+  const session = new Session("core");
+  const lines: string[] = [];
+  let last: Outcome = ok(undefined);
+  for (const input of inputs) {
+    const admission = admitSource(input);
+    if (!admission.ok) {
+      return {
+        outcome: fail({
+          tag: "unknown-syntax",
+          construct:
+            admission.diagnostics[0]?.construct ?? `TS${admission.hostDiagnostics[0]?.code ?? 0}`,
         }),
-    }),
-    (exp) => evaluate(exp, env),
-  );
+        transcript: lines,
+      };
+    }
+    lines.push(";;; M-Eval input:", input);
+    const completion = session.execSequence(admission.program, env);
+    last =
+      completion.tag === "normal" || completion.tag === "return"
+        ? ok(completion.value)
+        : completion.tag === "throw"
+          ? fail({ tag: "guest-throw", value: completion.value })
+          : completion.tag === "error"
+            ? fail(completion.error)
+            : fail({ tag: "unknown-syntax", construct: "unexpected-break" });
+    if (last.tag === "error") {
+      lines.push(";;; M-Eval error:", JSON.stringify(last.error));
+      return { outcome: last, transcript: lines };
+    }
+    lines.push(";;; M-Eval value:", format(last.value));
+  }
+  return { outcome: last, transcript: lines };
+};
 
 // ---------------------------------------------------------------------
 // 4.1.7 Separating syntactic analysis from execution
 // ---------------------------------------------------------------------
 
-/** An execution procedure: the analyzed expression's remaining work. */
-export type ExecutionProcedure = (env: Env) => Effect.Effect<Value, EvaluationError>;
-
 /** The book's `analyze`: syntax once, execution many times. */
-export const analyze = (exp: Value): ExecutionProcedure => {
-  if (isSelfEvaluating(exp)) {
-    return analyzeSelfEvaluating(exp);
-  }
-  if (isQuoted(exp)) {
-    return analyzeQuoted(exp);
-  }
-  if (isVariable(exp)) {
-    return analyzeVariable(exp);
-  }
-  if (isAssignment(exp)) {
-    return analyzeAssignment(exp);
-  }
-  if (isDefinition(exp)) {
-    return analyzeDefinition(exp);
-  }
-  if (isIf(exp)) {
-    return analyzeIf(exp);
-  }
-  if (isLambda(exp)) {
-    return analyzeLambda(exp);
-  }
-  if (isBegin(exp)) {
-    return analyzeSequence(beginActions(exp));
-  }
-  if (isCond(exp)) {
-    return analyze(condToIf(exp));
-  }
-  if (isApplication(exp)) {
-    return analyzeApplication(exp);
-  }
-  return () => Effect.fail(new UnknownSyntax({ expr: format(exp) }));
-};
+export const analyze = (expr: Expr): ExecutionProcedure =>
+  analyzedProcedure(expr, new Session("core"));
 
 /** The analyzed evaluator's `eval`: analyze once, run once. */
-export const evalAnalyzed: Evaluate = (exp, env) => analyze(exp)(env);
+export const evalAnalyzed = (expr: Expr, env: Env): Outcome => analyze(expr)(env);
 
-/** The book's `analyze-self-evaluating`: the expression, unchanged. */
-export const analyzeSelfEvaluating =
-  (exp: Value): ExecutionProcedure =>
-  () =>
-    Effect.succeed(exp);
-
-/** The book's `analyze-quoted`: the text lifted out at analysis time. */
-export const analyzeQuoted = (exp: Cons<Value>): ExecutionProcedure => {
-  const qval = textOfQuotation(exp);
-  return () => Effect.succeed(qval);
-};
-
-/** The book's `analyze-variable`: lookup waits for the environment. */
-export const analyzeVariable =
-  (exp: SymbolValue): ExecutionProcedure =>
-  (env) =>
-    lookupVariableValue(exp, env);
-
-/** The book's `analyze-assignment`: value analyzed once, write at run time. */
-export const analyzeAssignment = (exp: Cons<Value>): ExecutionProcedure => {
-  const variable = assignmentVariable(exp);
-  const vproc = analyze(assignmentValue(exp));
-  return (env) =>
-    Effect.flatMap(vproc(env), (value) =>
-      Effect.map(setVariableValue(variable, value, env), () => ok),
-    );
-};
-
-/** The book's `analyze-definition`. */
-export const analyzeDefinition = (exp: Cons<Value>): ExecutionProcedure => {
-  const variable = definitionVariable(exp);
-  const vproc = analyze(definitionValue(exp));
-  return (env) =>
-    Effect.flatMap(vproc(env), (value) =>
-      Effect.map(defineVariableValue(variable, value, env), () => ok),
-    );
-};
-
-/** The book's `analyze-if`. */
-export const analyzeIf = (exp: Cons<Value>): ExecutionProcedure => {
-  const pproc = analyze(ifPredicate(exp));
-  const cproc = analyze(ifConsequent(exp));
-  const aproc = analyze(ifAlternative(exp));
-  return (env) =>
-    Effect.flatMap(pproc(env), (predicate) => (isTrue(predicate) ? cproc(env) : aproc(env)));
-};
-
-/** The book's `analyze-lambda`: body analyzed once for every closure. */
-export const analyzeLambda = (exp: Cons<Value>): ExecutionProcedure => {
-  const vars = lambdaParameters(exp);
-  const bproc = analyzeSequence(lambdaBody(exp));
-  return (env) =>
-    Effect.succeed(makeProcedure(vars, fromValues([{ _tag: "Execution", run: bproc }]), env));
-};
-
-const sequentially =
-  (proc1: ExecutionProcedure, proc2: ExecutionProcedure): ExecutionProcedure =>
-  (env) =>
-    Effect.flatMap(proc1(env), () => proc2(env));
-
-/** The book's `analyze-sequence`: execution procedures folded left, so a
- * one-expression body runs with no sequence machinery at all. */
-export const analyzeSequence = (exps: List<Value>): ExecutionProcedure => {
-  if (exps._tag === "Nil") {
-    return () => Effect.fail(new RuntimeError({ message: "Empty sequence: ANALYZE", detail: "" }));
+/** Runs an admitted program through the analyzer over one shared session. */
+export const runAnalyzedSource = (text: string, mode: ExperimentMode = "core"): RunResult => {
+  const admission = admitSource(text, mode);
+  if (!admission.ok) {
+    return {
+      outcome: fail({
+        tag: "unknown-syntax",
+        construct:
+          admission.diagnostics[0]?.construct ?? `TS${admission.hostDiagnostics[0]?.code ?? 0}`,
+      }),
+      transcript: [],
+    };
   }
-  const loop = (first: ExecutionProcedure, rest: List<Value>): ExecutionProcedure =>
-    rest._tag === "Nil" ? first : loop(sequentially(first, analyze(rest.head)), rest.tail);
-  return loop(analyze(exps.head), exps.tail);
-};
-
-const runOperands = (
-  aprocs: ReadonlyArray<ExecutionProcedure>,
-  env: Env,
-): Effect.Effect<List<Value>, EvaluationError> => {
-  const args: Value[] = [];
-  const runFrom = (i: number): Effect.Effect<List<Value>, EvaluationError> => {
-    const aproc = aprocs[i];
-    if (aproc === undefined) {
-      return Effect.succeed(nil);
+  const session = new Session(mode);
+  const env = session.globalEnv();
+  session.predeclare(admission.program, env);
+  let outcome: Outcome = ok(undefined);
+  for (const form of admission.program) {
+    outcome =
+      form.tag === "expr-stmt"
+        ? analyzedProcedure(form.expr, session)(env)
+        : completionToOutcome(session.execItem(form, env));
+    if (outcome.tag === "error") {
+      break;
     }
-    return Effect.flatMap(aproc(env), (value) => {
-      args.push(value);
-      return runFrom(i + 1);
-    });
-  };
-  return Effect.map(runFrom(0), () => fromValues(args));
-};
-
-/** The book's `analyze-application`. */
-export const analyzeApplication = (exp: Cons<Value>): ExecutionProcedure => {
-  const fproc = analyze(operator(exp));
-  const aprocs = toArray(operands(exp)).map(analyze);
-  return (env) =>
-    Effect.flatMap(fproc(env), (procedure) =>
-      Effect.flatMap(runOperands(aprocs, env), (args) => executeApplication(procedure, args)),
-    );
-};
-
-/** The book's `execute-application`: the compound body is already an
- * execution procedure, so it just runs in the extended environment. */
-export const executeApplication = (
-  procedure: Value,
-  args: List<Value>,
-): Effect.Effect<Value, EvaluationError> => {
-  if (procedure._tag === "Primitive") {
-    return applyPrimitiveProcedure(procedure, args);
   }
-  if (procedure._tag === "Compound") {
-    const head = procedure.body._tag === "Cons" ? procedure.body.head : undefined;
-    if (head !== undefined && head._tag === "Execution") {
-      return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), head.run);
+  return { outcome, transcript: session.transcript };
+};
+
+const analyzedProcedure = (expr: Expr, session: Session): ExecutionProcedure => {
+  switch (expr.tag) {
+    case "number":
+    case "string":
+    case "boolean":
+      return () => ok(expr.value);
+    case "null":
+      return () => ok(null);
+    case "undefined":
+      return () => ok(undefined);
+    case "variable":
+      return (env) => session.lookupVariableValue(expr.name, env);
+    case "binary": {
+      const left = analyzedProcedure(expr.left, session);
+      const right = analyzedProcedure(expr.right, session);
+      return (env) => {
+        const first = left(env);
+        if (first.tag === "error") {
+          return first;
+        }
+        const second = right(env);
+        return second.tag === "error"
+          ? second
+          : applyBinaryOperation(expr.op, first.value, second.value);
+      };
     }
-    return Effect.flatMap(extendEnvironment(procedure.params, args, procedure.env), (newEnv) =>
-      evalSequence(procedure.body, newEnv),
-    );
+    case "logical": {
+      const left = analyzedProcedure(expr.left, session);
+      const right = analyzedProcedure(expr.right, session);
+      return (env) => {
+        const first = left(env);
+        if (first.tag === "error") {
+          return first;
+        }
+        if (typeof first.value !== "boolean") {
+          return bad(expr.op, "left operand is not a boolean");
+        }
+        const shortCircuits = expr.op === "&&" ? !first.value : first.value;
+        if (shortCircuits) {
+          return ok(first.value);
+        }
+        const second = right(env);
+        if (second.tag === "error") {
+          return second;
+        }
+        return typeof second.value === "boolean"
+          ? ok(second.value)
+          : bad(expr.op, "right operand is not a boolean");
+      };
+    }
+    case "conditional": {
+      const test = analyzedProcedure(expr.test, session);
+      const consequent = analyzedProcedure(expr.consequent, session);
+      const alternative = analyzedProcedure(expr.alternative, session);
+      return (env) => {
+        const holds = test(env);
+        if (holds.tag === "error") {
+          return holds;
+        }
+        return (holds.value === true ? consequent : alternative)(env);
+      };
+    }
+    case "arrow": {
+      const { params, rest } = splitParams(expr.params);
+      return (env) => ok(makeClosure(params, rest, expr.body, env));
+    }
+    case "call": {
+      // Member calls (the `console.log` boundary and host methods) and spread
+      // arguments carry the evaluator's own call semantics; only plain
+      // procedure applications are pre-analyzed here.
+      if (expr.callee.tag === "member" || expr.args.some((arg) => arg.kind !== "item")) {
+        return (env) => session.evalCall(expr.callee, expr.args, env);
+      }
+      const callee = analyzedProcedure(expr.callee, session);
+      const args = expr.args.map((arg) => analyzedProcedure(arg.expr, session));
+      return (env) => {
+        const target = callee(env);
+        if (target.tag === "error") {
+          return target;
+        }
+        const values: Value[] = [];
+        for (const arg of args) {
+          const value = arg(env);
+          if (value.tag === "error") {
+            return value;
+          }
+          values.push(value.value);
+        }
+        return session.applyProcedure(target.value, values);
+      };
+    }
+    default:
+      return (env) => session.evaluate(expr, env);
   }
-  return Effect.fail(new NotAProcedure({ value: format(procedure) }));
 };

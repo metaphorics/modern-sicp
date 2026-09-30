@@ -2,8 +2,8 @@
 // Original exercise
 
 /**
- * Exercise 0.1: translate the three Scheme sessions of section 0.2 into
- * TypeScript, producing the matching transcript lines.
+ * Exercise 0.1: evaluate the three TypeScript sessions of section 0.2,
+ * producing their 13 numeric responses in order.
  *
  * The scaffold returns the numeric results of the three sessions in order;
  * the `(a === b)` line appears in section 0.8's worked transcript instead.

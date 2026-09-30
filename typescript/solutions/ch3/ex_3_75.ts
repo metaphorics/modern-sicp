@@ -13,16 +13,16 @@ import {
  * detect crossings on the signal smoothed by averaging each sample
  * with the previous one. Louis altered her program to
  *
- *   (define (make-zero-crossings input-stream last-value)
- *     (let ((avpt (/ (+ (stream-car input-stream) last-value) 2)))
- *       (cons-stream
- *        (sign-change-detector avpt last-value)
- *        (make-zero-crossings (stream-cdr input-stream) avpt))))
+ *   const makeZeroCrossings = (inputStream, lastValue) => {
+ *     const avpt = (inputStream.head + lastValue) / 2;
+ *     return consStream(signChangeDetector(avpt, lastValue),
+ *       () => makeZeroCrossings(streamCdr(inputStream), avpt));
+ *   };
  *
  * The plan needs two carried facts: the previous raw sample, to form
  * the next average with, and the previous smoothed average, to compare
  * the new average against. Louis's version keeps only the one slot
- * `last-value`, and it holds the raw sample where the detector call
+ * `lastValue`, and it holds the raw sample where the detector call
  * needs the previous smoothed value: he passes the carried raw value
  * as the detector's `previous` and then overwrites the slot with
  * `avpt`, so the raw history is lost. The smoothing decays into an

@@ -23,8 +23,7 @@ true
 A name is bound with @code{const}, which cannot be reassigned; the
 reassignable @code{let} exists and has a section of its own (@ref{0.5}). A
 @newterm{binding} is not a cell the program later assigns into: it names a
-value, which is the substance of what Scheme's @code{define} does in the
-book's first programs.
+value, once, for the whole scope that contains it.
 
 @example typescript
 const size = 2;
@@ -60,8 +59,8 @@ square(square(3))
 
 @noindent
 A function may be declared inside another, where it sees the local names
-of its enclosing scope, and a local @code{const} plays the role of
-Scheme's @code{let}. One restriction matters from chapter 1 on: a
+of its enclosing scope, and a local @code{const} introduces a name visible
+only inside its own block. One restriction matters from chapter 1 on: a
 @code{const} arrow is not usable above its own declaration, so two
 mutually recursive local functions must both be bound before the first
 call; @ref{0.3} returns to the shapes that survive.
@@ -136,13 +135,13 @@ const classify = (n: number): string => @{
 @};
 
 sign(-3)
-// => negative
+// => "negative"
 
 classify(7)
-// => small
+// => "small"
 
 classify(42)
-// => large
+// => "large"
 @end example
 
 @noindent
@@ -204,45 +203,43 @@ runnable version of this section's listings is
 @file{packages/ch0/src/02-values-functions.ts}, asserted by the test file
 beside it.
 
-@strong{@anchor{Exercise 0.1}Exercise 0.1:} Below are three of the
-interactive sessions of section 1.1 of this book, kept in their Scheme
-form. Translate each into TypeScript, evaluating the expressions in
-order, with each call rendered in TypeScript and each response written
-as a @code{// =>} comment, as the transcripts of this section do. Verify
-that every numeric response matches Scheme's.
+@strong{@anchor{Exercise 0.1}Exercise 0.1:} The three interaction sessions
+below are ordinary expressions of this chapter's language. Before running
+anything, predict the response of each expression, reading it as a tree of
+operations the way this section introduced; then evaluate the sessions in
+order and collect the responses. Implement @code{ex_0_01} so that it
+returns the numeric responses in the order they occur. The second
+session's comparison answers @code{false}, which is not a number, so that
+response is not collected; @ref{0.8}'s worked transcript shows it.
 
-@lisp
+@example typescript
 486
 100
-(+ 5 3 4)
-(- 10 9)
-(+ (* 2 4) (- 4 6))
-@end lisp
+5 + 3 + 4
+10 - 9
+2 * 4 + (4 - 6)
+@end example
 
-@lisp
-(define a 3)
-(define b (+ a 1))
-(+ a b (* a b))
-(= a b)
-(if (and (> b a) (< b (* a b)))
-    b
-    a)
-(cond ((= a 4) 6)
-      ((= b 4) (+ 6 7 a))
-      (else (+ 25 a)))
-(+ 2 (if (> b a) b a))
-(* (cond ((> a b) a)
-         ((< a b) b)
-         (else -1))
-   (+ a 1))
-@end lisp
+@example typescript
+const a = 3;
 
-@lisp
-(define (square x) (* x x))
-(square 21)
-(square (+ 2 5))
-(square (square 3))
-@end lisp
+const b = a + 1;
+
+a + b + a * b
+a === b
+b > a && b < a * b ? b : a
+a === 4 ? 6 : b === 4 ? 6 + 7 + a : 25 + a
+2 + (b > a ? b : a)
+(a > b ? a : b > a ? b : -1) * (a + 1)
+@end example
+
+@example typescript
+const square = (x: number): number => x * x;
+
+square(21)
+square(2 + 5)
+square(square(3))
+@end example
 
 @strong{@anchor{Exercise 0.2}Exercise 0.2:} Implement @code{compose} and
 @code{repeated} over one-argument procedures on numbers:

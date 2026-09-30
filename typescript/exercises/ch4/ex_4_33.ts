@@ -3,8 +3,8 @@
 
 /**
  * Exercise 4.33: with the procedural cons, car, and cdr installed, Ben's
- * (car '(a b c)) fails, because quoted lists are ordinary pairs. Modify the
- * evaluator's treatment of quoted expressions so quoted lists produce true
+ * literal list construction fails because these lists are ordinary pairs. Modify the
+ * evaluator's treatment of literal expressions so literal lists produce true
  * lazy lists.
  */
 export class PendingSolution extends Error {

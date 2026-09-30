@@ -42,7 +42,7 @@ describe("exercise 2.73: data-directed deriv", () => {
     // The table keys operators, so the residual shapes have no entry to
     // be assimilated into; the error names the book's message.
     expect(showDerivError({ _tag: "UnknownExpressionType", op: "+" })).toBe(
-      "unknown expression type: DERIV +",
+      "deriv: unknown expression type +",
     );
   });
 
@@ -55,14 +55,14 @@ describe("exercise 2.73: data-directed deriv", () => {
     // constructors to the printed form.
     expect(derivToString(buildProduct(constant(3), buildPow(x, constant(2))), dx)).toEqual({
       _tag: "Ok",
-      value: "(* 3 (* 2 (** x 1)))",
+      value: "3 * (2 * x ** 1)",
     });
   });
 
   it("part c installs the exponentiation rule of exercise 2.56", () => {
     expect(derivToString(buildPow(x, constant(3)), dx)).toEqual({
       _tag: "Ok",
-      value: "(* 3 (** x 2))",
+      value: "3 * x ** 2",
     });
   });
 
@@ -72,14 +72,14 @@ describe("exercise 2.73: data-directed deriv", () => {
     const d = derivDataDirected(buildPow(x, x), dx);
     expect(d._tag).toBe("Error");
     if (d._tag === "Error") {
-      expect(showDerivError(d.error)).toBe("unknown expression type: DERIV **");
+      expect(showDerivError(d.error)).toBe("deriv: unknown expression type **");
     }
   });
 
   it("part d: flipped indexing answers the same questions", () => {
     expect(shown(derivFlipped(buildSum(x, constant(3)), dx))).toBe("1");
     expect(shown(derivFlipped(buildProduct(x, y), dx))).toBe("y");
-    expect(shown(derivFlipped(buildPow(x, constant(3)), dx))).toBe("(* 3 (** x 2))");
+    expect(shown(derivFlipped(buildPow(x, constant(3)), dx))).toBe("3 * x ** 2");
     // Only the index changed, not the rules: the unflipped table keys
     // the operation first, the flipped one the operator.
     expect(derivTable.get("deriv")?.get("+")).toBeDefined();

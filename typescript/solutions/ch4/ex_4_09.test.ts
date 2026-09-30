@@ -1,130 +1,121 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Original exercise
 
-import { it } from "@effect/vitest";
-import { Effect } from "effect";
-import { describe, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import { lookupVariableValue, Session } from "../../packages/ch4/src/01-metacircular.js";
+import { format } from "../../packages/ch4/src/read.js";
+import type { Env } from "../../packages/ch4/src/runtime/env.js";
+import type { Outcome } from "../../packages/ch4/src/runtime/errors.js";
 import {
-  isApplication,
-  setupEnvironment,
-  taggedList,
-} from "../../packages/ch4/src/01-metacircular.js";
-import type { Env, Value } from "../../packages/ch4/src/core.js";
-import type { EvaluationError } from "../../packages/ch4/src/errors.js";
-import { nil } from "../../packages/ch4/src/list.js";
-import { format, read } from "../../packages/ch4/src/read.js";
-import {
-  evalStringWithLoops,
-  forToCombination,
-  isFor,
-  isWhile,
-  whileToCombination,
-} from "./ex_4_09.js";
+  assign,
+  bin,
+  bool,
+  call,
+  exprStmt,
+  ident,
+  lam,
+  num,
+  param,
+  returnStmt,
+  varDecl,
+} from "../../packages/ch4/src/syntax/ast.js";
+import { admitSource } from "../../packages/ch4/src/syntax/check.js";
+import { noSpan } from "../../packages/ch4/src/syntax/diagnostics.js";
+import { evalIteration, forRange, whileExpr, whileToWhile } from "./ex_4_09.js";
 
-const lastOf = (values: ReadonlyArray<Value>): Value => {
-  const last = values[values.length - 1];
-  return last === undefined ? nil : last;
+/** A session running one admitted setup unit in its global frame. */
+const envWith = (source: string): { session: Session; env: Env } => {
+  const admission = admitSource(source);
+  if (!admission.ok) {
+    throw new Error(`setup source must admit: ${admission.diagnostics[0]?.construct ?? "reject"}`);
+  }
+  const session = new Session("core");
+  const env = session.globalEnv();
+  session.execSequence(admission.program, env);
+  return { session, env };
 };
 
-const evalPrograms = (
-  sources: ReadonlyArray<string>,
-  env: Env,
-): Effect.Effect<Value, EvaluationError> =>
-  Effect.map(
-    Effect.forEach(sources, (source) => evalStringWithLoops(source, env)),
-    lastOf,
-  );
+/** The observable result: the rendered value, or the fault category. */
+const shown = (outcome: Outcome): string =>
+  outcome.tag === "ok" ? format(outcome.value) : `error:${outcome.error.tag}`;
 
-describe("exercise 4.9: iteration constructs", () => {
-  it.effect("a for loop sums like manual recursion", () =>
-    Effect.gen(function* () {
-      const loopEnv = yield* setupEnvironment();
-      const loopTotal = yield* evalPrograms(
-        ["(define total 0)", "(for (n 1 5) (set! total (+ total n)))", "total"],
-        loopEnv,
-      );
-      expect(format(loopTotal)).toBe("15");
+const numberIn = (env: Env, name: string): number => {
+  const found = lookupVariableValue(name, env);
+  return found.tag === "ok" && typeof found.value === "number" ? found.value : -1;
+};
 
-      const recursiveEnv = yield* setupEnvironment();
-      const recursive = yield* evalPrograms(
-        ["(define (sum-to n) (if (= n 0) 0 (+ n (sum-to (- n 1)))))", "(sum-to 5)"],
-        recursiveEnv,
-      );
-      expect(format(recursive)).toBe("15");
-    }),
-  );
+describe("exercise 4.9: iteration as derived forms", () => {
+  it("a range loop over 1..5 accumulating into total answers 15, like the manual recursion", () => {
+    const { session, env } = envWith(`
+let total = 0;
+const sumTo = (n: number): number => (n === 0 ? 0 : n + sumTo(n - 1));
+`);
+    const loop = forRange(
+      "n",
+      num(1),
+      num(5),
+      [exprStmt(assign(ident("total"), bin("+", ident("total"), ident("n"))))],
+      noSpan,
+    );
+    expect(shown(evalIteration(loop, env, session))).toBe("undefined");
+    expect(numberIn(env, "total")).toBe(15);
+    expect(shown(evalIteration(call(ident("sumTo"), [num(5)]), env, session))).toBe("15");
+  });
 
-  it.effect("a while loop sums, including nested in a procedure body", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      const top = yield* evalPrograms(
-        [
-          "(define total 0)",
-          "(define i 1)",
-          "(while (< i 5) (set! total (+ total i)) (set! i (+ i 1)))",
-          "total",
-        ],
-        env,
-      );
-      expect(format(top)).toBe("10");
+  it("a while summing 1 through 4 answers 10 at top level", () => {
+    const { session, env } = envWith("let total = 0; let i = 1;");
+    const loop = whileExpr(
+      bin("<=", ident("i"), num(4)),
+      [
+        exprStmt(assign(ident("total"), bin("+", ident("total"), ident("i")))),
+        exprStmt(assign(ident("i"), bin("+", ident("i"), num(1)))),
+      ],
+      noSpan,
+    );
+    expect(shown(evalIteration(loop, env, session))).toBe("undefined");
+    expect(numberIn(env, "total")).toBe(10);
+  });
 
-      const nestedEnv = yield* setupEnvironment();
-      const nested = yield* evalPrograms(
-        [
-          "(define total 0)",
-          "(define (tally limit) (define i 1) (while (< i limit) (set! total (+ total i)) (set! i (+ i 1))) total)",
-          "(tally 5)",
-        ],
-        nestedEnv,
-      );
-      expect(format(nested)).toBe("10");
-    }),
-  );
+  it("the same while nested in a procedure body answers 10", () => {
+    const { session, env } = envWith("let total = 0;");
+    const loop = whileExpr(
+      bin("<=", ident("i"), num(4)),
+      [
+        exprStmt(assign(ident("total"), bin("+", ident("total"), ident("i")))),
+        exprStmt(assign(ident("i"), bin("+", ident("i"), num(1)))),
+      ],
+      noSpan,
+    );
+    const tally = lam(
+      [],
+      [varDecl("let", "i", num(1)), exprStmt(whileToWhile(loop)), returnStmt(ident("total"))],
+    );
+    expect(shown(evalIteration(call(tally, []), env, session))).toBe("10");
+    expect(numberIn(env, "total")).toBe(10);
+  });
 
-  it.effect("a while with a false predicate runs its body zero times", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      const runs = yield* evalPrograms(
-        ["(define ran 0)", "(while false (set! ran (+ ran 1)))", "ran"],
-        env,
-      );
-      expect(format(runs)).toBe("0");
-      const value = yield* evalStringWithLoops("(while false 1)", env);
-      expect(format(value)).toBe("()");
-    }),
-  );
+  it("a while with a false predicate never runs and answers undefined", () => {
+    const { session, env } = envWith("let ran = 0;");
+    const loop = whileExpr(bool(false), [exprStmt(assign(ident("ran"), num(1)))], noSpan);
+    expect(shown(evalIteration(loop, env, session))).toBe("undefined");
+    expect(numberIn(env, "ran")).toBe(0);
+  });
 
-  it.effect("for bounds are inclusive", () =>
-    Effect.gen(function* () {
-      const env = yield* setupEnvironment();
-      const total = yield* evalPrograms(
-        ["(define total 0)", "(for (n 3 3) (set! total (+ total n)))", "total"],
-        env,
-      );
-      expect(format(total)).toBe("3");
-    }),
-  );
-
-  it.effect("both constructs expand into applications of local loop lambdas", () =>
-    Effect.sync(() => {
-      const whileForm = read("(while (< i 5) (set! i (+ i 1)))");
-      if (!isWhile(whileForm)) {
-        throw new Error("while form not recognized");
-      }
-      expect(isApplication(whileToCombination(whileForm))).toBe(true);
-
-      const forForm = read("(for (n 1 5) (set! t (+ t n)))");
-      if (!isFor(forForm)) {
-        throw new Error("for form not recognized");
-      }
-      const forExpansion = forToCombination(forForm);
-      if (!isApplication(forExpansion)) {
-        throw new Error("for expansion is not a combination");
-      }
-      if (!taggedList("lambda", forExpansion.head)) {
-        throw new Error("expansion operator is not a lambda");
-      }
-    }),
-  );
+  it("a range loop over 3..3 runs its body once and answers 3", () => {
+    const { session, env } = envWith("let once = 0; let runs = 0;");
+    const loop = forRange(
+      "n",
+      num(3),
+      num(3),
+      [
+        exprStmt(assign(ident("once"), ident("n"))),
+        exprStmt(assign(ident("runs"), bin("+", ident("runs"), num(1)))),
+      ],
+      noSpan,
+    );
+    expect(shown(evalIteration(loop, env, session))).toBe("undefined");
+    expect(numberIn(env, "once")).toBe(3);
+    expect(numberIn(env, "runs")).toBe(1);
+  });
 });

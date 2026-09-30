@@ -17,7 +17,7 @@ import { get, makeOpTable, type OpTable, put } from "../../packages/ch2/src/04-d
  * Exercise 2.76: adding types versus adding operations. This edition's
  * answer mounts the book's coercion tower on the section's table: the
  * three numeric representations --- integer, rational, real --- install
- * same-type arithmetic, and `applyTowerOp` extends apply-generic with
+ * same-type arithmetic, and `applyTowerOp` extends the generic dispatch with
  * the tower's coercions, raising an argument step by step from integer
  * through rational to real until a handler matches. Adding the integer
  * type touched nothing installed before it; the `mul` operation was
@@ -151,7 +151,7 @@ const applyDirect = (
   return proc._tag === "Some" ? proc.value(a, b) : undefined;
 };
 
-/** apply-generic extended with the tower: the same-type handler first,
+/** Generic dispatch extended with the tower: the same-type handler first,
  * then an argument raised along the coercion chain until the types
  * agree, then the book's "No method for these types". */
 export const applyTowerOp = (

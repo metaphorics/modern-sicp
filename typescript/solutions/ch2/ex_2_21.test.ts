@@ -9,7 +9,7 @@ import { squareListDirect, squareListViaMap } from "./ex_2_21.js";
 
 describe("exercise 2.21", () => {
   it("both spellings square each element", () => {
-    expect(showList(squareListDirect(list(1, 2, 3, 4)))).toBe("(1 4 9 16)");
-    expect(showList(squareListViaMap(list(1, 2, 3, 4)))).toBe("(1 4 9 16)");
+    expect(showList(squareListDirect(list(1, 2, 3, 4)))).toBe("[1, 4, 9, 16]");
+    expect(showList(squareListViaMap(list(1, 2, 3, 4)))).toBe("[1, 4, 9, 16]");
   });
 });

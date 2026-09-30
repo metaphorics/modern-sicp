@@ -57,7 +57,7 @@ export const unsynchronizedOutcomes = (): ReadonlyArray<number> => {
 };
 
 /** All distinct final values when the two updates are serialized: each
- * process's whole `set!` is one chunk, so the two chunks run in one of
+ * process's whole update is one chunk, so the two chunks run in one of
  * two orders. */
 export const serializedOutcomes = (): ReadonlyArray<number> => {
   const outcomes = new Set<number>();

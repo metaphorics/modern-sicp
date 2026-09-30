@@ -75,15 +75,13 @@ const showOne = (v: Showable): string => {
   return showList(v);
 };
 
-/** Renders a list the way Lisp systems print it: the elements between
- * parentheses, `()` for the empty list, nesting preserved, strings
- * double-quoted. */
+/** Renders a list in bracket-comma notation, preserving nested data. */
 export const showList = (xs: List<Showable>): string => {
   const items: string[] = [];
   for (let rest: List<Showable> = xs; rest._tag === "Cons"; rest = rest.tail) {
     items.push(showOne(rest.head));
   }
-  return `(${items.join(" ")})`;
+  return `[${items.join(", ")}]`;
 };
 
 /** The book's `list-ref`: cdrs down the list `n` times and takes the car;
@@ -147,9 +145,9 @@ export const node = <A>(...subtrees: ReadonlyArray<Tree<A>>): Tree<A> => ({
   subtrees,
 });
 
-/** Renders a tree in the book's nested-list notation. */
+/** Renders a tree in the book's nested bracket-comma notation. */
 export const showTree = <A>(tree: Tree<A>): string =>
-  tree._tag === "Leaf" ? String(tree.value) : `(${tree.subtrees.map(showTree).join(" ")})`;
+  tree._tag === "Leaf" ? String(tree.value) : `[${tree.subtrees.map(showTree).join(", ")}]`;
 
 /** The book's `count-leaves`: the car of a tree may itself be a tree, so
  * the reduction adds the counts of both sides until leaves count 1. */

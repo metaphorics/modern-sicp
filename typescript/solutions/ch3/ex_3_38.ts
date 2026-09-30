@@ -10,7 +10,7 @@ import {
 /**
  * Exercise 3.38: Peter deposits 10, Paul withdraws 20, and Mary
  * withdraws half the balance, all on a joint account that starts at
- * 100. Each command is the book's three-step `set!`: access the
+ * 100. Each command is the statement's three-step update: access the
  * balance, compute the new value, set it. The possible outcomes are
  * produced by running the schedules, not by hand: sequential orders
  * through the module's step scheduler, interleaved orders likewise,
@@ -25,7 +25,7 @@ export interface JointAccount {
 /** Makes the account with the exercise's initial 100. */
 export const makeJointAccount = (): JointAccount => ({ balance: 100 });
 
-/** Peter's `(set! balance (+ balance 10))` as three steps. */
+/** Peter's `balance = balance + 10` as three steps. */
 export const peterProcess = (account: JointAccount): Process =>
   (function* () {
     const accessed = account.balance;
@@ -35,7 +35,7 @@ export const peterProcess = (account: JointAccount): Process =>
     account.balance = next;
   })();
 
-/** Paul's `(set! balance (- balance 20))` as three steps. */
+/** Paul's `balance = balance - 20` as three steps. */
 export const paulProcess = (account: JointAccount): Process =>
   (function* () {
     const accessed = account.balance;
@@ -45,7 +45,7 @@ export const paulProcess = (account: JointAccount): Process =>
     account.balance = next;
   })();
 
-/** Mary's `(set! balance (- balance (/ balance 2)))` as three steps:
+/** Mary's `balance = balance - balance / 2` as three steps:
  * the two accesses of the book's expression are two separate steps, so
  * an interleaving can change the balance between them. */
 export const maryProcess = (account: JointAccount): Process =>

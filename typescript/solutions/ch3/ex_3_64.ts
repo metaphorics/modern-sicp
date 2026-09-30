@@ -11,24 +11,24 @@ import {
 } from "../../packages/ch3/src/05-streams.js";
 
 /**
- * Exercise 3.64: `stream-limit` examines a stream until two successive
+ * Exercise 3.64: `streamLimit` examines a stream until two successive
  * elements differ in absolute value by less than the tolerance, and
  * returns the second of the two. With it, square roots come from the
- * module's `sqrtStream`: `(sqrt x tolerance)` is `stream-limit` applied
+ * module's `sqrtStream`: `(sqrt x tolerance)` is `streamLimit` applied
  * to the Newton guesses. The counted variant reports how many elements
  * the search examined, which this exercise and the map's tailored idea
  * (comparing sequence accelerators) need for their numbers.
  */
 
-/** The book's `stream-limit`: the first successor closer than
+/** The book's `streamLimit`: the first successor closer than
  * `tolerance` to its predecessor. */
 export const streamLimit = (s: Stream<number>, tolerance: number): number => {
   if (s === null) {
-    throw new Error("stream-limit: the stream ran out before it converged");
+    throw new Error("streamLimit: the stream ran out before it converged");
   }
   const rest = streamCdr(s);
   if (rest === null) {
-    throw new Error("stream-limit: the stream ran out before it converged");
+    throw new Error("streamLimit: the stream ran out before it converged");
   }
   if (Math.abs(streamCar(rest) - streamCar(s)) < tolerance) {
     return streamCar(rest);
@@ -47,7 +47,7 @@ export interface LimitWithTerms {
   readonly terms: number;
 }
 
-/** The book's `stream-limit` walking iteratively so long searches stay
+/** The book's `streamLimit` walking iteratively so long searches stay
  * flat on the stack, counting the elements it passed. */
 export const streamLimitWithTerms = (s: Stream<number>, tolerance: number): LimitWithTerms => {
   let rest = s;
@@ -66,7 +66,7 @@ export const streamLimitWithTerms = (s: Stream<number>, tolerance: number): Limi
     rest = next;
     terms += 1;
   }
-  throw new Error("stream-limit: the stream ran out before it converged");
+  throw new Error("streamLimit: the stream ran out before it converged");
 };
 
 /** The map's tailored comparison: Newton's stream pushed through the

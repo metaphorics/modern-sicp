@@ -14,9 +14,9 @@ import {
  * Exercise 3.70: generate streams whose pairs appear in a useful order
  * rather than the ad hoc interleaving order. A weighting function
  * W(i, j) says that (i1, j1) is less than (i2, j2) when
- * W(i1, j1) < W(i2, j2). `merge-weighted` is like `merge` except that
+ * W(i1, j1) < W(i2, j2). `mergeWeighted` is like `merge` except that
  * it takes an additional argument `weight`, used to determine the
- * order of the merged stream; `weighted-pairs` generalizes `pairs` to
+ * order of the merged stream; `weightedPairs` generalizes `pairs` to
  * two streams ordered by weight. The statement's two streams:
  *
  *   a. all pairs of positive integers (i, j) with i <= j, ordered by
@@ -31,7 +31,7 @@ export type Pair = [number, number];
 /** A weighting function over pairs, the statement's W(i, j). */
 export type Weight = (pair: Pair) => number;
 
-/** The statement's `merge-weighted`: like `merge`, ordered by weight.
+/** The statement's `mergeWeighted`: like `merge`, ordered by weight.
  * On equal weights both elements are kept: s1's head is served and s2's
  * head stays at its front for the next comparison, so a run of equal
  * weights drains before anything heavier emerges. */
@@ -48,8 +48,8 @@ export const mergeWeighted = (s1: Stream<Pair>, s2: Stream<Pair>, weight: Weight
   return consStream(s2.head, () => mergeWeighted(s1, streamCdr(s2), weight));
 };
 
-/** The statement's `weighted-pairs`: the module's `pairs` shape with
- * `merge-weighted` in place of the interleave. */
+/** The statement's `weightedPairs`: the module's `pairs` shape with
+ * `mergeWeighted` in place of the interleave. */
 export const weightedPairs = (
   s: Stream<number>,
   t: Stream<number>,

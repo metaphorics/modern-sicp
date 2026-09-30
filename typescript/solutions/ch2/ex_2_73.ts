@@ -9,8 +9,9 @@ import { get, makeOpTable, type OpTable, put } from "../../packages/ch2/src/04-d
 /**
  * Exercise 2.73: the section 2.3.2 `deriv` program, rebuilt so the
  * dispatch lives in an operation-and-type table. The expression union's
- * operator plays the book's type tag: each rule is installed under the
- * key `(deriv (operator))`, and `derivDataDirected` looks rules up
+ * operator plays the type tag: each rule is installed under the
+ * operation `deriv` with that operator as the type, and
+ * `derivDataDirected` looks rules up
  * instead of switching on them. Parts (a) and (d) are answered by the
  * residual arms here and in the test; part (c) installs the
  * exponentiation rule of exercise 2.56 under the `**` operator.
@@ -45,12 +46,12 @@ export const buildProduct = (a: Expr, b: Expr): Expr => ({
 /** Builds the power `(base ** exp)`. */
 export const buildPow = (base: Expr, exp: Expr): Expr => ({ _tag: "Pow", base, exp });
 
-/** Tests whether an expression is the constant `n`: the book's
- * `=number?`. */
+/** Tests whether an expression is the constant `n`: the host's equality
+ * test against the number literal. */
 const equalsNumber = (e: Expr, n: number): boolean => e._tag === "Num" && e.n === n;
 
-/** Tests whether an expression is the variable `v`: the book's
- * `same-variable?` after the `variable?` check. */
+/** Tests whether an expression is the variable `v`: the name equality
+ * after the tag check. */
 const sameVariableQ = (e: Expr, v: Symb): boolean => e._tag === "Var" && e.name === v;
 
 /** The book's revised make-sum: adds two constants, absorbs 0. */
@@ -105,21 +106,33 @@ export const operandsOf = (exp: CompoundExpr): ReadonlyArray<Expr> => {
   }
 };
 
-/** Renders an expression the way the book prints it, `**` for the
- * power added in part (c). */
-export const showDerivExpr = (e: Expr): string => {
-  switch (e._tag) {
-    case "Var":
-      return e.name;
-    case "Num":
-      return String(e.n);
-    case "Sum":
-      return `(+ ${showDerivExpr(e.addend)} ${showDerivExpr(e.augend)})`;
-    case "Prod":
-      return `(* ${showDerivExpr(e.multiplier)} ${showDerivExpr(e.multiplicand)})`;
-    case "Pow":
-      return `(** ${showDerivExpr(e.base)} ${showDerivExpr(e.exp)})`;
-  }
+/** Renders an expression with minimal-precedence infix notation. */
+export const showDerivExpr = (e: Expr): string => renderDerivExpr(e, 0, "root");
+
+type DerivSide = "root" | "left" | "right";
+
+const derivPrecedence = (e: Expr): number =>
+  e._tag === "Sum" ? 1 : e._tag === "Prod" ? 2 : e._tag === "Pow" ? 3 : 4;
+
+const renderDerivExpr = (e: Expr, parentPrecedence: number, side: DerivSide): string => {
+  const precedence = derivPrecedence(e);
+  const text = (() => {
+    switch (e._tag) {
+      case "Var":
+        return e.name;
+      case "Num":
+        return String(e.n);
+      case "Sum":
+        return `${renderDerivExpr(e.addend, 1, "left")} + ${renderDerivExpr(e.augend, 1, "right")}`;
+      case "Prod":
+        return `${renderDerivExpr(e.multiplier, 2, "left")} * ${renderDerivExpr(e.multiplicand, 2, "right")}`;
+      case "Pow":
+        return `${renderDerivExpr(e.base, 3, "left")} ** ${renderDerivExpr(e.exp, 3, "right")}`;
+    }
+  })();
+  return precedence < parentPrecedence || (side === "right" && precedence === parentPrecedence)
+    ? `(${text})`
+    : text;
 };
 
 /** Why a deriv lookup cannot answer: the book's "unknown expression
@@ -127,7 +140,7 @@ export const showDerivExpr = (e: Expr): string => {
 export type DerivError = { readonly _tag: "UnknownExpressionType"; readonly op: string };
 
 /** The book's error line, rendered. */
-export const showDerivError = (e: DerivError): string => `unknown expression type: DERIV ${e.op}`;
+export const showDerivError = (e: DerivError): string => `deriv: unknown expression type ${e.op}`;
 
 /** A rule: the operands of one operator plus the variable of
  * differentiation, answering the differentiated expression. */

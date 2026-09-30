@@ -17,16 +17,30 @@ Every version below is pinned in `docs/toolchain-pins.md`. The steps are executa
 
 The root `justfile` fans out to the editions and adds the shared gates:
 
-- `just check` runs each edition's `fmt` and `lint`, then `check-tools` (ruff format, ruff check and pyright over `tools/`) and `check-corpus`.
-- `just test` runs each edition's tests, then the `tools/` pytest suite.
-- `just books` builds HTML, EPUB 3 and PDF for each edition.
+- `just check` runs each edition's `fmt` and `lint`, then `check-tools` (ruff format, ruff check and pyright over `tools/`) and `check-exercise-map`.
+- `just test` runs each edition's tests, the `tools/` pytest suite, and `test-conformance`.
+- `just books` builds HTML, EPUB 3 and PDF for each edition, then checks the preserved numbered material and references, and the width of every code listing in the PDF.
 - `just scaffold` lists the pending scaffolds; it exits nonzero while one is unsolved, which is the report rather than a failure.
 
 An edition whose `justfile` is absent fails these gates rather than being skipped, because a skipped edition reads as a passing repository.
 
-Two gates guard the book build specifically. `tools/math_check.py` compares the math fragments `texi2any` requested against the MathML in the delivered pages, because `texi2any` exits 0 even when the TeX run dies and drops every equation. `tools/scheme_corpus_check.py` re-runs every Scheme corpus program through `spec/scheme-subset/runner.scm` and compares it to its expected file, so an expected file that no longer matches its program is caught.
+`just test-conformance` runs `tools/host_conformance_check.py`. It runs every case in `spec/host-subsets/cases.json` through each edition's teaching engines and compares the result with the native toolchain, or with an independent reference model for the lazy, search, query, and machine cases. Each edition's `spec/host-subsets/<edition>/driver.json` names its commands. The OCaml driver runs in `OPAMSWITCH`, which defaults to the pinned `5.5.1` switch. `just check-exercise-map` checks every row of `docs/exercise-map.md` against the edition trees.
+
+Two gates guard the book build specifically. `tools/math_check.py` compares the math fragments `texi2any` requested against the MathML in the delivered pages, because `texi2any` exits 0 even when the TeX run dies and drops every equation. `tools/listing_width_check.py` reads each edition's last PDF log and fails on any code-listing line that TeX set wider than the text measure, so a listing cannot run into the margin. A listing line holds at most 70 characters at the top level, 66 inside one environment such as `@quotation`, 61 inside two, and 56 inside three.
 
 `tools/texi2any_html.sh` prefers a prefix-installed Texinfo 7.3, checking `MODERN_SICP_PREFIX`, then `~/.local`, then the `~/.cache/modern-sicp/opt` fallback, so `just books` needs no manual PATH changes after `just setup-books`.
+
+To check preservation of the numbered teaching material, run
+`just check-book-structure` from the repository root. Set `MODERN_SICP_PREFIX`
+to the prefix used by `just setup-books`. The check compares section, exercise,
+and figure identities with
+`spec/book-inventory.json`, then uses Texinfo 7.3 to check references.
+It also rejects numbered material that remains in source files but is absent
+from the rendered HTML.
+For a scoped check, run
+`uv run --project tools python tools/book_structure_check.py --edition rust --texi2any <path>`.
+The inventory records the pre-migration source; do not
+regenerate it from a changed book to accept missing material.
 
 ## One exercise, end to end
 

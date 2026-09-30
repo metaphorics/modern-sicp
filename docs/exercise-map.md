@@ -4,9 +4,9 @@ Grounded on 2026-09-22 from `sicp-pocket.texi`. Every one of the 356 SICP exerci
 
 ## Policy
 
-- Classes per language: `T` translate (syntax changes only); `A: reason` adapt (the idea survives, the statement changes because the host language differs); `R: topic` replace (the exercise is about Scheme itself; a language-tailored exercise under the same number replaces it). The chosen class is binding for the unit that writes the section.
+- Classes per language: `T` translate (syntax changes only); `A: reason` adapt (the idea survives, but host semantics change the statement); `R: topic` replace (a host-language exercise preserves the original number and section objective). Check each classification against the migrated statement and solution.
 - Numbering is 1:1 with SICP in every edition. An `R` row keeps its number. A tailored addition is numbered `N.Ma` and sits right after `N.M`. At most one addition per section per edition; the unit picks it from the `Tailored addition idea` column at unit start, or picks none, and records the pick by appending `chosen: <lang>` to the cell. Ideas not picked stay ideas.
-- Reader-facing signposts are fixed sentences. An `R` statement opens with `@emph{SICP exercise N.M is about Scheme itself, so this edition replaces it; the exercise below keeps the number and teaches the same section material.}` An addition opens with `@emph{Exercise N.Ma is added by this edition and extends exercise N.M; SICP numbers stop at N.M.}`
+- Reader-facing signposts are fixed sentences. An `R` statement opens with `@emph{This edition replaces SICP exercise N.M with a host-language exercise that keeps its number and teaching objective.}` An addition opens with `@emph{Exercise N.Ma is added by this edition and extends exercise N.M; SICP numbers stop at N.M.}`
 - Every exercise has three artifacts per edition: the statement in `book/` (the section's exercise block), a pending scaffold in `exercises/` (signature plus a test carrying the language's pending marker), and a reference solution with passing tests and a rationale in `solutions/`. Prose-only exercises (a diagram, a proof, a discussion) are marked `prose` in the topic cell by the unit and get a Markdown answer instead of tests.
 - Chapter 0 exercises (0.1 onward) are original per edition and are listed in each companion, not here.
 
@@ -14,16 +14,16 @@ Grounded on 2026-09-22 from `sicp-pocket.texi`. Every one of the 356 SICP exerci
 
 These override the cells they name; the chapter tables are otherwise binding.
 
-- 2.5 (and every row whose out-of-library table names `num-bigint` or `zarith`): Rust uses checked `u128`, OCaml uses 63-bit `int`; the statement states the overflow bound. TypeScript uses `bigint`, Kotlin uses `java.math.BigInteger`. No bignum library in any edition (D14, D17).
+- 2.5 (and every row whose out-of-library table names `num-bigint` or `zarith`): Rust uses checked `i128`, OCaml uses 63-bit `int`; the statement states the overflow bound. TypeScript uses `bigint`, Kotlin uses `java.math.BigInteger`. No bignum library in any edition (D14, D17).
 - 2.86: Rust uses a trait defined in the section, not `num-traits`.
 - 2.74, 2.75 (TypeScript): plain discriminated unions, no `Schema`; chapters 1 and 2 import no Effect module (Effect enters at 3.1).
-- 5.50, 5.52 (all editions): the shared corpus ships `spec/scheme-subset/programs/metacircular.scm`, the chapter 4 evaluator written in the object language, so "compile the metacircular evaluator" keeps its meaning and both rows stay `A`.
+- 5.50 and 5.52 (all editions): each edition provides its translated evaluator as checked guest source under `spec/host-subsets/<edition>/`. Execute that source through the teaching evaluator and compiled machine. Preserve the C-backend lesson. These rows remain `A`; a native helper or an unrelated large program is not a replacement.
 - Chapter 4 rows 4.11, 4.12, 4.13, 4.27, 4.44, 4.45, 4.46, 4.50, 4.51, 4.60, 4.61, 4.62, 4.63, 4.69 were classified from surrounding text; the unit that writes each section reads the statement and confirms or corrects the class in the same commit.
 - Row counts: chapter 1 has 46, chapter 2 has 97, chapter 3 has 82, chapter 4 has 79, chapter 5 has 52; total 356. `exercise_map_check.py` fails when this file's unique row count differs.
 
 ## Chapter 1 exercise classification (1.1 to 1.46)
 
-Legend: `T` = translate, syntax changes only. `A: reason` = adapt, the statement changes because the host language differs. `R: topic` = replace, the exercise is about Scheme itself; the replacement extends the same number. Tailored additions are numbered as the row plus a letter; empty cells mean no addition.
+Legend: `T` means syntax-only translation. `A: reason` preserves the idea with a changed statement. `R: topic` supplies a host-language replacement under the original number. Tailored additions use the row's number plus a letter; an empty cell selects no addition.
 
 ### Section 1.1 (lines 1107 to 2629, 8 exercises)
 
@@ -59,7 +59,7 @@ Counts, summing to 8 per language: Rust 5 T / 2 A / 1 R; OCaml 7 / 0 / 1; TypeSc
 | 1.21 | smallest divisors of three numbers | T | T | T | T | |
 | 1.22 | timed prime search ranges | A: Instant replaces runtime | A: Sys.time replaces runtime | A: performance.now replaces runtime | A: System.nanoTime replaces runtime | 1.22a: time with warmup, report median timings (chosen: typescript) |
 | 1.23 | skip even divisors, remeasure | A: clock API as in 1.22 | A: clock API as in 1.22 | A: clock API as in 1.22 | A: clock API as in 1.22 | |
-| 1.24 | timed Fermat test | A: rand crate plus Instant | A: Random module plus Sys.time | A: Math.random plus performance.now | A: Random plus System.nanoTime | |
+| 1.24 | timed Fermat test | A: seeded runtime Random plus Instant | A: seeded runtime Random plus Sys.time | A: seeded runtime Random plus performance.now | A: seeded runtime Random plus System.nanoTime | |
 | 1.25 | naive expmod critique | A: i128 overflows, debug panics | A: 63-bit overflow wraps silently | A: f64 precision, bigint slow | A: Long wraps, BigInteger slow | 1.25a: compare overflow behavior across build modes |
 | 1.26 | double recursion growth blunder | T | T | T | T | |
 | 1.27 | Carmichael numbers fool Fermat | T | T | T | T | |
@@ -83,7 +83,7 @@ Counts, summing to 20 per language: Rust 10 T / 9 A / 1 R; OCaml 15 / 4 / 1; Typ
 | 1.38 | Euler e expansion | T | T | T | T | |
 | 1.39 | tangent continued fraction | T | T | T | T | |
 | 1.40 | cubic for Newton's method | T | T | T | T | 1.40a: solve specified equations end to end |
-| 1.41 | double combinator puzzle | T | T | T | T | |
+| 1.41 | double combinator puzzle | A: recover self-application through typed composition | T | T | T | |
 | 1.42 | function composition | T | T | T | T | |
 | 1.43 | n-fold repeated application | T | T | T | T | 1.43a: compose by squaring for logarithmic repeated (chosen: kotlin) |
 | 1.44 | smoothing and n-fold smoothing | T | T | T | T | 1.44a: denoise synthetic noisy samples |
@@ -97,25 +97,26 @@ Overall over 46 exercises: Rust 27 T / 17 A / 2 R; OCaml 39 / 5 / 2; TypeScript 
 ### Hard spots
 
 - Tail-call honesty dominates section 1.2. The book's claim that an iterative process runs in constant space through ordinary calls holds in OCaml and in Kotlin with `tailrec`. In Rust and TypeScript it does not, so every "iterative process" exercise becomes an explicit loop and the section prose needs a per-language restatement of the recursion versus iteration distinction.
-- Integer width flips two lessons. In 1.19 and 1.25 Scheme's unbounded integers make the point about wasteful huge arithmetic; fixed-width hosts turn it into overflow (Rust panics in debug builds and wraps in release; OCaml's 63-bit int wraps silently; TypeScript number loses precision past 2^53 and bigint is exact but slow; Kotlin Long wraps). The statements must be rewritten around this.
+- Integer width changes exercises 1.19 and 1.25. Keep the growth and wasted-work lessons, with explicit overflow or exact-arithmetic behavior for each host. Rust uses the stated checked arithmetic; OCaml uses bounded `int`; TypeScript distinguishes `number` precision from exact `bigint`; Kotlin distinguishes native wrapping from its checked and `BigInteger` abstractions. These earlier host lessons are not limited to the chapter-4/5 guest grammar.
 - 1.20 cannot be translated because no host has normal-order evaluation; the replacement counts remainder calls in an instrumented eager gcd and can say that thunks or lazy sequences would simulate normal order.
 - 1.34 becomes a compile-time discussion in all four languages. The book's runtime error "the object 2 is not applicable" never happens; the statement must ask why the code does not type check.
 - Timing exercises (1.22 to 1.24) need per-language clock notes: OCaml `Sys.time` is processor time; `performance.now()` is coarsened to 100 microseconds without cross-origin isolation; JIT warmup in TypeScript and Kotlin; the book's microsecond `runtime` narrative does not carry over.
 - Rust has no standard REPL, so 1.1 and all "what does the interpreter print" framing become program output. The 1.46 fix is a named inner `fn` or a loop because a Rust closure cannot refer to itself.
-- One line on working defaults: if the interview later requires exercise statements to stay verbatim (no rewrites), every `A` row above moves to `R` and the tailored-addition density roughly doubles; no other default changes this table.
+
+The approved migration permits same-number statement rewrites. Preserve each objective and record its host-language premise in the edition's `A` reason or `R` replacement. Do not infer a classification change from an unapproved hypothetical policy.
 
 ### Out-of-standard-library needs
 
 | Language | Exercises | Need | Evidence |
 |---|---|---|---|
-| Rust | 1.24, 1.28 | `rand` crate for random picks; `std::time::Instant` covers timing | https://docs.rs/rand/latest/rand/ ; https://doc.rust-lang.org/std/time/struct.Instant.html |
-| Rust | 1.19 | `i128` (std) suffices to about Fib(180); larger n needs `num-bigint` | overflow semantics: https://doc.rust-lang.org/reference/expressions/operator-expr.html#overflow |
-| OCaml | 1.19 | `zarith` for arbitrary precision; stdlib `int` is 63-bit (`Sys.int_size`) | https://opam.ocaml.org/packages/zarith/ ; https://ocaml.org/manual/5.5/api/Sys.html |
-| OCaml | 1.22 to 1.24 | none beyond std: `Sys.time`, `Random.int` | https://ocaml.org/manual/5.5/api/Sys.html ; https://ocaml.org/manual/5.5/api/Random.html |
+| Rust | 1.24, 1.28 | Existing seeded runtime generator; `std::time::Instant` covers timing. No random crate. | Technical plan D31; https://doc.rust-lang.org/std/time/struct.Instant.html |
+| Rust | 1.19 | Checked `i128` with a stated input bound. No numeric crate. | Technical plan D14; https://doc.rust-lang.org/reference/expressions/operator-expr.html#overflow |
+| OCaml | 1.19 | Bounded Stdlib `int` with a stated input bound. No Zarith dependency. | Technical plan D17; https://ocaml.org/manual/5.5/api/Sys.html |
+| OCaml | 1.22 to 1.24 | Existing seeded runtime generator and `Sys.time`. | Technical plan D31; https://ocaml.org/manual/5.5/api/Sys.html |
 | TypeScript | 1.19 | none: `bigint` is a language primitive | https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/BigInt |
-| TypeScript | 1.22 to 1.24 | none beyond platform globals: `Math.random`, `performance.now()` | https://developer.mozilla.org/en-US/docs/Web/API/Performance/now |
+| TypeScript | 1.22 to 1.24 | Existing seeded runtime generator and `performance.now()`. No ambient random source. | Technical plan D31; https://developer.mozilla.org/en-US/docs/Web/API/Performance/now |
 | Kotlin | 1.19 | `java.math.BigInteger`, part of the JDK but not kotlin-stdlib | https://docs.oracle.com/javase/8/docs/api/java/math/BigInteger.html |
-| Kotlin | 1.24 | none beyond std: `kotlin.random.Random` | https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.random/-random/ |
+| Kotlin | 1.24 | Existing seeded runtime generator. No `kotlin.random.Random` dependency. | Technical plan D31 |
 | Kotlin | 1.22 to 1.24 | timing via `System.nanoTime` (JDK); the kotlinlang `measureNanoTime` page fetch failed this session, so that helper is unverified | unverified |
 
 Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/functions.html#tail-recursive-functions (compiler rewrites qualifying self-tail calls to loops). The OCaml guaranteed-tail-call fact is a stated working default; both citation attempts (ocaml.org/docs/tail-recursion, manual tailc page) returned 404, so it is marked unverified as a citation. No Effect v4 APIs are needed anywhere in chapter 1; first use will be streams and fibers in chapter 3.
@@ -138,17 +139,17 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 
 ### Criteria
 
-`T` = statement and solution survive with syntax changes. `A` = idea survives, statement changes (representation forced by types, no symbols/quotation, closures as data, printed-list reading). `R` = exercise is about Scheme itself; same-number tailored replacement. Counts are identical across the four languages; only the `A` reason wording differs.
+`T` means the statement and solution need only syntax changes. `A` preserves the idea but changes the statement for host types, data, closures, or output. `R` supplies a same-number host-language replacement. Keep every exercise identity across the editions and record each adaptation reason.
 
 ### Section 2.1 (exercises 2.1 to 2.16, 16 rows)
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
-| 2.1 | Sign-normalizing make-rat | T | T | T | T | allow mixed-sign make-rat inputs (chosen: rust) |
+| 2.1 | Sign-normalizing make-rat | T | T | T | T | find the first checked overflow while repeatedly squaring 99/100 (chosen: rust) |
 | 2.2 | Line segments from points | T | T | T | T | |
 | 2.3 | Two rectangle representations | T | T | T | T | |
 | 2.4 | Procedural cons, car, cdr | A: closures as pairs need function traits | A: closures as pairs need function records | A: closure pairs need function pair type | A: closures as pairs need function types | verify cons identity law property test (chosen: kotlin) |
-| 2.5 | Pairs as 2^a 3^b | A: 2^a 3^b overflows i64, needs bigint | A: 2^a 3^b overflows int, needs Z | A: 2^a 3^b overflows number, needs bigint | A: 2^a 3^b overflows Long, needs BigInteger | |
+| 2.5 | Pairs as 2^a 3^b | A: checked i128 encoding reports overflow | A: bounded int encoding reports overflow | A: exact bigint encoding replaces number | A: exact BigInteger encoding replaces Long | |
 | 2.6 | Church numerals | A: church numerals need function-typed traits | A: church numerals need function encoding | A: church numerals need function-encoded zero | A: church numerals need function-encoded zero | arithmetic on three plus successor (chosen: typescript) |
 | 2.7 | Interval selectors | T | T | T | T | |
 | 2.8 | Sub-interval | T | T | T | T | |
@@ -170,7 +171,7 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 | 2.19 | Currency as list | T | T | T | T | add pound and euro denominations |
 | 2.20 | Same-parity variadic | A: variadic rest parameters replace dotted-tail notation | A: variadic rest arguments replace dotted-tail notation | A: rest tuple parameters replace dotted-tail notation | A: vararg parameters replace dotted-tail notation | |
 | 2.21 | Square-list two ways | T | T | T | T | |
-| 2.22 | Iterative square-list bug | T | T | T | T | |
+| 2.22 | Iterative square-list bug | A: swapped list arguments are rejected by the type checker | T | T | T | |
 | 2.23 | For-each | T | T | T | T | implement map via for-each |
 | 2.24 | List structure tree | R: draw nested structure in edition syntax | R: draw nested structure in edition syntax | R: draw nested structure in edition syntax | R: draw nested structure in edition syntax | |
 | 2.25 | Car and cdr combinations | R: accessor chains over edition tree type | R: accessor chains over edition tree type | R: accessor chains over edition tree type | R: accessor chains over edition tree type | |
@@ -266,12 +267,12 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 
 | Section | Rust T/A/R | OCaml T/A/R | TypeScript T/A/R | Kotlin T/A/R | Rows |
 |---|---|---|---|---|---|
-| 2.1 | 11 / 4 / 1 | 11 / 4 / 1 | 11 / 4 / 1 | 11 / 4 / 1 | 16 |
-| 2.2 | 23 / 10 / 3 | 23 / 10 / 3 | 23 / 10 / 3 | 23 / 10 / 3 | 36 |
+| 2.1 | 12 / 4 / 0 | 12 / 4 / 0 | 12 / 4 / 0 | 12 / 4 / 0 | 16 |
+| 2.2 | 22 / 11 / 3 | 23 / 10 / 3 | 23 / 10 / 3 | 23 / 10 / 3 | 36 |
 | 2.3 | 13 / 5 / 2 | 13 / 5 / 2 | 13 / 5 / 2 | 13 / 5 / 2 | 20 |
 | 2.4 | 0 / 4 / 0 | 0 / 4 / 0 | 0 / 4 / 0 | 0 / 4 / 0 | 4 |
 | 2.5 | 4 / 17 / 0 | 4 / 17 / 0 | 4 / 17 / 0 | 4 / 17 / 0 | 21 |
-| **Total** | **51 / 40 / 6** | **51 / 40 / 6** | **51 / 40 / 6** | **51 / 40 / 6** | **97** |
+| **Total** | **51 / 41 / 5** | **52 / 40 / 5** | **52 / 40 / 5** | **52 / 40 / 5** | **97** |
 
 31 tailored addition ideas appear (about one per three exercises).
 
@@ -281,8 +282,8 @@ Grounding notes: Kotlin `tailrec` semantics from https://kotlinlang.org/docs/fun
 - Painter language (2.44 to 2.52): painters are first-class frame-to-frame closures. OCaml is native; Rust needs boxed closures or a `Painter` trait; TypeScript needs an explicit function type; Kotlin needs function types. `transform-painter` returning a painter must work in all four.
 - Closures as data (2.4, 2.6): church-encoded pairs and numerals need function types everywhere; in Rust they need trait objects (`Rc<dyn Fn>`), which changes the definitions' shape.
 - Symbols and quotation (2.53 to 2.58, 2.55, 2.67 to 2.72): no symbols in any host language. The differentiation program needs an expression type (enum/union/sealed variant) with a symbol case as strings, plus constructor helpers replacing quoting. `memq`/`eq?` comparisons in 2.53/2.54 become structural comparisons on a symbol type.
-- Printed-list reading: 2.24 to 2.26 and 2.53 read Scheme's box-and-pointer or printed output; the editions must restate predictions over their own tree/collection syntax or drop the reading.
-- Recursive heterogeneous data: every tree over "number or sub-list" (2.27, 2.28, 2.29 to 2.31, 2.35) needs a recursive sum type where Scheme needs nothing; the same type is reused by the differentiation expressions (2.56 to 2.58) and Huffman trees (2.67 to 2.72).
+- Printed-structure reading: exercises 2.24 to 2.26 and 2.53 retain their box-and-pointer and output-prediction objectives. Express the structures in each host's tree or collection notation; do not drop the reading exercise.
+- Recursive heterogeneous data: trees whose children may be numbers or subtrees need explicit recursive sum types. Preserve the traversal lessons in 2.27 to 2.31 and 2.35, symbolic differentiation in 2.56 to 2.58, and Huffman trees in 2.67 to 2.72.
 - Exact integers and overflow: 2.5 needs big integers; 2.95's observation about integer-exact gcd arithmetic assumes unbounded integers in every edition.
 - Iterative accumulation without mutable pairs: 2.18, 2.22, 2.39, 2.63's `copy-to-list` must thread accumulators functionally (Rust/OCaml folds, TS readonly arrays, Kotlin `PersistentList`); 2.22's lesson about building the list in reverse survives but the mechanics differ.
 - Error signaling: 2.10 and 2.68 say "signal an error"; each edition must map this to its error type (Result, exceptions, Effect failures, Kotlin requires/null or exceptions) consistently.
@@ -329,7 +330,7 @@ Notes: local state in a single closure works everywhere (Rust `impl FnMut`, OCam
 
 ### Section 3.2: Environment model (3 rows)
 
-All three are environment-diagram exercises about Scheme frames, so all four editions need replacements.
+These environment-diagram exercises require each edition's own call, closure, and capture model. Preserve their numbers and diagram objectives.
 
 | Exercise | Topic | Rust | OCaml | TypeScript | Kotlin | Tailored addition idea |
 |---|---|---|---|---|---|---|
@@ -461,7 +462,7 @@ Each row sums to 82 per language.
 
 ## Chapter 4 exercise classification (4.1 to 4.79)
 
-Legend: `T` = translate, syntax changes only. `A: reason` = adapt, the statement changes because the host language differs. `R: topic` = replace, the exercise is about Scheme itself; the replacement extends the same number. Tailored additions are numbered as the row plus a letter; empty cells mean no addition.
+Legend: `T` means syntax-only translation. `A: reason` preserves the idea with a changed statement. `R: topic` supplies a host-language replacement under the original number. Tailored additions use the row's number plus a letter; an empty cell selects no addition.
 
 Reading coverage: 65 of the 79 statements were read verbatim from the Texinfo this session. For 14 rows (4.11, 4.12, 4.13, 4.27, 4.44, 4.45, 4.46, 4.50, 4.51, 4.60, 4.61, 4.62, 4.63, and the tail of 4.69) only the surrounding section text and cross-references were read; their topics follow from those anchors and none of them changes classification under the default.
 
@@ -572,30 +573,30 @@ Counts, summing to 20 per language: Rust 19 T / 1 A / 0 R; OCaml 19 / 1 / 0; Typ
 
 Counts, summing to 25 per language: Rust 25 T / 0 A / 0 R; OCaml 25 / 0 / 0; TypeScript 25 / 0 / 0; Kotlin 25 / 0 / 0.
 
-Overall over 79 exercises: Rust 77 T / 2 A / 0 R; OCaml 78 / 1 / 0; TypeScript 77 / 2 / 0; Kotlin 77 / 2 / 0.
+The original classification totals for these 79 exercises were Rust 77 T / 2 A / 0 R, OCaml 78 / 1 / 0, TypeScript 77 / 2 / 0, and Kotlin 77 / 2 / 0. Reconcile the classifications against the migrated statements and solutions before treating those totals as a migration result.
 
-Why so few A rows: under the shared-specification default every edition evaluates the same Scheme subset, so the object language never changes and an exercise that adds a Scheme special form (4.2, 4.4, 4.5, 4.13, 4.26, 4.31, 4.50 to 4.54, 4.75) stays T in all four editions. Only two statements name the host's role: 4.1 ("inherited from the underlying Lisp") and 4.41 ("ordinary Scheme program"), hence their A. No chapter 4 exercise needs the host and object language to coincide (no REPL redefinition, no quasiquote trick, no evaluator reading itself as code), so there are zero R rows.
+Each edition now evaluates its own checked host subset. Review source-form and evaluator-extension exercises against that grammar rather than assuming a shared guest language. Keep the learning objective through admitted source, typed syntax data, or the specified named experiment. A changed semantic premise needs an `A` reason or a same-number `R` replacement. Source typing, ownership, capture, and native evaluation order can change the statement; a successful host build alone does not settle the classification.
 
 ### Hard spots
 
-- The amb evaluator's backtracking is host-mechanism-bound, and exercises 4.50 to 4.54 sit on top of it. Rust has no continuations, so the evaluator carries an explicit choice-point stack of captured thunks; OCaml uses effect handlers (Effect.perform with a handler that resumes a stored continuation); TypeScript uses Effect v4 fibers with the try-again driver state; Kotlin uses the sequence builder's suspension. 4.51 (permanent-set!) and 4.52 (if-fail) must keep their semantics aligned with whichever mechanism the edition chose.
-- The 4.1.7 analyze evaluator makes execution procedures host closures over the parsed expression. 4.23's comparison of analysis-time versus run-time work must be made observable in each host, and 4.24's benchmark needs a host timer with warmup to be meaningful.
-- The query system's explicit delay (4.70 to 4.74) needs delayed stream cells in every host: Rust closures under Rc, OCaml lazy, Effect v4 lazy thunks or Stream, Kotlin sequence. The cyclic assertion stream in 4.70 must not force eagerly.
-- Environment mutation (set-variable-value!, define-variable!, add-binding-to-frame!) mutates shared frames: Rust needs Rc<RefCell<Frame>> with try_borrow discipline, OCaml a ref-based frame, TypeScript a mutable frame object behind Ref, Kotlin a mutable frame class. This is background for 4.11 to 4.13 and 4.16 but changes no statement.
-- The two A rows are statement-level, not solution-level: 4.1's premise about unspecified underlying order holds only in OCaml (argument order unspecified); 4.41's "ordinary Scheme" means the reader's working language, which is now the host.
+- Search exercises 4.50 to 4.54 use the edition's named experiment and explicit choice/failure state. Preserve resumable alternatives, reversible writes, permanent effects, and exhaustion behavior. OCaml must not resume a one-shot continuation twice. Host fibers, coroutines, or sequences do not by themselves define guest search semantics.
+- The 4.1.7 analyzer builds execution procedures from checked syntax. Make the analysis-time versus runtime work observable in 4.23. Use the host's stated timing method and warmup rules for 4.24.
+- Query exercises 4.70 to 4.74 need delayed answer streams and productive fair interleaving. Do not replace them with eager finite lists. The cyclic assertion stream in 4.70 must not force itself during construction.
+- Environment exercises 4.11 to 4.13 and 4.16 use explicit typed frames or stores. Preserve shared captured bindings where the host permits them, but reject invalid source before effects. Rust's internal representation must not create source-level copies or aliases that its ownership rules forbid.
+- In 4.1, distinguish specified operand order from OCaml's unspecified native argument order; sequence effects explicitly where an oracle comparison needs one order. In 4.41, the ordinary program is a real program in the edition's host language, not an alternate guest syntax.
 
 ### Out-of-standard-library needs
 
 | Language | Exercises | Need | Evidence |
 |---|---|---|---|
-| Rust | 4.50 | pseudorandom choice for ramble | rand crate, or keep std-only with an inlined xorshift (https://doc.rust-lang.org/std/cell/index.html confirms std has no RNG) |
+| Rust | 4.50 | Existing seeded runtime generator for randomized search; no new dependency or ambient entropy. | Technical plan D31; approved Rust grammar search experiment |
 | OCaml | none | | |
 | TypeScript | none beyond the Effect v4 edition baseline | | |
 | Kotlin | 4.11, 4.12, 4.13, 4.16 | typed unbound-variable and unassigned errors as Either | arrow-core (https://arrow-kt.io/learn/typed-errors/working-with-typed-errors/) |
 
 Grounding notes: OCaml effect handlers from https://ocaml.org/manual/latest/effects.html (read this session). Rust interior mutability and Rc<RefCell> from https://doc.rust-lang.org/std/cell/index.html (read this session). Arrow Either, Raise, and fold from https://arrow-kt.io/learn/typed-errors/working-with-typed-errors/ (read this session). Effect v4 Data.TaggedError, Effect.fail, catchTag from https://effect.website/docs/v4/error-management/expected-errors.md (read this session). The Kotlin sequence builder URL (https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.sequences/sequence.html) returned a JetBrains media-kit PDF instead of the API page, so that citation is unverified; the builder is standard-library knowledge. The claim that Rust, TypeScript, and Kotlin specify left-to-right argument evaluation, and that OCaml leaves argument order unspecified, is unverified as a citation this session. Effect v4's Schema.TaggedError name was not confirmed this session (the v4 error-management page shows Data.TaggedError); use Data.TaggedError in the edition conventions.
 
-Alternative impact: if the four editions instead evaluated a subset of their own host language, 29 of the 79 rows would change classification: the T rows whose statements quote Scheme program text or transcripts (4.2, 4.5, 4.6, 4.7, 4.8, 4.15, 4.18, 4.19, 4.20, 4.21, 4.23, 4.25, 4.27, 4.29, 4.30, 4.31, 4.33, 4.35, 4.37, 4.47, 4.52, 4.53, 4.54, 4.70, 4.71, 4.73, 4.74, 4.79) would become A, and 4.3 would become A because taking the car of a compound expression stops being a list operation; the two A rows keep their class and the R count stays zero.
+Host-subset reconciliation: review the former `T` rows whose statements used removed program syntax or transcripts: 4.2, 4.5, 4.6, 4.7, 4.8, 4.15, 4.18, 4.19, 4.20, 4.21, 4.23, 4.25, 4.27, 4.29, 4.30, 4.31, 4.33, 4.35, 4.37, 4.47, 4.52, 4.53, 4.54, 4.70, 4.71, 4.73, 4.74, and 4.79. Exercise 4.3 also needs typed syntax dispatch instead of list selection. Record an `A` reason when the host changes the premise; use a same-number `R` only when the objective needs a replacement. Review existing `A` reasons too. The old classification totals do not exempt any row from this check.
 
 ## Chapter 5 exercise classification (5.1 to 5.52) for the four editions
 
@@ -603,13 +604,13 @@ Source: `/home/alpha/book/modern-sicp/sicp-pocket.texi`, lines 30281 to 37359 (t
 
 Cell key: `T` translate, `A: reason` adapt, `R: topic` replace.
 
-Classification stance, from the assignment defaults: every edition implements the register-machine simulator, the explicit-control evaluator, and the compiler for the shared SICP Scheme subset in its host language. The subject of chapter 5 is the book's register-machine language, which is the same object of study in all four editions, so statements about machine design, controller sequences, and simulator or compiler extensions survive almost everywhere. The typed-representation changes named in the assignment (instruction enums instead of list structure, a typed memory model for `the-cars` and `the-cdrs`, typed compiler instruction sequences, the host stack, host GC) land in the main text and in the idiom notes, not in exercise statements, because the chapter 5 statements are phrased at the interface level. The two exceptions need the chapter 4 evaluator to exist as object-language source.
+Classification stance: each edition implements machines, explicit-control evaluation, and compilation for its accepted host subset. Typed controller instructions remain a shared lesson, not a shared source language or value model. Preserve machine design, stack discipline, storage, assembly, register preservation, linkage, and compiled/interpreted calls. Review each statement against its actual interface and semantic premise instead of assuming that a representation change cannot affect it.
 
-Basis: language facts are the assignment's given set (Rust enums, `Vec`, no GC, `Rc<RefCell>`; OCaml variants, arrays, GC; TypeScript discriminated unions, `Ref`, arrays, GC; Kotlin sealed classes, arrays, GC). No new API claims were introduced, so no documentation URLs are cited. Plan decisions D9 (shared object language with grammar and program spec), D20 (pair representation), and D23 (given reader and printer) were read from `modern-sicp-editions-plan.md` in this session's local directory.
+Basis: the approved `docs/plan/host-subsets-specification.md`, the ordered migration plan, and `spec/host-subsets/<edition>/grammar.md`. The grammar fixes source admission and native behavior; the exercise map records how each numbered objective is taught. Do not use the earlier shared-language default to override those contracts.
 
 Editorial calls that would change the output if reversed:
 
-- 5.50 and 5.52 are `A` because the editions' chapter 4 evaluator is host code, so "compile the metacircular evaluator" needs a new given example: the evaluator written in the object language, for example `examples/ch5/metacircular.scm`. If the plan declines to ship that source, flip both to `R` with replacement topic "compile a provided substantial object-language program". Whether such a source exists in the plan is unverified.
+- Exercises 5.50 and 5.52 remain `A`. The approved contract requires the translated evaluator to be valid guest source, checked and executed through the teaching engines. Do not replace it with a native helper, hidden old source, or an unrelated program. The edition handoff must provide actual execution evidence.
 - No exercise depends on the host REPL. `compile-and-go`, `compile-and-run`, and the EC-Eval driver loop translate fully: the driver loop is part of the simulated machine, and machine operations are host functions. A plan that treats the whole interfacing subsection as host dependent would flip 5.45, 5.47, 5.48, and 5.49 to `A`; the statements as written survive.
 
 ### Section 5.1, register machines (6 rows)
@@ -685,13 +686,13 @@ Editorial calls that would change the output if reversed:
 | 5.47 | compiled code calls interpreted procedures | T | T | T | T |  |
 | 5.48 | compile-and-run primitive inside evaluator | T | T | T | T | compile-and-run a whole begin block |
 | 5.49 | read-compile-execute-print loop machine | T | T | T | T |  |
-| 5.50 | compile the metacircular evaluator | A: needs evaluator source in object language | A: needs evaluator source in object language | A: needs evaluator source in object language | A: needs evaluator source in object language | time each interpretation level |
+| 5.50 | compile the metacircular evaluator | A: needs evaluator source in guest language | A: needs evaluator source in guest language | A: needs evaluator source in guest language | A: needs evaluator source in guest language | time each interpretation level |
 | 5.51 | translate evaluator into C runtime | T | T | T | T |  |
-| 5.52 | compiler emits C, compile evaluator | A: needs object-language evaluator source provided | A: needs object-language evaluator source provided | A: needs object-language evaluator source provided | A: needs object-language evaluator source provided |  |
+| 5.52 | compiler emits C, compile evaluator | A: needs guest-language evaluator source provided | A: needs guest-language evaluator source provided | A: needs guest-language evaluator source provided | A: needs guest-language evaluator source provided |  |
 
 ### Counts per section, per language
 
-No row splits by language in this chapter: every statement is host neutral or host neutral after the same provision (the object-language evaluator source).
+No row splits by language in this chapter: every statement is host neutral or host neutral after the same provision (the guest-language evaluator source).
 
 | Section | T | A | R | Rows |
 |---|---|---|---|---|
@@ -706,13 +707,13 @@ Counts sum to the 52 rows in every language.
 
 ### Hard spots
 
-- Machine words versus object values. Registers hold object-language values and also internal machine values: instruction locations, compiled procedure entries, condition codes. Every edition needs a machine word type wrapping the object `Value` type (a Rust or OCaml enum, a TypeScript union, a Kotlin sealed class). The main text must introduce it before 5.5.7; it surfaces in 5.9, 5.30, and 5.45 to 5.49.
-- Execution procedures. The book's assembler builds Scheme closures once at assembly time. OCaml, TypeScript, and Kotlin keep closures naturally; Rust needs boxed closures or a compiled instruction representation with an execute step. This shapes the solutions of 5.8 to 5.19 but changes no statement.
-- 5.25 is the hardest 5.4 exercise. Normal-order evaluation spreads across the controller (thunk tests at application time), the operations table, and thunks as tagged object-language data. Plan the controller changes before assigning it.
+- Machine words and guest values are distinct. Registers may hold admitted guest values, instruction locations, procedure entries, environment references, and condition codes. Preserve every representation needed by the checked guest grammar. Introduce this distinction before 5.5.7 and retain the lessons in 5.9, 5.30, and 5.45 to 5.49.
+- Assembly separates label resolution from instruction execution. Use typed closures or decoded instructions with an explicit execution step. Preserve that staging distinction in exercises 5.8 to 5.19.
+- Exercise 5.25 extends the explicit-control evaluator with a named lazy experiment. Plan the controller, primitive strictness, captured thunk state, and forcing/memoization behavior together. The default core keeps native eager semantics.
 - 5.45 and 5.46 need one measurement harness that runs the interpreted, compiled, and special-purpose versions under the same monitored machine. Editions should script these sessions deterministically instead of relying on interactive runs.
-- 5.50 and 5.52 need the chapter 4 evaluator as object-language source, roughly 300 lines checked against the shared grammar, with its primitives supplied as machine operations. This source is a tailored main-text addition and must exist before either exercise is assignable.
-- 5.51 and 5.52 produce C programs. The C runtime reimplements pairs, symbols, and environments from the machine description; nothing in the four hosts helps. Budget an appendix-style walkthrough.
-- The book's assembler uses continuation-passing style (`extract-labels` with a `receive` continuation). Rust translations return a struct instead. This colors the 5.8 solution but the statement survives.
+- Exercises 5.50 and 5.52 require the translated chapter-4 evaluator as valid checked guest source. Execute it on a translated guest program through the teaching evaluator and compiled machine. Its recursive data, closures, and control flow must fit the declared subset. A native helper call or a smaller unrelated program does not satisfy the objective.
+- Exercises 5.51 and 5.52 produce real C programs. Preserve the evaluator-runtime translation and C emission from the typed compiler representation. Implement the edition's admitted guest values and operations, including structured values where required. Keep compilation and process I/O at the host boundary.
+- Exercise 5.8 retains the assembler's continuation and control-flow lesson. A typed returned result may replace a continuation where appropriate, but label discovery, instruction order, and duplicate-label behavior must remain observable.
 
 ### Outside the standard library
 

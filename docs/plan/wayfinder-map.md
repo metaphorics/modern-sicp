@@ -1,5 +1,7 @@
 # Wayfinder map and tickets for modern-sicp
 
+> Historical record of the completed first campaign. The Scheme subset in `spec/scheme-subset/` named below was replaced by `spec/host-subsets/`. The current authority is `docs/plan/host-subsets-specification.md` and `docs/plan/host-subsets-migration.md`.
+
 Storage: GitHub issues on `metaphorics/modern-sicp`. Labels: `wayfinder:map`, `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, `wayfinder:task`. Create the labels with `gh label create <name> --color <hex>`: map `1d76db`, research `0e8a16`, prototype `fbca04`, grilling `d93f0b`, task `5319e7`. Create the map issue first, then the tickets, then edit each ticket's `## Blocked by` with the real issue numbers.
 
 ## Map issue

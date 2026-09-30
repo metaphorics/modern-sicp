@@ -7,7 +7,7 @@
 - Main text uses Stdlib only, except Alcotest and QCheck in tests. Chapter appendices use **Base v0.17.3** and **Core v0.17.2** ([Base docs](https://ocaml.org/p/base/v0.17.3/doc/index.html), [Core docs](https://ocaml.org/p/core/v0.17.2/doc/index.html)).
 - The texinfo source openings for all 22 sections were read this session; the progression procedures, data abstraction, state and streams, evaluators, register machines is confirmed.
 
-A change from self-contained editions, one-to-one section numbering, or the shared Scheme-subset specification for chapters 4 and 5 would require revising the module boundaries below.
+A change from self-contained editions, one-to-one section numbering, or the per-edition host-subset contracts for chapters 4 and 5 (`spec/host-subsets/ocaml/grammar.md`) would require revising the module boundaries below. Chapters 4-5 admit only the typed guest source in grammar §§2-4 with the fixed Stdlib surface in §7; anything else is host-valid but subset-unsupported and is rejected before any guest effect (grammar §§1, 8).
 
 ## 1. Concept map
 
@@ -18,45 +18,40 @@ A change from self-contained editions, one-to-one section numbering, or the shar
 | Higher-order procedures | Function values | Function types make procedure contracts visible. |
 | Named data abstraction | Module plus abstract `type t` | Constructor functions enforce invariants. Selectors do not expose representation. |
 | Pairs and lists | Tuples and `'a list` | No universal pair type in chapters 1 and 2. |
-| Scheme data at run time | Closed `value` variant | Used only where heterogeneous Scheme data is essential. |
-| Symbols and quotation | `Symbol of string` and syntax variants | OCaml identifiers are not run-time symbols. |
+| Guest program data at run time | Closed typed `expr`/`value` variants | Guest evaluator interprets its explicit guest AST; an internal `value` never makes a source type error executable (grammar §§1, 11). |
+| Symbols and quotation | Explicit syntax constructors | Quotation is explicit construction; OCaml identifiers are not run-time symbols. |
 | Message passing | Records of closures | Closer to SICP dispatch closures than OCaml objects, with simpler static types. |
-| Assignment | `ref` and mutable record fields | Mutation is introduced only where the text studies state. |
-| Mutable pairs | `{ mutable car; mutable cdr }` | Restricted to 3.3 and interpreter memory models. |
+| Assignment | `ref` (`ref`/`!`/`:=`) plus host-ordinary mutable records where the state lesson needs them | Guest core mutation is `ref`, `Array.make`/`get`/`set`/`length`, and `Hashtbl.create`/`find_opt`/`replace`/`remove`/`length` only; mutable record fields and record updates are host-valid but subset-unsupported (grammar §§3, 6, 8). |
+| Mutable pairs | Host `{ mutable car; mutable cdr }` in 3.3; guest memory uses `word array` cells | Host record is restricted to 3.3; guest heap is parallel car/cdr `word array` storage with `Array.get`/`set` (grammar §§10, 13). |
 | Symbolic algebra | Algebraic variants and pattern matching | Differentiation, polynomials, sets, Huffman trees. |
-| Data-directed dispatch | `Hashtbl` of operation closures | Main text preserves `put`/`get` mechanics of 2.4 and 2.5. |
-| Generic arithmetic appendix | Functors and first-class modules | Base/Core appendix contrasts typed composition with run-time tags. |
+| Data-directed dispatch | Host `Hashtbl` of operation closures in chapters 2-3; guest uses typed `Term`/`Query` and `Instruction` constructors | Main text preserves `put`/`get` mechanics of 2.4 and 2.5 as host teaching; guest query/machine are domain languages of host constructors, not tables of source syntax (grammar §§10, 13). |
+| Generic arithmetic appendix | Host-ecosystem functors and first-class modules (Base/Core appendix, outside guest core) | Appendix contrasts typed composition with run-time tags; guest core has no module, functor, or first-class-module declarations (grammar §§2, 8). |
 | Picture language | Painter functions producing SVG primitives | SVG is deterministic, inspectable, needs no GUI runtime. |
-| Streams | Custom memoized stream over `Lazy.t` | Preserves `delay`, `force`, sharing, infinite self-reference. |
-| Parallel execution | `Domain.spawn`, `Domain.join`, `Mutex.protect` | Stdlib only; Eio is not used. |
-| Serializer | Closure that protects a call with one mutex | Mirrors SICP's serializer; unlock guaranteed on exceptions. |
-| Environment | List of mutable frames | Frames are string-keyed tables; extension is immutable. |
-| Lazy evaluator thunk | `value Lazy.t` behind an evaluator variant | `Lazy.force` memoizes; not concurrency-safe without locks. |
-| `amb` choice and failure | OCaml 5 effects plus restartable search | Continuations are one-shot; never resume one continuation per choice. |
-| Query frames | Immutable association maps, lazy frame streams | Unification returns extended frames through the chapter 3 stream module. |
+| Streams | Host-ordinary memoized streams in 3.5; guest lazy answers use explicit thunk cells and fair query streams | Chapter 3 preserves `delay`/`force` sharing as host teaching; guest lazy/search are separately named experiments with explicit thunk and answer events (grammar §§10). |
+| Parallel execution | Host-ordinary `Domain.spawn`, `Domain.join`, `Mutex.protect` in 3.4 | Stdlib only; Eio is not used. Guest core has no admitted concurrency primitive; guest search order is the experiment's documented search order over admitted `list` data, never scheduler observation (grammar §10). |
+| Serializer | Host-ordinary closure that protects a call with one mutex | Mirrors SICP's serializer in 3.4 as host teaching; guest search keeps reversible and permanent assignment distinct from core `ref` assignment (grammar §§10). |
+| Environment | Guest environments as typed bindings with `ref` cells where the lesson needs sharing | Frames use admitted `ref`, array, and hash-table operations with immutable keys; an internal value never bypasses source checking (grammar §§1, 4, 6). |
+| Lazy evaluator thunk | Separately named lazy experiment with explicit thunk values | Delayed arguments carry expression, environment, and optional memoized result; primitives stay strict (grammar §§10). |
+| Choice and failure | Separately named search experiment with explicit choice/failure/answer events | Documented search order with restartable choice paths; a one-shot continuation is never resumed twice; search forms never enter the core grammar (grammar §§10). |
+| Query frames | Immutable bindings with fair delayed answer streams | Unification includes an occurs check; frames are immutable; conjunction/disjunction/negation are closed variants and lists (grammar §§10, 13). |
 | Register machine | Instruction variants, register table, arrays, stack | Labels assemble to array positions. |
 | Pair memory | Parallel car/cdr arrays | Models `the-cars`, `the-cdrs`, allocation, roots, copying GC. |
 | Compiler output | Register-machine instruction sequence | Compiler and explicit-control evaluator share the simulator IR. |
 
 ### Hard mapping sketches
 
-#### Dynamically typed Scheme values
+#### Guest program values (typed guest AST, not dynamic Scheme)
 
 ```ocaml
-type value =
-  | Int of int | Float of float | Bool of bool
-  | Symbol of string | Nil | Pair of value * value
-  | Primitive of (value list -> (value, error) result)
-  | Closure of closure
+(* guest program values: closed typed variants interpreting an explicit guest AST per grammar §§11; no dynamic Scheme typing, no host eval or reflection *)
+type value = VInt of int | VBool of bool | VUnit | VTuple of value list | VConstructor of string * value list
 ```
 
-#### Mutable pairs in 3.3
+#### Host mutable pairs in 3.3 (guest uses array cells)
 
 ```ocaml
-type 'a mpair = {
-  mutable car : 'a;
-  mutable cdr : 'a;
-}
+(* host-ordinary 3.3 mutable pairs; guest memory uses word arrays per grammar §§10 *)
+type 'a mpair = { mutable car : 'a; mutable cdr : 'a }
 let set_car pair value = pair.car <- value
 let set_cdr pair value = pair.cdr <- value
 ```
@@ -91,9 +86,9 @@ let rec deriv variable = function
 type tag = string
 type operation = value list -> (value, error) result
 module Key = struct type t = string * tag list let equal = ( = ) let hash = Hashtbl.hash end
-module Dispatch = Hashtbl.Make (Key)
-let put table op tags fn = Dispatch.replace table (op, tags) fn
-let find_operation table op tags = Dispatch.find_opt table (op, tags)
+(* host-ordinary 2.4 dispatch uses only the admitted operations below; Hashtbl.Make and arbitrary paths are host-valid but subset-unsupported per grammar §§3, 8 *)
+let put table op tags fn = Hashtbl.replace table (op, tags) fn
+let find_operation table op tags = Hashtbl.find_opt table (op, tags)
 ```
 
 #### Typed arithmetic in the Base/Core appendix
@@ -122,22 +117,24 @@ let beside left right frame =
 #### Memoized streams
 
 ```ocaml
+(* host-ordinary 3.5 streams teach sharing with a memoized Lazy.t tail; the separately named guest lazy/search experiments use explicit thunk cells and fair answer streams per grammar §10 *)
 type 'a stream = Cons of 'a * 'a stream Lazy.t
-let cons_stream head tail = Cons (head, lazy (tail ()))
+let cons_stream head tail = Cons (head, Lazy.from_fun tail)
 let stream_car (Cons (head, _)) = head
 let stream_cdr (Cons (_, tail)) = Lazy.force tail
 let rec map f (Cons (head, tail)) =
   Cons (f head, lazy (map f (Lazy.force tail)))
 ```
-
-`Lazy.force` computes once and reuses the value; the manual warns that concurrent forcing needs locks ([Lazy](https://ocaml.org/manual/5.5/api/Lazy.html)). OCaml 5.5 adds `Lazy.Mutexed` for exactly this; it appears in a 3.4/3.5 margin note only.
+Host `Lazy.force` computes once and reuses the value ([Lazy](https://ocaml.org/manual/5.5/api/Lazy.html)); `Lazy.Mutexed` (5.5) is a host-only margin note. Sharing check: two cursors over one stream force the tail once, where two fresh traversals force twice, which is what tailored addition 3.59a counts.
 
 #### Serializer and domains
 
 ```ocaml
+(* host-ordinary 3.4 teaching; guest core admits no concurrency primitive per grammar §§7 *)
 let make_serializer () =
   let mutex = Mutex.create () in
   fun procedure argument -> Mutex.protect mutex (fun () -> procedure argument)
+(* host-ordinary 3.4 teaching; guest search order is the experiment's documented order over admitted list data per grammar §10 *)
 let parallel left right =
   let domain = Domain.spawn left in
   let right_result = right () in
@@ -160,21 +157,37 @@ let rec find_variable name = function
 
 #### Lazy evaluator thunk
 
+The sketch uses the runtime's `Value.thunk_state` and memoizes only a
+successful force. `eval` takes an environment before an expression.
+The section implementation also counts allocations, forces, recomputations
+and memo hits.
+
 ```ocaml
-type delayed = value Lazy.t
-let delay expression environment = lazy (eval expression environment)
-let actual_value expression environment =
-  eval expression environment |> Result.bind force_if_delayed
-let force_if_delayed = function
-  | Delayed thunk -> Ok (Lazy.force thunk)
-  | value -> Ok value
+let delay environment expression = Value.thunk ~expr:expression ~env:environment
+
+let rec force eval value =
+  match Value.thunk_state_of value with
+  | None -> Ok value
+  | Some cell ->
+    (match !cell with
+     | Value.Forced result -> Ok result
+     | Value.Delayed (expression, environment) ->
+       let ( let* ) = Result.bind in
+       let* value = eval environment expression in
+       let* result = force eval value in
+       Value.set_thunk_state cell (Value.Forced result);
+       Ok result)
+
+let actual_value eval environment expression =
+  Result.bind (eval environment expression) (force eval)
 ```
 
-#### `amb` with restartable effect search
+#### Restartable effect search
 
-The object language exposes direct-style `choose` and `fail`. The host search engine must restart the computation for each choice path, because OCaml continuations are one-shot: `Effect.Deep.continue` raises `Continuation_already_resumed` when a continuation is resumed twice ([Effect](https://ocaml.org/manual/5.5/api/Effect.html), [Effect.Deep](https://ocaml.org/manual/5.5/api/Effect.Deep.html)).
+The search experiment exposes direct-style `choose` and `fail`. The host search engine must restart the computation for each choice path, because OCaml continuations are one-shot: `Effect.Deep.continue` raises `Continuation_already_resumed` when a continuation is resumed twice ([Effect](https://ocaml.org/manual/5.5/api/Effect.html), [Effect.Deep](https://ocaml.org/manual/5.5/api/Effect.Deep.html)).
 
 ```ocaml
+(* separately named search experiment only; host implementation may use effects with a restartable choice-path driver without making Effect a core source form per grammar §§7, 10; never resume a one-shot continuation twice *)
 type _ Effect.t += Choose : 'a list -> 'a Effect.t | Fail : unit Effect.t
 let choose choices = Effect.perform (Choose choices)
 let fail () = Effect.perform Fail
@@ -182,18 +195,20 @@ let solutions computation =
   Search.restart_with_choice_paths computation  (* replays choice paths *)
 ```
 
-The engine runs the program under `Effect.Deep.try_with` with a handler whose `effc` field matches `Choose` and `Fail`; on `Choose` it records the tried index and re-runs the whole computation with that path pinned, never re-`continue`-ing one continuation. Effects stay the main presentation over CPS because the object-language program remains direct-style and both effects are ordinary Stdlib values; a boxed CPS comparison follows in the text.
+The engine runs the program under `Effect.Deep.try_with` with a handler whose `effc` field matches `Choose` and `Fail`; on `Choose` it records the tried index and re-runs the whole computation with that path pinned, never re-`continue`-ing one continuation. The restartable choice-path driver stays the main presentation over CPS because guest search programs keep explicit choice/failure/answer events with a documented order; a boxed CPS comparison follows in the text as host teaching.
 
 #### Query language
 
 ```ocaml
-type term = Atom of string | Variable of string | Compound of term list
+type term = Atom of string | Variable of string | Compound of string * term list
 type frame = (string * term) list
 type query = Predicate of term | And of query list | Or of query list | Not of query
-type answer_stream = frame stream
+type answer_stream = frame Seq.t
 val unify : term -> term -> frame -> (frame, error) result
 val qeval : database -> query -> answer_stream -> answer_stream
 ```
+
+`Seq.t` can represent no answers, a finite answer sequence, or an unbounded answer sequence. It suspends the next query step. The query engine must interleave suspended branches fairly; this property does not follow from the sequence type alone. Search uses the same sequence representation with its specified choice order. Neither API uses the nonempty memoized stream sketch from section 3.5.
 
 #### Register-machine instructions
 
@@ -221,7 +236,7 @@ let allocate heap car cdr =
 
 ### 1.1 The elements of programming
 
-- Changes: prefix Scheme forms become infix arithmetic, `let`, `let rec`, `if`, and pattern matching. The first square-root program shows explicit `int` versus `float` operators.
+- Changes: prefix book forms become infix arithmetic, `let`, `let rec`, `if`, and pattern matching over the typed guest source (grammar §§2-4). The first square-root program shows explicit `int` versus `float` operators with `float_of_int` as the only admitted conversion.
 - Hard spot: OCaml has no single numeric tower and no implicit coercion.
 - Representative program: Newton square root with nested helpers and a tolerance.
 - Tailored additions:
@@ -257,8 +272,8 @@ let allocate heap car cdr =
 
 ### 2.2 Hierarchical data and closure
 
-- Changes: proper Scheme lists map to `'a list`; heterogeneous trees use variants. Sequence pipelines use `List.map`, `List.filter`, and folds. Picture output becomes SVG.
-- Hard spot: Scheme pair trees can be heterogeneous and improper; `'a list` cannot.
+- Changes: proper book lists map to `'a list` (grammar §§3 admits only the listed `List` operations); heterogeneous trees use closed variants. Sequence pipelines use `List.map`, `List.filter`, and folds. Picture output becomes SVG.
+- Hard spot: book pair trees can be heterogeneous and improper; `'a list` cannot, so heterogeneous trees use explicit closed variants.
 - Representative program: `square_limit` producing one SVG file.
 - Tailored additions:
   - **2.20a:** Implement `same_parity` without repeated append.
@@ -293,7 +308,7 @@ let allocate heap car cdr =
 
 ### 3.1 Assignment and local state
 
-- Changes: local state is a captured `ref`. Account messages are a record of closures. Random-state examples pass `Random.State.t` explicitly.
+- Changes: local state is a captured `ref`. Account messages are a record of closures. Host random-state examples pass `Random.State.t` explicitly as host teaching; guest programs have no admitted input, clock, or ambient-state primitive (grammar §§9).
 - Hard spot: object identity versus structural equality once closures capture refs.
 - Representative program: password-protected account with `withdraw`, `deposit`, and balance accessors.
 - Tailored additions:
@@ -302,26 +317,26 @@ let allocate heap car cdr =
 
 ### 3.2 The environment model (re-cut)
 
-- Re-cut: presented as the OCaml closure-plus-`ref` model. Environment diagrams are re-cut to closure captures and shared cells; Scheme frame-lookup pictures are kept only where chapters 4 and 5 need them.
+- Re-cut: presented as the OCaml closure-plus-`ref` model. Environment diagrams are re-cut to closure captures and shared cells; guest frame-lookup pictures remain only as preparation for the chapter 4-5 typed guest environments (grammar §§13).
 - Hard spot: OCaml's internal closure layout is an implementation detail, not a language guarantee.
 - Representative program: two counters sharing one captured cell versus counters with separate cells.
 - Tailored additions:
-  - **3.10a:** Predict values under OCaml's left-to-right argument evaluation.
+  - **3.10a:** Predict values under OCaml's unspecified native argument order by sequencing effectful work with explicit `let` bindings first (guest teaching evaluators and compiler standardize on left-to-right guest operand evaluation per grammar §§6; native runs promise no order).
   - **3.20a:** Translate an environment diagram into explicit frame records.
 
 ### 3.3 Modeling with mutable data
 
-- Changes: a dedicated mutable-pair record is introduced. Pair queue, table, agenda, wire, and connector are built before any Stdlib alternative is shown.
+- Changes: a dedicated host mutable-pair record is introduced for 3.3. Pair queue, table, agenda, wire, and connector are built before any Stdlib alternative is shown. Guest pair memory instead uses parallel car/cdr `word array` storage with `Array.get`/`set` (grammar §§10, 13).
 - Hard spot: cycles make structural equality and naive printers diverge.
 - Representative program: ripple-carry adder on the agenda simulator, then Celsius-Fahrenheit constraints.
-- Margin note: OCaml 5.4 added the `Pqueue` module (heap-backed priority queues via `Pqueue.MakeMin`, with `pop_min` and `min_elt`; equal priorities pop in unspecified order) per the [5.5 manual](https://ocaml.org/manual/5.5/api/Pqueue.html). It is shown as an agenda alternative; the main text keeps the hand-built agenda because SICP's deterministic time-order story is the lesson.
+- Margin note (host-only, outside guest core): OCaml 5.4 added the `Pqueue` module per the [5.5 manual](https://ocaml.org/manual/5.5/api/Pqueue.html). It is shown as a host agenda alternative; the main text keeps the hand-built agenda because SICP's deterministic time-order story is the lesson. Guest order never depends on unspecified iteration or scheduler order (grammar §§9).
 - Tailored additions:
   - **3.18a:** Detect cycles using physical identity and a visited table.
   - **3.23a:** Implement a deque with constant-time operations behind an abstract interface.
 
 ### 3.4 Concurrency (re-cut)
 
-- Re-cut: `parallel-execute` becomes `parallel`, built on `Domain.spawn` and `Domain.join`; serializers wrap one `Mutex.t` with `Mutex.protect`. Eio is not used: this section studies shared-memory interleavings, not structured I/O concurrency. Interleaving analysis becomes schedule analysis; OCaml's scheduler makes some schedules rare, so tests assert invariants over many runs rather than one interleaving. A margin note mentions `Domain.count` (since 5.5) for observing live domains.
+- Re-cut: host `parallel-execute` becomes host `parallel`, built on `Domain.spawn` and `Domain.join`; host serializers wrap one `Mutex.t` with `Mutex.protect`. Eio is not used: this section studies shared-memory interleavings, not structured I/O concurrency. None of these host concurrency forms enter the guest core, whose fixed surface is `spec/host-subsets/ocaml/grammar.md` §7 (guest search order is the experiment's documented order over admitted `list` data, never scheduler observation). Interleaving analysis becomes schedule analysis; OCaml's scheduler makes some schedules rare, so tests assert invariants over many runs rather than one interleaving. A margin note mentions `Domain.count` (since 5.5) for observing live domains.
 - Hard spot: no example may assert one specific nondeterministic outcome.
 - Representative program: serialized account exchange with globally ordered account IDs to avoid deadlock.
 - Tailored additions:
@@ -330,7 +345,7 @@ let allocate heap car cdr =
 
 ### 3.5 Streams
 
-- Changes: a custom `Cons` whose tail is `'a stream Lazy.t`. `Seq` appears only after the memoization lesson, because `Seq` is not memoized by default. `Lazy.Mutexed` (5.5) is noted where streams cross domains.
+- Changes: a host-ordinary custom `Cons` teaches `delay`/`force` sharing in 3.5; `Seq` appears only after the memoization lesson, because `Seq` is not memoized by default. Guest lazy answers instead use the separately named lazy experiment with explicit thunk cells and fair delayed answer streams (grammar §§10). `Lazy.Mutexed` (5.5) is a host margin note only and never a core source form.
 - Hard spot: recursively defined streams and accidental self-forcing.
 - Representative program: weighted pairs and Ramanujan numbers, then the signal integrator.
 - Tailored additions:
@@ -339,7 +354,7 @@ let allocate heap car cdr =
 
 ### 4.1 The metacircular evaluator
 
-- Changes: the evaluator implements the shared Scheme subset in OCaml. A reader produces a typed AST. `eval` and `apply` return `(value, eval_error) result`; primitive procedures use the same error channel.
+- Changes: the evaluator implements the typed guest source in `spec/host-subsets/ocaml/grammar.md` §§2-4. Direct, analyzed, explicit-control, and compiler consumers accept the same admitted program forms. `eval` and `apply` return `(value, eval_error) result` over the closed guest `expr`/`value` variants; a complete program is accepted by the subset parser (§§2-4), which rejects host-valid excluded syntax (`while`, `try`) before `ocamlc` type-checks it, and only then do guest effects run, and an internal value never makes a source type error executable (grammar §1). Primitive procedures use the same error channel with explicit cases for every admitted primitive and no generic fallback dispatcher.
 - Hard spot: mutually recursive `expr`, `value`, `closure`, and environment types without exposing representations.
 - Representative program: the evaluator REPL, then the analyzed evaluator compiling an expression to `env -> result`.
 - Tailored additions:
@@ -348,16 +363,16 @@ let allocate heap car cdr =
 
 ### 4.2 Lazy evaluation
 
-- Changes: the evaluator's value domain gains delayed computations. Compound-procedure arguments are delayed; primitives stay strict; quoted pairs remain ordinary data.
-- Hard spot: delayed expression versus forced value, and exceptions cached by `Lazy.t`.
-- Representative program: `(try 0 (/ 1 0))`, then lazy lists in the object language.
+- Changes: the separately named lazy experiment (grammar §§10) delays compound-procedure arguments as explicit thunk values carrying expression, environment, and optional memoized result; primitives stay strict and memoization with repeated forcing are explicit observable experiment properties. The strict core gains no implicit delay and ordinary core application does not change.
+- Hard spot: delayed expression versus forced value in the experiment engine (host `Lazy` caching behavior is a host-implementation detail and never a core source form per grammar §§7).
+- Representative program: a forcing-count demonstration over admitted experiment data with one memoized suspension forced twice past a `ref` probe (exactly one evaluation) beside the same suspension under recompute mode (two evaluations), followed by lazy lists built from explicit thunk data in the experiment.
 - Tailored additions:
   - **4.29a:** Instrument thunk creation and forcing counts.
   - **4.31a:** Add strict, lazy, and lazy-memo parameter annotations to the typed AST.
 
 ### 4.3 Nondeterministic computing (re-cut)
 
-- Re-cut: object-language `amb` maps to the `Choose` effect; a failed `require` performs `Fail`. The host implementation uses effects with restartable choice paths; it never resumes one continuation per alternative (`Continuation_already_resumed`). Object-language programs and exercise statements are unchanged.
+- Re-cut: the separately named search experiment exposes explicit choice, failure, and answer events with a documented search order (grammar §§10); search forms never enter the core grammar. The host implementation may use OCaml 5 effect handlers with a restartable choice-path driver and never resumes a one-shot continuation twice; reversible and permanent assignment stay distinct from core `ref` assignment. Exercise statements keep their numbers and objectives; only the engine admission notes change.
 - Hard spot: one-shot continuations make the naive deep handler incorrect.
 - Representative program: prime-sum pairs, then the natural-language parser.
 - Tailored additions:
@@ -366,7 +381,7 @@ let allocate heap car cdr =
 
 ### 4.4 Logic programming
 
-- Changes: terms, variables, rules, and queries use variants. Frames are immutable bindings. `qeval` consumes and returns memoized streams from chapter 3.
+- Changes: the query language is a domain language of ordinary typed constructors (terms, variables, rules, frames, conjunction/disjunction/negation nodes as closed variants and lists), not an additional textual grammar. Frames are immutable bindings, unification includes an occurs check, and delayed answer streams belong to the query experiment with fair interleaving (grammar §§10, 13). The query reader is not a general OCaml-source parser.
 - Hard spot: occurs checks, variable renaming, fair disjunction, negation order.
 - Representative program: personnel database queries, then recursive `append-to-form` rules.
 - Tailored additions:
@@ -375,7 +390,7 @@ let allocate heap car cdr =
 
 ### 5.1 Designing register machines
 
-- Changes: controller descriptions are OCaml instruction values with labels, not quoted Scheme lists. Diagrams keep the original registers and data paths.
+- Changes: controller descriptions are typed OCaml instruction values with labels (grammar §§10, 13), not quoted book lists. Diagrams keep the original registers and data paths. No controller text is accepted as an expression in the OCaml core.
 - Hard spot: preserving simultaneous-update reasoning while each instruction mutates one register.
 - Representative program: GCD machine, then recursive and iterative factorial machines.
 - Tailored additions:
@@ -414,9 +429,11 @@ let allocate heap car cdr =
 - Changes: `compile : Ast.expr -> target -> linkage -> instruction_sequence result`. Instruction sequences keep needed/modified register sets. Compiled and interpreted procedures share `apply-dispatch`.
 - Hard spot: lexical addresses, register preservation, linkage, and mixed compiled/interpreted calls must agree exactly.
 - Representative program: compile factorial, print instructions, execute them on the simulator, then call between compiled and interpreted procedures.
+- Exercise 5.51 keeps its number and objective: translate the evaluator to a standalone C runtime built by an external harness; the OCaml host builds the evaluator source as text and the external harness compiles and runs it (grammar §13). C is a separate build target, never guest source.
+- Exercise 5.52 keeps its number and objective: emit C from the typed compiler representation, built as a standalone image by an external harness, and compare its result with direct native execution (grammar §13).
 - Tailored additions:
   - **5.39a:** Represent lexical addresses with an abstract smart-constructed type.
-  - **5.52a:** Emit a standalone machine image and compare its result with direct evaluation.
+  - **5.52a:** Emit a standalone machine image and compare its result with direct native execution. For 5.50/5.52 self-interpretation, the unit must parse and type-check the translated evaluator itself as valid guest source, run it with the teaching evaluator on a translated guest program, then compare the observable result with direct native execution; calling a native helper is not sufficient (grammar §§11, 13, all UNRUN until Phase 2).
 
 ## 3. Edition conventions
 
@@ -429,11 +446,12 @@ let allocate heap car cdr =
   - With `F(0)=0`, `F(1)=1`: `F(90)` fits; `F(91)` exceeds the bound.
   - Unbounded exponent, Ackermann, binomial, and polynomial-coefficient experiments overflow before their mathematical examples finish.
 - Keep main examples inside the stated bounds and add boundary checks where an exercise invites large inputs. Do not add Zarith to the main edition; an appendix note shows how arbitrary-precision `Z.t` removes those bounds. Zarith 1.14 is the documented arbitrary-precision integer library ([Zarith](https://ocaml.org/p/zarith/latest)).
+- Scope: this section preserves the valid host numeric objectives in chapters 0-3 (exact `int` rational numerators and denominators, `float` roots/intervals/tolerances, polynomial-coefficient lessons with explicit boundary checks). The guest contracts in `spec/host-subsets/ocaml/grammar.md` §§4 (distinct `int`/`float`, `float_of_int` as the only admitted conversion, no implicit promotion, no admitted `int_of_float`) and §§6 (target-width wrapping, target-dependent range, division-by-zero and out-of-range array access as runtime failures) govern only the chapter 4-5 teaching engines. They do not narrow or rewrite the host chapter-0/3 rational, polynomial, or Fibonacci objectives; the required change is removal of the old shared-Scheme source claims and correct guest admission, not a rewrite of valid earlier host numeric lessons.
 
 ### Data and abstraction
 
 - Tuples for local, transparent products; `'a list` for proper homogeneous sequences; variants for trees and symbolic syntax.
-- The `value` variant exists only for dynamically typed Scheme programs, dispatch tables, evaluators, and machine registers.
+- The guest `value` is a closed typed variant for the evaluator kernel (`spec/host-subsets/ocaml/grammar.md` §§11): it interprets its explicit guest AST and never calls a host evaluator or reflects over OCaml syntax. Host dispatch tables in chapters 2-3 are separate host teaching.
 - In 3.3 use the dedicated `{ mutable car; mutable cdr }` representation; ordinary OCaml lists are never redefined as mutable.
 - Every public module ships an `.mli`.
 - Every public `type t` stays abstract; constructors stay private. Smart constructors build values; observers and, where genuinely needed, a view function expose pattern-matching needs.
@@ -442,7 +460,7 @@ let allocate heap car cdr =
 
 ### Errors
 
-- Recoverable failures return `('a, error) result`: invalid rational denominator, unbound Scheme variable, arity mismatch, type error, unknown operation, invalid instruction, exhausted memory, parse failure.
+- Recoverable failures return `('a, error) result`: invalid rational denominator, unbound guest variable, arity mismatch, type error, unknown operation, invalid instruction, exhausted memory, parse failure. The complete program is parsed (grammar §§2-4) and type-checked by `ocamlc` before any guest initializer, print, mutation, machine instruction, or evaluator effect runs; an internal value never makes a source type error executable (grammar §1).
 - Each subsystem defines a closed error variant and a `pp_error` printer.
 - Exceptions are limited to violated internal invariants and programming errors.
 - Never `try ... with _`; never `Obj.magic`.
@@ -467,18 +485,18 @@ Records of closures, not OCaml objects: SICP's dispatch-procedure model stays vi
 
 ### Interpreter interactions
 
-- Host-language interactions use utop form and keep inferred types:
+- Host-language interactions use utop form and keep inferred types (guest observable output is only the exact stdout bytes from the admitted printers plus exit status; there is no admitted input primitive per grammar §9):
 
 ```text
 # Factorial.compute 6;;
 - : int = 720
 ```
 
-- The chapter 4 Scheme evaluator keeps the book's object-language prompt and `;Value:` output, so the implemented language stays visually distinct from OCaml.
+- Chapter 4 and 5 teaching evaluators keep the guest language visually distinct through typed guest constructors, not through a separate object-language prompt. Guest output is the exact byte sequence from `print_string`, `print_endline`, `print_int`, and `print_newline` in evaluation order; evaluator and compiler preserve all specified output and sequencing effects (grammar §9). There is no `;Value:` output form in this edition.
 
 ### Base and Core appendix format per chapter
 
-Every chapter ends with one appendix containing the same six subsections:
+Every chapter ends with one host-ecosystem appendix (outside the guest core; guest expansions require a contract update per grammar §§14) containing the same six subsections:
 
 1. **Base translation:** re-express two or three key programs with Base naming and container conventions.
 2. **Core translation:** add Core facilities only where system-dependent I/O, queues, timing, or richer containers help. Core extends Base with system-dependent modules ([Core docs, relationship section](https://ocaml.org/p/core/v0.17.2/doc/index.html)).
@@ -538,6 +556,7 @@ type executable = Env.t -> (Value.t, Eval_error.t) result
 val analyze : Ast.expr -> (executable, Eval_error.t) result
 
 (* amb.mli *)
+(* separately named search experiment only; search forms never enter the core grammar per grammar §§10 *)
 val choose : 'a list -> 'a
 val fail : unit -> 'a
 val solutions : (unit -> 'a) -> 'a Seq.t
@@ -545,18 +564,19 @@ val solutions : (unit -> 'a) -> 'a Seq.t
 (* query.mli *)
 type database
 type query
-val evaluate : database -> query -> Frame.t Stream.t
+val evaluate : database -> query -> answer_stream
 ```
 
-Public interfaces keep `Ast.expr`, `Value.t`, and `Env.t` abstract; the implementation may use mutually recursive private modules. 4.2 adds delayed values without changing the reader. 4.3 extends the AST with `Amb` and `Require`. 4.4 is a sibling query engine sharing terms and streams, not another case in `eval`.
+Public interfaces keep the guest `Ast.expr`, `Value.t`, and `Env.t` abstract over the same admitted program forms for direct, analyzed, explicit-control, and compiler consumers (grammar §§1, 13). 4.2 is a separately named lazy experiment that adds explicit thunk cells without changing core evaluation. 4.3 is a separately named search experiment whose forms never enter the core grammar. 4.4 is a sibling query engine over typed term/frame/rule constructors with fair answer streams, not another case in `eval`.
 
 ### Chapter 5 register-machine simulator
 
 ```ocaml
 (* machine_value.mli *)
 type t
-val of_scheme : Value.t -> t
-val to_scheme : t -> (Value.t, error) result
+(* guest machine values are typed host constructors per grammar §§10, 13; no Scheme conversion is admitted *)
+val of_guest : Value.t -> t
+val to_guest : t -> (Value.t, error) result
 
 (* instruction.mli *)
 type register = string
@@ -648,19 +668,19 @@ The primer teaches exactly the OCaml subset the book uses. Every section ends in
 | Section | Pages | What it teaches |
 |---|---|---|
 | 0.1 Toolchain | 2 | opam switch on 5.5.1, Dune 3.24, utop, `dune build` / `dune runtest` / `dune fmt`, and how `examples/`, `exercises/`, `solutions/` directories work. |
-| 0.2 Expressions, values, types | 3 | `int`/`float`/`bool`/`string`/`unit`; typed toplevel replies replacing `;Value:`; per-type operators; explicit conversion with `Float.of_int`; type errors as help. |
-| 0.3 Bindings, functions, modules | 4 | `let`, shadowing, `let rec`, partial application, labeled arguments (used sparingly), `.ml`/`.mli` pairs, dotted module names; translating `(define (f x) ...)`. |
+| 0.2 Expressions, values, types | 3 | `int`/`float`/`bool`/`string`/`unit` in `spec/host-subsets/ocaml/grammar.md` §§2-4; typed toplevel replies; per-type operators (`+`/`-`/`*`/`/`/`mod` versus `+.`/`-.`/`*.`/`/.`); explicit conversion with `float_of_int` as the only admitted numeric conversion; type errors as help. |
+| 0.3 Bindings, functions, modules | 4 | `let`, shadowing, `let rec`, partial application, `.ml`/`.mli` pairs, dotted module names as host teaching; translating book definitions. Labels and optional arguments are host-ordinary here and never enter the guest core (grammar §§8). |
 | 0.4 Pattern matching and variants | 4 | `match`, exhaustiveness, `option` and `result`, a hand-rolled list type as a warm-up reimplementation, small trees. |
 | 0.5 Lists and higher-order functions | 4 | `::`, `@`, `List.map`, `List.filter`, folds; deriving `map`/`fold` by hand before using the library versions; pipeline style. |
-| 0.6 Records, mutable fields, refs | 3 | Record syntax, `{ mutable ... }`, the `ref` cell, aliasing versus copying, when each is appropriate. |
+| 0.6 Records, mutable fields, refs | 3 | Host record syntax including `{ mutable ... }`, the `ref` cell, aliasing versus copying, when each is appropriate. Guest core admits immutable records with `ref`/array/hash-table mutation only; mutable record fields and record updates are host-valid but subset-unsupported (grammar §§3, 8). |
 | 0.7 Closures and lexical scope | 3 | Captured environments, closures as objects warm-up, why function equality does not exist while cell identity does. |
 | 0.8 Errors | 3 | `option` versus `result` versus exceptions; chaining with bind; `assert` for invariants; the edition's error contract. |
-| 0.9 Modules as values | 2 | A first functor, a first-class module packed in a variant; a promise that 2.4/2.5 appendices return to this. |
+| 0.9 Modules as values | 2 | Host-ecosystem functors and first-class modules packed in a variant (outside guest core); a promise that 2.4/2.5 host appendices return to this. Guest compilation units contain only type and value declarations (grammar §§2). |
 | 0.10 Testing and formatting | 2 | One Alcotest suite, one QCheck property, `dune runtest`, `dune fmt`. |
 
 Primer exercises (numbered 0.1 onward; they do not shift book numbering):
 
-- **0.1:** Translate five Scheme interactions (arithmetic, `define`, `if`, `cond`, `lambda`) into OCaml and reproduce them in utop, reporting the inferred type of each.
+- **0.1:** Construct and run five OCaml interactions covering arithmetic, `let` bindings, named functions, conditionals, and anonymous functions; predict each inferred type first, then check it in utop. Exercise 0.3 covers pattern matching.
 - **0.2:** Implement `sum_cubes` over a range twice, once by recursion and once with `List.fold_left`; state in one sentence when the fold version is preferable.
 - **0.3:** Define a `shape` variant with an `area` function; add a constructor and let the compiler list every site that breaks.
 - **0.4:** Build `make_account` returning a record of closures over one `ref`; then break it by sharing the `ref` between two accounts and explain the observed aliasing.
@@ -672,9 +692,9 @@ Lesson re-cuts (the language changes how the lesson is taught; exercises keep th
 
 1. **3.2** becomes the closure and `ref` model: environment diagrams are re-cut to closure captures and shared cells; frame-lookup pictures remain only as preparation for chapters 4 and 5. Exercises 3.9-3.11 keep their numbers with re-cut drawings.
 2. **3.4** becomes Domains and Mutex: `parallel-execute` becomes `parallel` over `Domain.spawn`/`Domain.join`, serializers become `Mutex.protect` closures. Exercises 3.38-3.42 and 3.47-3.49 keep their numbers; their statements adapt from interleaving analysis to schedule analysis.
-3. **4.3** uses effect handlers: `amb` maps to `Choose`, failed `require` to `Fail`, with a restartable search engine because continuations are one-shot. Exercises 4.35-4.54 are unchanged; only implementation notes change.
+3. **4.3** is a separately named search experiment with explicit choice/failure/answer events and a documented order; the host implementation may use effect handlers with a restartable choice-path driver and never resumes a one-shot continuation twice. Search forms never enter the core grammar. Exercises 4.35-4.54 keep their numbers and objectives; only engine admission notes change (grammar §§10).
 
-Scoped adaptations that are not re-cuts (mappings, margins, or sidebars only): 1.1 typed REPL transcripts; 1.2 integer-bound margins; 2.4/2.5 keep the dispatch table in the main text with the typed-module treatment in appendices; 3.3 introduces the mutable-pair record beside immutable lists; 3.5 keeps `delay`/`force` semantics via `Lazy.t` with a `Seq` comparison.
+Scoped adaptations that are not re-cuts (mappings, margins, or sidebars only): 1.1 typed REPL transcripts; 1.2 integer-bound margins; 2.4/2.5 keep the host dispatch table in the main text with the host-ecosystem typed-module treatment in appendices (outside guest core); 3.3 introduces the host mutable-pair record beside immutable lists (guest memory uses array cells); 3.5 keeps host `delay`/`force` sharing with a `Seq` comparison (guest lazy/search are separate experiments).
 
 Numbering divergences: **none.** No book exercise is renumbered in this edition. Chapter 0 exercises live in their own 0.x sequence and displace nothing.
 
@@ -705,7 +725,7 @@ ocaml/
 ```
 
 - One main-text library per chapter: `sicp_ch1` through `sicp_ch5`.
-- `sicp_common` holds only genuinely shared contracts: SVG primitives, the Scheme reader/AST shared by chapters 4 and 5, test helpers. It must not become a utility dumping ground.
+- `sicp_common` holds only genuinely shared contracts: SVG primitives, the typed guest AST shared by chapters 4 and 5 per `spec/host-subsets/ocaml/grammar.md` §§2-4 and §13, test helpers. It must not become a utility dumping ground.
 - `examples/` are small executables linked to the chapter library; each reproduces one transcript or artifact.
 - `exercises/` are reader-facing signatures and starter implementations, kept in a separate library so unfinished work cannot break the main text.
 - `solutions/` implement the same conceptual interfaces under distinct module names; chapter tests link against solutions.
@@ -720,9 +740,9 @@ ocaml/
 2. Bounded `int` and `float` in the main text; oversized examples are bounded or changed; Zarith stays optional.
 3. Records of closures for message-passing objects.
 4. Table-of-closures dispatch in the main text; functors and first-class modules in the Base/Core appendix.
-5. `Lazy.t` streams for 3.5; `Seq` only as comparison; `Lazy.Mutexed` margin note for cross-domain forcing.
-6. Domains and Mutex for 3.4; no Eio; `Domain.count` margin note.
-7. Effects for direct-style `Choose`/`Fail` with a restartable search engine; multi-shot continuation reuse is explicitly prohibited.
+5. Host `Lazy.t` streams for 3.5 as host teaching; `Seq` only as comparison; `Lazy.Mutexed` host-only margin note. Guest lazy/search are separate experiments with explicit cells and events (grammar §§10).
+6. Host Domains and Mutex for 3.4 as host teaching; no Eio; `Domain.count` host-only margin note. None enters the guest core (grammar §§7).
+7. Separately named search experiment with explicit `Choose`/`Fail`/answer events and a documented order; host implementation may use effects with a restartable choice-path driver. Search forms never enter the core grammar; multi-shot continuation reuse is explicitly prohibited (grammar §§10).
 8. Chapter 4 AST/value contract shared with chapter 5 simulator and compiler.
 9. One Base/Core appendix per chapter in the fixed six-subsection format.
 10. New Chapter 0 primer (about 30 pages, exercises 0.1-0.5) with `ocaml/ch0/` support directories.
@@ -730,8 +750,8 @@ ocaml/
 
 ### Anchor files
 
-- `modern-sicp/sicp-pocket.texi`: source authority for all section, listing, and exercise mappings.
+- Section, listing, and exercise mappings: the checked-in inventories (`docs/exercise-map.md`) with Git provenance; policy in `modern-sicp/docs/plan/host-subsets-specification.md` and `modern-sicp/docs/plan/host-subsets-migration.md`. The old `text/original/sicp-pocket.texi` archive is not source authority.
 - `modern-sicp/ocaml/dune-project`: toolchain pin (OCaml 5.5.1, Dune 3.24), dependency families, formatting, workspace aliases.
-- `modern-sicp/ocaml/common/ast.mli`: shared Scheme-subset contract for chapters 4 and 5.
+- `modern-sicp/ocaml/common/ast.mli`: shared typed guest-AST contract for chapters 4 and 5 per `spec/host-subsets/ocaml/grammar.md` §§2-4 (no general OCaml-source parsing; query and controller readers are domain-language readers only).
 - `modern-sicp/ocaml/ch4/lib/eval.mli`: evaluator, environment, value, error, lazy, and nondeterministic boundaries.
 - `modern-sicp/ocaml/ch5/lib/instruction.mli`: shared register-machine IR for simulator, explicit-control evaluator, and compiler.

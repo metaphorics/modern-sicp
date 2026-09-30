@@ -1,11 +1,13 @@
 # Kotlin edition, functional style: idiom map and plan inputs
 
+> Guest contract: `spec/host-subsets/kotlin/grammar.md` is normative for guest source. Host code (evaluators, simulator, compiler, tests under `kotlin/`) is ordinary pinned Kotlin; guest source (teaching programs, the §5 kernel, every program a chapter 4 or 5 exercise feeds to an engine) is exactly the admitted grammar of contract §2. Core, experimental, and rejected forms are separate admission classes; the subset gate classifies every rejected form before execution and a core path requires successful source type checking before any guest effect (contract §1). A guest evaluation observes only ordered `print`/`println` output, typed guest errors, and `main` completion; stack counts are never compared (§1). The §5 kernel is native VERIFIED; full-grammar self-interpretation and §6.2 gate rejections are UNRUN obligations. No chapter evaluates prebuilt quoted lists or the old reader behavior.
+
 ## 0. Grounded toolchain pins
 
 | Component | Pin | Status and source |
 |---|---|---|
 | Kotlin (JVM) | 2.4.20 (2026-09-07) | verified, https://kotlinlang.org/docs/releases.html |
-| Gradle | 9.7.1 | verified, https://docs.gradle.org/current/userguide/version_catalogs.html (guide current version) |
+| Gradle | 9.7.0 | verified, inside the Kotlin Gradle plugin tested window (`docs/toolchain-pins.md`; https://docs.gradle.org/9.7.1/userguide/compatibility.html) |
 | JDK | 25, LTS, GA 2025-09-16, via `jvmToolchain(25)` | verified, https://openjdk.org/projects/jdk/25/ ; https://kotlinlang.org/docs/gradle-configure-project.html |
 | Arrow (arrow-core, arrow-fx-coroutines) | 2.2.3 stable (2.3.0 alphas exist, do not use) | verified, https://github.com/arrow-kt/arrow/releases ; https://central.sonatype.com/artifact/io.arrow-kt/arrow-fx-coroutines |
 | Raise / either | `arrow.core.raise.Raise`, `arrow.core.raise.either` | verified, https://raw.githubusercontent.com/arrow-kt/arrow/main/arrow-libs/core/arrow-core/src/commonMain/kotlin/arrow/core/raise/Raise.kt and https://arrow-kt.io/learn/typed-errors/ |
@@ -30,16 +32,16 @@ Unverified this session: the Kotest property-testing page path under the new doc
 | internal `define`, mutual recursion | local `fun` | Local funs cannot forward-reference; sketch 3. |
 | `set!` on a captured variable | captured `var` in a closure | The 3.1 decision, sketch 2; allowed only in chapter 3 state sections and chapter 5 simulator internals. |
 | `begin` | block `{ ... }` | Last expression is the value. |
-| `quote`, symbols | `VSym(name)` inside `Value` | Symbols only where dynamic data exists (2.3.1, chapters 4 and 5); structural code uses sealed classes. |
+| `quote`, symbols | constructor data (`VSym`, `vlist`) for 2.3.1 host teaching; sealed `Expr` from 2.3.2 | guest programs are §2 source units, never quoted executable lists; typed data and guest source are different planes (contract §4.5) |
 | `cons`, `car`, `cdr` | `VPair(car, cdr)` or typed `Pair`/data classes | Three regimes, see conventions. |
 | lists | `List<T>` / `PersistentList<T>` | `PersistentList` where structural sharing or persistence is load-bearing. |
-| `cons-stream`, `delay`, `force` | `Lazy` inside `SCons`; `lazy` | Memoized call-by-need, sketch 4. |
-| streams as pipelines | `Sequence<T>` | `generateSequence`, `sequence { }`, lazy and cold. |
+| `cons-stream`, `delay`, `force` (host teaching) | `Lazy` inside `SCons`; `lazy` | Memoized call-by-need, sketch 4; host-only Kotlin, never guest source (contract §6.2). Guest laziness is the named `Lazy` module (contract §4.1) |
+| streams as pipelines (host teaching) | `Sequence<T>` | `generateSequence`, `sequence { }`, lazy and cold; host-only Kotlin, never guest source (contract §6.2). Guest search/lazy are named modes (§4.1-4.2) |
 | iteration (named `let`, `do`) | `tailrec fun` or `while` | No implicit TCO; mutual tail calls use a dispatch loop, sketch 5. |
 | `eq?` on symbols | `==` on `VSym` | `===` only where identity matters (3.3, 5.3). |
 | `equal?` | `==` | Data class equality. |
 | `error` | `raise(...)` with Arrow `Raise<E>` | Per-domain sealed errors; no exceptions across library code. |
-| `#t`, `#f` | `Boolean` | Scheme truthiness is `isTruthy(Value)` in the evaluators. |
+| `#t`, `#f` | `Boolean` | boolean-only conditions; no truthiness: a non-`Boolean` conditional is rejected before execution (contract §3.2) |
 | higher-order numerics | `(Double) -> Double` | 1.3 maps one to one. |
 | message passing | ONE default, see sketch 6 | Returned lambda for single-behavior objects; interface object for named messages; `fun interface` only for bare procedure objects. |
 | `put` / `get` tables | immutable `OpTable` over `PersistentMap` | The 2.4 pick, sketch 7. |
@@ -47,7 +49,7 @@ Unverified this session: the Kotest property-testing page path under the new doc
 | registers, stack, memory | `Register` with `var content`, `ArrayDeque<Value>`, `Array` pair vectors | Chapter 5. |
 | `display`, `newline` | `print`, `println` | Transcripts as comments, see conventions. |
 
-Sketch 1, pairs as data (`Value`), for quoted and interpreted data:
+Sketch 1, pairs as data (`Value`), for host symbolic teaching (2.3.1) and represented programs inside kernels (never guest source itself):
 
 ```kotlin
 sealed interface Value
@@ -58,9 +60,10 @@ data class VPair(val car: Value, val cdr: Value) : Value
 data object VNil : Value
 fun vlist(vararg xs: Value): Value = xs.foldRight(VNil as Value, ::VPair)
 fun Value.toList(): List<Value> = generateSequence(this as? VPair) { it.cdr as? VPair }.map { it.car }.toList()
+// Host teaching data. Guest programs are contract §2 compilation units (no package, no imports); the constructors of contract §§4.3-4.4 build typed domain data admitted exactly as constructor calls and never re-parsed as guest source (contract §4.5).
 ```
 
-Sketch 2, the 3.1 decision: captured `var` for local state. Reason: closures over `var` reproduce Scheme's shared mutable cell exactly, and section 3.1 exists to teach that mechanism, so wrapping it in a class would hide the lesson; classes enter only where the book gives the object a protocol, and 3.4 replaces raw `var` with locks. The insufficient-funds string becomes a typed error (the one such case, see conventions):
+Sketch 2, the 3.1 decision: captured `var` for local state. Reason: closures over `var` realize the book's shared mutable cell in native Kotlin (contract §3.4: closures capture the binding, not a copy; escaping closures over `var` MUST behave this way in interpreted and compiled execution alike), and section 3.1 exists to teach that mechanism, so wrapping it in a class would hide the lesson; classes enter only where the book gives the object a protocol, and 3.4 replaces raw `var` with locks. The insufficient-funds string becomes a typed error (the one such case, see conventions):
 
 ```kotlin
 sealed interface WithdrawError { data object InsufficientFunds : WithdrawError }
@@ -105,7 +108,7 @@ var env = currentEnv
 while (true) {
     when (val e = nextExpr) {
         is VarE -> return lookup(e.name, env)
-        is IfE  -> nextExpr = if (isTruthy(eval(e.pred, env))) e.conseq else e.alt
+        is IfE  -> nextExpr = if (eval(e.pred, env) == VBool(true)) e.conseq else e.alt   // guest truth is Boolean-only; non-Boolean is rejected before execution (contract §3.2)
         is AppE -> { env = extend(e, env); nextExpr = bodyHead(e) }   // tail position
         // remaining arms follow the book's eval dispatch order
     }
@@ -136,18 +139,15 @@ class OpTable(private val m: PersistentMap<Pair<String, String>, Op> = persisten
 // Package install threads the table; applyGeneric looks up, then coerces.
 ```
 
-Sketch 8, 4.3 amb as `Sequence` search over persistent environments (decision final: `Sequence` composition with a stored top-level iterator; the `sequence { }` delimited-continuation variant was considered and rejected because choice points need no suspension; hand-written CPS success/failure continuations are rejected as inside-out):
+Sketch 8, 4.3 amb is the named `Search` experiment (intrinsics, not eager calls or `Sequence` pipelines): `choose`/`chooseRandom` evaluate one alternative per attempt left-to-right, `demand` fails when false, `setPermanent` writes survive rollback, `ifFail` enters its second body only when the first exhausts answers, `seededRandom(seed)` supplies the reproducible stream (contract §4.2, §4.5). The choice counter counts one choice per entered alternative; default core never backtracks. Expectations come from the experiment oracle, never from direct host execution.
 
 ```kotlin
-typealias Exec = (AmbEnv) -> Sequence<Pair<Value, AmbEnv>>   // value with resulting env
-fun analyzeAmb(choices: List<Expr>): Exec =
-    { env -> choices.asSequence().flatMap { analyze(it)(env) } }      // choice point
-val require: (Boolean) -> Exec =
-    { ok -> { env -> if (ok) sequenceOf(VSym("ok") to env) else emptySequence() } }
-// Conjunction is flatMap over the first's frames feeding the second; assignments
-// write a NEW AmbEnv (persistent map), so abandoning a branch abandons its effects.
-// permanent-set! writes a shared cell store instead (see 4.3 notes).
-// Driver: val it = analyze(program)(globalEnv).iterator(); tryAgain() = it.next()
+// Conceptual description against the contract; exact engine paths land with the implementation.
+// choose(vararg alternatives: T): T   // zero alternatives fail; one type per call (intrinsic arity)
+// demand(condition: Boolean)          // fails when false
+// chooseRandom(vararg alternatives: T): T  // permuted by seededRandom(seed): Random
+// setPermanent { ... }                // writes survive backtracking
+// ifFail({ ... }, { ... })            // second body runs only when the first exhausts answers
 ```
 
 ## 2. Per-section notes, 1.1 to 5.5
@@ -156,17 +156,17 @@ Format per section: what changes against the Scheme text, the hard spot, the rep
 
 ### 1.1 The elements of programming
 
-- Changes: `define` becomes `fun` or `val`; `cond` becomes `when`; REPL sessions become demo `main` functions in the examples source set.
+- Changes: procedures are `fun` declarations (expression bodies preferred), values are `val`; conditionals are expression `if`/`when`; REPL sessions become demo `main` functions in the examples source set.
 - Hard spot: exercise 1.5 (applicative order). Kotlin always evaluates arguments, so `(test 0 (p))` becomes a choice between an eager `Int` parameter (hangs) and a `() -> Int` parameter (returns), which is exactly the teaching point.
 - Representative program: `sqrt` by Newton's method (section 1.1.7): `sqrtIter`, `improve`, `goodEnough` as local funs.
-- Tailored ideas: 1.5a, repeat the probe with an eager parameter and a lambda parameter and state which matches Scheme. 1.7a, reimplement `goodEnough` with a relative tolerance, property-tested over `Arb.double` for small and large inputs.
+- Tailored ideas: 1.5a, repeat the probe with an eager `Int` parameter and a `() -> Int` parameter; state which hangs and which returns, and why that is the applicative-order lesson. 1.7a, reimplement `goodEnough` with a relative tolerance, property-tested over `Arb.double` for small and large inputs.
 
 ### 1.2 Procedures and the processes they generate
 
 - Changes: iterative processes become `tailrec` funs (`factorial`, `gcd`, `expt`, `findDivisor`, `contFrac`); `runtime` becomes `measureNanoTime`; tree recursion stays plain recursion.
 - Hard spot: no automatic tail-call optimization; every iterative process must be `tailrec` or a `while`; mutual tail calls do not exist (sketch 5).
 - Representative program: `countChange`, `fastExpt` with `square`, Euclid `gcd` as `tailrec`, `timedPrimeTest` with `expmod`.
-- Tailored ideas: 1.19a, drive the logarithmic Fibonacci transformation with `BigInteger` state so `fib(1000)` works, exposing the `Long` boundary. 1.28a, property-test Miller-Rabin against `BigInteger.isProbablePrime` on the Carmichael numbers of 1.27.
+- Tailored ideas: 1.19a, drive the logarithmic Fibonacci transformation with `BigInteger` state so `fib(1000)` works, exposing the `Long` boundary (host lesson preserving the exact-arithmetic objective; arbitrary-precision types stay outside the guest core per contract §3.1). 1.28a, property-test Miller-Rabin against the host `BigInteger.isProbablePrime` oracle on the Carmichael numbers of 1.27.
 
 ### 1.3 Formulating abstractions with higher-order procedures
 
@@ -202,8 +202,8 @@ fun beside(p1: Painter, p2: Painter): Painter = { f, out ->
 
 ### 2.3 Symbolic data
 
-- Changes: quotation becomes `VSym` and `vlist`; `equal?` is `==`; symbolic differentiation drops quoted lists for a sealed `Expr` hierarchy with smart constructors; sets are `PersistentList`, ordered `List`, and a sealed binary tree; Huffman trees are a sealed hierarchy.
-- Hard spot: quote has no Kotlin analogue, so 2.3.1 is taught on `Value` while 2.3.2 onward switches to typed representations.
+- Changes: 2.3.1 symbolic teaching builds constructor data (`VSym`, `vlist`); `equal?` is `==`; symbolic differentiation drops quoted lists for a sealed `Expr` hierarchy with smart constructors; sets are `PersistentList`, ordered `List`, and a sealed binary tree; Huffman trees are a sealed hierarchy. There is no reader; the quote lesson is a constructor lesson.
+- Hard spot: 2.3.1 is taught on constructor data (`Value`) while 2.3.2 onward switches to typed representations; guest programs are always §2 source units (contract §4.5).
 - Representative program: `deriv` with simplifying constructors (2.3.2), the three set representations (2.3.3), `generateHuffmanTree` and `encode` (2.3.4).
 - Tailored ideas: 2.56a, property-test `deriv` against the hand power rule for generated `x^n`. 2.69a, build the Huffman tree twice, sorted `PersistentList` versus `java.util.PriorityQueue`, and compare merge steps.
 
@@ -265,11 +265,11 @@ fun makeCodeTree(l: Tree, r: Tree) = Branch(l, r, l.weight + r.weight, l.symbols
 - Changes: this section is re-cut per the interview. The heading changes to the closure and captured-`var` model: a `var` captured by a lambda is the frame slot, and the chapter 4 `Env` is cited as the formal model the closures realize. Environment diagrams are kept but drawn against closure cells. The `let` version of `make-withdraw` maps to a local `val` plus lambda.
 - Hard spot: shared capture. Two `makeWithdraw` calls produce two cells, while exercise 3.10's `let` version produces the same shape; a one-element holder class makes the boxing explicit.
 - Representative program: the two `makeWithdraw` variants and the `makeAccount` walkthrough (3.2.3 and 3.2.4).
-- Tailored ideas: 3.10a, compare closure over `var` against closure over a holder object and state which matches the Scheme frame. 3.11a, a shadowing demo where a local fun rebinds an outer name, mirroring frame lookup.
+- Tailored ideas: 3.10a, compare closure over `var` against closure over a holder object and state which gives each `makeWithdraw` call its own cell and which shares one cell, and why. 3.11a, a shadowing demo where a local fun rebinds an outer name, mirroring frame lookup.
 
 ### 3.3 Modeling with mutable data
 
-- Changes: `set-car!`/`set-cdr!` introduce a mutable `MPair` used only here and in 5.3; queues are a class with two `MPair?` pointers, no `!!`; tables are `MPair` chains for faithfulness with `MutableMap` noted as the everyday alternative; the circuit simulator keeps the agenda; constraints are a sealed `Constraint` hierarchy.
+- Changes: mutable pairs are a host `MPair` with mutable `car`/`cdr` fields used only here and in 5.3; queues are a class with two `MPair?` pointers, no `!!`; tables are `MPair` chains for faithfulness with `MutableMap` noted as the everyday alternative; the circuit simulator keeps the agenda; constraints are a sealed `Constraint` hierarchy.
 - Hard spot: the agenda is a discrete-event loop with no threads, a `MutableList` of `(time, action)` segments processed in order; exercise 3.32's FIFO order gets a test.
 - Representative program: `makeWire` with signal plus action list, `afterDelay`, `propagate`, `halfAdder`; the queue and table sections; `celsiusFahrenheitConverter`.
 - Tailored ideas: 3.25a, an n-key table as nested maps with `List<Key>` lookup. 3.27a, memoized fib backed by the table, counting steps to prove O(n).
@@ -288,9 +288,9 @@ class Queue {
 }
 ```
 
-### 3.4 Concurrency, re-cut as structured coroutines
+### 3.4 Concurrency, re-cut as structured coroutines (host concurrency teaching; coroutines are never guest source per contract §6.2)
 
-- Changes: this section is re-cut per the interview. `parallel-execute` becomes `launch` inside `coroutineScope`; the serializer becomes a `Mutex` wrapper returning suspending procedures; `test-and-set!` becomes `AtomicBoolean.compareAndSet`; the semaphore of exercise 3.47 is a token `Channel<Unit>(n)`, receive to acquire, send in `finally` to release, because a Mutex plus counter cannot park waiters; the deadlock discussion keeps ordered `Mutex` acquisition (3.48's numbering scheme).
+- Changes: this section is re-cut per the interview. concurrent processes run as `launch` inside `coroutineScope`; the serializer becomes a `Mutex` wrapper returning suspending procedures; `AtomicBoolean.compareAndSet` is the atomic primitive; the semaphore of exercise 3.47 is a token `Channel<Unit>(n)`, receive to acquire, send in `finally` to release, because a Mutex plus counter cannot park waiters; the deadlock discussion keeps ordered `Mutex` acquisition (3.48's numbering scheme).
 - Hard spot: deterministic tests. Interleavings are nondeterministic on the JVM, so exercises 3.39 to 3.42 enumerate outcomes in `runTest` with explicit `yield()` points, and the text says so.
 - Representative program: the serialized `makeAccount` with suspend funs and `serializedExchange`.
 - Tailored ideas: 3.39a, reproduce the five interleavings deterministically by injecting yield points and assert each allowed final value. 3.47a, build the token semaphore and property-test permit conservation against `kotlinx.coroutines.sync.Semaphore`.
@@ -314,7 +314,7 @@ class TokenSemaphore(n: Int) {
 
 ### 3.5 Streams
 
-- Changes: two stream regimes. Stdlib `Sequence` carries the pipeline subsections (3.5.2 enumerations, sieve, exercises 3.50 to 3.62 algorithms). The memoized `LStream` (sketch 4) carries the sections where `cons-stream` semantics are load-bearing: 3.5.1's `memo-proc`, 3.5.3 feedback (`solve`, `integral`, exercise 3.63's shared `guesses`), 3.5.4 delayed integrand, 3.5.5 modularity arguments.
+- Changes: two host stream regimes (host-only Kotlin, never guest source per contract §6.2). Stdlib `Sequence` carries the pipeline subsections (3.5.2 enumerations, sieve, exercises 3.50 to 3.62 algorithms). The memoized `LStream` (sketch 4) carries the sections where explicit-delay-with-memoization semantics are load-bearing: 3.5.1's `memo-proc`, 3.5.3 feedback (`solve`, `integral`, exercise 3.63's shared `guesses`), 3.5.4 delayed integrand, 3.5.5 modularity arguments.
 - Hard spot: `Sequence` is cold and unmemoized, so self-referential definitions like `fibs` and observable memoization probes cannot be written with it; the edition names that limit at 3.5.1 and switches representation there.
 - Representative program: `merge`, `sqrtStream`, `integral` and `solve` with `delay`.
 - Tailored ideas: 3.57a, a counting probe on additions showing the memoized versus unmemoized `fibs` difference. 3.81a, the request-driven random stream as `requests.runningFold(seed, ::step)` over a sealed `Generate`/`Reset` request type.
@@ -331,21 +331,23 @@ fun sieve(s: Sequence<Long>): Sequence<Long> = sequence {
 
 ### 4.1 The metacircular evaluator
 
-- Changes: programs are data as `Value` lists built with `vlist` (no Scheme reader; the driver evaluates prebuilt expressions, a stated deviation shared by all four evaluators); expressions parse to the sealed `Expr` hierarchy so 4.1.7's `analyze` returns `(Env) -> Value` closures; errors flow through `Raise<EvalError>`; primitives are a persistent registry; the driver wraps each top-level expression in `either { }`.
-- Hard spot: tail calls between `eval` and `apply`, handled by the dispatch loop of sketch 5; `analyze` closures must not capture stale environments.
+- Changes: guest programs are contract §2 compilation units (no package, no imports) parsed and type-checked before any guest effect; the reader, analyzer, evaluator, explicit-control evaluator, and compiler share this single syntax contract (contract §10). The sealed `Expr` hierarchy supports 4.1.7's `analyze` returning `(Env) -> Value` closures; errors flow through `Raise<EvalError>` in host code with guest categories per §3.8; primitives are a persistent registry; the driver wraps each top-level expression in `either { }`. Two diagnostic planes stay separate: ill-typed guest source is rejected statically before effects, while an invalid represented program a kernel interprets answers a guest error category (the §5 witness answers `null`), never a compile diagnostic (contract §5.2).
+- Hard spot: tail calls between `eval` and `apply`, handled by the dispatch loop of sketch 5 with Boolean-only conditions and exhaustive `when` (contract §3.2); `analyze` closures must not capture stale environments.
 - Representative program: the evaluator twice, as `eval`/`apply` (4.1.1) and as `analyze` (4.1.7), with `and`/`or` derived.
 - Tailored ideas: 4.6a, golden-test `let` expansion through the evaluator. 4.11a, frames as `PersistentMap` and lookup depth versus the pair-of-lists frame.
 
 ### 4.2 Variations on a Scheme: lazy evaluation
 
-- Changes: thunks become `Lazy<Value>` (memoized, call-by-need) with an unmemoized variant for the exercises probing memoization; `actualValue` forces; the lazy-list subsection (4.2.3) reuses `LStream`.
-- Hard spot: which arguments are lazy. Compound-procedure arguments are thunks, primitives stay strict; the operator must be forced (`actualValue`), which exercise 4.28 demonstrates.
+- Changes: laziness lives only in the named `Lazy` mode: `thunk { ... }`, `force`, `lazyPair`/`lazyEnd` with `Thunk<T>` as a mode-only type; a thunk computes at most once and memoizes; primitives stay strict; sequencing forces non-final actions; `@Strict`/`@Delayed` are the only admitted annotations (contract §4.1, §4.5). Host `Lazy<Value>`/`LStream` sketches in 3.5/4.2 are host-only teaching, never guest source. `Lazy` expectations come from the finite forcing reference model, which counts force attempts, distinct computations, and effect order per experiment — never from direct host execution (contract §4.1).
+- Hard spot: which arguments are lazy in `Lazy` mode. Unannotated compound-procedure parameters are delayed, primitive arguments and `@Strict` parameters are eager; the operator is forced, which exercise 4.28 demonstrates (contract §4.5).
 - Representative program: `lazyEval`/`lazyApply` with `forceIt`, then `solve` re-run in the lazy language.
 - Tailored ideas: 4.27a, an observable memoization counter with memoized versus unmemoized thunks. 4.30a, a sequence side effect that fires only when `evalSequence` forces non-final elements.
 
 Thunk sketch:
 
 ```kotlin
+// Host-only teaching sketch for the 4.27/4.29 memoization probes; guest `Lazy` programs use the
+// mode-only `thunk`/`force`/`lazyPair`/`lazyEnd` constructors of contract §4.1 instead.
 data class VThunk(val body: Lazy<Value>) : Value             // memoized call-by-need (default)
 data class VThunkNoMemo(val body: () -> Value) : Value       // the 4.27/4.29 probe variant
 fun force(v: Value): Value = when (v) {
@@ -357,21 +359,23 @@ fun force(v: Value): Value = when (v) {
 
 ### 4.3 Variations on a Scheme: nondeterministic computing
 
-- Changes: the amb evaluator keeps the analyze-based architecture but runs the `Sequence` search engine over persistent environments (sketch 8). `try-again` is iterator advance; `require` is the empty sequence; `ramb` shuffles choices; `ifFail` substitutes a fallback sequence on empty.
-- Hard spot: side effects under backtracking. Assignments write new persistent environments, so abandoned branches lose them; `permanent-set!` (4.51) writes a shared cell store (`class Cells { private val m = HashMap<String, Cell>() }`) that survives backtracking, which is exactly the observable difference exercises 4.51 to 4.53 test.
+- Changes: the amb evaluator keeps the analyze-based architecture but runs the named `Search` experiment over persistent environments (sketch 8). `try-again` advances the choice iterator; `require` is failure on false; `ramb` is seeded `chooseRandom`; `ifFail` substitutes its second body on exhaustion (contract §4.2). `Search` expectations come from the choice counter (one choice per entered alternative) plus the seeded generator's reproducibility from its seed — never from direct host execution.
+- Hard spot: side effects under backtracking. A `Search` attempt re-runs its effects on backtracking unless carried by `setPermanent`; `permanent-set!` (4.51) writes the surviving store (`class Cells { private val m = HashMap<String, Cell>() }`), which is exactly the observable difference exercises 4.51 to 4.53 test (contract §4.2, §4.5).
 - Representative program: `multipleDwelling` and the natural-language `parse` (4.3.2).
-- Tailored ideas: 4.50a, `ramb` by shuffling the choice list with `kotlin.random.Random`. 4.52a, `ifFail` by catching the empty sequence and yielding the alternative.
+- Tailored ideas: 4.50a, `ramb` as seeded `chooseRandom` with `seededRandom(seed)` so runs reproduce from the seed. 4.52a, `ifFail` with its two zero-argument bodies entering the second only on exhaustion (contract §4.2).
 
 ### 4.4 Logic programming
 
-- Changes: frames are persistent maps from variable to `Value`; the stream of frames is `Sequence<Frame>`; `qeval` is `(Query, Sequence<Frame>) -> Sequence<Frame>`; `and` is `flatMap`, `or` concatenates, `not` and `lispValue` filter; rules live in a registry with pattern match before unification; `stream-append-delayed` becomes an explicit `interleave` helper (stdlib lacks one; about 15 lines, listed once).
-- Hard spot: infinite streams. `simpleQuery` must interleave rule-derived and assertion-derived streams lazily so recursive rules do not starve assertions, which exercises 4.71 and 4.72 probe.
+- Changes: query programs are domain data built from the host constructors of contract §4.3 (`QTerm`, `QQuery`, `QRule`, `QFrame` as an immutable variable-to-term map with no unbound sentinel, `QGuard`, `QUnique`); unification runs over `QTerm`, failed matching answers `null` frames never a marker value, the data base indexes facts by head symbol chronologically, and the driver exposes an explicit loop detector plus a deduplicating answer view. Frames stream through the host query engine; `and`/`or`/`not`/`lispValue` are engine combinators over those streams.
+- Hard spot: infinite answer streams. `simpleQuery` interleaves rule-derived and assertion-derived streams lazily so recursive rules do not starve assertions, which exercises 4.71 and 4.72 probe; 4.71-4.74 run `Query` with `Lazy`, 4.78 runs `Query` with `Search`, never one program combining `Lazy` and `Search` (contract §4.5).
 - Representative program: the Microshaft queries (4.4.1), then `simpleQuery`, `disjoin`, `negate`, `lispValue` (4.4.4).
-- Tailored ideas: 4.64a, fix the Louis `outrankedBy` loop with a visited-set of (pattern, frame) pairs. 4.75a, `unique` as exactly-one over the `Sequence<Frame>` with a sealed `UniqueResult`.
+- Tailored ideas: 4.64a, fix the Louis `outrankedBy` loop with the explicit loop detector over (pattern, frame) pairs. 4.75a, `unique` as `QUnique` succeeding for exactly one match (contract §4.3).
 
 Query sketch:
 
 ```kotlin
+// Host engine shape: `Frame` below is the host persistent map; guest query programs use the
+// `QFrame`/`QTerm` constructors of contract §4.3, with answer rendering `?name = <term>`.
 typealias Frame = PersistentMap<String, Value>               // pattern variable -> binding
 fun qeval(q: Query, frames: Sequence<Frame>): Sequence<Frame> = when (q) {
     is SimpleQ -> frames.flatMap { f -> findAssertions(q.pat, f) + applyRules(q.pat, f) }
@@ -384,21 +388,21 @@ fun qeval(q: Query, frames: Sequence<Frame>): Sequence<Frame> = when (q) {
 
 ### 5.1 Designing register machines
 
-- Changes: machine descriptions are a Kotlin DSL (`machine { registers(...); controller { label("gcdLoop"); assign(...) } }`) building the same `List<Stmt>` data the 5.2 simulator consumes; recursion via `save`/`restore` maps to the simulator stack.
-- Hard spot: keeping code-as-data. The DSL is sugar over the data representation; Kotlin control flow must not execute directly, so 5.4 and 5.5 reuse the same `Stmt` list.
+- Changes: register machines are domain data built from the sealed constructor family of contract §4.4 (`Label`, `Assign`, `Test`, `Branch`, `Goto`, `Save`, `Restore`, `Perform` with `Source`/`Cond`/`Action`/`GotoTarget` operands; a `machine { ... }` DSL may sugar that data but Kotlin control flow must never execute directly); a machine is `Machine(registers, ops, controller)` with `ops` mapping names to host functions over guest values; instructions cover exactly the 5.1.5 summary forms; recursion via `save`/`restore` maps to the simulator stack.
+- Hard spot: keeping code-as-data. The DSL is sugar over the data representation; a label used where an operation operand belongs, a duplicate label, or an unknown label target is a typed machine-program error (the lesson of 5.9); 5.4 and 5.5 reuse the same `Stmt` list (contract §4.4).
 - Representative program: the GCD machine (5.1.1) and recursive factorial with stack (5.1.4).
 - Tailored ideas: 5.1a, generate a Mermaid data-path diagram from the machine description inside a test. 5.3a, property-test the sqrt machine's convergence over `Arb.double`.
 
 ### 5.2 A register-machine simulator
 
-- Changes: `makeMachine` returns a `Machine` (architecture section); the assembler builds a label-to-index map plus per-instruction execution; stack statistics are counters on the `ArrayDeque`-based stack; operations install into a persistent registry at assembly.
-- Hard spot: `restore` semantics (exercise 5.11) and sealed source/dest syntax so the assembler can reject label operands to operations (5.9).
+- Changes: `makeMachine` returns a `Machine` (architecture section); the assembler builds a label-to-index map plus per-instruction execution; monitored counters (pushes, depth, high-water, instruction count) are machine outputs and trace rendering is pinned to one line per instruction (`label: <text>` with `assign`/`test`/`branch`/`goto`/`save`/`restore`/`perform` over the constructor fields); operations install into a persistent registry at assembly (contract §4.4).
+- Hard spot: `restore` semantics (exercise 5.11) and sealed source/dest syntax; registers start unassigned and a read before any write raises `UnassignedRegister` (contract §§3.8, 4.4).
 - Representative program: the simulator on the factorial and Fibonacci machines with monitored stack output (5.2.4).
 - Tailored ideas: 5.12a, the instruction table collected during assembly, property-tested for consistency. 5.19a, breakpoints as a `Channel<Unit>` rendezvous so the machine parks until resumed.
 
 ### 5.3 Storage allocation and garbage collection
 
-- Changes: memory is two `Array`s (`theCars`, `theCdrs`), pairs are `Int` indices, and the slot union is a small sealed type; the stop-and-copy collector is a `while` loop over `free` and `scan` with a `BrokenHeart` marker and forwarding index in the cdr slot.
+- Changes: vector/pair memory is `List`/`MutableList` data with explicit `Int` indices and allocation statistics (contract §7); the stop-and-copy collector is a `while` loop over `free` and `scan` with a `BrokenHeart` marker and forwarding index in the cdr slot.
 - Hard spot: the interleave of copying and scanning is pure index juggling; the flip swaps the two array pairs.
 - Representative program: `memoryCons`, vector read/write, then the GC with `relocateOld`.
 - Tailored ideas: 5.20a, snapshot the vectors after building small structures and compare against a hand-written index table. 5.22a, the `append!` machine asserting identity of the mutated first list via `===`.
@@ -415,14 +419,14 @@ class Memory(val n: Int) {
 
 ### 5.4 The explicit-control evaluator
 
-- Changes: the controller becomes the same `Stmt` list as 5.2 with an enum of registers (`Exp`, `Env`, `Val`, `Continue`, `Proc`, `Argl`, `Unev`); the dispatch is a `while (true)` `when`; machine operations reuse the chapter 4 registries so both runtimes share code.
-- Hard spot: the machine demonstrates tail recursion without language support (5.4.2), which Kotlin cannot show natively; exercises 5.26 to 5.29 measure it through the monitored stack.
+- Changes: the explicit-control evaluator (5.23-5.25) is a machine controller over the kernel forms in the same `Stmt` data as 5.2 (host register names such as `Exp`, `Env`, `Val`, `Continue`, `Proc`, `Argl`, `Unev`); the dispatch is a `while (true)` `when`; machine operations reuse the chapter 4 registries so both runtimes share code; 5.25 switches to `Lazy` semantics (contract §7).
+- Hard spot: the machine demonstrates tail recursion without language support (5.4.2), which Kotlin cannot show natively; exercises 5.26 to 5.29 measure it through the monitored stack counters, which are machine outputs (contract §4.4). Internal stack counts are never compared across implementations (contract §1).
 - Representative program: the `evalDispatch` core and `evSequence` tail loop, run with the driver loop of 5.4.4.
-- Tailored ideas: 5.26a, property-test the stack-depth formula for iterative factorial. 5.30a, route runtime errors through `Raise<EvalError>` into the driver loop instead of crashing the machine.
+- Tailored ideas: 5.26a, property-test the stack-depth formula for iterative factorial. 5.30a, route runtime errors through the typed guest categories (`UnassignedRegister`, kernel `UnassignedRead`, §3.8) into the driver loop instead of crashing the machine.
 
 ### 5.5 Compilation
 
-- Changes: instruction sequences are `InstrSeq(needs, modifies, stmts)` values over `PersistentList`; `preserving`, `appendSeq`, and `tackOnInstrSeq` are pure combinators; linkage is a sealed type; compiled statements run on the unmodified 5.2 machine; lexical addressing (5.5.6) is a compile-time environment of lists.
+- Changes: the compiler translates sealed guest syntax trees to `List<Stmt>` as `InstrSeq(needs, modifies, stmts)` values over `PersistentList`; `preserving`, `appendSeq`, and `tackOnInstrSeq` are pure combinators; linkage is a sealed type; compiled statements run on the unmodified 5.2 machine; lexical addressing (5.5.6) is a compile-time environment of lists. The 5.49 read-compile-execute machine, the 5.50 compiled guest evaluator kernel (contract §5.2 invariant: the machine run must agree with direct execution), and the 5.51-5.52 C objectives (C text as a generated `String` artifact, never guest source, contract §4.5) remain mandatory.
 - Hard spot: the needs/modifies algebra; keep `preserving` as a two-line definition over set intersection and show compiled factorial beside the book figure.
 - Representative program: `compile` dispatch, `compileCombination` with operand order, the compiled recursive factorial of 5.5.5.
 - Tailored ideas: 5.40a, property-test that `findVariable` addressing is bijective for generated compile-time environments. 5.45a, cross-check compiled versus interpreted stack statistics for the chapter 1 programs in one data-driven spec.
@@ -433,27 +437,28 @@ class Memory(val n: Int) {
 
 | Book object | Kotlin type | Notes |
 |---|---|---|
-| Integers (default) | `Long` | Covers every value the main text prints. JVM `Long` arithmetic wraps silently on overflow, so the standing rule applies: any listing that can plausibly overflow uses `Math.addExact`/`Math.subtractExact`/`Math.multiplyExact` so overflow throws instead of yielding a wrong answer. |
-| Exercises that exceed `Long` | `java.math.BigInteger` | The concrete sites: factorial beyond `20!`, `fib` past 92, exploratory `(expt 2 100)`; tailored 1.19a is the chapter 1 example. |
+| Integers (default) | `Long` (guest `Int`/`Long`/`Double`, same-type arithmetic only) | Covers every value the main text prints. Guest `Int`/`Long` `+ - *` and unary `-` wrap in two's-complement as the defined default matching native JVM execution; mixed-width arithmetic such as `1 + 2L` is rejected even though the host widens, and every width change needs an explicit conversion (contract §3.1). The checked forms `Math.addExact`/`subtractExact`/`multiplyExact`/`negateExact` answer guest error `Overflow` instead of wrapping. `Int`/`Long` `/` truncates toward zero and `%` takes the sign of the dividend; integer `/` or `%` by zero raises guest error `DivisionByZero`; `Double` division follows IEEE 754 (division by `0.0` yields `Infinity`/`NaN`, never an error) and `%` on `Double` is rejected (contract §3.1). |
+| Host oracle beyond `Long` | `java.math.BigInteger` (host-only, never guest source) | The concrete sites: factorial beyond `20!`, `fib` past 92, exploratory `(expt 2 100)`; tailored 1.19a is the chapter 1 example. Arbitrary-precision types are rejected in guest source (contract §3.1). |
 | Indices, counters, ch5 pointers | `Int` | Register indices, memory addresses, vector subscripts. |
 | Reals | `Double` | `sqrt`, `pi-sum`, fixed points, streams of reals. |
-| 2.5 numeric tower | sealed `Num` | Integer level raises `ArithmeticException` as an `Overflow` error through the tower's `Raise`, promoting to a `BigZ` package; exact rationals carry `BigInteger` numerators and denominators because `Long` components overflow during multiplication before reduction. |
+| 2.5 numeric tower (host teaching) | sealed `Num` | Integer level uses the checked exact forms as overflow detectors and promotes to the exact-rationals package instead of wrapping; guest error `Overflow` is reserved for guest `Math.*Exact` execution (native surface `ArithmeticException`, contract §3.8), never for host tower promotion; exact rationals carry `BigInteger` numerators and denominators as host-only teaching because `Long` components overflow during multiplication before reduction. Engines report the category, never raw host wording. |
 
 Tower sketch:
 
 ```kotlin
-sealed interface Num
+sealed interface Num   // host teaching for 2.5; guest numerics stay Int/Long/Double per §3.1
 @JvmInline value class ZLong(val n: Long) : Num            // exact ops via Math.*Exact
-data class QRat(val num: BigInteger, val den: BigInteger) : Num   // den > 0, gcd-reduced
+// Exact rationals use host-only BigInteger (den > 0, gcd-reduced); never guest source.
+data class QRat(val num: BigInteger, val den: BigInteger) : Num
 @JvmInline value class Real(val d: Double) : Num
 data class Complex(val re: Double, val im: Double) : Num
 ```
 
 ### Error handling
 
-- No exceptions across library code; no `error("...")` strings in translated listings.
-- Chapter 4: sealed `EvalError` (`Unbound`, `NotApplicable`, `UnknownExprType`, `UnknownProcType`) raised through `Raise<EvalError>`, caught at the driver with `either { }`.
-- Domain errors are per-domain sealed types: `IntervalError` (2.1), `AccountError` (3.1), `WithdrawError` (sketch 2, the one book string that becomes a typed error; the Scheme string behavior is described in prose once), `QueryError` (4.4).
+- No exceptions across library code; no `error("...")` strings in translated listings. `try`/`catch`/`throw`, force unwrap `!!`, and unchecked casts are rejected guest forms (`Exceptions`, `ForceUnwrap`, `UncheckedCast`, contract §6.2).
+- Chapter 4: sealed `EvalError` (`Unbound`, `NotApplicable`, `UnknownExprType`, `UnknownProcType`) raised through `Raise<EvalError>` in host code, caught at the driver with `either { }`. Guest runtime categories are `DivisionByZero`, `Overflow`, `IndexOutOfBounds`, kernel `UnassignedRead`, and machine `UnassignedRegister` (contract §3.8); engines report the category with position, never raw host wording. Ill-typed guest source is rejected statically before effects; an invalid represented program answers the guest category (contract §5.2).
+- Domain errors are per-domain sealed types: `IntervalError` (2.1), `AccountError` (3.1), `WithdrawError` (sketch 2, the one book string that becomes a typed error, described in prose once), query errors via the §4.3 driver categories (4.4).
 - `Raise` is a context parameter: `context(r: Raise<EvalError>)`, opt-in flag `-Xexplicit-context-arguments` (Experimental; context parameters replace the retired context receivers). A footnote shows the explicit-parameter fallback for readers who avoid experimental features.
 
 ### Test idioms
@@ -482,14 +487,14 @@ square(5L)
 // ;Value: 25
 ```
 
-Compound procedures print as `// ;Value: compound-procedure`; errors as `// ;Value: Unbound(x)` from chapter 4 onward.
+In host teaching listings, transcript responses appear as `// ;Value:` comments (for example `// ;Value: compound-procedure`, or `// ;Value: Unbound(x)` from chapter 4 onward); these comments are prose, never guest output, and no guest printer rule for compound values exists (`StructuredOutput` is rejected, contract §6.2). Guest program output itself is `print`/`println` over exactly `String`/`Long`/`Double`/`Boolean` in program order; printing a structured value is rejected and structured data is rendered by program functions returning `String` with the pinned `Long`/`Double`/`Boolean`/`String` rendering (contract §3.7).
 
 ### Style contract operationalization
 
 - `val` everywhere; `var` only inside closure-capture state (3.1 to 3.3.2), simulator internals (3.3.4, chapter 5), and table/queue implementations; the text names each allowed site.
-- No `!!`; nullability via `?.`, explicit null branches, or `requireNotNull` in machine internals.
+- No `!!` (guest `ForceUnwrap` rejection, contract §6.2); nullability via `?.`, `?:`, `== null` / `!= null`, and the admitted `Map.get`/`firstOrNull`/`remove`/`toLongOrNull`/`toDoubleOrNull` results; smart casts only for `val` locals, parameters, and uncaptured `var` locals, never properties or captured `var` bindings (contract §3.3). `requireNotNull` stays inside machine internals only.
 - No unscoped `lateinit`; a nullable field is preferred even for two-phase machine setup.
-- Sealed hierarchies with exhaustive `when`; `allWarningsAsErrors = true`.
+- Sealed hierarchies with exhaustive `when` in every form: sealed-subject expressions list every variant with no `else`, partial `when` is rejected as `NonExhaustiveWhen`, `else` on a sealed subject as `SealedWhenElse`, subject-less `when` expressions require `else` (contract §3.2); `allWarningsAsErrors = true`.
 - Context parameters via `-Xexplicit-context-arguments` in `freeCompilerArgs`.
 - Lint gate: ktlint engine 1.8.0 through plugin `org.jlleitschuh.gradle.ktlint`, `formatKotlin`/`lintKotlin` across all five source sets, plus `explicitApi()` on the runtime module. detekt is not used.
 - JDK 25 via `kotlin { jvmToolchain(25) }` in every subproject.
@@ -498,15 +503,17 @@ Compound procedures print as `// ;Value: compound-procedure`; errors as `// ;Val
 
 ### Chapter 4 evaluator
 
+Guest programs are contract §2 source units; the §5 kernel below is guest source admitted by §§2-3, native VERIFIED with stdout exactly `ok`, and not the full-grammar self-interpreter (that Task 7/10 production kernel MUST be interpreted as guest source reproducing its direct run, contract §5.2). Host sketch:
+
 ```kotlin
-sealed interface Expr                                      // parsed from Value programs
+sealed interface Expr                                      // from guest source units, never Value programs
 @JvmInline value class VarE(val name: String) : Expr
 data class IfE(val p: Expr, val c: Expr, val a: Expr) : Expr
 data class LambdaE(val params: PersistentList<String>, val body: PersistentList<Expr>) : Expr
 data class DefineE(val name: String, val e: Expr) : Expr
-data class AppE(val op: Expr, val args: PersistentList<Expr>) : Expr  // + SelfEval, QuoteE, derived
+data class AppE(val op: Expr, val args: PersistentList<Expr>) : Expr  // + literals, derived forms (desugared in guest code), sequencing
 
-class Env(var frame: PersistentMap<String, Value>, val parent: Env?)   // define rebinds frame;
+class Env(var frame: PersistentMap<String, Value>, val parent: Env?)   // host frames; guest closures capture bindings with §3.4 shadowing and shared-`var` semantics;
 class Cell(var v: Value)                                               // set! mutates cells
 
 sealed interface EvalError {
@@ -514,7 +521,7 @@ sealed interface EvalError {
     data class NotApplicable(val v: Value) : EvalError
 }
 
-sealed interface Value { /* VNum, VSym, VBool, VPair, VNil, VThunk, plus: */ }
+sealed interface Value { /* host teaching shapes such as VNum/VSym/VBool/VPair/VNil/VThunk, plus: */ }
 data class VPrimitive(val f: context(Raise<EvalError>) (List<Value>) -> Value) : Value
 data class VProc(val params: PersistentList<String>, val body: PersistentList<Expr>, val env: Env) : Value
 
@@ -525,6 +532,8 @@ context(r: Raise<EvalError>) fun eval(expr: Expr, env: Env): Value = analyze(exp
 ```
 
 ### Chapter 5 register-machine simulator
+
+Host register names below sugar the contract §4.4 constructor data (`Assign(reg: String, src: Source)` etc. with `Source`/`Cond`/`Action`/`GotoTarget`; `Machine(registers, ops, controller)`); a read before any write raises `UnassignedRegister` and monitored counters are machine outputs with pinned trace lines.
 
 ```kotlin
 enum class Reg { Exp, Env, Val, Proc, Argl, Unev, Continue }
@@ -557,6 +566,8 @@ class Machine(regs: Set<Reg>, val ops: PersistentMap<String, Op>, controller: Pe
 ```
 
 ### Chapter 5 compiler
+
+The compiler translates sealed guest syntax to `List<Stmt>`; 5.49-5.52 obligations (§5.2 invariant for 5.50; C `String` artifacts never guest source for 5.51-5.52) remain mandatory.
 
 ```kotlin
 data class InstrSeq(val needs: Set<Reg>, val modifies: Set<Reg>, val stmts: PersistentList<Stmt>)
@@ -659,16 +670,16 @@ The primer teaches only the subset the book uses; every construct appears later,
 | 0.2 Functions as values | 5 | function types, lambdas, trailing-lambda style, returning functions, type aliases | 1.3, 3.1 |
 | 0.3 Data: products, sums, persistence | 7 | data classes, value classes, sealed hierarchies with exhaustive `when`, `Pair` versus domain types, `PersistentList` basics, `==` versus `===` | chapter 2 |
 | 0.4 Errors as values | 5 | `Either`, `Raise`, `either { }`, context parameters with `-Xexplicit-context-arguments`, per-domain sealed errors | 2.1, 3.1, chapter 4 |
-| 0.5 Laziness: `lazy` and `Sequence` | 5 | `lazy {}` memoization, `Sequence` pipelines, `generateSequence`, the `sequence { }` builder, cold versus memoized, where `Sequence` is not enough | 3.5, 4.2 |
+| 0.5 Laziness: `lazy` and `Sequence` (host-only) | 5 | `lazy {}` memoization, `Sequence` pipelines, `generateSequence`, the `sequence { }` builder, cold versus memoized, where `Sequence` is not enough; `by lazy`, `Sequence`, and coroutines are never guest source (contract §6.2) | 3.5, 4.2 |
 | 0.6 The test rig and the house style | 3 | Kotest `FunSpec`, `withData`, `checkAll`, `runTest`; the ktlint gate, `allWarningsAsErrors`, `explicitApi()`; the `val` rule and captured-`var` allowed sites; `;Value:` transcripts | all chapters |
 
 Exercises:
 
-- 0.1: translate three Scheme sessions from section 1.1 into Kotlin demo `main` functions producing the matching `// ;Value:` lines.
+- 0.1: translate three section 1.1 sessions into Kotlin demo `main` functions producing the matching `// ;Value:` lines.
 - 0.2: implement `compose` and `repeated` and property-test them with `checkAll` against hand-computed cases.
 - 0.3: model a small binary tree as a sealed hierarchy and write an exhaustive `when` walker computing depth; add a variant and watch the non-exhaustive `when` fail compilation.
 - 0.4: refactor a throwing `parseAmount(String): Long` into `Raise<ParseError>` and test both branches through `either { }`.
-- 0.5: build the infinite `Sequence` of squares and the memoized `LStream` of squares, then use a counting probe to show which recomputes on a second pass.
+- 0.5: build the infinite host `Sequence` of squares and the memoized host `LStream` of squares, then use a counting probe to show which recomputes on a second pass. Guest `Lazy` programs use the named `Lazy` mode instead (contract §4.1).
 
 ## 6. Re-cut list: every divergence from the Scheme text
 
@@ -676,25 +687,26 @@ Exercise numbers stay 1:1 throughout; no renumbering is forced. Additions use th
 
 1. Chapter 0 added as a new primer with 0.x numbering (addition).
 2. 1.1.5 and exercise 1.5: the applicative-order probe re-cut as an eager-parameter versus lambda-parameter demonstration.
-3. 1.2: iterative processes re-cut onto `tailrec` funs or `while`; no implicit TCO; `DeepRecursiveFunction` offered for deep non-tail tree recursion.
+3. 1.2: iterative processes re-cut onto `tailrec` funs or `while`; no implicit TCO; host-only `DeepRecursiveFunction` offered for deep non-tail tree recursion (never guest source, contract §6.2).
 4. 1.1 and 1.2 transcripts: `;Value:` rendered as comments; `runtime` re-cut as `measureNanoTime` (exercise 1.22 keeps its number).
 5. 2.2.4: the picture language outputs SVG files; combinator names and algebra unchanged.
-6. 2.3.1 onward: quotation re-cut onto `VSym`/`vlist` construction (no reader); from 2.3.2 symbolic programs use sealed classes.
+6. 2.3.1 onward: symbolic teaching builds `VSym`/`vlist` constructor data; from 2.3.2 symbolic programs use sealed classes. Guest programs are always §2 source units (contract §4.5).
 7. 2.4 with 3.3.3: data direction re-cut onto the immutable `OpTable` registry; `put`/`get` names and two-key shape kept.
-8. 2.5: tower integers `Long` with checked exact arithmetic and `BigInteger` exact rationals; tower levels otherwise 1:1.
+8. 2.5: host tower integers `Long` with checked exact arithmetic and host-only `BigInteger` exact rationals; guest numerics stay `Int`/`Long`/`Double` same-type-only with wrapping default and `Overflow` checked forms (contract §3.1); tower levels otherwise 1:1.
 9. 3.2 re-cut: retitled around the closure and captured-`var` model; diagrams drawn against closure cells; exercises 3.9 to 3.11 keep numbers and intent.
-10. 3.4 re-cut: structured coroutines; `parallel-execute` to `launch`, serializer to `Mutex`, `test-and-set!` to `AtomicBoolean.compareAndSet`, semaphore (3.47) to a token channel; exercises 3.38 to 3.49 keep their numbers.
+10. 3.4 re-cut: structured coroutines; concurrent processes to `launch`, serializer to `Mutex`, atomic primitive to `AtomicBoolean.compareAndSet`, semaphore (3.47) to a token channel; exercises 3.38 to 3.49 keep their numbers.
 11. 3.5.1: dual stream representation; the `Sequence` limit is named and the switch to `LStream` taught there.
-12. 4.1, 4.2, 4.3, 5.4 drivers: no reader; top-level programs are prebuilt `Value` lists, stated once as a shared deviation.
-13. 4.3: amb re-cut to `Sequence` search over persistent environments; continuation machinery replaced by iterator advance; exercises 4.35 to 4.54 keep their numbers.
-14. 4.4: frames as `PersistentMap`, `stream-append-delayed` as an explicit `interleave` helper; `never-no-loop` relies on cold sequences.
-15. Chapter 5: machine descriptions are a Kotlin DSL building the same `Stmt` data the simulator, explicit-control evaluator, and compiler consume; code-as-data preserved.
+12. 4.1, 4.2, 4.3, 5.4 drivers: guest programs are contract §2 source units sharing one syntax contract across reader, analyzer, evaluator, explicit-control evaluator, and compiler (contract §10); represented programs inside kernels are explicit syntax-tree data, never re-parsed text.
+13. 4.3: amb re-cut to the named `Search` experiment (intrinsic `choose`/`demand`, seeded `chooseRandom`, `setPermanent`, `ifFail`); exercises 4.35 to 4.54 keep their numbers.
+14. 4.4: query DSL host constructors with immutable `QFrame` maps, explicit loop detector, deduplicating answer view, and pinned answer rendering; `Query`+`Lazy` (4.71-4.74) and `Query`+`Search` (4.78) are separate programs (contract §§4.3, 4.5); exercises keep their numbers.
+15. Chapter 5: register machines are the `Stmt` constructor data of contract §4.4 (a Kotlin DSL may sugar it) consumed by the simulator, explicit-control evaluator, and compiler; code-as-data preserved. The 5.50 compiled kernel must satisfy the §5.2 invariant and 5.51-5.52 emit C as a `String` artifact never re-parsed as guest source.
 16. Tooling: detekt dropped for the ktlint gate; conventions text reflects this.
 
 ## 7. Anchor files
 
-- `sicp-pocket.texi`: source of truth for all 22 sections and every exercise anchor in this map
-- `kotlin/gradle/libs.versions.toml`: version catalog to create; carries the verified pins of section 0
-- `kotlin/settings.gradle.kts`: declares the runtime module and the five chapter subprojects
-- `kotlin/chapterNN/build.gradle.kts`: template for the five source sets, toolchain 25, and the `-Psolutions` XOR classpath rule
-- `kotlin/runtime/src/main/kotlin/sicp/runtime/`: shared `Value`, `LStream`, `OpTable`, `Env`, `Machine`, and query engine all chapters import
+- `spec/book-inventory.json`: preserved identity source (base commit plus per-edition and original sources; cited read-only, never edited here)
+- `kotlin/book/` (ch0-ch5): current teaching source
+- `spec/host-subsets/kotlin/grammar.md`: normative guest contract for guest source
+- `kotlin/settings.gradle.kts` (existing): includes `runtime` and `ch0`-`ch5`
+- `kotlin/gradle/libs.versions.toml` (existing): version catalog carrying the verified pins of section 0
+- Engine internals (evaluator, simulator, compiler, query engine): follow the contract's admission classes and module rules (grammar §§1-4, §7); no guessed module path is cited here

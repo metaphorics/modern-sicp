@@ -2,7 +2,7 @@
 
 Anchor: Tony Hoare, Otl Aicher, David Parnas
 
-Status: migration contract. Native evidence recorded (parent-run): the §9 kernel compiles under the pinned checker and runs under pinned Node printing `120`, and the negative type fixtures are rejected with `TS2322`/`TS7006` (`local://modern-sicp-typescript-contract-native-results.json`, `local://modern-sicp-typescript-admission-native-results.json`). All subset-checker, teaching-evaluator/compiler, and experimental-mode claims remain UNRUN. This file defines the language accepted by the TypeScript edition; it does not claim that the edition supports all TypeScript.
+Status: migration contract. Native evidence recorded (parent-run): the §9 kernel compiles under the pinned checker and runs under pinned Node printing `120`, and the negative type fixtures are rejected with `TS2322`/`TS7006` (`local://modern-sicp-typescript-contract-native-results.json`, `local://modern-sicp-typescript-admission-native-results.json`). The edition gates and the conformance run exercise the subset checker, the teaching evaluator and compiler, and the experimental modes; the §9 kernel verbatim under every engine is the one open gap (see the migration plan's audit record). This file defines the language accepted by the TypeScript edition; it does not claim that the edition supports all TypeScript.
 
 ## 1. Boundary and acceptance
 

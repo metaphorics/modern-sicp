@@ -4,7 +4,7 @@ Anchor: Tony Hoare, David Parnas
 
 This document defines the OCaml source admitted by the chapter 4 and chapter 5 teaching engines. The contract is specific to the OCaml edition. It does not promise a complete OCaml compiler, parser, or runtime. The target source is ordinary OCaml 5.5.1 source restricted to the grammar and the fixed standard-library surface below.
 
-Witness status: the §10–§12 witness blocks are **NATIVE-VERIFIED** on the pinned OCaml 5.5.1 switch by the parent's oracle (`local://modern-sicp-ocaml-contract-native-results.json`, `local://modern-sicp-ocaml-kernel-corrected-results.json`). Everything about the future teaching evaluators, analyzer, explicit-control evaluator, compiler, self-interpretation conformance, and exercise behavior is **UNRUN** until the Phase 2 migration executes it.
+Witness status: the §10–§12 witness blocks are **NATIVE-VERIFIED** on the pinned OCaml 5.5.1 switch by the parent's oracle (`local://modern-sicp-ocaml-contract-native-results.json`, `local://modern-sicp-ocaml-kernel-corrected-results.json`). The Phase 2 migration has executed: the edition gates and the host-subset conformance run exercise the teaching evaluators, the analyzer, the explicit-control evaluator, the compiler, self-interpretation, and exercise behavior.
 
 ## 1. Conformance boundary
 
@@ -499,7 +499,7 @@ let () =
   ()
 ```
 
-**NATIVE-VERIFIED host-valid, subset-unsupported witness** (`unsupported.ml`): native compilation exited zero. The program was not executed. The future subset checker must reject the loop before any guest effect; that rejection remains **UNRUN**.
+**NATIVE-VERIFIED host-valid, subset-unsupported witness** (`unsupported.ml`): native compilation exited zero. The program was not executed. The Phase 2 subset checker rejects host-valid unsupported sources before any guest effect; the edition tests pin the rejection class.
 
 ```ocaml
 let () =
@@ -525,7 +525,7 @@ Each row identifies the lesson family and the host subset features that preserve
 | 5.4, 5.23–5.30 | Explicit-control evaluator, derived syntax, evaluation order, tail calls, stack behavior, error signaling | Reuse chapter 4 `expr`/`value`/environment types and chapter 5 `instruction`/`word` types. Controller is a checked instruction list. Stack save/restore uses lists or arrays and explicit mutation; machine errors are typed values. |
 | 5.5, 5.31–5.52 | Compiler instruction sequences, register preservation, linkage, lexical addresses, open coding, mixed compiled/interpreted calls, compile-and-run, compiler output | Compile the shared typed AST to typed instruction constructors and sequences represented by tuples, variants, lists, refs, and arrays. Preserve target/linkage/needed-register contracts. Target C output is represented by host constructors and rendered as text; this is a teaching compiler, not a full OCaml compiler. |
 
-Exercises 5.50 and 5.52 require the translated evaluator itself as valid guest source. The unit must parse and type-check that source, run it with the teaching evaluator on a translated guest program, then compare the observable result with direct native execution. The evaluator's recursion, types, patterns, functions, closures, refs, arrays, and prelude calls must all remain inside this contract. Exercise 5.51 teaches translating the evaluator to a C runtime; it does not add C or a host compiler to the OCaml guest grammar. The self-interpretation comparison, compiled-evaluator runs, and every teaching-engine claim in this table are **UNRUN** until Phase 2; the parent-verified kernel run establishes only that the subset can express an evaluator kernel natively.
+Exercises 5.50 and 5.52 require the translated evaluator itself as valid guest source. The unit must parse and type-check that source, run it with the teaching evaluator on a translated guest program, then compare the observable result with direct native execution. The evaluator's recursion, types, patterns, functions, closures, refs, arrays, and prelude calls must all remain inside this contract. Exercise 5.51 teaches translating the evaluator to a C runtime; it does not add C or a host compiler to the OCaml guest grammar. The self-interpretation comparison, compiled-evaluator runs, and every teaching-engine claim in this table ran in Phase 2 through the edition gates and the conformance run; the parent-verified kernel run establishes only that the subset can express an evaluator kernel natively.
 
 Chapter-specific additions use only these same constructors and contracts: thunk counters and backtrack counts are explicit state; query frame metrics inspect ordinary frame lists; simulator traces and heap renderings observe typed machine data. An addition cannot silently admit another syntax form or host module.
 

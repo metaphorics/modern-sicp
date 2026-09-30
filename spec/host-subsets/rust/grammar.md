@@ -2,7 +2,7 @@
 
 Anchor: Tony Hoare, David Parnas
 
-Status: implementation contract for the Rust edition. Native oracle witnesses are **VERIFIED** by the parent runs recorded in `local://modern-sicp-rust-contract-native-results.json` (see §10 for per-witness outcomes). All subset-checker, teaching-evaluator, and compiler witnesses remain **UNRUN**. This document defines the Rust 2024 guest language; it does not implement a parser, checker, interpreter, compiler, or book change.
+Status: implementation contract for the Rust edition. Native oracle witnesses are **VERIFIED** by the parent runs recorded in `local://modern-sicp-rust-contract-native-results.json` (see §10 for per-witness outcomes). The landed edition exercises the subset checker, the teaching evaluators, and the compiler: the edition gates (fmt, clippy, nextest) and the host-subset conformance run record their observations per `spec/host-subsets/rust/manifest.tsv` row. This document defines the Rust 2024 guest language; it does not itself implement a parser, checker, interpreter, compiler, or book change.
 
 ## 1. Acceptance boundary
 
@@ -549,7 +549,7 @@ Expected stdout is exactly (VERIFIED: parent run, `local://modern-sicp-rust-cont
 2
 ```
 
-The following source is valid Rust but excluded because it uses a raw pointer and an `unsafe` block. Native compilation and execution succeed and print `4` (VERIFIED: parent run, `unsupported`: compile exit 0, runtime exit 0, stdout `4\n`); the subset parser/checker MUST reject it as `Unsupported` before any guest effect (UNRUN: no checker exists yet). This distinction prevents native validity from being confused with subset acceptance.
+The following source is valid Rust but excluded because it uses a raw pointer and an `unsafe` block. Native compilation and execution succeed and print `4` (VERIFIED: parent run, `unsupported`: compile exit 0, runtime exit 0, stdout `4\n`); the subset parser/checker MUST reject it as `Unsupported` before any guest effect (VERIFIED: the edition's checker classifies this witness `Unsupported`; see the ch04 witness-class tests). This distinction prevents native validity from being confused with subset acceptance.
 
 ```rust
 fn main() {
@@ -584,7 +584,7 @@ rustc +1.98.1 --edition=2024 -C overflow-checks=on --emit=metadata \
   /tmp/rust-host-subset-borrow-error.rs -o /tmp/rust-host-subset-borrow-error.rmeta
 ```
 
-Observed: nonzero compiler status (VERIFIED: parent run, `borrow-error`: compile exit 1, `E0499`). Do not compare unstable diagnostic wording. The host-valid unsupported case is not expected to fail `rustc`; its rejection is a teaching-checker assertion. At this phase no subset-checker executable exists, so do not invent or claim a checker command. The edition's post-implementation gate must add the corresponding subset-accept/reject and interpreted-versus-native comparisons (all UNRUN).
+Observed: nonzero compiler status (VERIFIED: parent run, `borrow-error`: compile exit 1, `E0499`). Do not compare unstable diagnostic wording. The host-valid unsupported case is not expected to fail `rustc`; its rejection is a teaching-checker assertion. The landed edition performs the corresponding subset-accept/reject and interpreted-versus-native comparisons in its gates and conformance run.
 
 The edition gates are run from `modern-sicp/rust` after cutover, not by this contract author:
 
@@ -595,4 +595,4 @@ cargo +1.98.1 nextest run --workspace --locked
 cargo +1.98.1 test --doc --workspace --locked
 ```
 
-When the local environment requires the documented gate setup, unset `CARGO_BUILD_BUILD_DIR` and set `RUSTC_WRAPPER=`. The three native oracle runs are VERIFIED as recorded above and in `local://modern-sicp-rust-contract-native-results.json`; all subset-checker assertions, guest-evaluator executions, interpreted-versus-native comparisons, and compiler-conformance witnesses remain **UNRUN**.
+When the local environment requires the documented gate setup, unset `CARGO_BUILD_BUILD_DIR` and set `RUSTC_WRAPPER=`. The three native oracle runs are VERIFIED as recorded above and in `local://modern-sicp-rust-contract-native-results.json`; the edition gates and the conformance run exercise the subset-checker assertions, the guest-evaluator executions, the interpreted-versus-native comparisons, and the compiler-conformance witnesses.

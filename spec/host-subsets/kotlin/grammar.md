@@ -5,8 +5,8 @@ Anchor: Tony Hoare, Otl Aicher
 Status: Phase 1 contract for the Kotlin edition guest language. This document
 is normative for guest source. The native oracle results for the witnesses are
 recorded in local://modern-sicp-kotlin-contract-native-results.json and marked
-VERIFIED below; all guest-engine obligations (Section 5.2, Task 7/10) are
-UNRUN. This document claims no full Kotlin compiler.
+VERIFIED below; the edition gates and the conformance run exercise the guest
+engines (Section 5.2, Task 7/10). This document claims no full Kotlin compiler.
 It defines one finite subset and its rejection categories.
 
 ## 1. Scope and terms

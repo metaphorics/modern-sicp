@@ -474,7 +474,9 @@ export class Session {
       return name === "message" ? ok(object.message) : fail({ tag: "unknown-field", field: name });
     }
     if (isRecordValue(object)) {
-      return ok(object.fields.get(name));
+      return object.fields.has(name)
+        ? ok(object.fields.get(name))
+        : fail({ tag: "unknown-field", field: name });
     }
     return fail({ tag: "unknown-field", field: name });
   }
@@ -498,7 +500,9 @@ export class Session {
       return ok(itemAt([...object], index));
     }
     if (isRecordValue(object) && typeof index === "string") {
-      return ok(object.fields.get(index));
+      return object.fields.has(index)
+        ? ok(object.fields.get(index))
+        : fail({ tag: "unknown-field", field: index });
     }
     if (isMapValue(object)) {
       return ok(object.entries.get(index));
@@ -807,27 +811,38 @@ export class Session {
     if (disc.tag === "error") {
       return { tag: "error", error: disc.error };
     }
-    const items: Array<Decl | Stmt> = [];
-    for (const clause of stmt.cases) {
-      items.push(...clause.body);
-    }
-    if (stmt.defaultBody !== null) {
-      items.push(...stmt.defaultBody);
-    }
-    const frame = child(env);
-    this.predeclare(items, frame);
-    for (const clause of stmt.cases) {
+    let matchedIndex = -1;
+    for (const [index, clause] of stmt.cases.entries()) {
       const test = this.evaluate(clause.test, env);
       if (test.tag === "error") {
         return { tag: "error", error: test.error };
       }
       if (test.value === disc.value) {
-        return this.asSwitchBody(clause.body, frame);
+        matchedIndex = index;
+        break;
+      }
+    }
+    if (matchedIndex < 0) {
+      return stmt.defaultBody === null
+        ? normal(undefined)
+        : this.asSwitchBody(stmt.defaultBody, child(env));
+    }
+    for (let index = matchedIndex; index < stmt.cases.length; index += 1) {
+      const clause = stmt.cases[index];
+      if (clause === undefined) {
+        continue;
+      }
+      const completion = this.execSequence(clause.body, child(env));
+      if (completion.tag === "break") {
+        return normal(undefined);
+      }
+      if (completion.tag !== "normal") {
+        return completion;
       }
     }
     return stmt.defaultBody === null
       ? normal(undefined)
-      : this.asSwitchBody(stmt.defaultBody, frame);
+      : this.asSwitchBody(stmt.defaultBody, child(env));
   }
 
   asSwitchBody(items: ReadonlyArray<Decl | Stmt>, frame: Env): Completion {

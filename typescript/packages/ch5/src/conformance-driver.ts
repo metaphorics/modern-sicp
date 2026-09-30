@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
 
 /**
  * The TypeScript host-subsets conformance driver: one observation per run,

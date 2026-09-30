@@ -1498,7 +1498,8 @@ const compileSwitch = (
   scan.push(makeSequence([], [], [gotoLabel(defaultLabel)]));
   const bodies: InstructionSequence[] = [];
   for (const [index, clause] of stmt.cases.entries()) {
-    const body = compileSequence(clause.body, gotoLinkage(endLabel), {
+    const nextLabel = caseLabels[index + 1] ?? defaultLabel;
+    const body = compileSequence(clause.body, gotoLinkage(nextLabel), {
       ...context,
       labels: { ...context.labels, breakTarget: endLabel },
     });

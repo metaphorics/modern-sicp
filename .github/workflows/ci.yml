@@ -31,6 +31,8 @@ jobs:
           cargo +1.98.1 clippy --workspace --all-targets -- -D warnings
           cargo +1.98.1 nextest run --workspace
           cargo +1.98.1 test --doc --workspace
+      - name: Host-subset conformance
+        run: python3 tools/host_conformance_check.py --edition rust
 
   ocaml:
     runs-on: ubuntu-24.04
@@ -49,6 +51,11 @@ jobs:
           opam exec -- dune build @check
           opam exec -- dune runtest
           opam exec -- dune fmt --check 2>/dev/null || opam exec -- dune build @fmt
+      - name: Host-subset conformance
+        # setup-ocaml installs a local switch at the workspace root.
+        env:
+          OPAMSWITCH: ${{ github.workspace }}
+        run: python3 tools/host_conformance_check.py --edition ocaml
 
   typescript:
     runs-on: ubuntu-24.04
@@ -71,6 +78,8 @@ jobs:
           pnpm exec biome check .
           pnpm -r exec tsc --noEmit
           pnpm vitest run
+      - name: Host-subset conformance
+        run: python3 tools/host_conformance_check.py --edition typescript
 
   kotlin:
     runs-on: ubuntu-24.04
@@ -84,26 +93,23 @@ jobs:
       - name: Gates
         working-directory: kotlin
         run: ./gradlew ktlintCheck build
+      - name: Host-subset conformance
+        run: |
+          (cd kotlin && ./gradlew :ch5:installDist)
+          python3 tools/host_conformance_check.py --edition kotlin
 
   tools:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      - name: Install the Guile advisory oracle
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y guile-3.0
-          if ! command -v guile >/dev/null 2>&1; then
-            sudo ln -s /usr/bin/guile-3.0 /usr/local/bin/guile
-          fi
       - name: Gates
         run: |
           uv run --project tools ruff check tools
           uv run --project tools ruff format --check tools
           uv run --project tools pyright tools
           uv run --project tools pytest tools/tests -q
-          uv run --project tools python tools/scheme_corpus_check.py
+          uv run --project tools python tools/exercise_map_check.py
 
   books-html-epub:
     runs-on: ubuntu-24.04
@@ -130,6 +136,7 @@ jobs:
           for lang in rust ocaml typescript kotlin; do
             just --justfile "$lang/justfile" --working-directory "$lang" book-html-epub
           done
+          just check-book-structure
 
   books-pdf:
     runs-on: ubuntu-24.04
@@ -156,6 +163,7 @@ jobs:
           for lang in rust ocaml typescript kotlin; do
             just --justfile "$lang/justfile" --working-directory "$lang" book-pdf
           done
+          just check-listing-width
 
   site:
     runs-on: ubuntu-24.04

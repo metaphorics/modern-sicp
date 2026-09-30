@@ -20,7 +20,7 @@ check:
         just --justfile "$edition/justfile" --working-directory "$edition" lint
     done
     just check-tools
-    just check-corpus
+    just check-exercise-map
 
 # Tests across every edition and the Python tools.
 test:
@@ -30,6 +30,7 @@ test:
         just --justfile "$edition/justfile" --working-directory "$edition" test
     done
     just test-tools
+    just test-conformance
 
 # The pending scaffolds per edition; nonzero while one is unsolved, which is the report.
 scaffold:
@@ -45,6 +46,8 @@ books:
     for edition in {{editions}}; do
         just --justfile "$edition/justfile" --working-directory "$edition" book
     done
+    just check-book-structure
+    just check-listing-width
 
 check-tools:
     uv run --project tools ruff format --check tools
@@ -54,9 +57,23 @@ check-tools:
 test-tools:
     uv run --project tools pytest tools/tests
 
-# Re-runs every Scheme corpus program and compares it to its expected file.
-check-corpus:
-    uv run --project tools python tools/scheme_corpus_check.py --root spec/scheme-subset
+check-book-structure:
+    uv run --project tools python tools/book_structure_check.py --texi2any "{{books-prefix}}/bin/texi2any"
+
+# Code listings wider than the PDF measure, from each edition's last PDF log.
+check-listing-width:
+    uv run --project tools python tools/listing_width_check.py --makeinfo "{{books-prefix}}/bin/makeinfo"
+
+# Every exercise row of docs/exercise-map.md against the edition trees.
+check-exercise-map:
+    uv run --project tools python tools/exercise_map_check.py
+
+# Runs every host-subset case through each edition's teaching engines and
+# compares it with the native toolchain or the independent reference model.
+# The OCaml driver runs `opam exec` in OPAMSWITCH, the pinned 5.5.1 switch
+# unless the caller names another (CI names its local switch).
+test-conformance:
+    OPAMSWITCH="${OPAMSWITCH:-5.5.1}" uv run --project tools python tools/host_conformance_check.py
 
 # CONTRIBUTING.md states that this syncs tools/ and runs its tests.
 setup-tools:

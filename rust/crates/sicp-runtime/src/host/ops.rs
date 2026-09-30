@@ -7,6 +7,7 @@
 //! engine — direct, analyzed, explicit-control, compiled — runs these
 //! leaves so observable values, effect order, and traps cannot drift.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::host::diag::Span;
@@ -269,12 +270,15 @@ impl Engine {
 }
 
 fn project_read(value: &HostValue, projs: &[RtProj]) -> Result<HostValue, Trap> {
-    project_ref(value, projs).cloned()
+    project_ref(value, projs).map(Cow::into_owned)
 }
 
-fn project_ref<'a>(value: &'a HostValue, projs: &[RtProj]) -> Result<&'a HostValue, Trap> {
+/// The value one place addresses: borrowed from the root, except for a
+/// map key, which lives in the map's own index rather than in a value
+/// slot and so is built as text.
+fn project_ref<'a>(value: &'a HostValue, projs: &[RtProj]) -> Result<Cow<'a, HostValue>, Trap> {
     let Some((head, rest)) = projs.split_first() else {
-        return Ok(value);
+        return Ok(Cow::Borrowed(value));
     };
     match (head, value) {
         (RtProj::Field(index), HostValue::Struct(_, fields) | HostValue::Variant(_, _, fields)) => {
@@ -290,6 +294,11 @@ fn project_ref<'a>(value: &'a HostValue, projs: &[RtProj]) -> Result<&'a HostVal
         (RtProj::MapKey(key), HostValue::Map(map)) => {
             let entry = map.get(key).ok_or(Trap::Dangling)?;
             project_ref(entry, rest)
+        }
+        (RtProj::MapKeyOf(key), HostValue::Map(map))
+            if rest.is_empty() && map.contains_key(key) =>
+        {
+            Ok(Cow::Owned(HostValue::Text(key.clone())))
         }
         _ => Err(Trap::Dangling),
     }
@@ -345,6 +354,17 @@ fn project_write(value: &mut HostValue, projs: &[RtProj], new: HostValue) -> Res
         (RtProj::MapKey(key), HostValue::Map(map)) => {
             let entry = map.entry(key.clone()).or_insert(HostValue::Unit);
             project_write(entry, rest, new)
+        }
+        // A method through a key reference writes its receiver back to
+        // the place it read; a key never changes, so only the key text
+        // itself is a valid write.
+        (RtProj::MapKeyOf(key), HostValue::Map(map))
+            if rest.is_empty() && map.contains_key(key) =>
+        {
+            match new {
+                HostValue::Text(text) if text == *key => Ok(()),
+                _ => Err(Trap::Dangling),
+            }
         }
         _ => Err(Trap::Dangling),
     }
@@ -451,7 +471,7 @@ pub fn checked_unary(op: UnOp, value: &HostValue) -> Result<HostValue, Trap> {
 pub fn construct(op: CtorOp, args: &[HostValue]) -> Result<HostValue, Trap> {
     match (op, args) {
         (CtorOp::StringFrom, [HostValue::Text(text)]) => Ok(HostValue::Text(text.clone())),
-        (CtorOp::VecNew, []) | (CtorOp::VecWithCapacity, [HostValue::Int(_)]) => {
+        (CtorOp::VecNew, []) | (CtorOp::VecWithCapacity, [HostValue::Usize(_)]) => {
             Ok(HostValue::Vec(Vec::new()))
         }
         (CtorOp::MapNew, []) => Ok(HostValue::Map(HashMap::new())),
@@ -723,6 +743,14 @@ fn apply_iterator_method(
     args: &[HostValue],
 ) -> Result<(HostValue, Option<HostValue>), Trap> {
     match op {
+        MethodOp::Iter if matches!(receiver, HostValue::Map(_)) => {
+            let HostValue::Map(map) = &receiver else {
+                return Err(Trap::Dangling);
+            };
+            let (addr, base) = receiver_place.ok_or(Trap::Dangling)?;
+            let iterator = map_entries_iterator(addr, &base, map);
+            Ok((iterator, Some(receiver)))
+        }
         MethodOp::Iter | MethodOp::IterMut => {
             let len = collection_len(&receiver)?;
             let (addr, base) = receiver_place.ok_or(Trap::Dangling)?;
@@ -934,7 +962,7 @@ fn match_pattern(
             match_all(engine, [&**left, &**right], [&**a, &**b], bindings)
         }
         (HirPatKind::UnitPath(resolved), _) => Ok(match_unit_path(resolved, value)),
-        (HirPatKind::TuplePath(resolved, subs), _) => {
+        (HirPatKind::TuplePath(resolved, subs) | HirPatKind::StructPath(resolved, subs), _) => {
             let Some(payload) = path_payload(resolved, value)? else {
                 return Ok(false);
             };
@@ -942,17 +970,6 @@ fn match_pattern(
                 return Err(Trap::Dangling);
             }
             match_all(engine, subs, payload, bindings)
-        }
-        (HirPatKind::StructPath(resolved, fields), _) => {
-            let Some(payload) = path_payload(resolved, value)? else {
-                return Ok(false);
-            };
-            let present = fields
-                .iter()
-                .zip(payload)
-                .filter_map(|(sub, item)| sub.as_ref().map(|sub| (sub, item)));
-            let (subs, items): (Vec<&HirPat>, Vec<&HostValue>) = present.unzip();
-            match_all(engine, subs, items, bindings)
         }
     }
 }
@@ -1014,19 +1031,11 @@ fn match_through_ref(
         .collect();
     match &pat.kind {
         HirPatKind::Tuple(left, right) => match_all(engine, [&**left, &**right], &parts, bindings),
-        HirPatKind::TuplePath(_, subs) => {
+        HirPatKind::TuplePath(_, subs) | HirPatKind::StructPath(_, subs) => {
             if parts.len() != subs.len() {
                 return Err(Trap::Dangling);
             }
             match_all(engine, subs, &parts, bindings)
-        }
-        HirPatKind::StructPath(_, fields) => {
-            let present = fields
-                .iter()
-                .zip(&parts)
-                .filter_map(|(sub, item)| sub.as_ref().map(|sub| (sub, item)));
-            let (subs, items): (Vec<&HirPat>, Vec<&HostValue>) = present.unzip();
-            match_all(engine, subs, items, bindings)
         }
         _ => Err(Trap::Dangling),
     }
@@ -1122,6 +1131,38 @@ pub fn items_iterator(items: Vec<HostValue>) -> HostValue {
     HostValue::Iter(Box::new(IterVal::Items { items, pos: 0 }))
 }
 
+/// Builds the entry iterator over one `HashMap` place: each item is a
+/// `(&String, &V)` pair of references to the key and to the value slot.
+/// The source language leaves the entry order unspecified; keys come in
+/// sorted order so a run is reproducible.
+fn map_entries_iterator(
+    addr: Addr,
+    base: &[RtProj],
+    map: &HashMap<String, HostValue>,
+) -> HostValue {
+    let mut keys: Vec<&String> = map.keys().collect();
+    keys.sort();
+    let entry_ref = |proj: RtProj| {
+        let mut projs = base.to_vec();
+        projs.push(proj);
+        HostValue::Ref {
+            addr,
+            projs,
+            mutable: false,
+        }
+    };
+    let items = keys
+        .into_iter()
+        .map(|key| {
+            HostValue::Tuple(
+                Box::new(entry_ref(RtProj::MapKeyOf(key.clone()))),
+                Box::new(entry_ref(RtProj::MapKey(key.clone()))),
+            )
+        })
+        .collect();
+    items_iterator(items)
+}
+
 /// Builds the element-reference iterator over one collection place.
 #[must_use]
 pub fn refs_iterator(addr: Addr, base: Vec<RtProj>, len: usize, mutable: bool) -> HostValue {
@@ -1186,7 +1227,7 @@ fn render_format_argument(
 ) -> Result<String, Trap> {
     if let HostValue::Ref { addr, projs, .. } = value {
         let referent = project_ref(store.read_ref(*addr)?, projs)?;
-        return render_format_argument(store, referent, is_debug);
+        return render_format_argument(store, &referent, is_debug);
     }
     if is_debug {
         Ok(value.debug_text())

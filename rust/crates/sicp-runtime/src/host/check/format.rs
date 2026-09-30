@@ -7,6 +7,7 @@
 
 use crate::host::ast::{self, FormatKind};
 use crate::host::check::Checker;
+use crate::host::check::traits::Trait;
 use crate::host::diag::{Diag, Span};
 use crate::host::hir::{FormatSpec, HirExpr, HirExprKind};
 
@@ -33,10 +34,11 @@ impl Checker {
         let mut checked = Vec::with_capacity(args.len());
         for (arg, debug) in args.iter().zip(&spec.debug) {
             let want = self.fresh_cell(false);
-            let expr = self.check_expr(arg, Some(&want))?;
+            // The macro borrows its arguments (`&arg`); nothing moves.
+            let expr = self.check_expr_place(arg, Some(&want))?;
             let got = self.deep(&expr.ty);
             let admitted = if *debug {
-                self.debug_able(&got)
+                self.implements(&got, Trait::Debug)
             } else {
                 display_able(&got)
             };
@@ -66,25 +68,6 @@ impl Checker {
             diverges: false,
             span,
         })
-    }
-
-    fn debug_able(&self, ty: &crate::host::hir::HostTy) -> bool {
-        use crate::host::hir::HostTy;
-        match ty {
-            HostTy::Infer(_) => true,
-            HostTy::Struct(id) | HostTy::Enum(id) => {
-                self.item_has_derive(*id, ast::DeriveName::Debug)
-            }
-            HostTy::Ref(_, inner)
-            | HostTy::Option(inner)
-            | HostTy::Box(inner)
-            | HostTy::Vec(inner)
-            | HostTy::HashMap(inner)
-            | HostTy::Array(inner, _) => self.debug_able(inner),
-            HostTy::Result(ok, err) => self.debug_able(ok) && self.debug_able(err),
-            HostTy::Tuple(left, right) => self.debug_able(left) && self.debug_able(right),
-            other => display_able(other) || matches!(other, HostTy::Unit),
-        }
     }
 }
 

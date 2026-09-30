@@ -34,6 +34,36 @@ pub fn parse_program(source: &str) -> Result<Program, Diag> {
 struct Parser {
     tokens: Vec<Tok>,
     pos: usize,
+    /// The local name the `use std::collections::HashMap` import binds
+    /// (`HashMap`, or its `as` rename), when the program imports it:
+    /// only that name spells the map type (grammar §2).
+    map_local: Option<String>,
+}
+
+/// The name the program's `HashMap` import binds, scanned ahead of the
+/// items because a type may be named before a later `use`.
+fn scan_map_import(tokens: &[Tok]) -> Option<String> {
+    let word = |at: usize, text: &str| matches!(tokens.get(at).map(|tok| &tok.kind), Some(TokKind::Ident(name)) if name == text);
+    let colons = |at: usize| {
+        tokens
+            .get(at)
+            .is_some_and(|tok| tok.kind == TokKind::ColonColon)
+    };
+    let at = (0..tokens.len()).find(|&at| {
+        word(at, "use")
+            && word(at + 1, "std")
+            && colons(at + 2)
+            && word(at + 3, "collections")
+            && colons(at + 4)
+            && word(at + 5, "HashMap")
+    })?;
+    if !word(at + 6, "as") {
+        return Some("HashMap".to_owned());
+    }
+    match tokens.get(at + 7).map(|tok| &tok.kind) {
+        Some(TokKind::Ident(name)) => Some(name.clone()),
+        _ => None,
+    }
 }
 
 /// Rust spells these types, the subset does not admit them; naming one
@@ -64,7 +94,12 @@ fn excluded_primitive_type(word: &str) -> bool {
 
 impl Parser {
     fn new(tokens: Vec<Tok>) -> Self {
-        Self { tokens, pos: 0 }
+        let map_local = scan_map_import(&tokens);
+        Self {
+            tokens,
+            pos: 0,
+            map_local,
+        }
     }
 
     fn peek(&self) -> Option<&Tok> {
@@ -560,7 +595,7 @@ impl Parser {
                 self.expect(&TokKind::Gt, "`>` to close `Result<...>`")?;
                 TyKind::Result(Box::new(ok), Box::new(err))
             }
-            "HashMap" => {
+            name if self.map_local.as_deref() == Some(name) => {
                 self.parse_angle_open()?;
                 let key = self.expect_ident("the `HashMap` key type")?;
                 if key.name != "String" {
@@ -587,6 +622,13 @@ impl Parser {
                 self.expect(&TokKind::Arrow, "`->` in a function type")?;
                 let ret = self.parse_ty()?;
                 TyKind::FnPtr(params, Box::new(ret))
+            }
+            "HashMap" => {
+                return Err(Diag::type_error(
+                    span,
+                    "cannot find type `HashMap` in this scope; \
+                     import it with `use std::collections::HashMap;`",
+                ));
             }
             other => {
                 if excluded_primitive_type(other) {

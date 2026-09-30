@@ -19,6 +19,11 @@ use crate::host::hir::{
 mod expr;
 mod format;
 mod pat;
+#[cfg(test)]
+mod tests;
+mod traits;
+
+use traits::Trait;
 
 /// A checked program: the typed item, function, and binding tables
 /// every engine executes.
@@ -46,6 +51,7 @@ pub fn check_program(program: &ast::Program) -> Result<CheckedProgram, Diag> {
     let mut checker = Checker::new();
     checker.collect_items(program)?;
     checker.resolve_definitions(program)?;
+    checker.check_derives(program)?;
     checker.check_recursion()?;
     checker.check_signatures(program)?;
     checker.check_all_bodies(program)?;
@@ -110,6 +116,32 @@ pub(crate) enum Access {
     BorrowMut,
 }
 
+/// One enclosing loop of the function being checked.
+#[derive(Debug)]
+struct LoopCtx {
+    /// The type a `break` value carries.
+    break_ty: HostTy,
+    /// Whether a `break` occurred.
+    saw_break: bool,
+    /// The bindings moved at each `break`: the code after the loop
+    /// starts from one of these states.
+    break_moves: Vec<Vec<BindId>>,
+    /// The bindings moved at each `continue`: the next iteration
+    /// starts from one of these states.
+    continue_moves: Vec<Vec<BindId>>,
+}
+
+impl LoopCtx {
+    fn new(break_ty: HostTy) -> Self {
+        Self {
+            break_ty,
+            saw_break: false,
+            break_moves: Vec::new(),
+            continue_moves: Vec::new(),
+        }
+    }
+}
+
 /// The per-function checking state.
 #[derive(Debug)]
 struct FnCtx {
@@ -121,9 +153,8 @@ struct FnCtx {
     loans: Vec<Loan>,
     /// The enclosing function's return type.
     ret: HostTy,
-    /// The loop stack: each entry's `break` value type and whether a
-    /// `break` occurred.
-    loops: Vec<(HostTy, bool)>,
+    /// The enclosing loops, innermost last.
+    loops: Vec<LoopCtx>,
     /// Captures recorded for the closure being checked.
     captures: HashMap<BindId, (CaptureMode, bool)>,
     /// Later textual uses per name, for loan liveness.
@@ -157,9 +188,10 @@ struct Checker {
     /// Operands of `*`, `/`, `%` whose type was an unresolved cell when
     /// checked: each must resolve to `i64`.
     i64_obligations: Vec<(HostTy, Span)>,
-    /// Operands of `==`/`!=` whose type was an unresolved cell when
-    /// checked: each must resolve to a type admitting equality.
-    eq_obligations: Vec<(HostTy, Span)>,
+    /// Operands of `==`/`!=`, receivers of `.clone()`, and elements of
+    /// `vec![v; n]` whose type still held an unresolved cell when
+    /// checked: each must settle on a type implementing its trait.
+    trait_obligations: Vec<(HostTy, Trait, Span)>,
     /// Each top-level function's declared parameter types, by
     /// [`FunId`]: callers check against the signature, which is known
     /// before any body (including a recursive caller's own) is checked.
@@ -194,7 +226,7 @@ impl Checker {
             int_cells: Vec::new(),
             never_cells: Vec::new(),
             i64_obligations: Vec::new(),
-            eq_obligations: Vec::new(),
+            trait_obligations: Vec::new(),
             fun_params: Vec::new(),
             map_alias: None,
             ctxs: Vec::new(),
@@ -355,13 +387,14 @@ impl Checker {
                     let id = self.item_env[&struct_item.name.name];
                     let mut fields = Vec::with_capacity(struct_item.fields.len());
                     for field in &struct_item.fields {
-                        let ty = self.resolve_ty(&field.ty, &mut Vec::new())?;
+                        let ty =
+                            self.resolve_ty_in(&field.ty, &mut Vec::new(), Elision::Missing)?;
                         fields.push((field.name.name.clone(), ty));
                     }
                     if fields.is_empty() {
                         // A tuple struct names its fields `0`, `1`, ...
                         for (index, ty) in struct_item.tuple.iter().enumerate() {
-                            let ty = self.resolve_ty(ty, &mut Vec::new())?;
+                            let ty = self.resolve_ty_in(ty, &mut Vec::new(), Elision::Missing)?;
                             fields.push((index.to_string(), ty));
                         }
                     }
@@ -373,11 +406,12 @@ impl Checker {
                     for variant in &enum_item.variants {
                         let mut payload: Vec<(String, HostTy)> = Vec::new();
                         for (index, ty) in variant.tuple.iter().enumerate() {
-                            let ty = self.resolve_ty(ty, &mut Vec::new())?;
+                            let ty = self.resolve_ty_in(ty, &mut Vec::new(), Elision::Missing)?;
                             payload.push((index.to_string(), ty));
                         }
                         for field in &variant.fields {
-                            let ty = self.resolve_ty(&field.ty, &mut Vec::new())?;
+                            let ty =
+                                self.resolve_ty_in(&field.ty, &mut Vec::new(), Elision::Missing)?;
                             payload.push((field.name.name.clone(), ty));
                         }
                         variants.push((variant.name.name.clone(), payload));
@@ -386,7 +420,7 @@ impl Checker {
                 }
                 ast::Item::TypeAlias(alias) => {
                     let id = self.item_env[&alias.name.name];
-                    let ty = self.resolve_ty(&alias.ty, &mut Vec::new())?;
+                    let ty = self.resolve_ty_in(&alias.ty, &mut Vec::new(), Elision::Missing)?;
                     self.sema.items[id.0 as usize].kind = ItemKind::Alias(ty);
                 }
                 ast::Item::Use(_) | ast::Item::Fn(_) => {}
@@ -459,10 +493,30 @@ impl Checker {
                 let ty = self.resolve_ty(&param.ty, &mut Vec::new())?;
                 params.push((param.name.name.clone(), ty));
             }
+            // Rust's elision rule: a returned reference borrows from
+            // the one reference among the parameters, and from nothing
+            // when there are none or several to choose from.
+            let inputs: usize = fun.params.iter().map(|param| elided_refs(&param.ty)).sum();
+            let ret_elision = if inputs == 1 {
+                Elision::Allowed
+            } else {
+                Elision::Missing
+            };
             let ret = match &fun.ret {
-                Some(ty) => self.resolve_ty(ty, &mut Vec::new())?,
+                Some(ty) => self.resolve_ty_in(ty, &mut Vec::new(), ret_elision)?,
                 None => HostTy::Unit,
             };
+            if fun.name.name == "main" {
+                if !params.is_empty() {
+                    return Err(Diag::type_error(
+                        fun.name.span,
+                        "`main` takes no parameters",
+                    ));
+                }
+                if ret != HostTy::Unit {
+                    return Err(Diag::type_error(fun.name.span, "`main` must return `()`"));
+                }
+            }
             self.fun_params[id.0 as usize] = params.iter().map(|(_, ty)| ty.clone()).collect();
             let def = &mut self.sema.funs[id.0 as usize];
             def.params = params
@@ -589,59 +643,102 @@ impl Checker {
         Ok((closure, ret_snapshot))
     }
 
-    /// Resolves a surface type, expanding aliases with cycle
-    /// detection.
+    /// Resolves a surface type where a reference's lifetime is
+    /// inferred from context (a `let` annotation, a parameter, a
+    /// closure parameter).
     fn resolve_ty(&self, ty: &ast::Ty, seen: &mut Vec<String>) -> Result<HostTy, Diag> {
+        self.resolve_ty_in(ty, seen, Elision::Allowed)
+    }
+
+    /// Resolves a surface type, expanding aliases with cycle
+    /// detection. `elision` says whether an elided reference lifetime
+    /// has anything to elide to here: named lifetimes are excluded, so
+    /// a reference in a field, an alias, or an unmatched return type is
+    /// Rust's E0106 rather than a type.
+    fn resolve_ty_in(
+        &self,
+        ty: &ast::Ty,
+        seen: &mut Vec<String>,
+        elision: Elision,
+    ) -> Result<HostTy, Diag> {
         Ok(match &ty.kind {
             ast::TyKind::Unit => HostTy::Unit,
             ast::TyKind::Bool => HostTy::Bool,
             ast::TyKind::I64 => HostTy::I64,
             ast::TyKind::Usize => HostTy::Usize,
-            ast::TyKind::Str => HostTy::Str,
+            ast::TyKind::Str => {
+                require_elision(elision, ty.span)?;
+                HostTy::Str
+            }
             ast::TyKind::String => HostTy::String,
             ast::TyKind::Ref(mutable, inner) => {
-                HostTy::Ref(*mutable, Box::new(self.resolve_ty(inner, seen)?))
+                require_elision(elision, ty.span)?;
+                HostTy::Ref(
+                    *mutable,
+                    Box::new(self.resolve_ty_in(inner, seen, elision)?),
+                )
             }
-            ast::TyKind::Box(inner) => HostTy::Box(Box::new(self.resolve_ty(inner, seen)?)),
-            ast::TyKind::Vec(inner) => HostTy::Vec(Box::new(self.resolve_ty(inner, seen)?)),
-            ast::TyKind::Option(inner) => HostTy::Option(Box::new(self.resolve_ty(inner, seen)?)),
+            ast::TyKind::Box(inner) => {
+                HostTy::Box(Box::new(self.resolve_ty_in(inner, seen, elision)?))
+            }
+            ast::TyKind::Vec(inner) => {
+                HostTy::Vec(Box::new(self.resolve_ty_in(inner, seen, elision)?))
+            }
+            ast::TyKind::Option(inner) => {
+                HostTy::Option(Box::new(self.resolve_ty_in(inner, seen, elision)?))
+            }
             ast::TyKind::Result(ok, err) => HostTy::Result(
-                Box::new(self.resolve_ty(ok, seen)?),
-                Box::new(self.resolve_ty(err, seen)?),
+                Box::new(self.resolve_ty_in(ok, seen, elision)?),
+                Box::new(self.resolve_ty_in(err, seen, elision)?),
             ),
-            ast::TyKind::HashMap(value) => HostTy::HashMap(Box::new(self.resolve_ty(value, seen)?)),
+            ast::TyKind::HashMap(value) => {
+                HostTy::HashMap(Box::new(self.resolve_ty_in(value, seen, elision)?))
+            }
             ast::TyKind::Array(inner, len) => {
                 let clean: String = len.chars().filter(|c| *c != '_').collect();
                 let count = clean
                     .parse::<u64>()
                     .map_err(|_| Diag::syntax(ty.span, "array lengths are integer literals"))?;
-                HostTy::Array(Box::new(self.resolve_ty(inner, seen)?), count)
+                HostTy::Array(Box::new(self.resolve_ty_in(inner, seen, elision)?), count)
             }
             ast::TyKind::Tuple(left, right) => HostTy::Tuple(
-                Box::new(self.resolve_ty(left, seen)?),
-                Box::new(self.resolve_ty(right, seen)?),
+                Box::new(self.resolve_ty_in(left, seen, elision)?),
+                Box::new(self.resolve_ty_in(right, seen, elision)?),
             ),
             ast::TyKind::Named(name) => self.resolve_named(name, ty.span, seen)?,
             ast::TyKind::FnPtr(params, ret) => {
-                let mut resolved = Vec::with_capacity(params.len());
-                for param in params {
-                    resolved.push(self.resolve_ty(param, seen)?);
-                }
-                HostTy::FnPtr(resolved, Box::new(self.resolve_ty(ret, seen)?))
+                let (resolved, ret) = self.resolve_signature_types(params, ret, seen)?;
+                HostTy::FnPtr(resolved, Box::new(ret))
             }
             ast::TyKind::DynClosure(kind, params, ret) => {
-                let closure_kind = closure_kind_of(*kind);
-                let mut resolved = Vec::with_capacity(params.len());
-                for param in params {
-                    resolved.push(self.resolve_ty(param, seen)?);
-                }
-                HostTy::DynFn(
-                    closure_kind,
-                    resolved,
-                    Box::new(self.resolve_ty(ret, seen)?),
-                )
+                let (resolved, ret) = self.resolve_signature_types(params, ret, seen)?;
+                HostTy::DynFn(closure_kind_of(*kind), resolved, Box::new(ret))
             }
         })
+    }
+
+    /// The parameter and result types of a function-pointer or boxed
+    /// closure type. Such a type is its own elision scope: its
+    /// parameters' references are fresh, and its result may borrow only
+    /// from exactly one of them.
+    fn resolve_signature_types(
+        &self,
+        params: &[ast::Ty],
+        ret: &ast::Ty,
+        seen: &mut Vec<String>,
+    ) -> Result<(Vec<HostTy>, HostTy), Diag> {
+        let mut resolved = Vec::with_capacity(params.len());
+        for param in params {
+            resolved.push(self.resolve_ty_in(param, seen, Elision::Allowed)?);
+        }
+        let inputs: usize = params.iter().map(elided_refs).sum();
+        let ret_elision = if inputs == 1 {
+            Elision::Allowed
+        } else {
+            Elision::Missing
+        };
+        let ret = self.resolve_ty_in(ret, seen, ret_elision)?;
+        Ok((resolved, ret))
     }
 
     fn resolve_named(
@@ -945,10 +1042,25 @@ impl Checker {
             }
         }
         self.check_loans(root, access, span)?;
-        if access == Access::Move && !ty.is_copy() {
+        if access == Access::Move && !self.is_copy_ty(&ty) {
             self.ctx_mut().uninit.push(root);
         }
         Ok(())
+    }
+
+    /// Whether values of `ty` are `Copy`, judged through the inference
+    /// cells settled so far. An integer-literal cell will be an
+    /// integer, hence `Copy`; any other unresolved cell is treated as a
+    /// value that moves.
+    pub(crate) fn is_copy_ty(&self, ty: &HostTy) -> bool {
+        match self.deep(ty) {
+            HostTy::Infer(index) => self.int_cells.contains(&index),
+            HostTy::Option(inner) | HostTy::Array(inner, _) => self.is_copy_ty(&inner),
+            HostTy::Tuple(left, right) | HostTy::Result(left, right) => {
+                self.is_copy_ty(&left) && self.is_copy_ty(&right)
+            }
+            other => other.is_copy(),
+        }
     }
 
     fn check_loans(&mut self, root: BindId, access: Access, span: Span) -> Result<(), Diag> {
@@ -1009,6 +1121,56 @@ impl Checker {
     fn reinit(&mut self, root: BindId) {
         let ctx = self.ctx_mut();
         ctx.uninit.retain(|b| *b != root);
+    }
+}
+
+/// Whether an elided reference lifetime has anything to elide to at a
+/// position of a written type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Elision {
+    /// Inferred from context: a `let` annotation, a parameter, or the
+    /// result of a signature with exactly one reference parameter.
+    Allowed,
+    /// Nothing to borrow from: a field, an alias body, or a result with
+    /// no single reference parameter.
+    Missing,
+}
+
+fn require_elision(elision: Elision, span: Span) -> Result<(), Diag> {
+    match elision {
+        Elision::Allowed => Ok(()),
+        Elision::Missing => Err(Diag::type_error(
+            span,
+            "missing lifetime specifier: this reference has no lifetime to elide to \
+             and the subset has no named lifetimes",
+        )),
+    }
+}
+
+/// The elided reference lifetimes a written type contributes to its
+/// enclosing signature: one per `&`/`&mut`/`&str`, not counting those
+/// inside a function-pointer or boxed-closure type, which form their
+/// own scope.
+fn elided_refs(ty: &ast::Ty) -> usize {
+    match &ty.kind {
+        ast::TyKind::Ref(_, inner) => 1 + elided_refs(inner),
+        ast::TyKind::Str => 1,
+        ast::TyKind::Box(inner)
+        | ast::TyKind::Vec(inner)
+        | ast::TyKind::Option(inner)
+        | ast::TyKind::HashMap(inner)
+        | ast::TyKind::Array(inner, _) => elided_refs(inner),
+        ast::TyKind::Result(left, right) | ast::TyKind::Tuple(left, right) => {
+            elided_refs(left) + elided_refs(right)
+        }
+        ast::TyKind::Unit
+        | ast::TyKind::Bool
+        | ast::TyKind::I64
+        | ast::TyKind::Usize
+        | ast::TyKind::String
+        | ast::TyKind::Named(_)
+        | ast::TyKind::FnPtr(..)
+        | ast::TyKind::DynClosure(..) => 0,
     }
 }
 
@@ -1602,18 +1764,10 @@ fn resolve_pat(pat: &HirPat) -> HirPat {
             HirPatKind::Tuple(Box::new(resolve_pat(left)), Box::new(resolve_pat(right)))
         }
         HirPatKind::TuplePath(resolved, sub) => {
-            let mut out = Vec::with_capacity(sub.len());
-            for item in sub {
-                out.push(resolve_pat(item));
-            }
-            HirPatKind::TuplePath(resolved.clone(), out)
+            HirPatKind::TuplePath(resolved.clone(), sub.iter().map(resolve_pat).collect())
         }
         HirPatKind::StructPath(resolved, fields) => {
-            let mut out = Vec::with_capacity(fields.len());
-            for field in fields {
-                out.push(field.as_ref().map(resolve_pat));
-            }
-            HirPatKind::StructPath(resolved.clone(), out)
+            HirPatKind::StructPath(resolved.clone(), fields.iter().map(resolve_pat).collect())
         }
     };
     HirPat {
@@ -1623,26 +1777,6 @@ fn resolve_pat(pat: &HirPat) -> HirPat {
 }
 
 impl Checker {
-    /// The comparison class of a type (grammar §3). An unresolved
-    /// integer-literal cell compares as an integer for now; when no
-    /// admitted context ever pins it, inference still rejects the
-    /// program as `Unsupported`, so the verdict never flips to accept.
-    pub(crate) fn cmp_class(&self, ty: &HostTy) -> Option<CmpClass> {
-        match self.deep(ty) {
-            HostTy::Bool | HostTy::Unit | HostTy::Str => Some(CmpClass::Eq),
-            HostTy::I64 | HostTy::Usize | HostTy::String => Some(CmpClass::Ord),
-            HostTy::Infer(index) if self.int_cells.contains(&index) => Some(CmpClass::Ord),
-            HostTy::Struct(id) | HostTy::Enum(id) => {
-                if self.item_has_derive(id, DeriveName::PartialEq) {
-                    Some(CmpClass::Eq)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
     fn item_has_derive(&self, id: ItemId, want: DeriveName) -> bool {
         self.derives
             .get(&id)
@@ -1682,24 +1816,6 @@ impl Checker {
                 ));
             }
         }
-        for (ty, span) in &self.eq_obligations {
-            let ty = self.deep(ty);
-            if !matches!(ty, HostTy::Infer(_)) && self.cmp_class(&ty).is_none() {
-                return Err(Diag::type_error(
-                    *span,
-                    format!("`{ty:?}` does not admit equality"),
-                ));
-            }
-        }
-        Ok(())
+        self.discharge_trait_obligations()
     }
-}
-
-/// The order class of a comparison: which operators a type admits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CmpClass {
-    /// Equality only.
-    Eq,
-    /// `==`, `!=`, and the ordering operators.
-    Ord,
 }

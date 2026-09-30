@@ -203,12 +203,21 @@ pub enum HostTy {
 }
 
 impl HostTy {
-    /// Whether values of this type are `Copy` (grammar §3).
+    /// Whether values of this type are `Copy` (grammar §3): the
+    /// scalars, shared references, and function pointers, and, as in
+    /// Rust, a tuple, array, `Option`, or `Result` exactly when its
+    /// components are. User data (no `Copy` derive is admitted),
+    /// `String`, `Vec`, `HashMap`, `Box`, mutable references, boxed
+    /// closures, and iterators are moved.
     #[must_use]
     pub fn is_copy(&self) -> bool {
         match self {
             Self::Unit | Self::Bool | Self::I64 | Self::Usize | Self::Str | Self::FnPtr(..) => true,
             Self::Ref(mutable, _) => !*mutable,
+            Self::Option(inner) | Self::Array(inner, _) => inner.is_copy(),
+            Self::Tuple(left, right) | Self::Result(left, right) => {
+                left.is_copy() && right.is_copy()
+            }
             Self::Infer(_)
             | Self::Range(_)
             | Self::Iter(_)
@@ -218,11 +227,7 @@ impl HostTy {
             | Self::Zip(..)
             | Self::Box(_)
             | Self::Vec(_)
-            | Self::Option(_)
-            | Self::Result(..)
             | Self::HashMap(_)
-            | Self::Array(..)
-            | Self::Tuple(..)
             | Self::Struct(_)
             | Self::Enum(_)
             | Self::String
@@ -713,9 +718,9 @@ pub enum HirPatKind {
     UnitPath(Resolved),
     /// A tuple-struct or tuple-variant pattern.
     TuplePath(Resolved, Vec<HirPat>),
-    /// A struct or variant pattern with fields in declaration order;
-    /// missing fields bind nothing and match any value.
-    StructPath(Resolved, Vec<Option<HirPat>>),
+    /// A struct or variant pattern with one sub-pattern per field in
+    /// declaration order: the subset has no `..`, so none is omitted.
+    StructPath(Resolved, Vec<HirPat>),
 }
 
 /// The parsed form of a format string (grammar §4): literal pieces

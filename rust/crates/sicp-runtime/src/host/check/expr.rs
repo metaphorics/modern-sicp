@@ -8,12 +8,53 @@
 use std::collections::HashMap;
 
 use crate::host::ast::{self};
-use crate::host::check::{Access, Checker, Loan, table_index};
+use crate::host::check::traits::Trait;
+use crate::host::check::{Access, Checker, Loan, LoopCtx, table_index};
 use crate::host::diag::{Diag, Span};
 use crate::host::hir::{
-    BinOp, BindId, CaptureMode, ClosureKind, CtorOp, HirBlock, HirExpr, HirExprKind, HirStmt,
-    HostTy, ItemKind, MethodOp, Place, PlaceRoot, PlaceUse, Proj, Resolved, UnOp,
+    BinOp, BindId, CaptureMode, ClosureKind, CtorOp, HirBlock, HirExpr, HirExprKind, HirPat,
+    HirPatKind, HirStmt, HostTy, ItemKind, MethodOp, Place, PlaceRoot, PlaceUse, Proj, Resolved,
+    UnOp,
 };
+
+/// The move state at the top of a loop, taken before its header.
+struct LoopMark {
+    /// The bindings already moved on entry.
+    moved: Vec<BindId>,
+    /// The first binding id the loop's own code allocates: earlier ids
+    /// name bindings that outlive an iteration.
+    next_bind: u32,
+}
+
+/// Whether a loop's body runs before its condition is known.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoopEntry {
+    /// `loop`: the body always runs first; only `break` leaves it.
+    Unconditional,
+    /// `while`, `while let`, `for`: the loop may end before or after
+    /// any iteration.
+    Guarded,
+}
+
+/// Whether control cannot reach the end of `block`.
+fn block_diverges(block: &HirBlock) -> bool {
+    block.tail.as_ref().is_some_and(|tail| tail.diverges)
+        || block.stmts.iter().any(|stmt| match stmt {
+            HirStmt::Expr(expr) | HirStmt::Let { value: expr, .. } => expr.diverges,
+        })
+}
+
+/// How an expression uses the place it names (grammar §5). A value use
+/// moves a non-`Copy` place out; a place use only reads or borrows it,
+/// as comparison operands, format arguments, method receivers,
+/// scrutinees, and field, index, and dereference bases do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Use {
+    /// The expression's value is consumed.
+    Value,
+    /// The expression names a place that is only inspected.
+    Place,
+}
 
 impl Checker {
     /// Checks a block as a function or closure body.
@@ -199,14 +240,34 @@ impl Checker {
         }
     }
 
-    /// Checks one expression against an optional expectation.
+    /// Checks one expression against an optional expectation, using
+    /// its value: a non-`Copy` local, field, or element it names moves.
     pub(crate) fn check_expr(
         &mut self,
         expr: &ast::Expr,
         expect: Option<&HostTy>,
     ) -> Result<HirExpr, Diag> {
+        self.check_expr_as(expr, expect, Use::Value)
+    }
+
+    /// Checks an expression that is only inspected in place, never
+    /// consumed: nothing it names moves.
+    pub(crate) fn check_expr_place(
+        &mut self,
+        expr: &ast::Expr,
+        expect: Option<&HostTy>,
+    ) -> Result<HirExpr, Diag> {
+        self.check_expr_as(expr, expect, Use::Place)
+    }
+
+    fn check_expr_as(
+        &mut self,
+        expr: &ast::Expr,
+        expect: Option<&HostTy>,
+        usage: Use,
+    ) -> Result<HirExpr, Diag> {
         self.ctx_mut().here = expr.span;
-        let checked = self.check_expr_kind(expr, expect)?;
+        let checked = self.check_expr_kind(expr, expect, usage)?;
         self.coerce(checked, expect, expr.span)
     }
 
@@ -321,6 +382,7 @@ impl Checker {
         &mut self,
         expr: &ast::Expr,
         expect: Option<&HostTy>,
+        usage: Use,
     ) -> Result<HirExpr, Diag> {
         let span = expr.span;
         match &expr.kind {
@@ -337,7 +399,7 @@ impl Checker {
                 Ok(node(HirExprKind::Bool(*value), HostTy::Bool, false, span))
             }
             ast::ExprKind::UnitLit => Ok(node(HirExprKind::Unit, HostTy::Unit, false, span)),
-            ast::ExprKind::Path(path) => self.check_path_value(path, span),
+            ast::ExprKind::Path(path) => self.check_path_value(path, expect, usage, span),
             ast::ExprKind::Tuple(left, right) => self.check_tuple(left, right, span),
             ast::ExprKind::Array(items) => {
                 let (checked, elem) = self.check_elements(items)?;
@@ -354,15 +416,15 @@ impl Checker {
             ast::ExprKind::VecRepeat(value, count) => self.check_vec_repeat(value, count, span),
             ast::ExprKind::Format { kind, fmt, args } => self.check_format(*kind, fmt, args, span),
             ast::ExprKind::StructLit { path, fields } => self.check_struct_lit(path, fields, span),
-            ast::ExprKind::Field { base, name } => self.check_field(base, &name.name, span),
-            ast::ExprKind::Index { base, index } => self.check_index(base, index, span),
+            ast::ExprKind::Field { base, name } => self.check_field(base, &name.name, usage, span),
+            ast::ExprKind::Index { base, index } => self.check_index(base, index, usage, span),
             ast::ExprKind::Call { callee, args } => self.check_call(callee, args, expect, span),
             ast::ExprKind::MethodCall {
                 receiver,
                 name,
                 args,
             } => self.check_method(receiver, &name.name, args, span),
-            ast::ExprKind::Unary { op, operand } => self.check_unary(*op, operand, span),
+            ast::ExprKind::Unary { op, operand } => self.check_unary(*op, operand, usage, span),
             ast::ExprKind::Binary { op, left, right } => self.check_binary(*op, left, right, span),
             ast::ExprKind::Assign { op, target, value } => {
                 self.check_assign(*op, target, value, span)
@@ -428,6 +490,7 @@ impl Checker {
     ) -> Result<HirExpr, Diag> {
         let elem = self.fresh_cell(false);
         let checked = self.check_expr(value, Some(&elem))?;
+        self.require_trait(&elem, Trait::Clone, value.span)?;
         let times = self.check_expr(count, Some(&HostTy::Usize))?;
         let ty = HostTy::Vec(Box::new(elem));
         Ok(node(
@@ -453,9 +516,11 @@ impl Checker {
     }
 
     fn check_continue(&mut self, span: Span) -> Result<HirExpr, Diag> {
-        if self.ctx().loops.is_empty() {
+        let moved = self.ctx().uninit.clone();
+        let Some(current) = self.ctx_mut().loops.last_mut() else {
             return Err(Diag::type_error(span, "`continue` outside a loop"));
-        }
+        };
+        current.continue_moves.push(moved);
         let cell = self.fresh_never_cell();
         Ok(node(HirExprKind::Continue, cell, true, span))
     }
@@ -494,8 +559,10 @@ impl Checker {
         body: &ast::Block,
         span: Span,
     ) -> Result<HirExpr, Diag> {
+        let mark = self.loop_mark();
         let checked_test = self.check_expr(test, Some(&HostTy::Bool))?;
-        let (checked_body, _) = self.check_loop_block(body, HostTy::Unit)?;
+        let (checked_body, _) =
+            self.check_loop_block(body, HostTy::Unit, mark, LoopEntry::Guarded)?;
         Ok(node(
             HirExprKind::While {
                 test: Box::new(checked_test),
@@ -514,11 +581,14 @@ impl Checker {
         body: &ast::Block,
         span: Span,
     ) -> Result<HirExpr, Diag> {
-        let checked_value = self.check_expr(value, None)?;
+        let mark = self.loop_mark();
+        let checked_value = self.check_expr_place(value, None)?;
         let wanted = checked_value.ty.clone();
         self.ctx_mut().scopes.push(HashMap::new());
         let checked_pat = self.check_pattern(pat, &wanted)?;
-        let (checked_body, _) = self.check_loop_block(body, HostTy::Unit)?;
+        self.move_bound_by_value(&checked_value, &checked_pat, value.span)?;
+        let (checked_body, _) =
+            self.check_loop_block(body, HostTy::Unit, mark, LoopEntry::Guarded)?;
         self.pop_scope();
         Ok(node(
             HirExprKind::WhileLet {
@@ -540,12 +610,16 @@ impl Checker {
     }
 
     fn check_break(&mut self, value: Option<&ast::Expr>, span: Span) -> Result<HirExpr, Diag> {
-        let Some((cell, saw_break)) = self.ctx_mut().loops.last_mut() else {
+        let Some(current) = self.ctx_mut().loops.last_mut() else {
             return Err(Diag::type_error(span, "`break` outside a loop"));
         };
-        *saw_break = true;
-        let cell = cell.clone();
+        current.saw_break = true;
+        let cell = current.break_ty.clone();
         let checked = self.check_jump_value(value, &cell, span)?;
+        let moved = self.ctx().uninit.clone();
+        if let Some(current) = self.ctx_mut().loops.last_mut() {
+            current.break_moves.push(moved);
+        }
         let cell = self.fresh_never_cell();
         Ok(node(HirExprKind::Break(checked), cell, true, span))
     }
@@ -603,26 +677,59 @@ impl Checker {
         Ok(node(kind, ty, false, span))
     }
 
-    fn check_path_value(&mut self, path: &[ast::Ident], span: Span) -> Result<HirExpr, Diag> {
-        match self.resolve_path(path, span)? {
-            Resolved::Local(binding) => {
-                self.check_access(binding, Access::Read, span)?;
-                self.note_capture_use(binding, Access::Read);
-                let ty = self.sema.bindings[binding.0 as usize].ty.clone();
-                Ok(node(
-                    HirExprKind::Place {
-                        place: Place {
-                            root: PlaceRoot::Local(binding),
-                            proj: Vec::new(),
-                            span,
-                        },
-                        mode: PlaceUse::Read,
-                    },
-                    ty,
-                    false,
+    /// A local named as an operand. A value use of a non-`Copy` local
+    /// moves it (grammar §5), except that a `&mut` local passed where a
+    /// reference is expected is reborrowed, as Rust does at a coercion
+    /// site whose type is known.
+    fn use_local(
+        &mut self,
+        binding: BindId,
+        expect: Option<&HostTy>,
+        usage: Use,
+        span: Span,
+    ) -> Result<HirExpr, Diag> {
+        let ty = self.sema.bindings[binding.0 as usize].ty.clone();
+        let reborrows = matches!(self.deep(&ty), HostTy::Ref(true, _))
+            && expect.is_some_and(|want| matches!(self.deep(want), HostTy::Ref(..)));
+        let moves = usage == Use::Value && !reborrows && !self.is_copy_ty(&ty);
+        let access = if moves { Access::Move } else { Access::Read };
+        self.check_access(binding, access, span)?;
+        self.note_capture_use(
+            binding,
+            if reborrows && usage == Use::Value {
+                Access::BorrowMut
+            } else {
+                access
+            },
+        );
+        Ok(node(
+            HirExprKind::Place {
+                place: Place {
+                    root: PlaceRoot::Local(binding),
+                    proj: Vec::new(),
                     span,
-                ))
-            }
+                },
+                mode: if moves {
+                    PlaceUse::Move
+                } else {
+                    PlaceUse::Read
+                },
+            },
+            ty,
+            false,
+            span,
+        ))
+    }
+
+    fn check_path_value(
+        &mut self,
+        path: &[ast::Ident],
+        expect: Option<&HostTy>,
+        usage: Use,
+        span: Span,
+    ) -> Result<HirExpr, Diag> {
+        match self.resolve_path(path, span)? {
+            Resolved::Local(binding) => self.use_local(binding, expect, usage, span),
             Resolved::Fun(id) => {
                 let params = self.fun_params[id.0 as usize].clone();
                 let ret = self.sema.funs[id.0 as usize].ret.clone();
@@ -729,7 +836,6 @@ impl Checker {
             ("Vec", "new") => Some(CtorOp::VecNew),
             ("Vec", "with_capacity") => Some(CtorOp::VecWithCapacity),
             ("Box", "new") => Some(CtorOp::BoxNew),
-            ("HashMap", "new") => Some(CtorOp::MapNew),
             (map, "new") if self.map_alias.as_deref() == Some(map) => Some(CtorOp::MapNew),
             _ => None,
         };
@@ -875,27 +981,19 @@ impl Checker {
                 format!("cannot find value `{name}` in this scope"),
             ));
         };
-        self.check_access(binding, Access::Read, span)?;
-        self.note_capture_use(binding, Access::Read);
-        let ty = self.sema.bindings[binding.0 as usize].ty.clone();
-        let ty = self.unify(&ty, want, span)?;
-        Ok(node(
-            HirExprKind::Place {
-                place: Place {
-                    root: PlaceRoot::Local(binding),
-                    proj: Vec::new(),
-                    span,
-                },
-                mode: PlaceUse::Read,
-            },
-            ty,
-            false,
-            span,
-        ))
+        let mut checked = self.use_local(binding, Some(want), Use::Value, span)?;
+        checked.ty = self.unify(&checked.ty, want, span)?;
+        Ok(checked)
     }
 
-    fn check_field(&mut self, base: &ast::Expr, name: &str, span: Span) -> Result<HirExpr, Diag> {
-        let checked_base = self.check_expr(base, None)?;
+    fn check_field(
+        &mut self,
+        base: &ast::Expr,
+        name: &str,
+        usage: Use,
+        span: Span,
+    ) -> Result<HirExpr, Diag> {
+        let checked_base = self.check_expr_place(base, None)?;
         let base_ty = self.peel_refs(&checked_base.ty);
         let field_types = self.field_table(&base_ty, span)?;
         let Some(position) = field_types.iter().position(|(field, _)| *field == name) else {
@@ -905,6 +1003,9 @@ impl Checker {
             ));
         };
         let ty = field_types[position].1.clone();
+        if usage == Use::Value && !self.is_copy_ty(&ty) {
+            self.move_out_of(&checked_base, span)?;
+        }
         Ok(node(
             HirExprKind::Field {
                 base: Box::new(checked_base),
@@ -937,19 +1038,70 @@ impl Checker {
         }
     }
 
+    /// Moves a non-`Copy` field out of `base` (a value use of `base.f`):
+    /// legal out of an owned local or a temporary, and out of nothing
+    /// borrowed. The whole local counts as moved.
+    fn move_out_of(&mut self, base: &HirExpr, span: Span) -> Result<(), Diag> {
+        let Some(binding) = self.moved_root(base, span)? else {
+            return Ok(());
+        };
+        self.check_access(binding, Access::Move, span)?;
+        self.note_capture_use(binding, Access::Move);
+        Ok(())
+    }
+
+    /// The local an owning place expression is rooted in, or `None` for
+    /// a temporary.
+    ///
+    /// # Errors
+    /// An ownership error when the place lies behind a reference or in
+    /// an indexed element, which cannot be moved out of (Rust E0507).
+    fn moved_root(&self, expr: &HirExpr, span: Span) -> Result<Option<BindId>, Diag> {
+        match &expr.kind {
+            HirExprKind::Place { place, .. } => match &place.root {
+                PlaceRoot::Local(binding) => Ok(Some(*binding)),
+                PlaceRoot::Deref(_) => Err(Diag::ownership(
+                    span,
+                    "cannot move out of a value behind a reference",
+                )),
+            },
+            HirExprKind::Field { base, .. } => {
+                if matches!(self.deep(&base.ty), HostTy::Ref(..)) {
+                    return Err(Diag::ownership(
+                        span,
+                        "cannot move out of a field behind a reference",
+                    ));
+                }
+                self.moved_root(base, span)
+            }
+            HirExprKind::Index { .. } => Err(Diag::ownership(
+                span,
+                "cannot move out of an indexed element",
+            )),
+            _ => Ok(None),
+        }
+    }
+
     fn check_index(
         &mut self,
         base: &ast::Expr,
         index: &ast::Expr,
+        usage: Use,
         span: Span,
     ) -> Result<HirExpr, Diag> {
-        let checked_base = self.check_expr(base, None)?;
+        let checked_base = self.check_expr_place(base, None)?;
         let checked_index = self.check_expr(index, Some(&HostTy::Usize))?;
         let base_ty = self.peel_refs(&checked_base.ty);
         let elem = match base_ty {
             HostTy::Vec(inner) | HostTy::Array(inner, _) => *inner,
             _ => return Err(Diag::type_error(span, "indexing needs a vector or array")),
         };
+        if usage == Use::Value && !self.is_copy_ty(&elem) {
+            return Err(Diag::ownership(
+                span,
+                "cannot move out of an indexed element",
+            ));
+        }
         Ok(node(
             HirExprKind::Index {
                 base: Box::new(checked_base),
@@ -976,7 +1128,7 @@ impl Checker {
                 return self.check_resolved_call(resolved, args, expect, span);
             }
         }
-        let checked_callee = self.check_expr(callee, None)?;
+        let checked_callee = self.check_expr_place(callee, None)?;
         // A boxed function or closure calls through the box, as the
         // standard library's `Fn` implementations for `Box<F>` do.
         let mut callee_ty = self.deep(&checked_callee.ty);
@@ -1232,33 +1384,22 @@ impl Checker {
         args: &[ast::Expr],
         span: Span,
     ) -> Result<HirExpr, Diag> {
-        let mut checked_receiver = self.check_expr(receiver, None)?;
+        // A receiver is a place the method borrows (even a dereference
+        // root reads without moving, so `(*slot).clone()` leaves the
+        // referent live like the native borrow); only the by-value
+        // iterator methods consume it, and the engines take the
+        // receiver of `into_iter` explicitly.
+        let checked_receiver = self.check_expr_place(receiver, None)?;
         let recv_ty = self.deep(&checked_receiver.ty);
         if name == "zip" {
+            self.consume_receiver(&checked_receiver, span)?;
             return self.check_zip(receiver, checked_receiver, args, span);
         }
         let op = self.method_op(&recv_ty, name, span)?;
         let receiver_place = self.place_of(receiver).ok();
         self.enforce_receiver_mutability(op, receiver_place.as_ref(), span)?;
-        if op == MethodOp::IntoIter
-            && let Some(place) = &receiver_place
-            && let PlaceRoot::Local(binding) = &place.root
-        {
-            let binding = *binding;
-            let ty = self.sema.bindings[binding.0 as usize].ty.clone();
-            if !ty.is_copy() {
-                self.check_access(binding, Access::Move, span)?;
-                self.note_capture_use(binding, Access::Move);
-            }
-        }
-        if op != MethodOp::IntoIter {
-            // Method receivers borrow their place: even a dereference
-            // root reads without moving, so `(*slot).clone()` leaves
-            // the referent live exactly like the native borrow. Only
-            // `into_iter` consumes, and the engines take it explicitly.
-            if let HirExprKind::Place { mode, .. } = &mut checked_receiver.kind {
-                *mode = PlaceUse::Read;
-            }
+        if matches!(op, MethodOp::IntoIter | MethodOp::Enumerate) {
+            self.consume_receiver(&checked_receiver, span)?;
         }
         let (params, ret) = self.method_signature(op, &recv_ty, span)?;
         if args.len() != params.len() {
@@ -1282,6 +1423,15 @@ impl Checker {
             false,
             span,
         ))
+    }
+
+    /// A by-value method (`into_iter`, `enumerate`, `zip`) takes its
+    /// receiver: a non-`Copy` one moves out of its place.
+    fn consume_receiver(&mut self, receiver: &HirExpr, span: Span) -> Result<(), Diag> {
+        if self.is_copy_ty(&receiver.ty) {
+            return Ok(());
+        }
+        self.move_out_of(receiver, span)
     }
 
     fn check_zip(
@@ -1367,7 +1517,7 @@ impl Checker {
         Ok(())
     }
 
-    fn method_op(&self, recv: &HostTy, name: &str, span: Span) -> Result<MethodOp, Diag> {
+    fn method_op(&mut self, recv: &HostTy, name: &str, span: Span) -> Result<MethodOp, Diag> {
         let peeled = match recv {
             HostTy::Ref(_, inner) => self.deep(inner),
             other => other.clone(),
@@ -1402,12 +1552,7 @@ impl Checker {
             (TypeKind::Box, "as_ref") => MethodOp::BoxAsRef,
             (TypeKind::Box, "as_mut") => MethodOp::BoxAsMut,
             (_, "clone") => {
-                if !self.cloneable(recv) {
-                    return Err(Diag::type_error(
-                        span,
-                        "this type has no admitted `Clone` implementation",
-                    ));
-                }
+                self.require_clone_receiver(recv, span)?;
                 MethodOp::Clone
             }
             (
@@ -1434,21 +1579,6 @@ impl Checker {
             }
         };
         Ok(op)
-    }
-
-    fn cloneable(&self, ty: &HostTy) -> bool {
-        match self.deep(ty) {
-            HostTy::Struct(id) | HostTy::Enum(id) => {
-                self.item_has_derive(id, ast::DeriveName::Clone)
-            }
-            HostTy::Box(inner) | HostTy::Vec(inner) | HostTy::Option(inner) => {
-                self.cloneable(&inner)
-            }
-            HostTy::HashMap(inner) | HostTy::Array(inner, _) => self.cloneable(&inner),
-            HostTy::Result(ok, err) => self.cloneable(&ok) && self.cloneable(&err),
-            HostTy::Tuple(left, right) => self.cloneable(&left) && self.cloneable(&right),
-            _ => true,
-        }
     }
 
     fn method_signature(
@@ -1509,13 +1639,12 @@ impl Checker {
             // Method resolution finds `T::clone` for a `&T` receiver
             // first (auto-ref), so `(&T).clone()` yields an owned `T`.
             MethodOp::Clone => match self.deep(recv) {
-                HostTy::Ref(_, inner) if self.cloneable(&inner) => (Vec::new(), *inner),
+                HostTy::Ref(_, inner) if self.implements(&inner, Trait::Clone) => {
+                    (Vec::new(), *inner)
+                }
                 other => (Vec::new(), other),
             },
-            MethodOp::Iter => (
-                Vec::new(),
-                HostTy::Iter(collection_elem(peeled, "iter", span)?),
-            ),
+            MethodOp::Iter => (Vec::new(), iter_type(peeled, span)?),
             MethodOp::IterMut => (
                 Vec::new(),
                 HostTy::IterMut(collection_elem(peeled, "iter_mut", span)?),
@@ -1563,7 +1692,13 @@ impl Checker {
         }
     }
 
-    fn check_unary(&mut self, op: UnOp, operand: &ast::Expr, span: Span) -> Result<HirExpr, Diag> {
+    fn check_unary(
+        &mut self,
+        op: UnOp,
+        operand: &ast::Expr,
+        usage: Use,
+        span: Span,
+    ) -> Result<HirExpr, Diag> {
         match op {
             UnOp::Neg => {
                 let checked = self.check_expr(operand, Some(&HostTy::I64))?;
@@ -1590,18 +1725,18 @@ impl Checker {
                 ))
             }
             UnOp::Deref => {
-                let checked = self.check_expr(operand, None)?;
+                let checked = self.check_expr_place(operand, None)?;
                 let deep = self.deep(&checked.ty);
-                let (shared, referent) = deep
+                let (_, referent) = deep
                     .referent()
                     .ok_or_else(|| Diag::type_error(span, "dereference needs a reference"))?;
-                let _ = shared;
                 let referent = referent.clone();
-                let mode = if referent.is_copy() {
-                    PlaceUse::Read
-                } else {
-                    PlaceUse::Move
-                };
+                if usage == Use::Value && !self.is_copy_ty(&referent) {
+                    return Err(Diag::ownership(
+                        span,
+                        "cannot move out of a value behind a reference",
+                    ));
+                }
                 Ok(node(
                     HirExprKind::Place {
                         place: Place {
@@ -1609,7 +1744,7 @@ impl Checker {
                             proj: Vec::new(),
                             span,
                         },
-                        mode,
+                        mode: PlaceUse::Read,
                     },
                     referent,
                     false,
@@ -1838,8 +1973,9 @@ impl Checker {
                 span,
             ));
         }
-        let l = self.check_expr(left, None)?;
-        let r = self.check_expr(right, Some(&l.ty))?;
+        // Operators borrow their operands (`a == b` is `PartialEq::eq(&a, &b)`).
+        let l = self.check_expr_place(left, None)?;
+        let r = self.check_expr_place(right, Some(&l.ty))?;
         let ty = self.deep(&l.ty);
         match op {
             BinOp::Add | BinOp::Sub => {
@@ -1862,15 +1998,7 @@ impl Checker {
                 }
             }
             BinOp::Eq | BinOp::Ne => {
-                if !matches!(ty, HostTy::Infer(_)) && self.cmp_class(&ty).is_none() {
-                    return Err(Diag::type_error(
-                        span,
-                        format!("`{ty:?}` does not admit equality"),
-                    ));
-                }
-                if let HostTy::Infer(_) = ty {
-                    self.eq_obligations.push((ty.clone(), span));
-                }
+                self.require_trait(&ty, Trait::PartialEq, span)?;
                 return Ok(bool_binary(op, l, r, span));
             }
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
@@ -1909,14 +2037,22 @@ impl Checker {
     ) -> Result<HirExpr, Diag> {
         let place = self.place_of(target)?;
         let target_ty = self.place_ty(&place)?;
-        self.check_assign_place(&place, span)?;
         if op.is_some() && !self.admits_integer(&self.deep(&target_ty)) {
             return Err(Diag::type_error(
                 span,
                 "`+=` and `-=` need `i64` or `usize` places",
             ));
         }
+        // Rust evaluates the value first, then writes the place: the
+        // write re-initializes a place the value moved out of
+        // (`list = Cons(1, Box::new(list))`), and the borrows the value
+        // took (`v = f(&v)`) end before it.
+        let loans_before = self.ctx().loans.len();
         let checked = self.check_expr(value, Some(&target_ty))?;
+        let loans = &mut self.ctx_mut().loans;
+        let taken = loans.split_off(loans_before);
+        loans.extend(taken.into_iter().filter(|loan| loan.holder.is_some()));
+        self.check_assign_place(&place, span)?;
         Ok(node(
             HirExprKind::Assign {
                 op,
@@ -2035,12 +2171,13 @@ impl Checker {
         expect: Option<&HostTy>,
         span: Span,
     ) -> Result<HirExpr, Diag> {
-        let checked_value = self.check_expr(value, None)?;
+        let checked_value = self.check_expr_place(value, None)?;
         let wanted = checked_value.ty.clone();
         let want = expect.cloned().unwrap_or(HostTy::Unit);
         let mut branches = BranchMoves::start(self);
         self.ctx_mut().scopes.push(HashMap::new());
         let checked_pat = self.check_pattern(pat, &wanted)?;
+        self.move_bound_by_value(&checked_value, &checked_pat, value.span)?;
         let then_block = self.check_block_body(then, Some(&want))?;
         self.pop_scope();
         let then_diverges = then_block.tail.as_ref().is_some_and(|tail| tail.diverges);
@@ -2085,7 +2222,7 @@ impl Checker {
         expect: Option<&HostTy>,
         span: Span,
     ) -> Result<HirExpr, Diag> {
-        let checked_value = self.check_expr(scrutinee, None)?;
+        let checked_value = self.check_expr_place(scrutinee, None)?;
         let wanted = checked_value.ty.clone();
         let want = expect.cloned().unwrap_or_else(|| self.fresh_cell(false));
         let mut branches = BranchMoves::start(self);
@@ -2093,6 +2230,7 @@ impl Checker {
         for arm in arms {
             self.ctx_mut().scopes.push(HashMap::new());
             let pat = self.check_pattern(&arm.pat, &wanted)?;
+            self.move_bound_by_value(&checked_value, &pat, scrutinee.span)?;
             let body = self.check_expr(&arm.body, Some(&want))?;
             self.pop_scope();
             branches.end_branch(self, body.diverges);
@@ -2112,9 +2250,46 @@ impl Checker {
         ))
     }
 
+    /// A pattern that binds a non-`Copy` part of the scrutinee by value
+    /// moves it out of the matched place (Rust binds by move unless the
+    /// scrutinee is a reference, whose bindings borrow); the place is
+    /// then unusable in the arm and after it. A scrutinee that is a
+    /// temporary has nothing left to use.
+    fn move_bound_by_value(
+        &mut self,
+        scrutinee: &HirExpr,
+        pat: &HirPat,
+        span: Span,
+    ) -> Result<(), Diag> {
+        if !self.binds_by_move(pat) {
+            return Ok(());
+        }
+        self.move_out_of(scrutinee, span)
+    }
+
+    fn binds_by_move(&self, pat: &HirPat) -> bool {
+        match &pat.kind {
+            HirPatKind::Bind(binding) => {
+                let ty = &self.sema.bindings[binding.0 as usize].ty;
+                !matches!(self.deep(ty), HostTy::Ref(..)) && !self.is_copy_ty(ty)
+            }
+            HirPatKind::Tuple(left, right) => self.binds_by_move(left) || self.binds_by_move(right),
+            HirPatKind::TuplePath(_, subs) | HirPatKind::StructPath(_, subs) => {
+                subs.iter().any(|sub| self.binds_by_move(sub))
+            }
+            HirPatKind::Wild
+            | HirPatKind::I64(_)
+            | HirPatKind::Usize(_)
+            | HirPatKind::Bool(_)
+            | HirPatKind::UnitPath(_) => false,
+        }
+    }
+
     fn check_loop(&mut self, body: &ast::Block, span: Span) -> Result<HirExpr, Diag> {
         let cell = self.fresh_cell(false);
-        let (checked, saw_break) = self.check_loop_block(body, cell.clone())?;
+        let mark = self.loop_mark();
+        let (checked, saw_break) =
+            self.check_loop_block(body, cell.clone(), mark, LoopEntry::Unconditional)?;
         if saw_break {
             Ok(node(
                 HirExprKind::Loop {
@@ -2138,17 +2313,63 @@ impl Checker {
         }
     }
 
+    /// The move state at the top of a loop, taken before its header.
+    fn loop_mark(&self) -> LoopMark {
+        LoopMark {
+            moved: self.ctx().uninit.clone(),
+            next_bind: self.next_bind,
+        }
+    }
+
+    /// Checks a loop body and settles the loop's move analysis: a value
+    /// moved out of a binding declared before the loop, and not moved
+    /// on entry, is gone at the next iteration (Rust E0382), and the
+    /// code after the loop starts from the states its exits leave.
     fn check_loop_block(
         &mut self,
         body: &ast::Block,
         break_ty: HostTy,
+        mark: LoopMark,
+        entry: LoopEntry,
     ) -> Result<(HirBlock, bool), Diag> {
-        self.ctx_mut().loops.push((break_ty, false));
+        self.ctx_mut().loops.push(LoopCtx::new(break_ty));
         let checked = self.check_block_body(body, Some(&HostTy::Unit))?;
-        let Some((_, saw_break)) = self.ctx_mut().loops.pop() else {
+        let Some(done) = self.ctx_mut().loops.pop() else {
             return Err(Diag::type_error(body.span, "loop state underflow"));
         };
-        Ok((checked, saw_break))
+        let mut iteration_ends = done.continue_moves;
+        if !block_diverges(&checked) {
+            iteration_ends.push(self.ctx().uninit.clone());
+        }
+        for state in &iteration_ends {
+            let recurring = state
+                .iter()
+                .find(|binding| binding.0 < mark.next_bind && !mark.moved.contains(binding));
+            if let Some(binding) = recurring {
+                return Err(Diag::ownership(
+                    body.span,
+                    format!(
+                        "value `{}` is moved in a previous iteration of this loop",
+                        self.sema.bindings[binding.0 as usize].name
+                    ),
+                ));
+            }
+        }
+        let mut exits = done.break_moves;
+        if entry == LoopEntry::Guarded {
+            exits.push(mark.moved);
+            exits.extend(iteration_ends);
+        }
+        if !exits.is_empty() {
+            let mut joined: Vec<BindId> = Vec::new();
+            for binding in exits.into_iter().flatten() {
+                if !joined.contains(&binding) {
+                    joined.push(binding);
+                }
+            }
+            self.ctx_mut().uninit = joined;
+        }
+        Ok((checked, done.saw_break))
     }
 
     fn check_for(
@@ -2173,12 +2394,11 @@ impl Checker {
             }
             _ => self.iter_item(&checked_iterable.ty, iterable.span)?,
         };
-        self.consume_iterable(&checked_iterable, iterable.span)?;
+        let mark = self.loop_mark();
         self.ctx_mut().scopes.push(HashMap::new());
         let checked_pat = self.check_pattern(pat, &item_ty)?;
-        self.ctx_mut().loops.push((HostTy::Unit, false));
-        let checked_body = self.check_block_body(body, Some(&HostTy::Unit))?;
-        self.ctx_mut().loops.pop();
+        let (checked_body, _) =
+            self.check_loop_block(body, HostTy::Unit, mark, LoopEntry::Guarded)?;
         self.pop_scope();
         Ok(node(
             HirExprKind::For {
@@ -2190,25 +2410,6 @@ impl Checker {
             false,
             span,
         ))
-    }
-
-    fn consume_iterable(&mut self, iterable: &HirExpr, span: Span) -> Result<(), Diag> {
-        let is_owned_collection =
-            matches!(self.deep(&iterable.ty), HostTy::Vec(_) | HostTy::Array(..));
-        if !is_owned_collection {
-            return Ok(());
-        }
-        if let HirExprKind::Place { place, .. } = &iterable.kind
-            && let PlaceRoot::Local(binding) = &place.root
-        {
-            let binding = *binding;
-            let ty = self.sema.bindings[binding.0 as usize].ty.clone();
-            if !ty.is_copy() {
-                self.check_access(binding, Access::Move, span)?;
-                self.note_capture_use(binding, Access::Move);
-            }
-        }
-        Ok(())
     }
 
     fn check_closure(
@@ -2271,7 +2472,7 @@ impl Checker {
                 CaptureMode::Shared => self.begin_loan(capture.binding, false, None),
                 CaptureMode::Mut => self.begin_loan(capture.binding, true, None),
                 CaptureMode::Owned => {
-                    if !ty.is_copy() {
+                    if !self.is_copy_ty(&ty) {
                         let binding = capture.binding;
                         self.check_access(binding, Access::Move, span)?;
                     }
@@ -2346,6 +2547,19 @@ fn map_value(receiver: HostTy, method: &str, span: Span) -> Result<Box<HostTy>, 
         ));
     };
     Ok(value)
+}
+
+/// The type of `receiver.iter()`: a `Vec` or array yields element
+/// references, and a `HashMap<String, V>` yields `(&String, &V)` pairs,
+/// modeled as an owning iterator whose items are those reference pairs.
+fn iter_type(receiver: HostTy, span: Span) -> Result<HostTy, Diag> {
+    match receiver {
+        HostTy::HashMap(value) => Ok(HostTy::IntoIter(Box::new(HostTy::Tuple(
+            Box::new(HostTy::Ref(false, Box::new(HostTy::String))),
+            Box::new(HostTy::Ref(false, value)),
+        )))),
+        other => Ok(HostTy::Iter(collection_elem(other, "iter", span)?)),
+    }
 }
 
 /// The element type of a `Vec` or array receiver of an iterator method.

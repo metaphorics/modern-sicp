@@ -18,6 +18,9 @@ path = "tests/corpus_core.rs"
 name = "witness_classes"
 path = "tests/witness_classes.rs"
 [[test]]
+name = "host_operations"
+path = "tests/host_operations.rs"
+[[test]]
 name = "scaffold_sec_4_1"
 path = "../../exercises/ch04/sec_4_1.rs"
 

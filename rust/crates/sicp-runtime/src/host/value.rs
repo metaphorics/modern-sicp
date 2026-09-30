@@ -33,6 +33,9 @@ pub enum RtProj {
     /// The value slot of one `HashMap` entry, by key: a reference
     /// through this projection reads and writes the entry itself.
     MapKey(String),
+    /// The key of one `HashMap` entry, by key: a shared reference
+    /// through this projection reads the key text and is never written.
+    MapKeyOf(String),
 }
 
 /// A checked execution trap (grammar §6.4): the run stops here.

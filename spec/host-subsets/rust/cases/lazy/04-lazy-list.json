@@ -1,0 +1,5 @@
+{
+  "case_id": "lazy/04-lazy-list",
+  "constructor": "lazy_list",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

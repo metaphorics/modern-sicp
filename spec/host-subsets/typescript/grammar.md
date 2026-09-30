@@ -163,7 +163,9 @@ Evaluator effects use explicit mutable cells/records and ordered transcript/outp
 Two experiments are separate named execution modes, never core TypeScript features and never submitted to the native oracle as if JavaScript were lazy or nondeterministic:
 
 - `lazy-memoized-experiment`: admits only the explicitly marked delay/force AST extension. A delay captures its lexical environment; first force computes and stores the value; later forces return the stored value. The sibling `lazy-recompute-experiment` is a distinct mode whose force recomputes. They are not parser aliases for ordinary function calls and do not alter core strictness.
-- `amb-depth-first-experiment`: admits the separate `choose`, `require`, and failure-continuation AST extension. Alternatives run left-to-right depth-first; backtracking restores only state declared backtrackable; permanent writes are explicit. The randomized `ramb` variant requires an injected deterministic seed and is a separately named experiment, not core randomness.
+- `amb-depth-first-experiment`: admits the `choose`, `require`, `permanentAssign(target, value)`, and `ifFail(expression, fallback)` AST extensions. Alternatives run left-to-right depth-first. Ordinary `=` assignment is undone newest-first on backtracking; `permanentAssign` keeps its write. `ifFail` yields every primary-expression result and evaluates the fallback once only after the primary exhausts. `amb-ramb-experiment` admits the same forms plus seeded, deterministic `ramb`; it is a named experiment, not core randomness.
+
+`SearchRun.failures` counts failed candidate computations that schedule backtracking, not successful-result resumptions or exhausted-choice propagation. `steps` counts deferred continuations actually executed; `maxSteps` excludes the initial evaluation. `maxAnswers` and `maxSteps` are checked before a pending continuation runs, so `cut-off` means search work remains; `maxAnswers: 0` performs no guest evaluation. These cooperative limits do not interrupt one guest evaluation or recursive continuation that fails to yield.
 
 Every extension is rejected by the core parser/checker and requires its own finite independent reference model, named mode, source-admission rule, and behavioral oracle. The default evaluator and native oracle continue to use eager JavaScript evaluation and effect order.
 
@@ -198,6 +200,8 @@ const constant = (value: MachineValue): Input => ({ tag: "const", value });
 ```
 
 `Source` and `MachineValue` are ordinary recursively typed unions. Constructor functions and record literals are checked by `tsc`; unknown operation names, registers, labels, invalid operand types, stack underflow, and restore mismatch are runtime `MachineError` variants, not parser fallbacks. This follows current data models in `04-logic.ts`, `01-register-machines.ts`, and `02-simulator.ts`. Query/controller text parsers, if retained temporarily during cutover, must consume the same typed model and be removed when their callers migrate.
+
+Chapter 2.5 data-directed arithmetic uses each operation name as its exact registry key. Polynomial operations are installed as `put("add", ["polynomial", "polynomial"], ...)`, `put("mul", ["polynomial", "polynomial"], ...)`, and `put("div", ["polynomial", "polynomial"], ...)`; helper names and diagnostic labels are not dispatch keys. The complex constructor is installed as `put("make-from-real-imag", ["complex"], ...)` and looked up with the same operation string and tag tuple. Book examples must use these registered key forms rather than invented capitalization or helper labels.
 
 ## 8. Errors and diagnostics
 

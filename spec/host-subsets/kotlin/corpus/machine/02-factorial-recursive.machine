@@ -1,0 +1,25 @@
+# machine/02-factorial-recursive: the section 5.1.4 recursive factorial, with
+# the continue register selecting the single return point and save/restore
+# carrying the stack. Observation: effect lines from `perform print`, then
+# `final: <reg>=<value> ...` in declaration order.
+registers n val continue
+const n 5
+assign val <- const 1
+assign continue <- const 1
+loop:
+test zero n
+branch base
+save continue
+save n
+assign continue <- const 0
+assign n <- op sub n #1
+goto loop
+base:
+test eq continue #1
+branch exit
+restore n
+restore continue
+assign val <- op mul val n
+goto base
+exit:
+perform print val

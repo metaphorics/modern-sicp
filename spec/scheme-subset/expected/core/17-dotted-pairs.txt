@@ -1,8 +1,0 @@
-;; SPDX-License-Identifier: GPL-3.0-only
-;; Adapted from SICP sections 4.1 to 5.2
-(1 . 2)
-(a b . c)
-((1 . 2) 3 . 4)
-left
-right
-((1 . 2) (3 . 4))

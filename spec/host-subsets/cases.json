@@ -1,0 +1,201 @@
+{
+  "baseline_commit": "0647fcd8bbab899d465daf37ad3df7fa85f6e130",
+  "manifest_sha256": "3d4f3e4f045ccf92f46ffaac231e3b7095a347d4c26b9bd0cd8e249a78737e9c",
+  "cases": [
+    {
+      "id": "core/01-square",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/02-factorial-recursive",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/03-factorial-iterative",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/04-sqrt-newton",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/05-gcd",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/06-expt",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/07-fibonacci",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/08-cond-branching",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/09-predicates",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/10-list-building",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/11-append-reverse",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/12-count-leaves",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/13-map-filter-accumulate",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/14-higher-order",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/15-closure-counter",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/16-symbols-quotation",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/17-dotted-pairs",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/18-strings-display",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/19-deep-recursion",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "core/20-error-stop",
+      "capability": "core",
+      "observation": "error"
+    },
+    {
+      "id": "core/metacircular",
+      "capability": "core",
+      "observation": "value"
+    },
+    {
+      "id": "lazy/01-non-strict-application",
+      "capability": "lazy",
+      "observation": "value"
+    },
+    {
+      "id": "lazy/02-delay-force",
+      "capability": "lazy",
+      "observation": "value"
+    },
+    {
+      "id": "lazy/03-church-pairs",
+      "capability": "lazy",
+      "observation": "value"
+    },
+    {
+      "id": "lazy/04-lazy-list",
+      "capability": "lazy",
+      "observation": "value"
+    },
+    {
+      "id": "amb/01-amb-basics",
+      "capability": "amb",
+      "observation": "value"
+    },
+    {
+      "id": "amb/02-prime-sum-pair",
+      "capability": "amb",
+      "observation": "value"
+    },
+    {
+      "id": "amb/03-multiple-dwelling",
+      "capability": "amb",
+      "observation": "value"
+    },
+    {
+      "id": "amb/04-pythagorean-triples",
+      "capability": "amb",
+      "observation": "value"
+    },
+    {
+      "id": "query/01-basic-personnel",
+      "capability": "query",
+      "observation": "value"
+    },
+    {
+      "id": "query/02-compound-queries",
+      "capability": "query",
+      "observation": "value"
+    },
+    {
+      "id": "query/03-rules",
+      "capability": "query",
+      "observation": "value"
+    },
+    {
+      "id": "query/04-append-form",
+      "capability": "query",
+      "observation": "value"
+    },
+    {
+      "id": "machine/01-gcd",
+      "capability": "machine",
+      "observation": "value"
+    },
+    {
+      "id": "machine/02-factorial-recursive",
+      "capability": "machine",
+      "observation": "value"
+    },
+    {
+      "id": "machine/03-fibonacci",
+      "capability": "machine",
+      "observation": "value"
+    },
+    {
+      "id": "machine/04-gcd-print",
+      "capability": "machine",
+      "observation": "value"
+    },
+    {
+      "id": "compiler/01-primitive-combination",
+      "capability": "compiler",
+      "observation": "value"
+    },
+    {
+      "id": "compiler/02-factorial",
+      "capability": "compiler",
+      "observation": "value"
+    }
+  ]
+}

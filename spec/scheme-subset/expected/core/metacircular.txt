@@ -1,7 +1,0 @@
-;; SPDX-License-Identifier: GPL-3.0-only
-;; Adapted from SICP sections 4.1 to 5.2
-ok
-120
-(tick tick tick)
-ok
-(7 . 7)

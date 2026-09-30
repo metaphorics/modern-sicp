@@ -1,0 +1,7 @@
+(* Personnel assertions and one pattern query (lesson: assertions and matching). *)
+[ Assert (List [ Atom "job"; List [ Atom "Bitdiddle"; Atom "Ben" ]; List [ Atom "computer"; Atom "wizard" ] ])
+; Assert
+    (List [ Atom "job"; List [ Atom "Hacker"; Atom "Alyssa"; Atom "P" ]; List [ Atom "computer"; Atom "programmer" ] ])
+; Assert (List [ Atom "job"; List [ Atom "Fect"; Atom "Cy"; Atom "D" ]; List [ Atom "computer"; Atom "programmer" ] ])
+; Query (Pattern (List [ Atom "job"; Var "x"; List [ Atom "computer"; Atom "programmer" ] ]))
+]

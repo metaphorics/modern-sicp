@@ -1,0 +1,5 @@
+{
+  "case_id": "amb/02-prime-sum-pair",
+  "constructor": "search_prime_sum",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

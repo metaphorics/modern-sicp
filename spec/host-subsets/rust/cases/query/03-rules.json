@@ -1,0 +1,5 @@
+{
+  "case_id": "query/03-rules",
+  "constructor": "query_rules",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

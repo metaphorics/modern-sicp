@@ -284,10 +284,12 @@ adding a variant is a compile error at every dispatch site.
 Nullable types `T?` admit exactly: safe call `?.`, elvis `?:`, comparisons
 `== null` and `!= null`, and function results of `Map.get`, `firstOrNull`,
 `remove`, `toLongOrNull`, `toDoubleOrNull`. Force unwrap `!!` is rejected
-(Section 6.2). Unchecked casts are rejected; `is`/`!is` with smart cast is the
-only narrowing. Smart casts apply to `val` locals, parameters, and `var`
-locals no lambda captures; they never apply to properties or captured `var`
-bindings, which must go through `?.` or `?:`.
+(Section 6.2), as are unchecked casts. An `is`/`!is` test or comparison with
+`null` narrows a stable binding on the branch where its non-null type is known;
+`&&` on its true path, `||` on its false path, and `!` preserve that flow.
+Smart casts apply to `val` locals, parameters, and `var` locals with no lambda
+captures; they never apply to properties or captured `var` bindings, which
+must go through `?.` or `?:`.
 
 ### 3.4 `val`, `var`, capture, shadowing
 
@@ -366,6 +368,7 @@ execution. The admitted runtime categories are:
 | `IndexOutOfBounds` | `List.get`/`[]` with a bad index | `java.lang.IndexOutOfBoundsException` |
 | `UnassignedRead` | kernel-level read of an unassigned recursive binding | none; native typing rejects the program |
 | `UnassignedRegister` | machine read of a never-assigned register | none; engine category |
+| `ShapeFault` | machine value of the wrong shape for an operand (jump target, test flag, procedure, address) | none; engine category |
 
 Engine implementations report the category, never raw host exceptions.
 Diagnostic *wording* is never compared across implementations; the category
@@ -405,6 +408,13 @@ alternatives by the seeded generator and is reproducible from its seed;
 `setPermanent` assignments survive backtracking; `ifFail` answers its second
 block exactly when the first fails. The choice counter counts one choice per
 entered alternative. Default core never backtracks.
+
+The host driver `SearchModule.run(source)` explores to exhaustion.
+`SearchModule.run(source, maxAnswers)` with a positive limit stops after that
+many successful `main` results without forcing further alternatives.
+`SearchModule.run(source, maxAnswers, maxChoices)` also stops before entering
+an alternative beyond its positive choice horizon. Bounded runs preserve
+effects already emitted and count only alternatives entered.
 
 ### 4.3 Query DSL (host constructors)
 
@@ -567,11 +577,12 @@ class GFrame(val cells: MutableMap<String, GValue>, val parent: GFrame?) {
     fun lookup(name: String): GValue? {
         var here: GFrame? = this
         while (here != null) {
-            val hit = here.cells[name]
+            val current: GFrame = here ?: return null
+            val hit = current.cells[name]
             if (hit != null) {
                 return hit
             }
-            here = here.parent
+            here = current.parent
         }
         return null
     }
@@ -579,11 +590,12 @@ class GFrame(val cells: MutableMap<String, GValue>, val parent: GFrame?) {
     fun assign(name: String, value: GValue): Boolean {
         var here: GFrame? = this
         while (here != null) {
-            if (here.cells.containsKey(name)) {
-                here.cells[name] = value
+            val current: GFrame = here ?: return false
+            if (current.cells.containsKey(name)) {
+                current.cells[name] = value
                 return true
             }
-            here = here.parent
+            here = current.parent
         }
         return false
     }
@@ -791,6 +803,7 @@ compile diagnostic. The two planes must not be conflated in either direction.
 | Literal out of range | `val x = 99999999999999999999` |
 | Non-exhaustive `when` expression | sealed dispatch missing a variant (3.2) |
 | Undeclared name, wrong arity, wrong argument type | any call outside its declaration |
+| Type inference (`TypeInference`) | `val xs = emptyList()` with no expected or explicit element type |
 
 The subset gate reports these as `HostInvalid` with a category and position.
 Compiler diagnostic wording is never part of the contract.

@@ -1,0 +1,17 @@
+# machine/01-gcd: Euclid's algorithm as a register machine (section 5.1.1).
+# Line protocol: registers/const declare state; controller lines are
+# assign, test, branch, goto, save, restore, perform. Operands are register
+# names or #N literals. Observation: effect lines from `perform print`, then
+# `final: <reg>=<value> ...` in declaration order.
+registers a b t
+const a 1071
+const b 462
+start:
+test zero b
+branch done
+assign t <- op rem a b
+assign a <- reg b
+assign b <- reg t
+goto start
+done:
+perform print a

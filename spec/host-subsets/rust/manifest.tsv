@@ -1,0 +1,312 @@
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/01-square	programs/core/01-square.rs	native,direct,analyzed,eceval,compiled	native	square by function call
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/02-factorial-recursive	programs/core/02-factorial-recursive.rs	native,direct,analyzed,eceval,compiled	native	recursive factorial, host calls
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/03-factorial-iterative	programs/core/03-factorial-iterative.rs	native,direct,analyzed,eceval,compiled	native	iterative factorial with a loop
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/04-sqrt-newton	programs/core/04-sqrt-newton.rs	native,direct,analyzed,eceval,compiled	native	Newton iteration translated as justified fixed-point (i64 scale 2^20); the i64-only subset keeps the lesson
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/05-gcd	programs/core/05-gcd.rs	native,direct,analyzed,eceval,compiled	native	Euclid remainder loop
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/06-expt	programs/core/06-expt.rs	native,direct,analyzed,eceval,compiled	native	exponentiation, linear recursion
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/07-fibonacci	programs/core/07-fibonacci.rs	native,direct,analyzed,eceval,compiled	native	tree recursion
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/08-cond-branching	programs/core/08-cond-branching.rs	native,direct,analyzed,eceval,compiled	native	branching via if/match
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/09-predicates	programs/core/09-predicates.rs	native,direct,analyzed,eceval,compiled	native	boolean predicates and short-circuit
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/10-list-building	programs/core/10-list-building.rs	native,direct,analyzed,eceval,compiled	native	list building as Vec/Box pair structure
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/11-append-reverse	programs/core/11-append-reverse.rs	native,direct,analyzed,eceval,compiled	native	append and reverse over sequences
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/12-count-leaves	programs/core/12-count-leaves.rs	native,direct,analyzed,eceval,compiled	native	recursive tree count over Box indirection
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/13-map-filter-accumulate	programs/core/13-map-filter-accumulate.rs	native,direct,analyzed,eceval,compiled	native	higher-order iteration with closures
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/14-higher-order	programs/core/14-higher-order.rs	native,direct,analyzed,eceval,compiled	native	first-class functions and fn pointers
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/15-closure-counter	programs/core/15-closure-counter.rs	native,direct,analyzed,eceval,compiled	native	lexical mutable capture; FnMut counter
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/16-symbols-quotation	programs/core/16-symbols-quotation.rs	native,direct,analyzed,eceval,compiled	native	symbolic data as explicit enum data (quotation premise re-cut)
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/17-dotted-pairs	programs/core/17-dotted-pairs.rs	native,direct,analyzed,eceval,compiled	native	pair structure as struct data
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/18-strings-display	programs/core/18-strings-display.rs	native,direct,analyzed,eceval,compiled	native	String/&str display effects
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/19-deep-recursion	programs/core/19-deep-recursion.rs	native,direct,analyzed,eceval,compiled	native	deep non-tail recursion; engines run on the enlarged-stack entry
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/20-error-stop	programs/core/20-error-stop.rs	native,direct,analyzed,eceval,compiled	native	observation class error: checked-build trap stops the run after its printed prefix
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+core/metacircular	programs/selfinterp.rs	native,direct,analyzed,eceval,compiled	native	guest-source evaluator (contract §8 witness, verbatim); self-interpretation runs through direct/analyzed/eceval
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+lazy/01-non-strict-application	cases/lazy/01-non-strict-application.json	reference,lazy	reference	Thunk/Force data; named mode lazy-memo/1
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+lazy/02-delay-force	cases/lazy/02-delay-force.json	reference,lazy	reference	explicit delayed operands and demands
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+lazy/03-church-pairs	cases/lazy/03-church-pairs.json	reference,lazy	reference	pair data under named lazy modes
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+lazy/04-lazy-list	cases/lazy/04-lazy-list.json	reference,lazy	reference	lazy sequence over Thunk/Force
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+amb/01-amb-basics	cases/amb/01-amb-basics.json	reference,search	reference	Choose/Fail/Success, depth-first written order
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+amb/02-prime-sum-pair	cases/amb/02-prime-sum-pair.json	reference,search	reference	choice points with guards
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+amb/03-multiple-dwelling	cases/amb/03-multiple-dwelling.json	reference,search	reference	trailed assignment rollback
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+amb/04-pythagorean-triples	cases/amb/04-pythagorean-triples.json	reference,search	reference	nested choice enumeration
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+query/01-basic-personnel	cases/query/01-basic-personnel.json	reference,query	reference	Term/Query data; ordered answers
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+query/02-compound-queries	cases/query/02-compound-queries.json	reference,query	reference	And/Or/Not composition
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+query/03-rules	cases/query/03-rules.json	reference,query	reference	rule application with renamed variables
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+query/04-append-form	cases/query/04-append-form.json	reference,query	reference	recursive rule over Pair terms
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+machine/01-gcd	cases/machine/01-gcd.json	reference,machine	reference	MachineProgram constructors; simulator transcript
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+machine/02-factorial-recursive	cases/machine/02-factorial-recursive.json	reference,machine	reference	save/restore stack discipline
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+machine/03-fibonacci	cases/machine/03-fibonacci.json	reference,machine	reference	nested machine recursion
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+machine/04-gcd-print	cases/machine/04-gcd-print.json	reference,machine	reference	perform print transcript
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+compiler/01-primitive-combination	programs/compiler/01-primitive-combination.rs	native,direct,analyzed,eceval,compiled	native	typed instruction sequences; preserving liveness
+# Rust edition fixture manifest: one row per shared semantic case of
+# spec/host-subsets/cases.json (39 ids), mapping each lesson identity to
+# its Rust-edition artifact, engine surface, and provenance class.
+# Columns: case_id, artifact, engines, provenance, lesson_note.
+# Provenance classes: native (the pinned native toolchain is the oracle
+# and must run), reference (an independent finite model runs beside the
+# teaching engine). Artifacts are real paths under this directory.
+compiler/02-factorial	programs/compiler/02-factorial.rs	native,direct,analyzed,eceval,compiled	native	compiled factorial agreement with direct

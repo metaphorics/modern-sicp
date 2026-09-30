@@ -1,0 +1,28 @@
+(* Rules and unification (lesson: rules, variables, occurs check). *)
+[ Assert
+    (List
+       [ Atom "address"
+       ; List [ Atom "Bitdiddle"; Atom "Ben" ]
+       ; List [ Atom "Slumerville"; List [ Atom "Ridge"; Atom "Road" ]; Num 10 ]
+       ])
+; Assert
+    (List
+       [ Atom "address"
+       ; List [ Atom "Hacker"; Atom "Alyssa"; Atom "P" ]
+       ; List [ Atom "Cambridge"; List [ Atom "Ames"; Atom "Street" ]; Num 3 ]
+       ])
+; Assert
+    (List
+       [ Atom "address"
+       ; List [ Atom "Fect"; Atom "Cy"; Atom "D" ]
+       ; List [ Atom "Cambridge"; List [ Atom "Ames"; Atom "Street" ]; Num 3 ]
+       ])
+; Rule
+    ( List [ Atom "lives-near"; Var "person-1"; Var "person-2" ]
+    , And
+        [ Pattern (List [ Atom "address"; Var "person-1"; Dotted ([ Var "town" ], Var "rest-1") ])
+        ; Pattern (List [ Atom "address"; Var "person-2"; Dotted ([ Var "town" ], Var "rest-2") ])
+        ] )
+; Query (Pattern (List [ Atom "lives-near"; Var "x"; List [ Atom "Bitdiddle"; Atom "Ben" ] ]))
+; Query (Pattern (List [ Atom "lives-near"; List [ Atom "Hacker"; Atom "Alyssa"; Atom "P" ]; Var "y" ]))
+]

@@ -1,0 +1,22 @@
+(* GCD with a printing operation (lesson: operation effects). *)
+Machine
+  { registers = [ "a"; "b"; "t" ]
+  ; operations =
+      [ ("rem", [ Int_type; Int_type ], Int_type)
+      ; ("=", [ Int_type; Int_type ], Bool_type)
+      ; ("print", [ Int_type ], Unit_type)
+      ]
+  ; inputs = [ ("a", Int 206); ("b", Int 40) ]
+  ; controller =
+      [ Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+      ; Perform ("print", [ Reg "t" ])
+      ; Label "loop"
+      ; Test ("=", [ Reg "b"; Const (Int 0) ])
+      ; Branch "done"
+      ; Assign_op ("t", "rem", [ Reg "a"; Reg "b" ])
+      ; Assign ("a", Reg "b")
+      ; Assign ("b", Reg "t")
+      ; Goto "loop"
+      ; Label "done"
+      ]
+  }

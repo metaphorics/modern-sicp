@@ -1,0 +1,39 @@
+# machine/03-fibonacci: the section 5.1.4 tree-recursive Fibonacci; the
+# continue register encodes the two return points and the monitored stack
+# carries both saved frames. Observation: effect lines from `perform print`,
+# then `final: <reg>=<value> ...` in declaration order.
+registers n val continue arg
+const n 7
+assign continue <- const 1
+assign val <- const 0
+fib:
+test lt n #2
+branch immediate
+save continue
+save arg
+assign arg <- op sub n #1
+assign n <- op sub n #2
+assign continue <- const 2
+goto fib
+immediate:
+assign val <- reg n
+goto after
+after:
+test eq continue #1
+branch exit
+test eq continue #2
+branch second
+restore arg
+restore continue
+assign val <- op add val arg
+goto after
+second:
+assign continue <- const 0
+assign arg <- reg val
+restore n
+save arg
+assign arg <- op sub n #1
+assign n <- op sub n #2
+goto fib
+exit:
+perform print val

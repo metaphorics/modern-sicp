@@ -1,0 +1,5 @@
+{
+  "case_id": "query/01-basic-personnel",
+  "constructor": "query_personnel",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

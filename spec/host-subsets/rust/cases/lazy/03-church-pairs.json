@@ -1,0 +1,5 @@
+{
+  "case_id": "lazy/03-church-pairs",
+  "constructor": "lazy_church_pairs",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

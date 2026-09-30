@@ -168,7 +168,7 @@ The only admitted macros are:
 - `format!("...", args...)`, `print!("...", args...)`, and `println!("...", args...)`, using Rust's compile-time checked format strings; and
 - the listed `#[derive(...)]` names.
 
-No other macro invocation is admitted. The standard-library operations available by path or method are limited to constructors and operations needed by the grammar: `String::from`; `Vec::new`, `with_capacity`, `push`, `pop`, `len`, `is_empty`, `get`, `get_mut`, `iter`, `iter_mut`, `into_iter`; `HashMap::new`, `insert`, `get`, `get_mut`, `contains_key`, `remove`, `len`, `is_empty`, `iter`; `Box::new`, `as_ref`, `as_mut`; `Option`/`Result` constructors and pattern matching; and iterator `next`, `enumerate`, and `zip`. `clone`, `as_str`, `push`, and `push_str` are admitted when the receiver type provides them. No method is admitted merely because it happens to resolve on a host type; the checker uses this closed allowlist.
+No other macro invocation is admitted. The standard-library operations available by path or method are limited to constructors and operations needed by the grammar: `String::from`, `len`; `Vec::new`, `with_capacity`, `push`, `pop`, `len`, `is_empty`, `get`, `get_mut`, `iter`, `iter_mut`, `into_iter`; `HashMap::new`, `insert`, `get`, `get_mut`, `contains_key`, `remove`, `len`, `is_empty`, `iter`; `Box::new`, `as_ref`, `as_mut`; `Option`/`Result` constructors and pattern matching; and iterator `next`, `enumerate`, and `zip`. `clone`, `as_str`, `push`, and `push_str` are admitted when the receiver type provides them. No method is admitted merely because it happens to resolve on a host type; the checker uses this closed allowlist.
 
 ## 5. Ownership, borrowing, mutation, and closures
 
@@ -232,6 +232,7 @@ enum Operand {
     Constant(i64),
     Register(Register),
     Label(Label),
+    Operation { operation: String, arguments: Vec<Operand> },
 }
 #[derive(Clone)]
 enum Instruction {
@@ -248,6 +249,14 @@ struct MachineProgram {
     instructions: Vec<(Option<Label>, Instruction)>,
 }
 ```
+
+**Recorded contract repair (2026-09-28, orchestrator-ordered):** the
+operand grammar above gains `Operand::Operation { operation, arguments }`
+so computation results flow through `Assign { target, value: Operation
+{ .. } }`. `Perform` remains effect-only and never writes a register;
+there is no hidden result-register convention and no alias for one.
+This is a repair inside the host data language, not an expansion of
+Rust guest syntax; the native constructor witness is re-run against it.
 
 `Query` semantics are explicit unification over `Term`, substitution extension with occurs-check policy stated by each query-engine exercise, and ordered collection of answer frames using `Vec`; a `HashMap` is only an index and its iteration order is never the answer order. `Instruction` semantics are defined by the machine runner: `Assign`, `Test`, `Branch`, `Goto`, `Save`, `Restore`, and `Perform` update a typed register file, program counter, and explicit stack. An unbound label/register, invalid restore, or undefined operation is a typed machine error, never an invented source-language feature. Machine programs are built with these constructors; no controller-text parser is claimed by the source grammar.
 

@@ -1,0 +1,24 @@
+(* Compound queries (lesson: and, or, negation). *)
+[ Assert (List [ Atom "job"; List [ Atom "Bitdiddle"; Atom "Ben" ]; List [ Atom "computer"; Atom "wizard" ] ])
+; Assert
+    (List [ Atom "job"; List [ Atom "Hacker"; Atom "Alyssa"; Atom "P" ]; List [ Atom "computer"; Atom "programmer" ] ])
+; Assert
+    (List
+       [ Atom "supervisor"; List [ Atom "Hacker"; Atom "Alyssa"; Atom "P" ]; List [ Atom "Bitdiddle"; Atom "Ben" ] ])
+; Assert (List [ Atom "supervisor"; List [ Atom "Fect"; Atom "Cy"; Atom "D" ]; List [ Atom "Bitdiddle"; Atom "Ben" ] ])
+; Query
+    (And
+       [ Pattern (List [ Atom "supervisor"; Var "x"; List [ Atom "Bitdiddle"; Atom "Ben" ] ])
+       ; Pattern (List [ Atom "job"; Var "x"; List [ Atom "computer"; Atom "programmer" ] ])
+       ])
+; Query
+    (Or
+       [ Pattern (List [ Atom "job"; List [ Atom "Bitdiddle"; Atom "Ben" ]; Var "y" ])
+       ; Pattern (List [ Atom "job"; List [ Atom "Hacker"; Atom "Alyssa"; Atom "P" ]; Var "y" ])
+       ])
+; Query
+    (And
+       [ Pattern (List [ Atom "supervisor"; Var "x"; Var "y" ])
+       ; Not (Pattern (List [ Atom "job"; Var "x"; List [ Atom "computer"; Atom "programmer" ] ]))
+       ])
+]

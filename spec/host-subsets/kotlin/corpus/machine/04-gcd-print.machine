@@ -1,0 +1,16 @@
+# machine/04-gcd-print: GCD with a monitored effect per reduction step
+# (the section 5.2.1 perform lesson). Observation: one effect line per
+# reduction (the current remainder chain), then `final:` state.
+registers a b t
+const a 1071
+const b 462
+start:
+test zero b
+branch done
+assign t <- op rem a b
+assign a <- reg b
+assign b <- reg t
+perform print a
+goto start
+done:
+perform print a

@@ -1,0 +1,41 @@
+# Kotlin host-subset manifest (conformance driver convention).
+# case_id	artifact	engines	provenance	lesson_note
+core/01-square	corpus/core/01-square.kt	native,direct,analyzed,eceval,compiled	native	2.1 square as the simplest evaluated combination
+core/02-factorial-recursive	corpus/core/02-factorial-recursive.kt	native,direct,analyzed,eceval,compiled	native	1.2 recursive process shape
+core/03-factorial-iterative	corpus/core/03-factorial-iterative.kt	native,direct,analyzed,eceval,compiled	native	1.2 iterative process shape
+core/04-sqrt-newton	corpus/core/04-sqrt-newton.kt	native,direct,analyzed,eceval,compiled	native	1.1 square roots by Newton's method
+core/05-gcd	corpus/core/05-gcd.kt	native,direct,analyzed,eceval,compiled	native	1.2 Euclid's algorithm as a process
+core/06-expt	corpus/core/06-expt.kt	native,direct,analyzed,eceval,compiled	native	1.2 recursion and iteration for exponentiation
+core/07-fibonacci	corpus/core/07-fibonacci.kt	native,direct,analyzed,eceval,compiled	native	1.2 tree recursion
+core/08-cond-branching	corpus/core/08-cond-branching.kt	native,direct,analyzed,eceval,compiled	native	1.1 conditional evaluation
+core/09-predicates	corpus/core/09-predicates.kt	native,direct,analyzed,eceval,compiled	native	1.1 predicates and Boolean composition
+core/10-list-building	corpus/core/10-list-building.kt	native,direct,analyzed,eceval,compiled	native	2.2 list construction and indexing
+core/11-append-reverse	corpus/core/11-append-reverse.kt	native,direct,analyzed,eceval,compiled	native	2.2 list operations as procedures
+core/12-count-leaves	corpus/core/12-count-leaves.kt	native,direct,analyzed,eceval,compiled	native	2.2 hierarchical data
+core/13-map-filter-accumulate	corpus/core/13-map-filter-accumulate.kt	native,direct,analyzed,eceval,compiled	native	2.2 sequence operations
+core/14-higher-order	corpus/core/14-higher-order.kt	native,direct,analyzed,eceval,compiled	native	1.3 procedures as arguments
+core/15-closure-counter	corpus/core/15-closure-counter.kt	native,direct,analyzed,eceval,compiled	native	1.3 lexical scope and returned state
+core/16-symbols-quotation	corpus/core/16-symbols-quotation.kt	native,direct,analyzed,eceval,compiled	native	2.3 explicit syntax data replaces quotation
+core/17-dotted-pairs	corpus/core/17-dotted-pairs.kt	native,direct,analyzed,eceval,compiled	native	2.2 pairs as data structures
+core/18-strings-display	corpus/core/18-strings-display.kt	native,direct,analyzed,eceval,compiled	native	2.3 the printed representation of values
+core/19-deep-recursion	corpus/core/19-deep-recursion.kt	native,direct,analyzed,eceval,compiled	native	1.2 deep recursion as an observable process
+core/20-error-stop	corpus/core/20-error-stop.kt	native,direct,analyzed,eceval,compiled	native	3.1 errors stop evaluation before further effects
+core/metacircular	corpus/selfinterp/evaluator.kt	native,direct,analyzed,eceval,compiled	native	5.50 the evaluator as guest source
+compiler/01-primitive-combination	corpus/compiler/01-primitive-combination.kt	native,direct,analyzed,eceval,compiled	native	5.5.2 open-coded primitive combinations
+compiler/02-factorial	corpus/compiler/02-factorial.kt	native,direct,analyzed,eceval,compiled	native	5.5.4 compiled calls and lexical addressing
+lazy/01-non-strict-application	corpus/lazy/01-non-strict-application.kt	reference,lazy	reference	4.2.1 non-strict application and memoization
+lazy/02-delay-force	corpus/lazy/02-delay-force.kt	reference,lazy	reference	4.2.3 explicit delay and force
+lazy/03-church-pairs	corpus/lazy/03-church-pairs.kt	reference,lazy	reference	4.2.1 lazy pairs and forcing counts
+lazy/04-lazy-list	corpus/lazy/04-lazy-list.kt	reference,lazy	reference	4.2.2 lazy lists as streams
+amb/01-amb-basics	corpus/amb/01-amb-basics.kt	reference,search	reference	4.3.1 amb evaluation and backtracking
+amb/02-prime-sum-pair	corpus/amb/02-prime-sum-pair.kt	reference,search	reference	4.3.2 search with permanent assignment
+amb/03-multiple-dwelling	corpus/amb/03-multiple-dwelling.kt	reference,search	reference	4.3.3 a logic puzzle as search
+amb/04-pythagorean-triples	corpus/amb/04-pythagorean-triples.kt	reference,search	reference	4.3.2 infinite search reordering
+query/01-basic-personnel	corpus/query/01-basic-personnel.kt	reference,query	reference	4.4.1 simple queries over assertions
+query/02-compound-queries	corpus/query/02-compound-queries.kt	reference,query	reference	4.4.2 and/or/not composition
+query/03-rules	corpus/query/03-rules.kt	reference,query	reference	4.4.4 rules as derived assertions
+query/04-append-form	corpus/query/04-append-form.kt	reference,query	reference	4.4.4 rules with recursive structure
+machine/01-gcd	corpus/machine/01-gcd.machine	reference,machine	reference	5.1.1 GCD as a register machine
+machine/02-factorial-recursive	corpus/machine/02-factorial-recursive.machine	reference,machine	reference	5.1.4 recursion as stack discipline
+machine/03-fibonacci	corpus/machine/03-fibonacci.machine	reference,machine	reference	5.1.4 double recursion and the stack
+machine/04-gcd-print	corpus/machine/04-gcd-print.machine	reference,machine	reference	5.2.1 monitored effects through perform

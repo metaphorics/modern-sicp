@@ -1,0 +1,5 @@
+{
+  "case_id": "lazy/01-non-strict-application",
+  "constructor": "lazy_non_strict",
+  "observation": "driver-dispatched named case; no expected result is recorded here"
+}

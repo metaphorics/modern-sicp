@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
 //! The edition teaching driver for the section 4 engines and the
 //! named experiment/query cases. Stdout is exactly one JSON object
 //! `{"termination": ..., "stdout": ...}`; diagnostics go to stderr.
+
+#[path = "../../../../../spec/host-subsets/rust/case_artifact.rs"]
+mod case_artifact;
 
 use std::fmt::Write as _;
 
@@ -58,43 +62,47 @@ fn lazy_lines(prefix: &str, mode: &str, outcome: &LazyOutcome) -> String {
     )
 }
 
-fn lazy_case(case: &str) -> lazy::LazyExpr {
-    match case {
-        "lazy/01-non-strict-application" => lazy::lazy_non_strict(),
-        "lazy/02-delay-force" => lazy::lazy_delay_force(),
-        "lazy/03-church-pairs" => lazy::lazy_church_pairs(),
-        "lazy/04-lazy-list" => lazy::lazy_list(),
-        other => {
-            eprintln!("unknown lazy case: {other}");
-            std::process::exit(2);
+enum CaseProgram {
+    Lazy(lazy::LazyExpr),
+    Search(search::Search),
+    Query(query::Database, query::Query),
+}
+
+fn case_program(constructor: &str) -> Option<CaseProgram> {
+    match constructor {
+        "lazy_non_strict" => Some(CaseProgram::Lazy(lazy::lazy_non_strict())),
+        "lazy_delay_force" => Some(CaseProgram::Lazy(lazy::lazy_delay_force())),
+        "lazy_church_pairs" => Some(CaseProgram::Lazy(lazy::lazy_church_pairs())),
+        "lazy_list" => Some(CaseProgram::Lazy(lazy::lazy_list())),
+        "search_basics" => Some(CaseProgram::Search(search::search_basics())),
+        "search_prime_sum" => Some(CaseProgram::Search(search::search_prime_sum())),
+        "search_dwelling" => Some(CaseProgram::Search(search::search_dwelling())),
+        "search_pythagorean" => Some(CaseProgram::Search(search::search_pythagorean())),
+        "query_personnel" => {
+            let (database, program) = query::query_personnel();
+            Some(CaseProgram::Query(database, program))
         }
+        "query_compound" => {
+            let (database, program) = query::query_compound();
+            Some(CaseProgram::Query(database, program))
+        }
+        "query_rules" => {
+            let (database, program) = query::query_rules();
+            Some(CaseProgram::Query(database, program))
+        }
+        "query_append" => {
+            let (database, program) = query::query_append();
+            Some(CaseProgram::Query(database, program))
+        }
+        _ => None,
     }
 }
 
-fn search_case(case: &str) -> search::Search {
-    match case {
-        "amb/01-amb-basics" => search::search_basics(),
-        "amb/02-prime-sum-pair" => search::search_prime_sum(),
-        "amb/03-multiple-dwelling" => search::search_dwelling(),
-        "amb/04-pythagorean-triples" => search::search_pythagorean(),
-        other => {
-            eprintln!("unknown search case: {other}");
-            std::process::exit(2);
-        }
-    }
-}
-
-fn query_case(case: &str) -> (query::Database, query::Query) {
-    match case {
-        "query/01-basic-personnel" => query::query_personnel(),
-        "query/02-compound-queries" => query::query_compound(),
-        "query/03-rules" => query::query_rules(),
-        "query/04-append-form" => query::query_append(),
-        other => {
-            eprintln!("unknown query case: {other}");
-            std::process::exit(2);
-        }
-    }
+fn artifact_constructor(source: &str, case: &str) -> String {
+    case_artifact::read_constructor(source, case).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        std::process::exit(2);
+    })
 }
 
 fn search_lines(outcome: &SearchOutcome) -> String {
@@ -281,7 +289,11 @@ fn run() {
             }
         }
         "lazy" => {
-            let expr = lazy_case(case);
+            let constructor = artifact_constructor(source, case);
+            let Some(CaseProgram::Lazy(expr)) = case_program(&constructor) else {
+                eprintln!("unknown lazy constructor: {constructor}");
+                std::process::exit(2);
+            };
             let mut lines = Vec::new();
             for (name, mode) in [
                 ("lazy-recompute/1", Mode::Recompute),
@@ -293,37 +305,48 @@ fn run() {
             emit("value", &lines.join("\n"));
         }
         "search" => {
-            let program = search_case(case);
+            let constructor = artifact_constructor(source, case);
+            let Some(CaseProgram::Search(program)) = case_program(&constructor) else {
+                eprintln!("unknown search constructor: {constructor}");
+                std::process::exit(2);
+            };
             let outcome = search::SearchEngine::new().run(&program);
             emit("value", &search_lines(&outcome));
         }
         "query" => {
-            let (database, program) = query_case(case);
+            let constructor = artifact_constructor(source, case);
+            let Some(CaseProgram::Query(database, program)) = case_program(&constructor) else {
+                eprintln!("unknown query constructor: {constructor}");
+                std::process::exit(2);
+            };
             let outcome = query::qeval(&database, &program);
             emit("value", &query_lines(&program, &outcome.answers));
         }
         "reference" => {
+            let constructor = artifact_constructor(source, case);
             let mut lines = Vec::new();
-            if case.starts_with("lazy/") {
-                let expr = lazy_case(case);
-                for (name, mode) in [
-                    ("lazy-recompute/1", Mode::Recompute),
-                    ("lazy-memo/1", Mode::Memo),
-                ] {
-                    let outcome = lazy::reference_model(mode, &expr);
-                    lines.push(lazy_lines("", name, &outcome));
+            match case_program(&constructor) {
+                Some(CaseProgram::Lazy(expr)) => {
+                    for (name, mode) in [
+                        ("lazy-recompute/1", Mode::Recompute),
+                        ("lazy-memo/1", Mode::Memo),
+                    ] {
+                        let outcome = lazy::reference_model(mode, &expr);
+                        lines.push(lazy_lines("", name, &outcome));
+                    }
                 }
-            } else if case.starts_with("amb/") {
-                let program = search_case(case);
-                let outcome = search::reference_model(&program);
-                lines.push(search_lines(&outcome));
-            } else if case.starts_with("query/") {
-                let (database, program) = query_case(case);
-                let answers = query::reference_answers(&database, &program);
-                lines.push(query_lines(&program, &answers));
-            } else {
-                eprintln!("reference engine has no model for {case}");
-                std::process::exit(2);
+                Some(CaseProgram::Search(program)) => {
+                    let outcome = search::reference_model(&program);
+                    lines.push(search_lines(&outcome));
+                }
+                Some(CaseProgram::Query(database, program)) => {
+                    let answers = query::reference_answers(&database, &program);
+                    lines.push(query_lines(&program, &answers));
+                }
+                None => {
+                    eprintln!("reference engine has no model for constructor {constructor}");
+                    std::process::exit(2);
+                }
             }
             emit("value", &lines.join("\n"));
         }

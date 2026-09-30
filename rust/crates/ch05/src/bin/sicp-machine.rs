@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// Original exercise
 //! The edition teaching driver for the explicit-control evaluator, the
 //! compiler, and the named machine cases. Stdout is exactly one JSON
 //! object `{"termination": ..., "stdout": ...}`; diagnostics go to
 //! stderr.
+
+#[path = "../../../../../spec/host-subsets/rust/case_artifact.rs"]
+mod case_artifact;
 
 use ch05::sec_5_1;
 use ch05::sec_5_2::{Machine, MachineValue, assemble, standard_operations};
@@ -46,38 +50,59 @@ fn outcome_lines(outcome: &sicp_runtime::host::ops::RunOutcome) -> (&'static str
     }
 }
 
+fn artifact_constructor(source: &str, case: &str) -> String {
+    case_artifact::read_constructor(source, case).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        std::process::exit(2);
+    })
+}
+
+#[derive(Clone, Copy)]
+enum MachineKind {
+    Gcd,
+    Factorial,
+    Fibonacci,
+}
+
+fn machine_kind(constructor: &str) -> Option<MachineKind> {
+    match constructor {
+        "gcd_machine" => Some(MachineKind::Gcd),
+        "factorial_recursive" => Some(MachineKind::Factorial),
+        "fibonacci_machine" => Some(MachineKind::Fibonacci),
+        _ => None,
+    }
+}
+
 /// The machine-case schedule: constructor, input registers, and the
 /// register whose final value the controller reports.
-fn machine_setup(case: &str) -> (sec_5_1::MachineProgram, Vec<(String, MachineValue)>, String) {
-    match case {
-        "machine/01-gcd" | "machine/04-gcd-print" => (
+fn machine_setup(
+    kind: MachineKind,
+) -> (sec_5_1::MachineProgram, Vec<(String, MachineValue)>, String) {
+    match kind {
+        MachineKind::Gcd => (
             sec_5_1::gcd_machine(),
             vec![("a".to_owned(), 206), ("b".to_owned(), 40)],
             "a".to_owned(),
         ),
-        "machine/02-factorial-recursive" => (
+        MachineKind::Factorial => (
             sec_5_1::factorial_recursive(),
             vec![("n".to_owned(), 6)],
             "val".to_owned(),
         ),
-        "machine/03-fibonacci" => (
+        MachineKind::Fibonacci => (
             sec_5_1::fibonacci_machine(),
             vec![("n".to_owned(), 6)],
             "val".to_owned(),
         ),
-        other => {
-            eprintln!("unknown machine case: {other}");
-            std::process::exit(2);
-        }
     }
 }
 
 /// The independent machine reference: the taught computation derived
 /// directly, never through the simulator.
-fn machine_reference(case: &str) -> Vec<String> {
+fn machine_reference(kind: MachineKind) -> Vec<String> {
     let mut lines = Vec::new();
-    let result = match case {
-        "machine/01-gcd" | "machine/04-gcd-print" => {
+    let result = match kind {
+        MachineKind::Gcd => {
             let (mut a, mut b) = (206_i64, 40_i64);
             while b != 0 {
                 let t = a % b;
@@ -86,7 +111,7 @@ fn machine_reference(case: &str) -> Vec<String> {
             }
             a
         }
-        "machine/02-factorial-recursive" => {
+        MachineKind::Factorial => {
             let mut product = 1_i64;
             let mut counter = 1_i64;
             while counter <= 6 {
@@ -95,7 +120,7 @@ fn machine_reference(case: &str) -> Vec<String> {
             }
             product
         }
-        "machine/03-fibonacci" => {
+        MachineKind::Fibonacci => {
             let (mut previous, mut current) = (0_i64, 1_i64);
             let mut counter = 0_i64;
             while counter < 6 {
@@ -105,10 +130,6 @@ fn machine_reference(case: &str) -> Vec<String> {
                 counter += 1;
             }
             previous
-        }
-        other => {
-            eprintln!("unknown machine case: {other}");
-            std::process::exit(2);
         }
     };
     // Every lesson controller ends with `print` of its result
@@ -153,7 +174,12 @@ fn main() {
             }
         }
         "machine" => {
-            let (program, inputs, primary) = machine_setup(case);
+            let constructor = artifact_constructor(source, case);
+            let Some(kind) = machine_kind(&constructor) else {
+                eprintln!("unknown machine constructor: {constructor}");
+                std::process::exit(2);
+            };
+            let (program, inputs, primary) = machine_setup(kind);
             let assembled = match assemble(&program) {
                 Ok(assembled) => assembled,
                 Err(fault) => {
@@ -184,8 +210,13 @@ fn main() {
                 }
             }
         }
-        "reference" if case.starts_with("machine/") => {
-            emit("value", &machine_reference(case).join("\n"));
+        "reference" => {
+            let constructor = artifact_constructor(source, case);
+            let Some(kind) = machine_kind(&constructor) else {
+                eprintln!("unknown machine constructor: {constructor}");
+                std::process::exit(2);
+            };
+            emit("value", &machine_reference(kind).join("\n"));
         }
         other => {
             eprintln!("unknown engine: {other}");

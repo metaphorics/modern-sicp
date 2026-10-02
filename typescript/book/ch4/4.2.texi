@@ -380,14 +380,19 @@ evaluator:
 // the transcript reports for every input: ";;; L-Eval input:" and
 // ";;; L-Eval value:".
 
+type LazyMode =
+  "lazy-memoized-experiment" |
+  "lazy-recompute-experiment";
+
 export const lazyDriverLoop = (
   env: Env,
   inputs: ReadonlyArray<string>,
+  mode: LazyMode,
 ): ReadonlyArray<string> => @{
   const transcript: string[] = [];
   for (const input of inputs) @{
     transcript.push(";;; L-Eval input:", input);
-    const admitted = admitSource(input, "lazy-memoized-experiment");
+    const admitted = admitSource(input, mode);
     if (!admitted.ok) @{
       transcript.push(
         ";;; L-Eval value:",
@@ -395,7 +400,7 @@ export const lazyDriverLoop = (
       );
       continue;
     @}
-    const result = runLazySource(input, "lazy-memoized-experiment");
+    const result = runLazySource(input, mode);
     transcript.push(
       ";;; L-Eval value:",
       result.outcome.tag === "ok"
@@ -549,7 +554,7 @@ const transcript = lazyDriverLoop(theGlobalEnvironment, [
   "count",
   "w",
   "count",
-]);
+], "lazy-memoized-experiment");
 // ;;; L-Eval input:
 // const w = id(id(10));
 // ;;; L-Eval value:
@@ -593,7 +598,7 @@ readAll(`
 const transcript = lazyDriverLoop(theGlobalEnvironment, [
   "square(id(10));",
   "count",
-]);
+], "lazy-memoized-experiment");
 // ;;; L-Eval input:
 // square(id(10));
 // ;;; L-Eval value:
@@ -684,7 +689,7 @@ const transcript = lazyDriverLoop(theGlobalEnvironment, [
   ): string => @{ @dots{} @};
   `,
   "forEach((x) => reportLine(x), [57, 321, 88]);",
-]);
+], "lazy-memoized-experiment");
 // 57
 // 321
 // 88
@@ -807,16 +812,28 @@ primitives in the global environment, they will be redefined.  (Also see
 @example typescript
 const pairDefinitions = readAll(`
   interface LazyList @{
-    select: (m: (head: number, tail: LazyList) => number) => number;
+    head: (
+      m: (head: number, tail: LazyList) => number
+    ) => number;
+    tail: (
+      m: (head: number, tail: LazyList) => LazyList
+    ) => LazyList;
   @}
 
   const pair = (head: number, tail: LazyList): LazyList => (@{
-    select: (m) => m(head, tail),
+    head: (
+      m: (head: number, tail: LazyList) => number
+    ): number => m(head, tail),
+    tail: (
+      m: (head: number, tail: LazyList) => LazyList
+    ): LazyList => m(head, tail),
   @});
 
-  const head = (items: LazyList): number => items.select((h, t) => h);
+  const head = (items: LazyList): number =>
+    items.head((h, t) => h);
 
-  const tail = (items: LazyList): LazyList => items.select((h, t) => t);
+  const tail = (items: LazyList): LazyList =>
+    items.tail((h, t) => t);
 `);
 @end example
 

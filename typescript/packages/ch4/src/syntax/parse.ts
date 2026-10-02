@@ -496,9 +496,9 @@ class Parser {
       const type = this.#parseType();
       if (isRest) {
         params.push({ kind: "rest", name: nameToken.text, type, span: nameToken.span });
-      } else {
-        params.push({ kind: "param", name: nameToken.text, optional, type, span: nameToken.span });
+        break;
       }
+      params.push({ kind: "param", name: nameToken.text, optional, type, span: nameToken.span });
       if (!this.#eat(",")) {
         break;
       }
@@ -1377,6 +1377,15 @@ class Parser {
     }
     const exprs = args.map((arg) => arg.expr);
     const span = spanOf(start, end);
+    const admitted = target.text === "Error" || target.text === "Map" || target.text === "Set";
+    if (admitted && exprs.length > 1) {
+      this.#fail(
+        "SyntaxError",
+        "wrong-arity",
+        span,
+        `\`new ${target.text}\` takes at most one argument`,
+      );
+    }
     if (target.text === "Error") {
       return { tag: "new-error", args: exprs, span };
     }

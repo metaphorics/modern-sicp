@@ -399,7 +399,9 @@ class Lexer {
         this.#advance();
         continue;
       }
-      const exponentAhead = (c === "e" || c === "E") && (isDigit(next) || "+-".includes(next));
+      const exponentAhead =
+        (c === "e" || c === "E") &&
+        (isDigit(next) || ("+-".includes(next) && isDigit(this.#at(this.#pos.offset + 2))));
       if (exponentAhead) {
         this.#advance();
         if ("+-".includes(this.#at(this.#pos.offset))) {
@@ -496,14 +498,28 @@ class Lexer {
 
   #scanUnicodeEscape(): string {
     if (this.#at(this.#pos.offset + 1) === "{") {
+      const start = this.#pos;
       this.#advance(2);
       let digits = "";
-      while (this.#at(this.#pos.offset) !== "}") {
+      while (this.#pos.offset < this.#text.length && this.#at(this.#pos.offset) !== "}") {
         digits += this.#at(this.#pos.offset);
         this.#advance();
       }
+      const closed = this.#at(this.#pos.offset) === "}";
       this.#advance();
-      return String.fromCodePoint(parseInt(digits, 16));
+      const code = parseInt(digits, 16);
+      if (!closed || !(code >= 0 && code <= 0x10ffff)) {
+        this.#diagnostics.push(
+          diagnostic(
+            "SyntaxError",
+            "bad-unicode-escape",
+            this.#spanFrom(start),
+            "malformed `\\u{...}` escape",
+          ),
+        );
+        return "";
+      }
+      return String.fromCodePoint(code);
     }
     return this.#scanHexEscape(4);
   }

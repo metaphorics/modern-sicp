@@ -37,5 +37,10 @@ describe("import declarations", () => {
   it("admits and runs a type-only import through the checker with nothing linked", () => {
     const run = admitSource('import type { Effect } from "effect";\nconsole.log(1);');
     expect(run.ok).toBe(true);
+    const [first] = run.ok ? run.program : [];
+    expect(first).toMatchObject({
+      tag: "import",
+      names: [{ imported: "Effect", local: "Effect", isType: true }],
+    });
   });
 });

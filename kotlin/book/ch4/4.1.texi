@@ -2513,8 +2513,8 @@ block is analyzed, yielding an execution procedure.  These execution
 procedures are combined to produce an execution procedure that takes an
 environment as argument and sequentially calls each individual execution
 procedure with the environment as argument --- stopping as soon as one of them
-answers a control marker, which the block passes through unchanged, just as
-the kernel's statement sequencing does:
+fails or answers a control marker, which the block passes through unchanged,
+just as the kernel's statement sequencing does:
 
 @example kotlin
 fun analyzeSequence(statements: List<GStmt>): Exec @{
@@ -2528,8 +2528,8 @@ fun analyzeSequence(statements: List<GStmt>): Exec @{
         val later = combined
         combined = @{ env ->
             val value = earlier(env)
-            if (value is GReturnV || value is GBreakV || value is
-                GContinueV) @{
+            if (value == null || value is GReturnV ||
+                value is GBreakV || value is GContinueV) @{
                 value
             @} else @{
                 later(env)
@@ -2599,7 +2599,8 @@ fun runWhile(
 ): GValue? @{
     while (true) @{
         val test = cproc(env) ?: return null
-        if (!isTrue(test)) return GUnitV
+        if (test !is GBoolV) return null
+        if (!test.b) return GUnitV
         val value = bproc(env) ?: return null
         if (value is GReturnV) return value
         if (value is GBreakV) return GUnitV
@@ -2624,9 +2625,12 @@ fun analyzedBinary(
     val rproc = analyze(right)
     return @{ env ->
         val l = lproc(env)
-        val r = rproc(env)
-        if (l == null || r == null) null else combine(l,
-            r)
+        if (l == null) @{
+            null
+        @} else @{
+            val r = rproc(env)
+            if (r == null) null else combine(l, r)
+        @}
     @}
 @}
 @end example
@@ -2658,9 +2662,13 @@ fun analyzedApplication(expr: GApp): Exec @{
             else null
         if (primitive == null) @{
             val fn = fproc(env)
-            val arg = aproc(env)
-            if (fn == null || arg == null) null else
-                executeApplication(fn, listOf(arg))
+            if (fn !is GClosV) @{
+                null
+            @} else @{
+                val arg = aproc(env)
+                if (arg == null) null else
+                    executeApplication(fn, listOf(arg))
+            @}
         @} else @{
             runPrimitive(primitive, aprocs, env)
         @}

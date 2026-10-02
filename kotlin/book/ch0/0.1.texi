@@ -36,8 +36,10 @@ The @file{kotlin/} tree holds one @code{runtime} module and six chapter
 modules, @code{ch0} through @code{ch5}. The runtime module is the package
 @code{sicp.runtime}: the value type @code{Value}, the memoized stream type
 @code{LStream}, the operation registry @code{OpTable}, the register machine
-of chapter 5, the seeded random generator, and the typed data error
-@code{DataError} that a fallible data operation raises. Chapters 1 to 3 host
+of chapter 5, the seeded random generator, and the typed data errors
+@code{DatumError} and @code{DataError} that a fallible data operation
+raises: @code{DatumError} for the @code{Datum} API of @ref{0.5},
+@code{DataError} for the legacy @code{Value} helpers. Chapters 1 to 3 host
 their programs in plain Kotlin; the interpreters of chapters 4 and 5 run
 on the runtime types.
 

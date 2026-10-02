@@ -509,34 +509,6 @@ db.assertFact(QFact(QList(listOf(QSym("supervisor"),
 Besides the computer division supervised by Ben, the company has an accounting
 division, consisting of a chief accountant and his assistant:
 
-@example kotlin
-db.assertFact(QFact(QList(listOf(QSym("address"),
-    QList(listOf(QSym("Aull"), QSym("DeWitt")), null),
-        QList(listOf(QSym("Slumerville"),
-            QList(listOf(QSym("Onion Square")),
-                null),
-                QSym("5")),
-                null)), null)))
-db.assertFact(QFact(QList(listOf(QSym("job"),
-                QList(listOf(QSym("Aull"),
-    QSym("DeWitt")),
-        null),
-            QList(listOf(QSym("administration"),
-        QSym("secretary")), null)), null)))
-db.assertFact(QFact(QList(listOf(QSym("salary"),
-    QList(listOf(QSym("Aull"),
-        QSym("DeWitt")),
-        null),
-        QSym("25000")),
-        null)))
-db.assertFact(QFact(QList(listOf(QSym("supervisor"),
-    QList(listOf(QSym("Aull"), QSym("DeWitt")), null),
-        QList(listOf(QSym("Warbucks"),
-            QSym("Oliver")),
-            null)),
-            null)))
-@end example
-
 @noindent
 There is also a secretary for the big wheel:
 

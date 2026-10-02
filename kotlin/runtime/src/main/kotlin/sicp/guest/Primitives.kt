@@ -404,8 +404,7 @@ public object Primitives {
             }
 
             "set" -> {
-                if (!list.mutable) r.raise(GuestError.UnassignedRead(at))
-                list.items[intIndex(arguments[0], at)] = arguments[1]
+                setElementAt(list, arguments[0], arguments[1], at)
                 GValue.VUnit
             }
 
@@ -418,15 +417,15 @@ public object Primitives {
             }
 
             "take" -> {
-                GValue.VList(list.items.take(intIndex(arguments[0], at)).toMutableList(), mutable = false, asSet = list.asSet)
+                GValue.VList(list.items.take(intIndex(arguments[0], at)).toMutableList(), mutable = false)
             }
 
             "drop" -> {
-                GValue.VList(list.items.drop(intIndex(arguments[0], at)).toMutableList(), mutable = false, asSet = list.asSet)
+                GValue.VList(list.items.drop(intIndex(arguments[0], at)).toMutableList(), mutable = false)
             }
 
             "sorted" -> {
-                GValue.VList(list.items.sortedWith(::compareValues).toMutableList(), mutable = false, asSet = list.asSet)
+                GValue.VList(list.items.sortedWith(::compareValues).toMutableList(), mutable = false)
             }
 
             "map" -> {
@@ -437,7 +436,6 @@ public object Primitives {
                 GValue.VList(
                     list.items.filter { truth(invoke(arguments[0], listOf(it), at), at) }.toMutableList(),
                     mutable = false,
-                    asSet = list.asSet,
                 )
             }
 
@@ -602,8 +600,7 @@ public object Primitives {
             "put" -> {
                 if (!receiver.mutable) r.raise(GuestError.UnassignedRead(at))
                 val previous = mapLookup(receiver, arguments[0])
-                receiver.entries.entries.removeIf { valueEquals(it.key, arguments[0]) }
-                receiver.entries[arguments[0]] = arguments[1]
+                putEntry(receiver.entries, arguments[0], arguments[1])
                 previous ?: GValue.VNull
             }
 
@@ -669,14 +666,12 @@ public object Primitives {
         if (receiver is GValue.VLazyList) r.raise(GuestError.UnassignedRead(at))
         val list = receiver.asList()
         if (list != null) {
-            if (!list.mutable) r.raise(GuestError.UnassignedRead(at))
-            list.items[intIndex(index, at)] = value
+            setElementAt(list, index, value, at)
             return
         }
         val map = receiver as? GValue.VMap ?: r.raise(GuestError.UnassignedRead(at))
         if (!map.mutable) r.raise(GuestError.UnassignedRead(at))
-        map.entries.entries.removeIf { valueEquals(it.key, index) }
-        map.entries[index] = value
+        putEntry(map.entries, index, value)
     }
 
     context(r: Raise<GuestError>)
@@ -701,14 +696,36 @@ public object Primitives {
     }
 
     context(r: Raise<GuestError>)
+    private fun setElementAt(
+        list: GValue.VList,
+        index: GValue,
+        value: GValue,
+        at: Span,
+    ) {
+        if (!list.mutable) r.raise(GuestError.UnassignedRead(at))
+        val position = intIndex(index, at)
+        if (position < 0 || position >= list.items.size) r.raise(GuestError.IndexOutOfBounds(at))
+        list.items[position] = value
+    }
+
+    context(r: Raise<GuestError>)
     private fun intIndex(
         index: GValue,
         at: Span,
     ): Int =
         when (index) {
-            is GValue.VInt -> index.value
-            is GValue.VLong -> index.value.toInt()
-            else -> r.raise(GuestError.UnassignedRead(at))
+            is GValue.VInt -> {
+                index.value
+            }
+
+            is GValue.VLong -> {
+                if (index.value !in Int.MIN_VALUE..Int.MAX_VALUE) r.raise(GuestError.IndexOutOfBounds(at))
+                index.value.toInt()
+            }
+
+            else -> {
+                r.raise(GuestError.UnassignedRead(at))
+            }
         }
 
     // ---------- operators ----------
@@ -872,6 +889,14 @@ public object Primitives {
         right: GValue,
         at: Span,
     ): Boolean {
+        if (left is GValue.VDouble && right is GValue.VDouble) {
+            return when (operator) {
+                "<" -> left.value < right.value
+                "<=" -> left.value <= right.value
+                ">" -> left.value > right.value
+                else -> left.value >= right.value
+            }
+        }
         val ordering = compareValues(left, right)
         return when (operator) {
             "<" -> ordering < 0
@@ -923,7 +948,8 @@ public object Primitives {
             "List", "Collection" -> value is GValue.VLazyList || value is GValue.VList
             "MutableList" -> value is GValue.VList && value.mutable
             "Set" -> value is GValue.VList && value.asSet
-            "Map", "MutableMap" -> value is GValue.VMap
+            "Map" -> value is GValue.VMap
+            "MutableMap" -> value is GValue.VMap && value.mutable
             "Thunk" -> value is GValue.VThunk
             "Random" -> value is GValue.VRandom
             "Nothing" -> false

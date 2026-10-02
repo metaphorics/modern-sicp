@@ -800,10 +800,12 @@ private fun collectionCall(
         }
 
         "add" -> {
+            if (receiver.name != "MutableList") return SurfaceResult.Bad("`add` is a MutableList member")
             oneArg(arguments, element, T_BOOL)
         }
 
         "set" -> {
+            if (receiver.name != "MutableList") return SurfaceResult.Bad("`set` is a MutableList member")
             if (arguments.size != 2 || !sameType(arguments[0], T_INT) || !sameType(arguments[1], element)) {
                 return SurfaceResult.Bad("set takes an index and an element")
             }
@@ -905,10 +907,12 @@ private fun mapCall(
         }
 
         "remove" -> {
+            if (receiver.name != "MutableMap") return SurfaceResult.Bad("`remove` is a MutableMap member")
             oneArg(arguments, key, nullable(value))
         }
 
         "put" -> {
+            if (receiver.name != "MutableMap") return SurfaceResult.Bad("`put` is a MutableMap member")
             if (arguments.size != 2 || !sameType(arguments[0], key) || !sameType(arguments[1], value)) {
                 return SurfaceResult.Bad("put takes a key and a value")
             }

@@ -564,7 +564,7 @@ internal class CompileRuntime(
             if (index.value < 0 || index.value >= receiver.items.size) return r.raise(GuestError.IndexOutOfBounds(NO_POSITION))
             return receiver.items[index.value]
         }
-        if (receiver is GValue.VMap) return receiver.entries[index] ?: GValue.VNull
+        if (receiver is GValue.VMap) return Primitives.readIndex(receiver, index, NO_POSITION)
         return shapeFault()
     }
 
@@ -607,8 +607,12 @@ internal class CompileRuntime(
                 value is GValue.VList && value.asSet
             }
 
-            core == "Map" || core == "MutableMap" -> {
+            core == "Map" -> {
                 value is GValue.VMap
+            }
+
+            core == "MutableMap" -> {
+                value is GValue.VMap && value.mutable
             }
 
             core == "Pair" -> {
@@ -759,7 +763,7 @@ internal class CompileRuntime(
         if (arguments.size != expected) return shapeFault()
         val initial: GValue =
             when (kind) {
-                "map", "filter" -> GValue.VList(mutableListOf(), false, asSet = kind == "filter" && items.asSet)
+                "map", "filter" -> GValue.VList(mutableListOf(), false)
                 "fold" -> arguments[0]
                 "any" -> GValue.VBool(false)
                 "all" -> GValue.VBool(true)

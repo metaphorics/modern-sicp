@@ -800,7 +800,11 @@ public class Checker(
         scope: Scope,
     ) {
         val value = statement.value?.let { checkExpression(it, scope, currentReturn) }
-        if (value != null) conformOrFail(value, currentReturn, statement, "returned value does not conform")
+        if (value != null) {
+            conformOrFail(value, currentReturn, statement, "returned value does not conform")
+        } else if (!sameType(currentReturn, T_UNIT)) {
+            fail("TypeMismatch", statement, "a bare `return` belongs to a Unit function")
+        }
     }
 
     context(r: Raise<AdmissionError>)
@@ -1476,8 +1480,12 @@ public class Checker(
         return fail("UndeclaredName", expression, "undeclared function `${expression.name}`")
     }
 
+    context(r: Raise<AdmissionError>)
     private fun functionType(declaration: FunctionDecl): GuestType =
-        GuestType.Function(declaration.parameters.map { it.type }, declaration.result ?: T_UNIT)
+        GuestType.Function(
+            declaration.parameters.map { resolveType(it.type, it) },
+            declaration.result?.let { resolveType(it, declaration) } ?: T_UNIT,
+        )
 
     // ---------- calls and members ----------
 

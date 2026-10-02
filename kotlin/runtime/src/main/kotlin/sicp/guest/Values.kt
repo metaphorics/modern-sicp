@@ -241,12 +241,13 @@ private fun valueEqualsSeen(
         }
 
         a is GValue.VPair && b is GValue.VPair -> {
-            guardSeen(a, b, seen) && valueEqualsSeen(a.first, b.first, seen) &&
-                valueEqualsSeen(a.second, b.second, seen)
+            revisitSeen(a, b, seen) ||
+                (valueEqualsSeen(a.first, b.first, seen) && valueEqualsSeen(a.second, b.second, seen))
         }
 
         a is GValue.VList && b is GValue.VList -> {
-            a.items.size == b.items.size && guardSeen(a, b, seen) && a.items.zip(b.items).all { (x, y) -> valueEqualsSeen(x, y, seen) }
+            a.items.size == b.items.size &&
+                (revisitSeen(a, b, seen) || a.items.zip(b.items).all { (x, y) -> valueEqualsSeen(x, y, seen) })
         }
 
         a is GValue.VLazyList || b is GValue.VLazyList -> {
@@ -260,7 +261,7 @@ private fun valueEqualsSeen(
         a is GValue.VObject && b is GValue.VObject -> {
             a.structural && b.structural && a.className == b.className &&
                 a.fields.size == b.fields.size &&
-                guardSeen(a, b, seen) && a.fields.all { (name, x) -> b.fields[name]?.let { valueEqualsSeen(x, it, seen) } == true }
+                (revisitSeen(a, b, seen) || a.fields.all { (name, x) -> b.fields[name]?.let { valueEqualsSeen(x, it, seen) } == true })
         }
 
         a is GValue.VNull && b is GValue.VNull -> {
@@ -280,11 +281,11 @@ private fun valueEqualsSeen(
         }
     }
 
-private fun guardSeen(
+private fun revisitSeen(
     a: GValue,
     b: GValue,
     seen: MutableSet<Pair<GValue, GValue>>,
-): Boolean = seen.add(a to b)
+): Boolean = !seen.add(a to b)
 
 /** `===` and `!==`: reference identity on class instances; scalars compare
  * as their primitive values. */
@@ -311,7 +312,8 @@ private fun mapEquals(
 ): Boolean {
     if (a.entries.size != b.entries.size) return false
     return a.entries.all { (key, value) ->
-        b.entries.containsKey(key) && valueEquals(value, b.entries.getValue(key))
+        val hit = b.entries.entries.firstOrNull { valueEquals(it.key, key) }
+        hit != null && valueEquals(value, hit.value)
     }
 }
 

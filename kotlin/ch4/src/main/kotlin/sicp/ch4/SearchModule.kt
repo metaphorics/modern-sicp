@@ -414,8 +414,13 @@ internal class SearchEvaluator(
             }
 
             is Index -> {
-                eval(expression.receiver, env, { target, _ ->
-                    eval(expression.index, env, { index, more -> ok(Primitives.readIndex(target, index, expression.span), more) }, fail)
+                eval(expression.receiver, env, { target, targetMore ->
+                    eval(
+                        expression.index,
+                        env,
+                        { index, more -> ok(Primitives.readIndex(target, index, expression.span), more) },
+                        targetMore,
+                    )
                 }, fail)
             }
 
@@ -543,21 +548,22 @@ internal class SearchEvaluator(
             evalWhenGuards(expression, env, ok, fail)
             return
         }
-        eval(subjectExpression, env, { subject, _ ->
-            var entered = false
-            for (branch in expression.branches) {
-                if (branchMatches(branch, subject, env)) {
-                    entered = true
-                    eval(branch.body, env, ok, fail)
-                    break
-                }
-            }
-            if (!entered) {
-                run {
+        eval(subjectExpression, env, { subject, subjectMore ->
+            fun step(
+                index: Int,
+                currentFail: Fail,
+            ) {
+                if (index == expression.branches.size) {
                     val otherwise = expression.otherwise
-                    if (otherwise != null) eval(otherwise, env, ok, fail) else ok(GValue.VUnit, fail)
+                    if (otherwise != null) eval(otherwise, env, ok, currentFail) else ok(GValue.VUnit, currentFail)
+                    return
                 }
+                val branch = expression.branches[index]
+                branchMatches(branch, subject, env, { matched, more ->
+                    if (matched) eval(branch.body, env, ok, more) else step(index + 1, more)
+                }, currentFail)
             }
+            step(0, subjectMore)
         }, fail)
     }
 
@@ -568,21 +574,26 @@ internal class SearchEvaluator(
         ok: Ok,
         fail: Fail,
     ) {
-        var entered = false
-        for (branch in expression.branches) {
-            val guard = branch.pattern ?: continue
-            if (Primitives.truth(evalDirect(guard, env), guard.span)) {
-                entered = true
-                eval(branch.body, env, ok, fail)
-                break
-            }
-        }
-        if (!entered) {
-            run {
+        fun step(
+            index: Int,
+            currentFail: Fail,
+        ) {
+            if (index == expression.branches.size) {
                 val otherwise = expression.otherwise
-                if (otherwise != null) eval(otherwise, env, ok, fail) else ok(GValue.VUnit, fail)
+                if (otherwise != null) eval(otherwise, env, ok, currentFail) else ok(GValue.VUnit, currentFail)
+                return
             }
+            val branch = expression.branches[index]
+            val guard = branch.pattern
+            if (guard == null) {
+                step(index + 1, currentFail)
+                return
+            }
+            eval(guard, env, { value, more ->
+                if (Primitives.truth(value, guard.span)) eval(branch.body, env, ok, more) else step(index + 1, more)
+            }, currentFail)
         }
+        step(0, fail)
     }
 
     context(r: Raise<GuestError>)
@@ -590,12 +601,22 @@ internal class SearchEvaluator(
         branch: WhenBranch,
         subject: GValue?,
         env: Env,
-    ): Boolean {
+        ok: (Boolean, Fail) -> Unit,
+        fail: Fail,
+    ) {
         val typePattern = branch.typePattern
-        if (typePattern != null) return subject != null && Primitives.isTypeValue(subject, typePattern)
-        val pattern = branch.pattern ?: return false
-        if (subject == null) return Primitives.truth(evalDirect(pattern, env), pattern.span)
-        return valueEquals(evalDirect(pattern, env), subject)
+        if (typePattern != null) {
+            ok(subject != null && Primitives.isTypeValue(subject, typePattern), fail)
+            return
+        }
+        val pattern = branch.pattern
+        if (pattern == null) {
+            ok(false, fail)
+            return
+        }
+        eval(pattern, env, { value, more ->
+            ok(if (subject == null) Primitives.truth(value, pattern.span) else valueEquals(value, subject), more)
+        }, fail)
     }
 
     context(r: Raise<GuestError>)
@@ -664,21 +685,22 @@ internal class SearchEvaluator(
             return
         }
         if (callee is Member) {
-            eval(callee.receiver, env, { receiver, _ ->
+            eval(callee.receiver, env, { receiver, receiverMore ->
                 evalArguments(expression, env, { arguments, more ->
                     val shape = (receiver as? GValue.VObject)?.let { classTable[it.className] }
                     val method = shape?.methods?.get(callee.name)
                     if (method != null) {
-                        applyFunction(functionValue(method, globals), arguments, ok, more)
+                        val bound = functionValue(method, Env.child(globals).apply { define("this", receiver) })
+                        applyFunction(bound, arguments, ok, more)
                     } else {
                         memberCallCps(receiver, callee.name, arguments, ok, more, expression.span)
                     }
-                }, fail)
+                }, receiverMore)
             }, fail)
             return
         }
-        eval(callee, env, { fn, _ ->
-            evalArguments(expression, env, { arguments, more -> applyFunction(fn, arguments, ok, more) }, fail)
+        eval(callee, env, { fn, fnMore ->
+            evalArguments(expression, env, { arguments, more -> applyFunction(fn, arguments, ok, more) }, fnMore)
         }, fail)
     }
 
@@ -933,7 +955,7 @@ internal class SearchEvaluator(
                 }
                 val method = classTable[receiver.className]?.methods?.get(expression.name)
                 if (method != null) {
-                    ok(functionValue(method, globals), more)
+                    ok(functionValue(method, Env.child(globals).apply { define("this", receiver) }), more)
                     return@eval
                 }
             }
@@ -1053,16 +1075,21 @@ internal class SearchEvaluator(
         ok: Ok,
         fail: Fail,
     ) {
-        eval(statement.condition, env, { condition, _ ->
+        eval(statement.condition, env, { condition, conditionMore ->
             if (!Primitives.truth(condition, statement.condition.span)) {
-                ok(GValue.VUnit, fail)
+                ok(GValue.VUnit, conditionMore)
             } else {
                 try {
-                    runStatements(statement.body.statements, Env.child(env), { _, more -> runWhile(statement, env, ok, more) }, fail)
+                    runStatements(
+                        statement.body.statements,
+                        Env.child(env),
+                        { _, more -> runWhile(statement, env, ok, more) },
+                        conditionMore,
+                    )
                 } catch (_: BreakSignal) {
-                    ok(GValue.VUnit, fail)
+                    ok(GValue.VUnit, conditionMore)
                 } catch (_: ContinueSignal) {
-                    runWhile(statement, env, ok, fail)
+                    runWhile(statement, env, ok, conditionMore)
                 }
             }
         }, fail)
@@ -1076,41 +1103,52 @@ internal class SearchEvaluator(
         fail: Fail,
     ) {
         val loopEnv = Env.child(env)
-        val items = forItems(statement, env).iterator()
+        forItems(statement, env, { source, sourceMore ->
+            val items = source.iterator()
 
-        fun step(currentFail: Fail) {
-            if (!items.hasNext()) {
-                ok(GValue.VUnit, currentFail)
-                return
+            fun step(currentFail: Fail) {
+                if (!items.hasNext()) {
+                    ok(GValue.VUnit, currentFail)
+                    return
+                }
+                loopEnv.define(statement.name, items.next())
+                try {
+                    runStatements(statement.body.statements, Env.child(loopEnv), { _, more -> step(more) }, currentFail)
+                } catch (_: BreakSignal) {
+                    ok(GValue.VUnit, currentFail)
+                } catch (_: ContinueSignal) {
+                    step(currentFail)
+                }
             }
-            loopEnv.define(statement.name, items.next())
-            try {
-                runStatements(statement.body.statements, Env.child(loopEnv), { _, more -> step(more) }, currentFail)
-            } catch (_: BreakSignal) {
-                ok(GValue.VUnit, currentFail)
-            } catch (_: ContinueSignal) {
-                step(currentFail)
-            }
-        }
-        step(fail)
+            step(sourceMore)
+        }, fail)
     }
 
     context(r: Raise<GuestError>)
     private fun forItems(
         statement: For,
         env: Env,
-    ): Iterable<GValue> {
+        ok: (Iterable<GValue>, Fail) -> Unit,
+        fail: Fail,
+    ) {
         val endExpression = statement.end
         if (endExpression != null) {
-            val start = evalDirect(statement.iterable, env)
-            val end = evalDirect(endExpression, env)
-            return Primitives.rangeValues(start, end, statement.span).asIterable()
+            eval(statement.iterable, env, { start, startMore ->
+                eval(endExpression, env, { end, endMore ->
+                    ok(Primitives.rangeValues(start, end, statement.span).asIterable(), endMore)
+                }, startMore)
+            }, fail)
+            return
         }
-        return when (val source = evalDirect(statement.iterable, env)) {
-            is GValue.VList -> source.items.toList()
-            is GValue.VLazyList -> (sicp.guest.materialize(source) as GValue.VList).items.toList()
-            else -> r.raise(GuestError.UnassignedRead(statement.span))
-        }
+        eval(statement.iterable, env, { source, more ->
+            val items =
+                when (source) {
+                    is GValue.VList -> source.items.toList()
+                    is GValue.VLazyList -> (sicp.guest.materialize(source) as GValue.VList).items.toList()
+                    else -> r.raise(GuestError.UnassignedRead(statement.span))
+                }
+            ok(items, more)
+        }, fail)
     }
 
     private fun snapshotCells(env: Env): List<Pair<Cell, GValue>> {

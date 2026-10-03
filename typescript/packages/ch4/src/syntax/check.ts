@@ -40,12 +40,14 @@ type BindingKind = "const" | "let" | "function" | "param" | "catch" | "loop";
 interface Frame {
   readonly names: Map<string, BindingKind>;
   readonly pending: Set<string>;
+  readonly annotations: Map<string, string>;
   readonly parent: Frame | null;
 }
 
 const frameWith = (parent: Frame | null): Frame => ({
   names: new Map(),
   pending: new Set(),
+  annotations: new Map(),
   parent,
 });
 
@@ -80,7 +82,6 @@ class Checker {
   readonly #diagnostics: Diagnostic[] = [];
   readonly #oracle: TypeOracle | undefined;
   readonly #readonlyFields = new Map<string, Set<string>>();
-  readonly #annotatedTypes = new Map<string, string>();
 
   constructor(oracle: TypeOracle | undefined) {
     this.#oracle = oracle;
@@ -142,7 +143,7 @@ class Checker {
   #predeclare(item: Decl | Stmt, frame: Frame): void {
     if (item.tag === "var-decl") {
       this.#declare(frame, item.name, item.kind, item.span);
-      this.#noteAnnotation(item.name, item.declaredType);
+      this.#noteAnnotation(frame, item.name, item.declaredType);
       frame.pending.add(item.name);
       return;
     }
@@ -164,9 +165,9 @@ class Checker {
     frame.names.set(name, kind);
   }
 
-  #noteAnnotation(name: string, declaredType: TypeNode | null): void {
+  #noteAnnotation(frame: Frame, name: string, declaredType: TypeNode | null): void {
     if (declaredType !== null && declaredType.tag === "type-reference") {
-      this.#annotatedTypes.set(name, declaredType.name);
+      frame.annotations.set(name, declaredType.name);
     }
   }
 
@@ -214,7 +215,7 @@ class Checker {
     for (const entry of params) {
       this.#typeNode(entry.type);
       this.#declare(frame, entry.name, "param", entry.span);
-      this.#noteAnnotation(entry.name, entry.type);
+      this.#noteAnnotation(frame, entry.name, entry.type);
     }
     for (const item of body.body) {
       this.#predeclare(item, frame);
@@ -485,7 +486,7 @@ class Checker {
         return;
       }
       case "call": {
-        this.#checkCall(expr.callee, expr.args.length, expr.span);
+        this.#checkCall(expr.callee, expr.args.length, expr.span, frame);
         if (expr.callee.tag === "member") {
           this.#expr(expr.callee.object, frame);
         } else {
@@ -497,7 +498,7 @@ class Checker {
         return;
       }
       case "member": {
-        this.#checkMember(expr.object, expr.name, expr.span);
+        this.#checkMember(expr.object, expr.name, expr.span, frame);
         this.#expr(expr.object, frame);
         return;
       }
@@ -552,7 +553,7 @@ class Checker {
       return;
     }
     if (target.tag === "member") {
-      this.#checkMemberWrite(target.object, target.name, target.span);
+      this.#checkMemberWrite(target.object, target.name, target.span, frame);
       this.#expr(target.object, frame);
       return;
     }
@@ -569,21 +570,21 @@ class Checker {
     );
   }
 
-  #checkMemberWrite(object: Expr, name: string, span: Span): void {
+  #checkMemberWrite(object: Expr, name: string, span: Span, frame: Frame): void {
     if (object.tag !== "variable") {
       return;
     }
-    const typeName = this.#annotatedTypes.get(object.name);
+    const typeName = lookupAnnotation(frame, object.name);
     const readonly = typeName === undefined ? undefined : this.#readonlyFields.get(typeName);
     if (readonly?.has(name) === true) {
       this.#report("ReadOnlyField", name, span, `\`${name}\` is a readonly field`);
     }
   }
 
-  #checkCall(callee: Expr, argCount: number, span: Span): void {
+  #checkCall(callee: Expr, argCount: number, span: Span, frame: Frame): void {
     if (callee.tag === "variable") {
       const forbidden = FORBIDDEN_CALLEES[callee.name];
-      if (forbidden !== undefined) {
+      if (forbidden !== undefined && lookupKind(frame, callee.name) === undefined) {
         this.#report(
           "ForbiddenHostPrimitive",
           forbidden,
@@ -596,7 +597,11 @@ class Checker {
     if (callee.tag !== "member") {
       return;
     }
-    if (callee.object.tag === "variable" && callee.object.name === "console") {
+    if (
+      callee.object.tag === "variable" &&
+      callee.object.name === "console" &&
+      lookupKind(frame, "console") === undefined
+    ) {
       if (callee.name !== "log" || argCount !== 1) {
         this.#report(
           "ForbiddenHostPrimitive",
@@ -607,11 +612,11 @@ class Checker {
       }
       return;
     }
-    this.#checkMember(callee.object, callee.name, span);
+    this.#checkMember(callee.object, callee.name, span, frame);
   }
 
-  #checkMember(object: Expr, name: string, span: Span): void {
-    if (object.tag !== "variable") {
+  #checkMember(object: Expr, name: string, span: Span, frame: Frame): void {
+    if (object.tag !== "variable" || lookupKind(frame, object.name) !== undefined) {
       return;
     }
     const forbiddenFor = FORBIDDEN_MEMBERS[object.name];
@@ -691,6 +696,17 @@ const lookupKind = (frame: Frame, name: string): BindingKind | undefined => {
     const kind = current.names.get(name);
     if (kind !== undefined) {
       return kind;
+    }
+    current = current.parent;
+  }
+  return undefined;
+};
+
+const lookupAnnotation = (frame: Frame, name: string): string | undefined => {
+  let current: Frame | null = frame;
+  while (current !== null) {
+    if (current.names.has(name)) {
+      return current.annotations.get(name);
     }
     current = current.parent;
   }

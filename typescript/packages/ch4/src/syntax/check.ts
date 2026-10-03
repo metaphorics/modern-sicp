@@ -61,10 +61,23 @@ const FORBIDDEN_CALLEES: Readonly<Record<string, string>> = {
   Date: "Date",
 };
 
-const FORBIDDEN_MEMBERS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
-  Math: { random: "Math.random" },
-  Date: { now: "Date.now" },
-  performance: { now: "performance.now" },
+const HOST_MEMBER_OBJECTS: Readonly<Record<string, true>> = {
+  Math: true,
+  Number: true,
+  JSON: true,
+  Date: true,
+  performance: true,
+  process: true,
+  globalThis: true,
+  Function: true,
+  require: true,
+  fetch: true,
+};
+
+const ADMITTED_MEMBERS: Readonly<Record<string, Readonly<Record<string, true>>>> = {
+  Math: { abs: true, floor: true, max: true, min: true, sqrt: true, trunc: true },
+  Number: { isInteger: true },
+  JSON: { stringify: true },
 };
 
 const NUMERIC_OPS: Readonly<Record<string, true>> = {
@@ -634,12 +647,13 @@ class Checker {
     if (object.tag !== "variable" || lookupKind(frame, object.name) !== undefined) {
       return;
     }
-    const forbiddenFor = FORBIDDEN_MEMBERS[object.name];
-    const forbidden = forbiddenFor?.[name];
-    if (forbidden !== undefined) {
+    if (
+      HOST_MEMBER_OBJECTS[object.name] === true &&
+      ADMITTED_MEMBERS[object.name]?.[name] !== true
+    ) {
       this.#report(
         "ForbiddenHostPrimitive",
-        forbidden,
+        `${object.name}.${name}`,
         span,
         `\`${object.name}.${name}\` is not a guest primitive`,
       );

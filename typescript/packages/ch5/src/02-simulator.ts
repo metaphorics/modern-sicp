@@ -128,7 +128,9 @@ export class Machine<W = MachineValue> {
   readonly #registers = new Map<string, W | undefined>();
   readonly #stack: Array<{ readonly value: W | undefined; readonly from: string }> = [];
   readonly #breakpoints = new Set<string>();
-  readonly #trace: string[] = [];
+  // Statements are recorded and formatted only when `result()` reads the
+  // trace: long machine runs allocate one slot per step, never one string.
+  readonly #trace: Array<MachineStatement<W>> = [];
   #flag = false;
   #pc = 0;
   #steps = 0;
@@ -206,7 +208,7 @@ export class Machine<W = MachineValue> {
       return false;
     }
     this.#state = "running";
-    this.#trace.push(formatMachineStatement(statement));
+    this.#trace.push(statement);
     this.#steps += 1;
     this.execute(statement);
     return this.#state === "running";
@@ -240,7 +242,7 @@ export class Machine<W = MachineValue> {
       registers,
       stackStats: { pushes: this.#pushes, maxDepth: this.#maxDepth },
       instructionCount: this.#steps,
-      trace: [...this.#trace],
+      trace: this.#trace.map(formatMachineStatement),
       error: this.#error,
     };
   }

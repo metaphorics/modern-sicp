@@ -730,35 +730,57 @@ pub fn search_dwelling() -> Search {
         AnswerTerm::Var("miller".to_owned()),
         AnswerTerm::Var("smith".to_owned()),
     ]);
-    // Constraints, folded so the trail exercises rollback.
-    program = Search::Guard(
-        Predicate::Ne(name("smith"), name("fletcher")),
-        Box::new(Search::Guard(
-            Predicate::Ne(name("fletcher"), name("cooper")),
-            Box::new(Search::Guard(
-                Predicate::Ne(name("baker"), floor(5)),
-                Box::new(Search::Guard(
-                    Predicate::Ne(name("cooper"), floor(1)),
-                    Box::new(Search::Guard(
-                        Predicate::Ne(name("fletcher"), floor(1)),
-                        Box::new(Search::Guard(
-                            Predicate::Ne(name("fletcher"), floor(5)),
-                            Box::new(Search::Guard(
-                                Predicate::Gt(name("miller"), name("cooper")),
-                                Box::new(Search::Guard(
-                                    Predicate::Or(vec![
-                                        Predicate::Eq(name("smith"), Term::Integer(0)),
-                                        Predicate::Eq(name("fletcher"), Term::Integer(0)),
-                                    ]),
-                                    Box::new(program),
-                                )),
-                            )),
-                        )),
-                    )),
-                )),
-            )),
-        )),
-    );
+    // Constraints, folded so the trail exercises rollback: every pair
+    // distinct, the floor exclusions, miller above cooper, and the two
+    // adjacency bans -- |smith - fletcher| >= 2 and |fletcher - cooper|
+    // >= 2, encoded as a difference of 2, 3, or 4 in either direction
+    // against the trail-bound constants.
+    let mut guards = vec![
+        ("baker", "cooper"),
+        ("baker", "fletcher"),
+        ("baker", "miller"),
+        ("baker", "smith"),
+        ("cooper", "fletcher"),
+        ("cooper", "miller"),
+        ("cooper", "smith"),
+        ("fletcher", "miller"),
+        ("fletcher", "smith"),
+        ("miller", "smith"),
+    ]
+    .into_iter()
+    .map(|(a, b)| Predicate::Ne(name(a), name(b)))
+    .collect::<Vec<_>>();
+    guards.push(Predicate::Ne(name("baker"), floor(5)));
+    guards.push(Predicate::Ne(name("cooper"), floor(1)));
+    guards.push(Predicate::Ne(name("fletcher"), floor(1)));
+    guards.push(Predicate::Ne(name("fletcher"), floor(5)));
+    guards.push(Predicate::Gt(name("miller"), name("cooper")));
+    for (high, low) in [("smith", "fletcher"), ("fletcher", "cooper")] {
+        guards.push(Predicate::Or(
+            ["c2", "c3", "c4"]
+                .into_iter()
+                .flat_map(|plus| {
+                    [
+                        Predicate::DiffEq(
+                            high.to_owned(),
+                            low.to_owned(),
+                            plus.to_owned(),
+                            "c0".to_owned(),
+                        ),
+                        Predicate::DiffEq(
+                            low.to_owned(),
+                            high.to_owned(),
+                            plus.to_owned(),
+                            "c0".to_owned(),
+                        ),
+                    ]
+                })
+                .collect(),
+        ));
+    }
+    for guard in guards.into_iter().rev() {
+        program = Search::Guard(guard, Box::new(program));
+    }
     // The occupants choose floors 1..=5, all distinct.
     for who in ["baker", "cooper", "fletcher", "miller", "smith"] {
         program = Search::ChooseRange {
@@ -767,6 +789,10 @@ pub fn search_dwelling() -> Search {
             hi: 5,
             body: Box::new(program),
         };
+    }
+    // Adjacency comparisons need literal differences on the trail.
+    for (constant, value) in [("c0", 0), ("c2", 2), ("c3", 3), ("c4", 4)] {
+        program = Search::Set(constant.to_owned(), value, Box::new(program));
     }
     program
 }

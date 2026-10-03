@@ -748,6 +748,16 @@ public object Primitives {
             else -> r.raise(GuestError.UnassignedRead(at))
         }
 
+    /** The value an assignment statement stores: `x op= e` means `x = x op e`. */
+    context(r: Raise<GuestError>)
+    public fun assigned(
+        operator: String,
+        current: GValue,
+        value: GValue,
+        at: Span,
+    ): GValue =
+        if (operator == "=") value else binary(operator.dropLast(1), current, value, at)
+
     context(r: Raise<GuestError>)
     public fun unary(
         operator: String,

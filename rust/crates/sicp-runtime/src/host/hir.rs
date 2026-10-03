@@ -7,6 +7,7 @@
 //! representation; nothing here can bypass the checks that produced it.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub use crate::host::ast::FormatKind;
 use crate::host::diag::Span;
@@ -373,8 +374,8 @@ pub struct FunDef {
     pub bind_base: u32,
     /// The number of local slots the activation allocates.
     pub frame_slots: u32,
-    /// The body.
-    pub body: HirBlock,
+    /// The body, shared so calls do not deep-clone it.
+    pub body: Arc<HirBlock>,
 }
 
 /// A named item's static definition.

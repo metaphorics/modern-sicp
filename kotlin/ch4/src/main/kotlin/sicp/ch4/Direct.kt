@@ -629,16 +629,22 @@ internal open class Evaluator(
         val target = statement.target
         if (target is Name) {
             val cell = env.lookup(target.text) ?: globals.lookup(target.text) ?: r.raise(GuestError.UnassignedRead(target.span))
-            cell.value = eval(statement.value, env)
+            cell.value = Primitives.assigned(statement.operator, cell.value, eval(statement.value, env), statement.span)
             return
         }
         if (target is Member) {
             val receiver = eval(target.receiver, env) as? GValue.VObject ?: r.raise(GuestError.UnassignedRead(target.span))
-            receiver.fields[target.name] = eval(statement.value, env)
+            val current = receiver.fields[target.name]
+            if (current == null && statement.operator != "=") r.raise(GuestError.UnassignedRead(target.span))
+            receiver.fields[target.name] = Primitives.assigned(statement.operator, current ?: GValue.VUnit, eval(statement.value, env), statement.span)
             return
         }
         if (target is Index) {
-            Primitives.writeIndex(eval(target.receiver, env), eval(target.index, env), eval(statement.value, env), statement.span)
+            val receiver = eval(target.receiver, env)
+            val index = eval(target.index, env)
+            val current = if (statement.operator == "=") GValue.VUnit else Primitives.readIndex(receiver, index, statement.span)
+            val next = Primitives.assigned(statement.operator, current, eval(statement.value, env), statement.span)
+            Primitives.writeIndex(receiver, index, next, statement.span)
             return
         }
         r.raise(GuestError.UnassignedRead(statement.span))

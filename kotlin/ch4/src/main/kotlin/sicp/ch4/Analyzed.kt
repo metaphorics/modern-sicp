@@ -95,6 +95,7 @@ internal class Analysis(
         val singleton: Boolean,
         val properties: List<Property>,
         val methods: Map<String, FunctionDecl>,
+        val analyzedMethods: Map<String, Exec>,
     )
 
     context(r: Raise<GuestError>)
@@ -110,20 +111,27 @@ internal class Analysis(
         for (declaration in checked.vocabulary + program.declarations) {
             when (declaration) {
                 is SealedInterface -> {
-                    classTable[declaration.name] = ClassShape(declaration.name, false, false, emptyList(), emptyMap())
+                    classTable[declaration.name] = ClassShape(declaration.name, false, false, emptyList(), emptyMap(), emptyMap())
                 }
 
                 is DataClass -> {
-                    classTable[declaration.name] = ClassShape(declaration.name, true, false, declaration.properties, emptyMap())
+                    classTable[declaration.name] = ClassShape(declaration.name, true, false, declaration.properties, emptyMap(), emptyMap())
                 }
 
                 is PlainClass -> {
                     classTable[declaration.name] =
-                        ClassShape(declaration.name, false, false, declaration.properties, declaration.methods.associateBy { it.name })
+                        ClassShape(
+                            declaration.name,
+                            false,
+                            false,
+                            declaration.properties,
+                            declaration.methods.associateBy { it.name },
+                            declaration.methods.associate { it.name to analyzeBody(it) },
+                        )
                 }
 
                 is DataObject -> {
-                    classTable[declaration.name] = ClassShape(declaration.name, true, true, emptyList(), emptyMap())
+                    classTable[declaration.name] = ClassShape(declaration.name, true, true, emptyList(), emptyMap(), emptyMap())
                     globals.define(declaration.name, GValue.VObject(declaration.name, structural = true, fields = mutableMapOf()))
                 }
 
@@ -178,8 +186,8 @@ internal class Analysis(
     private fun methodValue(
         receiver: GValue,
         declaration: FunctionDecl,
+        bodyExec: Exec,
     ): GValue.VFunction {
-        val bodyExec = analyzeBody(declaration)
         return GValue.VFunction(declaration.name, declaration.parameters.size) { arguments ->
             val env = Env.child(globals)
             env.define("this", receiver)
@@ -362,13 +370,16 @@ internal class Analysis(
     context(r: Raise<GuestError>)
     private fun whenExec(expression: When): Exec {
         val subject = expression.subject?.let { analyze(it) }
-        val branches = expression.branches.map { branch -> branch to analyze(branch.body) }
+        val branches =
+            expression.branches.map { branch ->
+                Triple(branch, branch.pattern?.let { analyze(it) }, analyze(branch.body))
+            }
         val otherwise = expression.otherwise?.let { analyze(it) }
         return { env ->
             val subjectValue = subject?.invoke(env)
             var answer: GValue? = null
-            for ((branch, body) in branches) {
-                if (branchMatches(branch, subjectValue, env)) {
+            for ((branch, patternExec, body) in branches) {
+                if (branchMatches(branch, patternExec, subjectValue, env)) {
                     answer = body(env)
                     break
                 }
@@ -380,6 +391,7 @@ internal class Analysis(
     context(r: Raise<GuestError>)
     private fun branchMatches(
         branch: WhenBranch,
+        patternExec: Exec?,
         subject: GValue?,
         env: Env,
     ): Boolean {
@@ -388,9 +400,9 @@ internal class Analysis(
             if (subject == null) return false
             return Primitives.isTypeValue(subject, typePattern)
         }
-        val pattern = branch.pattern ?: return false
-        if (subject == null) return Primitives.truth(analyze(pattern)(env), pattern.span)
-        return valueEquals(analyze(pattern)(env), subject)
+        if (patternExec == null) return false
+        if (subject == null) return Primitives.truth(patternExec(env), branch.pattern?.span ?: branch.span)
+        return valueEquals(patternExec(env), subject)
     }
 
     context(r: Raise<GuestError>)
@@ -487,8 +499,9 @@ internal class Analysis(
                     else -> {
                         val shape = (target as? GValue.VObject)?.let { classTable[it.className] }
                         val method = shape?.methods?.get(callee.name)
-                        if (method != null) {
-                            methodValue(target, method).apply(r, values)
+                        val bodyExec = shape?.analyzedMethods?.get(callee.name)
+                        if (method != null && bodyExec != null) {
+                            methodValue(target, method, bodyExec).apply(r, values)
                         } else {
                             Primitives.member(target, callee.name, values, expression.span)
                         }
@@ -510,10 +523,12 @@ internal class Analysis(
                 GValue.VNull
             } else if (target is GValue.VObject) {
                 val field = target.fields[expression.name]
-                val method = classTable[target.className]?.methods?.get(expression.name)
+                val shape = classTable[target.className]
+                val method = shape?.methods?.get(expression.name)
+                val bodyExec = shape?.analyzedMethods?.get(expression.name)
                 when {
                     field != null -> field
-                    method != null -> methodValue(target, method)
+                    method != null && bodyExec != null -> methodValue(target, method, bodyExec)
                     else -> Primitives.property(target, expression.name, expression.span)
                 }
             } else {
@@ -598,11 +613,12 @@ internal class Analysis(
     context(r: Raise<GuestError>)
     private fun assignmentExec(statement: Assignment): Exec {
         val target = statement.target
+        val operator = statement.operator
         val value = analyze(statement.value)
         if (target is Name) {
             return { env ->
                 val cell = env.lookup(target.text) ?: globals.lookup(target.text) ?: r.raise(GuestError.UnassignedRead(target.span))
-                cell.value = value(env)
+                cell.value = Primitives.assigned(operator, cell.value, value(env), statement.span)
                 GValue.VUnit
             }
         }
@@ -610,7 +626,9 @@ internal class Analysis(
             val receiver = analyze(target.receiver)
             return { env ->
                 val objectValue = receiver(env) as? GValue.VObject ?: r.raise(GuestError.UnassignedRead(target.span))
-                objectValue.fields[target.name] = value(env)
+                val current = objectValue.fields[target.name]
+                if (current == null && operator != "=") r.raise(GuestError.UnassignedRead(target.span))
+                objectValue.fields[target.name] = Primitives.assigned(operator, current ?: GValue.VUnit, value(env), statement.span)
                 GValue.VUnit
             }
         }
@@ -618,7 +636,10 @@ internal class Analysis(
             val receiver = analyze(target.receiver)
             val index = analyze(target.index)
             return { env ->
-                Primitives.writeIndex(receiver(env), index(env), value(env), statement.span)
+                val receiverValue = receiver(env)
+                val indexValue = index(env)
+                val current = if (operator == "=") GValue.VUnit else Primitives.readIndex(receiverValue, indexValue, statement.span)
+                Primitives.writeIndex(receiverValue, indexValue, Primitives.assigned(operator, current, value(env), statement.span), statement.span)
                 GValue.VUnit
             }
         }

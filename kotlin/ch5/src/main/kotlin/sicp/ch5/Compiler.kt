@@ -693,14 +693,19 @@ internal class CompileRuntime(
         val receiver = args[0] as? GValue.VObject ?: return shapeFault()
         val name = (args[1] as? GValue.VString)?.value ?: return shapeFault()
         if (!receiver.fields.containsKey(name)) return shapeFault()
-        receiver.fields[name] = args[2]
-        return args[2]
+        val operator = (args.getOrNull(3) as? GValue.VString)?.value ?: "="
+        val next = Primitives.assigned(operator, receiver.fields.getValue(name), args[2], NO_POSITION)
+        receiver.fields[name] = next
+        return next
     }
 
     context(r: Raise<GuestError>)
     private fun compiledWriteIndex(args: List<GValue>): GValue {
-        Primitives.writeIndex(args[0], args[1], args[2], NO_POSITION)
-        return args[2]
+        val operator = (args.getOrNull(3) as? GValue.VString)?.value ?: "="
+        val current = if (operator == "=") GValue.VUnit else Primitives.readIndex(args[0], args[1], NO_POSITION)
+        val next = Primitives.assigned(operator, current, args[2], NO_POSITION)
+        Primitives.writeIndex(args[0], args[1], next, NO_POSITION)
+        return next
     }
 
     context(r: Raise<GuestError>)
@@ -880,8 +885,10 @@ internal class CompileRuntime(
         val name = (args[0] as GValue.VString).value
         val value = args[1]
         val cell = asEnv(args[2]).lookup(name) ?: return r.raise(GuestError.UnassignedRead(NO_POSITION))
-        cell.value = value
-        return value
+        val operator = (args.getOrNull(3) as? GValue.VString)?.value ?: "="
+        val next = Primitives.assigned(operator, cell.value, value, NO_POSITION)
+        cell.value = next
+        return next
     }
 }
 
@@ -1969,7 +1976,15 @@ private class ProgramCompiler(
         val assign =
             Assign(
                 "val",
-                OpSrc("compiled-assign", listOf(sicp.runtime.Source.ConstSrc(GValue.VString(name.text)), RegSrc("val"), RegSrc("env"))),
+                OpSrc(
+                    "compiled-assign",
+                    listOf(
+                        sicp.runtime.Source.ConstSrc(GValue.VString(name.text)),
+                        RegSrc("val"),
+                        RegSrc("env"),
+                        sicp.runtime.Source.ConstSrc(GValue.VString(statement.operator)),
+                    ),
+                ),
             )
         return InstrSeq(value.needs, setOf("val"), value.stmts + assign)
     }
@@ -1992,7 +2007,12 @@ private class ProgramCompiler(
                     "val",
                     OpSrc(
                         "compiled-write-property",
-                        listOf(RegSrc("val"), sicp.runtime.Source.ConstSrc(GValue.VString(target.name)), RegSrc("argl")),
+                        listOf(
+                            RegSrc("val"),
+                            sicp.runtime.Source.ConstSrc(GValue.VString(target.name)),
+                            RegSrc("argl"),
+                            sicp.runtime.Source.ConstSrc(GValue.VString(statement.operator)),
+                        ),
                     ),
                 )
         return InstrSeq(receiver.needs + value.needs, setOf("val", "argl"), stmts)
@@ -2018,7 +2038,18 @@ private class ProgramCompiler(
                 Restore("val") +
                 Assign("target", RegSrc("val")) +
                 Restore("val") +
-                Assign("val", OpSrc("compiled-write-index", listOf(RegSrc("val"), RegSrc("target"), RegSrc("argl"))))
+                Assign(
+                    "val",
+                    OpSrc(
+                        "compiled-write-index",
+                        listOf(
+                            RegSrc("val"),
+                            RegSrc("target"),
+                            RegSrc("argl"),
+                            sicp.runtime.Source.ConstSrc(GValue.VString(statement.operator)),
+                        ),
+                    ),
+                )
         return InstrSeq(receiver.needs + index.needs + value.needs, setOf("val", "argl", "target"), stmts)
     }
 

@@ -369,7 +369,7 @@ impl Eceval {
         &mut self,
         fun: FunId,
         args: Vec<HostValue>,
-        body: HirBlock,
+        body: std::sync::Arc<HirBlock>,
     ) -> Result<(), TrapReport> {
         let def = self.engine.sema.funs[fun.0 as usize].clone();
         let frame = self
@@ -383,7 +383,7 @@ impl Eceval {
         let caller_frame = self.frame;
         self.frame = frame;
         self.continues.push(Control::FunEnd { caller_frame });
-        self.control = Control::Exec(body);
+        self.control = Control::Exec((*body).clone());
         Ok(())
     }
 
@@ -1224,7 +1224,7 @@ impl Eceval {
                 self.enter_function(fun, args, body)?;
             }
             HostValue::Closure(closure) => {
-                let body = closure.body.as_ref().clone();
+                let body = closure.body.clone();
                 let captures = closure.captures.clone();
                 let params = closure.params.clone();
                 let frame =
@@ -1238,7 +1238,7 @@ impl Eceval {
                 let caller_frame = self.frame;
                 self.frame = frame;
                 self.continues.push(Control::FunEnd { caller_frame });
-                self.control = Control::Exec(body);
+                self.control = Control::Exec((*body).clone());
             }
             HostValue::Box(inner) => {
                 self.proc = *inner;

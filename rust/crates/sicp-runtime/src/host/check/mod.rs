@@ -353,10 +353,10 @@ impl Checker {
                     ret: HostTy::Unit,
                     bind_base: 0,
                     frame_slots: 0,
-                    body: HirBlock {
+                    body: std::sync::Arc::new(HirBlock {
                         stmts: Vec::new(),
                         tail: None,
-                    },
+                    }),
                 });
                 Ok(())
             }
@@ -577,7 +577,7 @@ impl Checker {
         def.params = params;
         def.bind_base = bind_base;
         def.frame_slots = slots;
-        def.body = body;
+        def.body = std::sync::Arc::new(body);
         Ok(())
     }
 
@@ -1405,7 +1405,7 @@ fn resolve_infer_cells(sema: &mut Sema, cells: &[Option<HostTy>]) -> Result<(), 
         }
         let body = sema.funs[index].body.clone();
         let resolved = resolve_block(&body, cells)?;
-        sema.funs[index].body = resolved;
+        sema.funs[index].body = std::sync::Arc::new(resolved);
     }
     Ok(())
 }

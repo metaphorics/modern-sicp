@@ -1072,17 +1072,25 @@ internal class EceOps(
         val target = node.target
         if (target is Name) {
             val cell = env.lookup(target.text) ?: globals.lookup(target.text) ?: r.raise(GuestError.UnassignedRead(target.span))
-            cell.value = value
-            return value
+            val next = Primitives.assigned(node.operator, cell.value, value, node.span)
+            cell.value = next
+            return next
         }
         if (target is Member) {
             val receiver = evalExpr(target.receiver, env) as? GValue.VObject ?: r.raise(GuestError.UnassignedRead(target.span))
-            receiver.fields[target.name] = value
-            return value
+            val current = receiver.fields[target.name]
+            if (current == null && node.operator != "=") r.raise(GuestError.UnassignedRead(target.span))
+            val next = Primitives.assigned(node.operator, current ?: GValue.VUnit, value, node.span)
+            receiver.fields[target.name] = next
+            return next
         }
         if (target is Index) {
-            Primitives.writeIndex(evalExpr(target.receiver, env), evalExpr(target.index, env), value, node.span)
-            return value
+            val receiver = evalExpr(target.receiver, env)
+            val index = evalExpr(target.index, env)
+            val current = if (node.operator == "=") GValue.VUnit else Primitives.readIndex(receiver, index, node.span)
+            val next = Primitives.assigned(node.operator, current, value, node.span)
+            Primitives.writeIndex(receiver, index, next, node.span)
+            return next
         }
         return r.raise(GuestError.UnassignedRead(node.span))
     }

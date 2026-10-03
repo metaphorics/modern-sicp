@@ -1046,22 +1046,28 @@ internal class SearchEvaluator(
         val target = statement.target
         if (target is Name) {
             val cell = env.lookup(target.text) ?: globals.lookup(target.text) ?: r.raise(GuestError.UnassignedRead(target.span))
-            if (permanentDepth > 0) permanent[cell] = value
-            cell.value = value
+            val next = Primitives.assigned(statement.operator, cell.value, value, statement.span)
+            if (permanentDepth > 0) permanent[cell] = next
+            cell.value = next
             return
         }
         if (target is Member) {
             val receiver = evalDirect(target.receiver, env) as? GValue.VObject ?: r.raise(GuestError.UnassignedRead(target.span))
+            val current = receiver.fields[target.name]
+            if (current == null && statement.operator != "=") r.raise(GuestError.UnassignedRead(target.span))
+            val next = Primitives.assigned(statement.operator, current ?: GValue.VUnit, value, statement.span)
             val before = FieldsState(receiver, LinkedHashMap(receiver.fields))
-            receiver.fields[target.name] = value
+            receiver.fields[target.name] = next
             recordWrite(before, FieldsState(receiver, LinkedHashMap(receiver.fields)))
             return
         }
         if (target is Index) {
             val receiver = evalDirect(target.receiver, env)
             val index = evalDirect(target.index, env)
+            val current = if (statement.operator == "=") GValue.VUnit else Primitives.readIndex(receiver, index, statement.span)
+            val next = Primitives.assigned(statement.operator, current, value, statement.span)
             val before = storeState(receiver, statement.span)
-            Primitives.writeIndex(receiver, index, value, statement.span)
+            Primitives.writeIndex(receiver, index, next, statement.span)
             recordWrite(before, storeState(receiver, statement.span))
             return
         }

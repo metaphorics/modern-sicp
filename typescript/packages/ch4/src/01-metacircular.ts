@@ -105,9 +105,14 @@ export class Session {
   readonly #globals = new Map<string, Value>();
   readonly #modules: LinkedModules;
 
-  constructor(mode: ExperimentMode, modules: LinkedModules = {}) {
+  /** 4.1.7 mode: closures defined in this session carry once-analyzed
+   * bodies instead of re-walking their block at every call. */
+  readonly analyzed: boolean;
+
+  constructor(mode: ExperimentMode, modules: LinkedModules = {}, analyzed = false) {
     this.mode = mode;
     this.#modules = modules;
+    this.analyzed = analyzed;
     this.#globals.set("Math", namespaceValue(this.#builtins, "math", MATH_NAMES));
     this.#globals.set("Number", namespaceValue(this.#builtins, "number", NUMBER_NAMES));
   }
@@ -188,7 +193,11 @@ export class Session {
         return this.evalAssignment(expr, env);
       case "arrow": {
         const { params, required, rest } = splitParams(expr.params);
-        return ok(makeClosure(params, rest, expr.body, env, required));
+        const closure = makeClosure(params, rest, expr.body, env, required);
+        if (this.analyzed) {
+          closure.analyzedBody = analyzedBlock(expr.body.body, this);
+        }
+        return ok(closure);
       }
       case "call":
         return this.evalCall(expr.callee, expr.args, env);
@@ -648,7 +657,11 @@ export class Session {
     if (closure.rest !== null) {
       frame.bindings.set(closure.rest, makeCell(makeArray(args.slice(capacity)), true));
     }
-    return completionToOutcome(this.execSequence(closure.body.body, frame));
+    const completion =
+      closure.analyzedBody === undefined
+        ? this.execSequence(closure.body.body, frame)
+        : closure.analyzedBody(frame);
+    return completionToOutcome(completion);
   }
 
   callMember(receiver: Value, name: string, args: ReadonlyArray<Value>): Outcome {
@@ -974,6 +987,9 @@ export class Session {
     if (item.tag === "function-decl") {
       const { params, required, rest } = splitParams(item.params);
       const closure = makeClosure(params, rest, item.body, frame, required);
+      if (this.analyzed) {
+        closure.analyzedBody = analyzedBlock(item.body.body, this);
+      }
       frame.bindings.set(item.name, makeCell(closure, true));
       return normal(undefined);
     }
@@ -1292,7 +1308,7 @@ export const driverLoop = (env: Env, inputs: ReadonlyArray<string>): RunResult =
 
 /** The book's `analyze`: syntax once, execution many times. */
 export const analyze = (expr: Expr): ExecutionProcedure =>
-  analyzedProcedure(expr, new Session("core"));
+  analyzedProcedure(expr, new Session("core", {}, true));
 
 /** The analyzed evaluator's `eval`: analyze once, run once. */
 export const evalAnalyzed = (expr: Expr, env: Env): Outcome => analyze(expr)(env);
@@ -1314,7 +1330,7 @@ export const runAnalyzedSource = (
       transcript: [],
     };
   }
-  const session = new Session(mode, modules);
+  const session = new Session(mode, modules, true);
   const env = session.globalEnv();
   session.predeclare(admission.program, env);
   let outcome: Outcome = ok(undefined);
@@ -1394,7 +1410,12 @@ const analyzedProcedure = (expr: Expr, session: Session): ExecutionProcedure => 
     }
     case "arrow": {
       const { params, required, rest } = splitParams(expr.params);
-      return (env) => ok(makeClosure(params, rest, expr.body, env, required));
+      const body = analyzedBlock(expr.body.body, session);
+      return (env) => {
+        const closure = makeClosure(params, rest, expr.body, env, required);
+        closure.analyzedBody = body;
+        return ok(closure);
+      };
     }
     case "call": {
       // Member calls (the `console.log` boundary and host methods) and spread
@@ -1424,4 +1445,38 @@ const analyzedProcedure = (expr: Expr, session: Session): ExecutionProcedure => 
     default:
       return (env) => session.evaluate(expr, env);
   }
+};
+
+/** Analyzes one closure body once at definition time: expression statements
+ * become execution procedures, declarations and control statements keep the
+ * session's own completion semantics. The returned sequence mirrors
+ * `execSequence`: hoisted names are predeclared per call and the first
+ * non-normal completion wins. */
+const analyzedBlock = (
+  items: ReadonlyArray<Decl | Stmt>,
+  session: Session,
+): ((env: Env) => Completion) => {
+  const analyzed = items.map(
+    (item): ((env: Env) => Completion) =>
+      item.tag === "expr-stmt"
+        ? (env) => {
+            const outcome = analyzedProcedure(item.expr, session)(env);
+            return outcome.tag === "error"
+              ? { tag: "error", error: outcome.error }
+              : { tag: "normal", value: outcome.value };
+          }
+        : (env) => session.execItem(item, env),
+  );
+  return (env) => {
+    session.predeclare(items, env);
+    let last: Value;
+    for (const run of analyzed) {
+      const completion = run(env);
+      if (completion.tag !== "normal") {
+        return completion;
+      }
+      last = completion.value;
+    }
+    return normal(last);
+  };
 };

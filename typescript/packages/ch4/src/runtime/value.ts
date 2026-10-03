@@ -13,7 +13,7 @@
  */
 import type { Block, Expr } from "../syntax/ast.ts";
 import type { Env } from "./env.ts";
-import type { Outcome } from "./errors.ts";
+import type { Completion, Outcome } from "./errors.ts";
 
 /** A guest procedure: parameters, body, and the lexical environment it closed over. */
 export class Closure {
@@ -23,6 +23,9 @@ export class Closure {
   readonly rest: string | null;
   readonly body: Block;
   readonly env: Env;
+  /** The 4.1.7 analyzed evaluator attaches the body's once-analyzed
+   * sequence at definition time; `undefined` marks an evaluated closure. */
+  analyzedBody: ((env: Env) => Completion) | undefined = undefined;
 
   constructor(
     params: ReadonlyArray<string>,

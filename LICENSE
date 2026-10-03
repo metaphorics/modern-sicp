@@ -17,7 +17,8 @@ Programs: GPL-3.0-only
   */exercises/               the pending scaffolds
   */solutions/               the reference solutions
   */appendix/                the OCaml Base and Core appendix code
-  spec/host-subsets/         the conformance corpus
+  spec/                      the preserved book inventory and
+                             the conformance corpus
   LICENSES/GPL-3.0-only.txt
   Listings that correspond to programs printed in the book are Adapted
   Material under CC BY-SA 4.0 Section 1(a). GPLv3 is the BY-SA

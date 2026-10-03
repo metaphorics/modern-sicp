@@ -46,8 +46,9 @@ Each language root has the same six recipes: `setup`, `fmt`, `lint`, `test`, `sc
 
 Building needs Texinfo 7.3, TeX Live with pdfTeX and tex4ht, Pygments,
 librsvg, and epubcheck. `just setup-books` installs Texinfo, librsvg,
-and epubcheck. Install the TeX programs and Pygments before running it;
-the recipe checks for them but does not install them.
+and epubcheck. Install the TeX programs and Pygments before running
+`just setup` or `just setup-books`; the recipe checks for them but
+does not install them.
 
 ## Licenses
 

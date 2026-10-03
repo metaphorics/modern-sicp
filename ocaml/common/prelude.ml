@@ -218,7 +218,7 @@ let initial_env ~emit () =
         fold initial items)
     ; prim "List.fold_right" 3 (fun apply args ->
         three "List.fold_right" args
-        >>= fun (f, initial, items) ->
+        >>= fun (f, items, initial) ->
         let* f = as_procedure "List.fold_right" f in
         let* items = as_list "List.fold_right" items in
         let rec fold acc = function

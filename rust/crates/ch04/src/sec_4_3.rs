@@ -270,15 +270,13 @@ impl SearchEngine {
                         return;
                     }
                 }
-                let mut value = *lo;
-                while value <= *hi {
+                for value in *lo..=*hi {
                     if self.answers.len() >= self.limit {
                         return;
                     }
                     self.bind(var, value);
                     self.explore(body);
                     self.rollback_binding(var);
-                    value = value.saturating_add(1);
                 }
             }
             Search::ChooseFrom { var, start, body } => {

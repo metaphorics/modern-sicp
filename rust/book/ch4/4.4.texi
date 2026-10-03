@@ -614,35 +614,23 @@ matches all job entries whose third item is a two-element list whose first item
 is @code{computer}:
 
 @example rust
-// (job ?x (computer . ?type))
+// (job ?x (computer ?type))
 let query = relation_query(
     "job",
-    &[variable("x"), pair(atom("computer"), variable("type"))],
+    &[variable("x"), fact("computer", &[variable("type")])],
 );
 let answers = qeval(&microshaft(), &query).answers;
 // the instantiated answer: (job (Bitdiddle Ben) (computer wizard))
 // => (job (Hacker Alyssa P) (computer programmer))
 // => (job (Fect Cy D) (computer programmer))
 // => (job (Tweakit Lem E) (computer technician))
-// => (job (Reasoner Louis) (computer programmer trainee))
 @end example
 
 @noindent
 This same pattern does @emph{not} match
 
-@example rust
-// (job ?x (computer programmer trainee))
-let query = relation_query(
-    "job",
-    &[
-        variable("x"),
-        fact("computer", &[atom("programmer"), atom("trainee")]),
-    ],
-);
-let answers = qeval(&microshaft(), &query).answers;
-// the instantiated answer:
-//   (job (Reasoner Louis)
-//   (computer programmer trainee))
+@example
+(job (Reasoner Louis) (computer programmer trainee))
 @end example
 
 @noindent
@@ -1010,6 +998,7 @@ provides means for abstracting queries.  These are given by @newterm{rules}.
 The rule
 
 @example rust
+let mut db = microshaft();
 let home_1 = relation_query(
     "address",
     &[variable("person-1"), pair(variable("town"), variable("rest-1"))],
@@ -1100,7 +1089,7 @@ let query = relation_query(
     "lives-near",
     &[variable("x"), fact("Bitdiddle", &[atom("Ben")])],
 );
-let answers = qeval(&microshaft(), &query).answers;
+let answers = qeval(&db, &query).answers;
 // the instantiated answer:
 //   (lives-near (Reasoner Louis) (Bitdiddle Ben))
 // => (lives-near (Aull DeWitt) (Bitdiddle Ben))
@@ -1115,7 +1104,7 @@ let query = relation_query(
     "lives-near",
     &[variable("x"), fact("Bitdiddle", &[atom("Ben")])],
 );
-let answers = qeval(&microshaft(), &query).answers;
+let answers = qeval(&db, &query).answers;
 // the instantiated answer:
 //   (lives-near (Reasoner Louis) (Bitdiddle Ben))
 // => (lives-near (Aull DeWitt) (Bitdiddle Ben))
@@ -1135,10 +1124,8 @@ let neighbor = relation_query(
     &[variable("x"), fact("Bitdiddle", &[atom("Ben")])],
 );
 let query = Query::And(vec![programmer, neighbor]);
-let answers = qeval(&microshaft(), &query).answers;
-// the instantiated answer: (and
-//   (job (Fect Cy D) (computer programmer))
-//   (lives-near (Fect Cy D) (Bitdiddle Ben)))
+let answers = qeval(&db, &query).answers;
+// => []
 @end example
 
 @noindent
@@ -1628,7 +1615,6 @@ This produces a stream of frames, each of which contains a binding for
 // (job ?person ?x)
 let query = relation_query("job", &[variable("person"), variable("x")]);
 let answers = qeval(&microshaft(), &query).answers;
-// the instantiated answer: (job ?person (computer programmer trainee))
 @end example
 
 @noindent
@@ -1860,9 +1846,9 @@ let query = relation_query(
     "lives-near",
     &[variable("x"), fact("Hacker", &[atom("Alyssa"), atom("P")])],
 );
-let answers = qeval(&microshaft(), &query).answers;
+let answers = qeval(&db, &query).answers;
 // the instantiated answer:
-//   (lives-near (Reasoner Louis) (Hacker Alyssa P))
+//   (lives-near (Fect Cy D) (Hacker Alyssa P))
 @end example
 
 @noindent

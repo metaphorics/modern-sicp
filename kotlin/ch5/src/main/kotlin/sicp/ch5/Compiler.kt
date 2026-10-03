@@ -199,7 +199,11 @@ public object Compiler {
     public fun operations(
         checked: CheckedProgram,
         sink: OutputSink = OutputSink(),
-    ): Map<String, MachineOp> = CompileRuntime(sink).operations()
+    ): Map<String, MachineOp> {
+        val runtime = CompileRuntime(sink)
+        compileChecked(checked, runtime, CompilerOptions())
+        return runtime.operations()
+    }
 
     /** The compiled machine a run drives, for the monitoring exercises. */
     public fun machine(

@@ -142,6 +142,14 @@ private class ReferenceEvaluator(
 
     private var attempts = 0
 
+    private var random: GValue.VRandom? = null
+
+    private var permanentDepth = 0
+
+    private val permanentGlobals = mutableMapOf<String, GValue>()
+
+    private val permanentObjects = mutableListOf<GValue>()
+
     fun runMain(): ReferenceModels.Observation {
         var error: GuestError? = null
         try {
@@ -210,6 +218,7 @@ private class ReferenceEvaluator(
     private fun chooseRef(
         expression: Call,
         env: Env,
+        shuffled: Boolean,
     ): GValue {
         val alternatives = expression.arguments.map { it.value }
         if (alternatives.isEmpty()) throw FailSignal()
@@ -219,10 +228,66 @@ private class ReferenceEvaluator(
         val index = choiceVector.getOrElse(depth) { 0 }
         if (index >= alternatives.size) throw FailSignal()
         pathCounts[depth] = alternatives.size
-        return evalExpr(alternatives[index], env)
+        val order = if (shuffled) shuffledOrder(alternatives.size) else (0 until alternatives.size).toList()
+        return evalExpr(alternatives[order[index]], env)
+    }
+
+    /** The same seeded shuffle the teaching engine uses, so a seeded program
+     * sees the same alternative order at every attempt. */
+    private fun shuffledOrder(size: Int): List<Int> {
+        val generator = random ?: GValue.VRandom(0).also { random = it }
+        val out = (0 until size).toMutableList()
+        for (i in size - 1 downTo 1) {
+            generator.seed = generator.seed * 6364136223846793005L + 1442695040888963407L
+            val pick = ((generator.seed ushr 16) % (i + 1)).toInt()
+            val swap = out[i]
+            out[i] = out[pick]
+            out[pick] = swap
+        }
+        return out
+    }
+
+    private fun setPermanentValue(
+        expression: Call,
+        env: Env,
+    ): GValue {
+        val body = evalExpr(expression.arguments.single().value, env)
+        permanentDepth++
+        try {
+            return applyValue(body, emptyList(), expression.span)
+        } finally {
+            permanentDepth--
+        }
+    }
+
+    private fun ifFailValue(
+        expression: Call,
+        env: Env,
+    ): GValue {
+        val depth = chooseDepth++
+        while (pathCounts.size <= depth) pathCounts.add(0)
+        val index = choiceVector.getOrElse(depth) { 0 }
+        pathCounts[depth] = 2
+        val body = evalExpr(expression.arguments[if (index == 0) 0 else 1].value, env)
+        return applyValue(body, emptyList(), expression.span)
+    }
+
+    private fun seededRandomValue(
+        expression: Call,
+        env: Env,
+    ): GValue {
+        val seed =
+            evalExpr(expression.arguments.single().value, env) as? GValue.VLong
+                ?: throw RefFault(GuestError.UnassignedRead(expression.span))
+        val generator = GValue.VRandom(seed.value)
+        random = generator
+        return generator
     }
 
     private fun installDeclarations() {
+        for ((name, cell) in globals.bindings) {
+            if (permanentObjects.any { it === cell.value }) permanentGlobals[name] = cell.value
+        }
         for (declaration in checked.syntax.declarations) {
             if (declaration is FunctionDecl) {
                 globals.define(declaration.name, closureOf(declaration, globals))
@@ -233,7 +298,8 @@ private class ReferenceEvaluator(
         }
         for (declaration in checked.syntax.declarations) {
             if (declaration is TopProperty) {
-                globals.define(declaration.property.name, evalExpr(declaration.initializer, globals))
+                val name = declaration.property.name
+                globals.define(name, permanentGlobals[name] ?: evalExpr(declaration.initializer, globals))
             }
         }
     }
@@ -360,17 +426,20 @@ private class ReferenceEvaluator(
         if (target is Name) {
             val cell = env.lookup(target.text) ?: globals.lookup(target.text) ?: throw RefFault(GuestError.UnassignedRead(target.span))
             cell.value = value
+            if (permanentDepth > 0 && globals.bindings[target.text] === cell) permanentGlobals[target.text] = value
             return
         }
         if (target is Member) {
             val receiver = evalExpr(target.receiver, env) as? GValue.VObject ?: throw RefFault(GuestError.UnassignedRead(target.span))
             receiver.fields[target.name] = value
+            if (permanentDepth > 0 && permanentObjects.none { it === receiver }) permanentObjects.add(receiver)
             return
         }
         if (target is Index) {
             val receiver = evalExpr(target.receiver, env)
             val index = evalExpr(target.index, env)
             writeIndexValue(receiver, index, value, target.span)
+            if (permanentDepth > 0 && permanentObjects.none { it === receiver }) permanentObjects.add(receiver)
             return
         }
         throw RefFault(GuestError.UnassignedRead(target.span))
@@ -488,7 +557,11 @@ private class ReferenceEvaluator(
             }
 
             is Block -> {
-                runBlockStatements(expression.statements, Env.child(env))
+                if (expression in checked.lambdaCoercions) {
+                    GValue.VFunction(null, 0, emptyList()) { _ -> runBody(expression, Env.child(env)) }
+                } else {
+                    runBlockStatements(expression.statements, Env.child(env))
+                }
             }
 
             is Return -> {
@@ -725,7 +798,15 @@ private class ReferenceEvaluator(
         env: Env,
     ): GValue {
         val callee = expression.callee
-        if (searchSemantics && callee is Name && callee.text == "choose") return chooseRef(expression, env)
+        if (searchSemantics && callee is Name) {
+            when (callee.text) {
+                "choose" -> return chooseRef(expression, env, shuffled = false)
+                "chooseRandom" -> return chooseRef(expression, env, shuffled = true)
+                "setPermanent" -> return setPermanentValue(expression, env)
+                "ifFail" -> return ifFailValue(expression, env)
+                "seededRandom" -> return seededRandomValue(expression, env)
+            }
+        }
         val intrinsic = builtinCall(callee, expression, env)
         if (intrinsic != null) return intrinsic
         val built = builtInClass(callee, expression, env)
@@ -1283,9 +1364,19 @@ internal object QueryModel {
             guardQuery: GValue,
             bindings: Bindings,
         ): Boolean {
-            val arguments = items(guardQuery, "args").map { resolve(it, bindings) }
+            val arguments = items(guardQuery, "args").map { copyTerm(resolve(it, bindings)) }
             return arguments.none { hasVariable(it) } && guard(field(guardQuery, "predicate"), arguments)
         }
+
+        /** Fresh term objects per guard call, matching how the teaching
+         * query driver rebuilds its guest terms before applying a guard. */
+        private fun copyTerm(term: GValue): GValue =
+            when (kind(term)) {
+                "QSym" -> node("QSym", "name" to GValue.VString(name(term)))
+                "QVar" -> variable(name(term))
+                "QList" -> list(items(term, "items").map(::copyTerm), tailOf(term)?.let(::copyTerm))
+                else -> term
+            }
 
         private fun only(frames: Sequence<Bindings>): Sequence<Bindings> =
             sequence {

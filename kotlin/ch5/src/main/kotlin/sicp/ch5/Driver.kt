@@ -232,14 +232,13 @@ internal object MachineScript {
             val line = rawLine.trim()
             if (line.isEmpty() || line.startsWith("#")) continue
             if (line.startsWith("registers")) {
-                val names = line.removePrefix("registers").trim().split(Regex("\\s+"))
-                registerNames.addAll(names)
-                for (name in names) registers[name] = 0L
+                registerNames.addAll(line.removePrefix("registers").trim().split(Regex("\\s+")))
                 continue
             }
             if (line.startsWith("const")) {
                 val parts = line.removePrefix("const").trim().split(Regex("\\s+"))
-                registers[parts[0]] = parts[1].toLong()
+                val value = parts.getOrNull(1)?.toLongOrNull() ?: return null
+                registers[parts[0]] = value
                 continue
             }
             if (line.endsWith(":")) {

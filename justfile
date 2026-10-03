@@ -35,9 +35,11 @@ test:
 # The pending scaffolds per edition; nonzero while one is unsolved, which is the report.
 scaffold:
     #!/usr/bin/env bash
+    status=0
     for edition in {{editions}}; do
-        just --justfile "$edition/justfile" --working-directory "$edition" scaffold
+        just --justfile "$edition/justfile" --working-directory "$edition" scaffold || status=1
     done
+    exit "$status"
 
 # HTML, EPUB 3 and PDF for every edition.
 books:
@@ -75,7 +77,13 @@ check-exercise-map:
 # driver runs bare `node`, so the recipe puts the pinned Node 24.21.0 first on
 # PATH exactly as typescript/justfile does for its own recipes.
 test-conformance:
-    PATH="{{env_var("HOME")}}/.local/share/mise/installs/node/24.21.0/bin:$PATH" OPAMSWITCH="${OPAMSWITCH:-5.5.1}" uv run --project tools python tools/host_conformance_check.py
+    #!/usr/bin/env bash
+    node_dir="{{env_var("HOME")}}/.local/share/mise/installs/node/24.21.0/bin"
+    if [ ! -x "$node_dir/node" ]; then
+        echo "pinned Node 24.21.0 missing at $node_dir (run the edition setup)" >&2
+        exit 1
+    fi
+    PATH="$node_dir:$PATH" OPAMSWITCH="${OPAMSWITCH:-5.5.1}" uv run --locked --project tools python tools/host_conformance_check.py
 
 # CONTRIBUTING.md states that this syncs tools/ and runs its tests.
 setup-tools:

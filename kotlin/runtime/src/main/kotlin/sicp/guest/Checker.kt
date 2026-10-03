@@ -297,7 +297,9 @@ public class Checker(
         val previousReturn = currentReturn
         val previousNarrowings = narrowings
         val previousLoopDepth = loopDepth
+        val previousLambdaDepth = lambdaDepth
         loopDepth = 0
+        lambdaDepth = 0
         narrowings = emptyMap()
         currentReturn = result
         val bodyType =
@@ -314,6 +316,7 @@ public class Checker(
         narrowings = previousNarrowings
         currentReturn = previousReturn
         loopDepth = previousLoopDepth
+        lambdaDepth = previousLambdaDepth
         if (declaration.tailrec) checkTailrec(declaration)
     }
 
@@ -799,6 +802,7 @@ public class Checker(
         statement: Return,
         scope: Scope,
     ) {
+        if (lambdaDepth > 0) fail("Syntax", statement, "return is only allowed in a named function")
         val value = statement.value?.let { checkExpression(it, scope, currentReturn) }
         if (value != null) {
             conformOrFail(value, currentReturn, statement, "returned value does not conform")
@@ -943,10 +947,13 @@ public class Checker(
         val inner = Scope(scope, lambdaBoundary = true)
         lambdaDepth++
         val previousReturn = currentReturn
+        val previousLoopDepth = loopDepth
+        loopDepth = 0
         currentReturn = expected.result
         checkStatements(body.statements, inner)
         val bodyType = blockValue(body)
         currentReturn = previousReturn
+        loopDepth = previousLoopDepth
         lambdaDepth--
         if (expected.result != T_FREE) {
             conformOrFail(bodyType, expected.result, body, "lambda body does not conform")
@@ -1387,10 +1394,13 @@ public class Checker(
         }
         lambdaDepth++
         val previousReturn = currentReturn
+        val previousLoopDepth = loopDepth
+        loopDepth = 0
         currentReturn = expectedFunction?.result ?: T_FREE
         checkStatements(expression.body.statements, inner)
         val bodyType = blockValue(expression.body)
         currentReturn = previousReturn
+        loopDepth = previousLoopDepth
         lambdaDepth--
         val pinned = expectedFunction != null && expectedFunction.result != T_FREE
         if (pinned) conformOrFail(bodyType, expectedFunction.result, expression.body, "lambda body does not conform")

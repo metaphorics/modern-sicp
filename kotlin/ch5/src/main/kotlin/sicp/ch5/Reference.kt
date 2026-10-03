@@ -1149,15 +1149,21 @@ private class ReferenceEvaluator(
 /** The independent machine model: parse the controller description and
  * derive effects and final state with its own execution loop. */
 internal object MachineModel {
+    private class ModelFault : Exception()
+
     private class State(
+        val declared: LinkedHashSet<String>,
         val registers: LinkedHashMap<String, Long>,
         val effects: MutableList<String>,
         val stack: ArrayDeque<Long>,
     ) {
         var testFlag: Boolean = false
+
+        fun read(name: String): Long = registers[name] ?: throw ModelFault()
     }
 
     fun run(text: String): ReferenceModels.Observation {
+        val declared = linkedSetOf<String>()
         val registers = linkedMapOf<String, Long>()
         val instructions = mutableListOf<List<String>>()
         val labels = linkedMapOf<String, Int>()
@@ -1165,27 +1171,39 @@ internal object MachineModel {
             val line = rawLine.trim()
             if (line.isEmpty() || line.startsWith("#")) continue
             if (line.startsWith("registers")) {
-                for (name in line.removePrefix("registers").trim().split(Regex("\\s+"))) registers[name] = 0L
+                declared.addAll(line.removePrefix("registers").trim().split(Regex("\\s+")))
                 continue
             }
             if (line.startsWith("const")) {
                 val parts = line.removePrefix("const").trim().split(Regex("\\s+"))
-                registers[parts[0]] = parts[1].toLong()
+                val value = parts.getOrNull(1)?.toLongOrNull() ?: return ReferenceModels.Observation("rejected", "")
+                registers[parts[0]] = value
                 continue
             }
             if (line.endsWith(":")) {
                 labels[line.dropLast(1)] = instructions.size
                 continue
             }
-            instructions.add(line.split(Regex("\\s+")))
+            val words = line.split(Regex("\\s+"))
+            if (words[0] !in OPCODES) return ReferenceModels.Observation("rejected", "")
+            instructions.add(words)
         }
-        val state = State(registers, mutableListOf(), ArrayDeque())
-        val halted = executeLoop(instructions, labels, state)
-        val finals = registers.entries.joinToString(" ") { "${it.key}=${it.value}" }
+        val state = State(declared, registers, mutableListOf(), ArrayDeque())
+        val halted =
+            try {
+                executeLoop(instructions, labels, state)
+            } catch (fault: ModelFault) {
+                false
+            } catch (fault: IndexOutOfBoundsException) {
+                false
+            }
+        val finals = declared.joinToString(" ") { "$it=${registers[it] ?: 0L}" }
         val transcript = (state.effects + "final: $finals").joinToString("\n") + "\n"
         if (!halted) return ReferenceModels.Observation("error", transcript)
         return ReferenceModels.Observation("value", transcript)
     }
+
+    private val OPCODES = setOf("assign", "test", "goto", "branch", "save", "restore", "perform")
 
     private fun executeLoop(
         instructions: List<List<String>>,
@@ -1210,17 +1228,17 @@ internal object MachineModel {
     ): Int {
         if (words[0] == "assign") return assignStep(words, state, pc)
         if (words[0] == "test") return testStep(words, state, pc)
-        if (words[0] == "goto") return labels[words[1]] ?: pc + 1
+        if (words[0] == "goto") return labels[words[1]] ?: throw ModelFault()
         if (words[0] == "branch") {
             if (!state.testFlag) return pc + 1
-            return labels[words[1]] ?: pc + 1
+            return labels[words[1]] ?: throw ModelFault()
         }
         if (words[0] == "save") {
-            state.stack.addLast(state.registers[words[1]] ?: 0L)
+            state.stack.addLast(state.read(words[1]))
             return pc + 1
         }
         if (words[0] == "restore") {
-            state.registers[words[1]] = state.stack.removeLastOrNull() ?: 0L
+            state.registers[words[1]] = state.stack.removeLastOrNull() ?: throw ModelFault()
             return pc + 1
         }
         if (words[0] == "perform") return performStep(words, state, pc)
@@ -1250,7 +1268,7 @@ internal object MachineModel {
                 "zero" -> operand(operands[0], state) == 0L
                 "eq" -> operand(operands[0], state) == operand(operands[1], state)
                 "lt" -> operand(operands[0], state) < operand(operands[1], state)
-                else -> false
+                else -> throw ModelFault()
             }
         return pc + 1
     }
@@ -1270,9 +1288,9 @@ internal object MachineModel {
         source: List<String>,
         state: State,
     ): Long {
-        if (source[0] == "const") return source[1].toLong()
-        if (source[0] == "reg") return state.registers[source[1]] ?: 0L
-        if (source[0] != "op") return 0L
+        if (source[0] == "const") return source[1].toLongOrNull() ?: throw ModelFault()
+        if (source[0] == "reg") return state.read(source[1])
+        if (source[0] != "op") throw ModelFault()
         val left = operand(source[2], state)
         val right = if (source.size > 3) operand(source[3], state) else 0L
         return applyOp(source[1], left, right)
@@ -1282,8 +1300,8 @@ internal object MachineModel {
         word: String,
         state: State,
     ): Long {
-        if (word.startsWith("#")) return word.drop(1).toLong()
-        return state.registers[word] ?: 0L
+        if (word.startsWith("#")) return word.drop(1).toLongOrNull() ?: throw ModelFault()
+        return state.read(word)
     }
 
     private fun applyOp(

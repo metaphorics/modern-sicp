@@ -41,6 +41,9 @@ internal object QueryCase {
     /** Raised inside a `QGuard` predicate when the guest function faults. */
     private class GuardFault : RuntimeException(null, null, false, false)
 
+    /** Raised when case data does not match the declared query entry shapes. */
+    private class CaseFault : RuntimeException(null, null, false, false)
+
     fun observe(text: String): Either<AdmissionError, ReferenceModels.Observation> =
         either {
             val checked = Admission.admitOrRaise(text, Mode.QUERY)
@@ -48,36 +51,40 @@ internal object QueryCase {
         }
 
     private fun answer(values: List<GValue>): ReferenceModels.Observation {
-        val (facts, rules, query, variables) = values
-        val database = QueryDatabase()
-        for (fact in items(facts)) database.assertFact(QFact(hostTerm(field(fact, "term"))))
-        for (rule in items(rules)) {
-            database.addRule(QRule(hostTerm(field(rule, "conclusion")), hostQuery(field(rule, "body"))))
-        }
-        val reported = items(variables).map { hostTerm(it) as QVar }
-        return try {
+        try {
+            val (facts, rules, query, variables) = values
+            val database = QueryDatabase()
+            for (fact in items(facts)) database.assertFact(QFact(hostTerm(field(fact, "term"))))
+            for (rule in items(rules)) {
+                database.addRule(QRule(hostTerm(field(rule, "conclusion")), hostQuery(field(rule, "body"))))
+            }
+            val reported = items(variables).map { hostTerm(it) as? QVar ?: throw CaseFault() }
             val lines =
                 QueryDriver
                     .streaming(database)
                     .run(hostQuery(query), reported)
                     .flatMap { renderAnswer(it, reported) }
                     .toList()
-            ReferenceModels.Observation("value", if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n")
+            return ReferenceModels.Observation("value", if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n")
         } catch (_: GuardFault) {
-            ReferenceModels.Observation("error", "")
+            return ReferenceModels.Observation("error", "")
+        } catch (_: CaseFault) {
+            return ReferenceModels.Observation("error", "")
+        } catch (_: IndexOutOfBoundsException) {
+            return ReferenceModels.Observation("error", "")
         }
     }
 
-    private fun className(value: GValue): String = (value as GValue.VObject).className
+    private fun className(value: GValue): String = (value as? GValue.VObject)?.className ?: throw CaseFault()
 
     private fun field(
         value: GValue,
         name: String,
-    ): GValue = (value as GValue.VObject).fields.getValue(name)
+    ): GValue = (value as? GValue.VObject)?.fields?.get(name) ?: throw CaseFault()
 
-    private fun items(value: GValue): List<GValue> = (value as GValue.VList).items
+    private fun items(value: GValue): List<GValue> = (value as? GValue.VList)?.items ?: throw CaseFault()
 
-    private fun text(value: GValue): String = (value as GValue.VString).value
+    private fun text(value: GValue): String = (value as? GValue.VString)?.value ?: throw CaseFault()
 
     private fun hostTerm(value: GValue): QTerm =
         when (className(value)) {

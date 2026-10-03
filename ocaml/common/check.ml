@@ -420,7 +420,10 @@ let lower_scalar (c : Parsetree.constant) at : (Ast.scalar, diagnostic) result =
   match c.pconst_desc with
   | Pconst_integer (s, None) ->
     if valid_int_literal s
-    then Ok (Ast.Int (int_of_string s))
+    then
+      (match int_of_string_opt s with
+       | Some n -> Ok (Ast.Int n)
+       | None -> syntax_at at "integer literal is outside the host int range")
     else syntax_at at "integer literal is outside the subset alphabet"
   | Pconst_integer (_, Some _) ->
     syntax_at at "suffixed integer literal is outside the subset alphabet"

@@ -40,9 +40,7 @@ let best_time f =
     let rec measure calls =
       let* _ = run batch in
       let elapsed = Sys.time () -. start in
-      if elapsed > 0.0
-      then Ok (elapsed /. float_of_int calls)
-      else measure (calls + batch)
+      if elapsed > 0.0 then Ok (elapsed /. float_of_int calls) else measure (calls + batch)
     in
     measure batch)
 ;;

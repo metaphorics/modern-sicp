@@ -385,6 +385,30 @@ private fun commonFamily(
     return null
 }
 
+/** The least upper bound of two branch types: the join of their
+ * non-null cores (one core conforming to the other, or two variants of
+ * one sealed family), made nullable when either side admits `null`. */
+internal fun joinedBranchType(
+    first: GuestType,
+    second: GuestType,
+): GuestType? {
+    if (first is GuestType.Nothing) return second
+    if (second is GuestType.Nothing) return first
+    if (first is GuestType.Null && second !is GuestType.Null) return nullable(second)
+    if (second is GuestType.Null && first !is GuestType.Null) return nullable(first)
+    val firstCore = coreType(first)
+    val secondCore = coreType(second)
+    val family = (firstCore as? GuestType.Named)?.name?.let(TypeFamilies::familyOf)
+    val joined =
+        when {
+            conforms(firstCore, secondCore) -> secondCore
+            conforms(secondCore, firstCore) -> firstCore
+            family != null && family == (secondCore as? GuestType.Named)?.name?.let(TypeFamilies::familyOf) -> GuestType.Named(family)
+            else -> return null
+        }
+    return if (first is GuestType.Nullable || second is GuestType.Nullable) nullable(joined) else joined
+}
+
 private fun mapBuilder(
     arguments: List<GuestType>,
     wrap: (GuestType, GuestType) -> GuestType,
@@ -498,8 +522,23 @@ private fun searchCall(
     if (mode != Mode.SEARCH && mode != Mode.QUERY_SEARCH) return SurfaceResult.Absent
     return when (name) {
         "choose", "chooseRandom" -> {
-            val element = arguments.reduceOrNull { a, b -> if (sameType(a, b)) a else T_FREE } ?: T_FREE
-            if (arguments.any { !sameType(it, element) }) return SurfaceResult.Bad("alternatives share one type")
+            var element = arguments.firstOrNull() ?: return SurfaceResult.Ok(T_FREE)
+            for (argument in arguments) {
+                if (sameType(argument, element)) {
+                    if (element == T_FREE) element = argument
+                    continue
+                }
+                val common = commonFamily(argument, element)
+                if (common != null) {
+                    element = common
+                    continue
+                }
+                return if (arguments.all { isNumeric(it) }) {
+                    SurfaceResult.Outside("MixedWidthArithmetic", "alternatives share one width")
+                } else {
+                    SurfaceResult.Outside("MiscKotlin", "alternatives share one type")
+                }
+            }
             SurfaceResult.Ok(element)
         }
 
@@ -516,9 +555,12 @@ private fun searchCall(
             if (arguments.size != 2) return SurfaceResult.Bad("ifFail takes two bodies")
             val primary = zeroArgBody(listOf(arguments[0]), T_FREE)
             if (primary !is SurfaceResult.Ok) return primary
-            val fallback = zeroArgBody(listOf(arguments[1]), primary.type)
+            val fallback = zeroArgBody(listOf(arguments[1]), T_FREE)
             if (fallback !is SurfaceResult.Ok) return fallback
-            SurfaceResult.Ok(primary.type)
+            val result =
+                joinedBranchType(primary.type, fallback.type)
+                    ?: return SurfaceResult.Outside("MiscKotlin", "ifFail bodies share one result type")
+            SurfaceResult.Ok(result)
         }
 
         "seededRandom" -> {
@@ -809,7 +851,7 @@ private fun collectionCall(
             if (arguments.size != 2 || !sameType(arguments[0], T_INT) || !sameType(arguments[1], element)) {
                 return SurfaceResult.Bad("set takes an index and an element")
             }
-            SurfaceResult.Ok(T_UNIT)
+            SurfaceResult.Ok(element)
         }
 
         "plus" -> {

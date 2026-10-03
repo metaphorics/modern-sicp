@@ -405,7 +405,6 @@ public object Primitives {
 
             "set" -> {
                 setElementAt(list, arguments[0], arguments[1], at)
-                GValue.VUnit
             }
 
             "plus" -> {
@@ -701,11 +700,13 @@ public object Primitives {
         index: GValue,
         value: GValue,
         at: Span,
-    ) {
+    ): GValue {
         if (!list.mutable) r.raise(GuestError.UnassignedRead(at))
         val position = intIndex(index, at)
         if (position < 0 || position >= list.items.size) r.raise(GuestError.IndexOutOfBounds(at))
+        val previous = list.items[position]
         list.items[position] = value
+        return previous
     }
 
     context(r: Raise<GuestError>)

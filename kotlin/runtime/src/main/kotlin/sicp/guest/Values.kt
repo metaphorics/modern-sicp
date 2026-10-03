@@ -209,7 +209,8 @@ public fun valueEquals(
     a: GValue,
     b: GValue,
 ): Boolean {
-    if (a === b) return true
+    // Scalars compare by value even for the same boxed object: NaN != NaN.
+    if (a === b && !isScalar(a)) return true
     return valueEqualsSeen(a, b, HashSet())
 }
 

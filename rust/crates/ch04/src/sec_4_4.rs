@@ -427,9 +427,17 @@ fn rename_query(query: &Query, seen: &mut HashMap<String, String>, fresh: usize)
                 .map(|term| rename_term(term, seen, fresh))
                 .collect(),
         ),
-        Query::UniqueBy(variables, sub) => {
-            Query::UniqueBy(variables.clone(), Box::new(rename_query(sub, seen, fresh)))
-        }
+        Query::UniqueBy(variables, sub) => Query::UniqueBy(
+            variables
+                .iter()
+                .map(|name| {
+                    seen.entry(name.clone())
+                        .or_insert_with(|| format!("{name}#{fresh}"))
+                        .clone()
+                })
+                .collect(),
+            Box::new(rename_query(sub, seen, fresh)),
+        ),
     }
 }
 
@@ -473,8 +481,8 @@ fn holds(predicate: &Predicate, arguments: &[Term], frame: &Substitution) -> boo
         Predicate::SumEq(terms, bound_total) => {
             let mut total = 0_i64;
             for term in terms {
-                match value(term) {
-                    Some(value) => total = total.checked_add(value).unwrap_or(i64::MAX),
+                match value(term).and_then(|term_value| total.checked_add(term_value)) {
+                    Some(next) => total = next,
                     None => return false,
                 }
             }
@@ -485,7 +493,10 @@ fn holds(predicate: &Predicate, arguments: &[Term], frame: &Substitution) -> boo
         Predicate::DiffEq(a, b, c, d) => {
             let named = |name: &String| -> Option<i64> { value(&Term::Variable(name.clone())) };
             match (named(a), named(b), named(c), named(d)) {
-                (Some(a), Some(b), Some(c), Some(d)) => a - b == c - d,
+                (Some(a), Some(b), Some(c), Some(d)) => a
+                    .checked_sub(b)
+                    .zip(c.checked_sub(d))
+                    .is_some_and(|(l, r)| l == r),
                 _ => false,
             }
         }
@@ -494,7 +505,7 @@ fn holds(predicate: &Predicate, arguments: &[Term], frame: &Substitution) -> boo
             match (named(a), named(b), named(c)) {
                 (Some(a), Some(b), Some(c)) => {
                     match (a.checked_mul(a), b.checked_mul(b), c.checked_mul(c)) {
-                        (Some(aa), Some(bb), Some(cc)) => aa + bb == cc,
+                        (Some(aa), Some(bb), Some(cc)) => aa.checked_add(bb) == Some(cc),
                         _ => false,
                     }
                 }
@@ -1198,7 +1209,14 @@ fn reference_rename_query(
         Query::Not(sub) => Query::Not(Box::new(reference_rename_query(sub, suffix, names))),
         Query::Unique(sub) => Query::Unique(Box::new(reference_rename_query(sub, suffix, names))),
         Query::UniqueBy(vars, sub) => Query::UniqueBy(
-            vars.clone(),
+            vars.iter()
+                .map(|name| {
+                    names
+                        .entry(name.clone())
+                        .or_insert_with(|| format!("{name}#{suffix}"))
+                        .clone()
+                })
+                .collect(),
             Box::new(reference_rename_query(sub, suffix, names)),
         ),
         Query::Value(predicate, arguments) => Query::Value(
@@ -1392,7 +1410,10 @@ fn reference_holds(predicate: &Predicate, terms: &[Term], frame: &Substitution) 
             let mut sum = 0_i64;
             for item in items {
                 match reference_walk(item, frame) {
-                    Term::Integer(value) => sum += value,
+                    Term::Integer(value) => match sum.checked_add(value) {
+                        Some(next) => sum = next,
+                        None => return false,
+                    },
                     _ => return false,
                 }
             }
@@ -1401,11 +1422,19 @@ fn reference_holds(predicate: &Predicate, terms: &[Term], frame: &Substitution) 
         Bound(term) => reference_is_ground(term, frame),
         Or(items) => items.iter().any(|item| reference_holds(item, terms, frame)),
         DiffEq(a, b, c, d) => match (value(a), value(b), value(c), value(d)) {
-            (Some(a), Some(b), Some(c), Some(d)) => a - b == c - d,
+            (Some(a), Some(b), Some(c), Some(d)) => a
+                .checked_sub(b)
+                .zip(c.checked_sub(d))
+                .is_some_and(|(l, r)| l == r),
             _ => false,
         },
         Pythagorean(a, b, c) => match (value(a), value(b), value(c)) {
-            (Some(a), Some(b), Some(c)) => a * a + b * b == c * c,
+            (Some(a), Some(b), Some(c)) => {
+                match (a.checked_mul(a), b.checked_mul(b), c.checked_mul(c)) {
+                    (Some(aa), Some(bb), Some(cc)) => aa.checked_add(bb) == Some(cc),
+                    _ => false,
+                }
+            }
             _ => false,
         },
     }

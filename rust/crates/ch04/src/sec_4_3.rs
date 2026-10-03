@@ -604,8 +604,8 @@ fn reference_holds(predicate: &Predicate, bindings: &HashMap<String, i64>) -> bo
         Predicate::SumEq(terms, bound) => {
             let mut total = 0_i64;
             for term in terms {
-                match reference_term(term, bindings) {
-                    Some(value) => total = total.checked_add(value).unwrap_or(i64::MAX),
+                match reference_term(term, bindings).and_then(|value| total.checked_add(value)) {
+                    Some(next) => total = next,
                     None => return false,
                 }
             }
@@ -618,14 +618,17 @@ fn reference_holds(predicate: &Predicate, bindings: &HashMap<String, i64>) -> bo
         Predicate::DiffEq(a, b, c, d) => {
             let (a, b, c, d) = (value(a), value(b), value(c), value(d));
             match (a, b, c, d) {
-                (Some(a), Some(b), Some(c), Some(d)) => a.checked_sub(b) == c.checked_sub(d),
+                (Some(a), Some(b), Some(c), Some(d)) => a
+                    .checked_sub(b)
+                    .zip(c.checked_sub(d))
+                    .is_some_and(|(l, r)| l == r),
                 _ => false,
             }
         }
         Predicate::Pythagorean(a, b, c) => match (value(a), value(b), value(c)) {
             (Some(a), Some(b), Some(c)) => {
                 match (a.checked_mul(a), b.checked_mul(b), c.checked_mul(c)) {
-                    (Some(aa), Some(bb), Some(cc)) => aa + bb == cc,
+                    (Some(aa), Some(bb), Some(cc)) => aa.checked_add(bb) == Some(cc),
                     _ => false,
                 }
             }
@@ -723,19 +726,7 @@ pub fn search_dwelling() -> Search {
     use sicp_runtime::host::query::{Predicate, Term};
     let name = |who: &str| Term::Variable(who.to_owned());
     let floor = |value: i64| Term::Integer(value);
-    let mut program = Search::Success(vec![
-        AnswerTerm::Var("baker".to_owned()),
-        AnswerTerm::Var("cooper".to_owned()),
-        AnswerTerm::Var("fletcher".to_owned()),
-        AnswerTerm::Var("miller".to_owned()),
-        AnswerTerm::Var("smith".to_owned()),
-    ]);
-    // Constraints, folded so the trail exercises rollback: every pair
-    // distinct, the floor exclusions, miller above cooper, and the two
-    // adjacency bans -- |smith - fletcher| >= 2 and |fletcher - cooper|
-    // >= 2, encoded as a difference of 2, 3, or 4 in either direction
-    // against the trail-bound constants.
-    let mut guards = vec![
+    let distinct = [
         ("baker", "cooper"),
         ("baker", "fletcher"),
         ("baker", "miller"),
@@ -746,43 +737,55 @@ pub fn search_dwelling() -> Search {
         ("fletcher", "miller"),
         ("fletcher", "smith"),
         ("miller", "smith"),
-    ]
-    .into_iter()
-    .map(|(a, b)| Predicate::Ne(name(a), name(b)))
-    .collect::<Vec<_>>();
+    ];
+    let mut guards: Vec<Predicate> = distinct
+        .iter()
+        .map(|(a, b)| Predicate::Ne(name(a), name(b)))
+        .collect();
     guards.push(Predicate::Ne(name("baker"), floor(5)));
     guards.push(Predicate::Ne(name("cooper"), floor(1)));
     guards.push(Predicate::Ne(name("fletcher"), floor(1)));
     guards.push(Predicate::Ne(name("fletcher"), floor(5)));
     guards.push(Predicate::Gt(name("miller"), name("cooper")));
+    // Adjacent floors differ by one, so each adjacency exclusion
+    // admits only the differences two, three, or four either way.
     for (high, low) in [("smith", "fletcher"), ("fletcher", "cooper")] {
         guards.push(Predicate::Or(
             ["c2", "c3", "c4"]
-                .into_iter()
+                .iter()
                 .flat_map(|plus| {
                     [
                         Predicate::DiffEq(
                             high.to_owned(),
                             low.to_owned(),
-                            plus.to_owned(),
+                            (*plus).to_owned(),
                             "c0".to_owned(),
                         ),
                         Predicate::DiffEq(
-                            low.to_owned(),
                             high.to_owned(),
-                            plus.to_owned(),
+                            low.to_owned(),
                             "c0".to_owned(),
+                            (*plus).to_owned(),
                         ),
                     ]
                 })
                 .collect(),
         ));
     }
+    let mut program = Search::Success(vec![
+        AnswerTerm::Var("baker".to_owned()),
+        AnswerTerm::Var("cooper".to_owned()),
+        AnswerTerm::Var("fletcher".to_owned()),
+        AnswerTerm::Var("miller".to_owned()),
+        AnswerTerm::Var("smith".to_owned()),
+    ]);
     for guard in guards.into_iter().rev() {
         program = Search::Guard(guard, Box::new(program));
     }
-    // The occupants choose floors 1..=5, all distinct.
-    for who in ["baker", "cooper", "fletcher", "miller", "smith"] {
+    for who in ["baker", "cooper", "fletcher", "miller", "smith"]
+        .into_iter()
+        .rev()
+    {
         program = Search::ChooseRange {
             var: who.to_owned(),
             lo: 1,
@@ -790,8 +793,10 @@ pub fn search_dwelling() -> Search {
             body: Box::new(program),
         };
     }
-    // Adjacency comparisons need literal differences on the trail.
-    for (constant, value) in [("c0", 0), ("c2", 2), ("c3", 3), ("c4", 4)] {
+    for (constant, value) in [("c0", 0), ("c2", 2), ("c3", 3), ("c4", 4)]
+        .into_iter()
+        .rev()
+    {
         program = Search::Set(constant.to_owned(), value, Box::new(program));
     }
     program

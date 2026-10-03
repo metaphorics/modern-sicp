@@ -10,7 +10,9 @@ let runs = 5
 
 (* Processor time of one call, the best of [runs] after one warm-up
    call, so a collection or a scheduling pause in one run does not
-   decide the answer. *)
+   decide the answer. A call faster than the process-time resolution
+   reads 0; in that case amortize a fixed batch so the reported time
+   stays a per-call measurement rather than a whole-batch total. *)
 let best_time f =
   let* _ = f () in
   let rec go n best =
@@ -21,7 +23,21 @@ let best_time f =
       let* _ = f () in
       go (n - 1) (Float.min best (Sys.time () -. start)))
   in
-  go runs Float.infinity
+  let* best = go runs Float.infinity in
+  if best > 0.0
+  then Ok best
+  else (
+    let batch = 1000 in
+    let rec run n =
+      if n = 0
+      then Ok ()
+      else (
+        let* _ = f () in
+        run (n - 1))
+    in
+    let start = Sys.time () in
+    let* _ = run batch in
+    Ok ((Sys.time () -. start) /. float_of_int batch))
 ;;
 
 let timings () =

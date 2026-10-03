@@ -187,14 +187,13 @@ internal class Analysis(
         receiver: GValue,
         declaration: FunctionDecl,
         bodyExec: Exec,
-    ): GValue.VFunction {
-        return GValue.VFunction(declaration.name, declaration.parameters.size) { arguments ->
+    ): GValue.VFunction =
+        GValue.VFunction(declaration.name, declaration.parameters.size) { arguments ->
             val env = Env.child(globals)
             env.define("this", receiver)
             for ((parameter, value) in declaration.parameters.zip(arguments)) env.define(parameter.name, value)
             bodyExec(env)
         }
-    }
 
     context(r: Raise<GuestError>)
     private fun runStatements(

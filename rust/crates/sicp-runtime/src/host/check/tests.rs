@@ -314,6 +314,89 @@ fn main() {
 }
 "#,
     ),
+    (
+        "suffixed_pattern_wrong_type",
+        DiagKind::Type,
+        r#"
+fn main() {
+    let u = 5usize;
+    match u {
+        5i64 => println!("hit"),
+        _ => println!("miss"),
+    }
+}
+"#,
+    ),
+    (
+        "suffixed_usize_pattern_on_i64",
+        DiagKind::Type,
+        r#"
+fn main() {
+    let u = 5i64;
+    match u {
+        5usize => println!("hit"),
+        _ => println!("miss"),
+    }
+}
+"#,
+    ),
+    (
+        "as_str_loan_blocks_mutation",
+        DiagKind::Ownership,
+        r#"
+fn main() {
+    let mut s = String::from("a");
+    let r = s.as_str();
+    s.push_str("b");
+    println!("{}", r);
+}
+"#,
+    ),
+    (
+        "box_deref_write_immutable",
+        DiagKind::Ownership,
+        r#"
+fn main() {
+    let c = Box::new(0i64);
+    *c = 2;
+    println!("{}", *c);
+}
+"#,
+    ),
+    (
+        "box_deref_mut_borrow_immutable",
+        DiagKind::Ownership,
+        r#"
+fn main() {
+    let e = Box::new(1i64);
+    let re = &mut *e;
+    *re += 1;
+    println!("{}", re);
+}
+"#,
+    ),
+    (
+        "box_deref_move_then_use",
+        DiagKind::Ownership,
+        r#"
+fn main() {
+    let b = Box::new(String::from("s"));
+    let inner = *b;
+    println!("{}", *b);
+}
+"#,
+    ),
+    (
+        "box_deref_move_through_shared_ref",
+        DiagKind::Ownership,
+        r#"
+fn main() {
+    let r = &Box::new(String::from("s"));
+    let s = **r;
+    println!("{}", s);
+}
+"#,
+    ),
 ];
 
 /// Programs `rustc` accepts that the checker must admit.
@@ -511,6 +594,88 @@ fn main() {
         r#"
 fn main() -> () {
     println!("ok");
+}
+"#,
+    ),
+    (
+        "suffixed_int_patterns",
+        r#"
+fn main() {
+    let u = 5usize;
+    match u {
+        5usize => println!("hit"),
+        _ => println!("miss"),
+    }
+    let i = 7i64;
+    match i {
+        7i64 => println!("hit"),
+        _ => println!("miss"),
+    }
+}
+"#,
+    ),
+    (
+        "as_str_borrow_releases_after_last_use",
+        r#"
+fn main() {
+    let mut s = String::from("a");
+    let r = s.as_str();
+    println!("{}", r);
+    s.push_str("b");
+    println!("{}", s);
+}
+"#,
+    ),
+    (
+        "box_deref_owned_place",
+        r#"
+fn give() -> Box<i64> {
+    Box::new(9)
+}
+fn main() {
+    let b = Box::new(42i64);
+    let h = *b;
+    println!("{}", h);
+    let mut c = Box::new(0i64);
+    *c += 2;
+    *c = *c + 1;
+    println!("{}", *c);
+    let d = Box::new(7i64);
+    let rd = &*d;
+    println!("{}", rd);
+    let mut e = Box::new(1i64);
+    let re = &mut *e;
+    *re += 10;
+    println!("{}", *e);
+    println!("{}", *give());
+    let g = *give();
+    println!("{}", g);
+    let bb = Box::new(Box::new(5i64));
+    println!("{}", **bb);
+    let mb = Box::new(6i64);
+    match *mb {
+        6 => println!("six"),
+        _ => println!("other"),
+    }
+    let name = Box::new(String::from("n"));
+    let inner = *name;
+    println!("{}", inner);
+}
+"#,
+    ),
+    (
+        "box_deref_through_mut_ref",
+        r#"
+fn main() {
+    let mut v = Box::new(1i64);
+    let r = &mut v;
+    **r = 9;
+    println!("{}", **r);
+    let mut a = 1i64;
+    let x = &mut a;
+    *x += 1;
+    *x += 1;
+    println!("{}", a);
 }
 "#,
     ),

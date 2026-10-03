@@ -13,9 +13,11 @@ use std::collections::HashMap;
 use crate::host::diag::Span;
 use crate::host::hir::{
     BinOp, BindId, CaptureMode, ClosureKind, CtorOp, FormatSpec, FunId, HirBlock, HirPat,
-    HirPatKind, HostTy, MethodOp, Resolved, Sema, UnOp,
+    HirPatKind, HostTy, ItemDef, MethodOp, Resolved, Sema, UnOp,
 };
-use crate::host::value::{Addr, ClosureVal, Effects, HostValue, IterVal, RtProj, Store, Trap};
+use crate::host::value::{
+    Addr, BUILTIN, BUILTIN_RES, ClosureVal, Effects, HostValue, IterVal, RtProj, Store, Trap,
+};
 
 /// The control outcome one evaluation step produces. Control flow is
 /// the engine's own business; the leaves share this vocabulary.
@@ -476,11 +478,10 @@ pub fn construct(op: CtorOp, args: &[HostValue]) -> Result<HostValue, Trap> {
         }
         (CtorOp::MapNew, []) => Ok(HostValue::Map(HashMap::new())),
         (CtorOp::BoxNew, [value]) => Ok(HostValue::Box(Box::new(value.clone()))),
-        (CtorOp::OptSome | CtorOp::ResOk, [value]) => {
-            Ok(HostValue::Variant(BUILTIN, 0, vec![value.clone()]))
-        }
+        (CtorOp::OptSome, [value]) => Ok(HostValue::Variant(BUILTIN, 0, vec![value.clone()])),
         (CtorOp::OptNone, []) => Ok(HostValue::Variant(BUILTIN, 1, Vec::new())),
-        (CtorOp::ResErr, [value]) => Ok(HostValue::Variant(BUILTIN, 1, vec![value.clone()])),
+        (CtorOp::ResOk, [value]) => Ok(HostValue::Variant(BUILTIN_RES, 0, vec![value.clone()])),
+        (CtorOp::ResErr, [value]) => Ok(HostValue::Variant(BUILTIN_RES, 1, vec![value.clone()])),
         _ => Err(Trap::Dangling),
     }
 }
@@ -499,18 +500,17 @@ pub fn index_position(value: &HostValue) -> Result<i64, Trap> {
     }
 }
 
-/// The `Option` and `Result` discriminants `construct` produces.
+/// The `Option` and `Result` discriminants `construct` produces: the
+/// reserved markers only tag which of the two built-in types the
+/// value belongs to, while the discriminant keeps `Some`/`Ok` at 0
+/// and `None`/`Err` at 1.
 #[must_use]
 pub fn builtin_variant(value: &HostValue) -> Option<(u32, &Vec<HostValue>)> {
     match value {
-        HostValue::Variant(BUILTIN, index, payload) => Some((*index, payload)),
+        HostValue::Variant(BUILTIN | BUILTIN_RES, index, payload) => Some((*index, payload)),
         _ => None,
     }
 }
-
-/// The reserved item marker the `Option` and `Result` values carry, so
-/// a user enum can never collide with them.
-pub const BUILTIN: u32 = u32::MAX;
 
 /// Runs one admitted method for its value and effects. The second
 /// result is the updated receiver when the method mutates it; the
@@ -881,7 +881,7 @@ fn some_value(value: HostValue) -> HostValue {
 
 fn payload_of(value: HostValue) -> Option<HostValue> {
     match value {
-        HostValue::Variant(BUILTIN, 0, mut payload) if payload.len() == 1 => {
+        HostValue::Variant(BUILTIN | BUILTIN_RES, 0, mut payload) if payload.len() == 1 => {
             Some(payload.remove(0))
         }
         _ => None,
@@ -1207,14 +1207,19 @@ pub fn range_of(start: &HostValue, end: &HostValue) -> Result<HostValue, Trap> {
 ///
 /// # Errors
 /// A formatted reference that names a moved or dangling value traps.
-pub fn render_format(spec: &FormatSpec, args: &[HostValue], store: &Store) -> Result<String, Trap> {
+pub fn render_format(
+    spec: &FormatSpec,
+    args: &[HostValue],
+    store: &Store,
+    items: &[ItemDef],
+) -> Result<String, Trap> {
     let mut out = String::new();
     for (index, piece) in spec.pieces.iter().enumerate() {
         out.push_str(piece);
         if let Some(is_debug) = spec.debug.get(index)
             && let Some(arg) = args.get(index)
         {
-            out.push_str(&render_format_argument(store, arg, *is_debug)?);
+            out.push_str(&render_format_argument(store, arg, *is_debug, items)?);
         }
     }
     Ok(out)
@@ -1224,13 +1229,14 @@ fn render_format_argument(
     store: &Store,
     value: &HostValue,
     is_debug: bool,
+    items: &[ItemDef],
 ) -> Result<String, Trap> {
     if let HostValue::Ref { addr, projs, .. } = value {
         let referent = project_ref(store.read_ref(*addr)?, projs)?;
-        return render_format_argument(store, &referent, is_debug);
+        return render_format_argument(store, &referent, is_debug, items);
     }
     if is_debug {
-        Ok(value.debug_text())
+        Ok(value.debug_text(items))
     } else {
         value.display_text()
     }

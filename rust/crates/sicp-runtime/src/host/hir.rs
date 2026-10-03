@@ -134,6 +134,8 @@ pub enum Proj {
     Field(u32),
     /// `[index]` with its checked index expression.
     Index(Box<HirExpr>),
+    /// `*` on a `Box<T>` operand: the place of the contents.
+    BoxDeref,
 }
 
 /// How an expression uses a place (grammar §5).

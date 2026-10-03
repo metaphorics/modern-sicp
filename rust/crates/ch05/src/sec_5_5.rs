@@ -129,6 +129,8 @@ pub enum PerformOp {
     RefField(u32),
     /// Extend the reference in `val` by the index in `tmp`.
     RefIndex,
+    /// Extend the reference in `val` through a `Box<T>`'s contents.
+    RefBoxDeref,
     /// Read the place the reference in `val` names.
     Load,
     /// Move out of the place the reference in `val` names.
@@ -526,6 +528,7 @@ fn compile_address(
             Proj::Index(index) => ctx
                 .around_val(|ctx| compile_expr_in(ctx, index))
                 .append(perform(PerformOp::RefIndex)),
+            Proj::BoxDeref => perform(PerformOp::RefBoxDeref),
         });
     }
     out
@@ -1443,6 +1446,15 @@ impl Vm {
                     mutable,
                 }
             }
+            PerformOp::RefBoxDeref => {
+                let (addr, mut projs, mutable) = self.place_of(VAL)?;
+                projs.push(RtProj::BoxDeref);
+                HostValue::Ref {
+                    addr,
+                    projs,
+                    mutable,
+                }
+            }
             PerformOp::Load => {
                 let (addr, projs, _) = self.place_of(VAL)?;
                 self.engine.read_at(addr, &projs).map_err(Self::trap)?
@@ -1475,7 +1487,8 @@ impl Vm {
             PerformOp::Format(kind, spec) => {
                 let args = self.take_argl();
                 let rendered =
-                    ops::render_format(spec, &args, &self.engine.store).map_err(Self::trap)?;
+                    ops::render_format(spec, &args, &self.engine.store, &self.engine.sema.items)
+                        .map_err(Self::trap)?;
                 match *kind {
                     FormatKind::Format => HostValue::Text(rendered),
                     FormatKind::Print => {
@@ -1936,6 +1949,7 @@ while (_n > 0) { val = mc_vec_push(val, _item); _n--; } }\n",
             format!("    val = mc_compile_error_ref_field(val, {index});\n")
         }
         PerformOp::RefIndex => "    val = mc_compile_error_ref_index(val, tmp);\n".to_owned(),
+        PerformOp::RefBoxDeref => "    val = mc_compile_error_ref_box_deref(val);\n".to_owned(),
         PerformOp::Load | PerformOp::Take => "    val = mc_compile_error_load(val);\n".to_owned(),
         PerformOp::Store(_) => "    val = mc_compile_error_store(tmp, val);\n".to_owned(),
         PerformOp::MethodAt(_) => "    val = mc_compile_error_method_at(val, argl);\n".to_owned(),

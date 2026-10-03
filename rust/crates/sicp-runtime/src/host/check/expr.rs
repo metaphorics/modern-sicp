@@ -1050,6 +1050,19 @@ impl Checker {
         }
     }
 
+    /// Registers the read a `PlaceUse::Read` node performs on its
+    /// local root. A `Deref` root's operand was already checked as a
+    /// place use when the place was built, so it needs nothing here.
+    fn read_place_root(&mut self, expr: &HirExpr, span: Span) -> Result<(), Diag> {
+        if let HirExprKind::Place { place, .. } = &expr.kind
+            && let PlaceRoot::Local(binding) = place.root
+        {
+            self.check_access(binding, Access::Read, span)?;
+            self.note_capture_use(binding, Access::Read);
+        }
+        Ok(())
+    }
+
     /// Moves a non-`Copy` field out of `base` (a value use of `base.f`):
     /// legal out of an owned local or a temporary, and out of nothing
     /// borrowed. The whole local counts as moved.
@@ -1416,9 +1429,11 @@ impl Checker {
         // Methods returning references or iterator adaptors borrow their
         // receiver: the loan keeps mutation out while the result is live.
         let borrow = match op {
-            MethodOp::Iter | MethodOp::VecGet | MethodOp::MapGet | MethodOp::BoxAsRef => {
-                Some(false)
-            }
+            MethodOp::Iter
+            | MethodOp::VecGet
+            | MethodOp::MapGet
+            | MethodOp::BoxAsRef
+            | MethodOp::AsStr => Some(false),
             MethodOp::IterMut | MethodOp::VecGetMut | MethodOp::MapGetMut | MethodOp::BoxAsMut => {
                 Some(true)
             }
@@ -1762,33 +1777,7 @@ impl Checker {
                     span,
                 ))
             }
-            UnOp::Deref => {
-                let checked = self.check_expr_place(operand, None)?;
-                let deep = self.deep(&checked.ty);
-                let (_, referent) = deep
-                    .referent()
-                    .ok_or_else(|| Diag::type_error(span, "dereference needs a reference"))?;
-                let referent = referent.clone();
-                if usage == Use::Value && !self.is_copy_ty(&referent) {
-                    return Err(Diag::ownership(
-                        span,
-                        "cannot move out of a value behind a reference",
-                    ));
-                }
-                Ok(node(
-                    HirExprKind::Place {
-                        place: Place {
-                            root: PlaceRoot::Deref(Box::new(checked)),
-                            proj: Vec::new(),
-                            span,
-                        },
-                        mode: PlaceUse::Read,
-                    },
-                    referent,
-                    false,
-                    span,
-                ))
-            }
+            UnOp::Deref => self.check_deref(operand, usage, span),
             UnOp::Ref | UnOp::RefMut => {
                 let mutable = op == UnOp::RefMut;
                 if !self.is_place_expr(operand) {
@@ -1888,6 +1877,117 @@ impl Checker {
         ))
     }
 
+    /// `*value` on an owning `Box<T>` value expression (not a place):
+    /// the box lands in a fresh slot, like a materialized temporary,
+    /// and the deref names its contents' place.
+    fn deref_box_temporary(
+        &mut self,
+        value: HirExpr,
+        inner: HostTy,
+        usage: Use,
+        span: Span,
+    ) -> HirExpr {
+        let binding = self.fresh_bind("<temporary>", value.ty.clone(), false);
+        let place = Place {
+            root: PlaceRoot::Local(binding),
+            proj: vec![Proj::BoxDeref],
+            span,
+        };
+        let moves = usage == Use::Value && !self.is_copy_ty(&inner);
+        let tail = node(
+            HirExprKind::Place {
+                place,
+                mode: if moves {
+                    PlaceUse::Move
+                } else {
+                    PlaceUse::Read
+                },
+            },
+            inner.clone(),
+            false,
+            span,
+        );
+        let block = HirBlock {
+            stmts: vec![HirStmt::Let {
+                binding,
+                destruct: None,
+                value,
+            }],
+            tail: Some(Box::new(tail)),
+        };
+        node(HirExprKind::Block(block), inner, false, span)
+    }
+
+    /// `*operand`: a `Box<T>` place derefs like `DerefMove` — the
+    /// projections check the root like any owned place; an owning
+    /// `Box<T>` rvalue lands in a fresh slot first; a reference
+    /// derefs to the referent's place as before.
+    fn check_deref(
+        &mut self,
+        operand: &ast::Expr,
+        usage: Use,
+        span: Span,
+    ) -> Result<HirExpr, Diag> {
+        if self.is_place_expr(operand) {
+            let mut place = self.place_of(operand)?;
+            let operand_ty = self.place_ty(&place)?;
+            if let HostTy::Box(inner) = self.deep(&operand_ty) {
+                // `*b` on an owned `Box<T>` names the contents' place
+                // (Rust's `DerefMove` when it is read by value): the
+                // projections check the root like any owned place.
+                place.proj.push(Proj::BoxDeref);
+                let moves = usage == Use::Value && !self.is_copy_ty(inner.as_ref());
+                let out = node(
+                    HirExprKind::Place {
+                        place,
+                        mode: if moves {
+                            PlaceUse::Move
+                        } else {
+                            PlaceUse::Read
+                        },
+                    },
+                    *inner,
+                    false,
+                    span,
+                );
+                if moves {
+                    self.move_out_of(&out, span)?;
+                } else {
+                    self.read_place_root(&out, span)?;
+                }
+                return Ok(out);
+            }
+        }
+        let checked = self.check_expr_place(operand, None)?;
+        if let HostTy::Box(inner) = self.deep(&checked.ty) {
+            return Ok(self.deref_box_temporary(checked, *inner, usage, span));
+        }
+        let deep = self.deep(&checked.ty);
+        let (_, referent) = deep
+            .referent()
+            .ok_or_else(|| Diag::type_error(span, "dereference needs a reference"))?;
+        let referent = referent.clone();
+        if usage == Use::Value && !self.is_copy_ty(&referent) {
+            return Err(Diag::ownership(
+                span,
+                "cannot move out of a value behind a reference",
+            ));
+        }
+        Ok(node(
+            HirExprKind::Place {
+                place: Place {
+                    root: PlaceRoot::Deref(Box::new(checked)),
+                    proj: Vec::new(),
+                    span,
+                },
+                mode: PlaceUse::Read,
+            },
+            referent,
+            false,
+            span,
+        ))
+    }
+
     fn check_place_borrow(&mut self, place: &Place, mutable: bool, span: Span) -> Result<(), Diag> {
         match &place.root {
             PlaceRoot::Local(binding) => {
@@ -1925,6 +2025,15 @@ impl Checker {
                 Proj::Index(_) => match self.peel_refs(&ty) {
                     HostTy::Vec(elem) | HostTy::Array(elem, _) => *elem,
                     _ => return Err(Diag::type_error(place.root_span(), "not indexable")),
+                },
+                Proj::BoxDeref => match self.peel_refs(&ty) {
+                    HostTy::Box(inner) => *inner,
+                    _ => {
+                        return Err(Diag::type_error(
+                            place.root_span(),
+                            "only a `Box` can be dereferenced in place",
+                        ));
+                    }
                 },
             };
         }
@@ -1973,7 +2082,19 @@ impl Checker {
                 op: UnOp::Deref,
                 operand,
             } => {
-                let checked = self.check_expr(operand, None)?;
+                if self.is_place_expr(operand) {
+                    let mut inner_place = self.place_of(operand)?;
+                    let operand_ty = self.place_ty(&inner_place)?;
+                    if let HostTy::Box(_) = self.deep(&operand_ty) {
+                        // `*b` on an owned `Box<T>` is the contents'
+                        // own place: borrows and writes check `b`'s
+                        // mutability, and a value use moves `T` out and
+                        // consumes `b` (Rust's implicit `DerefMove`).
+                        inner_place.proj.push(Proj::BoxDeref);
+                        return Ok(inner_place);
+                    }
+                }
+                let checked = self.check_expr_place(operand, None)?;
                 if self.deep(&checked.ty).referent().is_none() {
                     return Err(Diag::type_error(expr.span, "dereference needs a reference"));
                 }

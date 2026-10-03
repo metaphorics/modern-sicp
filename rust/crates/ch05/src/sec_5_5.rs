@@ -1860,13 +1860,14 @@ fn c_perform(op: &PerformOp, operands: &[Operand]) -> String {
         PerformOp::Return => "    if (call_top > 0) { call_top--; return; }\n".to_owned(),
         PerformOp::Ctor(CtorOp::StringFrom) => "    val = mc_text(\"\");\n".to_owned(),
         PerformOp::Ctor(CtorOp::VecNew) => "    val = mc_alloc_vec(0);\n".to_owned(),
-        // The mc_* runtime has no option/result constructor symbols
-        // yet: emit a named extern so the artifact fails at link with
-        // the exact missing surface instead of silently wrong code.
+        // Option and result constructors go through named externs:
+        // the backend defines each one it supports, and a missing
+        // one fails the artifact at link with the exact missing
+        // surface instead of silently wrong code.
         PerformOp::Ctor(CtorOp::OptSome) => {
             let payload = operands
                 .first()
-                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+                .map_or_else(|| "mc_vec_get(argl, 0)".to_owned(), c_operand);
             format!("    val = mc_compile_error_ctor_opt_some({payload});\n")
         }
         PerformOp::Ctor(CtorOp::OptNone) => {
@@ -1875,13 +1876,13 @@ fn c_perform(op: &PerformOp, operands: &[Operand]) -> String {
         PerformOp::Ctor(CtorOp::ResOk) => {
             let payload = operands
                 .first()
-                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+                .map_or_else(|| "mc_vec_get(argl, 0)".to_owned(), c_operand);
             format!("    val = mc_compile_error_ctor_res_ok({payload});\n")
         }
         PerformOp::Ctor(CtorOp::ResErr) => {
             let payload = operands
                 .first()
-                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+                .map_or_else(|| "mc_vec_get(argl, 0)".to_owned(), c_operand);
             format!("    val = mc_compile_error_ctor_res_err({payload});\n")
         }
         PerformOp::Format(kind, spec) => c_print_format(*kind, spec),
@@ -1946,7 +1947,7 @@ while (_n > 0) { val = mc_vec_push(val, _item); _n--; } }\n",
         PerformOp::Ctor(CtorOp::VecWithCapacity) => {
             let cap = operands
                 .first()
-                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+                .map_or_else(|| "mc_vec_get(argl, 0)".to_owned(), c_operand);
             format!("    val = mc_alloc_vec(mc_int_value({cap}));\n")
         }
         PerformOp::Ctor(CtorOp::MapNew) => {
@@ -1955,7 +1956,7 @@ while (_n > 0) { val = mc_vec_push(val, _item); _n--; } }\n",
         PerformOp::Ctor(CtorOp::BoxNew) => {
             let payload = operands
                 .first()
-                .map_or_else(|| "mc_alloc_int(0)".to_owned(), c_operand);
+                .map_or_else(|| "mc_vec_get(argl, 0)".to_owned(), c_operand);
             format!("    val = mc_compile_error_ctor_box_new({payload});\n")
         }
     }

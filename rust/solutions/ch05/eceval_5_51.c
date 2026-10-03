@@ -749,16 +749,18 @@ static int at_end(void) { return reader.position >= reader.length; }
 
 static Val *pending_head;
 static Val *pending_tail;
+static Val *interact_head;
+static Val *interact_tail;
 static int program_parsed;
 
-static void emit_form(Val *form) {
+static void emit_at(Val **head, Val **tail, Val *form) {
     Val *cell = cons(form, V_NIL);
-    if (pending_head == NULL) {
-        pending_head = cell;
+    if (*head == NULL) {
+        *head = cell;
     } else {
-        pending_tail->u.pair.cdr = cell;
+        (*tail)->u.pair.cdr = cell;
     }
-    pending_tail = cell;
+    *tail = cell;
 }
 
 static int peek_ch(void) {
@@ -893,8 +895,20 @@ static Val *parse_integer(void) {
         }
         buf[len++] = (char)c;
     }
-    while (is_ident_start(peek_ch())) {
-        reader.position++;
+    if (is_ident_start(peek_ch())) {
+        char suffix[8];
+        size_t suffix_len = 0;
+        while (is_ident_char(peek_ch())) {
+            if (suffix_len + 1 >= sizeof suffix) {
+                die("integer suffix too long");
+            }
+            suffix[suffix_len++] = (char)peek_ch();
+            reader.position++;
+        }
+        suffix[suffix_len] = '\0';
+        if (strcmp(suffix, "i64") != 0 && strcmp(suffix, "usize") != 0) {
+            die("invalid integer suffix");
+        }
     }
     buf[len] = '\0';
     errno = 0;
@@ -1167,18 +1181,31 @@ static Val *parse_expr(void) {
     return parse_or();
 }
 
+/* The slice's one interaction format: the display placeholder. */
+static void expect_format(void) {
+    skip_ws();
+    if (reader.position + 4 > reader.length
+        || reader.text[reader.position] != '"'
+        || reader.text[reader.position + 1] != '{'
+        || reader.text[reader.position + 2] != '}'
+        || reader.text[reader.position + 3] != '"') {
+        die("expected the \"{}\" format string");
+    }
+    reader.position += 4;
+}
+
 /* One `println!("{}", value);` interaction of `main`. */
 static void parse_println(void) {
     Val *interaction;
     expect_keyword("println");
     expect_punct('!');
     expect_punct('(');
-    skip_string();
+    expect_format();
     expect_punct(',');
     interaction = parse_expr();
     expect_punct(')');
     expect_punct(';');
-    emit_form(interaction);
+    emit_at(&interact_head, &interact_tail, interaction);
 }
 
 /* One `fn` item: a definition, or `main`'s run of interactions. */
@@ -1230,7 +1257,8 @@ static void parse_fn(void) {
     {
         Val *body = parse_block_expr();
         Val *head = cons(make_symbol(name), params);
-        emit_form(cons(make_symbol("define"), cons(head, cons(body, V_NIL))));
+        emit_at(&pending_head, &pending_tail,
+                cons(make_symbol("define"), cons(head, cons(body, V_NIL))));
     }
 }
 
@@ -1252,7 +1280,12 @@ static Val *read_expression(void) {
         program_parsed = 1;
         parse_program();
     }
-    if (pending_head == NULL) {
+    if (pending_head == NULL || pending_head == V_NIL) {
+        pending_head = interact_head;
+        interact_head = NULL;
+        interact_tail = NULL;
+    }
+    if (pending_head == NULL || pending_head == V_NIL) {
         return NULL;
     }
     form = pending_head->u.pair.car;

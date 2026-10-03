@@ -443,6 +443,15 @@ class Checker {
             `\`${expr.name}\` is read before its initialization`,
           );
         }
+        const forbidden = FORBIDDEN_CALLEES[expr.name];
+        if (forbidden !== undefined && lookupKind(frame, expr.name) === undefined) {
+          this.#report(
+            "ForbiddenHostPrimitive",
+            forbidden,
+            expr.span,
+            `\`${expr.name}\` is not a guest primitive`,
+          );
+        }
         return;
       }
       case "array": {

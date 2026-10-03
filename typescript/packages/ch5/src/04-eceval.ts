@@ -537,12 +537,15 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     const index = args[1];
     const value = args[2];
     if (object instanceof ArrayValue && typeof index === "number") {
-      if (index < 0 || index >= object.items.length) {
+      if (!Number.isInteger(index) || index < 0) {
         return new MachineErrorValue({
           tag: "bad-operand",
           operator: "index",
           detail: String(index),
         });
+      }
+      while (object.items.length < index) {
+        object.items.push(undefined);
       }
       object.items[index] = value as Value;
       return value;

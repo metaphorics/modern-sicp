@@ -577,7 +577,12 @@ private val runtimeC: String =
     static int compare_values(Value *a, Value *b) {
         if ((a->tag == T_INT && b->tag == T_INT) || (a->tag == T_LONG && b->tag == T_LONG))
             return a->n < b->n ? -1 : a->n > b->n;
-        if (a->tag == T_DOUBLE && b->tag == T_DOUBLE) return a->d < b->d ? -1 : a->d > b->d;
+        if (a->tag == T_DOUBLE && b->tag == T_DOUBLE) {
+            if (isnan(a->d)) return isnan(b->d) ? 0 : 1;
+            if (isnan(b->d)) return -1;
+            if (a->d == b->d) return signbit(a->d) == signbit(b->d) ? 0 : signbit(a->d) ? -1 : 1;
+            return a->d < b->d ? -1 : 1;
+        }
         if (a->tag == T_STRING && b->tag == T_STRING) {
             int c = strcmp(a->s, b->s);
             return c < 0 ? -1 : c > 0;
@@ -654,6 +659,7 @@ private val runtimeC: String =
     }
     static Value *list_slice(Value *list, long from, long to) {
         if (from < 0) from = 0;
+        if (from > list->length) from = list->length;
         if (to > list->length) to = list->length;
         if (to < from) to = from;
         Value *out = vlist((int)(to - from), list->items + from);
@@ -699,7 +705,7 @@ private val runtimeC: String =
         if (receiver->tag == T_MAP) {
             if (strcmp(name, "size") == 0) return vint(receiver->length);
             if (strcmp(name, "keys") == 0) { Value *out = vlist(receiver->length, receiver->items); out->flag = 1; return out; }
-            if (strcmp(name, "values") == 0) { Value *out = vlist(receiver->length, receiver->vals); out->flag = 1; return out; }
+            if (strcmp(name, "values") == 0) { Value *out = vlist(receiver->length, receiver->vals); return out; }
         }
         if (receiver->tag == T_OBJECT) {
             Value **field = object_field(receiver, name);
@@ -1019,6 +1025,7 @@ private val runtimeC: String =
             if (a[0]->tag == T_DOUBLE) return vdouble(fabs(a[0]->d));
         }
         if ((strcmp(name, "min") == 0 || strcmp(name, "max") == 0) && n == 2 && a[0]->tag == a[1]->tag) {
+            if (a[0]->tag == T_DOUBLE && (isnan(a[0]->d) || isnan(a[1]->d))) return vdouble(NAN);
             int pick_first = strcmp(name, "min") == 0 ? compare_values(a[0], a[1]) <= 0 : compare_values(a[0], a[1]) >= 0;
             return pick_first ? a[0] : a[1];
         }

@@ -532,7 +532,14 @@ val construction = listOf(
 @end example
 
 @noindent
-The compiled procedure is a guest runtime object, not a host Kotlin closure.
+The compiled procedure is a guest runtime object, not a host Kotlin
+closure.@footnote{@anchor{Footnote 323} We need
+machine operations to implement a data structure for representing compiled
+procedures, analogous to the structure for compound procedures described in
+@ref{4.1.3}.  This edition builds the procedure object with the
+@code{compiled-const} and @code{compiled-capture} operations, which the
+runtime stores as a tagged @code{GValue.VObject} compiled-procedure value
+that keeps the entry label and parameter names.}
 Calls transfer to its entry with the captured environment and argument list;
 the runtime preserves guest value and mutation semantics.
 @node	5.5.3, 5.5.4, 5.5.2, 5.5

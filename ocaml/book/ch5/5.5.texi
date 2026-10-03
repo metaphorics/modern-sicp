@@ -413,7 +413,14 @@ operands.
 @subsubheading Applying compiled procedures
 
 A compiled closure stores its entry label, parameter names, and captured
-environment.  At the entry label, the shared runtime binds arguments to
+environment.@footnote{@anchor{Footnote 323} We need
+machine operations to implement a data structure for representing compiled
+procedures, analogous to the structure for compound procedures described in
+@ref{4.1.3}.  This edition builds the procedure object with the
+@code{make-compiled-procedure} operation, which the shared runtime turns
+into a compiled-closure value that keeps the entry label, parameter names,
+and captured environment.}  At the entry label, the shared runtime binds
+arguments to
 parameters and evaluates the function body in the captured environment.
 A call with the exact arity transfers directly to that entry.  A call with
 too few arguments creates a partial closure; a call with excess arguments

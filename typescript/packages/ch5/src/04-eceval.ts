@@ -163,6 +163,26 @@ const splitParamNames = (params: readonly unknown[]): { params: string[]; rest: 
   return { params: names, rest };
 };
 
+const predeclare = (forms: readonly Word[], env: Env | null): void => {
+  if (env === null) {
+    return;
+  }
+  for (const item of forms) {
+    const node = formOf(item);
+    if (node === undefined) {
+      continue;
+    }
+    if (node.tag === "var-decl") {
+      env.bindings.set(node.name, makeCell(undefined, false, node.kind === "let"));
+    }
+    if (node.tag === "function-decl") {
+      const { params, rest } = splitParamNames(node.params);
+      const closure = new Closure(params, rest, node.body, env);
+      env.bindings.set(node.name, makeCell(closure, true, false));
+    }
+  }
+};
+
 const errorOf = (word: Word): MachineErrorValue | undefined =>
   word instanceof MachineErrorValue ? word : undefined;
 const isContinuation = (word: Word, name: string): boolean =>
@@ -255,7 +275,13 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     if (env === null) {
       return new MachineErrorValue({ tag: "unbound-name", name });
     }
-    env.bindings.set(name, makeCell(args[2] as Value, true, kind === "let"));
+    const existing = env.bindings.get(name);
+    if (existing !== undefined) {
+      existing.value = args[2] as Value;
+      existing.initialized = true;
+    } else {
+      env.bindings.set(name, makeCell(args[2] as Value, true, kind === "let"));
+    }
     return args[2];
   },
   defineFunction: (args) => {
@@ -290,6 +316,10 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     const proc = args[0];
     return proc instanceof Closure ? (proc.params as Word) : undefined;
   },
+  procedureRest: (args) => {
+    const proc = args[0];
+    return proc instanceof Closure ? (proc.rest ?? "") : "";
+  },
   procedureBody: (args) => {
     const proc = args[0];
     return proc instanceof Closure ? proc.body.body : undefined;
@@ -323,38 +353,26 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     const params = typeof rawParams === "string" ? [rawParams] : listOf(rawParams);
     const values = Array.isArray(rawValues) ? rawValues : [rawValues];
     const parent = envOf(args[2]) ?? null;
+    const rest = typeof args[3] === "string" ? args[3] : "";
     const frame = child(parent);
     for (const [index, param] of params.entries()) {
       const name = typeof param === "string" ? param : "";
       frame.bindings.set(name, makeCell(values[index] as Value, true));
     }
+    if (rest !== "") {
+      frame.bindings.set(
+        rest,
+        makeCell(new ArrayValue(values.slice(params.length) as Value[]), true),
+      );
+    }
     return frame;
   },
-  predeclareProgram: () => {
-    const env = envOf(undefined);
-    void env;
+  predeclareProgram: (args) => {
+    predeclare(listOf(args[0]), envOf(args[1]) ?? null);
     return undefined;
   },
   predeclareForms: (args) => {
-    const env = envOf(args[1]) ?? null;
-    const forms = listOf(args[0]);
-    if (env === null) {
-      return undefined;
-    }
-    for (const item of forms) {
-      const node = formOf(item);
-      if (node === undefined) {
-        continue;
-      }
-      if (node.tag === "var-decl") {
-        env.bindings.set(node.name, makeCell(undefined, false, node.kind === "let"));
-      }
-      if (node.tag === "function-decl") {
-        const { params, rest } = splitParamNames(node.params);
-        const closure = new Closure(params, rest, node.body, env);
-        env.bindings.set(node.name, makeCell(closure, true, false));
-      }
-    }
+    predeclare(listOf(args[0]), envOf(args[1]) ?? null);
     return undefined;
   },
   emptyArgList: () => [],
@@ -488,10 +506,15 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     const object = args[0];
     const index = args[1];
     if (object instanceof ArrayValue && typeof index === "number") {
-      const item = object.items[index];
-      return item === undefined && (index < 0 || index >= object.items.length)
-        ? new MachineErrorValue({ tag: "bad-operand", operator: "index", detail: String(index) })
-        : item;
+      return Number.isInteger(index) && index >= 0 && index < object.items.length
+        ? object.items[index]
+        : undefined;
+    }
+    if (typeof object === "string" && typeof index === "number") {
+      const characters = [...object];
+      return Number.isInteger(index) && index >= 0 && index < characters.length
+        ? characters[index]
+        : undefined;
     }
     if (object instanceof RecordValue && typeof index === "string") {
       return object.fields.has(index) ? object.fields.get(index) : undefined;
@@ -766,13 +789,16 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
       : undefined;
   },
   caseBodiesFrom: (args) => {
-    const cases = listOf(args[0]);
+    const node = formOf(args[0]);
     const start = typeof args[1] === "number" ? args[1] : 0;
+    if (node === undefined || node.tag !== "switch") {
+      return [] as Word;
+    }
     const forms: Array<Decl | Stmt> = [];
-    for (const item of cases.slice(start)) {
-      const clause = item as { body: ReadonlyArray<Decl | Stmt> };
+    for (const clause of node.cases.slice(start)) {
       forms.push(...clause.body);
     }
+    forms.push(...(node.defaultBody ?? []));
     return forms as Word;
   },
   caseCount: (args) => listOf(args[0]).length,
@@ -780,14 +806,19 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
   noCases: (args) => listOf(args[0]).length === 0,
   tryBlock: (args) => {
     const node = formOf(args[0]);
-    return node !== undefined && "block" in node ? ((node.block as Block).body as Word) : undefined;
+    if (node === undefined || !("block" in node)) {
+      return undefined;
+    }
+    const block = node.block as Block;
+    return { tag: "block", body: block.body, span: block.span } as Word;
   },
   tryHandlerBody: (args) => {
     const node = formOf(args[0]);
     if (node === undefined || !("handler" in node) || node.handler === null) {
       return undefined;
     }
-    return ((node.handler as { body: Block }).body as Block).body as Word;
+    const block = (node.handler as { body: Block }).body;
+    return { tag: "block", body: block.body, span: block.span } as Word;
   },
   tryHandlerParam: (args) => {
     const node = formOf(args[0]);
@@ -801,11 +832,16 @@ const operationsFor = (state: EvaluatorState): Readonly<Record<string, Operation
     if (node === undefined || !("finalizer" in node) || node.finalizer === null) {
       return undefined;
     }
-    return (node.finalizer as Block).body as Word;
+    const block = node.finalizer as Block;
+    return { tag: "block", body: block.body, span: block.span } as Word;
   },
   hasFinalizer: (args) => {
     const node = formOf(args[0]);
     return node !== undefined && "finalizer" in node && node.finalizer !== null;
+  },
+  hasHandler: (args) => {
+    const node = formOf(args[0]);
+    return node !== undefined && "handler" in node && node.handler !== null;
   },
   returnArgument: (args) => {
     const node = formOf(args[0]);
@@ -1192,10 +1228,14 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   label("ev-if-stmt-then"),
   assign("expr", op("ifConsequent", register("item"))),
   label("ev-if-stmt-run"),
+  test("isDone", register("expr")),
+  branch("ev-if-stmt-none"),
   save("continue"),
-  assign("unev", op("blockForms", register("expr"))),
   assign("continue", constant({ tag: "symbol", name: "ev-if-stmt-done" })),
-  gotoLabel("ev-sequence"),
+  gotoLabel("eval-form"),
+  label("ev-if-stmt-none"),
+  assign("val", constant(undefined)),
+  gotoLabel("ev-if-stmt-exit"),
   label("ev-if-stmt-done"),
   restore("continue"),
   label("ev-if-stmt-exit"),
@@ -1747,9 +1787,9 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
       op("procedureParams", register("proc")),
       register("argl"),
       op("procedureEnv", register("proc")),
+      op("procedureRest", register("proc")),
     ),
   ),
-  perform("predeclareForms", op("procedureBody", register("proc")), register("env")),
   assign("unev", op("procedureBody", register("proc"))),
   assign("continue", constant({ tag: "symbol", name: "apply-body-done" })),
   gotoLabel("ev-sequence"),
@@ -1762,9 +1802,9 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
       op("procedureParams", register("proc")),
       register("argl"),
       op("procedureEnv", register("proc")),
+      op("procedureRest", register("proc")),
     ),
   ),
-  perform("predeclareForms", op("procedureBody", register("proc")), register("env")),
   assign("unev", op("procedureBody", register("proc"))),
   assign("continue", constant({ tag: "symbol", name: "apply-body-done" })),
   gotoLabel("ev-sequence"),
@@ -1916,9 +1956,9 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   gotoLabel("while-exit"),
   label("while-body"),
   save("continue"),
-  assign("unev", op("blockForms", op("whileBody", register("item")))),
+  assign("expr", op("whileBody", register("item"))),
   assign("continue", constant({ tag: "symbol", name: "while-continue" })),
-  gotoLabel("ev-sequence"),
+  gotoLabel("eval-form"),
   label("while-continue"),
   restore("continue"),
   test("isTransfer", register("transfer")),
@@ -1974,9 +2014,9 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
       register("env"),
     ),
   ),
-  assign("unev", op("blockForms", op("forOfBody", register("item")))),
+  assign("expr", op("forOfBody", register("item"))),
   assign("continue", constant({ tag: "symbol", name: "for-of-continue" })),
-  gotoLabel("ev-sequence"),
+  gotoLabel("eval-form"),
   label("for-of-continue"),
   restore("proc"),
   restore("continue"),
@@ -2046,15 +2086,19 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   gotoLabel("switch-next"),
   label("switch-default"),
   assign("unev", op("switchDefaultBody", register("item"))),
-  gotoLabel("switch-run-forms"),
+  gotoLabel("switch-scope"),
   label("switch-run"),
-  assign("unev", op("caseBodiesFrom", op("switchCases", register("item")), register("argl"))),
-  label("switch-run-forms"),
+  assign("unev", op("caseBodiesFrom", register("item"), register("argl"))),
+  label("switch-scope"),
+  save("env"),
+  assign("env", op("extendEnvironment", constant([]), constant([]), register("env"))),
+  perform("predeclareForms", op("caseBodiesFrom", register("item"), constant(0)), register("env")),
   save("continue"),
   assign("continue", constant({ tag: "symbol", name: "switch-done" })),
   gotoLabel("ev-sequence"),
   label("switch-done"),
   restore("continue"),
+  restore("env"),
   test("isBreakTransfer", register("transfer")),
   branch("switch-break"),
   gotoLabel("switch-exit"),
@@ -2075,9 +2119,9 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   save("continue"),
   assign("item", register("expr")),
   save("continue"),
-  assign("unev", op("tryBlock", register("item"))),
+  assign("expr", op("tryBlock", register("item"))),
   assign("continue", constant({ tag: "symbol", name: "try-body-done" })),
-  gotoLabel("ev-sequence"),
+  gotoLabel("eval-form"),
   label("try-body-done"),
   restore("continue"),
   test("isTransfer", register("transfer")),
@@ -2085,6 +2129,10 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   gotoLabel("try-finally"),
   label("try-pending"),
   test("isThrowTransfer", register("transfer")),
+  branch("try-handler-check"),
+  gotoLabel("try-finally"),
+  label("try-handler-check"),
+  test("hasHandler", register("item")),
   branch("try-catch"),
   gotoLabel("try-finally"),
   label("try-catch"),
@@ -2101,9 +2149,9 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
     ),
   ),
   save("continue"),
-  assign("unev", op("tryHandlerBody", register("item"))),
+  assign("expr", op("tryHandlerBody", register("item"))),
   assign("continue", constant({ tag: "symbol", name: "try-handler-done" })),
-  gotoLabel("ev-sequence"),
+  gotoLabel("eval-form"),
   label("try-handler-done"),
   restore("continue"),
   restore("env"),
@@ -2115,13 +2163,25 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   label("try-finally-run"),
   save("transfer"),
   assign("transfer", op("nullTransfer")),
+  save("val"),
   save("continue"),
-  assign("unev", op("tryFinalizerBody", register("item"))),
+  assign("expr", op("tryFinalizerBody", register("item"))),
   assign("continue", constant({ tag: "symbol", name: "try-finally-done" })),
-  gotoLabel("ev-sequence"),
+  gotoLabel("eval-form"),
   label("try-finally-done"),
   restore("continue"),
+  test("isTransfer", register("transfer")),
+  branch("try-finally-abrupt"),
+  restore("val"),
   restore("transfer"),
+  gotoLabel("try-exit"),
+  label("try-finally-abrupt"),
+  assign("unev", register("transfer")),
+  assign("argl", register("val")),
+  restore("val"),
+  restore("transfer"),
+  assign("transfer", register("unev")),
+  assign("val", register("argl")),
   gotoLabel("try-exit"),
   label("try-exit"),
   restore("continue"),
@@ -2129,6 +2189,7 @@ export const evaluatorController: ReadonlyArray<EvaluatorMachineStatement> = [
   gotoLabel("continue-dispatch"),
 
   label("ev-sequence"),
+  perform("predeclareForms", register("unev"), register("env")),
   test("noOperands", register("unev")),
   branch("seq-empty"),
   assign("expr", op("firstOperand", register("unev"))),
@@ -2218,6 +2279,7 @@ export const makeEvaluator = (
           return { outcome: fail(error), transcript: [] };
         }
       }
+      predeclare(admission.program, environment);
       machine.writeRegister("env", environment);
       machine.writeRegister("transfer", undefined);
       const run = machine.run(EVALUATOR_STEP_LIMIT);

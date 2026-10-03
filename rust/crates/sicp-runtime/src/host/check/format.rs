@@ -37,19 +37,12 @@ impl Checker {
             // The macro borrows its arguments (`&arg`); nothing moves.
             let expr = self.check_expr_place(arg, Some(&want))?;
             let got = self.deep(&expr.ty);
-            let admitted = if *debug {
-                self.implements(&got, Trait::Debug)
-            } else {
-                display_able(&got)
-            };
-            if !admitted {
+            if *debug {
+                self.require_trait(&got, Trait::Debug, arg.span)?;
+            } else if !display_able(&got) {
                 return Err(Diag::type_error(
                     arg.span,
-                    if *debug {
-                        format!("`{got:?}` has no admitted `Debug` rendering")
-                    } else {
-                        format!("`{got:?}` has no admitted `Display` rendering")
-                    },
+                    format!("`{got:?}` has no admitted `Display` rendering"),
                 ));
             }
             checked.push(expr);

@@ -134,6 +134,12 @@ impl Checker {
                         "this pattern requires a two-element tuple",
                     ));
                 };
+                if left.name == right.name {
+                    return Err(Diag::type_error(
+                        let_stmt.pat.span,
+                        format!("`{}` is bound more than once", left.name),
+                    ));
+                }
                 let left_id = self.fresh_bind(&left.name, *a, let_stmt.mutable);
                 let right_id = self.fresh_bind(&right.name, *b, let_stmt.mutable);
                 let scope = self.ctx_mut().scopes.last_mut().expect("the block scope");
@@ -957,6 +963,12 @@ impl Checker {
                     format!("no field `{}` here", field_name.name),
                 ));
             };
+            if checked[position].is_some() {
+                return Err(Diag::type_error(
+                    field_name.span,
+                    format!("duplicate field `{}`", field_name.name),
+                ));
+            }
             let want = want_types[position].clone();
             let expr = match value {
                 Some(value) => self.check_expr(value, Some(&want))?,
@@ -1401,6 +1413,27 @@ impl Checker {
         if matches!(op, MethodOp::IntoIter | MethodOp::Enumerate) {
             self.consume_receiver(&checked_receiver, span)?;
         }
+        // Methods returning references or iterator adaptors borrow their
+        // receiver: the loan keeps mutation out while the result is live.
+        let borrow = match op {
+            MethodOp::Iter | MethodOp::VecGet | MethodOp::MapGet | MethodOp::BoxAsRef => Some(false),
+            MethodOp::IterMut | MethodOp::VecGetMut | MethodOp::MapGetMut | MethodOp::BoxAsMut => {
+                Some(true)
+            }
+            _ => None,
+        };
+        if let Some(mutable) = borrow
+            && let Some(place) = &receiver_place
+            && let PlaceRoot::Local(binding) = place.root
+        {
+            let access = if mutable {
+                Access::BorrowMut
+            } else {
+                Access::BorrowShared
+            };
+            self.check_access(binding, access, span)?;
+            self.begin_loan(binding, mutable, None);
+        }
         let (params, ret) = self.method_signature(op, &recv_ty, span)?;
         if args.len() != params.len() {
             return Err(Diag::type_error(
@@ -1491,7 +1524,9 @@ impl Checker {
                 | MethodOp::MapGetMut
                 | MethodOp::BoxAsRef
                 | MethodOp::BoxAsMut
+                | MethodOp::Iter
                 | MethodOp::IterMut
+                | MethodOp::Next
         );
         if !needs_place {
             return Ok(());
@@ -1510,6 +1545,7 @@ impl Checker {
                 | MethodOp::MapGetMut
                 | MethodOp::BoxAsMut
                 | MethodOp::IterMut
+                | MethodOp::Next
         );
         if needs_mut {
             return self.check_mutation_through(place, span);

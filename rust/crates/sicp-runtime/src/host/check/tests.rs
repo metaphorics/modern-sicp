@@ -544,3 +544,40 @@ fn valid_programs_are_admitted() {
         .collect();
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
+
+/// The `rustc` half of the module contract: every admitted program must
+/// compile natively, so a checker that accepts invalid Rust cannot hide.
+#[test]
+fn admitted_programs_compile_natively() {
+    let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_owned());
+    let mut wrong = Vec::new();
+    for (name, source) in ADMITTED {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("sicp_admitted_{name}.rs"));
+        let meta = dir.join(format!("sicp_admitted_{name}.rmeta"));
+        std::fs::write(&path, source).expect("write the program source");
+        let output = std::process::Command::new(&rustc)
+            .args([
+                "--edition",
+                "2021",
+                "--crate-type",
+                "lib",
+                "--emit",
+                "metadata",
+                "-o",
+            ])
+            .arg(&meta)
+            .arg(&path)
+            .output()
+            .expect("rustc must run on the development machine");
+        if !output.status.success() {
+            wrong.push(format!(
+                "{name}: rustc rejects an admitted program:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&meta);
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}

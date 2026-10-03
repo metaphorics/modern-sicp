@@ -996,7 +996,9 @@ impl Checker {
 
     fn check_access(&mut self, root: BindId, access: Access, span: Span) -> Result<(), Diag> {
         let ty = self.sema.bindings[root.0 as usize].ty.clone();
-        let moved = self.ctx().uninit.contains(&root);
+        // A move recorded in any enclosing context holds here: nested
+        // closures read the outer binding's moved state too.
+        let moved = self.ctxs.iter().any(|ctx| ctx.uninit.contains(&root));
         match access {
             Access::Read | Access::Move => {
                 if moved {
@@ -1119,8 +1121,9 @@ impl Checker {
     }
 
     fn reinit(&mut self, root: BindId) {
-        let ctx = self.ctx_mut();
-        ctx.uninit.retain(|b| *b != root);
+        for ctx in &mut self.ctxs {
+            ctx.uninit.retain(|b| *b != root);
+        }
     }
 }
 

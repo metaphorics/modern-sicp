@@ -22,6 +22,8 @@ pub(crate) enum Trait {
     PartialEq,
     /// `Debug`.
     Debug,
+    /// `Hash`.
+    Hash,
 }
 
 impl Trait {
@@ -30,6 +32,7 @@ impl Trait {
             Self::Clone => DeriveName::Clone,
             Self::PartialEq => DeriveName::PartialEq,
             Self::Debug => DeriveName::Debug,
+            Self::Hash => DeriveName::Hash,
         }
     }
 
@@ -39,6 +42,7 @@ impl Trait {
             Self::Clone => "Clone",
             Self::PartialEq => "PartialEq",
             Self::Debug => "Debug",
+            Self::Hash => "Hash",
         }
     }
 }
@@ -67,21 +71,27 @@ impl Checker {
             HostTy::Ref(mutable, inner) => match tr {
                 Trait::Clone => !mutable,
                 Trait::PartialEq => false,
-                Trait::Debug => self.implements(&inner, tr),
+                Trait::Debug | Trait::Hash => self.implements(&inner, tr),
             },
+            // `HashMap` has no `Hash` implementation in the standard
+            // library; the other containers delegate to their items.
+            HostTy::HashMap(inner) => tr != Trait::Hash && self.implements(&inner, tr),
             HostTy::Box(inner)
             | HostTy::Vec(inner)
             | HostTy::Option(inner)
-            | HostTy::HashMap(inner)
             | HostTy::Array(inner, _) => self.implements(&inner, tr),
             HostTy::Result(left, right) | HostTy::Tuple(left, right) => {
                 self.implements(&left, tr) && self.implements(&right, tr)
             }
-            // A function pointer clones, but comparing or printing one
-            // observes an address the source does not determine. A
-            // range or slice iterator clones too; a boxed closure
-            // object and a mutable iterator implement none of the three.
-            HostTy::FnPtr(..) | HostTy::Range(_) | HostTy::Iter(_) => tr == Trait::Clone,
+            // A function pointer clones and hashes by address; a range
+            // clones and hashes when its bounds do. A slice iterator
+            // clones too; a boxed closure object and a mutable iterator
+            // implement none of the four.
+            HostTy::FnPtr(..) => tr == Trait::Clone || tr == Trait::Hash,
+            HostTy::Range(item) => {
+                tr == Trait::Clone || (tr == Trait::Hash && self.implements(&item, tr))
+            }
+            HostTy::Iter(_) => tr == Trait::Clone,
             HostTy::DynFn(..) | HostTy::IterMut(_) => false,
             // The remaining iterators clone when their items do (a
             // shared borrow always does); none compares or prints in
@@ -211,7 +221,8 @@ impl Checker {
                 DeriveName::Clone => Some(Trait::Clone),
                 DeriveName::PartialEq => Some(Trait::PartialEq),
                 DeriveName::Debug => Some(Trait::Debug),
-                DeriveName::Eq | DeriveName::Hash => None,
+                DeriveName::Hash => Some(Trait::Hash),
+                DeriveName::Eq => None,
             };
             if *derive == DeriveName::Eq && !derives.contains(&DeriveName::PartialEq) {
                 return Err(Diag::type_error(
@@ -242,6 +253,7 @@ fn unimplemented_trait(ty: &HostTy, tr: Trait, span: Span) -> Diag {
         Trait::Clone => format!("`{ty:?}` has no admitted `Clone` implementation"),
         Trait::PartialEq => format!("`{ty:?}` does not admit equality"),
         Trait::Debug => format!("`{ty:?}` has no admitted `Debug` rendering"),
+        Trait::Hash => format!("`{ty:?}` has no admitted `Hash` implementation"),
     };
     Diag::type_error(span, message)
 }

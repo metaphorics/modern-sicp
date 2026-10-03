@@ -123,7 +123,7 @@ impl Checker {
 
     /// A constructor pattern must build the scrutinee's own type.
     fn expect_pattern_type(
-        &self,
+        &mut self,
         resolved: &Resolved,
         wanted: &HostTy,
         span: Span,
@@ -134,7 +134,7 @@ impl Checker {
             _ => return Ok(()),
         };
         match self.deep(wanted) {
-            HostTy::Infer(_) => Ok(()),
+            HostTy::Infer(_) => self.unify(&expected, wanted, span).map(|_| ()),
             found if found == expected => Ok(()),
             _ => Err(Diag::type_error(
                 span,
@@ -144,7 +144,7 @@ impl Checker {
     }
 
     fn check_path_pattern(
-        &self,
+        &mut self,
         path: &[ast::Ident],
         wanted: &HostTy,
         span: Span,

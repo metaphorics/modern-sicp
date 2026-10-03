@@ -37,6 +37,10 @@ pub use sicp_runtime::host::admit;
 pub struct Direct {
     /// The shared engine state.
     pub engine: Engine,
+    /// The per-function execution plans of [`analyze`], present when
+    /// this evaluator runs an analyzed program so `Plan::Call` can run
+    /// the callee's plan instead of re-walking the checked tree.
+    plans: Option<Arc<Vec<Plan>>>,
 }
 
 impl Direct {
@@ -45,7 +49,15 @@ impl Direct {
     pub fn new(sema: Sema) -> Self {
         Self {
             engine: Engine::new(sema),
+            plans: None,
         }
+    }
+
+    /// Supplies the per-function plans an analyzed program precomputed.
+    #[must_use]
+    fn with_plans(mut self, plans: Arc<Vec<Plan>>) -> Self {
+        self.plans = Some(plans);
+        self
     }
 
     /// Runs `main`, answering its final flow.
@@ -1170,10 +1182,11 @@ fn analyze_place(place: &Place) -> (PlanRoot, Vec<PlanProj>) {
 /// Runs one retained analyzed program without re-analysis.
 #[must_use]
 pub fn run_analyzed_program(program: &AnalyzedProgram) -> RunOutcome {
-    let mut direct = Direct::new(program.sema.clone());
+    let mut direct =
+        Direct::new(program.sema.clone()).with_plans(Arc::new(program.bodies.clone()));
     let main = direct.engine.sema.main;
     let plan = program.bodies[main.0 as usize].clone();
-    let outcome = run_plan(&mut direct, &plan, main);
+    let outcome = run_plan(&mut direct, &plan, main, Vec::new());
     match outcome {
         Ok(_) => RunOutcome {
             stdout: direct.engine.effects.stdout,
@@ -1192,14 +1205,43 @@ pub fn run_analyzed(program: &CheckedProgram) -> RunOutcome {
     run_analyzed_program(&analyze(program))
 }
 
-fn run_plan(direct: &mut Direct, plan: &Plan, fun: FunId) -> Result<Flow, TrapReport> {
+fn run_plan(
+    direct: &mut Direct,
+    plan: &Plan,
+    fun: FunId,
+    args: Vec<HostValue>,
+) -> Result<Flow, TrapReport> {
     let def = direct.engine.sema.funs[fun.0 as usize].clone();
     let frame = direct
         .engine
         .push_activation(def.bind_base, def.frame_slots, Vec::new());
+    for ((binding, _), value) in def.params.iter().zip(args) {
+        direct.write(*binding, value, frame)?;
+    }
     let outcome = eval_plan(direct, plan, frame);
     direct.engine.pop_activation();
     outcome
+}
+
+/// Calls `fun` through the plan `analyze` precomputed for it when the
+/// run supplied a plan table; otherwise falls back to the direct walk.
+fn call_fun_planned(
+    direct: &mut Direct,
+    fun: FunId,
+    args: Vec<HostValue>,
+) -> Result<HostValue, TrapReport> {
+    match direct.plans.clone() {
+        Some(plans) => {
+            let plan = plans[fun.0 as usize].clone();
+            match run_plan(direct, &plan, fun, args)? {
+                Flow::Value(value) | Flow::Return(value) => Ok(value),
+                Flow::Break(_) | Flow::Continue => {
+                    Err(Direct::trap(Trap::Dangling, default_span()))
+                }
+            }
+        }
+        None => direct.call_fun(fun, args),
+    }
 }
 
 // Keep the executable plan's exhaustive control-flow dispatch in one place.
@@ -1280,7 +1322,7 @@ fn eval_plan(direct: &mut Direct, plan: &Plan, frame: usize) -> Result<Flow, Tra
         }
         Plan::Call { callee, args } => {
             let values = eval_plan_args(direct, args, frame)?;
-            direct.call_fun(*callee, values).map(Flow::Value)
+            call_fun_planned(direct, *callee, values).map(Flow::Value)
         }
         Plan::Ctor(op, args) => {
             let values = eval_plan_args(direct, args, frame)?;
@@ -1291,7 +1333,12 @@ fn eval_plan(direct: &mut Direct, plan: &Plan, frame: usize) -> Result<Flow, Tra
         Plan::IndirectCall { callee, args } => {
             let function = eval_plan_value(direct, callee, frame)?;
             let values = eval_plan_args(direct, args, frame)?;
-            direct.call_value(function, values).map(Flow::Value)
+            match function {
+                HostValue::FnPtr(fun) => {
+                    call_fun_planned(direct, fun, values).map(Flow::Value)
+                }
+                other => direct.call_value(other, values).map(Flow::Value),
+            }
         }
         Plan::Method {
             op,

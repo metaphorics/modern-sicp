@@ -140,7 +140,8 @@ const installArrayBuiltins = (table: OpTable): void => {
     if (!isArrayValue(receiver)) {
       return bad("flat", "receiver is not an array");
     }
-    return ok(makeArray(flatten(receiver.items, numberAt(args, 1) ?? 1)));
+    const depth = numberAt(args, 1) ?? 1;
+    return ok(makeArray(flatten(receiver.items, Math.trunc(depth))));
   });
   table.put("array.includes", (args) => {
     const receiver = args[0];
@@ -204,7 +205,7 @@ const installStringBuiltins = (table: OpTable): void => {
     if (typeof receiver !== "string" || typeof search !== "string") {
       return bad("startsWith", "receiver or search value is not a string");
     }
-    return ok(receiver.startsWith(search));
+    return ok(receiver.startsWith(search, numberAt(args, 2)));
   });
   table.put("string.includes", (args) => {
     const receiver = args[0];
@@ -212,7 +213,7 @@ const installStringBuiltins = (table: OpTable): void => {
     if (typeof receiver !== "string" || typeof search !== "string") {
       return bad("includes", "receiver or search value is not a string");
     }
-    return ok(receiver.includes(search));
+    return ok(receiver.includes(search, numberAt(args, 2)));
   });
   table.put("string.replaceAll", (args) => {
     const receiver = args[0];

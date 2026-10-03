@@ -725,7 +725,7 @@ export class Session {
           return result;
         }
         if (name === "filter") {
-          if (result.value === true) {
+          if (truthy(result.value)) {
             out.push(item);
           }
           continue;
@@ -745,7 +745,7 @@ export class Session {
         if (result.tag === "error") {
           return result;
         }
-        const holds = result.value === true;
+        const holds = truthy(result.value);
         if (name === "find" && holds) {
           return ok(item);
         }
@@ -1053,6 +1053,17 @@ const emptyBlock = (): Stmt => ({
   body: [],
   span: { start: 0, end: 0, line: 1, column: 1 },
 });
+
+/** JavaScript truthiness: false, null, undefined, 0, NaN, and "" are falsy. */
+const truthy = (value: Value): boolean =>
+  !(
+    value === false ||
+    value === null ||
+    value === undefined ||
+    value === 0 ||
+    value === "" ||
+    (typeof value === "number" && Number.isNaN(value))
+  );
 
 const itemAt = (items: ReadonlyArray<Value>, index: number): Value =>
   Number.isInteger(index) && index >= 0 && index < items.length ? items[index] : undefined;
